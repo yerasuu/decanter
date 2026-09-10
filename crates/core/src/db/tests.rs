@@ -101,6 +101,7 @@ fn game(product_id: &str) -> CachedGame {
         title: "A Game".to_owned(),
         icon_url: None,
         cover_url: None,
+        background_url: None,
         kind: "game".to_owned(),
         purchased_at: None,
         release_date: Some(1_000),

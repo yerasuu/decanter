@@ -9,10 +9,13 @@
 //! prefix launches it. This crate has no notion of a profile grouping
 //! several accounts — see `achv_core::profiles` for that.
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
 use achv_core::{CachedAchievement, Db, Storefront};
 use anyhow::Context;
+use tokio::sync::Mutex as AsyncMutex;
 
 mod auth;
 pub mod cloud_saves;
@@ -114,6 +117,28 @@ async fn clear_session(account_id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// One lock per account, handed out from a registry guarded by a plain
+/// `Mutex` (held only long enough to look up or insert the entry, never
+/// across an `.await`).
+///
+/// GOG rotates the refresh token on use: whichever of two concurrent
+/// [`with_session`] calls for the *same* account refreshes first leaves the
+/// other holding an already-spent refresh token, which GOG then reports as
+/// revoked — not a real logout, just two callers racing to renew the same
+/// session (e.g. the library's own fetch and the settings screen's session
+/// check, both starting right after a fresh login). Serializing access per
+/// account closes that window; unrelated accounts still run concurrently.
+fn session_lock(account_id: &str) -> Arc<AsyncMutex<()>> {
+    static LOCKS: OnceLock<StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+    let locks = LOCKS.get_or_init(|| StdMutex::new(HashMap::new()));
+    let mut locks = locks.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    Arc::clone(
+        locks
+            .entry(account_id.to_owned())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
+    )
+}
+
 /// Runs `f` against a live, authenticated `gog::Gog` client built from the
 /// stored session, then persists whatever `f` leaves in `client.token` —
 /// any authenticated call may have refreshed it, and a caller that skipped
@@ -127,6 +152,9 @@ where
     F: FnOnce(&gog::Gog) -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
+    let lock = session_lock(account_id);
+    let _guard = lock.lock().await;
+
     let stored = read_session(account_id).await?;
     if stored.is_none() {
         tracing::debug!(account_id, "no GOG session stored for this account");

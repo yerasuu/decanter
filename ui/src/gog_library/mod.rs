@@ -63,6 +63,10 @@ pub struct GogLibrary {
     /// One raw, unmerged list per account — the merge input, and what
     /// [`GogLibrary::refresh_install_state`] patches before re-merging.
     by_account: Signal<HashMap<String, Signal<Vec<LibraryEntry>>>>,
+    /// One fetch task per account — what [`GogLibrary::forget_account`]
+    /// cancels immediately, and what [`use_gog_library`]'s own effect
+    /// otherwise reconciles against `wanted` on its own schedule.
+    tasks: Signal<HashMap<String, Task>>,
 }
 
 impl GogLibrary {
@@ -109,6 +113,32 @@ impl GogLibrary {
             entry.game.install_state = install_state;
         }
         self.games.set(merge(&self.by_account.read(), &[account_id.to_owned()]));
+    }
+
+    /// Cancels this account's fetch task and drops its games right away —
+    /// call this from a logout, don't wait for [`refresh`](Self::refresh)'s
+    /// own reconciliation to notice.
+    ///
+    /// A logged-out account keeps the same id if it's ever logged back in
+    /// (GOG hands back the same `user_id`), so without this a task left
+    /// running past logout survives a same-session re-login too: the
+    /// reconciliation in [`use_gog_library`]'s effect only cancels a task
+    /// whose account has dropped out of `wanted`, and by the time it runs
+    /// again after a fresh login the account is back in `wanted` — so the
+    /// stale task reads as "still correctly running" and is left alone,
+    /// quietly serving whatever session it had before logout instead of
+    /// the one just created. This is what actually closes that window.
+    pub fn forget_account(mut self, account_id: &str) {
+        if let Some(task) = self.tasks.write().remove(account_id) {
+            tracing::debug!(account_id, "cancelling gog library fetch task on logout");
+            task.cancel();
+        }
+        self.by_account.write().remove(account_id);
+        // Order doesn't matter for dropping one account's entries out of an
+        // already-merged list — the next fetch cycle re-merges properly
+        // ordered anyway. This just needs the remaining accounts included.
+        let remaining: Vec<String> = self.by_account.read().keys().cloned().collect();
+        self.games.set(merge(&self.by_account.read(), &remaining));
     }
 }
 
@@ -232,5 +262,6 @@ pub fn use_gog_library(active_profile: Signal<Option<String>>) -> GogLibrary {
         generation,
         enrich_progress,
         by_account,
+        tasks,
     }
 }

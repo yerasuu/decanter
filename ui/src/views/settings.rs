@@ -143,6 +143,7 @@ pub(crate) const fn storefront_label(storefront: Storefront) -> &'static str {
 /// how to remove itself from a list it doesn't own.
 #[component]
 fn AccountRow(account: achv_core::Account, on_change: EventHandler<()>) -> Element {
+    let library = use_context::<GogLibrary>();
     let mut status = use_signal(|| AccountStatus::Idle);
 
     // Re-checked on mount, so a session GOG has since revoked shows as
@@ -204,6 +205,10 @@ fn AccountRow(account: achv_core::Account, on_change: EventHandler<()>) -> Eleme
                             {
                                 Ok(()) => {
                                     tracing::info!(account_id, "account removed from profile");
+                                    // Otherwise a fetch task left running past logout survives
+                                    // a same-session re-login under the same account id too —
+                                    // see `GogLibrary::forget_account`'s own doc for why.
+                                    library.forget_account(&account_id);
                                     status.set(AccountStatus::Idle);
                                     on_change.call(());
                                 }

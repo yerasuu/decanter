@@ -27,6 +27,7 @@ pub struct CachedGame {
     pub title: String,
     pub icon_url: Option<String>,
     pub cover_url: Option<String>,
+    pub background_url: Option<String>,
     pub kind: String,
     pub purchased_at: Option<i64>,
     pub release_date: Option<i64>,
@@ -81,22 +82,23 @@ fn split_genres(raw: Option<String>) -> Vec<String> {
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS games_cache (
-    account_id    TEXT NOT NULL,
-    storefront    INTEGER NOT NULL,
-    product_id    TEXT NOT NULL,
-    title         TEXT NOT NULL,
-    icon_url      TEXT,
-    cover_url     TEXT,
-    kind          TEXT NOT NULL DEFAULT 'game',
-    purchased_at  INTEGER,
-    release_date  INTEGER,
-    rating        TEXT,
-    genres        TEXT,
-    library_rank  INTEGER,
-    parent_id     TEXT,
-    installable   INTEGER NOT NULL DEFAULT 1,
-    first_seen    INTEGER NOT NULL DEFAULT 0,
-    updated_at    INTEGER NOT NULL,
+    account_id      TEXT NOT NULL,
+    storefront      INTEGER NOT NULL,
+    product_id      TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    icon_url        TEXT,
+    cover_url       TEXT,
+    background_url  TEXT,
+    kind            TEXT NOT NULL DEFAULT 'game',
+    purchased_at    INTEGER,
+    release_date    INTEGER,
+    rating          TEXT,
+    genres          TEXT,
+    library_rank    INTEGER,
+    parent_id       TEXT,
+    installable     INTEGER NOT NULL DEFAULT 1,
+    first_seen      INTEGER NOT NULL DEFAULT 0,
+    updated_at      INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
@@ -222,6 +224,23 @@ impl Db {
             tracing::info!(table = "games_cache", "old-shaped table found, dropping and rebuilding");
             conn.execute_batch("DROP TABLE IF EXISTS games_cache;")?;
         }
+        // `background_url` was added after `games_cache` shipped — a table
+        // this misses it on was created before, and never got the hero art
+        // column at all, so the detail pane fell back to `cover_url` (or
+        // nothing) for every cached row until the next live fetch overwrote
+        // it. Same drop-and-rebuild as above, not a row migration.
+        let games_cache_has_background_url: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games_cache') WHERE name = 'background_url'",
+            [],
+            |row| row.get(0),
+        )?;
+        if games_cache_has_background_url == 0 {
+            tracing::info!(
+                table = "games_cache",
+                "table missing background_url column, dropping and rebuilding"
+            );
+            conn.execute_batch("DROP TABLE IF EXISTS games_cache;")?;
+        }
         // These four used to be keyed by `profile_id`, back when a profile
         // and a storefront account were the same thing — now a profile can
         // group several accounts, so the cache has to key by account
@@ -285,15 +304,16 @@ impl Db {
         self.conn.execute(
             &format!(
                 "INSERT INTO games_cache (
-                    account_id, storefront, product_id, title, icon_url, cover_url,
+                    account_id, storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
                     parent_id, installable, first_seen, updated_at
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, {first_seen_if_new}, strftime('%s','now'))
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, {first_seen_if_new}, strftime('%s','now'))
                  ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
                     title = excluded.title,
                     icon_url = excluded.icon_url,
                     cover_url = excluded.cover_url,
+                    background_url = excluded.background_url,
                     kind = excluded.kind,
                     purchased_at = COALESCE(excluded.purchased_at, purchased_at),
                     release_date = COALESCE(excluded.release_date, release_date),
@@ -311,6 +331,7 @@ impl Db {
                 game.title,
                 game.icon_url,
                 game.cover_url,
+                game.background_url,
                 game.kind,
                 game.purchased_at,
                 game.release_date,
@@ -389,7 +410,7 @@ impl Db {
     /// fresh stream reconnects and re-scans the GOG account.
     pub fn list_games(&self, account_id: &str) -> Result<Vec<CachedGame>> {
         let mut stmt = self.conn.prepare(
-            "SELECT storefront, product_id, title, icon_url, cover_url,
+            "SELECT storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
                     parent_id, installable
              FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
@@ -409,14 +430,15 @@ impl Db {
                 title: row.get(2)?,
                 icon_url: row.get(3)?,
                 cover_url: row.get(4)?,
-                kind: row.get(5)?,
-                purchased_at: row.get(6)?,
-                release_date: row.get(7)?,
-                rating: row.get(8)?,
-                genres: split_genres(row.get(9)?),
-                library_rank: row.get(10)?,
-                parent_id: row.get(11)?,
-                installable: row.get(12)?,
+                background_url: row.get(5)?,
+                kind: row.get(6)?,
+                purchased_at: row.get(7)?,
+                release_date: row.get(8)?,
+                rating: row.get(9)?,
+                genres: split_genres(row.get(10)?),
+                library_rank: row.get(11)?,
+                parent_id: row.get(12)?,
+                installable: row.get(13)?,
             })
         })?;
         let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;
