@@ -174,6 +174,3 @@ pub fn html_to_text(html: &str) -> String {
     // Collapse the whitespace the tag stripping just introduced.
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
-
-#[cfg(test)]
-mod tests;

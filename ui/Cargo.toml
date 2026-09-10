@@ -1,5 +1,5 @@
 [package]
-name = "achv-tray"
+name = "decanter-tray"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -11,9 +11,9 @@ workspace = true
 
 [dependencies]
 dioxus = { version = "0.7.10", features = ["router", "fullstack"] }
-achv-core = { path = "../crates/core" }
-achv-gog = { path = "../crates/gog" }
-achv-runtime = { path = "../crates/runtime" }
+decanter-core = { path = "../crates/core" }
+decanter-gog = { path = "../crates/gog" }
+decanter-runtime = { path = "../crates/runtime" }
 uuid = { version = "1.26.0", features = ["v4"] }
 anyhow = "1.0.104"
 tracing = "0.1.44"

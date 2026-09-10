@@ -13,8 +13,8 @@
 
 use std::collections::HashMap;
 
-use achv_core::InstallState;
-use achv_gog::LibraryEntry;
+use decanter_core::InstallState;
+use decanter_gog::LibraryEntry;
 use dioxus::core::Task;
 use dioxus::prelude::*;
 
@@ -146,7 +146,7 @@ impl GogLibrary {
 /// copy of a product a given account owns — two accounts with the same
 /// game would otherwise show it twice. `order` decides which account's
 /// copy wins a duplicate (oldest account first, same order
-/// `achv_core::Db::accounts_in_profile` already returns) and, since it's
+/// `decanter_core::Db::accounts_in_profile` already returns) and, since it's
 /// also the merge's only iteration order, which accounts are actually
 /// included: an account with a live signal but missing from `order` is
 /// skipped, the shape `refresh_install_state` relies on to patch just one
@@ -194,7 +194,7 @@ pub fn use_gog_library(active_profile: Signal<Option<String>>) -> GogLibrary {
                     })
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|account| account.storefront == achv_core::Storefront::Gog)
+                    .filter(|account| account.storefront == decanter_core::Storefront::Gog)
                     .map(|account| account.id)
                     .collect()
             })

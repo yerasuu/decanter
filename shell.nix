@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # Every shared library achv-tray's desktop build (webkitgtk + gtk3 +
+  # Every shared library decanter-tray's desktop build (webkitgtk + gtk3 +
   # xdotool + wayland + TLS) links against, needed again at runtime —
   # nix-shell doesn't put a package's `lib` dir on the dynamic loader's
   # search path just because it's a buildInput, and `makeLibraryPath`

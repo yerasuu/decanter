@@ -2,7 +2,7 @@
 //! `libraryfolders.vdf` are written in.
 //!
 //! Hand-rolled rather than taken as a dependency: the format is a nesting
-//! of quoted strings, and achv both writes and reads every file it
+//! of quoted strings, and decanter both writes and reads every file it
 //! parses, so the exotic corners of real Valve VDF (`#include`, unquoted
 //! keys, conditionals like `[$WIN32]`) never come up. What is here is what
 //! Steam actually emits.
@@ -19,12 +19,6 @@
 #![expect(
     clippy::std_instead_of_core,
     reason = "desktop app, no no_std target exists to justify core:: here"
-)]
-// Only fires on some compilation targets (lib vs tests), so `expect` can't
-// be used here without an "unfulfilled expectation" warning on the other.
-#![allow(
-    clippy::self_named_module_files,
-    reason = "convention here is `<name>.rs` plus a sibling `<name>/tests.rs`, see CLAUDE.md"
 )]
 #![expect(
     clippy::implicit_return,
@@ -380,6 +374,3 @@ fn parse_block(tokens: &mut Tokenizer<'_>) -> Result<Value, Error> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

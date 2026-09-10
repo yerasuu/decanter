@@ -1,6 +1,6 @@
 //! The properties panel: everything Steam tucks behind right-click →
 //! Propiedades for an installed game, in the same tabbed shape — General,
-//! Actualizaciones, Archivos locales, Betas, plus two achv adds on top:
+//! Actualizaciones, Archivos locales, Betas, plus two decanter adds on top:
 //! Versiones (rollback to a specific historical build, not just Steam's
 //! per-branch newest) and Compatibilidad (this game's own Proton pin).
 //!
@@ -11,12 +11,12 @@
 //! `VirtualDom`, which normally costs having to re-plumb every context
 //! provider the main window's root sets up (`CoreResource`, `GogLibrary`,
 //! `Background`) into it — but nothing below ever reads one of those, only
-//! `crate::core`/`achv_gog` free functions and the `game`/`account_id`
+//! `crate::core`/`decanter_gog` free functions and the `game`/`account_id`
 //! passed in directly, so there is nothing to re-plumb.
 
-use achv_core::{CachedGame, Game};
-use achv_gog::cloud_saves::{ForceDirection, SyncAction, SyncOutcome};
-use achv_gog::{Branch, BrokenFile, Build, VerifyReport};
+use decanter_core::{CachedGame, Game};
+use decanter_gog::cloud_saves::{ForceDirection, SyncAction, SyncOutcome};
+use decanter_gog::{Branch, BrokenFile, Build, VerifyReport};
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -283,7 +283,7 @@ fn UpdatesTab(game: Game, account_id: String) -> Element {
                     error.set(String::new());
                     tracing::debug!(account_id, product_id = %installed.game_id, "checking gog for a newer build");
                     spawn(async move {
-                        match achv_gog::check_update(&account_id, &installed).await {
+                        match decanter_gog::check_update(&account_id, &installed).await {
                             Ok(update) => result.set(Some(update)),
                             Err(err) => {
                                 tracing::error!(account_id, product_id = %installed.game_id, error = %err, "update check failed");
@@ -317,7 +317,7 @@ fn UpdatesTab(game: Game, account_id: String) -> Element {
                                 error.set(String::new());
                                 tracing::info!(account_id, product_id, "update install started");
                                 spawn(async move {
-                                    let outcome = achv_gog::install(
+                                    let outcome = decanter_gog::install(
                                             &account_id,
                                             &product_id,
                                             None,
@@ -390,7 +390,7 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
                     report.set(None);
                     tracing::info!(account_id, product_id, "file verification started");
                     spawn(async move {
-                        match achv_gog::verify(&account_id, &product_id).await {
+                        match decanter_gog::verify(&account_id, &product_id).await {
                             Ok(outcome) => {
                                 tracing::info!(
                                     account_id,
@@ -438,7 +438,7 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
                                     error.set(String::new());
                                     tracing::info!(account_id, product_id, broken_count = broken.len(), "file repair started");
                                     spawn(async move {
-                                        if let Err(err) = achv_gog::repair(&account_id, &product_id, &broken)
+                                        if let Err(err) = decanter_gog::repair(&account_id, &product_id, &broken)
                                             .await
                                         {
                                             tracing::error!(account_id, product_id, error = %err, "file repair failed");
@@ -447,7 +447,7 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
                                             return;
                                         }
                                         tracing::info!(account_id, product_id, "file repair finished");
-                                        match achv_gog::verify(&account_id, &product_id).await {
+                                        match decanter_gog::verify(&account_id, &product_id).await {
                                             Ok(outcome) => report.set(Some(outcome)),
                                             Err(err) => {
                                                 tracing::error!(account_id, product_id, error = %err, "re-verify after repair failed");
@@ -475,8 +475,8 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
 }
 
 /// Syncing a local save folder against GOG's Cloud Saves — see
-/// `achv_gog::cloud_saves` for the sync protocol and
-/// `achv_gog::save_location` for how the folder itself gets found:
+/// `decanter_gog::cloud_saves` for the sync protocol and
+/// `decanter_gog::save_location` for how the folder itself gets found:
 /// GOG's own remote-config for this game's build, when it reports one,
 /// with manual entry (and the generic prefix shortcuts below) as the
 /// fallback for whatever it doesn't cover.
@@ -488,7 +488,7 @@ fn CloudSavesTab(game: Game, account_id: String) -> Element {
     let mut last_outcome = use_signal(|| None::<SyncAction>);
     let mut error = use_signal(String::new);
     let detecting = use_signal(|| false);
-    let detected: Signal<Option<Vec<achv_gog::save_location::SaveLocation>>> = use_signal(|| None);
+    let detected: Signal<Option<Vec<decanter_gog::save_location::SaveLocation>>> = use_signal(|| None);
     let mut auto_detect_attempted = use_signal(|| false);
 
     let Some(installed) = crate::core::installed_game(&account_id, &game.id) else {
@@ -541,7 +541,7 @@ fn CloudSavesTab(game: Game, account_id: String) -> Element {
 
     rsx! {
         p { class: "muted",
-            "achv intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indicala a mano."
+            "Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indicala a mano."
         }
 
         div { class: "field-row",
@@ -605,7 +605,7 @@ fn CloudSavesTab(game: Game, account_id: String) -> Element {
             button {
                 class: "secondary",
                 onclick: {
-                    let starting = prefix.as_ref().map(achv_runtime::Prefix::drive_c);
+                    let starting = prefix.as_ref().map(decanter_runtime::Prefix::drive_c);
                     move |_| {
                         let starting = starting.clone();
                         spawn(async move {
@@ -785,7 +785,7 @@ fn run_cloud_save_detection(
     game_id: String,
     report_errors: bool,
     mut detecting: Signal<bool>,
-    mut detected: Signal<Option<Vec<achv_gog::save_location::SaveLocation>>>,
+    mut detected: Signal<Option<Vec<decanter_gog::save_location::SaveLocation>>>,
     mut error: Signal<String>,
     mut path_input: Signal<String>,
     mut generation: Signal<u32>,
@@ -861,7 +861,7 @@ async fn run_cloud_sync(
 ) -> Result<SyncOutcome, String> {
     tracing::info!(account_id, product_id, local_root, force = ?force, "cloud save sync started");
     let outcome = crate::achv_try!(
-        achv_gog::cloud_saves::sync(
+        decanter_gog::cloud_saves::sync(
             &account_id,
             &product_id,
             std::path::Path::new(&local_root),
@@ -952,7 +952,7 @@ fn DlcTab(game: Game, account_id: String) -> Element {
                                         tracing::info!(account_id, parent_id, dlc_id, on, "dlc install state toggled");
                                         spawn(async move {
                                             let outcome = if on {
-                                                achv_gog::install(
+                                                decanter_gog::install(
                                                     &account_id,
                                                     &dlc_id,
                                                     Some(&parent_id),
@@ -963,7 +963,7 @@ fn DlcTab(game: Game, account_id: String) -> Element {
                                                 )
                                                 .await
                                             } else {
-                                                achv_gog::uninstall_dlc(&account_id, &dlc_id, &parent_id).await
+                                                decanter_gog::uninstall_dlc(&account_id, &dlc_id, &parent_id).await
                                             };
                                             busy.set(None);
                                             match outcome {
@@ -993,7 +993,7 @@ fn DlcTab(game: Game, account_id: String) -> Element {
         if !goodies.is_empty() {
             h3 { "Extras" }
             p { class: "muted",
-                "Artbooks, bandas sonoras y similares. Son tuyos, pero GOG no los entrega como contenido instalable — se descargan aparte, y achv todavia no lo hace."
+                "Artbooks, bandas sonoras y similares. Son tuyos, pero GOG no los entrega como contenido instalable — se descargan aparte, y Decanter todavia no lo hace."
             }
             div { class: "card",
                 for goodie in goodies {
@@ -1028,7 +1028,7 @@ fn CompatibilityTab(game: Game, account_id: String) -> Element {
     };
     let _ = generation();
 
-    let runners = achv_runtime::steam_runners();
+    let runners = decanter_runtime::steam_runners();
     let prefix = crate::core::prefix_for(&account_id, &game.id);
     // A prefix that was never launched into doesn't exist yet, which is
     // the normal state for a game you installed but haven't opened.
@@ -1138,7 +1138,7 @@ fn VersionsTab(game: Game, account_id: String) -> Element {
             let account_id = account_id.clone();
             let product_id = product_id.clone();
             let branch = branch.clone();
-            async move { achv_gog::list_builds(&account_id, &product_id, branch.as_deref()).await }
+            async move { decanter_gog::list_builds(&account_id, &product_id, branch.as_deref()).await }
         }
     });
     let mut installing = use_signal(|| None::<String>);
@@ -1187,7 +1187,7 @@ fn VersionsTab(game: Game, account_id: String) -> Element {
                                                 error.set(String::new());
                                                 tracing::info!(account_id, product_id, target_build_id, "build rollback started");
                                                 spawn(async move {
-                                                    let outcome = achv_gog::install(
+                                                    let outcome = decanter_gog::install(
                                                             &account_id,
                                                             &product_id,
                                                             None,
@@ -1265,7 +1265,7 @@ fn BetasTab(game: Game, account_id: String) -> Element {
         move || {
             let account_id = account_id.clone();
             let product_id = product_id.clone();
-            async move { achv_gog::list_branches(&account_id, &product_id).await }
+            async move { decanter_gog::list_branches(&account_id, &product_id).await }
         }
     });
     let mut switching = use_signal(|| None::<Option<String>>);
@@ -1317,7 +1317,7 @@ fn BetasTab(game: Game, account_id: String) -> Element {
                                                 error.set(String::new());
                                                 tracing::info!(account_id, product_id, branch = branch_name, "branch switch started");
                                                 spawn(async move {
-                                                    let outcome = achv_gog::install(
+                                                    let outcome = decanter_gog::install(
                                                             &account_id,
                                                             &product_id,
                                                             None,

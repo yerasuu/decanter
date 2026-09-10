@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs `dx` (dioxus-cli) inside the project's nix-shell — webkitgtk, xdotool
-# and the LIBRARY_PATH achv-tray's desktop build needs are only present
+# and the LIBRARY_PATH decanter-tray's desktop build needs are only present
 # there, not in a plain shell. See ../shell.nix.
 #
 # Usage: scripts/dx serve --platform desktop

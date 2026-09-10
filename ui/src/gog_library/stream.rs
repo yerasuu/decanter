@@ -1,9 +1,9 @@
-//! Fetches one account's GOG library through `achv-gog` and folds it
+//! Fetches one account's GOG library through `decanter-gog` and folds it
 //! into that account's own `games` signal (one of these runs per account
 //! in the active profile — see `super::use_gog_library`), mirroring each
 //! group into the local cache as it lands.
 //!
-//! Two passes, for the reason `achv_gog::library` documents: the owned
+//! Two passes, for the reason `decanter_gog::library` documents: the owned
 //! list takes seconds, the catalog metadata takes a minute. Both write
 //! into `games` as they go regardless — the cache still gets each group as
 //! soon as it lands, so the app has something to seed from on a later
@@ -21,7 +21,7 @@
 
 use std::time::Duration;
 
-use achv_gog::{Batch, LibraryEntry};
+use decanter_gog::{Batch, LibraryEntry};
 use dioxus::prelude::*;
 
 use super::LibraryState;
@@ -60,7 +60,7 @@ pub(super) async fn watch_games(
         // that's settled by pruning once the fetch is whole, below.
         let mut shown: Vec<LibraryEntry> = games.peek().clone();
         tracing::debug!(account_id, "listing gog games");
-        let listed = achv_gog::list_games(&account_id, &mut |batch| {
+        let listed = decanter_gog::list_games(&account_id, &mut |batch| {
             absorb(&account_id, confirmed_new, &mut shown, batch);
             games.set(shown.clone());
             on_update();
@@ -94,7 +94,7 @@ pub(super) async fn watch_games(
         // entry that gains nothing stays exactly as pass one left it.
         if !collected.is_empty() {
             tracing::debug!(account_id, count = collected.len(), "enriching gog catalog metadata");
-            achv_gog::enrich_games(
+            decanter_gog::enrich_games(
                 &account_id,
                 collected,
                 &mut |batch| {
@@ -131,8 +131,8 @@ fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntr
     shown.retain(|entry| owned.contains(entry.game.id.as_str()));
 
     let keep: Vec<String> = fetched.iter().map(|entry| entry.game.id.clone()).collect();
-    match achv_core::Db::open(achv_core::default_db_path()) {
-        Ok(db) => match db.retain_games(account_id, achv_core::Storefront::Gog, &keep) {
+    match decanter_core::Db::open(decanter_core::default_db_path()) {
+        Ok(db) => match db.retain_games(account_id, decanter_core::Storefront::Gog, &keep) {
             Ok(dropped) if dropped > 0 => tracing::info!("{dropped} game(s) are no longer in this GOG account"),
             Ok(_) => {}
             Err(err) => tracing::warn!(account_id, %err, "failed to prune games no longer owned from cache"),
@@ -148,7 +148,7 @@ fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntr
 /// is the UI's job, not the fetch's.
 fn absorb(account_id: &str, confirmed_new: bool, shown: &mut Vec<LibraryEntry>, batch: Batch) {
     for mut entry in batch {
-        // Tagged here rather than by achv_gog itself: this is the one place
+        // Tagged here rather than by decanter_gog itself: this is the one place
         // that already knows both the entry and which account's stream it
         // came from, and it's what the merged, multi-account library view
         // needs to tell two accounts' copies of the same game apart.

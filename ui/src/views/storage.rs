@@ -1,6 +1,6 @@
 //! What's taking up room, and how much is left.
 //!
-//! Steam's "Storage" tab, but flat rather than per-disk: achv has one
+//! Steam's "Storage" tab, but flat rather than per-disk: decanter has one
 //! library today (see `Library::default_path`), so there's one number to
 //! show for free space rather than a list of drives to pick between.
 
@@ -20,7 +20,7 @@ pub fn Storage() -> Element {
         };
     };
 
-    // What's installed is filed per account (see `achv_core::library`),
+    // What's installed is filed per account (see `decanter_core::library`),
     // not per profile, so every account the profile groups gets its own
     // scan — a shortcut is the one exception, filed under the profile
     // itself since it was never owned by any storefront account.
@@ -45,7 +45,7 @@ pub fn Storage() -> Element {
         .inspect_err(|err| tracing::warn!(error = %err, "failed to resolve library root for storage view"))
         .ok()
         .map(|library| library.root().to_path_buf());
-    let disk = library_path.as_deref().and_then(achv_core::disk_usage);
+    let disk = library_path.as_deref().and_then(decanter_core::disk_usage);
 
     rsx! {
         div { class: "page",

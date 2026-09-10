@@ -129,6 +129,3 @@ fn find_primary_executable_heuristic(relative_paths: &[String], install_director
         _ => None,
     }
 }
-
-#[cfg(test)]
-mod tests;

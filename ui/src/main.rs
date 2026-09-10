@@ -105,7 +105,7 @@ use views::{Downloads, Library, Navbar, Onboarding, Settings, Storage};
 /// error instead of using `?` — `clippy::restriction` (`question_mark_used`)
 /// forbids the operator project-wide, so this is the pre-`?` `try!` idiom
 /// brought back as one macro rather than pasting the same match at every
-/// call site. Same shape as `achv_gog::achv_try`.
+/// call site. Same shape as `decanter_gog::achv_try`.
 #[macro_export]
 macro_rules! achv_try {
     ($expr:expr) => {
@@ -211,16 +211,16 @@ fn close_to_tray() -> bool {
 /// Set explicitly because the default isn't one place. On Linux dioxus
 /// leaves it unset, so WebKitGTK picks its own directory under
 /// `XDG_DATA_HOME` and derives the name itself; with no GTK application id
-/// to key off, it lands on a fresh `achv-<hash>` per build and the data
+/// to key off, it lands on a fresh `decanter-<hash>` per build and the data
 /// directory fills up with abandoned copies. Naming it puts that state
-/// inside achv's own directory, where the database and the game library
+/// inside decanter's own directory, where the database and the game library
 /// already live, and keeps it to one.
 #[cfg(feature = "desktop")]
 fn webview_data_dir() -> std::path::PathBuf {
-    achv_core::data_dir().join("webview")
+    decanter_core::data_dir().join("webview")
 }
 
-/// Whether achv's storage came up, resolved once here and read by
+/// Whether decanter's storage came up, resolved once here and read by
 /// every screen via `use_context::<CoreResource>()`. Screens open their
 /// own database connection for the query they're making — see `core`.
 pub type CoreResource = Resource<Result<core::Core, String>>;
@@ -270,7 +270,7 @@ fn App() -> Element {
     let background = background::use_background();
     use_context_provider(|| background);
 
-    // Once, at the root: a game keeps running after achv is gone
+    // Once, at the root: a game keeps running after decanter is gone
     // unless something goes and stops it.
     #[cfg(feature = "desktop")]
     use_hook(launch::exit_with_games_on_signal);
@@ -291,8 +291,8 @@ fn App() -> Element {
             use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 
             let menu = Menu::new();
-            let show = MenuItem::with_id("achv-tray-show", "Mostrar achv", true, None);
-            let quit = MenuItem::with_id("achv-tray-quit", "Salir", true, None);
+            let show = MenuItem::with_id("decanter-tray-show", "Mostrar Decanter", true, None);
+            let quit = MenuItem::with_id("decanter-tray-quit", "Salir", true, None);
             let _ = menu.append_items(&[&show, &PredefinedMenuItem::separator(), &quit]);
 
             let icon = dioxus::desktop::icon_from_memory::<dioxus::desktop::trayicon::DioxusTrayIcon>(include_bytes!(
@@ -305,14 +305,14 @@ fn App() -> Element {
         let desktop = dioxus::desktop::use_window();
         dioxus::desktop::use_tray_menu_event_handler(move |event| {
             match event.id().0.as_str() {
-                "achv-tray-show" => {
+                "decanter-tray-show" => {
                     desktop.window.set_visible(true);
                     desktop.window.set_focus();
                 }
-                // Games outlive achv by design (see `launch::stop_everything`'s
+                // Games outlive decanter by design (see `launch::stop_everything`'s
                 // doc) — quitting from the tray is the same "just exit" a normal
                 // window close already was before this setting existed.
-                "achv-tray-quit" => std::process::exit(0),
+                "decanter-tray-quit" => std::process::exit(0),
                 _ => {}
             }
         });

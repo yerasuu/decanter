@@ -1,5 +1,5 @@
 [package]
-name = "achv-runtime"
+name = "decanter-runtime"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -15,5 +15,5 @@ tokio = { version = "1.53.1", features = ["process", "time"] }
 tracing = "0.1.44"
 
 [dev-dependencies]
-achv-core = { path = "../core" }
+decanter-core = { path = "../core" }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }

@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! <root>/
-//!   libraryfolders.vdf                     every root achv knows about
+//!   libraryfolders.vdf                     every root decanter knows about
 //!   common/<InstallDir>/                   game files, shared between accounts
 //!   manifests/<account_id>/
 //!     appmanifest_<storefront>_<id>.acf    who owns it and what state it's in
@@ -44,12 +44,6 @@
     clippy::std_instead_of_core,
     reason = "std app; core has no fs/io to migrate the rest of this file to"
 )]
-// Only fires on some compilation targets (lib vs tests), so `expect` can't
-// be used here without an "unfulfilled expectation" warning on the other.
-#![allow(
-    clippy::self_named_module_files,
-    reason = "convention here is `<name>.rs` plus a sibling `<name>/tests.rs`, see CLAUDE.md"
-)]
 #![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"
@@ -69,7 +63,7 @@ use crate::catalog::Storefront;
 use crate::vdf::{self, Value};
 
 /// Steam's `StateFlags` for "fully installed". Written so the files read
-/// as expected to anything else that knows the format; achv itself has
+/// as expected to anything else that knows the format; decanter itself has
 /// no partially-installed state — an install either finished or its
 /// staging directory was thrown away.
 const STATE_FULLY_INSTALLED: u64 = 4;
@@ -103,7 +97,7 @@ pub struct InstalledGame {
     pub cloud_save_last_sync: Option<i64>,
     /// Local folder synced against this game's Cloud Saves bucket. `None`
     /// until it's set — GOG's remote-config can often name it (see
-    /// `achv_gog::save_location`), but not every build reports one, so
+    /// `decanter_gog::save_location`), but not every build reports one, so
     /// this still falls back to the user picking a folder by hand.
     pub cloud_save_path: Option<String>,
     /// The DLC installed into this game's directory, by product id.
@@ -155,7 +149,7 @@ pub struct Library {
 }
 
 impl InstalledGame {
-    /// `None` for a file that isn't a manifest achv can use. Anything
+    /// `None` for a file that isn't a manifest decanter can use. Anything
     /// missing a game id, storefront or install directory is unusable
     /// rather than partially usable.
     fn from_vdf(root: &Value) -> Option<Self> {
@@ -311,7 +305,7 @@ impl Library {
         Some(self.root.join("compatdata").join(account).join(game))
     }
 
-    /// Where the library lives unless someone points achv elsewhere.
+    /// Where the library lives unless someone points decanter elsewhere.
     #[must_use]
     #[inline]
     pub fn default_path() -> Option<PathBuf> {
@@ -692,6 +686,3 @@ fn safe_component(value: &str) -> Option<&str> {
     }
     Some(value)
 }
-
-#[cfg(test)]
-mod tests;

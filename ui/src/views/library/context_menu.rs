@@ -2,7 +2,7 @@
 //! organisation, and the only place collection membership can be changed
 //! without leaving the list you're organising.
 
-use achv_gog::LibraryEntry;
+use decanter_gog::LibraryEntry;
 use dioxus::html::geometry::PixelsSize;
 use dioxus::prelude::*;
 
@@ -285,7 +285,7 @@ pub(super) fn ContextMenu(
 #[component]
 fn GameActionItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
     // DLC, soundtracks, movies -- nothing here has an install of its own.
-    if entry.kind != achv_gog::GameKind::Game {
+    if entry.kind != decanter_gog::GameKind::Game {
         return rsx! {};
     }
     let account_id = entry.game.account_id.clone();
@@ -390,7 +390,7 @@ fn GameActionItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
 /// shows up in the "instalado, pero sin ejecutable detectado" case above.
 #[component]
 fn OpenFolderItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
-    if entry.kind != achv_gog::GameKind::Game {
+    if entry.kind != decanter_gog::GameKind::Game {
         return rsx! {};
     }
 
@@ -416,7 +416,7 @@ fn OpenFolderItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
 /// through to the game.
 #[component]
 fn PropertiesItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
-    if entry.kind != achv_gog::GameKind::Game {
+    if entry.kind != decanter_gog::GameKind::Game {
         return rsx! {};
     }
 

@@ -2,19 +2,19 @@
 //! saves, and achievement polling — all in-process, with no external
 //! service to reach the same public endpoints through.
 //!
-//! Shared between `achv-sidecar` (CLI, explicit or post-launch polling)
+//! Shared between `decanter-sidecar` (CLI, explicit or post-launch polling)
 //! and the UI (auto-poll when a game is selected in Biblioteca, so nobody
 //! has to run a command by hand to see progress). Keyed by account, not by
 //! prefix: unlock progress lives on the GOG account, independent of which
 //! prefix launches it. This crate has no notion of a profile grouping
-//! several accounts — see `achv_core::profiles` for that.
+//! several accounts — see `decanter_core::profiles` for that.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
-use achv_core::{CachedAchievement, Db, Storefront};
 use anyhow::Context;
+use decanter_core::{CachedAchievement, Db, Storefront};
 use tokio::sync::Mutex as AsyncMutex;
 
 mod auth;
@@ -40,7 +40,7 @@ pub use updates::{Branch, check_all_updates, check_update, list_branches, list_b
 /// Propagates a `Result`'s error out of the enclosing `anyhow::Result` fn,
 /// same as `?` — kept as a macro so every call site across this crate's mix
 /// of error types (reqwest, `gog`'s error-chain-based errors mapped by
-/// hand, serde_json, rusqlite via achv-core) reads the same way.
+/// hand, serde_json, rusqlite via decanter-core) reads the same way.
 #[macro_export]
 macro_rules! achv_try {
     ($expr:expr) => {
@@ -73,13 +73,13 @@ pub(crate) fn http_client() -> reqwest::Client {
 }
 
 /// This account's stored GOG session, as the raw JSON `write_session` saved
-/// it — `achv_core::credentials` keyed by [`Storefront::Gog`], wrapped in
+/// it — `decanter_core::credentials` keyed by [`Storefront::Gog`], wrapped in
 /// `spawn_blocking` since the OS keyring is a blocking D-Bus round trip.
 async fn read_session(account_id: &str) -> anyhow::Result<Option<String>> {
     let account_id = account_id.to_owned();
     let for_worker = account_id.clone();
     let session = achv_try!(
-        tokio::task::spawn_blocking(move || achv_core::load_session(&for_worker, Storefront::Gog))
+        tokio::task::spawn_blocking(move || decanter_core::load_session(&for_worker, Storefront::Gog))
             .await
             .context("session-read worker task panicked")
     )
@@ -94,7 +94,7 @@ async fn write_session(account_id: &str, session_json: String) -> anyhow::Result
     let account_id = account_id.to_owned();
     let for_worker = account_id.clone();
     achv_try!(
-        tokio::task::spawn_blocking(move || achv_core::save_session(&for_worker, Storefront::Gog, &session_json))
+        tokio::task::spawn_blocking(move || decanter_core::save_session(&for_worker, Storefront::Gog, &session_json))
             .await
             .context("session-write worker task panicked")
     )
@@ -108,7 +108,7 @@ async fn clear_session(account_id: &str) -> anyhow::Result<()> {
     let account_id = account_id.to_owned();
     let for_worker = account_id.clone();
     achv_try!(
-        tokio::task::spawn_blocking(move || achv_core::delete_session(&for_worker, Storefront::Gog))
+        tokio::task::spawn_blocking(move || decanter_core::delete_session(&for_worker, Storefront::Gog))
             .await
             .context("session-clear worker task panicked")
     )

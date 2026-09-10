@@ -1,12 +1,12 @@
-//! Converts between `achv-gog`'s live `LibraryEntry` and achv-core's
+//! Converts between `decanter-gog`'s live `LibraryEntry` and decanter-core's
 //! `CachedGame` (what we persist), and reads/writes the cache itself —
 //! plain sqlite, no Dioxus, so the fetch loop can call it from a spawned
 //! task without touching UI concerns.
 
-use achv_core::{CachedGame, Db, Game};
-use achv_gog::{GameKind, LibraryEntry};
+use decanter_core::{CachedGame, Db, Game};
+use decanter_gog::{GameKind, LibraryEntry};
 
-/// The cache stores the kind as text so achv-core doesn't have to know
+/// The cache stores the kind as text so decanter-core doesn't have to know
 /// about anyone's enum; these two are the only place that mapping lives.
 const fn kind_to_str(kind: GameKind) -> &'static str {
     match kind {
@@ -43,7 +43,7 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
     }
 }
 
-/// Install state isn't cached — it's read live from achv's own install
+/// Install state isn't cached — it's read live from decanter's own install
 /// record, so a game the cache remembers still shows as installed on the
 /// very first frame instead of flipping once the network fetch lands.
 fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
@@ -78,7 +78,7 @@ fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
 /// to `true` (behave as if already synced) when the cache can't even be
 /// opened, since in that case nothing here can be trusted anyway.
 pub(super) fn has_synced_before(account_id: &str) -> bool {
-    Db::open(achv_core::default_db_path())
+    Db::open(decanter_core::default_db_path())
         .and_then(|db| db.has_games(account_id))
         .inspect_err(|err| {
             tracing::warn!(account_id, %err, "could not check prior sync state, assuming already synced");
@@ -90,7 +90,7 @@ pub(super) fn has_synced_before(account_id: &str) -> bool {
 /// startup so the sidebar isn't empty while a fresh fetch re-scans the
 /// account.
 pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
-    let Ok(db) = Db::open(achv_core::default_db_path()) else {
+    let Ok(db) = Db::open(decanter_core::default_db_path()) else {
         tracing::warn!(account_id, "could not open cache db, starting with an empty library");
         return Vec::new();
     };
@@ -106,10 +106,10 @@ pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
 /// in-memory list is still correct either way.
 ///
 /// `confirmed_new` is the account-wide "have we synced this account
-/// before" flag from [`super::stream`] — see [`achv_core::Db::upsert_game`]
+/// before" flag from [`super::stream`] — see [`decanter_core::Db::upsert_game`]
 /// for why a single game entry can't answer that for itself.
 pub(super) fn save_entry(account_id: &str, entry: &LibraryEntry, confirmed_new: bool) {
-    match Db::open(achv_core::default_db_path()) {
+    match Db::open(decanter_core::default_db_path()) {
         Ok(db) => {
             if let Err(err) = db.upsert_game(account_id, &to_cached(entry), confirmed_new) {
                 tracing::warn!(account_id, product_id = %entry.game.id, %err, "failed to cache game entry");

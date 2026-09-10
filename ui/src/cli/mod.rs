@@ -1,8 +1,8 @@
-//! Headless CLI, folded into the same binary as the GUI so achv ships as
-//! one executable instead of a separate `achv-sidecar`. See `achv-gog`
+//! Headless CLI, folded into the same binary as the GUI so decanter ships as
+//! one executable instead of a separate `decanter-sidecar`. See `decanter-gog`
 //! (library listing, installs, achievement polling — all shared with the
 //! GUI) and [`launch`] (resolving and running an account's install
-//! through `achv-runtime`) for the actual work; this module is dispatch
+//! through `decanter-runtime`) for the actual work; this module is dispatch
 //! only. Every subcommand takes `--account-id`, not a profile: these are
 //! single-account operations, and the profile that groups accounts is a
 //! GUI-only concept the CLI has no need for.
@@ -11,15 +11,15 @@
 //! subcommand runs headless and exits, and no subcommand (the ordinary
 //! double-click launch) falls through to the GUI unchanged.
 
-use achv_core::Db;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use decanter_core::Db;
 
 mod install;
 mod launch;
 
 #[derive(Parser)]
-#[command(name = "achv-tray")]
+#[command(name = "decanter-tray")]
 pub struct Cli {
     #[command(subcommand)]
     pub cmd: Option<Cmd>,
@@ -28,7 +28,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Cmd {
     /// Launches an account's installed GOG game — resolved live against
-    /// achv's own library, no separate link step — waits for it to exit,
+    /// decanter's own library, no separate link step — waits for it to exit,
     /// then polls achievements.
     Launch {
         #[arg(long)]
@@ -50,7 +50,7 @@ pub enum Cmd {
         #[arg(long)]
         product_id: String,
     },
-    /// Diagnostic: calls `achv_gog::install` directly and logs progress —
+    /// Diagnostic: calls `decanter_gog::install` directly and logs progress —
     /// same call the GUI's install button drives, run headless so its
     /// real behavior can be observed independent of the Dioxus app.
     Install {
@@ -102,13 +102,13 @@ pub fn run(cmd: Cmd) -> ! {
 }
 
 async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
-    let mut db = Db::open(achv_core::default_db_path()).context("opening achv cache db")?;
+    let mut db = Db::open(decanter_core::default_db_path()).context("opening decanter cache db")?;
     tracing::debug!("opened db for cli command");
 
     match cmd {
         Cmd::Library { account_id } => {
             tracing::debug!(account_id, "listing gog library");
-            let games = achv_gog::list_games(&account_id, &mut |_| {}).await?;
+            let games = decanter_gog::list_games(&account_id, &mut |_| {}).await?;
             tracing::info!(account_id, count = games.len(), "gog library listed");
             for entry in games {
                 println!("{}\t{}", entry.game.id, entry.game.title);
@@ -116,7 +116,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
         }
         Cmd::Achievements { account_id, product_id } => {
             tracing::debug!(account_id, product_id, "polling achievements");
-            report_poll(achv_gog::poll_achievements(&mut db, &account_id, &product_id).await?);
+            report_poll(decanter_gog::poll_achievements(&mut db, &account_id, &product_id).await?);
         }
         Cmd::Launch { account_id, product_id } => {
             launch::launch(&mut db, &account_id, &product_id).await?;
@@ -139,7 +139,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn report_poll(newly_unlocked: Vec<achv_core::CachedAchievement>) {
+pub(crate) fn report_poll(newly_unlocked: Vec<decanter_core::CachedAchievement>) {
     for achievement in &newly_unlocked {
         tracing::info!(name = %achievement.name, "achievement unlocked");
     }

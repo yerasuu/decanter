@@ -1,7 +1,7 @@
 //! Installing a GOG game, in-process, with no external plugin registry to
 //! round-trip through: [`crate::depot`] for the manifest, [`download`] for
-//! chunk transfer, and an appmanifest in achv's own `steamapps`-shaped
-//! library ([`achv_core::Library`]) as the record of what landed.
+//! chunk transfer, and an appmanifest in decanter's own `steamapps`-shaped
+//! library ([`decanter_core::Library`]) as the record of what landed.
 //!
 //! Files go to `common/<InstallDir>`, named by GOG's own install
 //! directory — shared between profiles, outside any prefix. Nothing here
@@ -13,8 +13,8 @@
 //! [`program`] guesses which file launches the game once it's all in
 //! place, and [`rate`] smooths the transfer rate reported back.
 
-use achv_core::{InstalledDlc, InstalledGame, Library, Storefront};
 use anyhow::Context;
+use decanter_core::{InstalledDlc, InstalledGame, Library, Storefront};
 
 mod download;
 mod plan;

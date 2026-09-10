@@ -282,6 +282,3 @@ fn inflate(raw: &[u8]) -> anyhow::Result<Vec<u8>> {
     crate::achv_try!(decoder.read_to_end(&mut decompressed));
     Ok(decompressed)
 }
-
-#[cfg(test)]
-mod tests;

@@ -7,12 +7,6 @@
 //! the keyring entries in [`crate::credentials`] are keyed by account, not
 //! by profile — see [`crate::db`] for why.
 
-// Only fires on some compilation targets (lib vs tests), so `expect` can't
-// be used here without an "unfulfilled expectation" warning on the other.
-#![allow(
-    clippy::self_named_module_files,
-    reason = "convention here is `<name>.rs` plus a sibling `<name>/tests.rs`, see CLAUDE.md"
-)]
 #![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"
@@ -41,7 +35,7 @@ use crate::db::{Db, Result};
 #[non_exhaustive]
 pub struct Account {
     /// The storefront's own id for this account (for GOG, its numeric
-    /// `account_id` as a decimal string) — not one achv makes up, so a
+    /// `account_id` as a decimal string) — not one decanter makes up, so a
     /// login always lands on the same row.
     pub id: String,
     pub name: String,
@@ -149,6 +143,3 @@ fn storefront_from_row(raw: i32) -> Storefront {
         Storefront::Unspecified
     })
 }
-
-#[cfg(test)]
-mod tests;

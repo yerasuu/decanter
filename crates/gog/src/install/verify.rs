@@ -11,8 +11,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use achv_core::Storefront;
 use anyhow::Context;
+use decanter_core::Storefront;
 
 use super::plan::{manifest_relative_path, resolve_depot_files};
 

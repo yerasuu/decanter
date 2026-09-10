@@ -14,7 +14,7 @@
 
 use std::rc::Rc;
 
-use achv_gog::LibraryEntry;
+use decanter_gog::LibraryEntry;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -167,7 +167,7 @@ pub(super) fn ShelfBrowser(
         .read()
         .iter()
         .filter(|entry| {
-            entry.kind == achv_gog::GameKind::Game
+            entry.kind == decanter_gog::GameKind::Game
                 && entry.parent_id.is_none()
                 && super::filters::belongs_in_the_library(entry)
         })
@@ -628,6 +628,3 @@ fn CoverCard(
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

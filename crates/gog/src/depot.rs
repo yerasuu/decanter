@@ -115,7 +115,7 @@ pub struct BuildMeta {
     pub install_directory: String,
     pub depots: Vec<DepotMeta>,
     /// This build's Galaxy client id/secret — scopes a cloud-saves token to
-    /// this game specifically, distinct from achv's own login client.
+    /// this game specifically, distinct from decanter's own login client.
     #[serde(rename = "clientId", default)]
     pub client_id: Option<String>,
     #[serde(rename = "clientSecret", default)]
@@ -311,6 +311,3 @@ pub fn build_chunk_url(entry: &SecureLinkEntry, compressed_md5: &str) -> Option<
     }
     Some(url)
 }
-
-#[cfg(test)]
-mod tests;

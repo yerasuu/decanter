@@ -1,4 +1,4 @@
-use achv_core::Profile;
+use decanter_core::Profile;
 use dioxus::prelude::*;
 
 use crate::{ActiveProfile, CoreResource, LibraryHome, Route};
@@ -22,7 +22,7 @@ pub fn Navbar() -> Element {
                     class: "logo",
                     onmousedown: move |_| start_window_drag(),
                     span { class: "dot" }
-                    "ACHV"
+                    "DECANTER"
                 }
                 nav { class: "topnav",
                     Link {
@@ -77,7 +77,7 @@ fn DownloadsLink() -> Element {
     }
 }
 
-/// Which profile achv is working with right now — pick the active one, or
+/// Which profile decanter is working with right now — pick the active one, or
 /// switch. Switching swaps every account that profile groups at once (see
 /// `Ajustes > Cuenta`, where accounts are added to it one at a time).
 ///

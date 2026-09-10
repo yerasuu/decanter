@@ -1,4 +1,4 @@
-//! First-run gate: achv shows nothing else until at least one profile
+//! First-run gate: decanter shows nothing else until at least one profile
 //! exists — see `main.rs::App`'s onboarding check. Reached only once, in
 //! the ordinary case: creating a profile here makes it active, and the
 //! check that led here never fires again with a profile already active.
@@ -30,7 +30,7 @@ pub fn Onboarding() -> Element {
     rsx! {
         div { class: "onboarding",
             div { class: "onboarding-inner",
-                h1 { "Bienvenido a achv" }
+                h1 { "Bienvenido a Decanter" }
                 p { class: "muted", "Creá un perfil para empezar — después podés sumarle cuentas de GOG (y de otras tiendas más adelante) desde Ajustes." }
                 div { class: "field-row",
                     input {

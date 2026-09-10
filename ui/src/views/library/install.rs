@@ -1,6 +1,6 @@
-//! Drives `achv-gog`'s in-process install. The `installing` map is still
+//! Drives `decanter-gog`'s in-process install. The `installing` map is still
 //! our own guard against starting a second install for the same game
-//! while one is in flight; `achv-gog` keys its cancellable handles the
+//! while one is in flight; `decanter-gog` keys its cancellable handles the
 //! same way.
 
 use std::collections::HashSet;
@@ -22,7 +22,7 @@ pub(super) async fn install(
     title: String,
     // `None` is mainline. Ignored when `parent_id` is `Some` — a DLC's
     // branch always comes from the base game it belongs to, not the
-    // caller (see `achv_gog::install`'s own doc).
+    // caller (see `decanter_gog::install`'s own doc).
     branch: Option<String>,
     // DLC to install straight after, as `(product id, title)`. The way
     // Steam does it: what you ticked before hitting install arrives with
@@ -45,8 +45,8 @@ pub(super) async fn install(
         "install started"
     );
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<achv_gog::Progress>();
-    let install = achv_gog::install(
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_gog::Progress>();
+    let install = decanter_gog::install(
         &account_id,
         &product_id,
         parent_id.as_deref(),
@@ -105,7 +105,8 @@ pub(super) async fn install(
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
         installing.write().insert(dlc_id.clone(), InstallStatus::Queued);
-        let outcome = achv_gog::install(&account_id, &dlc_id, Some(&product_id), &dlc_title, None, None, |_| {}).await;
+        let outcome =
+            decanter_gog::install(&account_id, &dlc_id, Some(&product_id), &dlc_title, None, None, |_| {}).await;
         match outcome {
             // A DLC that failed is worth surfacing, but it doesn't undo
             // the game that installed fine just before it.
@@ -126,7 +127,7 @@ pub(super) async fn install(
 
 pub(crate) async fn cancel(account_id: String, product_id: String) {
     tracing::info!(account_id, product_id, "cancelling install");
-    achv_gog::cancel(&account_id, &product_id).await;
+    decanter_gog::cancel(&account_id, &product_id).await;
 }
 
 pub(super) async fn uninstall(
@@ -136,7 +137,7 @@ pub(super) async fn uninstall(
 ) -> Result<(), String> {
     tracing::info!(account_id, product_id, "uninstall started");
     crate::achv_try!(
-        achv_gog::uninstall(&account_id, &product_id)
+        decanter_gog::uninstall(&account_id, &product_id)
             .await
             .map_err(|err| err.to_string())
             // Bubbles up to the confirm dialog's red error text — this is
@@ -150,5 +151,5 @@ pub(super) async fn uninstall(
 
 // Nothing to clean up here any more: a failed install never reaches the
 // library. Files land in a staging directory outside it and only move
-// across once every byte has arrived, and `achv-gog` deletes that
+// across once every byte has arrived, and `decanter-gog` deletes that
 // staging directory on any failure or cancel.

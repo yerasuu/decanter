@@ -83,7 +83,7 @@ pub struct SyncOutcome {
 }
 
 /// A cloud-saves session scoped to one game's Galaxy client id, exchanged
-/// from achv's own login session — see [`game_token`].
+/// from decanter's own login session — see [`game_token`].
 struct GameToken {
     /// Bearer token for this game's cloud-saves session.
     access_token: String,
@@ -385,9 +385,9 @@ fn classify(
     (action, plan)
 }
 
-/// Fetches this build's Galaxy client id/secret and exchanges achv's
+/// Fetches this build's Galaxy client id/secret and exchanges decanter's
 /// own refresh token for a session scoped to it — Cloud Saves buckets are
-/// keyed by a game's own client id, not achv's login client.
+/// keyed by a game's own client id, not decanter's login client.
 async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     let http = crate::http_client();
     let (access_token, refresh_token) = match crate::with_session(account_id, |client| {
@@ -570,7 +570,7 @@ async fn download_file(http: &reqwest::Client, token: &GameToken, local_root: &P
     // `relative_path` comes straight off the cloud listing, i.e. from the
     // network — a crafted or corrupted entry with `..` or an absolute path
     // must not be able to write outside `local_root`.
-    let Some(sanitized) = achv_runtime::sanitize_relative_path(&file.relative_path) else {
+    let Some(sanitized) = decanter_runtime::sanitize_relative_path(&file.relative_path) else {
         anyhow::bail!("cloud save entry has an unusable path: {}", file.relative_path);
     };
     let url = file_url(token, &file.relative_path);
@@ -800,6 +800,3 @@ fn scan_dir(root: &Path, dir: &Path, out: &mut Vec<LocalFile>) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;

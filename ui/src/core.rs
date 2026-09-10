@@ -1,13 +1,13 @@
-//! achv's storage, opened once at startup so every screen can assume
+//! decanter's storage, opened once at startup so every screen can assume
 //! it's there.
 //!
 //! Two halves, and neither has a long-lived handle to share.
-//! [`achv_core::Db`] is a SQLite connection and isn't `Send`, and
-//! [`achv_core::Library`] is just a path — so screens make their own
+//! [`decanter_core::Db`] is a SQLite connection and isn't `Send`, and
+//! [`decanter_core::Library`] is just a path — so screens make their own
 //! for the query they're making, the way `library::data` always has. What
 //! this resource carries is the *readiness*: the database opened.
 
-use achv_core::{Db, InstalledGame, Library, Profile, Storefront, default_db_path};
+use decanter_core::{Db, InstalledGame, Library, Profile, Storefront, default_db_path};
 
 /// Marker for "storage is ready". Screens match on it to tell the loading
 /// and failed-to-open states apart from a working app.
@@ -123,7 +123,7 @@ pub fn set_cloud_save_path(account_id: &str, product_id: &str, path: Option<&str
 pub async fn detect_cloud_save_locations(
     account_id: &str,
     game: &InstalledGame,
-) -> Result<Vec<achv_gog::save_location::SaveLocation>, String> {
+) -> Result<Vec<decanter_gog::save_location::SaveLocation>, String> {
     let library = crate::achv_try!(library());
     let install_dir = crate::achv_try!(
         library
@@ -134,7 +134,7 @@ pub async fn detect_cloud_save_locations(
         crate::achv_try!(prefix_for(account_id, &game.game_id).ok_or("no se pudo resolver el prefijo de este juego"));
     let prefix_drive_c = prefix.drive_c();
     tracing::debug!(account_id, game_id = %game.game_id, "detecting cloud save locations");
-    achv_gog::save_location::detect(account_id, &game.game_id, &install_dir, &prefix_drive_c)
+    decanter_gog::save_location::detect(account_id, &game.game_id, &install_dir, &prefix_drive_c)
         .await
         .inspect(|locations| {
             tracing::debug!(account_id, game_id = %game.game_id, found = locations.len(), "cloud save locations detected");
@@ -158,7 +158,7 @@ pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64
         .map_err(|err| format!("guardando el manifiesto: {err}"))
 }
 
-/// Games added by hand — an arbitrary executable, not something achv
+/// Games added by hand — an arbitrary executable, not something decanter
 /// installed. Kept apart from the GOG catalog entirely: a shortcut has no
 /// product to fetch metadata for, so it's just whatever the user typed.
 pub fn shortcuts(account_id: &str) -> Vec<InstalledGame> {
@@ -233,7 +233,7 @@ pub fn remove_shortcut(account_id: &str, id: &str) -> Result<(), String> {
 
 /// Where a game runs: its own prefix, per account, created by umu on first
 /// launch.
-pub fn prefix_for(account_id: &str, game_id: &str) -> Option<achv_runtime::Prefix> {
+pub fn prefix_for(account_id: &str, game_id: &str) -> Option<decanter_runtime::Prefix> {
     let Some(library) = library().ok() else {
         tracing::debug!(account_id, game_id, "no prefix, library unavailable");
         return None;
@@ -242,7 +242,7 @@ pub fn prefix_for(account_id: &str, game_id: &str) -> Option<achv_runtime::Prefi
         tracing::warn!(account_id, game_id, "could not resolve compatdata path for prefix");
         return None;
     };
-    Some(achv_runtime::Prefix::new(compatdata))
+    Some(decanter_runtime::Prefix::new(compatdata))
 }
 
 /// The host path to a game's executable, or `None` when the manifest names
@@ -270,7 +270,7 @@ pub fn executable_for(game: &InstalledGame) -> Option<std::path::PathBuf> {
     // Manifest paths are relative and forward-slashed; rejecting anything
     // that climbs keeps a hand-edited manifest from reaching outside the
     // install directory.
-    let Some(relative) = achv_runtime::sanitize_relative_path(executable) else {
+    let Some(relative) = decanter_runtime::sanitize_relative_path(executable) else {
         tracing::warn!(game_id = %game.game_id, executable, "launch executable path rejected as unsafe");
         return None;
     };
@@ -279,7 +279,7 @@ pub fn executable_for(game: &InstalledGame) -> Option<std::path::PathBuf> {
 
 /// Which Proton a game runs on: its own pin, else the app-wide default,
 /// else whatever umu resolves.
-pub fn proton_for(game: &InstalledGame) -> achv_runtime::Proton {
+pub fn proton_for(game: &InstalledGame) -> decanter_runtime::Proton {
     let pinned = game.proton.clone().or_else(|| {
         // `db()` already warned about why, if it failed.
         let db = db().ok()?;
@@ -289,7 +289,7 @@ pub fn proton_for(game: &InstalledGame) -> achv_runtime::Proton {
             .flatten()
     });
     match pinned {
-        Some(proton) => achv_runtime::Proton::Named(proton),
-        None => achv_runtime::Proton::Latest,
+        Some(proton) => decanter_runtime::Proton::Named(proton),
+        None => decanter_runtime::Proton::Latest,
     }
 }

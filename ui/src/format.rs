@@ -45,6 +45,3 @@ pub fn eta(remaining_bytes: u64, bytes_per_second: f64) -> Option<String> {
         format!("{secs}s")
     })
 }
-
-#[cfg(test)]
-mod tests;

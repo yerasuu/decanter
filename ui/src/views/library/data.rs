@@ -2,11 +2,11 @@
 //! favorites and playtime are all keyed by `(account_id, storefront,
 //! product_id)`, nothing to join against a bottle or Program for any of it.
 
-use achv_core::{CachedAchievement, Collection, Db, Playtime, Storefront};
+use decanter_core::{CachedAchievement, Collection, Db, Playtime, Storefront};
 
 pub(super) fn load_achievements(account_id: String, product_id: String) -> anyhow::Result<Vec<CachedAchievement>> {
     tracing::debug!(account_id = %account_id, product_id = %product_id, "loading cached achievements");
-    let db = crate::achv_try!(Db::open(achv_core::default_db_path()).inspect_err(
+    let db = crate::achv_try!(Db::open(decanter_core::default_db_path()).inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open achievement db")
     ));
     let achievements = crate::achv_try!(db.list_achievements(&account_id, Storefront::Gog, &product_id).inspect_err(
@@ -29,14 +29,14 @@ pub(super) enum PollStatus {
 }
 
 /// Hits the GOG API and refreshes the cache — the thing that used to
-/// require running `achv-tray achievements` by hand.
+/// require running `decanter-tray achievements` by hand.
 pub(super) async fn poll_achievements(account_id: String, product_id: String) -> Result<(), String> {
     tracing::debug!(account_id = %account_id, product_id = %product_id, "polling gog for achievement updates");
-    let mut db = crate::achv_try!(Db::open(achv_core::default_db_path()).map_err(|err| err.to_string()).inspect_err(
+    let mut db = crate::achv_try!(Db::open(decanter_core::default_db_path()).map_err(|err| err.to_string()).inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open db for achievement poll")
     ));
     crate::achv_try!(
-        achv_gog::poll_achievements(&mut db, &account_id, &product_id)
+        decanter_gog::poll_achievements(&mut db, &account_id, &product_id)
             .await
             .map_err(|err| err.to_string())
             .inspect_err(|err| tracing::error!(
@@ -73,7 +73,7 @@ impl Collections {
 }
 
 pub(super) fn load_collections(profile_id: &str) -> Collections {
-    let Ok(db) = Db::open(achv_core::default_db_path())
+    let Ok(db) = Db::open(decanter_core::default_db_path())
         .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, showing no collections"))
     else {
         return Collections::default();
@@ -91,7 +91,7 @@ pub(super) fn load_collections(profile_id: &str) -> Collections {
 }
 
 pub(super) fn create_collection(profile_id: &str, name: &str) {
-    let Ok(db) = Db::open(achv_core::default_db_path())
+    let Ok(db) = Db::open(decanter_core::default_db_path())
         .inspect_err(|err| tracing::warn!(profile_id, name, error = %err, "failed to open db, collection not created"))
     else {
         return;
@@ -105,7 +105,7 @@ pub(super) fn create_collection(profile_id: &str, name: &str) {
 /// Creates a collection whose membership is a saved filter rather than a
 /// list of games.
 pub(super) fn create_dynamic_collection(profile_id: &str, name: &str, filter: &str) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         match db.create_collection(profile_id, name) {
             Ok(created) => {
                 tracing::info!(profile_id, name, filter, collection_id = %created.id, "dynamic collection created");
@@ -122,7 +122,7 @@ pub(super) fn create_dynamic_collection(profile_id: &str, name: &str, filter: &s
 
 /// Moves a collection by `delta` slots in the shelf order.
 pub(super) fn move_collection(profile_id: &str, collection_id: &str, delta: i64) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         if let Err(err) = db.move_collection(profile_id, collection_id, delta) {
             tracing::warn!(profile_id, collection_id, delta, error = %err, "failed to move collection");
         }
@@ -137,14 +137,14 @@ pub(super) fn move_collection(profile_id: &str, collection_id: &str, delta: i64)
 }
 
 pub(super) fn hidden_ids(account_id: &str) -> std::collections::HashSet<String> {
-    Db::open(achv_core::default_db_path())
+    Db::open(decanter_core::default_db_path())
         .and_then(|db| db.hidden_ids(account_id, Storefront::Gog))
         .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read hidden ids"))
         .unwrap_or_default()
 }
 
 pub(super) fn set_hidden(account_id: &str, product_id: &str, hidden: bool) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         match db.set_hidden(account_id, Storefront::Gog, product_id, hidden) {
             Ok(()) => tracing::info!(account_id, product_id, hidden, "game hidden state changed"),
             Err(err) => tracing::warn!(account_id, product_id, hidden, error = %err, "failed to set hidden state"),
@@ -174,7 +174,7 @@ pub(super) const FILTER_PANEL: &str = "filter_panel_open";
 /// profiles don't share one arrangement of the same library. Read through
 /// the `settings` key/value table.
 pub(super) fn view_state(profile_id: &str, name: &str) -> Option<String> {
-    let db = Db::open(achv_core::default_db_path())
+    let db = Db::open(decanter_core::default_db_path())
         .inspect_err(|err| tracing::warn!(profile_id, name, error = %err, "failed to open db for view state read"))
         .ok()?;
     db.setting(&format!("{name}:{profile_id}"))
@@ -184,7 +184,7 @@ pub(super) fn view_state(profile_id: &str, name: &str) -> Option<String> {
 }
 
 pub(super) fn save_view_state(profile_id: &str, name: &str, value: &str) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         if let Err(err) = db.set_setting(&format!("{name}:{profile_id}"), value) {
             tracing::warn!(profile_id, name, error = %err, "failed to save view state setting");
         }
@@ -214,7 +214,7 @@ pub(super) fn save_collapsed_shelves(profile_id: &str, collapsed: &std::collecti
 }
 
 pub(super) fn delete_collection(collection_id: &str) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         match db.delete_collection(collection_id) {
             Ok(()) => tracing::info!(collection_id, "collection deleted"),
             Err(err) => tracing::warn!(collection_id, error = %err, "failed to delete collection"),
@@ -225,7 +225,7 @@ pub(super) fn delete_collection(collection_id: &str) {
 }
 
 pub(super) fn rename_collection(collection_id: &str, name: &str) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         match db.rename_collection(collection_id, name) {
             Ok(()) => tracing::info!(collection_id, name, "collection renamed"),
             Err(err) => tracing::warn!(collection_id, name, error = %err, "failed to rename collection"),
@@ -236,7 +236,7 @@ pub(super) fn rename_collection(collection_id: &str, name: &str) {
 }
 
 pub(super) fn set_collection_member(collection_id: &str, product_id: &str, member: bool) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         match db.set_collection_member(collection_id, Storefront::Gog, product_id, member) {
             Ok(()) => tracing::info!(collection_id, product_id, member, "collection membership changed"),
             Err(err) => {
@@ -254,7 +254,7 @@ pub(super) fn set_collection_member(collection_id: &str, product_id: &str, membe
 }
 
 pub(super) fn is_favorite(account_id: &str, product_id: &str) -> bool {
-    Db::open(achv_core::default_db_path())
+    Db::open(decanter_core::default_db_path())
         .and_then(|db| db.is_favorite(account_id, Storefront::Gog, product_id))
         .inspect_err(
             |err| tracing::warn!(account_id, product_id, error = %err, "failed to read favorite state, defaulting to not favorited"),
@@ -263,7 +263,7 @@ pub(super) fn is_favorite(account_id: &str, product_id: &str) -> bool {
 }
 
 pub(super) fn set_favorite(account_id: &str, product_id: &str, favorite: bool) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         match db.set_favorite(account_id, Storefront::Gog, product_id, favorite) {
             Ok(()) => tracing::info!(account_id, product_id, favorite, "favorite toggled"),
             Err(err) => tracing::warn!(account_id, product_id, favorite, error = %err, "failed to toggle favorite"),
@@ -293,7 +293,7 @@ fn gog_accounts(profile_id: &str) -> Vec<String> {
 /// the sidebar's account filter lists, since a bare id means nothing in a
 /// checkbox label.
 pub(super) fn gog_accounts_with_names(profile_id: &str) -> Vec<(String, String)> {
-    Db::open(achv_core::default_db_path())
+    Db::open(decanter_core::default_db_path())
         .and_then(|db| db.accounts_in_profile(profile_id))
         .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list accounts in profile"))
         .unwrap_or_default()
@@ -307,7 +307,7 @@ pub(super) fn gog_accounts_with_names(profile_id: &str) -> Vec<(String, String)>
 /// favorited on any of them reads as favorited here, since the merged
 /// library shows one row for it regardless of which account favorited it.
 pub(super) fn favorite_ids_in_profile(profile_id: &str) -> std::collections::HashSet<String> {
-    let Ok(db) = Db::open(achv_core::default_db_path())
+    let Ok(db) = Db::open(decanter_core::default_db_path())
         .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, no favorites shown"))
     else {
         return std::collections::HashSet::new();
@@ -323,7 +323,7 @@ pub(super) fn favorite_ids_in_profile(profile_id: &str) -> std::collections::Has
 }
 
 pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashSet<String> {
-    let Ok(db) = Db::open(achv_core::default_db_path())
+    let Ok(db) = Db::open(decanter_core::default_db_path())
         .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, no hidden ids applied"))
     else {
         return std::collections::HashSet::new();
@@ -348,7 +348,7 @@ pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashS
 /// numbers shown next to a game always describe the copy actually
 /// displayed rather than a blend of two.
 pub(super) fn library_stats(profile_id: &str) -> LibraryStats {
-    let Ok(db) = Db::open(achv_core::default_db_path())
+    let Ok(db) = Db::open(decanter_core::default_db_path())
         .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, library stats are empty"))
     else {
         return LibraryStats::default();
@@ -399,7 +399,7 @@ pub(super) struct LibraryStats {
     /// game.
     pub added: std::collections::HashMap<String, i64>,
     /// GOG's own added-to-library order, 0 = most recent — see
-    /// `achv_core::Db::all_library_ranks`. The authoritative source when
+    /// `decanter_core::Db::all_library_ranks`. The authoritative source when
     /// present; covers gifts and dev grants that `added` above can't.
     pub added_rank: std::collections::HashMap<String, i64>,
     /// Bytes on disk, for installed games only.
@@ -445,7 +445,7 @@ impl LibraryStats {
 }
 
 pub(super) fn load_playtime(account_id: &str, product_id: &str) -> Playtime {
-    Db::open(achv_core::default_db_path())
+    Db::open(decanter_core::default_db_path())
         .and_then(|db| db.get_playtime(account_id, Storefront::Gog, product_id))
         .inspect_err(
             |err| tracing::warn!(account_id, product_id, error = %err, "failed to read playtime, defaulting to zero"),
@@ -454,7 +454,7 @@ pub(super) fn load_playtime(account_id: &str, product_id: &str) -> Playtime {
 }
 
 pub(super) fn add_playtime(account_id: &str, product_id: &str, seconds: i64) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+    if let Ok(db) = Db::open(decanter_core::default_db_path()) {
         if let Err(err) = db.add_playtime(account_id, Storefront::Gog, product_id, seconds) {
             tracing::warn!(account_id, product_id, seconds, error = %err, "failed to record playtime");
         }

@@ -3,14 +3,14 @@
 
 use std::path::{Path, PathBuf};
 
-use achv_runtime::sanitize_relative_path;
 use anyhow::Context;
+use decanter_runtime::sanitize_relative_path;
 
 /// Where a game's files are downloaded before they're moved into the
 /// library. Kept outside it so a failed or cancelled install never leaves
 /// partial files where the game is supposed to live.
 pub(super) fn staging_root(account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
-    let base = achv_core::data_dir();
+    let base = decanter_core::data_dir();
     let profile = crate::achv_try!(
         sanitize_relative_path(account_id)
             .filter(|path| path.components().count() == 1)

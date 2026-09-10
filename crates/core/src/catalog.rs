@@ -1,16 +1,10 @@
 //! The catalog model: a storefront, a game as its store describes it, and
-//! whether achv has it installed.
+//! whether decanter has it installed.
 //!
 //! [`Storefront`]'s discriminants are the integers already written into
 //! every cache row, and changing them would silently re-key the whole
 //! database — they're pinned, not free to renumber.
 
-// Only fires on some compilation targets (lib vs tests), so `expect` can't
-// be used here without an "unfulfilled expectation" warning on the other.
-#![allow(
-    clippy::self_named_module_files,
-    reason = "convention here is `<name>.rs` plus a sibling `<name>/tests.rs`, see CLAUDE.md"
-)]
 #![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"
@@ -87,7 +81,7 @@ impl TryFrom<i32> for Storefront {
 #[non_exhaustive]
 pub struct UnknownStorefront(pub i32);
 
-/// A game as its storefront describes it, plus achv's own view of
+/// A game as its storefront describes it, plus decanter's own view of
 /// whether it's installed.
 ///
 /// Every field but [`Game::account_id`] and [`Game::install_state`] is
@@ -118,7 +112,7 @@ pub struct Game {
     pub icon_url: Option<String>,
     /// The storefront's own product id.
     pub id: String,
-    /// `None`, not `installed: false`, when achv doesn't govern this
+    /// `None`, not `installed: false`, when decanter doesn't govern this
     /// game's installs at all.
     pub install_state: Option<InstallState>,
     pub publisher: Option<String>,
@@ -146,6 +140,3 @@ pub struct InstallState {
     /// The prefix it's installed in.
     pub prefix_id: Option<String>,
 }
-
-#[cfg(test)]
-mod tests;

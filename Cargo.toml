@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/core", "crates/gog", "crates/runtime", "ui"]
-# `ui` is the workspace's only binary crate (achv-tray) — this is what lets
+# `ui` is the workspace's only binary crate (decanter-tray) — this is what lets
 # `dx serve`/`cargo run`/`cargo build` from the workspace root pick it
 # without needing an explicit `-p`/`--package`.
 default-members = ["ui"]

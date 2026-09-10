@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use achv_gog::LibraryEntry;
+use decanter_gog::LibraryEntry;
 
 use super::data::{Collections, LibraryStats};
 use super::filters::{SavedFilter, is_installed};

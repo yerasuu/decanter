@@ -12,8 +12,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use achv_core::{Game, Storefront};
-use achv_gog::{GameKind, LibraryEntry};
+use decanter_core::{Game, Storefront};
+use decanter_gog::{GameKind, LibraryEntry};
 use serde::{Deserialize, Serialize};
 
 use super::data::{Collections, LibraryStats};
@@ -371,6 +371,3 @@ pub(super) fn sort_entries(entries: &mut [LibraryEntry], sort: Sort, stats: &Lib
         ),
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -9,8 +9,8 @@
 
 use std::collections::HashSet;
 
-use achv_core::InstalledGame;
-use achv_runtime::Launch;
+use decanter_core::InstalledGame;
+use decanter_runtime::Launch;
 use dioxus::prelude::*;
 
 /// Games in play, by game id. Not by prefix: a prefix belongs to exactly
@@ -44,7 +44,7 @@ pub async fn start(account_id: String, game: InstalledGame, mut running: Running
     let mut launch = Launch::new(executable, format!("umu-{}", game.game_id)).store("gog");
     launch.proton = crate::core::proton_for(&game);
 
-    let session = match achv_runtime::start(&prefix, launch).await {
+    let session = match decanter_runtime::start(&prefix, launch).await {
         Ok(session) => session,
         Err(err) => {
             tracing::error!("launch failed: {err}");
@@ -83,7 +83,7 @@ async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) 
     let Some(local_root) = game.cloud_save_path.as_deref() else {
         return game.cloud_save_last_sync;
     };
-    match achv_gog::cloud_saves::sync(
+    match decanter_gog::cloud_saves::sync(
         account_id,
         &game.game_id,
         std::path::Path::new(local_root),
@@ -92,7 +92,7 @@ async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) 
     )
     .await
     {
-        Ok(outcome) if outcome.action == achv_gog::cloud_saves::SyncAction::Conflict => {
+        Ok(outcome) if outcome.action == decanter_gog::cloud_saves::SyncAction::Conflict => {
             tracing::warn!(
                 "cloud saves conflict for {} — playing with the local copy, resolve it from Propiedades",
                 game.game_id
@@ -120,7 +120,7 @@ async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, che
     let Some(local_root) = game.cloud_save_path.as_deref() else {
         return;
     };
-    match achv_gog::cloud_saves::sync(
+    match decanter_gog::cloud_saves::sync(
         account_id,
         &game.game_id,
         std::path::Path::new(local_root),
@@ -129,7 +129,7 @@ async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, che
     )
     .await
     {
-        Ok(outcome) if outcome.action == achv_gog::cloud_saves::SyncAction::Conflict => {
+        Ok(outcome) if outcome.action == decanter_gog::cloud_saves::SyncAction::Conflict => {
             tracing::warn!(
                 "cloud saves conflict for {} after exit — resolve it from Propiedades",
                 game.game_id
@@ -160,15 +160,15 @@ pub async fn stop(account_id: String, game_id: String) {
     }
 }
 
-/// Stops every game achv started.
+/// Stops every game decanter started.
 ///
 /// Games outlive the app that launched them — umu execs into a container
 /// and Proton detaches, so nothing here is a child process by the time it
-/// matters. Closing achv without this leaves them running with no way
+/// matters. Closing decanter without this leaves them running with no way
 /// left to reach them from the UI.
 pub async fn stop_everything() {
     tracing::info!("stopping all running games");
-    achv_runtime::stop_all().await;
+    decanter_runtime::stop_all().await;
 }
 
 /// Stops everything and exits, for the signals a desktop actually sends —

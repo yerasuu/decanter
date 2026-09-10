@@ -1,10 +1,10 @@
-//! achv's own settings — off the library nav entirely, the way Steam
+//! decanter's own settings — off the library nav entirely, the way Steam
 //! keeps these behind the gear beside the account switcher rather than as
 //! a tab of its own. Two sections: external shortcuts (per profile) and
 //! the default Proton every game runs on unless it pins one of its own
 //! (global, not tied to any profile).
 
-use achv_core::{InstalledGame, Storefront};
+use decanter_core::{InstalledGame, Storefront};
 use dioxus::prelude::*;
 
 use crate::{ActiveProfile, CoreResource, gog_library::GogLibrary};
@@ -74,14 +74,14 @@ pub fn Settings() -> Element {
     }
 }
 
-/// The profile's storefront accounts — achv holds every session itself
+/// The profile's storefront accounts — decanter holds every session itself
 /// now, so this is where one gets added or dropped, no next-ui, no
 /// plugin. A profile can hold several, even several of the same
 /// storefront: each shows its own row, with its own "Cerrar sesión".
 #[component]
 fn AccountTab(profile_id: String) -> Element {
     let mut generation = use_signal(|| 0_u32);
-    let mut accounts = use_signal(Vec::<achv_core::Account>::new);
+    let mut accounts = use_signal(Vec::<decanter_core::Account>::new);
 
     use_effect({
         let profile_id = profile_id.clone();
@@ -142,7 +142,7 @@ pub(crate) const fn storefront_label(storefront: Storefront) -> &'static str {
 /// removes the row — the caller re-lists rather than this row guessing
 /// how to remove itself from a list it doesn't own.
 #[component]
-fn AccountRow(account: achv_core::Account, on_change: EventHandler<()>) -> Element {
+fn AccountRow(account: decanter_core::Account, on_change: EventHandler<()>) -> Element {
     let library = use_context::<GogLibrary>();
     let mut status = use_signal(|| AccountStatus::Idle);
 
@@ -154,7 +154,7 @@ fn AccountRow(account: achv_core::Account, on_change: EventHandler<()>) -> Eleme
             let account_id = account_id.clone();
             async move {
                 tracing::debug!(account_id, "checking gog session status");
-                achv_gog::session(&account_id)
+                decanter_gog::session(&account_id)
                     .await
                     .inspect(|session| {
                         if session.is_none() {
@@ -195,7 +195,7 @@ fn AccountRow(account: achv_core::Account, on_change: EventHandler<()>) -> Eleme
                             // implemented today, but a future storefront
                             // would branch on `storefront` at this one
                             // spot, not rewrite the row around it.
-                            if let Err(err) = achv_gog::log_out(&account_id).await {
+                            if let Err(err) = decanter_gog::log_out(&account_id).await {
                                 tracing::error!(account_id, error = %err, "gog logout failed");
                                 status.set(AccountStatus::Failed(err.to_string()));
                                 return;
@@ -234,7 +234,7 @@ fn AccountRow(account: achv_core::Account, on_change: EventHandler<()>) -> Eleme
 /// GOG's OAuth has no loopback or device flow: the only way through is a
 /// browser login that lands on a page whose URL carries a one-shot code.
 /// So the user opens the page, logs in, and pastes the URL they end up on
-/// back here. No account id goes into `achv_gog::log_in` — which account
+/// back here. No account id goes into `decanter_gog::log_in` — which account
 /// this becomes is only known once GOG answers, so `profile_id` (already
 /// known) is what ties the *result* to this profile, via `upsert_account`.
 #[component]
@@ -257,7 +257,7 @@ fn AddGogAccount(profile_id: String, on_added: EventHandler<()>) -> Element {
             }
             button {
                 onclick: move |_| {
-                    if let Err(err) = open::that_detached(achv_gog::auth_url()) {
+                    if let Err(err) = open::that_detached(decanter_gog::auth_url()) {
                         tracing::error!(error = %err, "failed to open browser for gog login");
                         status.set(AccountStatus::Failed(format!("no se pudo abrir el navegador: {err}")));
                     }
@@ -281,7 +281,7 @@ fn AddGogAccount(profile_id: String, on_added: EventHandler<()>) -> Element {
                             status.set(AccountStatus::Working);
                             tracing::info!(profile_id, "logging in to gog");
                             spawn(async move {
-                                match achv_gog::log_in(&code).await {
+                                match decanter_gog::log_in(&code).await {
                                     Ok(account) => {
                                         let now = std::time::SystemTime::now()
                                             .duration_since(std::time::UNIX_EPOCH)
@@ -374,10 +374,10 @@ fn GeneralTab() -> Element {
                     }
                 },
             }
-            "Dejar achv corriendo en la bandeja en vez de cerrarlo"
+            "Dejar Decanter corriendo en la bandeja en vez de cerrarlo"
         }
         p { class: "muted",
-            "Requiere reiniciar achv para que el cambio tenga efecto."
+            "Requiere reiniciar Decanter para que el cambio tenga efecto."
         }
     }
 }
@@ -389,7 +389,7 @@ fn GeneralTab() -> Element {
 fn CompatibilityTab() -> Element {
     let mut generation = use_signal(|| 0_u32);
     let _ = generation();
-    let runners = achv_runtime::steam_runners();
+    let runners = decanter_runtime::steam_runners();
     let current = crate::core::db()
         .inspect_err(|err| tracing::warn!(error = %err, "failed to open db, default proton unknown"))
         .ok()
@@ -447,7 +447,7 @@ fn CompatibilityTab() -> Element {
 /// own Proton pin — but with no catalog entry behind it at all.
 ///
 /// Deliberately not folded into the GOG library: there is no product id
-/// to fetch metadata for, no depot to verify against, nothing achv
+/// to fetch metadata for, no depot to verify against, nothing decanter
 /// installed. It is just a path someone pointed at.
 ///
 /// Filed under the profile itself rather than one of its accounts — a

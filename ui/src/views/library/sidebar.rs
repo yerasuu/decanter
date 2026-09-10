@@ -12,8 +12,8 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use achv_core::{Game, Storefront};
-use achv_gog::LibraryEntry;
+use decanter_core::{Game, Storefront};
+use decanter_gog::LibraryEntry;
 use dioxus::prelude::*;
 
 use super::LibraryPopup;
@@ -747,7 +747,7 @@ fn FilterPanel(
 
                 div { class: "fgroup",
                     div { class: "fgroup-title", "Logros" }
-                    p { class: "fgroup-note", "Segun lo que achv tiene cacheado." }
+                    p { class: "fgroup-note", "Segun lo que Decanter tiene cacheado." }
                     for (achievement, label) in [
                         (AchievementState::Complete, "Completados"),
                         (AchievementState::InProgress, "En progreso"),

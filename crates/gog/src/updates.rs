@@ -4,8 +4,8 @@
 //! Both read the same endpoint [`crate::depot::get_builds`] already talks
 //! to for installing; nothing here downloads anything.
 
-use achv_core::{InstalledGame, Storefront};
 use anyhow::Context;
+use decanter_core::{InstalledGame, Storefront};
 
 use crate::depot::{Build, get_builds, select_build_for_branch};
 

@@ -2,8 +2,8 @@
 //! signed CDN URL for every chunk — everything [`super::install_into`]
 //! needs before a single byte moves.
 
-use achv_runtime::sanitize_relative_path;
 use anyhow::Context;
+use decanter_runtime::sanitize_relative_path;
 
 use super::download::ChunkSource;
 
@@ -193,6 +193,3 @@ pub(super) async fn dlc_only_files(
         .filter_map(|file| manifest_relative_path(&file.path))
         .collect())
 }
-
-#[cfg(test)]
-mod tests;

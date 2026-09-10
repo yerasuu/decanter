@@ -2,8 +2,8 @@
 use core::time::Duration;
 use std::env;
 
-use achv_core::{Db, Library, Storefront, default_db_path};
-use achv_runtime::{Launch, Prefix, Proton};
+use decanter_core::{Db, Library, Storefront, default_db_path};
+use decanter_runtime::{Launch, Prefix, Proton};
 use tokio::time::sleep;
 
 /// Split out from `main` so the `#[tokio::main]`-generated future stays a
@@ -58,7 +58,7 @@ async fn run() -> anyhow::Result<()> {
 
     let mut launch = Launch::new(exe, format!("umu-{game_id}")).store("gog");
     launch.proton = Proton::Latest;
-    let session = match achv_runtime::start(&prefix, launch).await {
+    let session = match decanter_runtime::start(&prefix, launch).await {
         Ok(session) => session,
         Err(err) => return Err(err),
     };

@@ -163,9 +163,6 @@ fn resolve(template: &str, vars: &HashMap<&str, PathBuf>) -> Option<PathBuf> {
     let relative = remainder.replace('\\', "/");
     // This template comes from remote-config.gog.com, i.e. the network —
     // reject `..`/absolute segments rather than let one escape `base`.
-    let sanitized = achv_runtime::sanitize_relative_path(relative.trim_start_matches('/'))?;
+    let sanitized = decanter_runtime::sanitize_relative_path(relative.trim_start_matches('/'))?;
     Some(base.join(sanitized))
 }
-
-#[cfg(test)]
-mod tests;

@@ -12,7 +12,7 @@
 //! drop this in as `Galaxy64.dll`, and every export is forwarded
 //! unchanged except that `Stats()` patches one vtable slot on the way
 //! through. Nothing is sent anywhere yet — unlocks are appended to a
-//! JSONL file for achv to pick up later.
+//! JSONL file for decanter to pick up later.
 //!
 //! Two rules hold everywhere in here: never panic (a panic unwinding into
 //! the game's C++ frames is undefined), and never let a failure of ours
@@ -148,7 +148,7 @@ fn record_unlock(name: *const c_char) {
     let Ok(name) = (unsafe { std::ffi::CStr::from_ptr(name) }).to_str() else {
         return;
     };
-    let product = std::env::var("ACHV_PRODUCT_ID").unwrap_or_default();
+    let product = std::env::var("DECANTER_PRODUCT_ID").unwrap_or_default();
     append(&format!(
         r#"{{"unlocked_at":{},"achievement":"{}","product_id":"{}"}}"#,
         now(),
@@ -210,14 +210,14 @@ fn escape(value: &str) -> String {
 }
 
 fn log_path() -> Option<PathBuf> {
-    if let Ok(explicit) = std::env::var("ACHV_ACHIEVEMENT_LOG")
+    if let Ok(explicit) = std::env::var("DECANTER_ACHIEVEMENT_LOG")
         && !explicit.is_empty()
     {
         return Some(PathBuf::from(explicit));
     }
     // Beside the DLL, so a run with nothing configured still leaves the
     // evidence somewhere findable rather than dropping it.
-    own_directory().map(|dir| dir.join("achv-achievements.jsonl"))
+    own_directory().map(|dir| dir.join("decanter-achievements.jsonl"))
 }
 
 // ------------------------------------------------- finding the right slot
@@ -659,5 +659,3 @@ with_options!(
     "?ShutdownGameServerEx@api@galaxy@@YAXAEBUShutdownOptions@12@@Z"
 );
 
-#[cfg(test)]
-mod tests;

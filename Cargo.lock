@@ -3,79 +3,6 @@
 version = 4
 
 [[package]]
-name = "achv-core"
-version = "0.1.0"
-dependencies = [
- "dirs 7.0.0",
- "keyring",
- "nix",
- "rusqlite",
- "serde",
- "thiserror 2.0.20",
- "toml 1.1.5+spec-1.1.0",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "achv-gog"
-version = "0.1.0"
-dependencies = [
- "achv-core",
- "achv-runtime",
- "anyhow",
- "chrono",
- "flate2",
- "futures-util",
- "gog",
- "md5",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "achv-runtime"
-version = "0.1.0"
-dependencies = [
- "achv-core",
- "anyhow",
- "futures-util",
- "nix",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "achv-tray"
-version = "0.1.0"
-dependencies = [
- "achv-core",
- "achv-gog",
- "achv-runtime",
- "anyhow",
- "chrono",
- "clap",
- "dioxus",
- "dirs 7.0.0",
- "image",
- "ksni",
- "open",
- "rfd",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1538,6 +1465,79 @@ checksum = "7227ffd3b4896266bbc100348025cebe51d9aea94ce118a1d68f4a6463963dae"
 dependencies = [
  "dbus-secret-service",
  "keyring-core",
+]
+
+[[package]]
+name = "decanter-core"
+version = "0.1.0"
+dependencies = [
+ "dirs 7.0.0",
+ "keyring",
+ "nix",
+ "rusqlite",
+ "serde",
+ "thiserror 2.0.20",
+ "toml 1.1.5+spec-1.1.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "decanter-gog"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "decanter-core",
+ "decanter-runtime",
+ "flate2",
+ "futures-util",
+ "gog",
+ "md5",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "decanter-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "decanter-core",
+ "futures-util",
+ "nix",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "decanter-tray"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "decanter-core",
+ "decanter-gog",
+ "decanter-runtime",
+ "dioxus",
+ "dirs 7.0.0",
+ "image",
+ "ksni",
+ "open",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

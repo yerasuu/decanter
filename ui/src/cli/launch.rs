@@ -1,6 +1,6 @@
 //! Launches an account's installed GOG game and waits for it to exit.
 //!
-//! Resolved entirely from achv's own library (`achv_core::Library`): the
+//! Resolved entirely from decanter's own library (`decanter_core::Library`): the
 //! manifest carries the install directory and the launch executable, and
 //! the Proton prefix lives wherever `Library::compatdata` says — created
 //! on first launch, nothing to look up beforehand.
@@ -9,13 +9,13 @@
 //! the tray/exit-on-signal machinery) — this is the headless CLI path,
 //! used for scripting and for observing a launch independent of the app.
 
-use achv_core::{Library, Storefront};
-use achv_runtime::Launch;
 use anyhow::{Context, bail};
+use decanter_core::{Library, Storefront};
+use decanter_runtime::Launch;
 
 use super::report_poll;
 
-pub async fn launch(db: &mut achv_core::Db, account_id: &str, product_id: &str) -> anyhow::Result<()> {
+pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &str) -> anyhow::Result<()> {
     let Some(library_path) = Library::default_path() else {
         tracing::error!("could not resolve the default library path");
         bail!("could not resolve the default library path");
@@ -38,15 +38,15 @@ pub async fn launch(db: &mut achv_core::Db, account_id: &str, product_id: &str) 
         tracing::error!(account_id, product_id, "unusable account or product id for prefix");
         bail!("unusable account or product id for {product_id}'s prefix");
     };
-    let prefix = achv_runtime::Prefix::new(prefix_path);
+    let prefix = decanter_runtime::Prefix::new(prefix_path);
 
-    // Capa 1 (hook DLL) placeholder: harmless with no achv-hook.dll
+    // Capa 1 (hook DLL) placeholder: harmless with no decanter-hook.dll
     // deployed yet, Wine just keeps using the real Galaxy64.dll. Wiring
-    // the actual proxy is a separate crate (achv-hook).
+    // the actual proxy is a separate crate (decanter-hook).
     let mut launch = Launch::new(install_dir.join(executable), format!("umu-{product_id}")).store("gog");
     launch.dll_overrides.push(("Galaxy64".to_owned(), "n".to_owned()));
 
-    let session = achv_runtime::start(&prefix, launch)
+    let session = decanter_runtime::start(&prefix, launch)
         .await
         .context("launching program")?;
     tracing::info!(pid = session.launcher_pid(), "launched");
@@ -55,6 +55,6 @@ pub async fn launch(db: &mut achv_core::Db, account_id: &str, product_id: &str) 
     tracing::info!("program exited");
 
     tracing::debug!(account_id, product_id, "polling achievements after launch");
-    report_poll(achv_gog::poll_achievements(db, account_id, product_id).await?);
+    report_poll(decanter_gog::poll_achievements(db, account_id, product_id).await?);
     Ok(())
 }

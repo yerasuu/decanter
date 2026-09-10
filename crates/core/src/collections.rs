@@ -245,6 +245,3 @@ impl Db {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;

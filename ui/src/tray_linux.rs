@@ -31,24 +31,24 @@ pub enum TrayCommand {
     Quit,
 }
 
-struct AchvTray {
+struct DecanterTray {
     commands: UnboundedSender<TrayCommand>,
 }
 
-impl Tray for AchvTray {
+impl Tray for DecanterTray {
     // Suffixed with the pid, same reason `tray-icon` derives its own id
-    // from it: two achv processes (as happens mid-restart, or while
+    // from it: two decanter processes (as happens mid-restart, or while
     // testing) would otherwise fight over the same D-Bus name.
     fn id(&self) -> String {
-        format!("achv-{}", std::process::id())
+        format!("decanter-{}", std::process::id())
     }
 
     fn title(&self) -> String {
-        "achv".to_string()
+        "Decanter".to_string()
     }
 
     fn icon_pixmap(&self) -> Vec<Icon> {
-        vec![achv_icon()]
+        vec![decanter_icon()]
     }
 
     // Left click, where a host implements it — Plasma's own native SNI
@@ -65,7 +65,7 @@ impl Tray for AchvTray {
     fn menu(&self) -> Vec<MenuItem<Self>> {
         vec![
             StandardItem {
-                label: "Mostrar achv".to_string(),
+                label: "Mostrar Decanter".to_string(),
                 activate: Box::new(|tray: &mut Self| {
                     if tray.commands.send(TrayCommand::Show).is_err() {
                         tracing::warn!("tray command channel closed, could not forward show command");
@@ -92,7 +92,7 @@ impl Tray for AchvTray {
 /// Decodes the bundled favicon into the raw ARGB32-network-byte-order
 /// pixel data `ksni::Icon` wants — `image`'s buffer is RGBA per pixel, so
 /// each 4 bytes gets reordered to A,R,G,B rather than reinterpreted.
-fn achv_icon() -> Icon {
+fn decanter_icon() -> Icon {
     let image = image::load_from_memory(include_bytes!("../assets/favicon.ico"))
         .expect("bundled favicon.ico decodes")
         .into_rgba8();
@@ -119,7 +119,7 @@ fn achv_icon() -> Icon {
 pub fn spawn() -> UnboundedReceiver<TrayCommand> {
     let (commands, receiver) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
-        let tray = AchvTray { commands };
+        let tray = DecanterTray { commands };
         match tray.spawn().await {
             Ok(handle) => {
                 tracing::info!("linux tray icon started");

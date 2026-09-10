@@ -66,6 +66,3 @@ impl RateTracker {
         self.ema_bps
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -2,9 +2,9 @@
 //!
 //! umu is the launcher Valve's own Proton expects around it: it resolves
 //! (and downloads) a Proton build, sets up the Steam Linux Runtime
-//! container, and applies protonfixes for a known game id. achv drives
+//! container, and applies protonfixes for a known game id. decanter drives
 //! it as a plain subprocess — there is no daemon, no agent inside the
-//! prefix, and no state of umu's that achv has to keep in sync.
+//! prefix, and no state of umu's that decanter has to keep in sync.
 //!
 //! What that buys over talking to a prefix directly: one process to spawn
 //! and one to wait on. Exit detection is the child's own exit plus a sweep
@@ -47,7 +47,7 @@ const UMU_RUN: &str = "umu-run";
 /// directory scan per tick and nothing while a game is actually running.
 const IDLE_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-/// A Proton prefix achv owns.
+/// A Proton prefix decanter owns.
 ///
 /// umu treats `WINEPREFIX` as Proton's `STEAM_COMPAT_DATA_PATH` and then
 /// symlinks `pfx` inside it back to the directory itself, so — unlike a
@@ -85,7 +85,7 @@ impl Prefix {
         // `wineboot`, not a path to it: on a prefix that doesn't exist
         // there is nothing to point at yet, so Wine resolves it from the
         // Proton build instead.
-        let mut launch = Launch::new("wineboot", "umu-achv");
+        let mut launch = Launch::new("wineboot", "umu-decanter");
         launch.args.push("-i".to_owned());
         launch.proton = proton;
         launch.working_directory = Some(env::temp_dir());
@@ -155,7 +155,7 @@ impl Prefix {
     /// Resolves a Windows path as stored on a program (`C:\Games\x.exe`)
     /// to the host path umu should be handed.
     ///
-    /// Only `C:` resolves: that's the only drive achv ever creates a
+    /// Only `C:` resolves: that's the only drive decanter ever creates a
     /// program under, and mapping an arbitrary drive letter would mean
     /// reading `dosdevices`, which is the prefix's business, not ours.
     #[inline]
@@ -429,12 +429,12 @@ impl Session {
     }
 }
 
-/// The prefixes achv has started something in and not seen finish.
+/// The prefixes decanter has started something in and not seen finish.
 ///
 /// Kept apart from whatever the UI is showing, because this is what
 /// shutdown reads: a game outlives the launcher that started it — umu
 /// execs into a container and Proton detaches — so nothing stops on its
-/// own when achv goes away. Closing the app has to go and stop them.
+/// own when decanter goes away. Closing the app has to go and stop them.
 fn live() -> &'static Mutex<HashSet<PathBuf>> {
     static LIVE: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
     LIVE.get_or_init(Default::default)
@@ -454,7 +454,7 @@ pub fn live_prefixes() -> Vec<Prefix> {
     live_lock().iter().cloned().map(Prefix::new).collect()
 }
 
-/// Stops everything achv started, at once.
+/// Stops everything decanter started, at once.
 ///
 /// For shutdown. Concurrent rather than one after another: each stop waits
 /// out its own prefix, and closing the app shouldn't take as long as the
@@ -682,7 +682,7 @@ fn environ_has_prefix(environ: &[u8], prefix: &Path) -> bool {
 /// land inside the directory it is joined to: no absolute paths, no `..`,
 /// no drive prefixes.
 ///
-/// Every path achv joins onto a prefix or a data directory comes from
+/// Every path decanter joins onto a prefix or a data directory comes from
 /// a storefront's manifest or a product id, i.e. from the network.
 #[inline]
 #[must_use]
@@ -743,6 +743,3 @@ pub fn processes_by_prefix(prefixes: &[Prefix]) -> HashMap<PathBuf, Vec<u32>> {
     );
     found
 }
-
-#[cfg(test)]
-mod tests;

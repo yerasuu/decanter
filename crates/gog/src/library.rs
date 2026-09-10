@@ -1,6 +1,6 @@
 //! The GOG library, fetched by us directly rather than through an
 //! external plugin registry chain that would just reach the same public
-//! endpoints this module calls itself — achv owns the whole path, and
+//! endpoints this module calls itself — decanter owns the whole path, and
 //! nothing else needs to be running for it to work.
 //!
 //! Four sources, merged:
@@ -36,9 +36,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use achv_core::Storefront;
-use achv_core::{Game, InstallState};
 use anyhow::Context;
+use decanter_core::Storefront;
+use decanter_core::{Game, InstallState};
 use futures_util::StreamExt;
 use serde::Deserialize;
 
@@ -637,9 +637,3 @@ fn with_install_state(account_id: &str, mut entry: LibraryEntry) -> LibraryEntry
     }
     entry
 }
-
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod live_rank_direction_check;

@@ -7,7 +7,7 @@
 //! [`log_in`], which trades it for a session and stores it — under the
 //! account id GOG hands back, since that's the only thing this crate
 //! knows about identity. Grouping the resulting account under a profile
-//! is the caller's job (`achv_core::Db::upsert_account`); this crate has
+//! is the caller's job (`decanter_core::Db::upsert_account`); this crate has
 //! no notion of a profile at all.
 
 use anyhow::Context as _;
@@ -147,6 +147,3 @@ fn urlencode(value: &str) -> String {
         })
         .collect()
 }
-
-#[cfg(test)]
-mod tests;

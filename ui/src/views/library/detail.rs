@@ -7,8 +7,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use achv_core::{CachedAchievement, Game, InstalledGame, Playtime};
-use achv_gog::Branch;
+use decanter_core::{CachedAchievement, Game, InstalledGame, Playtime};
+use decanter_gog::Branch;
 use dioxus::prelude::*;
 
 use super::data::PollStatus;
@@ -631,7 +631,7 @@ fn InstallDialog(
             let product_id = product_id.clone();
             async move {
                 tracing::debug!(account_id, product_id, "fetching gog branch list for install dialog");
-                achv_gog::list_branches(&account_id, &product_id).await.inspect_err(
+                decanter_gog::list_branches(&account_id, &product_id).await.inspect_err(
                     |err| tracing::error!(account_id, product_id, error = %err, "failed to fetch branch list"),
                 )
             }
@@ -707,7 +707,7 @@ fn InstallDialog(
 }
 
 /// `branch` pins the base game to a specific GOG branch (a beta, say) —
-/// ignored when `parent_id` is `Some`, same as `achv_gog::install`
+/// ignored when `parent_id` is `Some`, same as `decanter_gog::install`
 /// itself: a DLC's branch always comes from the base game it belongs to.
 pub(super) fn start_install(
     account_id: String,

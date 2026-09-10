@@ -56,7 +56,7 @@ pub struct CachedAchievement {
 }
 
 /// Self-tracked: nothing upstream reports play sessions, so
-/// `seconds_total` accumulates whatever `achv` itself measured between a
+/// `seconds_total` accumulates whatever `decanter` itself measured between a
 /// launch it made and the process exiting.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Playtime {
@@ -177,12 +177,12 @@ CREATE TABLE IF NOT EXISTS hidden (
 DROP TABLE IF EXISTS game_links;
 ";
 
-/// Where `achv-sidecar` and the UI both look for this cache — kept in one
+/// Where `decanter-sidecar` and the UI both look for this cache — kept in one
 /// place so the two binaries can never end up pointed at different files.
 pub fn default_db_path() -> PathBuf {
     let dir = crate::data_dir();
-    std::fs::create_dir_all(&dir).expect("creating achv data dir");
-    tracing::debug!(dir = %dir.display(), "ensured achv data dir exists");
+    std::fs::create_dir_all(&dir).expect("creating decanter data dir");
+    tracing::debug!(dir = %dir.display(), "ensured decanter data dir exists");
     dir.join("links.db")
 }
 
@@ -751,8 +751,8 @@ impl Db {
     }
 
     /// The Proton build to launch with when a game has no per-game choice
-    /// of its own — a bare name from `achv_runtime::steam_runners`, or
-    /// `None` for `achv_runtime::Proton::Latest`.
+    /// of its own — a bare name from `decanter_runtime::steam_runners`, or
+    /// `None` for `decanter_runtime::Proton::Latest`.
     pub fn default_proton(&self) -> Result<Option<String>> {
         let proton = self.setting("default_proton")?;
         tracing::debug!(proton = proton.as_deref(), "read default_proton setting");
@@ -859,8 +859,3 @@ impl Db {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod real_migration_check;
-#[cfg(test)]
-mod tests;

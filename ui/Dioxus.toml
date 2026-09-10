@@ -1,13 +1,13 @@
 [application]
 
 [bundle]
-identifier = "dev.achv.Achv"
-publisher = "achv"
+identifier = "dev.decanter.Decanter"
+publisher = "Decanter"
 
 [web.app]
 
 # HTML title tag content
-title = "achv"
+title = "Decanter"
 
 # include `assets` in web platform
 [web.resource]

@@ -1,4 +1,4 @@
-//! Headless install/cancel — the same `achv-gog` functions the GUI's
+//! Headless install/cancel — the same `decanter-gog` functions the GUI's
 //! install button and cancel action call, run here directly so their real
 //! behavior (and any errors) can be observed independent of the Dioxus app.
 
@@ -13,7 +13,7 @@ pub async fn install(
 ) -> anyhow::Result<()> {
     tracing::info!(account_id, product_id, title, branch, build_id, "install started");
     let mut events = 0u64;
-    let result = achv_gog::install(account_id, product_id, None, title, branch, build_id, move |progress| {
+    let result = decanter_gog::install(account_id, product_id, None, title, branch, build_id, move |progress| {
         events += 1;
         if events % 200 == 1 {
             tracing::info!(
@@ -40,5 +40,5 @@ pub async fn install(
 /// whatever this cancels.
 pub async fn cancel(account_id: &str, product_id: &str) {
     tracing::info!(account_id, product_id, "cancelling install");
-    achv_gog::cancel(account_id, product_id).await;
+    decanter_gog::cancel(account_id, product_id).await;
 }

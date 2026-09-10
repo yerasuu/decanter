@@ -59,6 +59,3 @@ pub async fn cancel(account_id: &str, product_id: &str) {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

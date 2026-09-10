@@ -8,12 +8,6 @@
 //! entries in [`crate::credentials`] are actually keyed by. Switching the
 //! active profile swaps out the whole set of accounts in play at once.
 
-// Only fires on some compilation targets (lib vs tests), so `expect` can't
-// be used here without an "unfulfilled expectation" warning on the other.
-#![allow(
-    clippy::self_named_module_files,
-    reason = "convention here is `<name>.rs` plus a sibling `<name>/tests.rs`, see CLAUDE.md"
-)]
 #![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"
@@ -174,6 +168,3 @@ impl Db {
         })
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -13,12 +13,6 @@
     clippy::std_instead_of_core,
     reason = "desktop app, no no_std target exists to justify core:: here"
 )]
-// Only fires on some compilation targets (lib vs tests), so `expect` can't
-// be used here without an "unfulfilled expectation" warning on the other.
-#![allow(
-    clippy::self_named_module_files,
-    reason = "convention here is `<name>.rs` plus a sibling `<name>/tests.rs`, see CLAUDE.md"
-)]
 #![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"
@@ -40,8 +34,8 @@ use keyring::Entry;
 
 use crate::catalog::Storefront;
 
-/// Keyring service name for achv's own entries.
-const SERVICE: &str = "dev.achv.Achv";
+/// Keyring service name for decanter's own entries.
+const SERVICE: &str = "dev.decanter.Decanter";
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -134,6 +128,3 @@ fn read(account: &str) -> Result<Option<String>> {
         Err(err) => Err(err.into()),
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -1,5 +1,5 @@
 [package]
-name = "achv-gog"
+name = "decanter-gog"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,8 +7,8 @@ edition = "2024"
 workspace = true
 
 [dependencies]
-achv-core = { path = "../core" }
-achv-runtime = { path = "../runtime" }
+decanter-core = { path = "../core" }
+decanter-runtime = { path = "../runtime" }
 gog = "0.5.0"
 tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "fs", "sync", "time", "macros"] }
 serde = { version = "1", features = ["derive"] }
