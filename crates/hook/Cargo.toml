@@ -1,0 +1,27 @@
+[package]
+name = "achv-hook"
+version = "0.1.0"
+edition = "2024"
+
+# Excluded from the workspace (see root Cargo.toml), so its `unsafe_code =
+# "forbid"` doesn't apply here anyway: this crate IS Windows DLL/vtable
+# hooking, unsafe is the entire job.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = "warn"
+
+# Named `Galaxy64` because the game resolves its imports by filename: the
+# proxy only gets loaded if it *is* `Galaxy64.dll`.
+[lib]
+name = "Galaxy64"
+crate-type = ["cdylib"]
+
+# A panic unwinding out of a stub would cross back into the game's C++
+# frames, which is undefined. Nothing here should panic in the first place;
+# this makes a bug abort instead of corrupting the process.
+[profile.release]
+panic = "abort"
+strip = true
+opt-level = "s"

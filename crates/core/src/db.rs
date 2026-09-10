@@ -1,0 +1,721 @@
+//! Local cache, all of it keyed by `(account_id, storefront, product_id)`
+//! — achievements and library metadata both belong to the storefront
+//! account that owns them, not to any particular install and not
+//! directly to the [`crate::profiles`] a person switches between (a
+//! profile groups several accounts, see [`crate::accounts`]). Where a
+//! game is installed on disk is [`crate::library`]'s concern, read
+//! straight off its manifests — this store never duplicates it.
+
+use std::path::{Path, PathBuf};
+
+use rusqlite::{Connection, OptionalExtension, params};
+use uuid::Uuid;
+
+use crate::catalog::Storefront;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CachedGame {
+    pub storefront: Storefront,
+    pub product_id: String,
+    pub title: String,
+    pub icon_url: Option<String>,
+    pub cover_url: Option<String>,
+    pub kind: String,
+    pub purchased_at: Option<i64>,
+    pub release_date: Option<i64>,
+    pub rating: Option<String>,
+    /// Empty means "the store didn't say" on this fetch, not "this game has
+    /// no genres" — a quiet [`Db::upsert_game`] refresh leaves whatever was
+    /// cached before untouched rather than blanking it out.
+    pub genres: Vec<String>,
+    /// GOG's own added-to-library order, 0 = most recent. `None` when this
+    /// fetch didn't carry a rank — same "leave it alone" rule as `genres`.
+    pub library_rank: Option<i64>,
+    /// The base game's product id, for DLC. `None` for a base game.
+    pub parent_id: Option<String>,
+    pub installable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CachedAchievement {
+    pub achievement_key: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_unlocked_url: Option<String>,
+    pub icon_locked_url: Option<String>,
+    pub unlocked: bool,
+    pub unlocked_at: Option<String>,
+}
+
+/// Self-tracked, since bottles-next has no notion of a play session —
+/// `seconds_total` accumulates whatever `achv` itself measured between a
+/// `Bottle::run` it made and the process exiting.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Playtime {
+    pub seconds_total: i64,
+    pub last_played_at: Option<i64>,
+}
+
+/// Unit separator, not a comma: a genre name is free text from the store
+/// and can't be assumed comma-free.
+const GENRE_SEPARATOR: char = '\u{1f}';
+
+/// `None` for an empty list, so `upsert_game`'s `COALESCE(excluded.genres,
+/// genres)` leaves a previous, real genre list alone on a quiet refresh
+/// instead of overwriting it with nothing.
+fn join_genres(genres: &[String]) -> Option<String> {
+    (!genres.is_empty()).then(|| genres.join(&GENRE_SEPARATOR.to_string()))
+}
+
+fn split_genres(raw: Option<String>) -> Vec<String> {
+    raw.map(|raw| raw.split(GENRE_SEPARATOR).map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS games_cache (
+    account_id    TEXT NOT NULL,
+    storefront    INTEGER NOT NULL,
+    product_id    TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    icon_url      TEXT,
+    cover_url     TEXT,
+    kind          TEXT NOT NULL DEFAULT 'game',
+    purchased_at  INTEGER,
+    release_date  INTEGER,
+    rating        TEXT,
+    genres        TEXT,
+    library_rank  INTEGER,
+    parent_id     TEXT,
+    installable   INTEGER NOT NULL DEFAULT 1,
+    first_seen    INTEGER NOT NULL DEFAULT 0,
+    updated_at    INTEGER NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS achievement_cache (
+    account_id        TEXT NOT NULL,
+    storefront        INTEGER NOT NULL,
+    product_id        TEXT NOT NULL,
+    achievement_key   TEXT NOT NULL,
+    name              TEXT NOT NULL,
+    description       TEXT,
+    icon_unlocked_url TEXT,
+    icon_locked_url   TEXT,
+    unlocked          INTEGER NOT NULL DEFAULT 0,
+    unlocked_at       TEXT,
+    PRIMARY KEY (account_id, storefront, product_id, achievement_key)
+);
+
+CREATE TABLE IF NOT EXISTS favorites (
+    account_id  TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    product_id  TEXT NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS profiles (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    id          TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    profile_id  TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (id, storefront)
+);
+
+CREATE TABLE IF NOT EXISTS playtime (
+    account_id      TEXT NOT NULL,
+    storefront      INTEGER NOT NULL,
+    product_id      TEXT NOT NULL,
+    seconds_total   INTEGER NOT NULL DEFAULT 0,
+    last_played_at  INTEGER,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id          TEXT PRIMARY KEY,
+    profile_id  TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    filter      TEXT,
+    position    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_members (
+    collection_id  TEXT NOT NULL,
+    storefront     INTEGER NOT NULL,
+    product_id     TEXT NOT NULL,
+    PRIMARY KEY (collection_id, storefront, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS hidden (
+    account_id  TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    product_id  TEXT NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
+DROP TABLE IF EXISTS game_links;
+";
+
+/// Where `achv-sidecar` and the UI both look for this cache — kept in one
+/// place so the two binaries can never end up pointed at different files.
+pub fn default_db_path() -> PathBuf {
+    let dir = crate::data_dir();
+    std::fs::create_dir_all(&dir).expect("creating achv data dir");
+    dir.join("links.db")
+}
+
+pub struct Db {
+    pub(crate) conn: Connection,
+}
+
+/// Guards the one-time reset in [`Db::reset_unbacked_first_seen`].
+const FIRST_SEEN_MIGRATION_SETTING: &str = "first_seen_migration_v1";
+
+impl Db {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        // `achievement_cache` used to be keyed by program_id, and
+        // `games_cache` had no catalog metadata columns; `CREATE TABLE IF
+        // NOT EXISTS` leaves an old-shaped table alone, so a real
+        // incompatible schema change needs an explicit drop first. Local
+        // single-user cache — safe to just rebuild rather than migrate rows.
+        let has_new_shape: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('achievement_cache') WHERE name = 'account_id'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_new_shape == 0 {
+            conn.execute_batch("DROP TABLE IF EXISTS achievement_cache;")?;
+        }
+        let games_cache_has_new_shape: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games_cache') WHERE name = 'kind'",
+            [],
+            |row| row.get(0),
+        )?;
+        if games_cache_has_new_shape == 0 {
+            conn.execute_batch("DROP TABLE IF EXISTS games_cache;")?;
+        }
+        // These four used to be keyed by `profile_id`, back when a profile
+        // and a storefront account were the same thing — now a profile can
+        // group several accounts, so the cache has to key by account
+        // instead. Same drop-and-rebuild as above, not a row migration.
+        for table in ["games_cache", "favorites", "playtime", "hidden"] {
+            let has_account_id: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = 'account_id'"),
+                [],
+                |row| row.get(0),
+            )?;
+            if has_account_id == 0 {
+                conn.execute_batch(&format!("DROP TABLE IF EXISTS {table};"))?;
+            }
+        }
+
+        conn.execute_batch(SCHEMA)?;
+        let db = Self { conn };
+        db.reset_unbacked_first_seen()?;
+        Ok(db)
+    }
+
+    /// One-time cleanup for `first_seen` values a version before
+    /// `confirmed_new` existed stamped indiscriminately. Once, because
+    /// after this a legitimately-stamped row (no purchase or release date,
+    /// `first_seen` from a real confirmed-new insert) is indistinguishable
+    /// from a stale one — running this more than once would erase those too.
+    fn reset_unbacked_first_seen(&self) -> Result<()> {
+        if self.setting(FIRST_SEEN_MIGRATION_SETTING)?.is_some() {
+            return Ok(());
+        }
+        self.conn.execute(
+            "UPDATE games_cache SET first_seen = 0
+             WHERE first_seen != 0 AND purchased_at IS NULL AND release_date IS NULL",
+            [],
+        )?;
+        self.set_setting(FIRST_SEEN_MIGRATION_SETTING, "1")
+    }
+
+    /// Records or refreshes one game's catalog entry.
+    ///
+    /// `confirmed_new` is only consulted for a brand-new row: it stamps
+    /// `first_seen` with now when neither `purchased_at` nor `release_date`
+    /// is known, so the game still sorts as recently added. A later refresh
+    /// never touches `first_seen` again, confirmed or not.
+    ///
+    /// A `None`/empty optional field (`purchased_at`, `release_date`,
+    /// `rating`, `genres`, `library_rank`, `parent_id`) means "this fetch
+    /// didn't carry it", not "clear it" — a refresh where the per-game
+    /// lookup failed must not blank out catalog data an earlier, successful
+    /// one found.
+    pub fn upsert_game(&self, account_id: &str, game: &CachedGame, confirmed_new: bool) -> Result<()> {
+        let first_seen_if_new = if confirmed_new && game.purchased_at.is_none() && game.release_date.is_none() {
+            "strftime('%s','now')"
+        } else {
+            "0"
+        };
+        self.conn.execute(
+            &format!(
+                "INSERT INTO games_cache (
+                    account_id, storefront, product_id, title, icon_url, cover_url,
+                    kind, purchased_at, release_date, rating, genres, library_rank,
+                    parent_id, installable, first_seen, updated_at
+                 )
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, {first_seen_if_new}, strftime('%s','now'))
+                 ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
+                    title = excluded.title,
+                    icon_url = excluded.icon_url,
+                    cover_url = excluded.cover_url,
+                    kind = excluded.kind,
+                    purchased_at = COALESCE(excluded.purchased_at, purchased_at),
+                    release_date = COALESCE(excluded.release_date, release_date),
+                    rating = COALESCE(excluded.rating, rating),
+                    genres = COALESCE(excluded.genres, genres),
+                    library_rank = COALESCE(excluded.library_rank, library_rank),
+                    parent_id = COALESCE(excluded.parent_id, parent_id),
+                    installable = excluded.installable,
+                    updated_at = excluded.updated_at"
+            ),
+            params![
+                account_id,
+                game.storefront as i32,
+                game.product_id,
+                game.title,
+                game.icon_url,
+                game.cover_url,
+                game.kind,
+                game.purchased_at,
+                game.release_date,
+                game.rating,
+                join_genres(&game.genres),
+                game.library_rank,
+                game.parent_id,
+                game.installable,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Whether this account has ever had a game cached — lets a caller tell
+    /// a first-ever sync apart from one that's merely empty right now.
+    pub fn has_games(&self, account_id: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM games_cache WHERE account_id = ?1 LIMIT 1",
+                params![account_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|row| row.is_some())
+            .map_err(Error::from)
+    }
+
+    /// Drops every cached game for `(account_id, storefront)` not in
+    /// `keep_ids`, and returns how many were dropped.
+    ///
+    /// Refuses an empty `keep_ids` rather than obeying it: an empty listing
+    /// means the fetch itself failed, not that the account was emptied out.
+    pub fn retain_games(&self, account_id: &str, storefront: Storefront, keep_ids: &[String]) -> Result<usize> {
+        if keep_ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = keep_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let mut stmt = self.conn.prepare(&format!(
+            "DELETE FROM games_cache WHERE account_id = ? AND storefront = ? AND product_id NOT IN ({placeholders})"
+        ))?;
+        let storefront_value = storefront as i32;
+        let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(2 + keep_ids.len());
+        bound.push(&account_id);
+        bound.push(&storefront_value);
+        for id in keep_ids {
+            bound.push(id);
+        }
+        stmt.execute(bound.as_slice()).map_err(Error::from)
+    }
+
+    /// Whatever the last `WatchGames` session cached for this account —
+    /// shown immediately on startup so the sidebar isn't empty while a
+    /// fresh stream reconnects and re-scans the GOG account.
+    pub fn list_games(&self, account_id: &str) -> Result<Vec<CachedGame>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT storefront, product_id, title, icon_url, cover_url,
+                    kind, purchased_at, release_date, rating, genres, library_rank,
+                    parent_id, installable
+             FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
+        )?;
+        let rows = stmt.query_map(params![account_id], |row| {
+            let storefront_raw: i32 = row.get(0)?;
+            let storefront = Storefront::try_from(storefront_raw).unwrap_or_else(|_| {
+                tracing::warn!(
+                    storefront_raw,
+                    "unrecognized storefront in games_cache, defaulting to Unspecified"
+                );
+                Storefront::Unspecified
+            });
+            Ok(CachedGame {
+                storefront,
+                product_id: row.get(1)?,
+                title: row.get(2)?,
+                icon_url: row.get(3)?,
+                cover_url: row.get(4)?,
+                kind: row.get(5)?,
+                purchased_at: row.get(6)?,
+                release_date: row.get(7)?,
+                rating: row.get(8)?,
+                genres: split_genres(row.get(9)?),
+                library_rank: row.get(10)?,
+                parent_id: row.get(11)?,
+                installable: row.get(12)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)
+    }
+
+    /// "Date added" per product id: a real purchase date, falling back to
+    /// the release date and then to [`CachedGame`]'s own `first_seen`
+    /// stamp (0 when neither is known and the row was never confirmed new).
+    pub fn all_first_seen(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT product_id, COALESCE(purchased_at, release_date, NULLIF(first_seen, 0), 0)
+             FROM games_cache WHERE account_id = ?1 AND storefront = ?2",
+        )?;
+        let rows = stmt.query_map(params![account_id, storefront as i32], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+    }
+
+    /// GOG's own added-to-library order, by product id — only the games
+    /// that have one.
+    pub fn all_library_ranks(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT product_id, library_rank FROM games_cache
+             WHERE account_id = ?1 AND storefront = ?2 AND library_rank IS NOT NULL",
+        )?;
+        let rows = stmt.query_map(params![account_id, storefront as i32], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+    }
+
+    /// `(unlocked, total)` achievement counts cached for one game.
+    pub fn achievement_counts(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+    ) -> Result<(usize, usize)> {
+        self.conn
+            .query_row(
+                "SELECT COALESCE(SUM(unlocked), 0), COUNT(*) FROM achievement_cache
+                 WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
+                |row| Ok((row.get::<_, i64>(0)? as usize, row.get::<_, i64>(1)? as usize)),
+            )
+            .map_err(Error::from)
+    }
+
+    /// Every cached achievement for one game, locked and unlocked alike.
+    /// Unlocked first, then alphabetical.
+    pub fn list_achievements(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+    ) -> Result<Vec<CachedAchievement>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at
+             FROM achievement_cache
+             WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3
+             ORDER BY unlocked DESC, name ASC",
+        )?;
+        let rows = stmt.query_map(params![account_id, storefront as i32, product_id], |row| {
+            Ok(CachedAchievement {
+                achievement_key: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                icon_unlocked_url: row.get(3)?,
+                icon_locked_url: row.get(4)?,
+                unlocked: row.get(5)?,
+                unlocked_at: row.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)
+    }
+
+    /// Upserts the latest known achievement list for one game and returns
+    /// the ones that just transitioned from locked/unseen to unlocked —
+    /// the set worth notifying about.
+    pub fn upsert_achievements(
+        &mut self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+        items: &[CachedAchievement],
+    ) -> Result<Vec<CachedAchievement>> {
+        let tx = self.conn.transaction()?;
+        let mut newly_unlocked = Vec::new();
+
+        for item in items {
+            let was_unlocked: Option<bool> = tx
+                .query_row(
+                    "SELECT unlocked FROM achievement_cache
+                     WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3 AND achievement_key = ?4",
+                    params![account_id, storefront as i32, product_id, item.achievement_key],
+                    |row| row.get(0),
+                )
+                .optional()?;
+
+            if item.unlocked && was_unlocked != Some(true) {
+                newly_unlocked.push(item.clone());
+            }
+
+            tx.execute(
+                "INSERT INTO achievement_cache (account_id, storefront, product_id, achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT(account_id, storefront, product_id, achievement_key) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    icon_unlocked_url = excluded.icon_unlocked_url,
+                    icon_locked_url = excluded.icon_locked_url,
+                    unlocked = excluded.unlocked,
+                    unlocked_at = excluded.unlocked_at",
+                params![
+                    account_id,
+                    storefront as i32,
+                    product_id,
+                    item.achievement_key,
+                    item.name,
+                    item.description,
+                    item.icon_unlocked_url,
+                    item.icon_locked_url,
+                    item.unlocked,
+                    item.unlocked_at,
+                ],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(newly_unlocked)
+    }
+
+    pub fn is_favorite(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM favorites WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|row| row.is_some())
+            .map_err(Error::from)
+    }
+
+    /// Every favorited product id for an account — the sidebar's
+    /// "Favoritos" filter checks membership in this set.
+    pub fn list_favorite_ids(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+    ) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT product_id FROM favorites WHERE account_id = ?1 AND storefront = ?2")?;
+        let rows = stmt.query_map(params![account_id, storefront as i32], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+    }
+
+    pub fn set_favorite(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+        favorite: bool,
+    ) -> Result<()> {
+        if favorite {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO favorites (account_id, storefront, product_id) VALUES (?1, ?2, ?3)",
+                params![account_id, storefront as i32, product_id],
+            )?;
+        } else {
+            self.conn.execute(
+                "DELETE FROM favorites WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn get_playtime(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<Playtime> {
+        self.conn
+            .query_row(
+                "SELECT seconds_total, last_played_at FROM playtime
+                 WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
+                |row| {
+                    Ok(Playtime {
+                        seconds_total: row.get(0)?,
+                        last_played_at: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map(Option::unwrap_or_default)
+            .map_err(Error::from)
+    }
+
+    /// Adds one session's worth of seconds and stamps `last_played_at` to
+    /// now. Called once, when the launched process exits.
+    pub fn add_playtime(&self, account_id: &str, storefront: Storefront, product_id: &str, seconds: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO playtime (account_id, storefront, product_id, seconds_total, last_played_at)
+             VALUES (?1, ?2, ?3, ?4, strftime('%s','now'))
+             ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
+                seconds_total = seconds_total + excluded.seconds_total,
+                last_played_at = excluded.last_played_at",
+            params![account_id, storefront as i32, product_id, seconds],
+        )?;
+        Ok(())
+    }
+
+    /// Which bottle to install into when the user doesn't pick one
+    /// explicitly — a single global setting, not per-account: bottles
+    /// aren't tied to a GOG account, so there's no natural per-account
+    /// default the way there is for achievements/playtime.
+    pub fn default_bottle(&self) -> Result<Option<Uuid>> {
+        Ok(self
+            .setting("default_bottle_id")?
+            .and_then(|value| Uuid::parse_str(&value).ok()))
+    }
+
+    pub fn set_default_bottle(&self, bottle_id: Uuid) -> Result<()> {
+        self.set_setting("default_bottle_id", &bottle_id.to_string())
+    }
+
+    /// Whether closing the main window should hide it behind a tray icon
+    /// instead of quitting — read once at launch (see `ui`'s `main.rs`),
+    /// so this is a single global setting, not per-account.
+    pub fn close_to_tray(&self) -> Result<bool> {
+        Ok(self.setting("close_to_tray")?.as_deref() == Some("1"))
+    }
+
+    pub fn set_close_to_tray(&self, close_to_tray: bool) -> Result<()> {
+        self.set_setting("close_to_tray", if close_to_tray { "1" } else { "0" })
+    }
+
+    /// The Proton build to launch with when a game has no per-game choice
+    /// of its own — a bare name from `achv_runtime::steam_runners`, or
+    /// `None` for `achv_runtime::Proton::Latest`.
+    pub fn default_proton(&self) -> Result<Option<String>> {
+        self.setting("default_proton")
+    }
+
+    pub fn set_default_proton(&self, proton: Option<&str>) -> Result<()> {
+        match proton {
+            Some(name) => self.set_setting("default_proton", name),
+            None => self.delete_setting("default_proton"),
+        }
+    }
+
+    /// Every product id's playtime for an account, in one query — for the
+    /// sidebar, which needs all of them at once rather than one round trip
+    /// per game.
+    pub fn all_playtime(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+    ) -> Result<std::collections::HashMap<String, Playtime>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT product_id, seconds_total, last_played_at FROM playtime WHERE account_id = ?1 AND storefront = ?2",
+        )?;
+        let rows = stmt.query_map(params![account_id, storefront as i32], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                Playtime {
+                    seconds_total: row.get(1)?,
+                    last_played_at: row.get(2)?,
+                },
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+    }
+
+    /// Every product id's `(unlocked, total)` achievement counts for an
+    /// account, in one query — same reasoning as [`Db::all_playtime`].
+    pub fn all_achievement_counts(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+    ) -> Result<std::collections::HashMap<String, (usize, usize)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT product_id, COALESCE(SUM(unlocked), 0), COUNT(*) FROM achievement_cache
+             WHERE account_id = ?1 AND storefront = ?2 GROUP BY product_id",
+        )?;
+        let rows = stmt.query_map(params![account_id, storefront as i32], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                (row.get::<_, i64>(1)? as usize, row.get::<_, i64>(2)? as usize),
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+    }
+
+    /// Arbitrary key/value storage — one-off flags and view state that
+    /// don't warrant a table of their own (see [`crate::adopt`] and
+    /// [`crate::profiles`] for two callers).
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(Error::from)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Reverts a setting to unset, distinct from setting it to an empty
+    /// string — needed wherever `None` means "use the built-in default"
+    /// rather than "the empty string".
+    pub fn delete_setting(&self, key: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod real_migration_check;
+#[cfg(test)]
+mod tests;

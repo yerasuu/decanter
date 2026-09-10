@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Runs `dx` (dioxus-cli) inside the project's nix-shell — webkitgtk, xdotool
+# and the LIBRARY_PATH achv-tray's desktop build needs are only present
+# there, not in a plain shell. See ../shell.nix.
+#
+# Usage: scripts/dx serve --platform desktop
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cmd="dx"
+for arg in "$@"; do
+    cmd+=" $(printf '%q' "$arg")"
+done
+
+exec nix-shell "$repo_root/shell.nix" --run "$cmd"

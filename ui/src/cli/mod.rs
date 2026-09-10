@@ -1,0 +1,138 @@
+//! Headless CLI, folded into the same binary as the GUI so achv ships as
+//! one executable instead of a separate `achv-sidecar`. See `achv-gog`
+//! (library listing, installs, achievement polling — all shared with the
+//! GUI) and [`launch`] (resolving and running a profile's install through
+//! `achv-runtime`) for the actual work; this module is dispatch only.
+//!
+//! `main` calls [`Cli::parse`] before ever touching dioxus: a recognized
+//! subcommand runs headless and exits, and no subcommand (the ordinary
+//! double-click launch) falls through to the GUI unchanged.
+
+use achv_core::Db;
+use anyhow::Context;
+use clap::{Parser, Subcommand};
+
+mod install;
+mod launch;
+
+#[derive(Parser)]
+#[command(name = "achv-tray")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub cmd: Option<Cmd>,
+}
+
+#[derive(Subcommand)]
+pub enum Cmd {
+    /// Launches a profile's installed GOG game — resolved live against
+    /// achv's own library, no separate link step — waits for it to exit,
+    /// then polls achievements.
+    Launch {
+        #[arg(long)]
+        profile_id: String,
+        #[arg(long)]
+        product_id: String,
+    },
+    /// Lists a profile's GOG library.
+    Library {
+        #[arg(long)]
+        profile_id: String,
+    },
+    /// Polls achievement status for one game without launching it. The GUI
+    /// does this itself on selection now — mainly useful headless (cron,
+    /// scripts) or for a quick manual re-check.
+    Achievements {
+        #[arg(long)]
+        profile_id: String,
+        #[arg(long)]
+        product_id: String,
+    },
+    /// Diagnostic: calls `achv_gog::install` directly and logs progress —
+    /// same call the GUI's install button drives, run headless so its
+    /// real behavior can be observed independent of the Dioxus app.
+    Install {
+        #[arg(long)]
+        profile_id: String,
+        #[arg(long)]
+        product_id: String,
+        /// Catalog title to record — the depot manifest only carries an
+        /// install directory, not a display name.
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        branch: Option<String>,
+        #[arg(long)]
+        build_id: Option<String>,
+    },
+    /// Cancels an install left running for this (profile, product) —
+    /// useful to clear an orphan left by a client that died mid-transfer.
+    CancelInstall {
+        #[arg(long)]
+        profile_id: String,
+        #[arg(long)]
+        product_id: String,
+    },
+}
+
+/// Runs one CLI command to completion and exits the process. Called from
+/// `main` only when it parsed a subcommand, so this never returns to a
+/// caller that might otherwise go on to launch the GUI.
+pub fn run(cmd: Cmd) -> ! {
+    tracing_subscriber::fmt::init();
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            eprintln!("error: could not start the async runtime: {err}");
+            std::process::exit(1);
+        }
+    };
+    match runtime.block_on(dispatch(cmd)) {
+        Ok(()) => std::process::exit(0),
+        Err(err) => {
+            eprintln!("error: {err:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
+    let mut db = Db::open(achv_core::default_db_path()).context("opening achv cache db")?;
+
+    match cmd {
+        Cmd::Library { profile_id } => {
+            for entry in achv_gog::list_games(&profile_id, &mut |_| {}).await? {
+                println!("{}\t{}", entry.game.id, entry.game.title);
+            }
+        }
+        Cmd::Achievements { profile_id, product_id } => {
+            report_poll(achv_gog::poll_achievements(&mut db, &profile_id, &product_id).await?);
+        }
+        Cmd::Launch { profile_id, product_id } => {
+            launch::launch(&mut db, &profile_id, &product_id).await?;
+        }
+        Cmd::Install {
+            profile_id,
+            product_id,
+            title,
+            branch,
+            build_id,
+        } => {
+            install::install(&profile_id, &product_id, &title, branch.as_deref(), build_id.as_deref()).await?;
+        }
+        Cmd::CancelInstall { profile_id, product_id } => {
+            install::cancel(&profile_id, &product_id).await;
+            println!("cancelled (or nothing was in flight)");
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn report_poll(newly_unlocked: Vec<achv_core::CachedAchievement>) {
+    for achievement in &newly_unlocked {
+        tracing::info!(name = %achievement.name, "achievement unlocked");
+    }
+    if newly_unlocked.is_empty() {
+        tracing::info!("no new achievements this session");
+    }
+}

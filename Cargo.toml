@@ -1,0 +1,57 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/gog", "crates/runtime", "ui"]
+# `ui` is the workspace's only binary crate (achv-tray) — this is what lets
+# `dx serve`/`cargo run`/`cargo build` from the workspace root pick it
+# without needing an explicit `-p`/`--package`.
+default-members = ["ui"]
+
+[workspace.package]
+version = "0.1.0"
+authors = []
+edition = "2024"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+restriction = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+blanket_clippy_restriction_lints = "allow"
+
+redundant_clone = "deny"
+clone_on_ref_ptr = "deny"
+unnecessary_to_owned = "deny"
+
+unnecessary_cast = "deny"
+let_unit_value = "deny"
+unnecessary_wraps = "deny"
+
+trait_duplication_in_bounds = "deny"
+extra_unused_type_parameters = "deny"
+multiple_bound_locations = "deny"
+
+unnecessary_filter_map = "deny"
+needless_collect = "deny"
+manual_flatten = "deny"
+flat_map_option = "deny"
+
+mutex_atomic = "deny"
+mutex_integer = "deny"
+
+format_in_format_args = "deny"
+to_string_in_format_args = "deny"
+string_lit_as_bytes = "deny"
+uninlined_format_args = "deny"
+
+derivable_impls = "deny"
+partial_pub_fields = "deny"
+
+match_like_matches_macro = "deny"
+match_same_arms = "deny"
+match_wild_err_arm = "deny"
+
+empty_docs = "warn"

@@ -1,0 +1,19 @@
+[package]
+name = "achv-runtime"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+futures-util = "0.3.34"
+nix = { version = "0.31.3", default-features = false, features = ["signal"] }
+tokio = { version = "1.53.1", features = ["process", "time"] }
+tracing = "0.1.44"
+
+[dev-dependencies]
+achv-core = { path = "../core" }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }

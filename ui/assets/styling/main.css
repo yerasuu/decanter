@@ -1,0 +1,1775 @@
+:root {
+    /* The dropdown arrow, drawn rather than left to the platform widget.
+       An SVG background can't read `currentColor`, so the two inks the UI
+       actually uses are baked in. */
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238f98a0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --chevron-bright: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ffffff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --bg-deep: #0e141b;
+    --bg-panel: #1b2838;
+    --bg-panel-2: #16202c;
+    --bg-panel-3: #0f1720;
+    --bg-panel-light: #2a3f5a;
+    --line: #2a3947;
+    --accent-blue: #66c0f4;
+    --accent-blue-dim: #4a7a96;
+    --accent-green: #a4d007;
+    --accent-gold: #e0b03e;
+    --text-primary: #c6d4df;
+    --text-muted: #8f98a0;
+    --text-dim: #5c6b76;
+    --text-bright: #ffffff;
+    --radius: 3px;
+    --radius-sm: 2px;
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0;
+    overflow: hidden;
+}
+
+h1, h2, h3 {
+    font-family: 'Oswald', 'Segoe UI', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-bright);
+    margin: 0 0 16px;
+    text-wrap: balance;
+}
+
+h1 {
+    font-size: 30px;
+}
+
+h2 {
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-top: 32px;
+}
+
+a {
+    color: var(--accent-blue);
+}
+
+/* The input reset below clears the UA outline; without this nothing marks
+   where the keyboard is. */
+:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}
+
+img {
+    max-width: 100%;
+    display: block;
+}
+
+/* App shell: fixed topbar, everything else scrolls inside its own pane —
+   nothing here should ever need the body itself to scroll. */
+
+.app-shell {
+    display: grid;
+    /* Third row for `.downbar` -- `auto` rather than a fixed height so it
+       takes zero space when nothing's downloading and DownloadBar
+       renders empty, instead of a permanent blank strip. */
+    grid-template-rows: 52px 1fr auto;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.app-body {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.page {
+    height: 100%;
+    overflow-y: auto;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+.muted {
+    color: var(--text-muted);
+}
+
+.empty {
+    color: var(--text-muted);
+    background: var(--bg-panel-2);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+
+.error {
+    color: #f2a3a3;
+    background: #2a1616;
+    border: 1px solid #4a2323;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+}
+
+/* Primitives shared across views */
+
+.card {
+    background: var(--bg-panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.list-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: background-color 0.12s ease;
+}
+
+.list-row a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.list-row:last-child {
+    border-bottom: none;
+}
+
+.list-row:hover {
+    background: var(--bg-panel);
+}
+
+.badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-panel);
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.badge-gog {
+    color: var(--accent-blue);
+    border-color: var(--accent-blue-dim);
+}
+
+.badge-epic {
+    color: var(--text-primary);
+    border-color: var(--line);
+}
+
+.progress {
+    position: relative;
+    flex: 1;
+    height: 5px;
+    background: var(--bg-panel-3);
+    border-radius: 999px;
+    overflow: hidden;
+    min-width: 60px;
+}
+
+.progress > span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: var(--accent-blue);
+    border-radius: 999px;
+}
+
+.count {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    font-size: 12px;
+    min-width: 48px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+input,
+select {
+    font: inherit;
+    color: var(--text-primary);
+    background-color: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    outline: none;
+    min-width: 0;
+}
+
+/* Every select: no native widget, our own chevron, and room reserved for
+   it on the right. Each variant below only adjusts how much room. */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: var(--chevron);
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    padding-right: 26px;
+    line-height: 1.4;
+}
+
+/* Width comes from the longest option, so the chevron's room has to be
+   added to it rather than carved out of it. The selects that are handed a
+   width by their container are left alone below. */
+.shelf-source,
+.shelf-sort,
+#profile-switcher {
+    box-sizing: content-box;
+}
+
+/* The rule above is written for text fields; checkboxes inherit its
+   padding and sizing and come out as large empty boxes without this. */
+input[type="checkbox"] {
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+}
+
+input:focus {
+    border-color: var(--accent-blue-dim);
+}
+
+input::placeholder {
+    color: var(--text-dim);
+}
+
+.field-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    max-width: 520px;
+}
+
+.field-row input {
+    flex: 1;
+}
+
+button {
+    font: inherit;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 9px 16px;
+    background: var(--accent-blue);
+    color: #0a1620;
+    transition: filter 0.12s ease, background-color 0.12s ease;
+    flex-shrink: 0;
+}
+
+button:hover {
+    filter: brightness(1.12);
+}
+
+button.secondary {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--line);
+}
+
+button.secondary:hover {
+    background: var(--bg-panel-light);
+    filter: none;
+}
+
+button.icon-btn {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 6px 10px;
+}
+
+button.icon-btn:hover {
+    background: transparent;
+    color: #f2a3a3;
+    filter: none;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+button:disabled:hover {
+    background: transparent;
+    color: var(--text-muted);
+    filter: none;
+}
+
+/* Steam-like library: sidebar list + detail pane */
+
+.library-page {
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+    /* Positioning context for the filter overlay, which starts where the
+       sidebar ends. */
+    position: relative;
+}
+
+.library-sidebar {
+    width: 292px;
+    flex-shrink: 0;
+    background: var(--bg-panel-3);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.library-search {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+/* Scoped to the search box itself: the filter panel lives inside
+   `.library-search` too, and a blanket rule here would stretch every one
+   of its checkboxes to full width. */
+.library-search .search-row input {
+    width: 100%;
+    background: var(--bg-panel);
+    font-size: 12px;
+}
+
+.library-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 8px;
+}
+
+.library-sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    cursor: pointer;
+    color: var(--text-primary);
+    border-left: 3px solid transparent;
+    font-size: 12.5px;
+    transition: background-color .1s ease;
+}
+
+.library-sidebar-item:hover {
+    background: var(--bg-panel-2);
+}
+
+.library-sidebar-item.active {
+    background: var(--bg-panel-2);
+    color: var(--text-bright);
+    border-left-color: var(--accent-blue);
+}
+
+.library-sidebar-item img,
+.library-sidebar-item-fallback {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    background: var(--bg-panel-light);
+    flex-shrink: 0;
+}
+
+.library-detail {
+    flex: 1;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+.library-detail-inner {
+    padding: 0 0 60px;
+}
+
+/* Game detail hero + achievements */
+
+.game-hero {
+    position: relative;
+    min-height: 300px;
+    overflow: hidden;
+    background-color: var(--bg-panel-2);
+    background-image:
+        linear-gradient(180deg, rgba(14, 20, 27, 0) 0%, rgba(14, 20, 27, 0.55) 55%, rgba(14, 20, 27, 1) 100%),
+        radial-gradient(110% 90% at 30% 20%, var(--bg-panel-light) 0%, var(--bg-panel) 45%, var(--bg-panel-3) 100%);
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: flex-end;
+}
+
+.game-hero-stats {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    display: flex;
+    gap: 10px;
+}
+
+.hero-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(14, 20, 27, 0.7);
+    backdrop-filter: blur(4px);
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+}
+
+.hero-stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+.hero-stat-label {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-top: 2px;
+    text-transform: uppercase;
+}
+
+.game-hero-overlay {
+    width: 100%;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.game-hero-overlay h1 {
+    margin: 0;
+    font-size: 34px;
+}
+
+/* The title and its favourite star on one line, the star pushed to the
+   far edge so a long title never collides with it. */
+.game-hero-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.game-hero-title h1 {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Bigger than the action-bar buttons it used to sit among, and with no
+   box of its own: over hero art it reads as part of the title. */
+.game-hero-title .favorite-btn {
+    flex-shrink: 0;
+    font-size: 26px;
+    padding: 4px 6px;
+    background: none;
+    border: none;
+}
+
+.game-action-bar {
+    padding: 24px 32px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.favorite-btn {
+    font-size: 18px;
+    line-height: 1;
+    padding: 10px 14px;
+}
+
+.favorite-btn.active {
+    color: var(--accent-gold);
+}
+
+.favorite-btn:hover {
+    color: var(--accent-gold);
+}
+
+.tabs {
+    display: flex;
+    gap: 24px;
+    border-bottom: 1px solid var(--line);
+    margin: 24px 32px 0;
+}
+
+.tabs button {
+    background: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 0 12px;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+}
+
+.tabs button:hover {
+    filter: none;
+    color: var(--text-bright);
+}
+
+.tabs button.active {
+    color: var(--text-bright);
+    border-bottom-color: var(--accent-blue);
+}
+
+.stat-row {
+    display: flex;
+    gap: 14px;
+    margin: 20px 32px 0;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    flex: 1;
+    min-width: 140px;
+    background: var(--bg-panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+}
+
+.stat-card .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 17px;
+    color: var(--text-bright);
+    font-weight: 700;
+}
+
+.stat-card .lbl {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.summary-text {
+    margin: 20px 32px 40px;
+    max-width: 720px;
+}
+
+.summary-text p {
+    margin: 0 0 10px;
+    line-height: 1.6;
+}
+
+.play-btn {
+    font-size: 14px;
+    padding: 13px 36px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--accent-green);
+    color: #132406;
+}
+
+.achv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+    margin: 20px 32px 0;
+}
+
+.achv-tile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    min-width: 0;
+}
+
+.achv-tile.unlocked {
+    border-color: rgba(224, 176, 62, 0.4);
+}
+
+.achv-tile.locked {
+    opacity: 0.5;
+}
+
+.achv-icon {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-panel-light);
+    overflow: hidden;
+}
+
+.achv-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.achv-tile.locked .achv-icon img {
+    filter: grayscale(1);
+}
+
+.achv-info {
+    min-width: 0;
+}
+
+.achv-name {
+    font-weight: 600;
+    font-size: 12.5px;
+    color: var(--text-bright);
+}
+
+.achv-desc {
+    font-size: 11px;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.achv-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    margin-top: 4px;
+}
+
+.empty.achv-empty,
+.error.achv-empty {
+    margin: 20px 32px 0;
+}
+
+/* Install / uninstall */
+
+.install-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 220px;
+}
+
+.bar-track {
+    height: 4px;
+    background: var(--bg-panel-3);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    background: var(--accent-blue);
+    transition: width 0.2s ease;
+}
+
+.bar-track.indeterminate .bar-fill {
+    width: 30% !important;
+    animation: install-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes install-indeterminate {
+    0% { transform: translateX(-100%); }
+
+100% { transform: translateX(333%); }
+
+}
+
+/* The first-sync splash (see `library::LibraryLoading`) -- same
+   indeterminate bar as an install's, just bigger and centered. */
+.library-loading {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.library-loading-inner {
+    width: min(360px, 80vw);
+    text-align: center;
+}
+
+.library-loading-inner h2 {
+    margin-bottom: 20px;
+}
+
+.library-loading-inner .bar-track {
+    height: 6px;
+    margin-bottom: 14px;
+}
+
+.install-progress-label {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Descargas — one row per install in flight. The bar and label styles are
+   shared with the per-game install progress so the same download reads
+   identically in both places. */
+.download-row {
+    align-items: flex-start;
+}
+
+.download-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.download-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+/* The path can be long and arbitrary; truncating keeps it from pushing
+   the cancel button off the row. */
+.download-file {
+    font-size: 11px;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.download-actions {
+    flex-shrink: 0;
+}
+
+/* Search row: the query box, a clear affordance that only exists while
+   there's something to clear, and the filter toggle. */
+.search-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.search-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* `icon-btn` is borderless by default, so the toggle carries a
+   transparent one to reserve the space its active state fills in. */
+.search-clear,
+.filter-toggle {
+    flex-shrink: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+}
+
+.search-clear,
+.filter-toggle {
+    font-size: 13px;
+    line-height: 1;
+}
+
+/* `icon-btn`'s hover is the red of a destructive action; neither of these
+   destroys anything. */
+.search-clear:hover,
+.filter-toggle:hover {
+    color: var(--text-primary);
+    background: var(--bg-panel);
+}
+
+.filter-toggle.active {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+/* Count of active constraints, so a filtered library never looks empty
+   for no visible reason. */
+.filter-badge {
+    margin-left: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--accent-blue);
+    /* Dark ink on the blue, as every other badge on it uses: white here
+       fails contrast outright. */
+    color: #0a1620;
+    border-radius: 8px;
+    padding: 0 5px;
+}
+
+/* Filter panel: a wide overlay across the content, as Steam lays it
+   out. Anchored to the library split so it starts where the list ends. */
+
+.filters {
+  position: absolute;
+  left: 292px;
+  top: 0;
+  width: min(720px, calc(100% - 292px));
+  max-height: 100%;
+  overflow-y: auto;
+  /* Above its own backdrop (z-index 40, `.context-backdrop`), same
+     pairing every other popup in this view uses -- otherwise the
+     backdrop sits on top and swallows clicks meant for the panel. */
+  z-index: 41;
+  background: var(--bg-panel-2);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 18px 0 40px rgba(0, 0, 0, .38);
+}
+
+.filters-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 20px 24px 4px;
+}
+
+.filters-head h2 {
+  flex: 1;
+  margin: 0;
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-bright);
+  text-wrap: balance;
+}
+
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.link-btn:hover { color: var(--accent-blue); background: var(--bg-panel); }
+
+.link-btn:active { transform: translateY(1px); }
+
+/* Sections read side by side, the way Steam lays them out; the genre list
+   takes the full width because it is the only one long enough to need it. */
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px 26px;
+  padding: 18px 24px 22px;
+}
+
+.fgroup-wide { grid-column: 1 / -1; }
+
+.fgroup-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+  margin-bottom: 4px;
+}
+
+.fgroup-note {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin: 0 0 8px;
+}
+
+.fgroup-note strong { color: var(--text-muted); font-weight: 600; }
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 0;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.check input { accent-color: var(--accent-blue); flex-shrink: 0; margin: 0; }
+
+.check:hover { color: var(--text-bright); }
+
+.check .tally {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Genres run in columns rather than a scroller: the whole point of the
+   wide panel is that the list is visible at once. */
+.genre-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0 26px;
+}
+
+.fgroup select {
+  width: 100%;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--line);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  font-size: 12.5px;
+}
+
+.filters-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.filters-result {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.save-btn {
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #0a1620;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 9px 16px;
+  transition: filter .12s ease;
+}
+
+.save-btn:hover { filter: brightness(1.1); }
+
+.save-btn:active { transform: translateY(1px); }/* Shelf slots: the source picker doubles as the row's title, styled as a
+   heading that happens to be operable rather than a form control parked
+   beside one. */
+
+.browser-shelf-head .shelf-count { margin-left: auto; }
+
+/* Buttons read as one family: a real hit area, a hover that fills rather
+   than only recolouring, and a pressed state. `icon-btn` alone gave the
+   first two to some controls and not others. */
+.icon-btn:active:not([disabled]),
+button.secondary:active:not([disabled]) {
+    transform: translateY(1px);
+}
+
+/* Capsule pips. Installed and favourite are different kinds of fact, so
+   they get different colours rather than a shared badge. */
+
+.cover-pip {
+    background: rgba(10, 22, 32, 0.88);
+    border-radius: var(--radius-sm);
+    padding: 1px 5px;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.cover-favorite { color: var(--accent-gold); }
+
+/* The same installed signal the capsules carry, so the list and the
+   shelves agree without opening anything. */
+.sidebar-item-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sidebar-item-dot {
+    margin-left: auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    flex-shrink: 0;
+}
+
+.profile-avatar {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--accent-blue-dim), var(--bg-panel-light));
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+/* Avatar and switcher are one control; the topbar's own gap is sized for
+   separate items. */
+.profile-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Long genre names truncate rather than push their count off the row. */
+.check-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Under the capsule: time played and how much of the achievement set is
+   done — the two numbers a shelf gets scanned for. */
+.cover-meta {
+    display: block;
+    margin-top: 7px;
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cover-card:hover .cover-meta { color: var(--text-primary); }
+
+/* Restored: these rules were dropped by an over-eager dead-CSS sweep.
+   Recovered verbatim from the last complete build. */
+
+.kind-row {
+    align-items:center;
+    gap:6px;
+    margin-bottom:8px;
+    display:flex;
+}
+
+.kind-select {
+    flex:1;
+    min-width:0;
+    padding:6px 8px;
+    padding-right:24px;
+    font-size:12px;
+}
+
+.quick-toggle {
+    border-radius:var(--radius-sm);
+    border:1px solid transparent;
+    flex-shrink:0;
+    padding:5px 8px;
+    font-size:13px;
+    line-height:1;
+}
+
+.quick-toggle:hover {
+    color:var(--text-primary);
+    background:var(--bg-panel);
+}
+
+.quick-toggle.active {
+    border-color:var(--accent-blue);
+    background:var(--bg-panel);
+}
+
+.shelf-head {
+    font-family:'Oswald','Segoe UI',sans-serif;
+    letter-spacing:.11em;
+    width:100%;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    cursor:pointer;
+    background:0 0;
+    border:none;
+    align-items:center;
+    gap:7px;
+    padding:14px 14px 6px;
+    font-size:10.5px;
+    font-weight:600;
+    display:flex;
+}
+
+.shelf-head:hover {
+    color:var(--text-muted);
+    filter:none;
+    background:0 0;
+}
+
+.shelf-chevron {
+    flex-shrink:0;
+    width:9px;
+}
+
+.shelf-title {
+    text-align:left;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    flex:1;
+    overflow:hidden;
+}
+
+.shelf {
+    position:relative;
+}
+
+/* A dragged shelf and the one under the pointer while it's dragging --
+   same visual language as `.browser-shelf`'s own drag styling below, just
+   scoped to the sidebar's narrower rows. */
+.shelf.dragging {
+    opacity: .45;
+}
+
+.shelf.reorder-target .shelf-head {
+    box-shadow: 0 -2px 0 var(--accent-blue);
+}
+
+.shelf-head[draggable="true"] {
+    cursor: grab;
+}
+
+.shelf-head[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.shelf-rename {
+    width:calc(100% - 28px);
+    margin:10px 14px 2px;
+    padding:5px 7px;
+    font-size:12px;
+}
+
+.context-backdrop {
+    z-index:40;
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+}
+
+.context-menu {
+    z-index:41;
+    background:var(--bg-panel-2);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    min-width:210px;
+    max-width:280px;
+    padding:6px;
+    position:fixed;
+    box-shadow:0 8px 24px rgba(0,0,0,.45);
+}
+
+.context-menu-title {
+    color:var(--text-bright);
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    padding:4px 8px 8px;
+    font-size:12px;
+    font-weight:600;
+    overflow:hidden;
+}
+
+.context-menu-item {
+    text-align:left;
+    width:100%;
+    color:var(--text-primary);
+    letter-spacing:0;
+    border-radius:var(--radius-sm);
+    background:0 0;
+    border:none;
+    align-items:center;
+    gap:7px;
+    padding:6px 8px;
+    font-size:12px;
+    font-weight:400;
+    display:flex;
+}
+
+.context-menu-item:hover {
+    background:var(--bg-panel-light);
+    filter:none;
+}
+
+.context-menu-danger {
+    color: #f2a3a3;
+}
+
+.context-menu-danger:hover {
+    background: #3a2020;
+}
+
+.context-menu-check {
+    width:12px;
+    color:var(--accent-blue);
+    flex-shrink:0;
+}
+
+.context-menu-separator {
+    background:var(--line);
+    height:1px;
+    margin:6px 0;
+}
+
+.context-menu-label {
+    font-family:'Oswald','Segoe UI',sans-serif;
+    letter-spacing:.09em;
+    color:var(--text-dim);
+    padding:2px 8px 4px;
+    font-size:9.5px;
+    font-weight:600;
+}
+
+.context-menu-empty {
+    color:var(--text-dim);
+    padding:2px 8px 6px;
+    font-size:11px;
+}
+
+.context-menu-scroll {
+    max-height:200px;
+    overflow-y:auto;
+}
+
+.context-menu-form input {
+    width:100%;
+    padding:5px 7px;
+    font-size:12px;
+}
+
+.shelf-browser {
+    height:100%;
+    padding:22px 0 56px;
+    overflow-y:auto;
+}
+
+.row-arrow:active {
+    transform:translateY(1px);
+}
+
+.cover-fallback {
+    box-shadow:inset 0 0 0 1px var(--line);
+    background-color:var(--bg-panel-2);
+}
+
+/* Colour only: the geometry belongs to `.cover-pips`, which lays both
+   pips out in one row. Positioning this one itself put it on top of the
+   favourite star instead of beside it. */
+.cover-installed {
+    color:var(--accent-green);
+}
+
+.collection-chips {
+    flex-wrap:wrap;
+    gap:6px;
+    padding:0 0 16px;
+    display:flex;
+}
+
+.chip {
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    color:var(--text-muted);
+    border-radius:999px;
+    padding:3px 9px;
+    font-size:11px;
+}
+
+.shelf-drop {
+    background:var(--bg-panel);
+    box-shadow:inset 0 0 0 1px var(--accent-blue);
+}
+
+.context-menu-tag {
+    margin-left:auto;
+}
+
+/* Recovered: base rules dropped by an over-eager dead-CSS sweep, whose
+   :hover variants survived and hid them from the first pass. */
+
+input[type=checkbox] {
+    background:0 0;
+    border:none;
+    width:auto;
+    min-width:0;
+    margin:0;
+    padding:0;
+}
+
+.favorite-btn.active,.favorite-btn:hover {
+    color:var(--accent-gold);
+}
+
+.shelf-count {
+    flex-shrink:0;
+    font-family:JetBrains Mono,monospace;
+    letter-spacing:0;
+    font-variant-numeric:tabular-nums;
+}
+
+.browser-shelf-head .shelf-count {
+    font-size:11px;
+    color:var(--text-dim);
+}
+
+
+.library-sidebar-item.marked {
+    background:var(--bg-panel-light);
+    border-left-color:var(--accent-gold);
+}
+
+.browser-shelf-head[draggable=true] {
+    cursor:grab;
+}
+
+.browser-shelf-head[draggable=true]:active {
+    cursor:grabbing;
+}
+
+/* Shelf and capsule layout, ported verbatim from the design prototype
+   so the two cannot drift: header as a drag handle, source select as the
+   title, hidden scrollbar paged by edge arrows. */
+
+/* ---- main pane ---- */
+
+.browser-shelf { margin-bottom: 30px; }
+
+/* Each row is a slot: the source it draws from and the order it uses are
+   the row's own settings, so the same collection can appear twice sorted
+   two different ways. */
+.browser-shelf-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 26px 11px;
+}
+
+/* The source select is the shelf's title — styled as a heading that
+   happens to be operable, not as a form control sitting next to one. */
+.shelf-source {
+  background-color: transparent;
+  background-image: var(--chevron-bright);
+  background-position: right 1px center;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-bright);
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 2px 0;
+  padding-right: 17px;
+  max-width: 320px;
+}
+
+.shelf-source:hover { border-bottom-color: var(--accent-blue); }
+
+.shelf-sort {
+  background-color: var(--bg-panel-2);
+  background-position: right 6px center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 3px 6px;
+  padding-right: 21px;
+}
+
+.shelf-sort:hover { color: var(--text-primary); border-color: var(--accent-blue-dim); }
+
+/* Buttons share one treatment so they read as one family: a real hit
+   area, a hover that fills rather than only recolours, a pressed state,
+   and a focus ring that survives on any of the panel grounds. */
+.shelf-remove {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+
+.shelf-remove:hover:not([disabled]) {
+  color: #f2a3a3;
+  background: var(--bg-panel-2);
+  border-color: #4a2323;
+}
+
+.shelf-remove:active:not([disabled]) { transform: translateY(1px); }
+
+.shelf-remove[disabled] { opacity: .3; cursor: not-allowed; }
+
+/* The header is the drag handle, as it is in Steam; the grip only says so
+   out loud. */
+.browser-shelf-head[draggable="true"] { cursor: grab; }
+
+.browser-shelf-head[draggable="true"]:active { cursor: grabbing; }
+
+.shelf-grip {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -2px;
+  flex-shrink: 0;
+}
+
+.browser-shelf-head:hover .shelf-grip { color: var(--text-muted); }
+
+.browser-shelf.dragging { opacity: .45; }
+
+.browser-shelf.drop-target .browser-shelf-head {
+  box-shadow: 0 -2px 0 var(--accent-blue);
+}
+
+.add-shelf {
+  display: block;
+  margin: 4px 26px 0;
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 10px 14px;
+  width: calc(100% - 52px);
+  text-align: left;
+}
+
+.add-shelf:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: var(--bg-panel-2); }
+
+.add-shelf:active { transform: translateY(1px); }
+
+/* Steam pages its shelves with edge arrows and shows no scrollbar: a
+   visible track under every row turns a wall of art into a wall of
+   chrome. The row still scrolls by wheel, drag and keyboard — only the
+   track is hidden. */
+.browser-viewport {
+  position: relative;
+}
+
+.browser-row {
+  display: flex;
+  gap: 13px;
+  overflow-x: auto;
+  padding: 4px 26px 10px;
+  scroll-behavior: smooth;
+  scroll-padding-inline: 26px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.browser-row::-webkit-scrollbar { display: none; }
+
+/* Arrows sit over the row's own edges and fade in with it, so a shelf at
+   rest is just its art. */
+.row-arrow {
+  position: absolute;
+  top: 0;
+  bottom: 18px;
+  width: 46px;
+  display: grid;
+  place-items: center;
+  border: none;
+  color: var(--text-bright);
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s ease;
+  z-index: 2;
+}
+
+.row-arrow.left {
+  left: 0;
+  background: linear-gradient(90deg, var(--bg-deep) 34%, rgba(14, 20, 27, 0));
+}
+
+.row-arrow.right {
+  right: 0;
+  background: linear-gradient(270deg, var(--bg-deep) 34%, rgba(14, 20, 27, 0));
+}
+
+.browser-viewport:hover .row-arrow:not(.at-edge),
+.row-arrow:focus-visible:not(.at-edge) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row-arrow:hover { color: var(--accent-blue); }
+
+/* Nothing left to page: taken out entirely rather than left at zero
+   opacity, so no other rule can bring it back. */
+.row-arrow.at-edge { display: none; }
+
+.cover-card {
+  position: relative;
+  flex-shrink: 0;
+  width: 136px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+}
+
+/* Cover art is generated, not fetched: the artifact CSP blocks GOG's CDN,
+   so each capsule gets a deterministic gradient keyed to its title. */
+/* The art is a painted box rather than an <img> so the title can sit
+   inside it over a scrim, as the prototype has it. The cover comes in as
+   a background so a missing one degrades to the panel ground instead of a
+   broken-image glyph. */
+.cover-art {
+  width: 136px;
+  height: 204px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-panel);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+/* Fills the frame under the scrim; the title is laid over both. */
+.cover-art-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Darkens the bottom of the art so the title reads over any cover. */
+.cover-scrim {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(14,20,27,0) 42%, rgba(14,20,27,.86) 100%);
+}
+
+.cover-art-title {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 11px;
+  /* Three lines is what the scrim covers; a longer title would climb out
+     of the dark and back onto the artwork. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: 'Oswald', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0,0,0,.6);
+}
+
+.cover-card:hover .cover-art {
+  transform: translateY(-4px);
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 10px 22px rgba(0, 0, 0, .45);
+}
+
+.cover-card:active .cover-art { transform: translateY(-1px); }
+
+.cover-pips {
+  position: absolute;
+  top: 7px; right: 7px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+}
+
+/* Shared by both panes, so the gutter follows the pane rather than the
+   browser row it was written for. */
+.shelf-empty {
+  margin: 0 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.browser-shelf .shelf-empty {
+  margin: 0 26px;
+  padding: 16px;
+}
+/* Marks a shelf whose contents follow a saved filter rather than a list of
+   games — the same tag the context menu uses, so both share the rule. */
+.auto-tag,
+.context-menu-tag {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-blue);
+    border: 1px solid var(--accent-blue-dim);
+    border-radius: 8px;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+
+/* The properties dialog: a backdrop covering the whole window and a
+   floating panel on top of it, the way Steam's own Properties window
+   reads even though this one lives inside the app rather than as its
+   own OS window (see properties.rs for why). */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 12, 18, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+
+.modal-panel {
+    background: var(--bg-panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    max-height: 82vh;
+    overflow: hidden;
+}
+
+.properties-panel {
+    width: min(640px, 92vw);
+}
+
+/* Propiedades as its own window, laid out the same way the main window
+   is: a topbar you can drag the window by, and a left-hand section list
+   next to the content pane -- Steam's own Properties shape, and this
+   app's own shape for "a topbar and a sidebar of sections" already. */
+.properties-window {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.properties-nav {
+    width: 180px;
+    flex-shrink: 0;
+    background: var(--bg-panel-3);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+/* `.properties-nav-item` is a plain `button`, which the global `button`
+   rule fills solid blue by default (see main.css's own base rule) -- same
+   override `.tabs button` already does for the same reason, just kept as
+   a left-accented row instead of an underline. */
+.properties-nav-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 9px 18px;
+    cursor: pointer;
+    background: none;
+    color: var(--text-muted);
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-align: left;
+    transition: background-color .1s ease, color .1s ease;
+}
+
+.properties-nav-item:hover {
+    background: var(--bg-panel-2);
+    color: var(--text-primary);
+    filter: none;
+}
+
+.properties-nav-item.active {
+    background: var(--bg-panel-2);
+    color: var(--text-bright);
+    border-left-color: var(--accent-blue);
+}
+
+.properties-window .properties-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--line);
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.properties-tabs {
+    margin: 0 24px;
+}
+
+.properties-body {
+    padding: 20px 24px 24px;
+    overflow-y: auto;
+}
+
+.properties-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.properties-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 13px;
+}
+
+.properties-row span:first-child {
+    color: var(--text-muted);
+}
