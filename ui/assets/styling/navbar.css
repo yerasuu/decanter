@@ -105,6 +105,39 @@
     max-width: 200px;
 }
 
+/* "+ Crear perfil"'s popup. Floating rather than inline in `.top-right`:
+   the topbar's row is a fixed 52px and clips anything taller (see
+   `.app-shell`), which an input, two buttons and a possible error line
+   would not have fit inside. Same backdrop-plus-panel pairing every other
+   popup in the app uses. */
+.new-profile-popup {
+    position: fixed;
+    top: 60px;
+    right: 18px;
+    z-index: 41;
+    width: 260px;
+    background: var(--bg-panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+.new-profile-popup h2 {
+    margin: 0 0 12px;
+}
+
+.new-profile-popup input {
+    width: 100%;
+}
+
+.new-profile-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
 .window-controls {
     display: flex;
     align-items: center;

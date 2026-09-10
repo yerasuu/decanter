@@ -20,12 +20,31 @@ pub fn Storage() -> Element {
         };
     };
 
-    let mut games: Vec<_> = crate::core::installed(&profile_id).into_values().collect();
+    // What's installed is filed per account (see `achv_core::library`),
+    // not per profile, so every account the profile groups gets its own
+    // scan — a shortcut is the one exception, filed under the profile
+    // itself since it was never owned by any storefront account.
+    let mut games: Vec<_> = crate::core::db()
+        .and_then(|db| db.accounts_in_profile(&profile_id).map_err(|err| err.to_string()))
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list accounts, storage view shows nothing installed"))
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|account| crate::core::installed(&account.id).into_values().collect::<Vec<_>>())
+        .collect();
     games.extend(crate::core::shortcuts(&profile_id));
     games.sort_by_key(|game| std::cmp::Reverse(game.size_on_disk.unwrap_or(0)));
 
     let total: u64 = games.iter().filter_map(|game| game.size_on_disk).sum();
-    let library_path = crate::core::library().ok().map(|library| library.root().to_path_buf());
+    tracing::debug!(
+        profile_id,
+        game_count = games.len(),
+        total_bytes = total,
+        "computed storage usage"
+    );
+    let library_path = crate::core::library()
+        .inspect_err(|err| tracing::warn!(error = %err, "failed to resolve library root for storage view"))
+        .ok()
+        .map(|library| library.root().to_path_buf());
     let disk = library_path.as_deref().and_then(achv_core::disk_usage);
 
     rsx! {

@@ -14,3 +14,6 @@ pub use navbar::Navbar;
 
 mod downloads;
 pub use downloads::Downloads;
+
+mod onboarding;
+pub use onboarding::Onboarding;

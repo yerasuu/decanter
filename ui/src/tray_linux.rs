@@ -57,7 +57,9 @@ impl Tray for AchvTray {
     // working, unlike the icon-click path `tray-icon`'s AppIndicator
     // backend never delivered on Linux at all.
     fn activate(&mut self, _x: i32, _y: i32) {
-        let _ = self.commands.send(TrayCommand::Show);
+        if self.commands.send(TrayCommand::Show).is_err() {
+            tracing::warn!("tray command channel closed, could not forward show command");
+        }
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
@@ -65,7 +67,9 @@ impl Tray for AchvTray {
             StandardItem {
                 label: "Mostrar achv".to_string(),
                 activate: Box::new(|tray: &mut Self| {
-                    let _ = tray.commands.send(TrayCommand::Show);
+                    if tray.commands.send(TrayCommand::Show).is_err() {
+                        tracing::warn!("tray command channel closed, could not forward show command");
+                    }
                 }),
                 ..Default::default()
             }
@@ -74,7 +78,9 @@ impl Tray for AchvTray {
             StandardItem {
                 label: "Salir".to_string(),
                 activate: Box::new(|tray: &mut Self| {
-                    let _ = tray.commands.send(TrayCommand::Quit);
+                    if tray.commands.send(TrayCommand::Quit).is_err() {
+                        tracing::warn!("tray command channel closed, could not forward quit command");
+                    }
                 }),
                 ..Default::default()
             }
@@ -115,7 +121,10 @@ pub fn spawn() -> UnboundedReceiver<TrayCommand> {
     tokio::spawn(async move {
         let tray = AchvTray { commands };
         match tray.spawn().await {
-            Ok(handle) => std::mem::forget(handle),
+            Ok(handle) => {
+                tracing::info!("linux tray icon started");
+                std::mem::forget(handle);
+            }
             Err(err) => tracing::warn!("could not start the Linux tray icon: {err}"),
         }
     });

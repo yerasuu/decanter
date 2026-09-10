@@ -11,7 +11,7 @@
 //! `VirtualDom`, which normally costs having to re-plumb every context
 //! provider the main window's root sets up (`CoreResource`, `GogLibrary`,
 //! `Background`) into it — but nothing below ever reads one of those, only
-//! `crate::core`/`achv_gog` free functions and the `game`/`profile_id`
+//! `crate::core`/`achv_gog` free functions and the `game`/`account_id`
 //! passed in directly, so there is nothing to re-plumb.
 
 use achv_core::{CachedGame, Game};
@@ -39,9 +39,9 @@ enum Tab {
 /// Nothing stops a second click from opening a second window on the same
 /// game; Steam's own dialog doesn't either.
 #[cfg(feature = "desktop")]
-pub(super) fn open_properties_window(game: Game, profile_id: String) {
+pub(super) fn open_properties_window(game: Game, account_id: String) {
     let title = format!("Propiedades — {}", game.title);
-    let dom = VirtualDom::new_with_props(PropertiesWindow, PropertiesWindowProps { game, profile_id });
+    let dom = VirtualDom::new_with_props(PropertiesWindow, PropertiesWindowProps { game, account_id });
     dioxus::desktop::window().new_window(
         dom,
         dioxus::desktop::Config::new().with_window(
@@ -60,7 +60,7 @@ pub(super) fn open_properties_window(game: Game, profile_id: String) {
 }
 
 #[cfg(not(feature = "desktop"))]
-pub(super) fn open_properties_window(_game: Game, _profile_id: String) {}
+pub(super) fn open_properties_window(_game: Game, _account_id: String) {}
 
 /// This window's own close -- unlike the main window's (see
 /// `navbar::close_main_window`), nothing to stop first.
@@ -73,7 +73,7 @@ fn close_this_window() {
 const fn close_this_window() {}
 
 #[component]
-fn PropertiesWindow(game: Game, profile_id: String) -> Element {
+fn PropertiesWindow(game: Game, account_id: String) -> Element {
     let mut tab = use_signal(|| Tab::General);
 
     rsx! {
@@ -149,28 +149,28 @@ fn PropertiesWindow(game: Game, profile_id: String) -> Element {
                 div { class: "properties-body",
                     match tab() {
                         Tab::General => rsx! {
-                            GeneralTab { game, profile_id }
+                            GeneralTab { game, account_id }
                         },
                         Tab::Updates => rsx! {
-                            UpdatesTab { game, profile_id }
+                            UpdatesTab { game, account_id }
                         },
                         Tab::LocalFiles => rsx! {
-                            LocalFilesTab { game, profile_id }
+                            LocalFilesTab { game, account_id }
                         },
                         Tab::CloudSaves => rsx! {
-                            CloudSavesTab { game, profile_id }
+                            CloudSavesTab { game, account_id }
                         },
                         Tab::Dlc => rsx! {
-                            DlcTab { game, profile_id }
+                            DlcTab { game, account_id }
                         },
                         Tab::Betas => rsx! {
-                            BetasTab { game, profile_id }
+                            BetasTab { game, account_id }
                         },
                         Tab::Versions => rsx! {
-                            VersionsTab { game, profile_id }
+                            VersionsTab { game, account_id }
                         },
                         Tab::Compatibility => rsx! {
-                            CompatibilityTab { game, profile_id }
+                            CompatibilityTab { game, account_id }
                         },
                     }
                 }
@@ -180,11 +180,16 @@ fn PropertiesWindow(game: Game, profile_id: String) -> Element {
 }
 
 #[component]
-fn GeneralTab(game: Game, profile_id: String) -> Element {
-    let installed = crate::core::installed_game(&profile_id, &game.id);
-    let playtime = crate::views::library::data::load_playtime(&profile_id, &game.id);
+fn GeneralTab(game: Game, account_id: String) -> Element {
+    let installed = crate::core::installed_game(&account_id, &game.id);
+    let playtime = crate::views::library::data::load_playtime(&account_id, &game.id);
     let path = installed.as_ref().and_then(|installed| {
-        let Some(library) = crate::core::library().ok() else {
+        let Some(library) = crate::core::library()
+            .inspect_err(
+                |err| tracing::warn!(account_id, product_id = %game.id, error = %err, "failed to resolve library root"),
+            )
+            .ok()
+        else {
             return None;
         };
         library.install_dir(&installed.install_dir)
@@ -242,13 +247,13 @@ fn GeneralTab(game: Game, profile_id: String) -> Element {
 }
 
 #[component]
-fn UpdatesTab(game: Game, profile_id: String) -> Element {
+fn UpdatesTab(game: Game, account_id: String) -> Element {
     let mut checking = use_signal(|| false);
     let mut result = use_signal(|| None::<Option<String>>);
     let mut updating = use_signal(|| false);
     let mut error = use_signal(String::new);
 
-    let installed = crate::core::installed_game(&profile_id, &game.id);
+    let installed = crate::core::installed_game(&account_id, &game.id);
     let Some(installed) = installed else {
         return rsx! {
             p { class: "muted", "El juego no está instalado." }
@@ -272,14 +277,18 @@ fn UpdatesTab(game: Game, profile_id: String) -> Element {
                 class: "secondary",
                 disabled: checking(),
                 onclick: move |_| {
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let installed = installed.clone();
                     checking.set(true);
                     error.set(String::new());
+                    tracing::debug!(account_id, product_id = %installed.game_id, "checking gog for a newer build");
                     spawn(async move {
-                        match achv_gog::check_update(&profile_id, &installed).await {
+                        match achv_gog::check_update(&account_id, &installed).await {
                             Ok(update) => result.set(Some(update)),
-                            Err(err) => error.set(err.to_string()),
+                            Err(err) => {
+                                tracing::error!(account_id, product_id = %installed.game_id, error = %err, "update check failed");
+                                error.set(err.to_string());
+                            }
                         }
                         checking.set(false);
                     });
@@ -293,7 +302,7 @@ fn UpdatesTab(game: Game, profile_id: String) -> Element {
 
             match result() {
                 Some(Some(build_id)) => {
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let product_id = game.id.clone();
                     let title = game.title;
                     rsx! {
@@ -301,14 +310,15 @@ fn UpdatesTab(game: Game, profile_id: String) -> Element {
                         button {
                             disabled: updating(),
                             onclick: move |_| {
-                                let profile_id = profile_id.clone();
+                                let account_id = account_id.clone();
                                 let product_id = product_id.clone();
                                 let title = title.clone();
                                 updating.set(true);
                                 error.set(String::new());
+                                tracing::info!(account_id, product_id, "update install started");
                                 spawn(async move {
                                     let outcome = achv_gog::install(
-                                            &profile_id,
+                                            &account_id,
                                             &product_id,
                                             None,
                                             &title,
@@ -318,8 +328,14 @@ fn UpdatesTab(game: Game, profile_id: String) -> Element {
                                         )
                                         .await;
                                     match outcome {
-                                        Ok(()) => result.set(Some(None)),
-                                        Err(err) => error.set(err.to_string()),
+                                        Ok(()) => {
+                                            tracing::info!(account_id, product_id, "update install finished");
+                                            result.set(Some(None));
+                                        }
+                                        Err(err) => {
+                                            tracing::error!(account_id, product_id, error = %err, "update install failed");
+                                            error.set(err.to_string());
+                                        }
                                     }
                                     updating.set(false);
                                 });
@@ -345,13 +361,13 @@ fn UpdatesTab(game: Game, profile_id: String) -> Element {
 }
 
 #[component]
-fn LocalFilesTab(game: Game, profile_id: String) -> Element {
+fn LocalFilesTab(game: Game, account_id: String) -> Element {
     let mut verifying = use_signal(|| false);
     let mut report = use_signal(|| None::<VerifyReport>);
     let mut repairing = use_signal(|| false);
     let mut error = use_signal(String::new);
 
-    let installed = crate::core::installed_game(&profile_id, &game.id);
+    let installed = crate::core::installed_game(&account_id, &game.id);
     if installed.is_none() {
         return rsx! {
             p { class: "muted", "El juego no está instalado." }
@@ -367,15 +383,28 @@ fn LocalFilesTab(game: Game, profile_id: String) -> Element {
                 class: "secondary",
                 disabled: verifying(),
                 onclick: move |_| {
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let product_id = game.id.clone();
                     verifying.set(true);
                     error.set(String::new());
                     report.set(None);
+                    tracing::info!(account_id, product_id, "file verification started");
                     spawn(async move {
-                        match achv_gog::verify(&profile_id, &product_id).await {
-                            Ok(outcome) => report.set(Some(outcome)),
-                            Err(err) => error.set(err.to_string()),
+                        match achv_gog::verify(&account_id, &product_id).await {
+                            Ok(outcome) => {
+                                tracing::info!(
+                                    account_id,
+                                    product_id,
+                                    files_checked = outcome.files_checked,
+                                    broken = outcome.broken.len(),
+                                    "file verification finished",
+                                );
+                                report.set(Some(outcome));
+                            }
+                            Err(err) => {
+                                tracing::error!(account_id, product_id, error = %err, "file verification failed");
+                                error.set(err.to_string());
+                            }
                         }
                         verifying.set(false);
                     });
@@ -395,29 +424,35 @@ fn LocalFilesTab(game: Game, profile_id: String) -> Element {
                         "{current.broken.len()} de {current.files_checked} archivos no coinciden."
                     }
                     {
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let product_id = game.id.clone();
                         let broken: Vec<BrokenFile> = current.broken;
                         rsx! {
                             button {
                                 disabled: repairing(),
                                 onclick: move |_| {
-                                    let profile_id = profile_id.clone();
+                                    let account_id = account_id.clone();
                                     let product_id = product_id.clone();
                                     let broken = broken.clone();
                                     repairing.set(true);
                                     error.set(String::new());
+                                    tracing::info!(account_id, product_id, broken_count = broken.len(), "file repair started");
                                     spawn(async move {
-                                        if let Err(err) = achv_gog::repair(&profile_id, &product_id, &broken)
+                                        if let Err(err) = achv_gog::repair(&account_id, &product_id, &broken)
                                             .await
                                         {
+                                            tracing::error!(account_id, product_id, error = %err, "file repair failed");
                                             error.set(err.to_string());
                                             repairing.set(false);
                                             return;
                                         }
-                                        match achv_gog::verify(&profile_id, &product_id).await {
+                                        tracing::info!(account_id, product_id, "file repair finished");
+                                        match achv_gog::verify(&account_id, &product_id).await {
                                             Ok(outcome) => report.set(Some(outcome)),
-                                            Err(err) => error.set(err.to_string()),
+                                            Err(err) => {
+                                                tracing::error!(account_id, product_id, error = %err, "re-verify after repair failed");
+                                                error.set(err.to_string());
+                                            }
                                         }
                                         repairing.set(false);
                                     });
@@ -446,7 +481,7 @@ fn LocalFilesTab(game: Game, profile_id: String) -> Element {
 /// with manual entry (and the generic prefix shortcuts below) as the
 /// fallback for whatever it doesn't cover.
 #[component]
-fn CloudSavesTab(game: Game, profile_id: String) -> Element {
+fn CloudSavesTab(game: Game, account_id: String) -> Element {
     let mut generation = use_signal(|| 0_u32);
     let mut path_input = use_signal(String::new);
     let mut syncing = use_signal(|| false);
@@ -456,7 +491,7 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
     let detected: Signal<Option<Vec<achv_gog::save_location::SaveLocation>>> = use_signal(|| None);
     let mut auto_detect_attempted = use_signal(|| false);
 
-    let Some(installed) = crate::core::installed_game(&profile_id, &game.id) else {
+    let Some(installed) = crate::core::installed_game(&account_id, &game.id) else {
         return rsx! { p { class: "muted", "El juego no está instalado." } };
     };
     let _ = generation();
@@ -472,14 +507,14 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
     // "Guardar carpeta" elsewhere doesn't leave this stale, but
     // `auto_detect_attempted` keeps it from ever firing a second time.
     use_effect({
-        let profile_id = profile_id.clone();
+        let account_id = account_id.clone();
         let game_id = game.id.clone();
         move || {
             let _ = generation();
             if *auto_detect_attempted.read() {
                 return;
             }
-            let Some(current) = crate::core::installed_game(&profile_id, &game_id) else {
+            let Some(current) = crate::core::installed_game(&account_id, &game_id) else {
                 return;
             };
             if current.cloud_save_path.is_some() {
@@ -490,7 +525,7 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
             // ordinary case, not something worth an error banner the
             // moment the tab opens.
             run_cloud_save_detection(
-                profile_id.clone(),
+                account_id.clone(),
                 game_id.clone(),
                 false,
                 detecting,
@@ -502,7 +537,7 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
         }
     });
 
-    let prefix = crate::core::prefix_for(&profile_id, &game.id);
+    let prefix = crate::core::prefix_for(&account_id, &game.id);
 
     rsx! {
         p { class: "muted",
@@ -514,13 +549,13 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
                 class: "secondary",
                 disabled: detecting(),
                 onclick: {
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let game_id = game.id.clone();
                     move |_| {
                         // A manual click always wants the folder saved
                         // too — the same one-click "just find it" the
                         // automatic first-run attempt does.
-                        run_cloud_save_detection(profile_id.clone(), game_id.clone(), true, detecting, detected, error, path_input, generation);
+                        run_cloud_save_detection(account_id.clone(), game_id.clone(), true, detecting, detected, error, path_input, generation);
                     }
                 },
                 if detecting() {
@@ -579,7 +614,9 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
                                 dialog = dialog.set_directory(starting);
                             }
                             if let Some(folder) = dialog.pick_folder().await {
-                                path_input.set(folder.path().to_string_lossy().into_owned());
+                                let path = folder.path().to_string_lossy().into_owned();
+                                tracing::debug!(path, "cloud save folder picked from file dialog");
+                                path_input.set(path);
                             }
                         });
                     }
@@ -589,16 +626,20 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
             button {
                 disabled: path_input.read().trim().is_empty(),
                 onclick: {
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let product_id = game.id.clone();
                     move |_| {
                         let value = path_input.read().trim().to_string();
-                        match crate::core::set_cloud_save_path(&profile_id, &product_id, Some(&value)) {
+                        match crate::core::set_cloud_save_path(&account_id, &product_id, Some(&value)) {
                             Ok(()) => {
+                                tracing::info!(account_id, product_id, path = value, "cloud save path set");
                                 error.set(String::new());
                                 generation.set(generation() + 1);
                             }
-                            Err(err) => error.set(err),
+                            Err(err) => {
+                                tracing::error!(account_id, product_id, path = value, error = %err, "failed to save cloud save path");
+                                error.set(err);
+                            }
                         }
                     }
                 },
@@ -610,18 +651,18 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
             button {
                 disabled: syncing() || installed.cloud_save_path.is_none(),
                 onclick: {
-                    let profile_id = profile_id;
+                    let account_id = account_id;
                     let product_id = game.id;
                     let local_root = installed.cloud_save_path.clone();
                     let last_sync = installed.cloud_save_last_sync;
                     move |_| {
                         let Some(local_root) = local_root.clone() else { return };
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let product_id = product_id.clone();
                         syncing.set(true);
                         error.set(String::new());
                         spawn(async move {
-                            match run_cloud_sync(profile_id, product_id, local_root, last_sync, None).await {
+                            match run_cloud_sync(account_id, product_id, local_root, last_sync, None).await {
                                 Ok(outcome) => {
                                     last_outcome.set(Some(outcome.action));
                                     generation.set(generation() + 1);
@@ -656,19 +697,19 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
                     class: "secondary",
                     disabled: syncing(),
                     onclick: {
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let product_id = game.id.clone();
                         let local_root = installed.cloud_save_path.clone();
                         let last_sync = installed.cloud_save_last_sync;
                         move |_| {
                             let Some(local_root) = local_root.clone() else { return };
-                            let profile_id = profile_id.clone();
+                            let account_id = account_id.clone();
                             let product_id = product_id.clone();
                             syncing.set(true);
                             error.set(String::new());
                             spawn(async move {
                                 let outcome = run_cloud_sync(
-                                        profile_id,
+                                        account_id,
                                         product_id,
                                         local_root,
                                         last_sync,
@@ -692,19 +733,19 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
                     class: "secondary",
                     disabled: syncing(),
                     onclick: {
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let product_id = game.id.clone();
                         let local_root = installed.cloud_save_path.clone();
                         let last_sync = installed.cloud_save_last_sync;
                         move |_| {
                             let Some(local_root) = local_root.clone() else { return };
-                            let profile_id = profile_id.clone();
+                            let account_id = account_id.clone();
                             let product_id = product_id.clone();
                             syncing.set(true);
                             error.set(String::new());
                             spawn(async move {
                                 let outcome = run_cloud_sync(
-                                        profile_id,
+                                        account_id,
                                         product_id,
                                         local_root,
                                         last_sync,
@@ -740,7 +781,7 @@ fn CloudSavesTab(game: Game, profile_id: String) -> Element {
 /// where a miss is the ordinary case rather than something to flag; the
 /// explicit "Detectar automáticamente" button always reports them.
 fn run_cloud_save_detection(
-    profile_id: String,
+    account_id: String,
     game_id: String,
     report_errors: bool,
     mut detecting: Signal<bool>,
@@ -753,13 +794,15 @@ fn run_cloud_save_detection(
     if report_errors {
         error.set(String::new());
     }
+    tracing::debug!(account_id, product_id = %game_id, report_errors, "detecting gog cloud save location");
     spawn(async move {
-        let Some(installed) = crate::core::installed_game(&profile_id, &game_id) else {
+        let Some(installed) = crate::core::installed_game(&account_id, &game_id) else {
             detecting.set(false);
             return;
         };
-        match crate::core::detect_cloud_save_locations(&profile_id, &installed).await {
+        match crate::core::detect_cloud_save_locations(&account_id, &installed).await {
             Ok(locations) if locations.is_empty() => {
+                tracing::debug!(account_id, product_id = %game_id, "gog reports no cloud save location");
                 if report_errors {
                     error.set("GOG no reporta una carpeta de guardado para este juego.".to_string());
                 }
@@ -769,16 +812,29 @@ fn run_cloud_save_detection(
                 if let [only] = locations.as_slice() {
                     let resolved = only.path.to_string_lossy().into_owned();
                     path_input.set(resolved.clone());
-                    match crate::core::set_cloud_save_path(&profile_id, &game_id, Some(&resolved)) {
-                        Ok(()) => generation.set(generation() + 1),
-                        Err(err) if report_errors => error.set(err),
-                        Err(_) => {}
+                    match crate::core::set_cloud_save_path(&account_id, &game_id, Some(&resolved)) {
+                        Ok(()) => {
+                            tracing::info!(account_id, product_id = %game_id, path = resolved, "cloud save path auto-detected and saved");
+                            generation.set(generation() + 1);
+                        }
+                        Err(err) if report_errors => {
+                            tracing::error!(account_id, product_id = %game_id, error = %err, "failed to save auto-detected cloud save path");
+                            error.set(err);
+                        }
+                        Err(err) => {
+                            tracing::warn!(account_id, product_id = %game_id, error = %err, "failed to save auto-detected cloud save path, not reported to user");
+                        }
                     }
                 }
                 detected.set(Some(locations));
             }
-            Err(err) if report_errors => error.set(err),
-            Err(_) => {}
+            Err(err) if report_errors => {
+                tracing::error!(account_id, product_id = %game_id, error = %err, "cloud save location detection failed");
+                error.set(err);
+            }
+            Err(err) => {
+                tracing::debug!(account_id, product_id = %game_id, error = %err, "cloud save location detection failed, not reported to user");
+            }
         }
         detecting.set(false);
     });
@@ -797,15 +853,16 @@ const fn sync_action_label(action: SyncAction) -> &'static str {
 /// sync timestamp on the manifest — a conflict leaves both sides exactly
 /// as they were, so there's nothing to advance yet.
 async fn run_cloud_sync(
-    profile_id: String,
+    account_id: String,
     product_id: String,
     local_root: String,
     last_sync: Option<i64>,
     force: Option<ForceDirection>,
 ) -> Result<SyncOutcome, String> {
+    tracing::info!(account_id, product_id, local_root, force = ?force, "cloud save sync started");
     let outcome = crate::achv_try!(
         achv_gog::cloud_saves::sync(
-            &profile_id,
+            &account_id,
             &product_id,
             std::path::Path::new(&local_root),
             last_sync,
@@ -813,13 +870,16 @@ async fn run_cloud_sync(
         )
         .await
         .map_err(|err| err.to_string())
+        // Bubbles up to the properties tab's red error text.
+        .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "cloud save sync failed"))
     );
+    tracing::info!(account_id, product_id, action = ?outcome.action, "cloud save sync finished");
     if outcome.action != SyncAction::Conflict {
-        crate::achv_try!(crate::core::record_cloud_save_sync(
-            &profile_id,
-            &product_id,
-            outcome.last_sync
-        ));
+        crate::achv_try!(
+            crate::core::record_cloud_save_sync(&account_id, &product_id, outcome.last_sync).inspect_err(
+                |err| tracing::warn!(account_id, product_id, error = %err, "failed to record cloud save sync timestamp")
+            )
+        );
     }
     Ok(outcome)
 }
@@ -831,12 +891,12 @@ async fn run_cloud_sync(
 /// before the game exists at all; this tab is purely post-install
 /// management, the same way Steam's is.
 #[component]
-fn DlcTab(game: Game, profile_id: String) -> Element {
+fn DlcTab(game: Game, account_id: String) -> Element {
     let mut generation = use_signal(|| 0_u32);
     let mut busy = use_signal(|| None::<String>);
     let mut error = use_signal(String::new);
 
-    let Some(installed) = crate::core::installed_game(&profile_id, &game.id) else {
+    let Some(installed) = crate::core::installed_game(&account_id, &game.id) else {
         return rsx! { p { class: "muted", "El juego no está instalado." } };
     };
     let _ = generation();
@@ -848,8 +908,13 @@ fn DlcTab(game: Game, profile_id: String) -> Element {
     // type, but a goodie has no installer and no depot in the game's
     // build — ticking one could only ever fail, so it isn't offered.
     let (dlcs, goodies): (Vec<CachedGame>, Vec<CachedGame>) = crate::core::db()
+        .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to open db, dlc list is empty"))
         .ok()
-        .and_then(|db| db.list_games(&profile_id).ok())
+        .and_then(|db| {
+            db.list_games(&account_id)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list cached games for dlc tab"))
+                .ok()
+        })
         .unwrap_or_default()
         .into_iter()
         .filter(|entry| entry.parent_id.as_deref() == Some(game.id.as_str()))
@@ -868,7 +933,7 @@ fn DlcTab(game: Game, profile_id: String) -> Element {
                         let title = dlc.title;
                         let checked = installed.dlcs.contains_key(&dlc_id);
                         let is_busy = busy() == Some(dlc_id.clone());
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let parent_id = game.id.clone();
                         rsx! {
                             label { class: "list-row", key: "{dlc_id}",
@@ -878,16 +943,17 @@ fn DlcTab(game: Game, profile_id: String) -> Element {
                                     disabled: is_busy,
                                     onchange: move |event| {
                                         let on = event.checked();
-                                        let profile_id = profile_id.clone();
+                                        let account_id = account_id.clone();
                                         let parent_id = parent_id.clone();
                                         let dlc_id = dlc_id.clone();
                                         let title = title.clone();
                                         error.set(String::new());
                                         busy.set(Some(dlc_id.clone()));
+                                        tracing::info!(account_id, parent_id, dlc_id, on, "dlc install state toggled");
                                         spawn(async move {
                                             let outcome = if on {
                                                 achv_gog::install(
-                                                    &profile_id,
+                                                    &account_id,
                                                     &dlc_id,
                                                     Some(&parent_id),
                                                     &title,
@@ -897,12 +963,15 @@ fn DlcTab(game: Game, profile_id: String) -> Element {
                                                 )
                                                 .await
                                             } else {
-                                                achv_gog::uninstall_dlc(&profile_id, &dlc_id, &parent_id).await
+                                                achv_gog::uninstall_dlc(&account_id, &dlc_id, &parent_id).await
                                             };
                                             busy.set(None);
                                             match outcome {
                                                 Ok(()) => generation.set(generation() + 1),
-                                                Err(err) => error.set(err.to_string()),
+                                                Err(err) => {
+                                                    tracing::error!(account_id, dlc_id, on, error = %err, "dlc install state change failed");
+                                                    error.set(err.to_string());
+                                                }
                                             }
                                         });
                                     },
@@ -947,12 +1016,12 @@ fn DlcTab(game: Game, profile_id: String) -> Element {
     reason = "false positive attributed to this rsx! call site by clippy's MIR analysis of the \
               macro's own generated code, not a clone in this function's source"
 )]
-fn CompatibilityTab(game: Game, profile_id: String) -> Element {
+fn CompatibilityTab(game: Game, account_id: String) -> Element {
     let mut generation = use_signal(|| 0_u32);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(String::new);
 
-    let Some(installed) = crate::core::installed_game(&profile_id, &game.id) else {
+    let Some(installed) = crate::core::installed_game(&account_id, &game.id) else {
         return rsx! {
             p { class: "muted", "El juego no está instalado." }
         };
@@ -960,7 +1029,7 @@ fn CompatibilityTab(game: Game, profile_id: String) -> Element {
     let _ = generation();
 
     let runners = achv_runtime::steam_runners();
-    let prefix = crate::core::prefix_for(&profile_id, &game.id);
+    let prefix = crate::core::prefix_for(&account_id, &game.id);
     // A prefix that was never launched into doesn't exist yet, which is
     // the normal state for a game you installed but haven't opened.
     let created = prefix.as_ref().is_some_and(|prefix| prefix.path().is_dir());
@@ -983,12 +1052,12 @@ fn CompatibilityTab(game: Game, profile_id: String) -> Element {
         div { class: "field-row",
             select {
                 onchange: {
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let game = game.clone();
                     move |event: Event<FormData>| {
                         let chosen = event.value();
                         let chosen = (!chosen.is_empty()).then_some(chosen);
-                        match set_proton(&profile_id, &game.id, chosen.as_deref()) {
+                        match set_proton(&account_id, &game.id, chosen.as_deref()) {
                             Ok(()) => {
                                 error.set(String::new());
                                 generation.set(generation() + 1);
@@ -1013,19 +1082,24 @@ fn CompatibilityTab(game: Game, profile_id: String) -> Element {
                 disabled: !created || busy(),
                 title: "Borra el prefijo. Se regenera al abrir el juego. Las partidas guardadas dentro del prefijo se pierden.",
                 onclick: {
-                    let profile_id = profile_id;
+                    let account_id = account_id;
                     let game_id = game.id;
                     move |_| {
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let game_id = game_id.clone();
                         busy.set(true);
+                        tracing::info!(account_id, product_id = %game_id, "resetting proton prefix");
                         spawn(async move {
-                            match crate::launch::reset_prefix(profile_id, game_id).await {
+                            match crate::launch::reset_prefix(account_id.clone(), game_id.clone()).await {
                                 Ok(()) => {
+                                    tracing::info!(account_id, product_id = %game_id, "proton prefix reset");
                                     error.set(String::new());
                                     generation.set(generation() + 1);
                                 }
-                                Err(err) => error.set(err),
+                                Err(err) => {
+                                    tracing::error!(account_id, product_id = %game_id, error = %err, "failed to reset proton prefix");
+                                    error.set(err);
+                                }
                             }
                             busy.set(false);
                         });
@@ -1048,8 +1122,8 @@ fn CompatibilityTab(game: Game, profile_id: String) -> Element {
 /// first — a manual rollback to a specific older build, distinct from
 /// Betas (which picks *which branch*, always at that branch's newest).
 #[component]
-fn VersionsTab(game: Game, profile_id: String) -> Element {
-    let installed = crate::core::installed_game(&profile_id, &game.id);
+fn VersionsTab(game: Game, account_id: String) -> Element {
+    let installed = crate::core::installed_game(&account_id, &game.id);
     let Some(installed) = installed else {
         return rsx! {
             p { class: "muted", "El juego no está instalado." }
@@ -1057,14 +1131,14 @@ fn VersionsTab(game: Game, profile_id: String) -> Element {
     };
 
     let mut builds = use_resource({
-        let profile_id = profile_id.clone();
+        let account_id = account_id.clone();
         let product_id = game.id.clone();
         let branch = installed.branch.clone();
         move || {
-            let profile_id = profile_id.clone();
+            let account_id = account_id.clone();
             let product_id = product_id.clone();
             let branch = branch.clone();
-            async move { achv_gog::list_builds(&profile_id, &product_id, branch.as_deref()).await }
+            async move { achv_gog::list_builds(&account_id, &product_id, branch.as_deref()).await }
         }
     });
     let mut installing = use_signal(|| None::<String>);
@@ -1086,7 +1160,7 @@ fn VersionsTab(game: Game, profile_id: String) -> Element {
                             let label = build.version_name.clone().unwrap_or_else(|| build.build_id.clone());
                             let is_current = build.build_id == installed.build_id;
                             let busy = installing() == Some(build.build_id.clone());
-                            let profile_id = profile_id.clone();
+                            let account_id = account_id.clone();
                             let product_id = game.id.clone();
                             let title = game.title.clone();
                             let branch = installed.branch.clone();
@@ -1104,16 +1178,17 @@ fn VersionsTab(game: Game, profile_id: String) -> Element {
                                             class: "secondary",
                                             disabled: installing().is_some(),
                                             onclick: move |_| {
-                                                let profile_id = profile_id.clone();
+                                                let account_id = account_id.clone();
                                                 let product_id = product_id.clone();
                                                 let title = title.clone();
                                                 let branch = branch.clone();
                                                 let target_build_id = target_build_id.clone();
                                                 installing.set(Some(target_build_id.clone()));
                                                 error.set(String::new());
+                                                tracing::info!(account_id, product_id, target_build_id, "build rollback started");
                                                 spawn(async move {
                                                     let outcome = achv_gog::install(
-                                                            &profile_id,
+                                                            &account_id,
                                                             &product_id,
                                                             None,
                                                             &title,
@@ -1124,8 +1199,14 @@ fn VersionsTab(game: Game, profile_id: String) -> Element {
                                                         .await;
                                                     installing.set(None);
                                                     match outcome {
-                                                        Ok(()) => builds.restart(),
-                                                        Err(err) => error.set(err.to_string()),
+                                                        Ok(()) => {
+                                                            tracing::info!(account_id, product_id, target_build_id, "build rollback finished");
+                                                            builds.restart();
+                                                        }
+                                                        Err(err) => {
+                                                            tracing::error!(account_id, product_id, target_build_id, error = %err, "build rollback failed");
+                                                            error.set(err.to_string());
+                                                        }
                                                     }
                                                 });
                                             },
@@ -1154,34 +1235,43 @@ fn VersionsTab(game: Game, profile_id: String) -> Element {
 
 /// Pins (or unpins) a game's Proton by rewriting its manifest — the
 /// manifests are the record, so there's nowhere else to put it.
-fn set_proton(profile_id: &str, product_id: &str, proton: Option<&str>) -> Result<(), String> {
-    let library = crate::achv_try!(crate::core::library());
+fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Result<(), String> {
+    let library = crate::achv_try!(crate::core::library().inspect_err(
+        |err| tracing::error!(account_id, product_id, error = %err, "failed to resolve library, proton pin not changed")
+    ));
     // Re-read rather than editing the copy this tab rendered from, so a
     // change made elsewhere since isn't clobbered.
     let mut current = crate::achv_try!(
-        crate::core::installed_game(profile_id, product_id).ok_or("el juego ya no figura como instalado")
+        crate::core::installed_game(account_id, product_id).ok_or("el juego ya no figura como instalado")
     );
     current.proton = proton.map(str::to_string);
-    library
-        .write_manifest(&current)
-        .map_err(|err| format!("guardando el manifiesto: {err}"))
+    match library.write_manifest(&current) {
+        Ok(()) => {
+            tracing::info!(account_id, product_id, proton, "proton pin changed");
+            Ok(())
+        }
+        Err(err) => {
+            tracing::error!(account_id, product_id, proton, error = %err, "failed to save proton pin");
+            Err(format!("guardando el manifiesto: {err}"))
+        }
+    }
 }
 
 #[component]
-fn BetasTab(game: Game, profile_id: String) -> Element {
+fn BetasTab(game: Game, account_id: String) -> Element {
     let mut branches = use_resource({
-        let profile_id = profile_id.clone();
+        let account_id = account_id.clone();
         let product_id = game.id.clone();
         move || {
-            let profile_id = profile_id.clone();
+            let account_id = account_id.clone();
             let product_id = product_id.clone();
-            async move { achv_gog::list_branches(&profile_id, &product_id).await }
+            async move { achv_gog::list_branches(&account_id, &product_id).await }
         }
     });
     let mut switching = use_signal(|| None::<Option<String>>);
     let mut error = use_signal(String::new);
 
-    let installed = crate::core::installed_game(&profile_id, &game.id);
+    let installed = crate::core::installed_game(&account_id, &game.id);
     let Some(installed) = installed else {
         return rsx! {
             p { class: "muted", "El juego no está instalado." }
@@ -1204,7 +1294,7 @@ fn BetasTab(game: Game, profile_id: String) -> Element {
                             let label = branch.name.clone().unwrap_or_else(|| "mainline".to_string());
                             let is_current = branch.name == installed.branch;
                             let busy = switching() == Some(branch.name.clone());
-                            let profile_id = profile_id.clone();
+                            let account_id = account_id.clone();
                             let product_id = game.id.clone();
                             let title = game.title.clone();
                             let branch_name = branch.name.clone();
@@ -1219,15 +1309,16 @@ fn BetasTab(game: Game, profile_id: String) -> Element {
                                             class: "secondary",
                                             disabled: switching().is_some(),
                                             onclick: move |_| {
-                                                let profile_id = profile_id.clone();
+                                                let account_id = account_id.clone();
                                                 let product_id = product_id.clone();
                                                 let title = title.clone();
                                                 let branch_name = branch_name.clone();
                                                 switching.set(Some(branch_name.clone()));
                                                 error.set(String::new());
+                                                tracing::info!(account_id, product_id, branch = branch_name, "branch switch started");
                                                 spawn(async move {
                                                     let outcome = achv_gog::install(
-                                                            &profile_id,
+                                                            &account_id,
                                                             &product_id,
                                                             None,
                                                             &title,
@@ -1238,8 +1329,14 @@ fn BetasTab(game: Game, profile_id: String) -> Element {
                                                         .await;
                                                     switching.set(None);
                                                     match outcome {
-                                                        Ok(()) => branches.restart(),
-                                                        Err(err) => error.set(err.to_string()),
+                                                        Ok(()) => {
+                                                            tracing::info!(account_id, product_id, branch = branch_name, "branch switch finished");
+                                                            branches.restart();
+                                                        }
+                                                        Err(err) => {
+                                                            tracing::error!(account_id, product_id, branch = branch_name, error = %err, "branch switch failed");
+                                                            error.set(err.to_string());
+                                                        }
                                                     }
                                                 });
                                             },

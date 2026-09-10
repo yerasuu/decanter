@@ -77,26 +77,43 @@ fn DownloadsLink() -> Element {
     }
 }
 
-/// Enough profile support for `achv` to know which profile it's
-/// working with — pick the active one, or switch. A profile is created by
-/// logging a storefront account in; see the Cuenta screen.
+/// Which profile achv is working with right now — pick the active one, or
+/// switch. Switching swaps every account that profile groups at once (see
+/// `Ajustes > Cuenta`, where accounts are added to it one at a time).
+///
+/// Creating a profile is a step of its own, not something logging into a
+/// storefront account does implicitly — the last option in the `<select>`
+/// opens a small inline "name it" form instead of switching.
 #[component]
 fn ProfileSwitcher() -> Element {
     let core = use_context::<CoreResource>();
     let mut active_profile = use_context::<ActiveProfile>();
     let mut profiles = use_signal(Vec::<Profile>::new);
     let mut generation = use_signal(|| 0_u32);
+    let mut creating = use_signal(|| false);
 
     use_effect(move || {
         let _ = generation();
         if !matches!(&*core.read(), Some(Ok(_))) {
             return;
         }
-        let Ok(db) = crate::core::db() else {
+        let Ok(db) = crate::core::db()
+            .inspect_err(|err| tracing::warn!(error = %err, "failed to open db, profile switcher shows nothing"))
+        else {
             return;
         };
-        profiles.set(db.list_profiles().unwrap_or_default());
-        active_profile.set(db.active_profile().ok().flatten().map(|profile| profile.id));
+        profiles.set(
+            db.list_profiles()
+                .inspect_err(|err| tracing::warn!(error = %err, "failed to list profiles"))
+                .unwrap_or_default(),
+        );
+        active_profile.set(
+            db.active_profile()
+                .inspect_err(|err| tracing::warn!(error = %err, "failed to read active profile"))
+                .ok()
+                .flatten()
+                .map(|profile| profile.id),
+        );
     });
 
     // The active profile's initial, so which account is in play reads at a
@@ -115,10 +132,16 @@ fn ProfileSwitcher() -> Element {
             id: "profile-switcher",
             onchange: move |event| {
                 let chosen = event.value();
-                if let Ok(db) = crate::core::db()
-                    && db.set_active_profile(&chosen).is_ok()
-                {
-                    generation.set(generation() + 1);
+                if chosen == NEW_PROFILE_OPTION {
+                    creating.set(true);
+                    return;
+                }
+                match crate::core::db().and_then(|db| db.set_active_profile(&chosen).map_err(|err| err.to_string())) {
+                    Ok(()) => {
+                        tracing::info!(profile_id = chosen, "active profile switched");
+                        generation.set(generation() + 1);
+                    }
+                    Err(err) => tracing::warn!(profile_id = chosen, error = %err, "failed to switch active profile"),
                 }
             },
             for profile in profiles() {
@@ -129,7 +152,93 @@ fn ProfileSwitcher() -> Element {
                     "{profile.name}"
                 }
             }
+            option { value: NEW_PROFILE_OPTION, "+ Crear perfil" }
         }
+        }
+        // A floating popup, not inline in the topbar: the topbar's row is a
+        // fixed 52px and clips anything taller, which an input, two
+        // buttons and a possible error line would not have fit inside.
+        if creating() {
+            NewProfileForm {
+                on_done: move |()| {
+                    creating.set(false);
+                    generation.set(generation() + 1);
+                },
+            }
+        }
+    }
+}
+
+/// Sentinel `<option>` value: not a real profile id (those are uuids), so
+/// it can never collide with one.
+const NEW_PROFILE_OPTION: &str = "__new__";
+
+/// The popup `ProfileSwitcher` opens when "+ Crear perfil" is chosen.
+/// `on_done` fires after a successful create (the new profile is already
+/// active by then) and on cancel alike, so the caller doesn't need to tell
+/// the two apart to know it's time to close the popup.
+#[component]
+fn NewProfileForm(on_done: EventHandler<()>) -> Element {
+    let mut active_profile = use_context::<ActiveProfile>();
+    let mut name = use_signal(String::new);
+    let mut error = use_signal(|| None::<String>);
+
+    rsx! {
+        // Same backdrop-plus-floating-panel pairing every other popup in
+        // this app uses (see `library::context_menu`), so this reads as
+        // "the same kind of thing" instead of a one-off.
+        div { class: "context-backdrop", onclick: move |_| on_done.call(()) }
+        div {
+            class: "new-profile-popup",
+            onclick: move |event| event.stop_propagation(),
+            h2 { "Nuevo perfil" }
+            input {
+                r#type: "text",
+                placeholder: "Nombre del perfil",
+                value: "{name}",
+                autofocus: true,
+                oninput: move |event| name.set(event.value()),
+                onkeydown: move |event: KeyboardEvent| {
+                    if event.key() == Key::Enter && !name.read().trim().is_empty() {
+                        let name = name.read().trim().to_string();
+                        match crate::core::create_profile(&name) {
+                            Ok(profile) => {
+                                tracing::info!(profile_id = %profile.id, name, "profile created");
+                                active_profile.set(Some(profile.id));
+                                on_done.call(());
+                            }
+                            Err(err) => {
+                                tracing::error!(name, error = %err, "failed to create profile");
+                                error.set(Some(err));
+                            }
+                        }
+                    }
+                },
+            }
+            if let Some(message) = &*error.read() {
+                p { class: "error", "{message}" }
+            }
+            div { class: "new-profile-actions",
+                button { class: "secondary", onclick: move |_| on_done.call(()), "Cancelar" }
+                button {
+                    disabled: name.read().trim().is_empty(),
+                    onclick: move |_| {
+                        let name = name.read().trim().to_string();
+                        match crate::core::create_profile(&name) {
+                            Ok(profile) => {
+                                tracing::info!(profile_id = %profile.id, name, "profile created");
+                                active_profile.set(Some(profile.id));
+                                on_done.call(());
+                            }
+                            Err(err) => {
+                                tracing::error!(name, error = %err, "failed to create profile");
+                                error.set(Some(err));
+                            }
+                        }
+                    },
+                    "Crear"
+                }
+            }
         }
     }
 }

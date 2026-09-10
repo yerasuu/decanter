@@ -13,21 +13,21 @@ use crate::{format, views::library::install};
 pub fn Downloads() -> Element {
     let Background { installing, .. } = use_context::<Background>();
     let library = use_context::<GogLibrary>();
-    let active_profile = use_context::<crate::ActiveProfile>();
 
     // Sorted by title so the list doesn't reshuffle on every progress
     // tick — a `HashMap`'s iteration order is arbitrary and unstable.
-    let mut entries: Vec<(String, String, InstallStatus)> = installing
+    // Each row's own account comes from its entry in the merged library,
+    // not a single "active" one — two of these downloads can belong to
+    // two different accounts in the same profile.
+    let mut entries: Vec<(String, String, String, InstallStatus)> = installing
         .read()
         .iter()
         .map(|(product_id, status)| {
-            let title = library
-                .games
-                .read()
-                .iter()
-                .find(|entry| &entry.game.id == product_id)
-                .map_or_else(|| product_id.clone(), |entry| entry.game.title.clone());
-            (product_id.clone(), title, status.clone())
+            let games = library.games.read();
+            let entry = games.iter().find(|entry| &entry.game.id == product_id);
+            let title = entry.map_or_else(|| product_id.clone(), |entry| entry.game.title.clone());
+            let account_id = entry.map_or_else(String::new, |entry| entry.game.account_id.clone());
+            (product_id.clone(), title, account_id, status.clone())
         })
         .collect();
     entries.sort_by(|left, right| left.1.cmp(&right.1));
@@ -40,13 +40,13 @@ pub fn Downloads() -> Element {
                 div { class: "empty", "No hay descargas en curso." }
             } else {
                 div { class: "card",
-                    for (product_id, title, status) in entries {
+                    for (product_id, title, account_id, status) in entries {
                         DownloadRow {
                             key: "{product_id}",
                             product_id,
                             title,
                             status,
-                            profile_id: active_profile.read().clone().unwrap_or_default(),
+                            account_id,
                             installing,
                             library,
                         }
@@ -62,7 +62,7 @@ fn DownloadRow(
     product_id: String,
     title: String,
     status: InstallStatus,
-    profile_id: String,
+    account_id: String,
     installing: Signal<std::collections::HashMap<String, InstallStatus>>,
     library: GogLibrary,
 ) -> Element {
@@ -116,26 +116,29 @@ fn DownloadRow(
                         rsx! {
                             button {
                                 class: "icon-btn",
-                                onclick: move |_| { installing.write().remove(&product_id); },
+                                onclick: move |_| {
+                                    tracing::debug!(product_id, "dismissing failed install notice");
+                                    installing.write().remove(&product_id);
+                                },
                                 "Descartar"
                             }
                         }
                     }
                     _ => {
-                        let profile_id = profile_id;
+                        let account_id = account_id;
                         let product_id = product_id;
                         rsx! {
                             button {
                                 class: "icon-btn",
                                 onclick: move |_| {
-                                    let profile_id = profile_id.clone();
+                                    let account_id = account_id.clone();
                                     let product_id = product_id.clone();
                                     spawn(async move {
-                                        install::cancel(profile_id.clone(), product_id.clone()).await;
+                                        install::cancel(account_id.clone(), product_id.clone()).await;
                                         // Cancelling only stops the transfer;
                                         // nothing else clears the row.
                                         installing.write().remove(&product_id);
-                                        library.refresh_install_state(&profile_id, &product_id);
+                                        library.refresh_install_state(&account_id, &product_id);
                                     });
                                 },
                                 "Cancelar"

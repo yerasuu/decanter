@@ -1,4 +1,4 @@
-//! Launches a profile's installed GOG game and waits for it to exit.
+//! Launches an account's installed GOG game and waits for it to exit.
 //!
 //! Resolved entirely from achv's own library (`achv_core::Library`): the
 //! manifest carries the install directory and the launch executable, and
@@ -15,23 +15,28 @@ use anyhow::{Context, bail};
 
 use super::report_poll;
 
-pub async fn launch(db: &mut achv_core::Db, profile_id: &str, product_id: &str) -> anyhow::Result<()> {
+pub async fn launch(db: &mut achv_core::Db, account_id: &str, product_id: &str) -> anyhow::Result<()> {
     let Some(library_path) = Library::default_path() else {
+        tracing::error!("could not resolve the default library path");
         bail!("could not resolve the default library path");
     };
     let library = Library::new(library_path);
 
-    let Some(game) = library.read_manifest(profile_id, Storefront::Gog, product_id) else {
-        bail!("{product_id} isn't installed for this profile");
+    let Some(game) = library.read_manifest(account_id, Storefront::Gog, product_id) else {
+        tracing::error!(account_id, product_id, "not installed for this account");
+        bail!("{product_id} isn't installed for this account");
     };
     let Some(install_dir) = library.install_dir(&game.install_dir) else {
+        tracing::error!(account_id, product_id, "unusable install directory");
         bail!("unusable install directory for {product_id}");
     };
     let Some(executable) = game.launch_executable.as_deref() else {
+        tracing::error!(account_id, product_id, "installed but has no launch executable set");
         bail!("{product_id} is installed but has no launch executable set");
     };
-    let Some(prefix_path) = library.compatdata(profile_id, product_id) else {
-        bail!("unusable profile or product id for {product_id}'s prefix");
+    let Some(prefix_path) = library.compatdata(account_id, product_id) else {
+        tracing::error!(account_id, product_id, "unusable account or product id for prefix");
+        bail!("unusable account or product id for {product_id}'s prefix");
     };
     let prefix = achv_runtime::Prefix::new(prefix_path);
 
@@ -49,6 +54,7 @@ pub async fn launch(db: &mut achv_core::Db, profile_id: &str, product_id: &str) 
     session.wait().await.context("running program")?;
     tracing::info!("program exited");
 
-    report_poll(achv_gog::poll_achievements(db, profile_id, product_id).await?);
+    tracing::debug!(account_id, product_id, "polling achievements after launch");
+    report_poll(achv_gog::poll_achievements(db, account_id, product_id).await?);
     Ok(())
 }

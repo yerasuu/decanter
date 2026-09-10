@@ -4,8 +4,11 @@
 //! OAuth flow has no device/loopback variant, so it goes: open
 //! [`auth_url`] in a browser, log in, and GOG redirects to a page whose
 //! URL carries a one-shot `code`. The caller hands that back to
-//! [`log_in`], which trades it for a session, stores it, and links the
-//! account to the profile.
+//! [`log_in`], which trades it for a session and stores it — under the
+//! account id GOG hands back, since that's the only thing this crate
+//! knows about identity. Grouping the resulting account under a profile
+//! is the caller's job (`achv_core::Db::upsert_account`); this crate has
+//! no notion of a profile at all.
 
 use anyhow::Context as _;
 
@@ -55,13 +58,19 @@ pub fn extract_code(pasted: &str) -> Option<String> {
         .map(|(_, value)| value.to_string())
 }
 
-/// Trades an authorization code for a session, stores it, and links the
-/// account to `profile_id`.
+/// Trades an authorization code for a session and stores it.
+///
+/// No account id goes in: which account this is isn't known until GOG
+/// answers, so the returned [`Account::account_id`] is what the session
+/// ends up stored under, not something the caller supplies up front.
 ///
 /// The code is single-use and short-lived — a failure here means starting
 /// over from [`auth_url`], not retrying with the same code.
-pub async fn log_in(profile_id: &str, pasted_code: &str) -> anyhow::Result<Account> {
+pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
     let code = crate::achv_try!(extract_code(pasted_code).context("no authorization code in that text"));
+    // Never log the code itself, or the pasted URL it came from — it's a
+    // single-use bearer credential, only whether one was found matters here.
+    tracing::debug!("extracted OAuth authorization code from pasted login input");
 
     let (token, user) = crate::achv_try!(crate::achv_try!(
         tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
@@ -69,6 +78,7 @@ pub async fn log_in(profile_id: &str, pasted_code: &str) -> anyhow::Result<Accou
                 gog::token::Token::from_login_code(&code)
                     .map_err(|err| anyhow::anyhow!("GOG rejected the authorization code: {err}"))
             );
+            tracing::debug!("exchanged authorization code for a GOG session token");
             let client = gog::Gog::new(token);
             let user = crate::achv_try!(
                 client
@@ -83,7 +93,8 @@ pub async fn log_in(profile_id: &str, pasted_code: &str) -> anyhow::Result<Accou
     ));
 
     let credentials = crate::achv_try!(serde_json::to_string(&token).context("serializing the GOG session"));
-    crate::achv_try!(crate::write_session(profile_id, credentials).await);
+    crate::achv_try!(crate::write_session(&user.user_id, credentials).await);
+    tracing::info!(account_id = %user.user_id, "GOG login succeeded");
 
     Ok(Account {
         account_id: user.user_id.clone(),
@@ -92,21 +103,23 @@ pub async fn log_in(profile_id: &str, pasted_code: &str) -> anyhow::Result<Accou
 }
 
 /// Verifies the stored session still works, refreshing it in passing.
-/// `None` means nobody is logged in on this profile; an error means there
+/// `None` means nobody is logged in on this account; an error means there
 /// is a session but GOG wouldn't accept it.
-pub async fn session(profile_id: &str) -> anyhow::Result<Option<Account>> {
-    if crate::achv_try!(crate::read_session(profile_id).await).is_none() {
+pub async fn session(account_id: &str) -> anyhow::Result<Option<Account>> {
+    if crate::achv_try!(crate::read_session(account_id).await).is_none() {
+        tracing::debug!(account_id, "no stored GOG session for this account");
         return Ok(None);
     }
 
     let user = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             client
                 .get_user_data()
                 .map_err(|err| anyhow::anyhow!("GOG session is no longer valid: {err}"))
         })
         .await
     );
+    tracing::debug!(account_id, "verified GOG session is still valid");
 
     Ok(Some(Account {
         account_id: user.user_id,
@@ -117,8 +130,10 @@ pub async fn session(profile_id: &str) -> anyhow::Result<Option<Account>> {
 /// Drops the stored session. Who the account belonged to isn't recorded
 /// anywhere else — [`session`] answers that by asking GOG — so forgetting
 /// the credentials is the whole of logging out.
-pub async fn log_out(profile_id: &str) -> anyhow::Result<()> {
-    crate::clear_session(profile_id).await
+pub async fn log_out(account_id: &str) -> anyhow::Result<()> {
+    crate::clear_session(account_id).await?;
+    tracing::info!(account_id, "logged out of GOG account");
+    Ok(())
 }
 
 /// Percent-encodes the redirect URI for the auth URL's query string. Small

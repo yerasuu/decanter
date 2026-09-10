@@ -1,8 +1,8 @@
 //! The single "games" section: a Steam-like sidebar of the profile's GOG
-//! library on the left, and a detail pane on the right. Bottles stays the
-//! only other top-level section. Split into three pieces: `data` (sqlite
-//! achievement reads), `sidebar` (list + search), `detail` (hero, play
-//! action, achievements) — this file only wires them together.
+//! library on the left, and a detail pane on the right. Split into three
+//! pieces: `data` (sqlite achievement reads), `sidebar` (list + search),
+//! `detail` (hero, play action, achievements) — this file only wires them
+//! together.
 
 use dioxus::prelude::*;
 
@@ -51,7 +51,12 @@ enum LibraryPopup {
 pub fn Library() -> Element {
     let core = use_context::<CoreResource>();
     let active_profile = use_context::<ActiveProfile>();
-    let GogLibrary { games, state, .. } = use_context::<GogLibrary>();
+    let GogLibrary {
+        games,
+        state,
+        enrich_progress,
+        ..
+    } = use_context::<GogLibrary>();
     // `running`/`installing` live at the app root (see `background`), not
     // here — both get written from `spawn_forever`'d tasks, which always
     // run in the root scope, so anything they touch has to be owned there
@@ -81,44 +86,6 @@ pub fn Library() -> Element {
     let mut poll_generation = use_signal(|| 0_u32);
     let mut poll_status = use_signal(|| PollStatus::Idle);
 
-    // Selecting a game used to show only whatever `achv-tray
-    // achievements` had last cached, by hand. Poll GOG live right here
-    // instead — cache still shows instantly, this just refreshes it. The
-    // status (not just the resulting cache) is tracked so the empty case
-    // can say *why* it's empty instead of always pointing at a CLI command.
-    use_effect(move || {
-        let profile_id = active_profile.read().clone();
-        let product_id = selected.read().clone();
-        match (profile_id, product_id) {
-            (Some(profile_id), Some(product_id)) => {
-                poll_status.set(PollStatus::Polling);
-                spawn(async move {
-                    match data::poll_achievements(profile_id, product_id).await {
-                        Ok(()) => poll_status.set(PollStatus::Done),
-                        Err(err) => poll_status.set(PollStatus::Failed(err)),
-                    }
-                    poll_generation.set(poll_generation() + 1);
-                });
-            }
-            _ => poll_status.set(PollStatus::Idle),
-        }
-    });
-
-    // Read all three synchronously (before any await) so this reruns
-    // whenever any changes, without needing `use_reactive!` for a plain
-    // sync sqlite lookup.
-    let achievements = use_resource(move || {
-        let _ = poll_generation();
-        let profile_id = active_profile.read().clone();
-        let product_id = selected.read().clone();
-        async move {
-            match (profile_id, product_id) {
-                (Some(profile_id), Some(product_id)) => Some(data::load_achievements(profile_id, product_id)),
-                _ => None,
-            }
-        }
-    });
-
     let selected_game = selected.read().as_ref().and_then(|id| {
         games
             .read()
@@ -126,6 +93,53 @@ pub fn Library() -> Element {
             .find(|entry| &entry.game.id == id)
             .map(|entry| entry.game.clone())
     });
+    let selected_account_id = selected_game.as_ref().map(|game| game.account_id.clone());
+
+    // Selecting a game used to show only whatever `achv-tray
+    // achievements` had last cached, by hand. Poll GOG live right here
+    // instead — cache still shows instantly, this just refreshes it. The
+    // status (not just the resulting cache) is tracked so the empty case
+    // can say *why* it's empty instead of always pointing at a CLI command.
+    //
+    // Keyed off the selected game's own account, not the active profile:
+    // with several accounts merged into one library, achievements belong
+    // to whichever account's copy is actually on screen.
+    use_effect({
+        let selected_account_id = selected_account_id.clone();
+        move || {
+            let account_id = selected_account_id.clone();
+            let product_id = selected.read().clone();
+            match (account_id, product_id) {
+                (Some(account_id), Some(product_id)) => {
+                    poll_status.set(PollStatus::Polling);
+                    spawn(async move {
+                        match data::poll_achievements(account_id, product_id).await {
+                            Ok(()) => poll_status.set(PollStatus::Done),
+                            Err(err) => poll_status.set(PollStatus::Failed(err)),
+                        }
+                        poll_generation.set(poll_generation() + 1);
+                    });
+                }
+                _ => poll_status.set(PollStatus::Idle),
+            }
+        }
+    });
+
+    // Read both synchronously (before any await) so this reruns whenever
+    // either changes, without needing `use_reactive!` for a plain sync
+    // sqlite lookup.
+    let achievements = use_resource(move || {
+        let _ = poll_generation();
+        let account_id = selected_account_id.clone();
+        let product_id = selected.read().clone();
+        async move {
+            match (account_id, product_id) {
+                (Some(account_id), Some(product_id)) => Some(data::load_achievements(account_id, product_id)),
+                _ => None,
+            }
+        }
+    });
+
     let profile_id = active_profile.read().clone();
 
     // The whole view hides behind a Steam-style loading screen until this
@@ -134,7 +148,9 @@ pub fn Library() -> Element {
     // half-resolved library and watch fields change under them as the
     // rest of the fetch lands.
     if matches!(state(), LibraryState::Loading) {
-        return rsx! { LibraryLoading { count: games.read().len() } };
+        return rsx! {
+            LibraryLoading { count: games.read().len(), enriching: enrich_progress() }
+        };
     }
 
     rsx! {
@@ -173,18 +189,29 @@ pub fn Library() -> Element {
 /// screen does — full-width rather than tucked into the sidebar list, so
 /// there's nothing half-drawn (a sidebar with no detail pane, a detail
 /// pane for a game whose art hasn't landed) to look at while it waits.
+///
+/// `enriching` is pass two's "N of M" once pass one has a known total to
+/// show a fraction of — before that (and for the slower, unbatched tail of
+/// pass two: order history, GOG's own product API) the bar stays
+/// indeterminate, same as an install whose total size isn't known yet.
 #[component]
-fn LibraryLoading(count: usize) -> Element {
+fn LibraryLoading(count: usize, enriching: Option<(usize, usize)>) -> Element {
+    let width = enriching.map_or_else(
+        || "100%".to_string(),
+        |(done, total)| format!("{:.1}%", (done as f64 / total.max(1) as f64) * 100.0),
+    );
     rsx! {
         div { class: "library-loading",
             div { class: "library-loading-inner",
                 h2 { "Cargando tu biblioteca" }
-                div { class: "bar-track indeterminate", div { class: "bar-fill" } }
+                div { class: if enriching.is_some() { "bar-track" } else { "bar-track indeterminate" },
+                    div { class: "bar-fill", style: "width: {width}" }
+                }
                 p { class: "muted",
-                    if count == 0 {
-                        "Buscando tus juegos en GOG..."
-                    } else {
-                        "{count} juego(s) encontrados, completando datos..."
+                    match (count, enriching) {
+                        (0, _) => rsx! { "Buscando tus juegos en GOG..." },
+                        (count, Some((done, total))) => rsx! { "Completando datos: {done} de {total} ({count} encontrados)" },
+                        (count, None) => rsx! { "{count} juego(s) encontrados, completando datos..." },
                     }
                 }
             }

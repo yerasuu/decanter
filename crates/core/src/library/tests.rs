@@ -23,9 +23,9 @@ fn scratch(name: &str) -> Library {
     Library::new(root)
 }
 
-fn game(profile: &str, id: &str, install_dir: &str) -> InstalledGame {
+fn game(account: &str, id: &str, install_dir: &str) -> InstalledGame {
     InstalledGame {
-        profile_id: profile.to_owned(),
+        account_id: account.to_owned(),
         storefront: Storefront::Gog,
         game_id: id.to_owned(),
         name: "Right and Down".to_owned(),
@@ -125,7 +125,7 @@ fn writing_a_manifest_announces_the_library() {
 }
 
 #[test]
-fn scanning_returns_only_that_profiles_games() {
+fn scanning_returns_only_that_accounts_games() {
     let library = scratch("scan");
     match library.write_manifest(&game("a", "1", "One")) {
         Ok(()) => {}
@@ -146,8 +146,8 @@ fn scanning_returns_only_that_profiles_games() {
     assert!(library.scan("nobody").is_empty());
 }
 
-/// The whole point of a shared `common/`: uninstalling for one profile
-/// must not delete files another profile is still using.
+/// The whole point of a shared `common/`: uninstalling for one account
+/// must not delete files another account is still using.
 #[test]
 fn shared_install_directories_are_detected() {
     let library = scratch("shared");
@@ -222,7 +222,7 @@ fn refuses_names_that_would_escape_the_library() {
 }
 
 /// A file someone hand-edited into nonsense is skipped, not fatal —
-/// and doesn't take the rest of the profile's games with it.
+/// and doesn't take the rest of the account's games with it.
 #[test]
 fn a_corrupt_manifest_is_skipped_not_fatal() {
     let library = scratch("corrupt");
@@ -243,7 +243,7 @@ fn a_corrupt_manifest_is_skipped_not_fatal() {
 #[test]
 fn a_manifest_without_an_install_dir_is_ignored() {
     let library = scratch("incomplete");
-    let directory = library.root().join("manifests/profile");
+    let directory = library.root().join("manifests/account");
     match fs::create_dir_all(&directory) {
         Ok(()) => {}
         Err(err) => panic!("called `Result::unwrap()` on an `Err` value: {err:?}"),
@@ -251,7 +251,7 @@ fn a_manifest_without_an_install_dir_is_ignored() {
     let mut root = Value::block();
     root.insert("gameid", "42");
     root.insert("storefront", "STOREFRONT_GOG");
-    root.insert("profileid", "profile");
+    root.insert("accountid", "account");
     match fs::write(
         directory.join("appmanifest_storefront_gog_42.acf"),
         vdf::to_string("AppState", &root),

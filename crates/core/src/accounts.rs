@@ -35,7 +35,7 @@
 use rusqlite::params;
 
 use crate::catalog::Storefront;
-use crate::db::{Db, Error, Result};
+use crate::db::{Db, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -44,17 +44,10 @@ pub struct Account {
     /// `account_id` as a decimal string) — not one achv makes up, so a
     /// login always lands on the same row.
     pub id: String,
-    pub storefront: Storefront,
+    pub name: String,
     /// Which profile this account is grouped under.
     pub profile_id: String,
-    pub name: String,
-}
-
-fn storefront_from_row(raw: i32) -> Storefront {
-    Storefront::try_from(raw).unwrap_or_else(|_| {
-        tracing::warn!(raw, "unrecognized storefront in accounts, defaulting to Unspecified");
-        Storefront::Unspecified
-    })
+    pub storefront: Storefront,
 }
 
 impl Db {
@@ -62,10 +55,9 @@ impl Db {
     /// the Library merges them in and Ajustes lists them in.
     #[inline]
     pub fn accounts_in_profile(&self, profile_id: &str) -> Result<Vec<Account>> {
-        let mut statement = match self
-            .conn
-            .prepare("SELECT id, storefront, profile_id, name FROM accounts WHERE profile_id = ?1 ORDER BY created_at ASC")
-        {
+        let mut statement = match self.conn.prepare(
+            "SELECT id, storefront, profile_id, name FROM accounts WHERE profile_id = ?1 ORDER BY created_at ASC",
+        ) {
             Ok(statement) => statement,
             Err(err) => return Err(err.into()),
         };
@@ -92,7 +84,28 @@ impl Db {
             Ok(rows) => rows,
             Err(err) => return Err(err.into()),
         };
-        Ok(rows.flatten().collect())
+        let accounts: Vec<_> = rows.flatten().collect();
+        tracing::debug!(profile_id, account_count = accounts.len(), "listed accounts in profile");
+        Ok(accounts)
+    }
+
+    /// Forgets the account itself (a logout). Its cached library,
+    /// achievements and installs are left in place, keyed by the same id —
+    /// re-adding the account brings them all back rather than starting the
+    /// user over, same rationale as [`Db::delete_profile`].
+    #[inline]
+    pub fn forget_account(&self, id: &str, storefront: Storefront) -> Result<()> {
+        match self.conn.execute(
+            "DELETE FROM accounts WHERE id = ?1 AND storefront = ?2",
+            params![id, storefront as i32],
+        ) {
+            Ok(_) => {}
+            Err(err) => return Err(err.into()),
+        }
+        // A logout is a milestone worth seeing at default level, unlike the
+        // routine per-query reads elsewhere in this crate.
+        tracing::info!(account_id = id, ?storefront, "forgot account");
+        Ok(())
     }
 
     /// Adds an account to `profile_id`, or moves/renames the one that
@@ -115,6 +128,9 @@ impl Db {
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
+        // A milestone worth seeing at default level: a login landed (or
+        // moved profile), unlike the routine per-query reads elsewhere.
+        tracing::info!(account_id = id, ?storefront, profile_id, "upserted account");
         Ok(Account {
             id: id.to_owned(),
             storefront,
@@ -122,22 +138,16 @@ impl Db {
             name: name.to_owned(),
         })
     }
+}
 
-    /// Forgets the account itself (a logout). Its cached library,
-    /// achievements and installs are left in place, keyed by the same id —
-    /// re-adding the account brings them all back rather than starting the
-    /// user over, same rationale as [`crate::profiles::Db::delete_profile`].
-    #[inline]
-    pub fn forget_account(&self, id: &str, storefront: Storefront) -> Result<()> {
-        match self.conn.execute(
-            "DELETE FROM accounts WHERE id = ?1 AND storefront = ?2",
-            params![id, storefront as i32],
-        ) {
-            Ok(_) => {}
-            Err(err) => return Err(err.into()),
-        }
-        Ok(())
-    }
+/// Maps an out-of-range storefront discriminant to `Unspecified` rather
+/// than failing the whole row — same defensive read as [`crate::db`]'s own
+/// `games_cache` row mapping.
+fn storefront_from_row(raw: i32) -> Storefront {
+    Storefront::try_from(raw).unwrap_or_else(|_| {
+        tracing::warn!(raw, "unrecognized storefront in accounts, defaulting to Unspecified");
+        Storefront::Unspecified
+    })
 }
 
 #[cfg(test)]

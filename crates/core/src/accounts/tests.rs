@@ -50,7 +50,13 @@ fn accounts_stay_scoped_to_their_profile() {
         Ok(accounts) => accounts,
         Err(err) => panic!("called `Result::unwrap()` on an `Err` value: {err:?}"),
     };
-    assert_eq!(p1_accounts.iter().map(|account| account.id.as_str()).collect::<Vec<_>>(), vec!["1"]);
+    assert_eq!(
+        p1_accounts
+            .iter()
+            .map(|account| account.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["1"]
+    );
 }
 
 /// A profile can hold several accounts of the same storefront — the whole
@@ -95,7 +101,13 @@ fn re_adding_the_same_account_renames_and_can_move_it_to_another_profile() {
         Ok(accounts) => accounts,
         Err(err) => panic!("called `Result::unwrap()` on an `Err` value: {err:?}"),
     };
-    assert_eq!(p2_accounts.iter().map(|account| account.name.as_str()).collect::<Vec<_>>(), vec!["Nueva"]);
+    assert_eq!(
+        p2_accounts
+            .iter()
+            .map(|account| account.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Nueva"]
+    );
 }
 
 #[test]

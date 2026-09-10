@@ -29,6 +29,8 @@ let
     mesa
     libxkbcommon
     curl
+    gst_all_1.gst-plugins-base   # appsink, para <video>/<audio> del webview
+    librsvg                      # loader de SVG para gdk-pixbuf (iconos breeze-dark)
   ];
 in
 pkgs.mkShell {
@@ -47,6 +49,22 @@ pkgs.mkShell {
   # default search path either.
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
 
+  GST_PLUGIN_SYSTEM_PATH_1_0 = "${pkgs.gst_all_1.gst-plugins-base}/lib/gstreamer-1.0";
+  LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
+
+  # gdk-pixbuf's own loaders.cache doesn't know about librsvg's SVG loader
+  # (separate derivation) -- regenerate a merged one each time the shell
+  # is entered, using the exact same gdk-pixbuf/librsvg this shell already
+  # pins, so there's no version-mismatch risk like there would be reusing
+  # anything from ~/.nix-profile.
+  shellHook = ''
+    export GDK_PIXBUF_MODULE_FILE="$(mktemp --suffix=-gdk-pixbuf-loaders.cache)"
+    ${pkgs.gdk-pixbuf.dev}/bin/gdk-pixbuf-query-loaders \
+      ${pkgs.gdk-pixbuf.out}/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
+      ${pkgs.librsvg}/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
+      > "$GDK_PIXBUF_MODULE_FILE"
+  '';
+
   # WebKitGTK 2.5x defaults to a DMA-BUF/EGL renderer that aborts with
   # "Could not create default EGL display: EGL_BAD_PARAMETER" wherever
   # direct GPU access isn't set up for it (sandboxes, some Wayland/Nvidia
@@ -62,5 +80,8 @@ pkgs.mkShell {
   # sidesteps the host driver entirely instead of trying to reconcile it.
   LIBGL_ALWAYS_SOFTWARE = "1";
   GALLIUM_DRIVER = "llvmpipe";
-  LIBGL_DRIVERS_PATH = "${pkgs.mesa.drivers}/lib/dri";
+  # 'mesa.drivers' es el nombre viejo del attribute -- nixpkgs lo fusiono
+  # en 'mesa' directamente (mismo path de todos modos), y el nombre viejo
+  # tira un evaluation warning de deprecado.
+  LIBGL_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
 }

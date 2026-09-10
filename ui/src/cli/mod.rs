@@ -1,8 +1,11 @@
 //! Headless CLI, folded into the same binary as the GUI so achv ships as
 //! one executable instead of a separate `achv-sidecar`. See `achv-gog`
 //! (library listing, installs, achievement polling — all shared with the
-//! GUI) and [`launch`] (resolving and running a profile's install through
-//! `achv-runtime`) for the actual work; this module is dispatch only.
+//! GUI) and [`launch`] (resolving and running an account's install
+//! through `achv-runtime`) for the actual work; this module is dispatch
+//! only. Every subcommand takes `--account-id`, not a profile: these are
+//! single-account operations, and the profile that groups accounts is a
+//! GUI-only concept the CLI has no need for.
 //!
 //! `main` calls [`Cli::parse`] before ever touching dioxus: a recognized
 //! subcommand runs headless and exits, and no subcommand (the ordinary
@@ -24,26 +27,26 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Cmd {
-    /// Launches a profile's installed GOG game — resolved live against
+    /// Launches an account's installed GOG game — resolved live against
     /// achv's own library, no separate link step — waits for it to exit,
     /// then polls achievements.
     Launch {
         #[arg(long)]
-        profile_id: String,
+        account_id: String,
         #[arg(long)]
         product_id: String,
     },
-    /// Lists a profile's GOG library.
+    /// Lists an account's GOG library.
     Library {
         #[arg(long)]
-        profile_id: String,
+        account_id: String,
     },
     /// Polls achievement status for one game without launching it. The GUI
     /// does this itself on selection now — mainly useful headless (cron,
     /// scripts) or for a quick manual re-check.
     Achievements {
         #[arg(long)]
-        profile_id: String,
+        account_id: String,
         #[arg(long)]
         product_id: String,
     },
@@ -52,7 +55,7 @@ pub enum Cmd {
     /// real behavior can be observed independent of the Dioxus app.
     Install {
         #[arg(long)]
-        profile_id: String,
+        account_id: String,
         #[arg(long)]
         product_id: String,
         /// Catalog title to record — the depot manifest only carries an
@@ -64,11 +67,11 @@ pub enum Cmd {
         #[arg(long)]
         build_id: Option<String>,
     },
-    /// Cancels an install left running for this (profile, product) —
+    /// Cancels an install left running for this (account, product) —
     /// useful to clear an orphan left by a client that died mid-transfer.
     CancelInstall {
         #[arg(long)]
-        profile_id: String,
+        account_id: String,
         #[arg(long)]
         product_id: String,
     },
@@ -77,8 +80,11 @@ pub enum Cmd {
 /// Runs one CLI command to completion and exits the process. Called from
 /// `main` only when it parsed a subcommand, so this never returns to a
 /// caller that might otherwise go on to launch the GUI.
+///
+/// The tracing subscriber is already installed by `main` by the time this
+/// runs — installing a second one here would panic (`tracing` only ever
+/// accepts one global default).
 pub fn run(cmd: Cmd) -> ! {
-    tracing_subscriber::fmt::init();
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(err) => {
@@ -97,30 +103,35 @@ pub fn run(cmd: Cmd) -> ! {
 
 async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
     let mut db = Db::open(achv_core::default_db_path()).context("opening achv cache db")?;
+    tracing::debug!("opened db for cli command");
 
     match cmd {
-        Cmd::Library { profile_id } => {
-            for entry in achv_gog::list_games(&profile_id, &mut |_| {}).await? {
+        Cmd::Library { account_id } => {
+            tracing::debug!(account_id, "listing gog library");
+            let games = achv_gog::list_games(&account_id, &mut |_| {}).await?;
+            tracing::info!(account_id, count = games.len(), "gog library listed");
+            for entry in games {
                 println!("{}\t{}", entry.game.id, entry.game.title);
             }
         }
-        Cmd::Achievements { profile_id, product_id } => {
-            report_poll(achv_gog::poll_achievements(&mut db, &profile_id, &product_id).await?);
+        Cmd::Achievements { account_id, product_id } => {
+            tracing::debug!(account_id, product_id, "polling achievements");
+            report_poll(achv_gog::poll_achievements(&mut db, &account_id, &product_id).await?);
         }
-        Cmd::Launch { profile_id, product_id } => {
-            launch::launch(&mut db, &profile_id, &product_id).await?;
+        Cmd::Launch { account_id, product_id } => {
+            launch::launch(&mut db, &account_id, &product_id).await?;
         }
         Cmd::Install {
-            profile_id,
+            account_id,
             product_id,
             title,
             branch,
             build_id,
         } => {
-            install::install(&profile_id, &product_id, &title, branch.as_deref(), build_id.as_deref()).await?;
+            install::install(&account_id, &product_id, &title, branch.as_deref(), build_id.as_deref()).await?;
         }
-        Cmd::CancelInstall { profile_id, product_id } => {
-            install::cancel(&profile_id, &product_id).await;
+        Cmd::CancelInstall { account_id, product_id } => {
+            install::cancel(&account_id, &product_id).await;
             println!("cancelled (or nothing was in flight)");
         }
     }

@@ -45,7 +45,7 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
 /// Install state isn't cached — it's read live from achv's own install
 /// record, so a game the cache remembers still shows as installed on the
 /// very first frame instead of flipping once the network fetch lands.
-fn to_entry(profile_id: &str, cached: CachedGame) -> LibraryEntry {
+fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
     LibraryEntry {
         kind: kind_from_str(&cached.kind),
         purchased_at: cached.purchased_at,
@@ -53,7 +53,8 @@ fn to_entry(profile_id: &str, cached: CachedGame) -> LibraryEntry {
         parent_id: cached.parent_id,
         installable: cached.installable,
         game: Game {
-            install_state: super::local_install_state(profile_id, &cached.product_id),
+            account_id: account_id.to_owned(),
+            install_state: super::local_install_state(account_id, &cached.product_id),
             id: cached.product_id,
             title: cached.title,
             storefront: cached.storefront,
@@ -67,41 +68,51 @@ fn to_entry(profile_id: &str, cached: CachedGame) -> LibraryEntry {
     }
 }
 
-/// Whether this profile has ever been synced before — the coarse,
+/// Whether this account has ever been synced before — the coarse,
 /// once-per-fetch-cycle signal [`super::stream::watch_games`] needs to
-/// tell a genuine new purchase (this id is new, and the profile isn't)
+/// tell a genuine new purchase (this id is new, and the account isn't)
 /// apart from a first-ever sync, where every id is new to the cache and
 /// none of that is evidence any particular game was just added. Defaults
 /// to `true` (behave as if already synced) when the cache can't even be
 /// opened, since in that case nothing here can be trusted anyway.
-pub(super) fn has_synced_before(profile_id: &str) -> bool {
+pub(super) fn has_synced_before(account_id: &str) -> bool {
     Db::open(achv_core::default_db_path())
-        .and_then(|db| db.has_games(profile_id))
+        .and_then(|db| db.has_games(account_id))
+        .inspect_err(|err| {
+            tracing::warn!(account_id, %err, "could not check prior sync state, assuming already synced");
+        })
         .unwrap_or(true)
 }
 
 /// Whatever was cached from the last session — shown immediately on
 /// startup so the sidebar isn't empty while a fresh fetch re-scans the
 /// account.
-pub(super) fn load_cached_games(profile_id: &str) -> Vec<LibraryEntry> {
+pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
     let Ok(db) = Db::open(achv_core::default_db_path()) else {
+        tracing::warn!(account_id, "could not open cache db, starting with an empty library");
         return Vec::new();
     };
-    db.list_games(profile_id)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|cached| to_entry(profile_id, cached))
-        .collect()
+    let cached = db.list_games(account_id).unwrap_or_else(|err| {
+        tracing::warn!(account_id, %err, "could not read cached games, starting with an empty library");
+        Vec::new()
+    });
+    tracing::debug!(account_id, count = cached.len(), "loaded cached games");
+    cached.into_iter().map(|cached| to_entry(account_id, cached)).collect()
 }
 
 /// Best-effort — a cache write failing shouldn't interrupt the fetch, the
 /// in-memory list is still correct either way.
 ///
-/// `confirmed_new` is the profile-wide "have we synced this account
+/// `confirmed_new` is the account-wide "have we synced this account
 /// before" flag from [`super::stream`] — see [`achv_core::Db::upsert_game`]
 /// for why a single game entry can't answer that for itself.
-pub(super) fn save_entry(profile_id: &str, entry: &LibraryEntry, confirmed_new: bool) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.upsert_game(profile_id, &to_cached(entry), confirmed_new);
+pub(super) fn save_entry(account_id: &str, entry: &LibraryEntry, confirmed_new: bool) {
+    match Db::open(achv_core::default_db_path()) {
+        Ok(db) => {
+            if let Err(err) = db.upsert_game(account_id, &to_cached(entry), confirmed_new) {
+                tracing::warn!(account_id, product_id = %entry.game.id, %err, "failed to cache game entry");
+            }
+        }
+        Err(err) => tracing::warn!(account_id, %err, "could not open cache db to save game entry"),
     }
 }

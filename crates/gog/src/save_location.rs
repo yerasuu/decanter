@@ -61,29 +61,45 @@ struct LocationEntry {
 /// Empty means Windows cloud saves are switched off for this build — there
 /// is nothing to auto-detect, and the caller falls back to asking the user.
 pub async fn detect(
-    profile_id: &str,
+    account_id: &str,
     product_id: &str,
     install_dir: &Path,
     prefix_drive_c: &Path,
 ) -> Result<Vec<SaveLocation>> {
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-    let http = reqwest::Client::new();
+    let http = crate::http_client();
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| Ok(client.token.borrow().access_token.clone())).await
+        crate::with_session(account_id, |client| Ok(client.token.borrow().access_token.clone())).await
     );
 
-    let build_client = crate::achv_try!(crate::cloud_saves::resolve_build_client(&http, &access_token, game_id).await);
+    let build_client = crate::achv_try!(
+        crate::cloud_saves::resolve_build_client(&http, &access_token, game_id)
+            .await
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "resolving cloud saves client failed, aborting save location detection"))
+    );
 
     let url = format!(
         "{REMOTE_CONFIG}/components/galaxy_client/clients/{}?component_version=2.0.51",
         build_client.client_id
     );
-    let response = crate::achv_try!(http.get(&url).send().await);
-    let response = crate::achv_try!(response.error_for_status().context("GOG remote-config lookup rejected"));
+    let response = crate::achv_try!(
+        http.get(&url)
+            .send()
+            .await
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "gog remote-config request failed, aborting save location detection"))
+    );
+    let response = crate::achv_try!(
+        response
+            .error_for_status()
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "gog remote-config lookup rejected, aborting save location detection"))
+            .context("GOG remote-config lookup rejected")
+    );
     let config: RemoteConfig = crate::achv_try!(response.json().await);
+    tracing::debug!(product_id, "fetched gog remote-config");
 
     let cloud_storage = config.content.windows.cloud_storage;
     if !cloud_storage.enabled {
+        tracing::debug!(product_id, "gog cloud saves disabled for this build");
         return Ok(Vec::new());
     }
 
@@ -100,6 +116,7 @@ pub async fn detect(
     if cloud_storage.locations.is_empty() {
         // No explicit location declared: Galaxy falls back to this
         // client's own default storage folder.
+        tracing::debug!(product_id, "resolved 1 default gog save location");
         return Ok(vec![SaveLocation {
             name: "default".to_string(),
             path: vars["APPLICATION_DATA_LOCAL"]
@@ -109,7 +126,7 @@ pub async fn detect(
         }]);
     }
 
-    Ok(cloud_storage
+    let locations: Vec<SaveLocation> = cloud_storage
         .locations
         .into_iter()
         .filter_map(|entry| {
@@ -118,7 +135,13 @@ pub async fn detect(
             };
             Some(SaveLocation { name: entry.name, path })
         })
-        .collect())
+        .collect();
+    tracing::debug!(
+        product_id,
+        location_count = locations.len(),
+        "resolved gog save locations"
+    );
+    Ok(locations)
 }
 
 /// Expands one `<?VAR?>relative/path` template. `None` for a template

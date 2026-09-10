@@ -1,6 +1,7 @@
-//! Fetches the profile's GOG library through `achv-gog` and folds it
-//! into the shared `games` signal, mirroring each group into the local
-//! cache as it lands.
+//! Fetches one account's GOG library through `achv-gog` and folds it
+//! into that account's own `games` signal (one of these runs per account
+//! in the active profile — see `super::use_gog_library`), mirroring each
+//! group into the local cache as it lands.
 //!
 //! Two passes, for the reason `achv_gog::library` documents: the owned
 //! list takes seconds, the catalog metadata takes a minute. Both write
@@ -29,16 +30,27 @@ use super::cache::{has_synced_before, save_entry};
 /// Long enough that a full re-resolve never overlaps itself in practice.
 const REFRESH_INTERVAL: Duration = Duration::from_mins(15);
 
+/// `on_update` re-merges this account's list into `GogLibrary::games` —
+/// called after every write to `games` below, same as when this owned a
+/// shared signal directly, just routed through the caller's merge instead
+/// of a plain `Signal::set`.
+///
+/// `progress` carries pass two's "N of M enriched" while it runs, and
+/// `None` the rest of the time — pass one has no known total to show a
+/// fraction of, and a later refresh cycle shouldn't leave a stale one on
+/// screen after this account is already `Loaded`.
 pub(super) async fn watch_games(
-    profile_id: String,
+    account_id: String,
     mut games: Signal<Vec<LibraryEntry>>,
     mut state: Signal<LibraryState>,
+    mut progress: Signal<Option<(usize, usize)>>,
+    mut on_update: impl FnMut() + 'static,
 ) {
     loop {
         // Checked once per cycle, before any of this round's writes land:
         // a first-ever sync means every row is about to be a fresh INSERT,
         // and none of them carries evidence of having just been added.
-        let confirmed_new = has_synced_before(&profile_id);
+        let confirmed_new = has_synced_before(&account_id);
 
         // Pass one merges into whatever is already on screen rather than
         // starting from empty. Starting empty meant a full cache was
@@ -47,19 +59,23 @@ pub(super) async fn watch_games(
         // first. Ownership can still drop — a refund, a revoked key — but
         // that's settled by pruning once the fetch is whole, below.
         let mut shown: Vec<LibraryEntry> = games.peek().clone();
-        let listed = achv_gog::list_games(&profile_id, &mut |batch| {
-            absorb(&profile_id, confirmed_new, &mut shown, batch);
+        tracing::debug!(account_id, "listing gog games");
+        let listed = achv_gog::list_games(&account_id, &mut |batch| {
+            absorb(&account_id, confirmed_new, &mut shown, batch);
             games.set(shown.clone());
+            on_update();
         })
         .await;
         let listed_ok = listed.is_ok();
 
         let collected = match listed {
             Ok(collected) => {
+                tracing::info!(account_id, count = collected.len(), "gog library listed");
                 // A complete listing is the whole truth about what's
                 // owned, so anything it didn't mention isn't any more.
-                prune(&profile_id, &mut shown, &collected);
+                prune(&account_id, &mut shown, &collected);
                 games.set(shown.clone());
+                on_update();
                 collected
             }
             Err(err) => {
@@ -67,6 +83,7 @@ pub(super) async fn watch_games(
                 // refresh shouldn't blank a library the user could still
                 // browse, and a partial listing is no evidence of a
                 // dropped entitlement.
+                tracing::warn!(account_id, %err, "gog library listing failed, keeping what was cached");
                 state.set(LibraryState::Failed(err.to_string()));
                 Vec::new()
             }
@@ -76,11 +93,20 @@ pub(super) async fn watch_games(
         // best-effort inside, so there's nothing to handle out here — an
         // entry that gains nothing stays exactly as pass one left it.
         if !collected.is_empty() {
-            achv_gog::enrich_games(&profile_id, collected, &mut |batch| {
-                absorb(&profile_id, confirmed_new, &mut shown, batch);
-                games.set(shown.clone());
-            })
+            tracing::debug!(account_id, count = collected.len(), "enriching gog catalog metadata");
+            achv_gog::enrich_games(
+                &account_id,
+                collected,
+                &mut |batch| {
+                    absorb(&account_id, confirmed_new, &mut shown, batch);
+                    games.set(shown.clone());
+                    on_update();
+                },
+                &mut |done, total| progress.set(Some((done, total))),
+            )
             .await;
+            progress.set(None);
+            tracing::debug!(account_id, "gog catalog enrichment finished");
         }
 
         // Only reached once both passes are done. `state` starts this
@@ -89,6 +115,7 @@ pub(super) async fn watch_games(
         // already `Loaded`, so re-setting it here on every later cycle is
         // a harmless no-op, not a re-triggered loading screen.
         if listed_ok {
+            tracing::info!(account_id, "gog library ready");
             state.set(LibraryState::Loaded);
         }
 
@@ -99,16 +126,18 @@ pub(super) async fn watch_games(
 /// Drops whatever a complete fetch didn't list, on screen and in the
 /// cache alike — the only thing that ever notices an entitlement going
 /// away, since a dropped id simply stops coming back.
-fn prune(profile_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntry]) {
+fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntry]) {
     let owned: std::collections::HashSet<&str> = fetched.iter().map(|entry| entry.game.id.as_str()).collect();
     shown.retain(|entry| owned.contains(entry.game.id.as_str()));
 
     let keep: Vec<String> = fetched.iter().map(|entry| entry.game.id.clone()).collect();
-    if let Ok(db) = achv_core::Db::open(achv_core::default_db_path())
-        && let Ok(dropped) = db.retain_games(profile_id, achv_core::Storefront::Gog, &keep)
-        && dropped > 0
-    {
-        tracing::info!("{dropped} game(s) are no longer in this GOG account");
+    match achv_core::Db::open(achv_core::default_db_path()) {
+        Ok(db) => match db.retain_games(account_id, achv_core::Storefront::Gog, &keep) {
+            Ok(dropped) if dropped > 0 => tracing::info!("{dropped} game(s) are no longer in this GOG account"),
+            Ok(_) => {}
+            Err(err) => tracing::warn!(account_id, %err, "failed to prune games no longer owned from cache"),
+        },
+        Err(err) => tracing::warn!(account_id, %err, "failed to open db while pruning dropped games"),
     }
 }
 
@@ -117,9 +146,14 @@ fn prune(profile_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntr
 /// Position is kept for an entry that's already there, so pass two filling
 /// in a cover doesn't reshuffle the list under someone mid-scroll. Sorting
 /// is the UI's job, not the fetch's.
-fn absorb(profile_id: &str, confirmed_new: bool, shown: &mut Vec<LibraryEntry>, batch: Batch) {
-    for entry in batch {
-        save_entry(profile_id, &entry, confirmed_new);
+fn absorb(account_id: &str, confirmed_new: bool, shown: &mut Vec<LibraryEntry>, batch: Batch) {
+    for mut entry in batch {
+        // Tagged here rather than by achv_gog itself: this is the one place
+        // that already knows both the entry and which account's stream it
+        // came from, and it's what the merged, multi-account library view
+        // needs to tell two accounts' copies of the same game apart.
+        entry.game.account_id = account_id.to_owned();
+        save_entry(account_id, &entry, confirmed_new);
         match shown.iter_mut().find(|existing| existing.game.id == entry.game.id) {
             Some(existing) => *existing = entry,
             None => shown.push(entry),

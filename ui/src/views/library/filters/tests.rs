@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use super::{AchievementState, Filters, KindSelection, LibraryStats, PlayState, SavedFilter, Sort, sort_entries};
+use super::{
+    AchievementState, Collections, Filters, KindSelection, LibraryStats, PlayState, SavedFilter, Sort, sort_entries,
+};
 use crate::background::InstallStatus;
-use achv_core::Game;
+use achv_core::{Game, Storefront};
 use achv_gog::{GameKind, LibraryEntry};
 
 fn entry(id: &str) -> LibraryEntry {
@@ -95,6 +97,51 @@ fn date_added_falls_back_to_the_local_timestamp_when_ungranked() {
     );
     assert_eq!(entries[1].game.id, "unranked_but_recent");
     assert_eq!(entries[2].game.id, "unranked_and_old");
+}
+
+/// Two accounts in the same profile can each own a different game -- the
+/// account filter has to tell them apart even though nothing else about
+/// the two entries differs.
+#[test]
+fn accepts_narrows_to_the_checked_accounts() {
+    let mut owned_by_one = entry("a");
+    owned_by_one.game.account_id = "acc1".to_string();
+    let mut owned_by_two = entry("b");
+    owned_by_two.game.account_id = "acc2".to_string();
+
+    let mut filters = Filters::default();
+    filters.accounts.insert("acc1".to_string());
+
+    let (stats, collections, favorites, pending) = (
+        LibraryStats::default(),
+        Collections::default(),
+        HashSet::new(),
+        HashSet::new(),
+    );
+
+    assert!(filters.accepts(&owned_by_one, &favorites, &stats, &collections, &pending));
+    assert!(!filters.accepts(&owned_by_two, &favorites, &stats, &collections, &pending));
+}
+
+#[test]
+fn accepts_narrows_to_the_checked_storefronts() {
+    let mut gog_entry = entry("a");
+    gog_entry.game.storefront = Storefront::Gog;
+    let mut other_entry = entry("b");
+    other_entry.game.storefront = Storefront::EpicGames;
+
+    let mut filters = Filters::default();
+    filters.storefronts.insert(Storefront::Gog);
+
+    let (stats, collections, favorites, pending) = (
+        LibraryStats::default(),
+        Collections::default(),
+        HashSet::new(),
+        HashSet::new(),
+    );
+
+    assert!(filters.accepts(&gog_entry, &favorites, &stats, &collections, &pending));
+    assert!(!filters.accepts(&other_entry, &favorites, &stats, &collections, &pending));
 }
 
 #[test]

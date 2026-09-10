@@ -1,7 +1,7 @@
-//! Drives `achv-gog`'s in-process install — no bottles-server, no plugin
-//! registry, no GOG plugin. The `installing` map is still our own guard
-//! against starting a second install for the same game while one is in
-//! flight; `achv-gog` keys its cancellable handles the same way.
+//! Drives `achv-gog`'s in-process install. The `installing` map is still
+//! our own guard against starting a second install for the same game
+//! while one is in flight; `achv-gog` keys its cancellable handles the
+//! same way.
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -16,7 +16,7 @@ const UI_UPDATE_INTERVAL: Duration = Duration::from_millis(150);
 /// best-effort cleanup: a partial install leaves files behind with no
 /// `InstallRecord` to tie them to, so nothing else would ever remove them.
 pub(super) async fn install(
-    profile_id: String,
+    account_id: String,
     product_id: String,
     parent_id: Option<String>,
     title: String,
@@ -36,9 +36,18 @@ pub(super) async fn install(
     // Dioxus signal (and the render it triggers) on every single one
     // falls behind the transfer badly. Progress is throttled so rendering
     // never becomes the bottleneck.
+    tracing::info!(
+        account_id,
+        product_id,
+        title,
+        branch = branch.as_deref(),
+        dlc_count = dlcs.len(),
+        "install started"
+    );
+
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<achv_gog::Progress>();
     let install = achv_gog::install(
-        &profile_id,
+        &account_id,
         &product_id,
         parent_id.as_deref(),
         &title,
@@ -77,52 +86,65 @@ pub(super) async fn install(
 
     let _ = touched_files;
     if let Err(err) = outcome {
+        // Surfaces as `InstallStatus::Failed` in the action bar's red text —
+        // this is the point the failure becomes visible to the user.
+        tracing::error!(account_id, product_id, error = %err, "install failed");
         installing
             .write()
             .insert(product_id_key, InstallStatus::Failed(err.to_string()));
         return;
     }
+    tracing::info!(account_id, product_id, "install finished");
 
     // Each DLC reports under its own key, so the game's own row stops
     // showing progress once the game itself is down and each DLC shows
     // its own. They go one at a time: they share a destination directory.
     installing.write().remove(&product_id_key);
-    library.refresh_install_state(&profile_id, &product_id);
+    library.refresh_install_state(&account_id, &product_id);
 
     for (dlc_id, dlc_title) in dlcs {
+        tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
         installing.write().insert(dlc_id.clone(), InstallStatus::Queued);
-        let outcome = achv_gog::install(&profile_id, &dlc_id, Some(&product_id), &dlc_title, None, None, |_| {}).await;
+        let outcome = achv_gog::install(&account_id, &dlc_id, Some(&product_id), &dlc_title, None, None, |_| {}).await;
         match outcome {
             // A DLC that failed is worth surfacing, but it doesn't undo
             // the game that installed fine just before it.
             Err(err) => {
+                tracing::error!(account_id, product_id, dlc_id, error = %err, "dlc install failed");
                 installing
                     .write()
                     .insert(dlc_id, InstallStatus::Failed(err.to_string()));
             }
             Ok(()) => {
+                tracing::info!(account_id, product_id, dlc_id, "dlc install finished");
                 installing.write().remove(&dlc_id);
             }
         }
     }
-    library.refresh_install_state(&profile_id, &product_id);
+    library.refresh_install_state(&account_id, &product_id);
 }
 
-pub(crate) async fn cancel(profile_id: String, product_id: String) {
-    achv_gog::cancel(&profile_id, &product_id).await;
+pub(crate) async fn cancel(account_id: String, product_id: String) {
+    tracing::info!(account_id, product_id, "cancelling install");
+    achv_gog::cancel(&account_id, &product_id).await;
 }
 
 pub(super) async fn uninstall(
-    profile_id: String,
+    account_id: String,
     product_id: String,
     library: crate::gog_library::GogLibrary,
 ) -> Result<(), String> {
+    tracing::info!(account_id, product_id, "uninstall started");
     crate::achv_try!(
-        achv_gog::uninstall(&profile_id, &product_id)
+        achv_gog::uninstall(&account_id, &product_id)
             .await
             .map_err(|err| err.to_string())
+            // Bubbles up to the confirm dialog's red error text — this is
+            // where it becomes user-visible.
+            .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "uninstall failed"))
     );
-    library.refresh_install_state(&profile_id, &product_id);
+    tracing::info!(account_id, product_id, "uninstall finished");
+    library.refresh_install_state(&account_id, &product_id);
     Ok(())
 }
 

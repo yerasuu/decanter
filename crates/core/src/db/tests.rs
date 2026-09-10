@@ -83,9 +83,9 @@ fn retaining_nothing_is_refused_rather_than_obeyed() {
     assert_eq!(expect_ok(db.list_games("profile")).len(), 1);
 }
 
-/// Another profile's rows are none of this fetch's business.
+/// Another account's rows are none of this fetch's business.
 #[test]
-fn retaining_leaves_other_profiles_alone() {
+fn retaining_leaves_other_accounts_alone() {
     let db = expect_ok(Db::open(":memory:"));
     expect_ok(db.upsert_game("mine", &game("1"), false));
     expect_ok(db.upsert_game("theirs", &game("2"), false));
@@ -175,11 +175,11 @@ fn date_added_falls_back_from_purchase_to_release_to_first_seen() {
     assert!(expect_key(&added, "unknown") > 0);
 }
 
-/// A first-ever sync for a profile has no way to tell a decade-old
+/// A first-ever sync for an account has no way to tell a decade-old
 /// game apart from one bought yesterday, so none of it should be
 /// stamped as "just added" -- that's what `confirmed_new: false` is
 /// for, and it's what a caller should pass when [`Db::has_games`] says
-/// this profile has never been synced before.
+/// this account has never been synced before.
 #[test]
 fn an_unconfirmed_row_with_no_other_date_is_left_unknown_not_stamped_as_new() {
     let db = expect_ok(Db::open(":memory:"));
@@ -192,7 +192,7 @@ fn an_unconfirmed_row_with_no_other_date_is_left_unknown_not_stamped_as_new() {
     assert_eq!(expect_key(&added, "ancient"), 0);
 }
 
-/// The flip side: a product id that's new relative to a profile that
+/// The flip side: a product id that's new relative to an account that
 /// *has* synced before is a real signal, and gets a real timestamp.
 #[test]
 fn a_confirmed_new_row_gets_stamped_with_now() {
@@ -223,7 +223,7 @@ fn a_later_refresh_never_touches_first_seen_either_way() {
 }
 
 #[test]
-fn has_games_reflects_whether_a_profile_was_ever_synced() {
+fn has_games_reflects_whether_an_account_was_ever_synced() {
     let db = expect_ok(Db::open(":memory:"));
     assert!(!expect_ok(db.has_games("p1")));
     expect_ok(db.upsert_game("p1", &game("g1"), false));
@@ -293,12 +293,12 @@ fn a_stale_unbacked_first_seen_from_before_this_gets_reset_on_open() {
         let conn = expect_ok(rusqlite::Connection::open(&path));
         expect_ok(conn.execute_batch(super::SCHEMA));
         expect_ok(conn.execute(
-            "INSERT INTO games_cache (profile_id, storefront, product_id, title, kind, first_seen, updated_at)
+            "INSERT INTO games_cache (account_id, storefront, product_id, title, kind, first_seen, updated_at)
              VALUES ('p1', 3, 'stale', 'Stale', 'game', strftime('%s','now'), strftime('%s','now'))",
             [],
         ));
         expect_ok(conn.execute(
-            "INSERT INTO games_cache (profile_id, storefront, product_id, title, kind, purchased_at, first_seen, updated_at)
+            "INSERT INTO games_cache (account_id, storefront, product_id, title, kind, purchased_at, first_seen, updated_at)
              VALUES ('p1', 3, 'real', 'Real', 'game', 42, strftime('%s','now'), strftime('%s','now'))",
             [],
         ))

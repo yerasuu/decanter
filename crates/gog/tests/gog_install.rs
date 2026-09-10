@@ -26,6 +26,23 @@ fn ids() -> (String, String) {
     )
 }
 
+/// The active profile's first GOG account — what every install call below
+/// needs. A profile can hold several accounts now, but this test only
+/// ever needs one to exercise the download/DLC/uninstall paths.
+fn account_id() -> String {
+    let db = Db::open(default_db_path()).expect("database");
+    let profile = db
+        .active_profile()
+        .expect("profile query")
+        .expect("a logged-in profile");
+    db.accounts_in_profile(&profile.id)
+        .expect("accounts query")
+        .into_iter()
+        .find(|account| account.storefront == Storefront::Gog)
+        .expect("a logged-in GOG account in the active profile")
+        .id
+}
+
 fn library() -> Library {
     Library::new(Library::default_path().expect("data directory"))
 }
@@ -33,21 +50,16 @@ fn library() -> Library {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "downloads a real game from GOG"]
 async fn installs_a_game_and_then_a_dlc_into_it() {
-    let profile = Db::open(default_db_path())
-        .expect("database")
-        .active_profile()
-        .expect("profile query")
-        .expect("a logged-in profile")
-        .id;
+    let account = account_id();
     let (game_id, dlc_id) = ids();
     let library = library();
 
-    achv_gog::install(&profile, &game_id, None, "Test Game", None, None, |_| {})
+    achv_gog::install(&account, &game_id, None, "Test Game", None, None, |_| {})
         .await
         .expect("the base game should install");
 
     let installed = library
-        .read_manifest(&profile, Storefront::Gog, &game_id)
+        .read_manifest(&account, Storefront::Gog, &game_id)
         .expect("a manifest for the game");
     assert!(
         installed.launch_executable.is_some(),
@@ -60,12 +72,12 @@ async fn installs_a_game_and_then_a_dlc_into_it() {
          the wrong depots were selected"
     );
 
-    achv_gog::install(&profile, &dlc_id, Some(&game_id), "Test DLC", None, None, |_| {})
+    achv_gog::install(&account, &dlc_id, Some(&game_id), "Test DLC", None, None, |_| {})
         .await
         .expect("the DLC should install");
 
     let after = library
-        .read_manifest(&profile, Storefront::Gog, &game_id)
+        .read_manifest(&account, Storefront::Gog, &game_id)
         .expect("the game's manifest after the DLC");
     let dlc = after.dlcs.get(&dlc_id).expect("the DLC on the game");
     assert_eq!(dlc.title, "Test DLC");
@@ -76,7 +88,7 @@ async fn installs_a_game_and_then_a_dlc_into_it() {
 
     // A DLC installs into the game, so it gets no install of its own.
     assert!(
-        library.read_manifest(&profile, Storefront::Gog, &dlc_id).is_none(),
+        library.read_manifest(&account, Storefront::Gog, &dlc_id).is_none(),
         "a DLC must not have a manifest of its own"
     );
     // And its files landed beside the game's, in one directory.
@@ -88,17 +100,12 @@ async fn installs_a_game_and_then_a_dlc_into_it() {
 /// A DLC's files belong in the base game's directory, so there is nowhere
 /// to put them until it is installed. Refused before anything downloads.
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "needs a logged-in GOG profile"]
+#[ignore = "needs a logged-in GOG account"]
 async fn refuses_a_dlc_whose_game_is_not_installed() {
-    let profile = Db::open(default_db_path())
-        .expect("database")
-        .active_profile()
-        .expect("profile query")
-        .expect("a logged-in profile")
-        .id;
+    let account = account_id();
     let (_, dlc_id) = ids();
 
-    let result = achv_gog::install(&profile, &dlc_id, Some("999999999"), "Test DLC", None, None, |_| {}).await;
+    let result = achv_gog::install(&account, &dlc_id, Some("999999999"), "Test DLC", None, None, |_| {}).await;
     assert!(result.is_err(), "a DLC with no base game must not install");
 }
 
@@ -110,17 +117,12 @@ async fn refuses_a_dlc_whose_game_is_not_installed() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "needs the game from the test above already installed"]
 async fn removing_a_dlc_leaves_the_game_intact() {
-    let profile = Db::open(default_db_path())
-        .expect("database")
-        .active_profile()
-        .expect("profile query")
-        .expect("a logged-in profile")
-        .id;
+    let account = account_id();
     let (game_id, dlc_id) = ids();
     let library = library();
 
     let before = library
-        .read_manifest(&profile, Storefront::Gog, &game_id)
+        .read_manifest(&account, Storefront::Gog, &game_id)
         .expect("the game must be installed for this test");
     assert!(
         before.dlcs.contains_key(&dlc_id),
@@ -129,12 +131,12 @@ async fn removing_a_dlc_leaves_the_game_intact() {
     let directory = library.install_dir(&before.install_dir).expect("an install directory");
     let executable = directory.join(before.launch_executable.as_deref().expect("a launch executable"));
 
-    achv_gog::uninstall_dlc(&profile, &dlc_id, &game_id)
+    achv_gog::uninstall_dlc(&account, &dlc_id, &game_id)
         .await
         .expect("the DLC should come off");
 
     let after = library
-        .read_manifest(&profile, Storefront::Gog, &game_id)
+        .read_manifest(&account, Storefront::Gog, &game_id)
         .expect("the game's manifest survives");
     assert!(!after.dlcs.contains_key(&dlc_id), "the DLC record should be gone");
     assert!(

@@ -18,9 +18,9 @@ pub struct Branch {
 }
 
 /// Every branch GOG currently lists for `product_id`, mainline first.
-pub async fn list_branches(profile_id: &str, product_id: &str) -> anyhow::Result<Vec<Branch>> {
+pub async fn list_branches(account_id: &str, product_id: &str) -> anyhow::Result<Vec<Branch>> {
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-    let builds = crate::achv_try!(fetch_builds(profile_id, game_id).await);
+    let builds = crate::achv_try!(fetch_builds(account_id, game_id).await);
 
     let mut branches: Vec<Branch> = Vec::new();
     for build in &builds {
@@ -39,6 +39,7 @@ pub async fn list_branches(profile_id: &str, product_id: &str) -> anyhow::Result
     // ordering — it's what "no branch selected" means, so it reads best
     // at the top of a list of alternatives.
     branches.sort_by_key(|branch| branch.name.is_some());
+    tracing::debug!(product_id, branch_count = branches.len(), "resolved GOG branch list");
     Ok(branches)
 }
 
@@ -49,21 +50,27 @@ pub async fn list_branches(profile_id: &str, product_id: &str) -> anyhow::Result
 /// mainline would report a beta as "outdated" forever, and comparing a
 /// mainline install against a beta's build would report an update that
 /// isn't one.
-pub async fn check_update(profile_id: &str, game: &InstalledGame) -> anyhow::Result<Option<String>> {
+pub async fn check_update(account_id: &str, game: &InstalledGame) -> anyhow::Result<Option<String>> {
     let game_id: i64 = crate::achv_try!(game.game_id.parse().context("GOG product_id must be numeric"));
-    let builds = crate::achv_try!(fetch_builds(profile_id, game_id).await);
+    let builds = crate::achv_try!(fetch_builds(account_id, game_id).await);
     let current = crate::achv_try!(
         select_build_for_branch(&builds, game.branch.as_deref()).with_context(|| match &game.branch {
             Some(name) => format!("branch {name:?} is no longer offered"),
             None => "no builds available".to_string(),
         })
     );
-    Ok((current.build_id != game.build_id).then(|| current.build_id.clone()))
+    let outdated = (current.build_id != game.build_id).then(|| current.build_id.clone());
+    tracing::debug!(
+        product_id = %game.game_id,
+        outdated = outdated.is_some(),
+        "checked GOG build for update"
+    );
+    Ok(outdated)
 }
 
-async fn fetch_builds(profile_id: &str, game_id: i64) -> anyhow::Result<Vec<Build>> {
+async fn fetch_builds(account_id: &str, game_id: i64) -> anyhow::Result<Vec<Build>> {
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             crate::achv_try!(
                 client
                     .get_user_data()
@@ -73,10 +80,12 @@ async fn fetch_builds(profile_id: &str, game_id: i64) -> anyhow::Result<Vec<Buil
         })
         .await
     );
-    let http = reqwest::Client::new();
-    get_builds(&http, &access_token, game_id)
+    let http = crate::http_client();
+    let builds = get_builds(&http, &access_token, game_id)
         .await
-        .context("GOG builds lookup failed")
+        .context("GOG builds lookup failed")?;
+    tracing::debug!(game_id, build_count = builds.len(), "fetched GOG build list");
+    Ok(builds)
 }
 
 /// Every build GOG has published for one branch of `product_id`, newest
@@ -84,33 +93,44 @@ async fn fetch_builds(profile_id: &str, game_id: i64) -> anyhow::Result<Vec<Buil
 /// the current build, for picking a specific one to roll back to.
 ///
 /// `branch: None` is mainline, same as everywhere else branches are named.
-pub async fn list_builds(profile_id: &str, product_id: &str, branch: Option<&str>) -> anyhow::Result<Vec<Build>> {
+pub async fn list_builds(account_id: &str, product_id: &str, branch: Option<&str>) -> anyhow::Result<Vec<Build>> {
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-    let builds = crate::achv_try!(fetch_builds(profile_id, game_id).await);
-    Ok(builds
+    let builds = crate::achv_try!(fetch_builds(account_id, game_id).await);
+    let filtered: Vec<Build> = builds
         .into_iter()
         .filter(|build| build.branch.as_deref() == branch)
-        .collect())
+        .collect();
+    tracing::debug!(
+        product_id,
+        build_count = filtered.len(),
+        "resolved GOG build list for branch"
+    );
+    Ok(filtered)
 }
 
 /// Checks every installed game for a profile at once, returning only the
 /// ones that actually have an update — a failed lookup for one game (a
 /// delisted product, a network hiccup) is skipped rather than failing the
 /// whole sweep.
-pub async fn check_all_updates(profile_id: &str) -> Vec<(InstalledGame, String)> {
+pub async fn check_all_updates(account_id: &str) -> Vec<(InstalledGame, String)> {
     let Ok(library) = crate::install::library() else {
         return Vec::new();
     };
     let mut outdated = Vec::new();
-    for game in library.scan(profile_id).into_values() {
+    for game in library.scan(account_id).into_values() {
         if game.storefront != Storefront::Gog {
             continue;
         }
-        match check_update(profile_id, &game).await {
+        match check_update(account_id, &game).await {
             Ok(Some(build_id)) => outdated.push((game, build_id)),
             Ok(None) => {}
             Err(err) => tracing::debug!("update check failed for {}: {err}", game.game_id),
         }
     }
+    tracing::info!(
+        account_id,
+        outdated_count = outdated.len(),
+        "checked GOG installed games for updates"
+    );
     outdated
 }

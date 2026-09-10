@@ -40,9 +40,9 @@ use crate::db::{Db, Error, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Profile {
-    /// A string, not a `Uuid`: profiles imported from bottles-next keep
-    /// their original ids, and every cache row already written is keyed by
-    /// that exact text.
+    /// A string, not a `Uuid`: stored as SQLite `TEXT` and every cache row
+    /// is already keyed by that exact text, so it's carried through as-is
+    /// rather than parsed and re-serialized on each read.
     pub id: String,
     pub name: String,
 }
@@ -56,9 +56,11 @@ impl Db {
             Ok(id) => id,
             Err(err) => return Err(err),
         }) else {
+            tracing::debug!("no active profile set");
             return Ok(None);
         };
-        self.conn
+        let profile = self
+            .conn
             .query_row("SELECT id, name FROM profiles WHERE id = ?1", params![id], |row| {
                 Ok(Profile {
                     id: match row.get(0) {
@@ -72,15 +74,34 @@ impl Db {
                 })
             })
             .optional()
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        if profile.is_none() {
+            // The stored active_profile_id points at a profile that's since
+            // been deleted — recoverable (caller just sees no active
+            // profile), but worth flagging since it's stale settings state.
+            tracing::warn!(profile_id = id, "active profile id set but no matching profile exists");
+        }
+        tracing::debug!(profile_id = id, found = profile.is_some(), "read active profile");
+        Ok(profile)
     }
 
-    /// Forgets the profile itself. Its cached library, achievements and
-    /// installs are left in place: they are keyed by the same id, so
-    /// re-adding the profile brings them all back rather than starting the
-    /// user over.
+    /// Forgets the profile itself, and every account it grouped — unlike
+    /// forgetting one account, a profile can't be left holding accounts
+    /// with no profile of their own, so this cascades. Each account's
+    /// cached library, achievements and installs are left in place, same
+    /// as [`Db::forget_account`] alone: re-adding the profile and its
+    /// accounts brings them all back rather than starting the user over.
     #[inline]
     pub fn delete_profile(&self, profile_id: &str) -> Result<()> {
+        let accounts = match self.accounts_in_profile(profile_id) {
+            Ok(accounts) => accounts,
+            Err(err) => return Err(err),
+        };
+        for account in accounts {
+            if let Err(err) = self.forget_account(&account.id, account.storefront) {
+                return Err(err);
+            }
+        }
         match self
             .conn
             .execute("DELETE FROM profiles WHERE id = ?1", params![profile_id])
@@ -88,6 +109,9 @@ impl Db {
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
+        // A milestone worth seeing at default level, same tier as
+        // `Db::forget_account`'s own info! for one account alone.
+        tracing::info!(profile_id, "deleted profile");
         Ok(())
     }
 
@@ -115,11 +139,16 @@ impl Db {
             Ok(rows) => rows,
             Err(err) => return Err(err.into()),
         };
-        Ok(rows.flatten().collect())
+        let profiles: Vec<_> = rows.flatten().collect();
+        tracing::debug!(profile_count = profiles.len(), "listed profiles");
+        Ok(profiles)
     }
 
     #[inline]
     pub fn set_active_profile(&self, profile_id: &str) -> Result<()> {
+        // A profile switch is a milestone worth seeing at default level:
+        // it swaps out the whole set of accounts in play at once.
+        tracing::info!(profile_id, "switched active profile");
         self.set_setting("active_profile_id", profile_id)
     }
 
@@ -136,6 +165,9 @@ impl Db {
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
+        // A milestone worth seeing at default level, same tier as
+        // `Db::upsert_account`'s own info!.
+        tracing::info!(profile_id = id, name, "upserted profile");
         Ok(Profile {
             id: id.to_owned(),
             name: name.to_owned(),

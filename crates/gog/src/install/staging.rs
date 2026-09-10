@@ -9,12 +9,12 @@ use anyhow::Context;
 /// Where a game's files are downloaded before they're moved into the
 /// library. Kept outside it so a failed or cancelled install never leaves
 /// partial files where the game is supposed to live.
-pub(super) fn staging_root(profile_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
+pub(super) fn staging_root(account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
     let base = achv_core::data_dir();
     let profile = crate::achv_try!(
-        sanitize_relative_path(profile_id)
+        sanitize_relative_path(account_id)
             .filter(|path| path.components().count() == 1)
-            .context("suspicious profile_id")
+            .context("suspicious account_id")
     );
     let game = crate::achv_try!(
         sanitize_relative_path(product_id)
@@ -32,6 +32,7 @@ pub(super) fn staging_root(profile_id: &str, product_id: &str) -> anyhow::Result
 /// filesystem) in constant time; a separate mount falls back to copying.
 pub(super) async fn move_into_library(staging: &Path, destination_root: &Path) -> anyhow::Result<()> {
     let mut directories = vec![staging.to_path_buf()];
+    let mut staged = 0usize;
 
     while let Some(directory) = directories.pop() {
         let mut entries = crate::achv_try!(
@@ -60,16 +61,28 @@ pub(super) async fn move_into_library(staging: &Path, destination_root: &Path) -
                 );
             }
 
-            if tokio::fs::rename(&source, &destination).await.is_err() {
-                crate::achv_try!(
-                    tokio::fs::copy(&source, &destination)
-                        .await
-                        .with_context(|| format!("copying into {}", destination.display()))
-                );
-                tokio::fs::remove_file(&source).await.ok();
+            match tokio::fs::rename(&source, &destination).await {
+                Ok(()) => tracing::debug!(relative = %relative.display(), "staged file (renamed into place)"),
+                Err(_) => {
+                    // A separate mount can't be renamed across, so this
+                    // falls back to a copy — the rename error itself isn't
+                    // useful (it's always "cross-device link" in practice)
+                    // so it's dropped in favor of the copy's own error.
+                    crate::achv_try!(
+                        tokio::fs::copy(&source, &destination)
+                            .await
+                            .with_context(|| format!("copying into {}", destination.display()))
+                    );
+                    if let Err(err) = tokio::fs::remove_file(&source).await {
+                        tracing::warn!(path = %source.display(), error = %err, "couldn't remove staged file after copying it into place");
+                    }
+                    tracing::debug!(relative = %relative.display(), "staged file (copied across filesystems)");
+                }
             }
+            staged += 1;
         }
     }
 
+    tracing::debug!(file_count = staged, "moved staged install into library");
     Ok(())
 }

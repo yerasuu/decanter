@@ -1,10 +1,9 @@
 //! A client for GOG Galaxy's builds/depot v2 API — the endpoints that say
 //! which files a game is made of and where to download each piece.
 //!
-//! Ported from next-plugin-gog so installs run in-process: no plugin, no
-//! registry, no bottles-server. Protocol details (CDN sharding, zlib'd
-//! manifests, secure-link templating) mirror gogdl, which is what GOG's
-//! own tooling agrees with.
+//! Runs entirely in-process: no plugin, no external registry. Protocol
+//! details (CDN sharding, zlib'd manifests, secure-link templating)
+//! mirror gogdl, which is what GOG's own tooling agrees with.
 
 use std::io::Read;
 
@@ -72,6 +71,7 @@ pub async fn get_builds(http: &reqwest::Client, access_token: &str, game_id: i64
     if parsed.total_count == 0 {
         return Err(Error::NoBuilds);
     }
+    tracing::debug!(game_id, build_count = parsed.items.len(), "fetched gog builds");
     Ok(parsed.items)
 }
 
@@ -153,7 +153,9 @@ pub async fn get_build_meta(http: &reqwest::Client, access_token: &str, link: &s
     let response = crate::achv_try!(sent.error_for_status());
     let bytes = crate::achv_try!(response.bytes().await);
     let decompressed = crate::achv_try!(zlib_decompress(&bytes));
-    Ok(crate::achv_try!(serde_json::from_slice(&decompressed)))
+    let meta: BuildMeta = crate::achv_try!(serde_json::from_slice(&decompressed));
+    tracing::debug!(depot_count = meta.depots.len(), "fetched gog build manifest");
+    Ok(meta)
 }
 
 /// Every depot in this build belonging to `product_id`.
@@ -219,7 +221,7 @@ pub async fn get_depot_files(http: &reqwest::Client, manifest_hash: &str) -> Res
     let bytes = crate::achv_try!(response.bytes().await);
     let decompressed = crate::achv_try!(zlib_decompress(&bytes));
     let root: DepotManifestRoot = crate::achv_try!(serde_json::from_slice(&decompressed));
-    Ok(root
+    let files: Vec<DepotFile> = root
         .depot
         .items
         .into_iter()
@@ -227,7 +229,9 @@ pub async fn get_depot_files(http: &reqwest::Client, manifest_hash: &str) -> Res
             DepotItem::DepotFile(file) => Some(file),
             DepotItem::Other => None,
         })
-        .collect())
+        .collect();
+    tracing::debug!(manifest_hash, file_count = files.len(), "fetched gog depot manifest");
+    Ok(files)
 }
 
 #[derive(Debug, Deserialize)]
@@ -257,6 +261,11 @@ pub async fn get_secure_link(
     let sent = crate::achv_try!(http.get(&url).bearer_auth(access_token).send().await);
     let response = crate::achv_try!(sent.error_for_status());
     let parsed: SecureLinkResponse = crate::achv_try!(response.json().await);
+    tracing::debug!(
+        game_id,
+        endpoint_count = parsed.urls.len(),
+        "fetched gog secure link endpoints"
+    );
     Ok(parsed.urls)
 }
 

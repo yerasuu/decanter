@@ -1,12 +1,17 @@
 //! Pure sqlite reads for the Library view's detail pane — achievements,
-//! favorites and playtime are all keyed by `(profile_id, storefront,
+//! favorites and playtime are all keyed by `(account_id, storefront,
 //! product_id)`, nothing to join against a bottle or Program for any of it.
 
 use achv_core::{CachedAchievement, Collection, Db, Playtime, Storefront};
 
-pub(super) fn load_achievements(profile_id: String, product_id: String) -> anyhow::Result<Vec<CachedAchievement>> {
-    let db = crate::achv_try!(Db::open(achv_core::default_db_path()));
-    let achievements = crate::achv_try!(db.list_achievements(&profile_id, Storefront::Gog, &product_id));
+pub(super) fn load_achievements(account_id: String, product_id: String) -> anyhow::Result<Vec<CachedAchievement>> {
+    tracing::debug!(account_id = %account_id, product_id = %product_id, "loading cached achievements");
+    let db = crate::achv_try!(Db::open(achv_core::default_db_path()).inspect_err(
+        |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open achievement db")
+    ));
+    let achievements = crate::achv_try!(db.list_achievements(&account_id, Storefront::Gog, &product_id).inspect_err(
+        |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to read achievement cache")
+    ));
     Ok(achievements)
 }
 
@@ -25,12 +30,21 @@ pub(super) enum PollStatus {
 
 /// Hits the GOG API and refreshes the cache — the thing that used to
 /// require running `achv-tray achievements` by hand.
-pub(super) async fn poll_achievements(profile_id: String, product_id: String) -> Result<(), String> {
-    let mut db = crate::achv_try!(Db::open(achv_core::default_db_path()).map_err(|err| err.to_string()));
+pub(super) async fn poll_achievements(account_id: String, product_id: String) -> Result<(), String> {
+    tracing::debug!(account_id = %account_id, product_id = %product_id, "polling gog for achievement updates");
+    let mut db = crate::achv_try!(Db::open(achv_core::default_db_path()).map_err(|err| err.to_string()).inspect_err(
+        |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open db for achievement poll")
+    ));
     crate::achv_try!(
-        achv_gog::poll_achievements(&mut db, &profile_id, &product_id)
+        achv_gog::poll_achievements(&mut db, &account_id, &product_id)
             .await
             .map_err(|err| err.to_string())
+            .inspect_err(|err| tracing::error!(
+                account_id = %account_id,
+                product_id = %product_id,
+                error = %err,
+                "achievement poll failed",
+            ))
     );
     Ok(())
 }
@@ -59,47 +73,89 @@ impl Collections {
 }
 
 pub(super) fn load_collections(profile_id: &str) -> Collections {
-    let Ok(db) = Db::open(achv_core::default_db_path()) else {
+    let Ok(db) = Db::open(achv_core::default_db_path())
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, showing no collections"))
+    else {
         return Collections::default();
     };
     Collections {
-        list: db.list_collections(profile_id).unwrap_or_default(),
-        members: db.collection_members(profile_id, Storefront::Gog).unwrap_or_default(),
+        list: db
+            .list_collections(profile_id)
+            .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list collections"))
+            .unwrap_or_default(),
+        members: db
+            .collection_members(profile_id, Storefront::Gog)
+            .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to load collection membership"))
+            .unwrap_or_default(),
     }
 }
 
 pub(super) fn create_collection(profile_id: &str, name: &str) {
-    if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.create_collection(profile_id, name);
+    let Ok(db) = Db::open(achv_core::default_db_path())
+        .inspect_err(|err| tracing::warn!(profile_id, name, error = %err, "failed to open db, collection not created"))
+    else {
+        return;
+    };
+    match db.create_collection(profile_id, name) {
+        Ok(collection) => tracing::info!(profile_id, name, collection_id = %collection.id, "collection created"),
+        Err(err) => tracing::warn!(profile_id, name, error = %err, "failed to create collection"),
     }
 }
 
 /// Creates a collection whose membership is a saved filter rather than a
 /// list of games.
 pub(super) fn create_dynamic_collection(profile_id: &str, name: &str, filter: &str) {
-    if let Ok(db) = Db::open(achv_core::default_db_path())
-        && let Ok(created) = db.create_collection(profile_id, name)
-    {
-        let _ = db.set_collection_filter(&created.id, Some(filter));
+    if let Ok(db) = Db::open(achv_core::default_db_path()) {
+        match db.create_collection(profile_id, name) {
+            Ok(created) => {
+                tracing::info!(profile_id, name, filter, collection_id = %created.id, "dynamic collection created");
+                if let Err(err) = db.set_collection_filter(&created.id, Some(filter)) {
+                    tracing::warn!(collection_id = %created.id, filter, error = %err, "failed to set collection filter");
+                }
+            }
+            Err(err) => tracing::warn!(profile_id, name, error = %err, "failed to create dynamic collection"),
+        }
+    } else {
+        tracing::warn!(profile_id, name, "failed to open db, dynamic collection not created");
     }
 }
 
 /// Moves a collection by `delta` slots in the shelf order.
 pub(super) fn move_collection(profile_id: &str, collection_id: &str, delta: i64) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.move_collection(profile_id, collection_id, delta);
+        if let Err(err) = db.move_collection(profile_id, collection_id, delta) {
+            tracing::warn!(profile_id, collection_id, delta, error = %err, "failed to move collection");
+        }
+    } else {
+        tracing::warn!(
+            profile_id,
+            collection_id,
+            delta,
+            "failed to open db, collection not moved"
+        );
     }
 }
 
-pub(super) fn hidden_ids(profile_id: &str) -> std::collections::HashSet<String> {
+pub(super) fn hidden_ids(account_id: &str) -> std::collections::HashSet<String> {
     Db::open(achv_core::default_db_path())
-        .and_then(|db| db.hidden_ids(profile_id, Storefront::Gog))
+        .and_then(|db| db.hidden_ids(account_id, Storefront::Gog))
+        .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read hidden ids"))
         .unwrap_or_default()
 }
 
-pub(super) fn set_hidden(profile_id: &str, product_id: &str, hidden: bool) {
+pub(super) fn set_hidden(account_id: &str, product_id: &str, hidden: bool) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.set_hidden(profile_id, Storefront::Gog, product_id, hidden);
+        match db.set_hidden(account_id, Storefront::Gog, product_id, hidden) {
+            Ok(()) => tracing::info!(account_id, product_id, hidden, "game hidden state changed"),
+            Err(err) => tracing::warn!(account_id, product_id, hidden, error = %err, "failed to set hidden state"),
+        }
+    } else {
+        tracing::warn!(
+            account_id,
+            product_id,
+            hidden,
+            "failed to open db, hidden state not changed"
+        );
     }
 }
 
@@ -114,17 +170,26 @@ pub(super) const SIDEBAR_FILTERS: &str = "sidebar_filters";
 /// Whether the filter panel was left open.
 pub(super) const FILTER_PANEL: &str = "filter_panel_open";
 
-/// View state that isn't worth its own table, keyed by profile so two GOG
-/// accounts don't share one arrangement of the same library. Read through
+/// View state that isn't worth its own table, keyed by profile so two
+/// profiles don't share one arrangement of the same library. Read through
 /// the `settings` key/value table.
 pub(super) fn view_state(profile_id: &str, name: &str) -> Option<String> {
-    let db = Db::open(achv_core::default_db_path()).ok()?;
-    db.setting(&format!("{name}:{profile_id}")).ok().flatten()
+    let db = Db::open(achv_core::default_db_path())
+        .inspect_err(|err| tracing::warn!(profile_id, name, error = %err, "failed to open db for view state read"))
+        .ok()?;
+    db.setting(&format!("{name}:{profile_id}"))
+        .inspect_err(|err| tracing::warn!(profile_id, name, error = %err, "failed to read view state setting"))
+        .ok()
+        .flatten()
 }
 
 pub(super) fn save_view_state(profile_id: &str, name: &str, value: &str) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.set_setting(&format!("{name}:{profile_id}"), value);
+        if let Err(err) = db.set_setting(&format!("{name}:{profile_id}"), value) {
+            tracing::warn!(profile_id, name, error = %err, "failed to save view state setting");
+        }
+    } else {
+        tracing::warn!(profile_id, name, "failed to open db, view state not saved");
     }
 }
 
@@ -150,66 +215,178 @@ pub(super) fn save_collapsed_shelves(profile_id: &str, collapsed: &std::collecti
 
 pub(super) fn delete_collection(collection_id: &str) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.delete_collection(collection_id);
+        match db.delete_collection(collection_id) {
+            Ok(()) => tracing::info!(collection_id, "collection deleted"),
+            Err(err) => tracing::warn!(collection_id, error = %err, "failed to delete collection"),
+        }
+    } else {
+        tracing::warn!(collection_id, "failed to open db, collection not deleted");
     }
 }
 
 pub(super) fn rename_collection(collection_id: &str, name: &str) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.rename_collection(collection_id, name);
+        match db.rename_collection(collection_id, name) {
+            Ok(()) => tracing::info!(collection_id, name, "collection renamed"),
+            Err(err) => tracing::warn!(collection_id, name, error = %err, "failed to rename collection"),
+        }
+    } else {
+        tracing::warn!(collection_id, name, "failed to open db, collection not renamed");
     }
 }
 
 pub(super) fn set_collection_member(collection_id: &str, product_id: &str, member: bool) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.set_collection_member(collection_id, Storefront::Gog, product_id, member);
+        match db.set_collection_member(collection_id, Storefront::Gog, product_id, member) {
+            Ok(()) => tracing::info!(collection_id, product_id, member, "collection membership changed"),
+            Err(err) => {
+                tracing::warn!(collection_id, product_id, member, error = %err, "failed to update collection membership");
+            }
+        }
+    } else {
+        tracing::warn!(
+            collection_id,
+            product_id,
+            member,
+            "failed to open db, collection membership not changed"
+        );
     }
 }
 
-pub(super) fn is_favorite(profile_id: &str, product_id: &str) -> bool {
+pub(super) fn is_favorite(account_id: &str, product_id: &str) -> bool {
     Db::open(achv_core::default_db_path())
-        .and_then(|db| db.is_favorite(profile_id, Storefront::Gog, product_id))
+        .and_then(|db| db.is_favorite(account_id, Storefront::Gog, product_id))
+        .inspect_err(
+            |err| tracing::warn!(account_id, product_id, error = %err, "failed to read favorite state, defaulting to not favorited"),
+        )
         .unwrap_or(false)
 }
 
-pub(super) fn favorite_ids(profile_id: &str) -> std::collections::HashSet<String> {
-    Db::open(achv_core::default_db_path())
-        .and_then(|db| db.list_favorite_ids(profile_id, Storefront::Gog))
-        .unwrap_or_default()
-}
-
-pub(super) fn set_favorite(profile_id: &str, product_id: &str, favorite: bool) {
+pub(super) fn set_favorite(account_id: &str, product_id: &str, favorite: bool) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.set_favorite(profile_id, Storefront::Gog, product_id, favorite);
+        match db.set_favorite(account_id, Storefront::Gog, product_id, favorite) {
+            Ok(()) => tracing::info!(account_id, product_id, favorite, "favorite toggled"),
+            Err(err) => tracing::warn!(account_id, product_id, favorite, error = %err, "failed to toggle favorite"),
+        }
+    } else {
+        tracing::warn!(
+            account_id,
+            product_id,
+            favorite,
+            "failed to open db, favorite not toggled"
+        );
     }
 }
 
-/// Playtime and achievement counts for the whole library in two queries,
-/// for sorting and filtering the sidebar — the per-game reads below would
-/// mean hundreds of round trips on every keystroke.
+/// Every GOG account in `profile_id`, oldest first — the merge order every
+/// aggregate function below uses, so a product two accounts both own
+/// consistently prefers the same one's data everywhere in the UI, not just
+/// in which row `gog_library` happens to show.
+fn gog_accounts(profile_id: &str) -> Vec<String> {
+    gog_accounts_with_names(profile_id)
+        .into_iter()
+        .map(|(id, _name)| id)
+        .collect()
+}
+
+/// `(id, name)` for every GOG account in the profile, oldest first — what
+/// the sidebar's account filter lists, since a bare id means nothing in a
+/// checkbox label.
+pub(super) fn gog_accounts_with_names(profile_id: &str) -> Vec<(String, String)> {
+    Db::open(achv_core::default_db_path())
+        .and_then(|db| db.accounts_in_profile(profile_id))
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list accounts in profile"))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|account| account.storefront == Storefront::Gog)
+        .map(|account| (account.id, account.name))
+        .collect()
+}
+
+/// Every favorited product id across the profile's accounts — a game
+/// favorited on any of them reads as favorited here, since the merged
+/// library shows one row for it regardless of which account favorited it.
+pub(super) fn favorite_ids_in_profile(profile_id: &str) -> std::collections::HashSet<String> {
+    let Ok(db) = Db::open(achv_core::default_db_path())
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, no favorites shown"))
+    else {
+        return std::collections::HashSet::new();
+    };
+    gog_accounts(profile_id)
+        .iter()
+        .flat_map(|account_id| {
+            db.list_favorite_ids(account_id, Storefront::Gog)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list favorite ids"))
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashSet<String> {
+    let Ok(db) = Db::open(achv_core::default_db_path())
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, no hidden ids applied"))
+    else {
+        return std::collections::HashSet::new();
+    };
+    gog_accounts(profile_id)
+        .iter()
+        .flat_map(|account_id| {
+            db.hidden_ids(account_id, Storefront::Gog)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list hidden ids"))
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+/// Playtime and achievement counts for the whole library in two queries per
+/// account, for sorting and filtering the sidebar — the per-game reads
+/// below would mean hundreds of round trips on every keystroke.
+///
+/// When two accounts own the same product, whichever is first in
+/// `gog_accounts`'s order wins that product's stats — the same account
+/// `gog_library`'s merge already picked to represent it on screen, so the
+/// numbers shown next to a game always describe the copy actually
+/// displayed rather than a blend of two.
 pub(super) fn library_stats(profile_id: &str) -> LibraryStats {
-    let Ok(db) = Db::open(achv_core::default_db_path()) else {
+    let Ok(db) = Db::open(achv_core::default_db_path())
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to open db, library stats are empty"))
+    else {
         return LibraryStats::default();
     };
-    LibraryStats {
-        playtime: db.all_playtime(profile_id, Storefront::Gog).unwrap_or_default(),
-        achievements: db
-            .all_achievement_counts(profile_id, Storefront::Gog)
-            .unwrap_or_default(),
-        added: db.all_first_seen(profile_id, Storefront::Gog).unwrap_or_default(),
-        added_rank: db.all_library_ranks(profile_id, Storefront::Gog).unwrap_or_default(),
+    let mut stats = LibraryStats::default();
+    for account_id in gog_accounts(profile_id).iter().rev() {
+        // Reversed: later inserts overwrite earlier ones in a HashMap, so
+        // running oldest-account-last makes the *first* account's entry
+        // the one left standing for a product both have.
+        stats.playtime.extend(
+            db.all_playtime(account_id, Storefront::Gog)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read playtime stats"))
+                .unwrap_or_default(),
+        );
+        stats.achievements.extend(
+            db.all_achievement_counts(account_id, Storefront::Gog)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read achievement count stats"))
+                .unwrap_or_default(),
+        );
+        stats.added.extend(
+            db.all_first_seen(account_id, Storefront::Gog)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read first-seen stats"))
+                .unwrap_or_default(),
+        );
+        stats.added_rank.extend(
+            db.all_library_ranks(account_id, Storefront::Gog)
+                .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read library rank stats"))
+                .unwrap_or_default(),
+        );
         // From the appmanifests, not the database: what's installed lives
         // on disk now.
-        sizes: crate::core::installed(profile_id)
-            .into_iter()
-            .filter_map(|(game_id, installed)| {
-                let Some(size) = installed.size_on_disk else {
-                    return None;
-                };
-                Some((game_id, size))
-            })
-            .collect(),
+        stats.sizes.extend(
+            crate::core::installed(account_id)
+                .into_iter()
+                .filter_map(|(game_id, installed)| Some((game_id, installed.size_on_disk?))),
+        );
     }
+    stats
 }
 
 #[derive(Default, Clone, PartialEq)]
@@ -267,14 +444,26 @@ impl LibraryStats {
     }
 }
 
-pub(super) fn load_playtime(profile_id: &str, product_id: &str) -> Playtime {
+pub(super) fn load_playtime(account_id: &str, product_id: &str) -> Playtime {
     Db::open(achv_core::default_db_path())
-        .and_then(|db| db.get_playtime(profile_id, Storefront::Gog, product_id))
+        .and_then(|db| db.get_playtime(account_id, Storefront::Gog, product_id))
+        .inspect_err(
+            |err| tracing::warn!(account_id, product_id, error = %err, "failed to read playtime, defaulting to zero"),
+        )
         .unwrap_or_default()
 }
 
-pub(super) fn add_playtime(profile_id: &str, product_id: &str, seconds: i64) {
+pub(super) fn add_playtime(account_id: &str, product_id: &str, seconds: i64) {
     if let Ok(db) = Db::open(achv_core::default_db_path()) {
-        let _ = db.add_playtime(profile_id, Storefront::Gog, product_id, seconds);
+        if let Err(err) = db.add_playtime(account_id, Storefront::Gog, product_id, seconds) {
+            tracing::warn!(account_id, product_id, seconds, error = %err, "failed to record playtime");
+        }
+    } else {
+        tracing::warn!(
+            account_id,
+            product_id,
+            seconds,
+            "failed to open db, playtime not recorded"
+        );
     }
 }

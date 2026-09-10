@@ -112,7 +112,10 @@ pub(crate) async fn resolve_build_client(
 ) -> Result<BuildClient> {
     let builds = match depot::get_builds(http, access_token, game_id).await {
         Ok(builds) => builds,
-        Err(err) => return Err(anyhow::Error::new(err).context("GOG builds lookup failed")),
+        Err(err) => {
+            tracing::error!(game_id, error = %err, "gog builds lookup failed, aborting cloud saves client resolution");
+            return Err(anyhow::Error::new(err).context("GOG builds lookup failed"));
+        }
     };
     let build = match depot::select_build(&builds) {
         Some(build) => build,
@@ -120,7 +123,10 @@ pub(crate) async fn resolve_build_client(
     };
     let meta = match depot::get_build_meta(http, access_token, &build.link).await {
         Ok(meta) => meta,
-        Err(err) => return Err(anyhow::Error::new(err).context("GOG build manifest fetch failed")),
+        Err(err) => {
+            tracing::error!(game_id, error = %err, "gog build manifest fetch failed, aborting cloud saves client resolution");
+            return Err(anyhow::Error::new(err).context("GOG build manifest fetch failed"));
+        }
     };
     let client_id = match meta.client_id {
         Some(client_id) => client_id,
@@ -130,6 +136,7 @@ pub(crate) async fn resolve_build_client(
         Some(client_secret) => client_secret,
         None => return Err(anyhow::anyhow!("this game's build has no cloud saves client secret")),
     };
+    tracing::debug!(game_id, client_id, "resolved gog cloud saves client");
     Ok(BuildClient {
         client_id,
         client_secret,
@@ -162,7 +169,7 @@ struct Classification {
 /// and commits. `force` skips straight to one direction — how the caller
 /// resolves a previous [`SyncAction::Conflict`].
 pub async fn sync(
-    profile_id: &str,
+    account_id: &str,
     product_id: &str,
     local_root: &Path,
     last_sync: Option<i64>,
@@ -172,15 +179,16 @@ pub async fn sync(
         Ok(game_id) => game_id,
         Err(err) => return Err(anyhow::Error::new(err).context("GOG product_id must be numeric")),
     };
+    tracing::info!(product_id, local_root = %local_root.display(), "starting cloud saves sync");
     if let Err(err) = tokio::fs::create_dir_all(local_root).await {
         return Err(anyhow::Error::new(err).context(format!("creating {}", local_root.display())));
     }
 
-    let token = match game_token(profile_id, game_id).await {
+    let token = match game_token(account_id, game_id).await {
         Ok(token) => token,
         Err(err) => return Err(err),
     };
-    let http = reqwest::Client::new();
+    let http = crate::http_client();
 
     let local_files = match scan_local_files(local_root) {
         Ok(local_files) => local_files,
@@ -226,7 +234,10 @@ pub async fn sync(
                 }
             }
             for relative_path in &plan.delete_local {
-                let _ = tokio::fs::remove_file(local_root.join(relative_path)).await;
+                let path = local_root.join(relative_path);
+                if let Err(err) = tokio::fs::remove_file(&path).await {
+                    tracing::warn!(path = %path.display(), error = %err, "couldn't remove local save file the cloud no longer has");
+                }
             }
             if let Err(err) = commit(&http, &token).await {
                 return Err(err);
@@ -242,6 +253,7 @@ pub async fn sync(
             .as_secs(),
     )
     .unwrap_or(i64::MAX);
+    tracing::info!(product_id, ?action, uploaded, downloaded, "cloud saves sync completed");
     Ok(SyncOutcome {
         action,
         uploaded,
@@ -376,9 +388,9 @@ fn classify(
 /// Fetches this build's Galaxy client id/secret and exchanges achv's
 /// own refresh token for a session scoped to it — Cloud Saves buckets are
 /// keyed by a game's own client id, not achv's login client.
-async fn game_token(profile_id: &str, game_id: i64) -> Result<GameToken> {
-    let http = reqwest::Client::new();
-    let (access_token, refresh_token) = match crate::with_session(profile_id, |client| {
+async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
+    let http = crate::http_client();
+    let (access_token, refresh_token) = match crate::with_session(account_id, |client| {
         let token = client.token.borrow();
         Ok((token.access_token.clone(), token.refresh_token.clone()))
     })
@@ -407,17 +419,24 @@ async fn game_token(profile_id: &str, game_id: i64) -> Result<GameToken> {
     ));
     let response = match request.send().await {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(game_id, error = %err, "gog cloud-saves token request failed, aborting sync");
+            return Err(err.into());
+        }
     };
     let response = match response.error_for_status() {
         Ok(response) => response,
-        Err(err) => return Err(anyhow::Error::new(err).context("GOG refused a cloud-saves session for this game")),
+        Err(err) => {
+            tracing::error!(game_id, error = %err, "gog refused a cloud-saves session, aborting sync");
+            return Err(anyhow::Error::new(err).context("GOG refused a cloud-saves session for this game"));
+        }
     };
     let response: TokenResponse = match response.json().await {
         Ok(response) => response,
         Err(err) => return Err(err.into()),
     };
 
+    tracing::debug!(game_id, "exchanged gog cloud-saves session");
     Ok(GameToken {
         access_token: response.access_token,
         user_id: response.user_id,
@@ -444,23 +463,30 @@ async fn list_files(http: &reqwest::Client, token: &GameToken) -> Result<Vec<Clo
         .await
     {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(error = %err, "gog cloud saves listing request failed, aborting sync");
+            return Err(err.into());
+        }
     };
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
+        tracing::debug!(file_count = 0, "listed gog cloud saves (bucket doesn't exist yet)");
         return Ok(Vec::new());
     }
 
     let response = match response.error_for_status() {
         Ok(response) => response,
-        Err(err) => return Err(anyhow::Error::new(err).context("GOG cloud saves listing request rejected")),
+        Err(err) => {
+            tracing::error!(error = %err, "gog cloud saves listing request rejected, aborting sync");
+            return Err(anyhow::Error::new(err).context("GOG cloud saves listing request rejected"));
+        }
     };
     let entries: Vec<Entry> = match response.json().await {
         Ok(entries) => entries,
         Err(err) => return Err(err.into()),
     };
 
-    entries
+    let files: Result<Vec<CloudFile>> = entries
         .into_iter()
         .filter(|entry| entry.hash != TOMBSTONE_MD5)
         .map(|entry| {
@@ -478,7 +504,11 @@ async fn list_files(http: &reqwest::Client, token: &GameToken) -> Result<Vec<Clo
                 last_modified,
             })
         })
-        .collect()
+        .collect();
+    if let Ok(files) = &files {
+        tracing::debug!(file_count = files.len(), "listed gog cloud saves");
+    }
+    files
 }
 
 /// Pushes one local file to the cloud, gzip-compressed with a fixed mtime
@@ -487,7 +517,10 @@ async fn upload_file(http: &reqwest::Client, token: &GameToken, local_root: &Pat
     let absolute = local_root.join(relative_path);
     let bytes = match tokio::fs::read(&absolute).await {
         Ok(bytes) => bytes,
-        Err(err) => return Err(anyhow::Error::new(err).context(format!("reading {}", absolute.display()))),
+        Err(err) => {
+            tracing::error!(path = %absolute.display(), error = %err, "reading save file to upload failed, aborting sync");
+            return Err(anyhow::Error::new(err).context(format!("reading {}", absolute.display())));
+        }
     };
     let metadata = match tokio::fs::metadata(&absolute).await {
         Ok(metadata) => metadata,
@@ -517,12 +550,17 @@ async fn upload_file(http: &reqwest::Client, token: &GameToken, local_root: &Pat
         .body(compressed);
     let response = match request.send().await {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(relative_path, error = %err, "uploading cloud save failed, aborting sync");
+            return Err(err.into());
+        }
     };
     if let Err(err) = response.error_for_status() {
+        tracing::error!(relative_path, error = %err, "gog rejected cloud save upload, aborting sync");
         return Err(anyhow::Error::new(err).context(format!("uploading {relative_path}")));
     }
 
+    tracing::debug!(relative_path, bytes = bytes.len(), "cloud save uploaded");
     Ok(())
 }
 
@@ -538,11 +576,17 @@ async fn download_file(http: &reqwest::Client, token: &GameToken, local_root: &P
     let url = file_url(token, &file.relative_path);
     let response = match http.get(&url).bearer_auth(&token.access_token).send().await {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(relative_path = file.relative_path, error = %err, "downloading cloud save failed, aborting sync");
+            return Err(err.into());
+        }
     };
     let response = match response.error_for_status() {
         Ok(response) => response,
-        Err(err) => return Err(anyhow::Error::new(err).context(format!("downloading {}", file.relative_path))),
+        Err(err) => {
+            tracing::error!(relative_path = file.relative_path, error = %err, "gog rejected cloud save download, aborting sync");
+            return Err(anyhow::Error::new(err).context(format!("downloading {}", file.relative_path)));
+        }
     };
 
     let local_last_modified = response
@@ -577,6 +621,11 @@ async fn download_file(http: &reqwest::Client, token: &GameToken, local_root: &P
         }
     }
 
+    tracing::debug!(
+        relative_path = file.relative_path,
+        bytes = decompressed.len(),
+        "cloud save downloaded"
+    );
     Ok(())
 }
 
@@ -586,11 +635,16 @@ async fn delete_file(http: &reqwest::Client, token: &GameToken, relative_path: &
     let url = file_url(token, relative_path);
     let response = match http.delete(&url).bearer_auth(&token.access_token).send().await {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(relative_path, error = %err, "deleting cloud save failed, aborting sync");
+            return Err(err.into());
+        }
     };
     if let Err(err) = response.error_for_status() {
+        tracing::error!(relative_path, error = %err, "gog rejected cloud save deletion, aborting sync");
         return Err(anyhow::Error::new(err).context(format!("deleting {relative_path} from GOG cloud saves")));
     }
+    tracing::debug!(relative_path, "cloud save deleted");
     Ok(())
 }
 
@@ -602,11 +656,16 @@ async fn commit(http: &reqwest::Client, token: &GameToken) -> Result<()> {
     let request = http.post(&url).bearer_auth(&token.access_token);
     let response = match request.send().await {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(error = %err, "gog cloud saves commit request failed");
+            return Err(err.into());
+        }
     };
     if let Err(err) = response.error_for_status() {
+        tracing::error!(error = %err, "gog cloud saves commit rejected");
         return Err(anyhow::Error::new(err).context("GOG cloud saves commit rejected"));
     }
+    tracing::debug!("gog cloud saves commit completed");
     Ok(())
 }
 
@@ -695,8 +754,10 @@ fn set_mtime(path: &Path, modified: DateTime<Utc>) -> Result<()> {
 fn scan_local_files(root: &Path) -> Result<Vec<LocalFile>> {
     let mut out = Vec::new();
     if let Err(err) = scan_dir(root, root, &mut out) {
+        tracing::error!(root = %root.display(), error = %err, "scanning local save files failed, aborting sync");
         return Err(err);
     }
+    tracing::debug!(root = %root.display(), file_count = out.len(), "scanned local save files");
     Ok(out)
 }
 

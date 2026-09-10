@@ -54,9 +54,9 @@ fn as_i64(value: &serde_json::Value) -> Option<i64> {
 ///
 /// A product bought more than once (a bundle re-grant, a gift) keeps its
 /// **earliest** order — that's when it entered the library.
-pub async fn purchase_dates(profile_id: &str) -> anyhow::Result<HashMap<String, i64>> {
+pub async fn purchase_dates(account_id: &str) -> anyhow::Result<HashMap<String, i64>> {
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             crate::achv_try!(
                 client
                     .get_user_data()
@@ -67,7 +67,7 @@ pub async fn purchase_dates(profile_id: &str) -> anyhow::Result<HashMap<String, 
         .await
     );
 
-    let http = reqwest::Client::new();
+    let http = crate::http_client();
     let mut dates: HashMap<String, i64> = HashMap::new();
     let mut page = 1;
 
@@ -87,6 +87,12 @@ pub async fn purchase_dates(profile_id: &str) -> anyhow::Result<HashMap<String, 
                 body.chars().take(300).collect::<String>()
             )
         }));
+        tracing::debug!(
+            page,
+            total_pages = parsed.total_pages,
+            order_count = parsed.orders.len(),
+            "fetched GOG order-history page"
+        );
 
         for order in &parsed.orders {
             let Some(when) = order.date.as_ref().and_then(as_i64) else {
@@ -109,5 +115,6 @@ pub async fn purchase_dates(profile_id: &str) -> anyhow::Result<HashMap<String, 
         page += 1;
     }
 
+    tracing::debug!(account_id, product_count = dates.len(), "resolved GOG purchase dates");
     Ok(dates)
 }

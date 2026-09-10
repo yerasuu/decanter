@@ -29,6 +29,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::time::Instant;
 
 use anyhow::{Context as _, bail};
 use futures_util::future::join_all;
@@ -80,6 +81,7 @@ impl Prefix {
     /// non-zero status.
     #[inline]
     pub async fn initialize(&self, proton: Proton) -> anyhow::Result<()> {
+        tracing::debug!(prefix = %self.path.display(), ?proton, "initializing prefix with wineboot");
         // `wineboot`, not a path to it: on a prefix that doesn't exist
         // there is nothing to point at yet, so Wine resolves it from the
         // Proton build instead.
@@ -119,9 +121,10 @@ impl Prefix {
     #[must_use]
     pub fn processes(&self) -> Vec<u32> {
         let Ok(entries) = fs::read_dir("/proc") else {
+            tracing::warn!("/proc unreadable, reporting no live processes for any prefix");
             return Vec::new();
         };
-        entries
+        let pids: Vec<u32> = entries
             .flatten()
             .filter_map(|entry| {
                 let name = entry.file_name();
@@ -136,13 +139,17 @@ impl Prefix {
                 // Unreadable environ means someone else's process (or one
                 // that exited mid-scan) — either way, not ours. A `let-else`
                 // over a `match` with a bare `Err(_)` arm, which this
-                // codebase's own humanization scanner rejects.
+                // codebase's own humanization scanner rejects. Not logged:
+                // this is the expected outcome for most of `/proc` on every
+                // scan, so a per-pid line here would be noise, not signal.
                 let Some(environ) = fs::read(entry.path().join("environ")).ok() else {
                     return None;
                 };
                 environ_has_prefix(&environ, &self.path).then_some(pid)
             })
-            .collect()
+            .collect();
+        tracing::trace!(prefix = %self.path.display(), found = pids.len(), "scanned /proc for this prefix's processes");
+        pids
     }
 
     /// Resolves a Windows path as stored on a program (`C:\Games\x.exe`)
@@ -154,16 +161,16 @@ impl Prefix {
     #[inline]
     #[must_use]
     pub fn resolve_windows_path(&self, windows_path: &str) -> Option<PathBuf> {
-        let rest = match windows_path
+        let Some(rest) = windows_path
             .strip_prefix("C:\\")
             .or_else(|| windows_path.strip_prefix("c:\\"))
-        {
-            Some(rest) => rest,
-            None => return None,
+        else {
+            tracing::warn!(windows_path, "rejecting windows path: not on the C: drive");
+            return None;
         };
-        let relative = match sanitize_relative_path(&rest.replace('\\', "/")) {
-            Some(relative) => relative,
-            None => return None,
+        let Some(relative) = sanitize_relative_path(&rest.replace('\\', "/")) else {
+            tracing::warn!(windows_path, "rejecting windows path: escapes the prefix");
+            return None;
         };
         Some(self.drive_c().join(relative))
     }
@@ -180,6 +187,7 @@ impl Prefix {
     /// signal-delivery failure can surface without an API break.
     #[inline]
     pub async fn stop(&self) -> anyhow::Result<()> {
+        tracing::debug!(prefix = %self.path.display(), "stopping prefix");
         // Dropped from the live set first: a stop that is already under
         // way shouldn't be started a second time by a shutdown racing it.
         live_lock().remove(&self.path);
@@ -195,15 +203,19 @@ impl Prefix {
             for pid in pids {
                 // A pid outside `Pid`'s range can't belong to a real
                 // process; skip rather than error, same as an already-gone one.
-                let Ok(pid) = i32::try_from(pid) else {
+                let Ok(signed_pid) = i32::try_from(pid) else {
+                    tracing::warn!(pid, "pid out of range for a signal, skipping");
                     continue;
                 };
                 // Racy by nature — the pid may already be gone, which is
-                // the outcome being asked for anyway.
-                let _ = kill(Pid::from_raw(pid), Signal::SIGTERM);
+                // the outcome being asked for anyway, so a failed send is
+                // traced rather than warned about.
+                let result = kill(Pid::from_raw(signed_pid), Signal::SIGTERM);
+                tracing::trace!(pid, ?result, "sent SIGTERM");
             }
             sleep(IDLE_POLL_INTERVAL).await;
         }
+        tracing::debug!(prefix = %self.path.display(), "prefix has no live processes left");
         Ok(())
     }
 
@@ -214,9 +226,11 @@ impl Prefix {
     /// alone reports the session as over while the game is still up.
     #[inline]
     pub async fn wait_until_idle(&self) {
+        let started = Instant::now();
         while !self.processes().is_empty() {
             sleep(IDLE_POLL_INTERVAL).await;
         }
+        tracing::debug!(prefix = %self.path.display(), elapsed = ?started.elapsed(), "prefix went idle");
     }
 }
 
@@ -358,6 +372,9 @@ pub struct Session {
     child: Child,
     /// The prefix this session is running against.
     prefix: Prefix,
+    /// When the child was spawned, so [`Session::wait`] can log how long
+    /// the session ran without asking the OS for the child's own start time.
+    started_at: Instant,
 }
 
 impl Session {
@@ -389,10 +406,20 @@ impl Session {
     /// exits with a non-zero status.
     #[inline]
     pub async fn wait(mut self) -> anyhow::Result<()> {
+        let pid = self.child.id();
         let status = match self.child.wait().await.context("waiting for umu-run") {
             Ok(status) => status,
-            Err(err) => return Err(err),
+            Err(err) => {
+                tracing::error!(pid, prefix = %self.prefix.path.display(), "failed to wait for umu-run");
+                return Err(err);
+            }
         };
+        let elapsed = self.started_at.elapsed();
+        if status.success() {
+            tracing::info!(pid, exit_code = status.code(), elapsed = ?elapsed, "umu-run exited");
+        } else {
+            tracing::error!(pid, exit_code = status.code(), elapsed = ?elapsed, "umu-run exited with a failure status");
+        }
         self.prefix.wait_until_idle().await;
         live_lock().remove(&self.prefix.path);
         if !status.success() {
@@ -451,12 +478,12 @@ pub async fn stop_all() {
 #[inline]
 #[must_use]
 pub fn steam_compat_dir() -> Option<PathBuf> {
-    let data = match env::var_os("XDG_DATA_HOME")
+    let Some(data) = env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
-    {
-        Some(data) => data,
-        None => return None,
+    else {
+        tracing::warn!("neither XDG_DATA_HOME nor HOME is set, cannot resolve the Steam compat dir");
+        return None;
     };
     Some(data.join("Steam").join("compatibilitytools.d"))
 }
@@ -475,6 +502,7 @@ pub fn steam_runners() -> Vec<String> {
         return Vec::new();
     };
     let Ok(entries) = fs::read_dir(&directory) else {
+        tracing::debug!(directory = %directory.display(), "no steam compat dir to scan, no runners found");
         return Vec::new();
     };
     let mut runners: Vec<String> = entries
@@ -482,15 +510,16 @@ pub fn steam_runners() -> Vec<String> {
         .filter_map(|entry| {
             // `proton` is the launcher script every Proton build ships;
             // without it this is a leftover directory, not a runner.
-            entry
-                .path()
-                .join("proton")
-                .is_file()
+            let path = entry.path();
+            let is_runner = path.join("proton").is_file();
+            tracing::trace!(candidate = %path.display(), is_runner, "checking proton build candidate");
+            is_runner
                 .then(|| entry.file_name().to_str().map(str::to_owned))
                 .flatten()
         })
         .collect();
     runners.sort();
+    tracing::debug!(?runners, "resolved installed proton builds");
     runners
 }
 
@@ -499,7 +528,9 @@ pub fn steam_runners() -> Vec<String> {
 #[inline]
 #[must_use]
 pub fn steam_runner_exists(name: &str) -> bool {
-    steam_compat_dir().is_some_and(|directory| directory.join(name).join("proton").is_file())
+    let exists = steam_compat_dir().is_some_and(|directory| directory.join(name).join("proton").is_file());
+    tracing::debug!(name, exists, "checked whether a named proton build is installed");
+    exists
 }
 
 /// Starts `launch` in `prefix`, returning as soon as umu is running.
@@ -519,6 +550,11 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
     // and catching that here beats a launch that silently does nothing.
     let is_bare_command = launch.executable.parent() == Some(Path::new(""));
     if !is_bare_command && !launch.executable.is_file() {
+        tracing::warn!(
+            executable = %launch.executable.display(),
+            game_id = %launch.game_id,
+            "rejecting launch: no such executable on disk"
+        );
         bail!("no executable at {}", launch.executable.display());
     }
 
@@ -535,6 +571,7 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
             Err(err) => return Err(err),
         },
     };
+    tracing::debug!(working_directory = %working_directory.display(), "resolved working directory for launch");
 
     let mut command = Command::new(UMU_RUN);
     command
@@ -559,19 +596,47 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
     }
     command.envs(launch.env.iter().map(|entry| (entry.0.as_str(), entry.1.as_str())));
 
+    // Not logged: `launch.env` is caller-supplied and, unlike the fields
+    // above, has no fixed shape — nothing here rules out a future caller
+    // routing a secret through it.
+    tracing::debug!(
+        executable = %launch.executable.display(),
+        args = ?launch.args,
+        game_id = %launch.game_id,
+        store = ?launch.store,
+        prefix = %prefix.path.display(),
+        "spawning umu-run"
+    );
+
     let child = match command
         .spawn()
         .with_context(|| format!("spawning {UMU_RUN} (is umu-launcher installed?)"))
     {
         Ok(child) => child,
-        Err(err) => return Err(err),
+        Err(err) => {
+            tracing::error!(
+                executable = %launch.executable.display(),
+                game_id = %launch.game_id,
+                "failed to spawn umu-run"
+            );
+            return Err(err);
+        }
     };
+    let started_at = Instant::now();
+
+    tracing::info!(
+        pid = child.id(),
+        game_id = %launch.game_id,
+        proton = ?launch.proton,
+        "launched game process"
+    );
 
     live_lock().insert(prefix.path.clone());
 
     Ok(Session {
         child,
         prefix: prefix.clone(),
+        started_at,
     })
 }
 
@@ -630,10 +695,17 @@ pub fn sanitize_relative_path(path: &str) -> Option<PathBuf> {
             // `.` is meaningless rather than dangerous; the rest are how a
             // relative path escapes upward.
             Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                tracing::warn!(path, "rejecting path: climbs out of or escapes its base directory");
+                return None;
+            }
         }
     }
-    (!sanitized.as_os_str().is_empty()).then_some(sanitized)
+    if sanitized.as_os_str().is_empty() {
+        tracing::warn!(path, "rejecting path: sanitizes to nothing");
+        return None;
+    }
+    Some(sanitized)
 }
 
 /// A one-shot process listing per prefix, for callers watching several at
@@ -646,12 +718,15 @@ pub fn processes_by_prefix(prefixes: &[Prefix]) -> HashMap<PathBuf, Vec<u32>> {
         .map(|prefix| (prefix.path.clone(), Vec::new()))
         .collect();
     let Ok(entries) = fs::read_dir("/proc") else {
+        tracing::warn!("/proc unreadable, reporting no live processes for any prefix");
         return found;
     };
     for entry in entries.flatten() {
         let Some(pid) = entry.file_name().to_str().and_then(|name| name.parse::<u32>().ok()) else {
             continue;
         };
+        // Same as `Prefix::processes`: unreadable for most of `/proc` on
+        // every scan, so not logged per-pid.
         let Ok(environ) = fs::read(entry.path().join("environ")) else {
             continue;
         };
@@ -661,6 +736,11 @@ pub fn processes_by_prefix(prefixes: &[Prefix]) -> HashMap<PathBuf, Vec<u32>> {
             }
         }
     }
+    tracing::trace!(
+        prefixes = prefixes.len(),
+        matched = found.values().map(Vec::len).sum::<usize>(),
+        "scanned /proc for several prefixes at once"
+    );
     found
 }
 

@@ -60,7 +60,11 @@ fn load_slots(profile_id: &str) -> Vec<Slot> {
 /// treated as nothing saved, the same as a first run.
 fn restore_slots(raw: Option<&str>, collection_ids: &[String]) -> Vec<Slot> {
     let mut slots: Vec<Slot> = raw
-        .and_then(|raw| serde_json::from_str::<Vec<Slot>>(raw).ok())
+        .and_then(|raw| {
+            serde_json::from_str::<Vec<Slot>>(raw)
+                .inspect_err(|err| tracing::warn!(error = %err, "failed to parse saved shelf layout, starting fresh"))
+                .ok()
+        })
         .unwrap_or_default()
         .into_iter()
         .filter(|slot| {
@@ -92,7 +96,9 @@ fn save_slots(profile_id: &str, slots: &[Slot]) {
 }
 
 fn save_slots_encode(slots: &[Slot]) -> Option<String> {
-    serde_json::to_string(slots).ok()
+    serde_json::to_string(slots)
+        .inspect_err(|err| tracing::warn!(error = %err, "failed to encode shelf layout, not saving"))
+        .ok()
 }
 
 #[component]
@@ -142,12 +148,16 @@ pub(super) fn ShelfBrowser(
     let mut drop_target = use_signal(|| None::<u32>);
 
     let _ = generation();
+    // Otherwise a session's playtime only shows up here after some
+    // unrelated re-render (switching profile, toggling a filter) — the
+    // detail pane already subscribes to this same signal for its own stat.
+    let _ = (background.playtime_generation)();
     let collections = data::load_collections(&profile_id);
-    let favorites = data::favorite_ids(&profile_id);
-    let hidden = data::hidden_ids(&profile_id);
+    let favorites = data::favorite_ids_in_profile(&profile_id);
+    let hidden = data::hidden_ids_in_profile(&profile_id);
     let stats = data::library_stats(&profile_id);
     // A queued or downloading game should already read as installed here,
-    // not just once bottles-next's own record catches up.
+    // not just once the manifest scan catches up.
     let pending_installs = pending_install_ids(&background.installing.read());
 
     // Only real games: a shelf of DLC capsules is a wall of near-identical
@@ -348,8 +358,8 @@ pub(super) fn ShelfBrowser(
             if let Some(super::LibraryPopup::GameMenu(target)) = popup() {
                 ContextMenu {
                     target,
-                    profile_id: profile_id,
-                    collections: collections,
+                    profile_id,
+                    collections,
                     generation,
                     games,
                     on_close: move |()| popup.set(None),

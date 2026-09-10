@@ -111,7 +111,14 @@ pub async fn fetch_many(client: &reqwest::Client, ids: &[i64]) -> Vec<Product> {
     };
 
     match response.json::<Vec<Product>>().await {
-        Ok(products) => products,
+        Ok(products) => {
+            tracing::debug!(
+                requested = ids.len(),
+                returned = products.len(),
+                "fetched GOG product batch"
+            );
+            products
+        }
         Err(err) => {
             tracing::debug!("GOG product batch had an unexpected shape: {err}");
             Vec::new()

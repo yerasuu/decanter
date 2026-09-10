@@ -1,12 +1,15 @@
 //! A self-contained GOG client: auth, library listing, installs, cloud
-//! saves, and achievement polling. Replaces bottles-next's `Library`/
-//! `Install` gRPC surface — nothing here talks to `bottles-server`.
+//! saves, and achievement polling — all in-process, with no external
+//! service to reach the same public endpoints through.
 //!
 //! Shared between `achv-sidecar` (CLI, explicit or post-launch polling)
 //! and the UI (auto-poll when a game is selected in Biblioteca, so nobody
-//! has to run a command by hand to see progress). Keyed by profile, not by
+//! has to run a command by hand to see progress). Keyed by account, not by
 //! prefix: unlock progress lives on the GOG account, independent of which
-//! prefix launches it.
+//! prefix launches it. This crate has no notion of a profile grouping
+//! several accounts — see `achv_core::profiles` for that.
+
+use std::time::Duration;
 
 use achv_core::{CachedAchievement, Db, Storefront};
 use anyhow::Context;
@@ -45,39 +48,70 @@ macro_rules! achv_try {
     };
 }
 
-/// This profile's stored GOG session, as the raw JSON `write_session` saved
+/// The client every one-shot API call in this crate goes through.
+///
+/// reqwest's own default has no timeout at all, so a response GOG's embed
+/// API or GamesDB stalls on — no error, just silence — hangs the caller
+/// forever instead of failing. `install::download` hit the same failure
+/// mode against CDN chunk transfers and picked idle-read timeouts instead,
+/// since a chunk can legitimately take a while; every call here is a small
+/// JSON round trip, so one flat timeout on the whole request is enough.
+pub(crate) fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|err| {
+            // Was a silent fallback to a client with no timeout at all — the one
+            // failure mode this function exists to avoid — so it's worth a warn
+            // even though `Client::builder().build()` failing is rare in practice.
+            tracing::warn!("failed to build GOG HTTP client with a timeout, falling back to reqwest's default: {err}");
+            reqwest::Client::default()
+        })
+}
+
+/// This account's stored GOG session, as the raw JSON `write_session` saved
 /// it — `achv_core::credentials` keyed by [`Storefront::Gog`], wrapped in
 /// `spawn_blocking` since the OS keyring is a blocking D-Bus round trip.
-async fn read_session(profile_id: &str) -> anyhow::Result<Option<String>> {
-    let profile_id = profile_id.to_owned();
-    achv_try!(
-        tokio::task::spawn_blocking(move || achv_core::load_session(&profile_id, Storefront::Gog))
+async fn read_session(account_id: &str) -> anyhow::Result<Option<String>> {
+    let account_id = account_id.to_owned();
+    let for_worker = account_id.clone();
+    let session = achv_try!(
+        tokio::task::spawn_blocking(move || achv_core::load_session(&for_worker, Storefront::Gog))
             .await
             .context("session-read worker task panicked")
     )
-    .context("reading GOG session from keyring")
+    .context("reading GOG session from keyring")?;
+    tracing::debug!(%account_id, found = session.is_some(), "read GOG session from keyring");
+    Ok(session)
 }
 
-/// Stores this profile's GOG session as serialized JSON.
-async fn write_session(profile_id: &str, session_json: String) -> anyhow::Result<()> {
-    let profile_id = profile_id.to_owned();
+/// Stores this account's GOG session as serialized JSON.
+async fn write_session(account_id: &str, session_json: String) -> anyhow::Result<()> {
+    let session_bytes = session_json.len();
+    let account_id = account_id.to_owned();
+    let for_worker = account_id.clone();
     achv_try!(
-        tokio::task::spawn_blocking(move || achv_core::save_session(&profile_id, Storefront::Gog, &session_json))
+        tokio::task::spawn_blocking(move || achv_core::save_session(&for_worker, Storefront::Gog, &session_json))
             .await
             .context("session-write worker task panicked")
     )
-    .context("writing GOG session to keyring")
+    .context("writing GOG session to keyring")?;
+    tracing::debug!(%account_id, session_bytes, "wrote GOG session to keyring");
+    Ok(())
 }
 
-/// Drops this profile's stored GOG session.
-async fn clear_session(profile_id: &str) -> anyhow::Result<()> {
-    let profile_id = profile_id.to_owned();
+/// Drops this account's stored GOG session.
+async fn clear_session(account_id: &str) -> anyhow::Result<()> {
+    let account_id = account_id.to_owned();
+    let for_worker = account_id.clone();
     achv_try!(
-        tokio::task::spawn_blocking(move || achv_core::delete_session(&profile_id, Storefront::Gog))
+        tokio::task::spawn_blocking(move || achv_core::delete_session(&for_worker, Storefront::Gog))
             .await
             .context("session-clear worker task panicked")
     )
-    .context("clearing GOG session from keyring")
+    .context("clearing GOG session from keyring")?;
+    tracing::debug!(%account_id, "cleared GOG session from keyring");
+    Ok(())
 }
 
 /// Runs `f` against a live, authenticated `gog::Gog` client built from the
@@ -88,15 +122,17 @@ async fn clear_session(profile_id: &str) -> anyhow::Result<()> {
 /// `f` runs inside `spawn_blocking`: `gog::Gog` holds its token in a
 /// `RefCell`, so it isn't `Send` across an `.await` the way an async
 /// closure would need.
-async fn with_session<T, F>(profile_id: &str, f: F) -> anyhow::Result<T>
+async fn with_session<T, F>(account_id: &str, f: F) -> anyhow::Result<T>
 where
     F: FnOnce(&gog::Gog) -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
-    let stored = read_session(profile_id)
-        .await?
-        .context("no GOG session for this profile — log in first")?;
-    let profile_id = profile_id.to_owned();
+    let stored = read_session(account_id).await?;
+    if stored.is_none() {
+        tracing::debug!(account_id, "no GOG session stored for this account");
+    }
+    let stored = stored.context("no GOG session for this account — log in first")?;
+    let account_id = account_id.to_owned();
     let (result, token) = achv_try!(achv_try!(
         tokio::task::spawn_blocking(move || -> anyhow::Result<(T, gog::token::Token)> {
             let token: gog::token::Token =
@@ -110,7 +146,8 @@ where
     ));
 
     let refreshed = achv_try!(serde_json::to_string(&token).context("serializing the refreshed GOG session"));
-    write_session(&profile_id, refreshed).await?;
+    write_session(&account_id, refreshed).await?;
+    tracing::debug!(%account_id, "completed authenticated GOG call and persisted refreshed session");
 
     Ok(result)
 }
@@ -120,12 +157,12 @@ where
 /// not an error).
 pub async fn poll_achievements(
     db: &mut Db,
-    profile_id: &str,
+    account_id: &str,
     product_id: &str,
 ) -> anyhow::Result<Vec<CachedAchievement>> {
     let numeric_id: i64 = product_id.parse().context("GOG product_id must be numeric")?;
 
-    let list = with_session(profile_id, move |client| {
+    let list = with_session(account_id, move |client| {
         let uid = client.uid();
         // gog::Error is built on error-chain and isn't Sync, so it can't
         // cross the `?`-to-anyhow boundary directly.
@@ -134,6 +171,12 @@ pub async fn poll_achievements(
             .map_err(|err| anyhow::anyhow!("gog achievements request failed: {err}"))
     })
     .await?;
+    tracing::debug!(
+        account_id,
+        product_id,
+        achievement_count = list.items.len(),
+        "fetched GOG achievements"
+    );
 
     let items: Vec<CachedAchievement> = list
         .items
@@ -149,5 +192,14 @@ pub async fn poll_achievements(
         })
         .collect();
 
-    Ok(db.upsert_achievements(profile_id, Storefront::Gog, product_id, &items)?)
+    let unlocked = db.upsert_achievements(account_id, Storefront::Gog, product_id, &items)?;
+    if !unlocked.is_empty() {
+        tracing::info!(
+            account_id,
+            product_id,
+            newly_unlocked = unlocked.len(),
+            "GOG achievements unlocked"
+        );
+    }
+    Ok(unlocked)
 }

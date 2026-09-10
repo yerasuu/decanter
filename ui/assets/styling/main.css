@@ -714,6 +714,27 @@ button:disabled:hover {
 
 }
 
+/* The first-run gate (see `views::Onboarding`) -- no `.app-shell` exists
+   yet at this point (no profile means no navbar), so this owns the whole
+   window itself, centered the same way `.library-loading` centers its
+   own full-page splash. */
+.onboarding {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.onboarding-inner {
+    width: min(420px, 80vw);
+}
+
+.onboarding .field-row {
+    margin: 20px auto 0;
+    max-width: 320px;
+}
+
 /* The first-sync splash (see `library::LibraryLoading`) -- same
    indeterminate bar as an install's, just bigger and centered. */
 .library-loading {

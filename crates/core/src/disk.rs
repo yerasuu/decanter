@@ -28,12 +28,20 @@ use nix::sys::statvfs::statvfs;
 #[must_use]
 #[inline]
 pub fn disk_usage(path: &Path) -> Option<(u64, u64)> {
-    let stat = statvfs(path).ok()?;
+    let stat = match statvfs(path) {
+        Ok(stat) => stat,
+        Err(err) => {
+            // Previously discarded via `.ok()?`; kept as a warn rather than
+            // debug since the caller silently loses the free-space figure.
+            tracing::warn!(path = %path.display(), error = %err, "statvfs failed, omitting free space");
+            return None;
+        }
+    };
     let block = stat.fragment_size();
-    Some((
-        stat.blocks_available().saturating_mul(block),
-        stat.blocks().saturating_mul(block),
-    ))
+    let free_bytes = stat.blocks_available().saturating_mul(block);
+    let total_bytes = stat.blocks().saturating_mul(block);
+    tracing::debug!(path = %path.display(), free_bytes, total_bytes, "read disk usage");
+    Some((free_bytes, total_bytes))
 }
 
 #[cfg(test)]

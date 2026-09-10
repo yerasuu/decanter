@@ -89,5 +89,9 @@ pub fn parse_release_date(date: &str) -> Option<i64> {
 /// rather than one after another.
 pub async fn fetch_release(client: &reqwest::Client, id: i64) -> reqwest::Result<Release> {
     let response = crate::achv_try!(client.get(format!("{EXTERNAL_RELEASES_URL}/{id}")).send().await);
-    crate::achv_try!(response.error_for_status()).json().await
+    let release = crate::achv_try!(response.error_for_status()).json().await;
+    // trace, not debug: this runs once per owned game, so a real library can
+    // fire this hundreds of times in one enrichment pass.
+    tracing::trace!(id, ok = release.is_ok(), "GamesDB release lookup completed");
+    release
 }

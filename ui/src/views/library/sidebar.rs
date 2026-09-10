@@ -1,6 +1,7 @@
 //! The left-hand game list: a search row with a filter toggle, a Steam-
-//! style filter panel, then the list grouped by a real distinction —
-//! bottles-next's own `install_state`, not a mapping of ours.
+//! style filter panel, then the list grouped by a real distinction — each
+//! game's own `install_state`, read straight off its manifest, not a
+//! separately tracked mapping.
 //!
 //! Filter semantics follow Steam's: leaving a section empty means "no
 //! constraint", checks inside a section combine, and sections combine with
@@ -11,7 +12,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use achv_core::Game;
+use achv_core::{Game, Storefront};
 use achv_gog::LibraryEntry;
 use dioxus::prelude::*;
 
@@ -38,6 +39,8 @@ struct Tallies {
     achievements: HashMap<AchievementState, usize>,
     genres: HashMap<String, usize>,
     collections: HashMap<String, usize>,
+    storefronts: HashMap<Storefront, usize>,
+    accounts: HashMap<String, usize>,
 }
 
 fn count_options(
@@ -78,6 +81,9 @@ fn count_options(
                 *tallies.collections.entry(collection.id.clone()).or_default() += 1;
             }
         }
+
+        *tallies.storefronts.entry(entry.game.storefront).or_default() += 1;
+        *tallies.accounts.entry(entry.game.account_id.clone()).or_default() += 1;
     }
 
     tallies
@@ -93,6 +99,20 @@ fn available_genres(entries: &[LibraryEntry]) -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+/// Every storefront an entry in the library actually belongs to — only
+/// ever `[Gog]` today, but drawn from the entries rather than hardcoded so
+/// the next storefront needs no change here either.
+fn available_storefronts(entries: &[LibraryEntry]) -> Vec<Storefront> {
+    let mut found: Vec<Storefront> = entries
+        .iter()
+        .map(|entry| entry.game.storefront)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    found.sort_by_key(|storefront| storefront.as_str_name());
+    found
 }
 
 #[component]
@@ -141,8 +161,12 @@ pub(super) fn Sidebar(
     let mut rename_draft = use_signal(String::new);
 
     let _ = collections_generation();
+    // Otherwise a session's playtime only shows up here after some
+    // unrelated re-render (switching profile, toggling a filter) — the
+    // detail pane already subscribes to this same signal for its own stat.
+    let _ = (background.playtime_generation)();
     // A queued or downloading game should already read as installed here,
-    // not just once bottles-next's own record catches up.
+    // not just once the manifest scan catches up.
     let pending_installs = pending_install_ids(&background.installing.read());
     // Restored once per profile rather than on every render, so toggling a
     // shelf (or a filter) isn't immediately undone by a reload of the saved
@@ -153,12 +177,19 @@ pub(super) fn Sidebar(
         collapsed.set(data::collapsed_shelves(id));
         // A filter state that no longer parses leaves the defaults alone
         // rather than half-applying itself.
-        if let Some(saved) = data::view_state(id, data::SIDEBAR_FILTERS)
+        match data::view_state(id, data::SIDEBAR_FILTERS)
             .as_deref()
-            .and_then(SavedFilter::decode)
+            .map(SavedFilter::decode)
         {
-            kind.set(saved.kind);
-            filters.set(saved.filters);
+            Some(Some(saved)) => {
+                kind.set(saved.kind);
+                filters.set(saved.filters);
+            }
+            Some(None) => tracing::warn!(
+                profile_id = id,
+                "failed to decode saved sidebar filters, using defaults"
+            ),
+            None => {}
         }
         panel_open.set(data::view_state(id, data::FILTER_PANEL).as_deref() == Some("1"));
         loaded_profile.set(Some(id.to_string()));
@@ -181,14 +212,26 @@ pub(super) fn Sidebar(
         };
         if let Some(encoded) = saved.encode() {
             data::save_view_state(&id, data::SIDEBAR_FILTERS, &encoded);
+        } else {
+            tracing::warn!(profile_id = %id, "failed to encode sidebar filters, not saving");
         }
         data::save_view_state(&id, data::FILTER_PANEL, if panel_open() { "1" } else { "0" });
     });
 
-    let favorite_ids = profile_id.as_deref().map(data::favorite_ids).unwrap_or_default();
-    let hidden_ids = profile_id.as_deref().map(data::hidden_ids).unwrap_or_default();
+    let favorite_ids = profile_id
+        .as_deref()
+        .map(data::favorite_ids_in_profile)
+        .unwrap_or_default();
+    let hidden_ids = profile_id
+        .as_deref()
+        .map(data::hidden_ids_in_profile)
+        .unwrap_or_default();
     let stats = profile_id.as_deref().map(data::library_stats).unwrap_or_default();
     let collections = profile_id.as_deref().map(data::load_collections).unwrap_or_default();
+    let accounts = profile_id
+        .as_deref()
+        .map(data::gog_accounts_with_names)
+        .unwrap_or_default();
 
     let query = search.read().to_lowercase();
     let current = filters.read().clone();
@@ -221,6 +264,7 @@ pub(super) fn Sidebar(
         .cloned()
         .collect();
     let kind_total = in_kind.len();
+    let storefronts = available_storefronts(&in_kind);
     let tallies = count_options(&in_kind, &favorite_ids, &stats, &collections, &pending_installs);
 
     let nothing_to_show = visible.is_empty();
@@ -588,6 +632,8 @@ pub(super) fn Sidebar(
             FilterPanel {
                 filters,
                 genres,
+                storefronts,
+                accounts,
                 tallies: tallies,
                 collections: collections
                     .list
@@ -615,6 +661,11 @@ pub(super) fn Sidebar(
 fn FilterPanel(
     filters: Signal<Filters>,
     genres: Vec<String>,
+    /// Every storefront present in the library right now — one entry in
+    /// practice until a second storefront exists.
+    storefronts: Vec<Storefront>,
+    /// `(id, name)` for every GOG account in the profile.
+    accounts: Vec<(String, String)>,
     tallies: Tallies,
     /// Manual collections only — a dynamic one is itself a filter, and
     /// offering it here would mean filtering a filter by a filter.
@@ -760,6 +811,50 @@ fn FilterPanel(
                     }
                 }
 
+                if accounts.len() > 1 {
+                    div { class: "fgroup",
+                        div { class: "fgroup-title", "Cuenta" }
+                        p { class: "fgroup-note", "Este perfil tiene mas de una — marcar dos amplia el resultado." }
+                        for (id, name) in accounts.clone() {
+                            CheckRow {
+                                key: "{id}",
+                                label: name,
+                                tally: tallies.accounts.get(&id).copied().unwrap_or(0),
+                                checked: current.accounts.contains(&id),
+                                on_toggle: move |()| {
+                                    let mut next = filters.read().clone();
+                                    if !next.accounts.insert(id.clone()) {
+                                        next.accounts.remove(&id);
+                                    }
+                                    filters.set(next);
+                                },
+                            }
+                        }
+                    }
+                }
+
+                if storefronts.len() > 1 {
+                    div { class: "fgroup",
+                        div { class: "fgroup-title", "Tienda" }
+                        p { class: "fgroup-note", "Alternativas: marcar dos amplia el resultado." }
+                        for storefront in storefronts.clone() {
+                            CheckRow {
+                                key: "{storefront.as_str_name()}",
+                                label: crate::views::settings::storefront_label(storefront).to_string(),
+                                tally: tallies.storefronts.get(&storefront).copied().unwrap_or(0),
+                                checked: current.storefronts.contains(&storefront),
+                                on_toggle: move |()| {
+                                    let mut next = filters.read().clone();
+                                    if !next.storefronts.insert(storefront) {
+                                        next.storefronts.remove(&storefront);
+                                    }
+                                    filters.set(next);
+                                },
+                            }
+                        }
+                    }
+                }
+
                 div { class: "fgroup fgroup-wide",
                     div { class: "fgroup-title", "Genero" }
                     p { class: "fgroup-note", "Alternativas: marcar dos amplia el resultado." }
@@ -820,6 +915,8 @@ fn FilterPanel(
                                         if let Some(encoded) = saved.encode() {
                                             data::create_dynamic_collection(&profile_id, &name, &encoded);
                                             crate::background::bump_organisation(generation);
+                                        } else {
+                                            tracing::warn!(profile_id, name, "failed to encode filter, collection not saved");
                                         }
                                         save_name.set(String::new());
                                         saving.set(false);

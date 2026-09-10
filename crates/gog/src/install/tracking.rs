@@ -33,21 +33,30 @@ pub(super) fn cancel_requested() -> &'static Mutex<HashSet<InstallKey>> {
 
 /// Cancels an in-flight install for this (profile, product). A no-op when
 /// nothing is running for that pair — safe to call defensively.
-pub async fn cancel(profile_id: &str, product_id: &str) {
-    let key: InstallKey = (profile_id.to_string(), product_id.to_string());
+pub async fn cancel(account_id: &str, product_id: &str) {
+    let key: InstallKey = (account_id.to_string(), product_id.to_string());
     // Set unconditionally, not just when `active()` came up empty: a
     // download-phase cancel below already stops the install on its own
     // (every in-flight file fails, which `install` treats as a failure),
     // but recording it here too costs nothing and means the early check in
     // `install` doesn't need to know which phase a given cancel landed in.
     cancel_requested().lock().await.insert(key.clone());
-    if let Some(in_flight) = active().lock().await.remove(&key) {
+    let in_flight = active().lock().await.remove(&key);
+    let was_active = in_flight.is_some();
+    if let Some(in_flight) = in_flight {
         in_flight.cancel();
     }
+    tracing::debug!(account_id, product_id, was_active, "install cancel requested");
     // Whatever had been transferred is worthless on its own, and leaving
     // it would be mistaken for progress by the next attempt.
-    if let Ok(staging) = staging_root(profile_id, product_id) {
-        tokio::fs::remove_dir_all(staging).await.ok();
+    if let Ok(staging) = staging_root(account_id, product_id) {
+        if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+            // A cancel that arrived before anything was ever written has no
+            // staging directory to remove — not a failure worth a warning.
+            if err.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't remove staging directory after cancel");
+            }
+        }
     }
 }
 

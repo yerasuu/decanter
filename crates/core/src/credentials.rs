@@ -1,6 +1,6 @@
 //! Storefront sessions, in the OS keyring.
 //!
-//! One entry per `(profile, storefront)`, holding whatever that
+//! One entry per `(account, storefront)`, holding whatever that
 //! storefront's client needs to resume a session — for GOG, a serialized
 //! `gog::token::Token`. Never on disk in the clear: these are live
 //! credentials to someone's game library and payment account.
@@ -43,11 +43,6 @@ use crate::catalog::Storefront;
 /// Keyring service name for achv's own entries.
 const SERVICE: &str = "dev.achv.Achv";
 
-/// The service bottles-next stores its sessions under. Read once, on a
-/// miss, so a user who logged in through next-ui before achv owned
-/// this doesn't get silently logged out — see [`load`].
-const LEGACY_SERVICE: &str = "com.usebottles.Bottles";
-
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum KeyringError {
@@ -57,78 +52,79 @@ pub enum KeyringError {
 
 pub type Result<T> = StdResult<T, KeyringError>;
 
-/// The account half of a keyring entry. Shared with the legacy service, so
-/// an entry written by bottles-next is found at the same account name.
-fn account(profile_id: &str, storefront: Storefront) -> String {
-    format!("{profile_id}/{}", storefront.as_str_name())
+/// The account half of a keyring entry.
+fn account(account_id: &str, storefront: Storefront) -> String {
+    format!("{account_id}/{}", storefront.as_str_name())
 }
 
-/// `None` means nobody is logged in for this profile and storefront — the
+/// `None` means nobody is logged in for this account and storefront — the
 /// ordinary case, not an error.
-///
-/// A miss falls back to bottles-next's own entry and, on a hit, copies it
-/// into achv's before returning it, so the fallback runs at most once
-/// per profile. A failure to copy is ignored: the session was still read,
-/// and the next call just falls back again.
 #[inline]
-pub fn load(profile_id: &str, storefront: Storefront) -> Result<Option<String>> {
-    let account = account(profile_id, storefront);
-    let primary = match read(SERVICE, &account) {
-        Ok(secret) => secret,
-        Err(err) => return Err(err),
-    };
-    if let Some(secret) = primary {
-        return Ok(Some(secret));
+pub fn load(account_id: &str, storefront: Storefront) -> Result<Option<String>> {
+    let result = read(&account(account_id, storefront));
+    // Never log the secret itself — only whether one was found.
+    match &result {
+        Ok(Some(_)) => tracing::debug!(account_id, ?storefront, "loaded session from keyring"),
+        Ok(None) => tracing::debug!(account_id, ?storefront, "no session in keyring"),
+        Err(err) => tracing::error!(account_id, ?storefront, error = %err, "failed to load session from keyring"),
     }
-    let legacy = match read(LEGACY_SERVICE, &account) {
-        Ok(secret) => secret,
-        Err(err) => return Err(err),
-    };
-    let Some(inherited) = legacy else {
-        return Ok(None);
-    };
-    if let Err(err) = save(profile_id, storefront, &inherited) {
-        tracing::warn!("could not adopt the bottles-next session for {account}: {err}");
-    }
-    Ok(Some(inherited))
+    result
 }
 
 #[inline]
-pub fn save(profile_id: &str, storefront: Storefront, secret: &str) -> Result<()> {
-    let entry = match Entry::new(SERVICE, &account(profile_id, storefront)) {
+pub fn save(account_id: &str, storefront: Storefront, secret: &str) -> Result<()> {
+    let entry = match Entry::new(SERVICE, &account(account_id, storefront)) {
         Ok(entry) => entry,
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::error!(account_id, ?storefront, error = %err, "failed to open keyring entry for save");
+            return Err(err.into());
+        }
     };
     match entry.set_password(secret) {
-        Ok(()) => Ok(()),
-        Err(err) => Err(err.into()),
+        Ok(()) => {
+            tracing::debug!(account_id, ?storefront, "saved session to keyring");
+            Ok(())
+        }
+        Err(err) => {
+            tracing::error!(account_id, ?storefront, error = %err, "failed to save session to keyring");
+            Err(err.into())
+        }
     }
 }
 
 /// Deleting a session nobody has is a success: the caller wanted it gone,
 /// and it is.
 #[inline]
-pub fn delete(profile_id: &str, storefront: Storefront) -> Result<()> {
-    let account = account(profile_id, storefront);
-    // The legacy entry goes too — leaving it would have [`load`] adopt it
-    // straight back on the next call and undo the logout.
-    for service in [SERVICE, LEGACY_SERVICE] {
-        let entry = match Entry::new(service, &account) {
-            Ok(entry) => entry,
-            Err(err) => return Err(err.into()),
-        };
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(err) => return Err(err.into()),
+pub fn delete(account_id: &str, storefront: Storefront) -> Result<()> {
+    let entry = match Entry::new(SERVICE, &account(account_id, storefront)) {
+        Ok(entry) => entry,
+        Err(err) => {
+            tracing::error!(account_id, ?storefront, error = %err, "failed to open keyring entry for delete");
+            return Err(err.into());
+        }
+    };
+    match entry.delete_credential() {
+        Ok(()) => {
+            // A logout's keyring half — worth seeing at default level,
+            // same tier as `Db::forget_account`'s own info! for the other half.
+            tracing::info!(account_id, ?storefront, "deleted session from keyring");
+            Ok(())
+        }
+        Err(keyring::Error::NoEntry) => {
+            tracing::debug!(account_id, ?storefront, "no session to delete in keyring");
+            Ok(())
+        }
+        Err(err) => {
+            tracing::error!(account_id, ?storefront, error = %err, "failed to delete session from keyring");
+            Err(err.into())
         }
     }
-    Ok(())
 }
 
 /// Reads one keyring entry, mapping a missing entry to `None` rather than
 /// an error — the ordinary "nobody logged in" case.
-fn read(service: &str, account: &str) -> Result<Option<String>> {
-    let entry = match Entry::new(service, account) {
+fn read(account: &str) -> Result<Option<String>> {
+    let entry = match Entry::new(SERVICE, account) {
         Ok(entry) => entry,
         Err(err) => return Err(err.into()),
     };

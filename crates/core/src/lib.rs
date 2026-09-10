@@ -1,7 +1,8 @@
 //! Local state for achv-sidecar and its UI: cached GOG library metadata
-//! and achievement status, both scoped per profile — see [`db`] for why.
+//! and achievement status, both scoped per account — see [`db`] for why.
+//! Accounts group under a profile — see [`profiles`] and [`accounts`].
 
-pub mod adopt;
+mod accounts;
 mod catalog;
 mod collections;
 mod credentials;
@@ -11,6 +12,7 @@ mod library;
 mod profiles;
 mod vdf;
 
+pub use accounts::Account;
 pub use catalog::{Game, InstallState, Storefront, UnknownStorefront};
 pub use collections::Collection;
 pub use credentials::{KeyringError, delete as delete_session, load as load_session, save as save_session};

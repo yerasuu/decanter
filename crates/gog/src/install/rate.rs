@@ -55,6 +55,14 @@ impl RateTracker {
         } else {
             Self::EMA_ALPHA * instantaneous + (1.0 - Self::EMA_ALPHA) * self.ema_bps
         };
+        // `trace!`, not `debug!`: this samples on every progress tick, the
+        // same per-chunk frequency as the download loop feeding it.
+        tracing::trace!(
+            byte_delta,
+            dt_ms = dt.as_millis(),
+            ema_bps = self.ema_bps,
+            "sampled transfer rate"
+        );
         self.ema_bps
     }
 }

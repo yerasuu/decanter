@@ -1,11 +1,7 @@
-//! Installing a GOG game, in-process.
-//!
-//! Replaces the `Library.InstallGame` round trip (bottles-server ->
-//! plugin registry -> next-plugin-gog -> back again). The pieces are the
-//! same ones that chain used, just called directly: [`crate::depot`] for
-//! the manifest, [`download`] for chunk transfer, and an appmanifest in
-//! achv's own `steamapps`-shaped library
-//! ([`achv_core::Library`]) as the record of what landed.
+//! Installing a GOG game, in-process, with no external plugin registry to
+//! round-trip through: [`crate::depot`] for the manifest, [`download`] for
+//! chunk transfer, and an appmanifest in achv's own `steamapps`-shaped
+//! library ([`achv_core::Library`]) as the record of what landed.
 //!
 //! Files go to `common/<InstallDir>`, named by GOG's own install
 //! directory — shared between profiles, outside any prefix. Nothing here
@@ -52,7 +48,7 @@ pub struct Progress {
     pub bytes_per_second: f64,
 }
 
-/// Downloads and installs `product_id` for `profile_id`, reporting
+/// Downloads and installs `product_id` for `account_id`, reporting
 /// transfer progress through `on_progress` as it goes.
 ///
 /// There is no prefix to choose: the files are shared, and the prefix is
@@ -84,7 +80,7 @@ pub struct Progress {
 /// which build (and branch), and, when it could be identified, what
 /// launches it.
 pub async fn install(
-    profile_id: &str,
+    account_id: &str,
     product_id: &str,
     parent_id: Option<&str>,
     title: &str,
@@ -93,12 +89,13 @@ pub async fn install(
     mut on_progress: impl FnMut(Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-    let key: InstallKey = (profile_id.to_string(), product_id.to_string());
+    let key: InstallKey = (account_id.to_string(), product_id.to_string());
+    tracing::info!(product_id, title, parent_id, branch, build_id, "starting gog install");
 
     // A second install of the same game would enqueue a second writer for
     // every one of its files. Nothing downstream guards against that, so
     // stop whatever is already running first; a no-op when nothing is.
-    cancel(profile_id, product_id).await;
+    cancel(account_id, product_id).await;
     // That call's job is stopping a *previous* run of this key, not
     // recording a cancellation of the one about to start -- clear
     // whatever it just set so this fresh attempt isn't stillborn.
@@ -107,7 +104,7 @@ pub async fn install(
     // The depot API needs a live access token; any authenticated call
     // through `with_session` refreshes and re-persists one for us.
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             crate::achv_try!(
                 client
                     .get_user_data()
@@ -116,6 +113,7 @@ pub async fn install(
             Ok(client.token.borrow().access_token.clone())
         })
         .await
+        .inspect_err(|err| tracing::error!(product_id, error = %err, "gog session refresh failed, aborting install"))
     );
 
     // A DLC's content lives in the base game's build, so that is whose
@@ -126,7 +124,7 @@ pub async fn install(
         Some(parent_id) => {
             let owner: i64 = crate::achv_try!(parent_id.parse().context("GOG parent product id must be numeric"));
             let parent_branch = crate::achv_try!(library())
-                .read_manifest(profile_id, Storefront::Gog, parent_id)
+                .read_manifest(account_id, Storefront::Gog, parent_id)
                 .and_then(|parent| parent.branch);
             (owner, parent_branch)
         }
@@ -143,6 +141,9 @@ pub async fn install(
             effective_build_id,
         )
         .await
+        .inspect_err(
+            |err| tracing::error!(product_id, error = %err, "resolving the install plan failed, aborting install")
+        )
     );
 
     // The session refresh and plan fetch just above are exactly the
@@ -150,11 +151,12 @@ pub async fn install(
     // download exists for `cancel` to reach through `active()`. Honor a
     // cancel that landed during it here, instead of installing anyway.
     if cancel_requested().lock().await.remove(&key) {
+        tracing::info!(product_id, "install cancelled before download started");
         anyhow::bail!("install cancelled");
     }
 
     install_into(
-        profile_id,
+        account_id,
         product_id,
         parent_id,
         title,
@@ -173,7 +175,7 @@ pub(crate) fn library() -> anyhow::Result<Library> {
 }
 
 async fn install_into(
-    profile_id: &str,
+    account_id: &str,
     product_id: &str,
     parent_id: Option<&str>,
     title: &str,
@@ -190,8 +192,9 @@ async fn install_into(
     let parent = match parent_id {
         Some(parent_id) => Some(crate::achv_try!(
             library
-                .read_manifest(profile_id, Storefront::Gog, parent_id)
+                .read_manifest(account_id, Storefront::Gog, parent_id)
                 .with_context(|| format!("install the base game before its DLC (product {parent_id})"))
+                .inspect_err(|err| tracing::error!(product_id, parent_id, error = %err, "dlc install aborted"))
         )),
         None => None,
     };
@@ -206,14 +209,19 @@ async fn install_into(
         library
             .install_dir(&install_dir_name)
             .with_context(|| format!("unusable install directory {install_dir_name:?}"))
+            .inspect_err(|err| tracing::error!(product_id, install_dir_name, error = %err, "install aborted"))
     );
 
-    let key: InstallKey = (profile_id.to_string(), product_id.to_string());
+    let key: InstallKey = (account_id.to_string(), product_id.to_string());
 
     // Anything left from an earlier attempt would otherwise be treated as
     // already-downloaded and moved in as if it were complete.
-    let staging = crate::achv_try!(staging_root(profile_id, product_id));
-    tokio::fs::remove_dir_all(&staging).await.ok();
+    let staging = crate::achv_try!(staging_root(account_id, product_id));
+    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(path = %staging.display(), error = %err, "couldn't clear stale staging directory");
+        }
+    }
 
     let in_flight = Cancel::default();
     active().lock().await.insert(key.clone(), in_flight.clone());
@@ -262,11 +270,17 @@ async fn install_into(
     let per_file = match outcome {
         Ok(Ok(per_file)) => per_file,
         Ok(Err(err)) => {
-            tokio::fs::remove_dir_all(&staging).await.ok();
+            tracing::error!(product_id, error = %err, "install download failed, aborting install");
+            if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a failed install");
+            }
             return Err(err);
         }
         Err(err) => {
-            tokio::fs::remove_dir_all(&staging).await.ok();
+            tracing::error!(product_id, error = %err, "install worker panicked, aborting install");
+            if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a panicked install");
+            }
             return Err(anyhow::Error::new(err).context("install worker panicked"));
         }
     };
@@ -279,9 +293,12 @@ async fn install_into(
     crate::achv_try!(
         move_into_library(&staging, &destination_root)
             .await
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "moving the download into the library failed"))
             .context("moving the downloaded game into the library")
     );
-    tokio::fs::remove_dir_all(&staging).await.ok();
+    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+        tracing::warn!(path = %staging.display(), error = %err, "couldn't remove staging directory after install");
+    }
 
     // A DLC is recorded on the game it went into. Its own launch
     // executable is not looked for: whatever a DLC ships, the thing you
@@ -297,7 +314,13 @@ async fn install_into(
         // The DLC's bytes are in the same directory, so the game's
         // recorded size has to grow by them.
         parent.size_on_disk = Some(parent.size_on_disk.unwrap_or(0) + downloaded);
-        crate::achv_try!(library.write_manifest(&parent).context("recording the DLC on its game"));
+        crate::achv_try!(
+            library
+                .write_manifest(&parent)
+                .inspect_err(|err| tracing::error!(product_id, error = %err, "recording the installed dlc failed"))
+                .context("recording the DLC on its game")
+        );
+        tracing::info!(product_id, file_count, bytes = downloaded, "install completed (dlc)");
         return Ok(());
     }
 
@@ -307,7 +330,7 @@ async fn install_into(
     // A reinstall (an update, a branch switch) must not drop what only
     // lives on the previous record: the DLC already sitting in the
     // directory, which Proton build was pinned, when it was last played.
-    let previous = library.read_manifest(profile_id, Storefront::Gog, product_id);
+    let previous = library.read_manifest(account_id, Storefront::Gog, product_id);
     let dlcs = previous.as_ref().map(|game| game.dlcs.clone()).unwrap_or_default();
     let proton = previous.as_ref().and_then(|game| game.proton.clone());
     let last_played = previous.as_ref().and_then(|game| game.last_played);
@@ -317,7 +340,7 @@ async fn install_into(
     crate::achv_try!(
         library
             .write_manifest(&InstalledGame {
-                profile_id: profile_id.to_string(),
+                account_id: account_id.to_string(),
                 storefront: Storefront::Gog,
                 game_id: product_id.to_string(),
                 name: title.to_string(),
@@ -332,9 +355,11 @@ async fn install_into(
                 cloud_save_path,
                 cloud_save_last_sync,
             })
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "writing the appmanifest failed"))
             .context("writing the appmanifest")
     );
 
+    tracing::info!(product_id, file_count, bytes = downloaded, "install completed");
     Ok(())
 }
 
@@ -343,33 +368,42 @@ async fn install_into(
 ///
 /// The files are shared, so deleting them is conditional. The prefix is
 /// not: it belongs to this (profile, game) alone.
-pub async fn uninstall(profile_id: &str, product_id: &str) -> anyhow::Result<()> {
+pub async fn uninstall(account_id: &str, product_id: &str) -> anyhow::Result<()> {
     // An in-flight install would keep writing files into the directory
     // this is about to delete, leaving an untracked half-install behind.
-    cancel(profile_id, product_id).await;
+    cancel(account_id, product_id).await;
 
     let library = crate::achv_try!(library());
     let Some(game) = crate::achv_try!(
         library
-            .remove_manifest(profile_id, Storefront::Gog, product_id)
+            .remove_manifest(account_id, Storefront::Gog, product_id)
             .context("removing the appmanifest")
     ) else {
         return Ok(());
     };
 
-    if let Some(compatdata) = library.compatdata(profile_id, product_id) {
-        crate::achv_try!(remove_dir(&compatdata).await);
+    if let Some(compatdata) = library.compatdata(account_id, product_id) {
+        crate::achv_try!(
+            remove_dir(&compatdata)
+                .await
+                .inspect_err(|err| tracing::error!(product_id, error = %err, "removing the compatdata prefix failed"))
+        );
     }
 
     // Checked after the manifest is gone, so this profile's own record
     // doesn't count as another owner.
-    if library.install_dir_is_shared(&game.install_dir, profile_id, product_id) {
+    if library.install_dir_is_shared(&game.install_dir, account_id, product_id) {
         tracing::info!("keeping {} — another profile still has it installed", game.install_dir);
         return Ok(());
     }
     if let Some(directory) = library.install_dir(&game.install_dir) {
-        crate::achv_try!(remove_dir(&directory).await);
+        crate::achv_try!(
+            remove_dir(&directory)
+                .await
+                .inspect_err(|err| tracing::error!(product_id, error = %err, "removing the install directory failed"))
+        );
     }
+    tracing::info!(product_id, "uninstall completed");
     Ok(())
 }
 
@@ -381,11 +415,11 @@ pub async fn uninstall(profile_id: &str, product_id: &str) -> anyhow::Result<()>
 ///
 /// Removing a DLC that isn't recorded is a no-op: that is the state being
 /// asked for.
-pub async fn uninstall_dlc(profile_id: &str, product_id: &str, parent_id: &str) -> anyhow::Result<()> {
-    cancel(profile_id, product_id).await;
+pub async fn uninstall_dlc(account_id: &str, product_id: &str, parent_id: &str) -> anyhow::Result<()> {
+    cancel(account_id, product_id).await;
 
     let library = crate::achv_try!(library());
-    let Some(mut parent) = library.read_manifest(profile_id, Storefront::Gog, parent_id) else {
+    let Some(mut parent) = library.read_manifest(account_id, Storefront::Gog, parent_id) else {
         return Ok(());
     };
     if !parent.dlcs.contains_key(product_id) {
@@ -397,7 +431,7 @@ pub async fn uninstall_dlc(profile_id: &str, product_id: &str, parent_id: &str) 
 
     // Any authenticated call refreshes and re-persists a live token.
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             crate::achv_try!(
                 client
                     .get_user_data()
@@ -406,10 +440,14 @@ pub async fn uninstall_dlc(profile_id: &str, product_id: &str, parent_id: &str) 
             Ok(client.token.borrow().access_token.clone())
         })
         .await
+        .inspect_err(|err| tracing::error!(product_id, parent_id, error = %err, "gog session refresh failed, aborting dlc uninstall"))
     );
 
-    let files =
-        crate::achv_try!(plan::dlc_only_files(&access_token, parent_numeric, dlc, parent.branch.as_deref()).await);
+    let files = crate::achv_try!(
+        plan::dlc_only_files(&access_token, parent_numeric, dlc, parent.branch.as_deref())
+            .await
+            .inspect_err(|err| tracing::error!(product_id, parent_id, error = %err, "resolving dlc files failed, aborting dlc uninstall"))
+    );
     let root = crate::achv_try!(
         library
             .install_dir(&parent.install_dir)
@@ -420,10 +458,17 @@ pub async fn uninstall_dlc(profile_id: &str, product_id: &str, parent_id: &str) 
         let path = root.join(file);
         // Sizes are read before deleting so the recorded total can shrink
         // by what actually went.
-        if let Ok(meta) = tokio::fs::metadata(&path).await {
-            removed += meta.len();
+        match tokio::fs::metadata(&path).await {
+            Ok(meta) => removed += meta.len(),
+            Err(err) => {
+                tracing::warn!(path = %path.display(), error = %err, "couldn't read dlc file size before removing it")
+            }
         }
-        let _ = tokio::fs::remove_file(&path).await;
+        if let Err(err) = tokio::fs::remove_file(&path).await {
+            tracing::warn!(path = %path.display(), error = %err, "couldn't remove dlc file");
+        } else {
+            tracing::debug!(path = %path.display(), "removed dlc file");
+        }
     }
 
     parent.dlcs.remove(product_id);
@@ -431,7 +476,14 @@ pub async fn uninstall_dlc(profile_id: &str, product_id: &str, parent_id: &str) 
     crate::achv_try!(
         library
             .write_manifest(&parent)
+            .inspect_err(|err| tracing::error!(product_id, parent_id, error = %err, "updating the game after removing its dlc failed"))
             .context("updating the game after removing its DLC")
+    );
+    tracing::info!(
+        product_id,
+        parent_id,
+        bytes_removed = removed,
+        "dlc uninstall completed"
     );
     Ok(())
 }

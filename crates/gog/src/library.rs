@@ -1,8 +1,7 @@
-//! The GOG library, fetched by us instead of through
-//! `Library.ListGames`/`WatchGames` — that path runs bottles-server ->
-//! plugin registry -> next-plugin-gog just to reach the same public
-//! endpoints this module calls directly, so achv owns it now and neither
-//! the registry nor the GOG plugin needs to be running.
+//! The GOG library, fetched by us directly rather than through an
+//! external plugin registry chain that would just reach the same public
+//! endpoints this module calls itself — achv owns the whole path, and
+//! nothing else needs to be running for it to work.
 //!
 //! Four sources, merged:
 //!
@@ -70,7 +69,7 @@ async fn each_product_page(
     access_token: &str,
     mut on_page: impl AsyncFnMut(Vec<gog::gog::ProductDetails>),
 ) -> anyhow::Result<()> {
-    let http = reqwest::Client::new();
+    let http = crate::http_client();
     let mut page = 1;
 
     loop {
@@ -99,6 +98,12 @@ async fn each_product_page(
                 body.chars().take(300).collect::<String>()
             )
         }));
+        tracing::debug!(
+            page,
+            total_pages = parsed.total_pages,
+            product_count = parsed.products.len(),
+            "fetched GOG filtered-products page"
+        );
 
         let is_last_page = page >= parsed.total_pages.max(1);
         on_page(parsed.products).await;
@@ -181,14 +186,15 @@ const ENRICH_BATCH: usize = 24;
 /// back too, for [`enrich_games`] to work through.
 ///
 /// This is the pass that must not fail: it's the library itself.
-pub async fn list_games(profile_id: &str, on_batch: &mut impl FnMut(Batch)) -> anyhow::Result<Vec<LibraryEntry>> {
+pub async fn list_games(account_id: &str, on_batch: &mut impl FnMut(Batch)) -> anyhow::Result<Vec<LibraryEntry>> {
     let (owned_ids, access_token) = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             let owned_ids = crate::achv_try!(
                 client
                     .get_games()
                     .map_err(|err| anyhow::anyhow!("gog owned-games request failed: {err}"))
             );
+            tracing::debug!(owned_id_count = owned_ids.len(), "fetched GOG owned-games id list");
             Ok((owned_ids, client.token.borrow().access_token.clone()))
         })
         .await
@@ -231,14 +237,20 @@ pub async fn list_games(profile_id: &str, on_batch: &mut impl FnMut(Batch)) -> a
         .map(|id| base_entry(id, None))
         .collect();
     if !leftovers.is_empty() {
+        tracing::debug!(
+            leftover_count = leftovers.len(),
+            "found owned products absent from GOG's filtered listing"
+        );
         entries.extend(leftovers.iter().cloned());
         on_batch(leftovers);
     }
 
-    Ok(entries
+    let result: Vec<LibraryEntry> = entries
         .into_iter()
-        .map(|entry| with_install_state(profile_id, entry))
-        .collect())
+        .map(|entry| with_install_state(account_id, entry))
+        .collect();
+    tracing::info!(account_id, game_count = result.len(), "GOG library listing finished");
+    Ok(result)
 }
 
 /// Pass two: purchase dates and GamesDB catalog data, layered onto what
@@ -247,20 +259,36 @@ pub async fn list_games(profile_id: &str, on_batch: &mut impl FnMut(Batch)) -> a
 /// Nothing here is load-bearing. Every source is best-effort, and an entry
 /// that gains nothing is still the entry the first pass produced — which
 /// is why this can run long after the library is already usable.
-pub async fn enrich_games(profile_id: &str, entries: Vec<LibraryEntry>, on_batch: &mut impl FnMut(Batch)) {
+///
+/// `on_progress(done, total)` fires after each entry's GamesDB lookup
+/// resolves — the one step here slow enough (a request per game) that a
+/// caller showing a progress bar needs more than "it's still going".
+pub async fn enrich_games(
+    account_id: &str,
+    entries: Vec<LibraryEntry>,
+    on_batch: &mut impl FnMut(Batch),
+    on_progress: &mut impl FnMut(usize, usize),
+) {
+    tracing::debug!(
+        account_id,
+        entry_count = entries.len(),
+        "starting GOG library enrichment pass"
+    );
+
     // Started here, awaited at the end. The order history is its own
     // paginated fetch and used to run first, which left ~20 seconds where
     // the library was up and nothing visible was changing — it only feeds
     // a sort fallback, so it has no business gating the catalog data.
-    let profile = profile_id.to_string();
+    let profile = account_id.to_string();
     let dates = tokio::spawn(async move { crate::orders::purchase_dates(&profile).await });
 
-    let http = reqwest::Client::new();
+    let http = crate::http_client();
 
     // Step one: GamesDB, which is per-id and has no batch endpoint, so
     // several at a time. Entries it actually indexed go out as they land;
     // the rest are held back for step two rather than being emitted
     // unchanged, which would be a cache write per game for no change.
+    let total = entries.len();
     let mut resolved = futures_util::stream::iter(entries.into_iter().map(|mut entry| {
         let http = &http;
         async move {
@@ -280,6 +308,10 @@ pub async fn enrich_games(profile_id: &str, entries: Vec<LibraryEntry>, on_batch
     let mut unindexed: HashSet<usize> = HashSet::new();
     let mut batch: Batch = Vec::with_capacity(ENRICH_BATCH);
     while let Some((entry, indexed)) = resolved.next().await {
+        // Fine-grained per-entry step inside a stream that can churn through
+        // hundreds of games — trace, not debug, so it doesn't drown out
+        // everything else at debug level on a real library.
+        tracing::trace!(product_id = %entry.game.id, indexed, "resolved GamesDB lookup for library entry");
         if indexed {
             batch.push(entry.clone());
             if batch.len() == ENRICH_BATCH {
@@ -290,6 +322,7 @@ pub async fn enrich_games(profile_id: &str, entries: Vec<LibraryEntry>, on_batch
             unindexed.insert(all.len());
         }
         all.push(entry);
+        on_progress(all.len(), total);
     }
     if !batch.is_empty() {
         on_batch(batch);
@@ -306,14 +339,25 @@ pub async fn enrich_games(profile_id: &str, entries: Vec<LibraryEntry>, on_batch
         Ok(Ok(purchased)) => purchased,
         Ok(Err(err)) => {
             tracing::warn!("GOG order history unavailable: {err}");
+            tracing::info!(
+                account_id,
+                game_count = all.len(),
+                "GOG library enrichment finished without purchase dates"
+            );
             return;
         }
         Err(err) => {
             tracing::warn!("GOG order history task panicked: {err}");
+            tracing::info!(
+                account_id,
+                game_count = all.len(),
+                "GOG library enrichment finished without purchase dates"
+            );
             return;
         }
     };
 
+    let game_count = all.len();
     // Only the entries that actually gained a date — re-emitting the rest
     // would be a second cache write per game for no change.
     let dated: Batch = all
@@ -323,9 +367,11 @@ pub async fn enrich_games(profile_id: &str, entries: Vec<LibraryEntry>, on_batch
             entry.purchased_at.is_some().then_some(entry)
         })
         .collect();
+    let dated_count = dated.len();
     if !dated.is_empty() {
         on_batch(dated);
     }
+    tracing::info!(account_id, game_count, dated_count, "GOG library enrichment finished");
 }
 
 /// Step two: GOG's own product API for everything GamesDB didn't index —
@@ -403,13 +449,13 @@ async fn apply_products(
     }
 }
 
-pub async fn find_game(profile_id: &str, product_id: &str) -> anyhow::Result<Game> {
+pub async fn find_game(account_id: &str, product_id: &str) -> anyhow::Result<Game> {
     // Ignored: this only needs the finished list, not the progress.
-    crate::achv_try!(list_games(profile_id, &mut |_| {}).await)
+    crate::achv_try!(list_games(account_id, &mut |_| {}).await)
         .into_iter()
         .map(|entry| entry.game)
         .find(|game| game.id == product_id)
-        .with_context(|| format!("product {product_id} not found in profile {profile_id}'s library"))
+        .with_context(|| format!("product {product_id} not found in profile {account_id}'s library"))
 }
 
 /// Everything an entry can be without touching GamesDB: GOG's own product
@@ -454,9 +500,11 @@ fn base_entry(id: i64, product: Option<&gog::gog::ProductDetails>) -> LibraryEnt
 /// empty `game` object is what a DLC looks like here — present, but with
 /// nothing on it, which is not the same as being indexed.
 async fn apply_gamesdb(game: &mut Game, id: i64, http: &reqwest::Client) -> bool {
+    // trace, not debug, since a single enrichment pass can make hundreds of
+    // these calls — at debug level they'd drown out everything else.
     let Ok(release) = gamesdb::fetch_release(http, id)
         .await
-        .inspect_err(|err| tracing::debug!("GamesDB has no release for {id}: {err}"))
+        .inspect_err(|err| tracing::trace!("GamesDB has no release for {id}: {err}"))
     else {
         return false;
     };
@@ -575,10 +623,10 @@ fn apply_product_facts(entry: &mut LibraryEntry, product: &crate::product::Produ
 /// Best-effort: a library that can't be read makes every game look not
 /// installed, which is wrong but harmless — the alternative is failing the
 /// whole listing over it.
-fn with_install_state(profile_id: &str, mut entry: LibraryEntry) -> LibraryEntry {
+fn with_install_state(account_id: &str, mut entry: LibraryEntry) -> LibraryEntry {
     let installed = crate::install::library()
         .ok()
-        .and_then(|library| library.read_manifest(profile_id, Storefront::Gog, &entry.game.id));
+        .and_then(|library| library.read_manifest(account_id, Storefront::Gog, &entry.game.id));
     if let Some(installed) = installed {
         entry.game.install_state = Some(InstallState {
             installed: true,

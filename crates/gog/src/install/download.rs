@@ -138,6 +138,11 @@ pub(super) async fn download_all(
         match bytes {
             Ok(bytes) => written[index] = bytes,
             Err(err) => {
+                tracing::error!(
+                    file_index = index,
+                    error = %err,
+                    "file download failed, cancelling the rest of the install"
+                );
                 cancel.cancel();
                 failure.get_or_insert(err);
             }
@@ -186,6 +191,14 @@ async fn download_file(
                 .with_context(|| format!("writing {}", destination.display()))
         );
         written += bytes.len() as u64;
+        // `trace!`, not `debug!`: same reasoning as `fetch_chunk_once` — a
+        // file can be thousands of chunks, one line per chunk written.
+        tracing::trace!(
+            file_index = index,
+            chunk_bytes = bytes.len(),
+            file_bytes_written = written,
+            "wrote chunk"
+        );
         // A closed receiver means the caller stopped listening, which is
         // not a reason to stop downloading.
         let _ = progress.send((index, file.relative_path.clone(), written)).await;
@@ -195,6 +208,12 @@ async fn download_file(
         tokio::io::AsyncWriteExt::flush(&mut sink)
             .await
             .with_context(|| format!("flushing {}", destination.display()))
+    );
+    tracing::debug!(
+        relative_path = file.relative_path,
+        bytes = written,
+        chunk_count = file.chunks.len(),
+        "file downloaded"
     );
     Ok(written)
 }
@@ -212,12 +231,17 @@ async fn fetch_chunk(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Can
             // A cancel isn't a transport failure and must not be retried.
             Err(err) if cancel.is_cancelled() => return Err(err),
             Err(err) => {
-                tracing::debug!("chunk attempt {} failed: {err}", attempt + 1);
+                // A retry that goes on to succeed is not a failure of the
+                // install, so this is `warn!`, not `error!` — see the CDN
+                // refusal test this path exists for.
+                tracing::warn!(attempt = attempt + 1, max_attempts = CHUNK_ATTEMPTS, error = %err, "chunk attempt failed, retrying");
                 last_error = Some(err);
             }
         }
     }
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("chunk download failed")))
+    let err = last_error.unwrap_or_else(|| anyhow::anyhow!("chunk download failed"));
+    tracing::error!(attempts = CHUNK_ATTEMPTS, error = %err, "chunk download failed after exhausting retries");
+    Err(err)
 }
 
 async fn fetch_chunk_once(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Cancel) -> anyhow::Result<Vec<u8>> {
@@ -234,9 +258,19 @@ async fn fetch_chunk_once(client: &reqwest::Client, chunk: &ChunkSource, cancel:
     }
 
     if !chunk.compressed {
+        // `trace!`, not `debug!`: a file transfers hundreds to thousands of
+        // chunks, and logging each at `debug!` would flood the log for
+        // what a caller sees as one file finishing.
+        tracing::trace!(bytes = raw.len(), "fetched chunk");
         return Ok(raw);
     }
-    inflate(&raw).context("chunk did not decompress")
+    let decompressed = crate::achv_try!(inflate(&raw).context("chunk did not decompress"));
+    tracing::trace!(
+        compressed_bytes = raw.len(),
+        decompressed_bytes = decompressed.len(),
+        "fetched chunk"
+    );
+    Ok(decompressed)
 }
 
 /// GOG's depot chunks are raw zlib. Synchronous: a chunk is a few

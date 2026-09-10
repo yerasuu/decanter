@@ -30,6 +30,9 @@ pub(super) struct MenuTarget {
 #[component]
 pub(super) fn ContextMenu(
     target: MenuTarget,
+    /// For collections only — those are scoped to the profile, unlike
+    /// favorites/hidden/installs below, which each product id's own row in
+    /// `games` already knows the account for.
     profile_id: String,
     collections: Collections,
     /// Bumped whenever something here writes, so the sidebar re-reads.
@@ -37,7 +40,8 @@ pub(super) fn ContextMenu(
     /// So Jugar/Instalar/Cancelar can look up the one game's own state —
     /// `MenuTarget` only carries ids. `None` for a multi-selection: those
     /// three don't have a sensible meaning across more than one game at
-    /// once (which bottle would "install 3 games" even use?).
+    /// once (three separate installs queued at once, one shared progress
+    /// bar, or something else entirely?).
     games: Signal<Vec<LibraryEntry>>,
     on_close: EventHandler<()>,
 ) -> Element {
@@ -60,14 +64,28 @@ pub(super) fn ContextMenu(
         _ => (target.x, target.y),
     };
 
+    // Each product id in the target carries its own account (two accounts
+    // in this profile can each own a copy), so favorites/hidden go through
+    // that account, not a single one for the whole menu.
+    let account_for = move |product_id: &str| {
+        games
+            .read()
+            .iter()
+            .find(|entry| entry.game.id == product_id)
+            .map(|entry| entry.game.account_id.clone())
+    };
+
     // "Every one of them already is" decides which way a toggle goes, so
     // a mixed selection moves to the same state rather than inverting each
     // game independently.
-    let all_favorite = target.product_ids.iter().all(|id| data::is_favorite(&profile_id, id));
-    let hidden = data::hidden_ids(&profile_id);
-    let all_hidden = target.product_ids.iter().all(|id| hidden.contains(id));
-    let is_fav = all_favorite;
-    let is_hidden = all_hidden;
+    let is_fav = target
+        .product_ids
+        .iter()
+        .all(|id| account_for(id).is_some_and(|account_id| data::is_favorite(&account_id, id)));
+    let is_hidden = target
+        .product_ids
+        .iter()
+        .all(|id| account_for(id).is_some_and(|account_id| data::hidden_ids(&account_id).contains(id)));
 
     let bump = crate::background::bump_organisation;
 
@@ -119,20 +137,26 @@ pub(super) fn ContextMenu(
             div { class: "context-menu-title", "{target.title}" }
 
             if let Some(entry) = single_entry {
-                GameActionItem { entry: entry.clone(), profile_id: profile_id.clone(), on_close }
-                OpenFolderItem { entry: entry.clone(), profile_id: profile_id.clone(), on_close }
-                PropertiesItem { entry, profile_id: profile_id.clone(), on_close }
+                GameActionItem { entry: entry.clone(), on_close }
+                OpenFolderItem { entry: entry.clone(), on_close }
+                PropertiesItem { entry, on_close }
                 div { class: "context-menu-separator" }
             }
 
             button {
                 class: "context-menu-item",
                 onclick: {
-                    let profile_id = profile_id.clone();
                     let product_ids = target.product_ids.clone();
                     move |_| {
+                        tracing::info!(
+                            count = product_ids.len(),
+                            favorite = !is_fav,
+                            "bulk favorite toggle from context menu",
+                        );
                         for product_id in &product_ids {
-                            data::set_favorite(&profile_id, product_id, !is_fav);
+                            if let Some(account_id) = account_for(product_id) {
+                                data::set_favorite(&account_id, product_id, !is_fav);
+                            }
                         }
                         bump(generation);
                         on_close.call(());
@@ -144,11 +168,17 @@ pub(super) fn ContextMenu(
             button {
                 class: "context-menu-item",
                 onclick: {
-                    let profile_id = profile_id;
                     let product_ids = target.product_ids;
                     move |_| {
+                        tracing::info!(
+                            count = product_ids.len(),
+                            hidden = !is_hidden,
+                            "bulk hide toggle from context menu",
+                        );
                         for product_id in &product_ids {
-                            data::set_hidden(&profile_id, product_id, !is_hidden);
+                            if let Some(account_id) = account_for(product_id) {
+                                data::set_hidden(&account_id, product_id, !is_hidden);
+                            }
                         }
                         bump(generation);
                         on_close.call(());
@@ -251,17 +281,14 @@ pub(super) fn ContextMenu(
 
 /// Jugar/Instalar/Cancelar/Detener for the one game this menu is on top
 /// of -- the same actions the detail pane's action bar offers, reachable
-/// without first clicking through to it. Deliberately simpler than that
-/// bar in one way: installing here always targets the default bottle
-/// (Bottles' own setting) rather than opening a picker, since a dropdown
-/// inside a context menu is its own kind of awkward. Picking a different
-/// bottle is still what the detail pane is for.
+/// without first clicking through to it.
 #[component]
-fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandler<()>) -> Element {
+fn GameActionItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
     // DLC, soundtracks, movies -- nothing here has an install of its own.
     if entry.kind != achv_gog::GameKind::Game {
         return rsx! {};
     }
+    let account_id = entry.game.account_id.clone();
 
     let Background {
         running,
@@ -280,7 +307,7 @@ fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
             button {
                 class: "context-menu-item",
                 onclick: move |_| {
-                    spawn(install::cancel(profile_id.clone(), product_id.clone()));
+                    spawn(install::cancel(account_id.clone(), product_id.clone()));
                     on_close.call(());
                 },
                 "Cancelar instalacion"
@@ -300,7 +327,7 @@ fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
                 class: "context-menu-item",
                 onclick: move |_| {
                     start_install(
-                    profile_id.clone(),
+                    account_id.clone(),
                     product_id.clone(),
                     None,
                     title.clone(),
@@ -316,7 +343,7 @@ fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
         };
     }
 
-    let Some(installed) = resolve_launch_target(&profile_id, &entry.game) else {
+    let Some(installed) = resolve_launch_target(&account_id, &entry.game) else {
         return rsx! {
             span {
                 class: "context-menu-item",
@@ -328,7 +355,7 @@ fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
 
     let product_id = entry.game.id;
     if running.read().contains(&product_id) {
-        let stop_profile = profile_id;
+        let stop_profile = account_id;
         rsx! {
             button {
                 class: "context-menu-item",
@@ -345,7 +372,7 @@ fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
                 class: "context-menu-item",
                 onclick: move |_| {
                     dioxus::core::spawn_forever(launch_game(
-                        profile_id.clone(),
+                        account_id.clone(),
                         installed.clone(),
                         running,
                         playtime_generation,
@@ -362,12 +389,12 @@ fn GameActionItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
 /// needs only a bottle, not a resolved launch executable, so it still
 /// shows up in the "instalado, pero sin ejecutable detectado" case above.
 #[component]
-fn OpenFolderItem(entry: LibraryEntry, profile_id: String, on_close: EventHandler<()>) -> Element {
+fn OpenFolderItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
     if entry.kind != achv_gog::GameKind::Game {
         return rsx! {};
     }
 
-    let Some(path) = game_install_path(&profile_id, &entry.game.id) else {
+    let Some(path) = game_install_path(&entry.game.account_id, &entry.game.id) else {
         return rsx! {};
     };
 
@@ -375,6 +402,7 @@ fn OpenFolderItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
         button {
             class: "context-menu-item",
             onclick: move |_| {
+                tracing::info!(path = %path.display(), "opening install folder in file manager");
                 open_in_file_manager(&path);
                 on_close.call(());
             },
@@ -387,7 +415,7 @@ fn OpenFolderItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
 /// pane's own Propiedades button does -- reachable without first clicking
 /// through to the game.
 #[component]
-fn PropertiesItem(entry: LibraryEntry, profile_id: String, on_close: EventHandler<()>) -> Element {
+fn PropertiesItem(entry: LibraryEntry, on_close: EventHandler<()>) -> Element {
     if entry.kind != achv_gog::GameKind::Game {
         return rsx! {};
     }
@@ -396,7 +424,8 @@ fn PropertiesItem(entry: LibraryEntry, profile_id: String, on_close: EventHandle
         button {
             class: "context-menu-item",
             onclick: move |_| {
-                properties::open_properties_window(entry.game.clone(), profile_id.clone());
+                let account_id = entry.game.account_id.clone();
+                properties::open_properties_window(entry.game.clone(), account_id);
                 on_close.call(());
             },
             "Propiedades"

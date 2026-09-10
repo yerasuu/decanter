@@ -12,7 +12,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use achv_core::Game;
+use achv_core::{Game, Storefront};
 use achv_gog::{GameKind, LibraryEntry};
 use serde::{Deserialize, Serialize};
 
@@ -146,6 +146,17 @@ pub(super) struct Filters {
     /// a dynamic collection is itself a filter, and letting one filter by
     /// another would be a cycle waiting to happen.
     pub collection: Option<String>,
+    /// Narrow to one or more storefronts — empty means every storefront
+    /// the profile has an account on. Only GOG is implemented today, so
+    /// in practice this either has one real option or none, but the
+    /// mechanics are ready for the next storefront without touching this
+    /// again.
+    pub storefronts: HashSet<Storefront>,
+    /// Narrow to one or more accounts by id — same "empty means no
+    /// constraint, checked ones OR together" shape as `storefronts`, one
+    /// level more specific: two GOG accounts in one profile both show up
+    /// here even though they'd both pass a `storefronts` check alone.
+    pub accounts: HashSet<String>,
     pub sort: Sort,
 }
 
@@ -153,7 +164,12 @@ impl Filters {
     /// How many constraints the user applied, for the badge on the
     /// toggle. Sort isn't one — it reorders, it never hides anything.
     pub fn active_count(&self) -> usize {
-        self.states.len() + self.achievements.len() + self.genres.len() + usize::from(self.collection.is_some())
+        self.states.len()
+            + self.achievements.len()
+            + self.genres.len()
+            + usize::from(self.collection.is_some())
+            + self.storefronts.len()
+            + self.accounts.len()
     }
 
     pub fn is_default(&self) -> bool {
@@ -174,6 +190,12 @@ impl Filters {
             return false;
         }
         if !self.genres.is_empty() && !entry.game.genres.iter().any(|genre| self.genres.contains(genre)) {
+            return false;
+        }
+        if !self.storefronts.is_empty() && !self.storefronts.contains(&entry.game.storefront) {
+            return false;
+        }
+        if !self.accounts.is_empty() && !self.accounts.contains(&entry.game.account_id) {
             return false;
         }
         // Buckets are alternatives, so they widen the result the way

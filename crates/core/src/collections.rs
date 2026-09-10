@@ -1,6 +1,8 @@
-//! User-made shelves ("collections") in Biblioteca, plus per-profile hidden
-//! games. Kept apart from [`crate::db`]'s own concerns for the same reason
-//! [`crate::profiles`] is — see `lib.rs`'s doc comment.
+//! User-made shelves ("collections") in Biblioteca, plus per-account hidden
+//! games. Collections are scoped to a profile rather than an account —
+//! unlike hidden games, a shelf is meant to cross every account the
+//! profile groups. Kept apart from [`crate::db`]'s own concerns for the
+//! same reason [`crate::profiles`] is — see `lib.rs`'s doc comment.
 //!
 //! A collection is either explicit (games added one at a time, tracked in
 //! `collection_members`) or dynamic (its `filter` column holds an encoded
@@ -39,7 +41,9 @@ impl Db {
                 filter: row.get(2)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)
+        let collections = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;
+        tracing::debug!(profile_id, collection_count = collections.len(), "listed collections");
+        Ok(collections)
     }
 
     /// Explicit membership for every one of a profile's collections, by
@@ -65,6 +69,12 @@ impl Db {
             let (collection_id, product_id) = row?;
             members.entry(collection_id).or_default().insert(product_id);
         }
+        tracing::debug!(
+            profile_id,
+            ?storefront,
+            collection_count = members.len(),
+            "read collection memberships"
+        );
         Ok(members)
     }
 
@@ -81,6 +91,9 @@ impl Db {
             "INSERT INTO collections (id, profile_id, name, filter, position) VALUES (?1, ?2, ?3, NULL, ?4)",
             params![id, profile_id, name, next_position],
         )?;
+        // A user-visible creation, worth seeing at default level, unlike
+        // the routine reads elsewhere in this file.
+        tracing::info!(profile_id, collection_id = %id, name, "created collection");
         Ok(Collection {
             id,
             name: name.to_owned(),
@@ -93,6 +106,7 @@ impl Db {
             "UPDATE collections SET name = ?1 WHERE id = ?2",
             params![name, collection_id],
         )?;
+        tracing::debug!(collection_id, name, "renamed collection");
         Ok(())
     }
 
@@ -103,6 +117,7 @@ impl Db {
             "UPDATE collections SET filter = ?1 WHERE id = ?2",
             params![filter, collection_id],
         )?;
+        tracing::debug!(collection_id, is_dynamic = filter.is_some(), "set collection filter");
         Ok(())
     }
 
@@ -114,6 +129,9 @@ impl Db {
         )?;
         self.conn
             .execute("DELETE FROM collections WHERE id = ?1", params![collection_id])?;
+        // A user-visible, irreversible deletion — worth seeing at default
+        // level, unlike the routine reads elsewhere in this file.
+        tracing::info!(collection_id, "deleted collection");
         Ok(())
     }
 
@@ -139,6 +157,13 @@ impl Db {
                 params![collection_id, storefront as i32, product_id],
             )?;
         }
+        tracing::debug!(
+            collection_id,
+            ?storefront,
+            product_id,
+            member,
+            "set collection membership"
+        );
         Ok(())
     }
 
@@ -154,6 +179,11 @@ impl Db {
             rows.collect::<rusqlite::Result<_>>()?
         };
         let Some(from) = ids.iter().position(|id| id == collection_id) else {
+            tracing::warn!(
+                profile_id,
+                collection_id,
+                "collection not found in its own profile, ignoring move"
+            );
             return Ok(());
         };
         #[expect(
@@ -174,36 +204,44 @@ impl Db {
                 reason = "a profile's collection count never approaches i64::MAX"
             )]
             let position = position as i64;
+            // One row per collection in the profile, rewritten on every
+            // move — trace, not debug, since the outcome below already
+            // summarizes the whole reorder.
+            tracing::trace!(collection_id = %id, position, "rewriting collection position");
             tx.execute(
                 "UPDATE collections SET position = ?1 WHERE id = ?2",
                 params![position, id],
             )?;
         }
         tx.commit()?;
+        tracing::debug!(profile_id, collection_id, from, to, "moved collection");
         Ok(())
     }
 
-    /// Product ids hidden from a profile's library view entirely.
-    pub fn hidden_ids(&self, profile_id: &str, storefront: Storefront) -> Result<HashSet<String>> {
+    /// Product ids hidden from an account's library view entirely.
+    pub fn hidden_ids(&self, account_id: &str, storefront: Storefront) -> Result<HashSet<String>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT product_id FROM hidden WHERE profile_id = ?1 AND storefront = ?2")?;
-        let rows = stmt.query_map(params![profile_id, storefront as i32], |row| row.get(0))?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+            .prepare("SELECT product_id FROM hidden WHERE account_id = ?1 AND storefront = ?2")?;
+        let rows = stmt.query_map(params![account_id, storefront as i32], |row| row.get(0))?;
+        let ids = rows.collect::<rusqlite::Result<HashSet<_>>>().map_err(Error::from)?;
+        tracing::debug!(account_id, ?storefront, count = ids.len(), "listed hidden ids");
+        Ok(ids)
     }
 
-    pub fn set_hidden(&self, profile_id: &str, storefront: Storefront, product_id: &str, hidden: bool) -> Result<()> {
+    pub fn set_hidden(&self, account_id: &str, storefront: Storefront, product_id: &str, hidden: bool) -> Result<()> {
         if hidden {
             self.conn.execute(
-                "INSERT OR IGNORE INTO hidden (profile_id, storefront, product_id) VALUES (?1, ?2, ?3)",
-                params![profile_id, storefront as i32, product_id],
+                "INSERT OR IGNORE INTO hidden (account_id, storefront, product_id) VALUES (?1, ?2, ?3)",
+                params![account_id, storefront as i32, product_id],
             )?;
         } else {
             self.conn.execute(
-                "DELETE FROM hidden WHERE profile_id = ?1 AND storefront = ?2 AND product_id = ?3",
-                params![profile_id, storefront as i32, product_id],
+                "DELETE FROM hidden WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
             )?;
         }
+        tracing::debug!(account_id, ?storefront, product_id, hidden, "set hidden state");
         Ok(())
     }
 }

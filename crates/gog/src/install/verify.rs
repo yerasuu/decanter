@@ -58,11 +58,11 @@ impl VerifyReport {
 /// install time — a manifest for a build GOG has since retired can 404,
 /// which is reported as part of the outcome rather than failing the whole
 /// verification silently.
-pub async fn verify(profile_id: &str, product_id: &str) -> anyhow::Result<VerifyReport> {
+pub async fn verify(account_id: &str, product_id: &str) -> anyhow::Result<VerifyReport> {
     let library = crate::achv_try!(super::library());
     let game = crate::achv_try!(
         library
-            .read_manifest(profile_id, Storefront::Gog, product_id)
+            .read_manifest(account_id, Storefront::Gog, product_id)
             .with_context(|| format!("{product_id} is not installed"))
     );
     let install_root = crate::achv_try!(
@@ -70,10 +70,11 @@ pub async fn verify(profile_id: &str, product_id: &str) -> anyhow::Result<Verify
             .install_dir(&game.install_dir)
             .context("unusable install directory")
     );
+    tracing::info!(product_id, install_dir = game.install_dir, "starting verify");
 
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             crate::achv_try!(
                 client
                     .get_user_data()
@@ -83,7 +84,7 @@ pub async fn verify(profile_id: &str, product_id: &str) -> anyhow::Result<Verify
         })
         .await
     );
-    let http = reqwest::Client::new();
+    let http = crate::http_client();
 
     let branch = game.branch.as_deref();
     // Pinned to the build actually on disk, not whatever the branch
@@ -125,6 +126,12 @@ pub async fn verify(profile_id: &str, product_id: &str) -> anyhow::Result<Verify
         );
     }
 
+    tracing::info!(
+        product_id,
+        files_checked = report.files_checked,
+        broken_count = report.broken.len(),
+        "verify report finished"
+    );
     Ok(report)
 }
 
@@ -141,6 +148,7 @@ async fn verify_content(
     let (_, _, files) = crate::achv_try!(
         resolve_depot_files(http, access_token, build_owner, content, branch, build_id)
             .await
+            .inspect_err(|err| tracing::error!(content, error = %err, "depot manifest fetch failed, aborting verify"))
             .with_context(|| format!("fetching the depot manifest for {content}"))
     );
 
@@ -161,13 +169,17 @@ async fn verify_content(
                 checked += 1;
 
                 let reason = match verify_file(&path, &file.chunks) {
-                    Ok(true) => continue,
+                    Ok(true) => {
+                        tracing::debug!(relative_path = %relative_path.display(), "file verified ok");
+                        continue;
+                    }
                     Err(err) if err.kind() == std::io::ErrorKind::NotFound => BrokenReason::Missing,
                     // A mismatched hash and any other I/O error (permissions, a
                     // directory where a file should be) are both "broken" —
                     // only a missing file gets its own reason.
                     Ok(false) | Err(_) => BrokenReason::Mismatched,
                 };
+                tracing::debug!(relative_path = %relative_path.display(), ?reason, "file verification found a problem");
                 broken.push(BrokenFile {
                     relative_path: relative_path.to_string_lossy().into_owned(),
                     owner: content.to_string(),
@@ -223,14 +235,15 @@ fn verify_file(path: &Path, chunks: &[crate::depot::DepotChunk]) -> std::io::Res
 /// Runs the same plan → download → move pipeline [`super::install`] uses,
 /// just filtered down to the broken set — a repair is a small install, not
 /// a special case of one.
-pub async fn repair(profile_id: &str, product_id: &str, broken: &[BrokenFile]) -> anyhow::Result<()> {
+pub async fn repair(account_id: &str, product_id: &str, broken: &[BrokenFile]) -> anyhow::Result<()> {
     if broken.is_empty() {
         return Ok(());
     }
+    tracing::info!(product_id, broken_count = broken.len(), "starting repair");
     let library = crate::achv_try!(super::library());
     let game = crate::achv_try!(
         library
-            .read_manifest(profile_id, Storefront::Gog, product_id)
+            .read_manifest(account_id, Storefront::Gog, product_id)
             .with_context(|| format!("{product_id} is not installed"))
     );
     let install_root = crate::achv_try!(
@@ -241,7 +254,7 @@ pub async fn repair(profile_id: &str, product_id: &str, broken: &[BrokenFile]) -
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
 
     let access_token = crate::achv_try!(
-        crate::with_session(profile_id, |client| {
+        crate::with_session(account_id, |client| {
             crate::achv_try!(
                 client
                     .get_user_data()
@@ -261,10 +274,14 @@ pub async fn repair(profile_id: &str, product_id: &str, broken: &[BrokenFile]) -
     }
 
     let staging = crate::achv_try!(super::staging::staging_root(
-        profile_id,
+        account_id,
         &format!("{product_id}-repair")
     ));
-    tokio::fs::remove_dir_all(&staging).await.ok();
+    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(path = %staging.display(), error = %err, "couldn't clear stale repair staging directory");
+        }
+    }
 
     for (owner, wanted) in by_owner {
         let owner_id: i64 = crate::achv_try!(owner.parse().context("GOG product id must be numeric"));
@@ -302,6 +319,9 @@ pub async fn repair(profile_id: &str, product_id: &str, broken: &[BrokenFile]) -
         crate::achv_try!(
             super::download::download_all(downloads, &staging, super::download::Cancel::default(), tx)
                 .await
+                .inspect_err(
+                    |err| tracing::error!(product_id, owner, error = %err, "repair download failed, aborting repair")
+                )
                 .context("re-downloading broken files")
         );
     }
@@ -309,8 +329,14 @@ pub async fn repair(profile_id: &str, product_id: &str, broken: &[BrokenFile]) -
     crate::achv_try!(
         super::staging::move_into_library(&staging, &install_root)
             .await
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "moving repaired files into place failed"))
             .context("moving repaired files into place")
     );
-    tokio::fs::remove_dir_all(&staging).await.ok();
+    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(path = %staging.display(), error = %err, "couldn't remove repair staging directory");
+        }
+    }
+    tracing::info!(product_id, "repair completed");
     Ok(())
 }

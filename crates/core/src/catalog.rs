@@ -1,10 +1,9 @@
 //! The catalog model: a storefront, a game as its store describes it, and
 //! whether achv has it installed.
 //!
-//! Previously bottles-next's protobuf types. Kept field-compatible with
-//! them on purpose — [`Storefront`]'s discriminants are the integers
-//! already written into every cache row, and changing them would silently
-//! re-key the whole database.
+//! [`Storefront`]'s discriminants are the integers already written into
+//! every cache row, and changing them would silently re-key the whole
+//! database — they're pinned, not free to renumber.
 
 // Only fires on some compilation targets (lib vs tests), so `expect` can't
 // be used here without an "unfulfilled expectation" warning on the other.
@@ -29,7 +28,7 @@
     clippy::exhaustive_enums,
     reason = "crates/gog and ui both match on this exhaustively with no wildcard arm"
 )]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(i32)]
 pub enum Storefront {
     #[default]
@@ -91,15 +90,22 @@ pub struct UnknownStorefront(pub i32);
 /// A game as its storefront describes it, plus achv's own view of
 /// whether it's installed.
 ///
-/// Every field but [`Game::install_state`] is catalog data straight from
-/// the store — optional throughout, because no storefront populates all of
-/// it and an absent field means "the store didn't say", not "empty".
+/// Every field but [`Game::account_id`] and [`Game::install_state`] is
+/// catalog data straight from the store — optional throughout, because no
+/// storefront populates all of it and an absent field means "the store
+/// didn't say", not "empty".
 #[expect(
     clippy::exhaustive_structs,
     reason = "crates/gog and ui both build this with a plain struct literal from outside this crate"
 )]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Game {
+    /// Which account this copy is owned by — the same game can come back
+    /// twice, once per account that owns it, when a profile groups more
+    /// than one (see `crate::accounts`). Not catalog data: this is local
+    /// bookkeeping the UI needs to merge several accounts' libraries
+    /// without losing track of which account a row's actions apply to.
+    pub account_id: String,
     /// Wide hero/banner art, distinct from `cover_url`'s portrait crop.
     pub background_url: Option<String>,
     pub cover_url: Option<String>,

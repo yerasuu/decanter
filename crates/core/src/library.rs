@@ -3,11 +3,16 @@
 //! ```text
 //! <root>/
 //!   libraryfolders.vdf                     every root achv knows about
-//!   common/<InstallDir>/                   game files, shared between profiles
-//!   manifests/<profile_id>/
+//!   common/<InstallDir>/                   game files, shared between accounts
+//!   manifests/<account_id>/
 //!     appmanifest_<storefront>_<id>.acf    who owns it and what state it's in
-//!   compatdata/<profile_id>/<id>/          that game's Proton prefix
+//!   compatdata/<account_id>/<id>/          that game's Proton prefix
 //! ```
+//!
+//! Ownership here is the storefront account (see [`crate::accounts`]), not
+//! the profile it's grouped under — two accounts in the same profile still
+//! get their own manifest and their own Proton prefix, the same as two
+//! accounts in different profiles would.
 //!
 //! **The manifests are the source of truth.** Nothing here is mirrored
 //! into SQLite: copying a `common/` directory and its manifest onto
@@ -15,13 +20,13 @@
 //! hand uninstalls it. A cache would only be something to fall out of sync
 //! with what a user can see and edit.
 //!
-//! Files are shared across profiles; ownership is not. Two profiles that
+//! Files are shared across accounts; ownership is not. Two accounts that
 //! own the same game get one copy under `common/` and a manifest each — so
-//! uninstalling for one profile must check the others before deleting
+//! uninstalling for one account must check the others before deleting
 //! anything ([`Library::install_dir_is_shared`]).
 //!
-//! `compatdata` is per profile *and* per game, so a game that wrecks its
-//! prefix wrecks only its own, and one profile's saves never land in
+//! `compatdata` is per account *and* per game, so a game that wrecks its
+//! prefix wrecks only its own, and one account's saves never land in
 //! another's. It is created lazily, on first launch rather than at install
 //! time: a fresh Proton prefix is ~660 MB, and a game that is installed
 //! but never played should cost nothing.
@@ -121,7 +126,7 @@ pub struct InstalledGame {
     /// — the game is installed, there's just nothing to start.
     pub launch_executable: Option<String>,
     pub name: String,
-    pub profile_id: String,
+    pub account_id: String,
     /// Proton build for this game specifically, resolved by umu. `None`
     /// uses whatever the app's default is.
     pub proton: Option<String>,
@@ -166,7 +171,7 @@ impl InstalledGame {
             Some(value) => value,
             None => return None,
         };
-        let profile_id = match root.get("profileid") {
+        let account_id = match root.get("accountid") {
             Some(value) => value,
             None => return None,
         };
@@ -179,7 +184,7 @@ impl InstalledGame {
             None => return None,
         };
         Some(Self {
-            profile_id: profile_id.to_owned(),
+            account_id: account_id.to_owned(),
             storefront,
             game_id: game_id.to_owned(),
             name: root.get("name").unwrap_or_default().to_owned(),
@@ -241,7 +246,7 @@ impl InstalledGame {
         let mut root = Value::block();
         root.insert("gameid", self.game_id.clone());
         root.insert("storefront", self.storefront.as_str_name());
-        root.insert("profileid", self.profile_id.clone());
+        root.insert("accountid", self.account_id.clone());
         root.insert("name", self.name.clone());
         root.insert("installdir", self.install_dir.clone());
         root.insert("buildid", self.build_id.clone());
@@ -290,12 +295,12 @@ impl Library {
         self.root.join("common")
     }
 
-    /// The Proton prefix for one profile's copy of one game. Not created
+    /// The Proton prefix for one account's copy of one game. Not created
     /// here — umu creates it on first launch.
     #[must_use]
     #[inline]
-    pub fn compatdata(&self, profile_id: &str, game_id: &str) -> Option<PathBuf> {
-        let profile = match safe_component(profile_id) {
+    pub fn compatdata(&self, account_id: &str, game_id: &str) -> Option<PathBuf> {
+        let account = match safe_component(account_id) {
             Some(value) => value,
             None => return None,
         };
@@ -303,7 +308,7 @@ impl Library {
             Some(value) => value,
             None => return None,
         };
-        Some(self.root.join("compatdata").join(profile).join(game))
+        Some(self.root.join("compatdata").join(account).join(game))
     }
 
     /// Where the library lives unless someone points achv elsewhere.
@@ -326,30 +331,30 @@ impl Library {
         Some(self.common().join(component))
     }
 
-    /// Whether anyone other than `(profile_id, game_id)` still has files
+    /// Whether anyone other than `(account_id, game_id)` still has files
     /// in `install_dir` — i.e. whether deleting it would take a game out
-    /// from under another profile.
+    /// from under another account.
     #[must_use]
     #[inline]
-    pub fn install_dir_is_shared(&self, install_dir: &str, profile_id: &str, game_id: &str) -> bool {
+    pub fn install_dir_is_shared(&self, install_dir: &str, account_id: &str, game_id: &str) -> bool {
         self.scan_all().iter().any(|other| {
-            other.install_dir == install_dir && !(other.profile_id == profile_id && other.game_id == game_id)
+            other.install_dir == install_dir && !(other.account_id == account_id && other.game_id == game_id)
         })
     }
 
-    /// Directory holding one profile's manifests.
-    fn manifest_dir(&self, profile_id: &str) -> Option<PathBuf> {
-        let profile = match safe_component(profile_id) {
+    /// Directory holding one account's manifests.
+    fn manifest_dir(&self, account_id: &str) -> Option<PathBuf> {
+        let account = match safe_component(account_id) {
             Some(value) => value,
             None => return None,
         };
-        Some(self.root.join("manifests").join(profile))
+        Some(self.root.join("manifests").join(account))
     }
 
     #[must_use]
     #[inline]
-    pub fn manifest_path(&self, profile_id: &str, storefront: Storefront, game_id: &str) -> Option<PathBuf> {
-        let dir = match self.manifest_dir(profile_id) {
+    pub fn manifest_path(&self, account_id: &str, storefront: Storefront, game_id: &str) -> Option<PathBuf> {
+        let dir = match self.manifest_dir(account_id) {
             Some(value) => value,
             None => return None,
         };
@@ -371,8 +376,8 @@ impl Library {
 
     #[must_use]
     #[inline]
-    pub fn read_manifest(&self, profile_id: &str, storefront: Storefront, game_id: &str) -> Option<InstalledGame> {
-        let path = match self.manifest_path(profile_id, storefront, game_id) {
+    pub fn read_manifest(&self, account_id: &str, storefront: Storefront, game_id: &str) -> Option<InstalledGame> {
+        let path = match self.manifest_path(account_id, storefront, game_id) {
             Some(value) => value,
             None => return None,
         };
@@ -380,7 +385,7 @@ impl Library {
     }
 
     /// Forgets an install. The files under `common/` are left alone —
-    /// whether they can go depends on the other profiles, which is
+    /// whether they can go depends on the other accounts, which is
     /// [`Library::install_dir_is_shared`]'s question.
     ///
     /// # Errors
@@ -389,23 +394,34 @@ impl Library {
     #[inline]
     pub fn remove_manifest(
         &self,
-        profile_id: &str,
+        account_id: &str,
         storefront: Storefront,
         game_id: &str,
     ) -> io::Result<Option<InstalledGame>> {
-        let Some(path) = self.manifest_path(profile_id, storefront, game_id) else {
+        let Some(path) = self.manifest_path(account_id, storefront, game_id) else {
+            tracing::warn!(
+                account_id,
+                ?storefront,
+                game_id,
+                "account or game id unusable as a manifest path"
+            );
             return Ok(None);
         };
         let Some(game) = read_manifest_file(&path) else {
             // Nothing on record: removing it is what the caller wanted.
             if let Err(err) = fs::remove_file(&path) {
-                tracing::debug!("stray manifest {} already gone: {err}", path.display());
+                tracing::debug!(path = %path.display(), error = %err, "stray manifest already gone");
             }
             return Ok(None);
         };
         match fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(err) => return Err(err),
+            Ok(()) => {
+                tracing::info!(account_id, ?storefront, game_id, "removed install manifest");
+            }
+            Err(err) => {
+                tracing::error!(path = %path.display(), error = %err, "failed to remove manifest file");
+                return Err(err);
+            }
         }
         Ok(Some(game))
     }
@@ -422,9 +438,28 @@ impl Library {
     #[must_use]
     #[inline]
     pub fn roots(&self) -> Vec<PathBuf> {
-        let listed = fs::read_to_string(self.root.join("libraryfolders.vdf"))
-            .ok()
-            .and_then(|content| vdf::from_str(&content).ok())
+        let path = self.root.join("libraryfolders.vdf");
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => Some(content),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                // trace, not debug, since every fresh install starts
+                // without this file and roots() runs on every scan
+                tracing::trace!(path = %path.display(), "no libraryfolders.vdf yet");
+                None
+            }
+            Err(err) => {
+                tracing::warn!(path = %path.display(), error = %err, "failed to read libraryfolders.vdf");
+                None
+            }
+        };
+        let listed = content
+            .and_then(|content| match vdf::from_str(&content) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    tracing::warn!(path = %path.display(), error = %err, "failed to parse libraryfolders.vdf");
+                    None
+                }
+            })
             .and_then(|(_, root)| {
                 let block = match root.as_block() {
                     Some(value) => value,
@@ -440,38 +475,54 @@ impl Library {
             })
             .unwrap_or_default();
 
-        if listed.contains(&self.root) {
+        let roots = if listed.contains(&self.root) {
             listed
         } else {
             iter::once(self.root.clone()).chain(listed).collect()
-        }
+        };
+        tracing::debug!(root_count = roots.len(), "resolved library roots");
+        roots
     }
 
-    /// Everything one profile owns, by game id.
+    /// Everything one account owns, by game id.
     #[must_use]
     #[inline]
-    pub fn scan(&self, profile_id: &str) -> BTreeMap<String, InstalledGame> {
-        let Some(directory) = self.manifest_dir(profile_id) else {
+    pub fn scan(&self, account_id: &str) -> BTreeMap<String, InstalledGame> {
+        let Some(directory) = self.manifest_dir(account_id) else {
+            tracing::warn!(account_id, "account id unusable as a manifest directory");
             return BTreeMap::new();
         };
-        read_manifest_dir(&directory)
+        let games: BTreeMap<_, _> = read_manifest_dir(&directory)
             .into_iter()
             .map(|game| (game.game_id.clone(), game))
-            .collect()
+            .collect();
+        tracing::debug!(account_id, game_count = games.len(), "scanned account manifests");
+        games
     }
 
-    /// Every manifest in the library, across every profile. What
+    /// Every manifest in the library, across every account. What
     /// uninstalling consults before deleting shared files.
     #[must_use]
     #[inline]
     pub fn scan_all(&self) -> Vec<InstalledGame> {
-        let Ok(entries) = fs::read_dir(self.root.join("manifests")) else {
-            return Vec::new();
+        let dir = self.root.join("manifests");
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                tracing::trace!(path = %dir.display(), "no manifests directory yet");
+                return Vec::new();
+            }
+            Err(err) => {
+                tracing::warn!(path = %dir.display(), error = %err, "failed to read manifests directory");
+                return Vec::new();
+            }
         };
-        entries
+        let games: Vec<_> = entries
             .flatten()
             .flat_map(|entry| read_manifest_dir(&entry.path()))
-            .collect()
+            .collect();
+        tracing::debug!(game_count = games.len(), "scanned all accounts' manifests");
+        games
     }
 
     /// Announces this root in Steam's own format.
@@ -486,17 +537,27 @@ impl Library {
     pub fn write_libraryfolders(&self) -> io::Result<()> {
         match fs::create_dir_all(&self.root) {
             Ok(()) => {}
-            Err(err) => return Err(err),
+            Err(err) => {
+                tracing::error!(path = %self.root.display(), error = %err, "failed to create library root directory");
+                return Err(err);
+            }
         }
         let mut entry = Value::block();
         entry.insert("path", self.root.to_string_lossy().into_owned());
         entry.insert("label", "");
         let mut root = Value::block();
         root.insert("0", entry);
-        fs::write(
-            self.root.join("libraryfolders.vdf"),
-            vdf::to_string("libraryfolders", &root),
-        )
+        let path = self.root.join("libraryfolders.vdf");
+        match fs::write(&path, vdf::to_string("libraryfolders", &root)) {
+            Ok(()) => {
+                tracing::debug!(path = %path.display(), "wrote libraryfolders.vdf");
+                Ok(())
+            }
+            Err(err) => {
+                tracing::error!(path = %path.display(), error = %err, "failed to write libraryfolders.vdf");
+                Err(err)
+            }
+        }
     }
 
     /// Records `game` as installed. Also refreshes `libraryfolders.vdf`,
@@ -508,24 +569,44 @@ impl Library {
     /// written to disk.
     #[inline]
     pub fn write_manifest(&self, game: &InstalledGame) -> io::Result<()> {
-        let path = match self.manifest_path(&game.profile_id, game.storefront, &game.game_id) {
+        let path = match self.manifest_path(&game.account_id, game.storefront, &game.game_id) {
             Some(value) => value,
             None => {
+                tracing::warn!(
+                    account_id = %game.account_id,
+                    game_id = %game.game_id,
+                    "unusable account or game id for manifest path"
+                );
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("unusable profile or game id for {}", game.game_id),
+                    format!("unusable account or game id for {}", game.game_id),
                 ));
             }
         };
         if let Some(parent) = path.parent() {
             match fs::create_dir_all(parent) {
                 Ok(()) => {}
-                Err(err) => return Err(err),
+                Err(err) => {
+                    tracing::error!(path = %parent.display(), error = %err, "failed to create manifest directory");
+                    return Err(err);
+                }
             }
         }
         match fs::write(&path, vdf::to_string("AppState", &game.to_vdf())) {
-            Ok(()) => {}
-            Err(err) => return Err(err),
+            Ok(()) => {
+                // A milestone worth seeing at default level: an install
+                // just got recorded, unlike the routine per-scan reads above.
+                tracing::info!(
+                    account_id = %game.account_id,
+                    storefront = ?game.storefront,
+                    game_id = %game.game_id,
+                    "wrote install manifest"
+                );
+            }
+            Err(err) => {
+                tracing::error!(path = %path.display(), error = %err, "failed to write manifest file");
+                return Err(err);
+            }
         }
         self.write_libraryfolders()
     }
@@ -539,11 +620,30 @@ impl Library {
 // `.ok()?`, which still uses `?`. Kept as-is.
 #[expect(clippy::question_mark_used, reason = "see comment above")]
 fn read_manifest_file(path: &Path) -> Option<InstalledGame> {
-    let content = fs::read_to_string(path).ok()?;
-    match vdf::from_str(&content) {
-        Ok((_, root)) => InstalledGame::from_vdf(&root),
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            // Checking whether one particular game is installed is routine
+            // and happens for games that simply aren't — high frequency,
+            // low value, unlike the warn below for a real read failure.
+            tracing::trace!(path = %path.display(), "no manifest file to read");
+            return None;
+        }
         Err(err) => {
-            tracing::warn!("skipping unreadable manifest {}: {err}", path.display());
+            tracing::warn!(path = %path.display(), error = %err, "failed to read manifest file");
+            return None;
+        }
+    };
+    match vdf::from_str(&content) {
+        Ok((_, root)) => {
+            let game = InstalledGame::from_vdf(&root);
+            if game.is_none() {
+                tracing::warn!(path = %path.display(), "manifest missing a required field, skipping");
+            }
+            game
+        }
+        Err(err) => {
+            tracing::warn!(path = %path.display(), error = %err, "skipping unreadable manifest");
             None
         }
     }
@@ -552,8 +652,16 @@ fn read_manifest_file(path: &Path) -> Option<InstalledGame> {
 /// Every valid manifest directly inside `directory`; anything that isn't
 /// shaped like an `appmanifest_*.acf` file is skipped rather than tried.
 fn read_manifest_dir(directory: &Path) -> Vec<InstalledGame> {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return Vec::new();
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            tracing::trace!(path = %directory.display(), "no manifest directory yet");
+            return Vec::new();
+        }
+        Err(err) => {
+            tracing::warn!(path = %directory.display(), error = %err, "failed to read manifest directory");
+            return Vec::new();
+        }
     };
     entries
         .flatten()
@@ -571,7 +679,7 @@ fn read_manifest_dir(directory: &Path) -> Vec<InstalledGame> {
 
 /// A single path component that can't climb, hide, or reach an absolute
 /// path. Every value that reaches this came from a storefront's manifest
-/// or from a profile id.
+/// or from an account id.
 fn safe_component(value: &str) -> Option<&str> {
     if value.is_empty()
         || value == "."

@@ -25,6 +25,10 @@ enum DetailTab {
 #[component]
 pub(super) fn DetailPane(
     game: Game,
+    /// For [`CollectionChips`] only — collections are scoped to the
+    /// profile. Everything else here (favorites, playtime, install,
+    /// launch) uses `game.account_id`, the specific account this copy of
+    /// the game belongs to.
     profile_id: String,
     achievements: Resource<Option<anyhow::Result<Vec<CachedAchievement>>>>,
     poll_status: PollStatus,
@@ -32,6 +36,7 @@ pub(super) fn DetailPane(
     running: crate::launch::Running,
     installing: Signal<HashMap<String, InstallStatus>>,
 ) -> Element {
+    let account_id = game.account_id.clone();
     let mut tab = use_signal(|| DetailTab::Summary);
     let mut fav_generation = use_signal(|| 0_u32);
     // Which DLC to install alongside the game, shared between the
@@ -64,10 +69,10 @@ pub(super) fn DetailPane(
     } = use_context::<Background>();
 
     let _ = fav_generation();
-    let is_fav = data::is_favorite(&profile_id, &game.id);
+    let is_fav = data::is_favorite(&account_id, &game.id);
 
     let _ = playtime_generation();
-    let playtime = data::load_playtime(&profile_id, &game.id);
+    let playtime = data::load_playtime(&account_id, &game.id);
 
     // Not on `Game`: it's a fact about the product, and it lives on the
     // library entry alongside `kind` and `parent_id`.
@@ -113,13 +118,13 @@ pub(super) fn DetailPane(
                     h1 { "{game.title}" }
                     {
                         let game_id = game.id.clone();
-                        let profile_id_for_fav = profile_id.clone();
+                        let account_id_for_fav = account_id.clone();
                         rsx! {
                             button {
                                 class: if is_fav { "icon-btn favorite-btn active" } else { "icon-btn favorite-btn" },
                                 title: if is_fav { "Quitar de favoritos" } else { "Agregar a favoritos" },
                                 onclick: move |_| {
-                                    data::set_favorite(&profile_id_for_fav, &game_id, !is_fav);
+                                    data::set_favorite(&account_id_for_fav, &game_id, !is_fav);
                                     fav_generation.set(fav_generation() + 1);
                                     // The sidebar and cover browser both have a
                                     // FAVORITOS shelf; without this they'd keep
@@ -141,15 +146,15 @@ pub(super) fn DetailPane(
                     if is_installed {
                         PlayAction {
                             game: game.clone(),
-                            profile_id: profile_id.clone(),
+                            account_id: account_id.clone(),
                             running,
                             playtime_generation,
                         }
-                        UninstallAction { profile_id: profile_id.clone(), product_id: game.id.clone() }
+                        UninstallAction { account_id: account_id.clone(), product_id: game.id.clone() }
                     } else {
                         InstallAction {
                             game: game.clone(),
-                            profile_id: profile_id.clone(),
+                            account_id: account_id.clone(),
                             installing,
                             wanted_dlcs,
                             installable,
@@ -158,14 +163,14 @@ pub(super) fn DetailPane(
                     if is_installed {
                         {
                             let game = game.clone();
-                            let profile_id = profile_id.clone();
+                            let account_id = account_id.clone();
                             rsx! {
                                 button {
                                     class: "icon-btn",
                                     title: "Propiedades",
                                     onclick: move |_| properties::open_properties_window(
                                         game.clone(),
-                                        profile_id.clone(),
+                                        account_id.clone(),
                                     ),
                                     "Propiedades"
                                 }
@@ -176,7 +181,7 @@ pub(super) fn DetailPane(
             }
         }
 
-        CollectionChips { profile_id: profile_id, product_id: game.id.clone(), organisation }
+        CollectionChips { profile_id, product_id: game.id.clone(), organisation }
 
         div { class: "tabs",
             button {
@@ -329,13 +334,16 @@ fn icon_for(achievement: &CachedAchievement) -> Option<&str> {
 /// The installed game behind a catalog entry, or `None` if this profile
 /// doesn't have it. One manifest read — the manifest names the files, the
 /// build and what launches it.
-pub(super) fn resolve_launch_target(profile_id: &str, game: &Game) -> Option<InstalledGame> {
-    let Some(installed) = crate::core::installed_game(profile_id, &game.id) else {
+pub(super) fn resolve_launch_target(account_id: &str, game: &Game) -> Option<InstalledGame> {
+    let product_id = game.id.as_str();
+    let Some(installed) = crate::core::installed_game(account_id, product_id) else {
+        tracing::debug!(account_id, product_id, "no install manifest found, not launchable");
         return None;
     };
     // No executable means installed-but-not-launchable, which the caller
     // renders differently from not installed at all.
     let Some(_) = installed.launch_executable.as_ref() else {
+        tracing::warn!(account_id, product_id, "installed but no launch executable resolved");
         return None;
     };
     Some(installed)
@@ -345,11 +353,19 @@ pub(super) fn resolve_launch_target(profile_id: &str, game: &Game) -> Option<Ins
 /// [`resolve_launch_target`], this doesn't need a launch executable -- it
 /// works for the "instalado, pero sin ejecutable detectado" case too,
 /// where there's nothing to start but the files are still there to look at.
-pub(super) fn game_install_path(profile_id: &str, product_id: &str) -> Option<std::path::PathBuf> {
-    let Some(installed) = crate::core::installed_game(profile_id, product_id) else {
+pub(super) fn game_install_path(account_id: &str, product_id: &str) -> Option<std::path::PathBuf> {
+    let Some(installed) = crate::core::installed_game(account_id, product_id) else {
+        tracing::debug!(
+            account_id,
+            product_id,
+            "no install manifest found, no install path to show"
+        );
         return None;
     };
-    let Some(library) = crate::core::library().ok() else {
+    let Some(library) = crate::core::library()
+        .inspect_err(|err| tracing::warn!(account_id, product_id, error = %err, "failed to resolve library root"))
+        .ok()
+    else {
         return None;
     };
     library.install_dir(&installed.install_dir)
@@ -370,33 +386,40 @@ pub(super) fn open_in_file_manager(path: &std::path::Path) {
 /// site: this outlives whatever button started it, the same reasoning
 /// `start_install` below documents.
 pub(super) async fn launch_game(
-    profile_id: String,
+    account_id: String,
     game: InstalledGame,
     running: crate::launch::Running,
     mut playtime_generation: Signal<u32>,
 ) {
     let product_id = game.game_id.clone();
-    let Some(played) = crate::launch::start(profile_id.clone(), game, running).await else {
+    tracing::info!(account_id, product_id, "launching game");
+    let Some(played) = crate::launch::start(account_id.clone(), game, running).await else {
         return;
     };
-    data::add_playtime(&profile_id, &product_id, played.as_secs() as i64);
+    tracing::debug!(
+        account_id,
+        product_id,
+        seconds = played.as_secs(),
+        "recording play session"
+    );
+    data::add_playtime(&account_id, &product_id, played.as_secs() as i64);
     playtime_generation.set(playtime_generation() + 1);
 }
 
 #[component]
 fn PlayAction(
     game: Game,
-    profile_id: String,
+    account_id: String,
     running: crate::launch::Running,
     playtime_generation: Signal<u32>,
 ) -> Element {
-    let Some(installed) = resolve_launch_target(&profile_id, &game) else {
+    let Some(installed) = resolve_launch_target(&account_id, &game) else {
         return rsx! { span { class: "muted", "Instalado, pero sin ejecutable detectado" } };
     };
 
     let product_id = game.id;
     if running.read().contains(&product_id) {
-        let stop_profile = profile_id;
+        let stop_profile = account_id;
         return rsx! {
             button {
                 class: "play-btn secondary",
@@ -405,6 +428,7 @@ fn PlayAction(
                 // spawn_forever'd) task is what notices the session ended
                 // and updates `running`.
                 onclick: move |_| {
+                    tracing::info!(account_id = %stop_profile, product_id, "stopping game");
                     spawn(crate::launch::stop(stop_profile.clone(), product_id.clone()));
                 },
                 "DETENER"
@@ -422,7 +446,7 @@ fn PlayAction(
             // broke installs the same way.
             onclick: move |_| {
                 dioxus::core::spawn_forever(launch_game(
-                    profile_id.clone(),
+                    account_id.clone(),
                     installed.clone(),
                     running,
                     playtime_generation,
@@ -441,7 +465,7 @@ fn PlayAction(
 #[component]
 fn InstallAction(
     game: Game,
-    profile_id: String,
+    account_id: String,
     installing: Signal<HashMap<String, InstallStatus>>,
     wanted_dlcs: Signal<HashSet<String>>,
     installable: bool,
@@ -464,7 +488,7 @@ fn InstallAction(
 
     match status {
         Some(InstallStatus::Queued) => {
-            let profile_id = profile_id;
+            let account_id = account_id;
             let product_id = game.id;
             rsx! {
                 div { class: "install-progress",
@@ -474,7 +498,7 @@ fn InstallAction(
                 button {
                     class: "icon-btn",
                     onclick: move |_| {
-                        spawn(install::cancel(profile_id.clone(), product_id.clone()));
+                        spawn(install::cancel(account_id.clone(), product_id.clone()));
                     },
                     "Cancelar"
                 }
@@ -495,7 +519,7 @@ fn InstallAction(
             .fraction();
             let width = fraction.map_or_else(|| "100%".to_string(), |value| format!("{:.1}%", value * 100.0));
             let remaining = total_bytes.unwrap_or(0).saturating_sub(bytes_downloaded);
-            let profile_id = profile_id;
+            let account_id = account_id;
             let product_id = game.id;
             rsx! {
                 div { class: "install-progress",
@@ -517,9 +541,9 @@ fn InstallAction(
                 button {
                     class: "icon-btn",
                     onclick: move |_| {
-                        let profile_id = profile_id.clone();
+                        let account_id = account_id.clone();
                         let product_id = product_id.clone();
-                        spawn(install::cancel(profile_id, product_id));
+                        spawn(install::cancel(account_id, product_id));
                     },
                     "Cancelar"
                 }
@@ -540,7 +564,7 @@ fn InstallAction(
         // Nothing to choose: the files go to the shared library and the
         // prefix is derived from (profile, game) when the game first runs.
         None => {
-            let profile_id = profile_id;
+            let account_id = account_id;
             let product_id = game.id.clone();
             let game_title = game.title.clone();
             let dlc_count = wanted_dlcs.read().len();
@@ -553,7 +577,7 @@ fn InstallAction(
                 if confirm_open() {
                     InstallDialog {
                         game: game,
-                        profile_id: profile_id.clone(),
+                        account_id: account_id.clone(),
                         dlc_count,
                         on_confirm: move |branch: Option<String>| {
                             confirm_open.set(false);
@@ -568,7 +592,7 @@ fn InstallAction(
                                 .map(|entry| (entry.game.id.clone(), entry.game.title.clone()))
                                 .collect();
                             start_install(
-                                profile_id.clone(),
+                                account_id.clone(),
                                 product_id.clone(),
                                 None,
                                 game_title.clone(),
@@ -594,18 +618,23 @@ fn InstallAction(
 #[component]
 fn InstallDialog(
     game: Game,
-    profile_id: String,
+    account_id: String,
     dlc_count: usize,
     on_confirm: EventHandler<Option<String>>,
     on_close: EventHandler<()>,
 ) -> Element {
     let branches = use_resource({
-        let profile_id = profile_id;
+        let account_id = account_id;
         let product_id = game.id.clone();
         move || {
-            let profile_id = profile_id.clone();
+            let account_id = account_id.clone();
             let product_id = product_id.clone();
-            async move { achv_gog::list_branches(&profile_id, &product_id).await }
+            async move {
+                tracing::debug!(account_id, product_id, "fetching gog branch list for install dialog");
+                achv_gog::list_branches(&account_id, &product_id).await.inspect_err(
+                    |err| tracing::error!(account_id, product_id, error = %err, "failed to fetch branch list"),
+                )
+            }
         }
     });
     let mut chosen = use_signal(|| None::<String>);
@@ -681,7 +710,7 @@ fn InstallDialog(
 /// ignored when `parent_id` is `Some`, same as `achv_gog::install`
 /// itself: a DLC's branch always comes from the base game it belongs to.
 pub(super) fn start_install(
-    profile_id: String,
+    account_id: String,
     product_id: String,
     parent_id: Option<String>,
     title: String,
@@ -702,7 +731,7 @@ pub(super) fn start_install(
     // re-render (switching tabs, navigating away, this component's own
     // status change) can tear it down.
     dioxus::core::spawn_forever(install::install(
-        profile_id,
+        account_id,
         product_id.clone(),
         parent_id,
         title,
@@ -719,7 +748,7 @@ pub(super) fn start_install(
 /// in-UI two-click, not a native `confirm()` (unreliable across the
 /// desktop webview).
 #[component]
-fn UninstallAction(profile_id: String, product_id: String) -> Element {
+fn UninstallAction(account_id: String, product_id: String) -> Element {
     let library = use_context::<crate::gog_library::GogLibrary>();
     let mut confirming = use_signal(|| false);
     let mut busy = use_signal(|| false);
@@ -735,13 +764,13 @@ fn UninstallAction(profile_id: String, product_id: String) -> Element {
                 class: "icon-btn",
                 onclick: move |_| {
                     busy.set(true);
-                    let profile_id = profile_id.clone();
+                    let account_id = account_id.clone();
                     let product_id = product_id.clone();
                     // Plain `spawn`: writes only to `busy`/`confirming`/
                     // `error`, all owned by this same component, and a
                     // single quick RPC call — no cross-scope risk.
                     spawn(async move {
-                        if let Err(err) = install::uninstall(profile_id, product_id, library).await {
+                        if let Err(err) = install::uninstall(account_id, product_id, library).await {
                             error.set(Some(err));
                         }
                         busy.set(false);

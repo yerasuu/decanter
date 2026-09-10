@@ -99,7 +99,7 @@
 use clap::Parser as _;
 use dioxus::prelude::*;
 
-use views::{Downloads, Library, Navbar, Settings, Storage};
+use views::{Downloads, Library, Navbar, Onboarding, Settings, Storage};
 
 /// Runs a fallible call and returns from the enclosing function with the
 /// error instead of using `?` — `clippy::restriction` (`question_mark_used`)
@@ -150,6 +150,12 @@ pub(crate) const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 pub(crate) const GOOGLE_FONTS_HREF: &str = "https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap";
 
 fn main() {
+    // Before either path below: the CLI subcommands used to be the only
+    // one that installed this, which left the ordinary GUI launch with no
+    // subscriber at all — every `tracing::info!`/`warn!` in that process
+    // silently went nowhere.
+    tracing_subscriber::fmt::init();
+
     // A recognized subcommand runs headless and exits before any of the
     // GUI setup below ever runs — see `cli`. No subcommand (the ordinary
     // double-click launch) falls through to the GUI unchanged.
@@ -189,12 +195,14 @@ fn main() {
 /// Toggling the setting in Ajustes only takes effect on the next launch.
 #[cfg(feature = "desktop")]
 fn close_to_tray() -> bool {
-    core::db()
+    let value = core::db()
         .and_then(|db| db.close_to_tray().map_err(|err| err.to_string()))
         .unwrap_or_else(|err| {
             tracing::warn!("could not read close_to_tray setting: {err}");
             false
-        })
+        });
+    tracing::debug!(close_to_tray = value, "resolved close-to-tray setting");
+    value
 }
 
 /// Where the webview keeps its own state — HSTS cache, media keys, the
@@ -235,6 +243,23 @@ fn App() -> Element {
 
     let active_profile: ActiveProfile = use_signal(|| None);
     use_context_provider(|| active_profile);
+
+    // `None` while storage isn't ready to ask yet, so the check below
+    // falls through to the ordinary app shell (which already shows its own
+    // loading state) rather than flashing onboarding first. Reruns
+    // whenever `active_profile` changes, which covers both a profile
+    // getting created here and one picked from the switcher.
+    let mut needs_onboarding = use_signal(|| None::<bool>);
+    use_effect(move || {
+        let _ = active_profile();
+        if !matches!(&*core.read(), Some(Ok(_))) {
+            return;
+        }
+        let Ok(db) = core::db() else {
+            return;
+        };
+        needs_onboarding.set(Some(db.list_profiles().unwrap_or_default().is_empty()));
+    });
 
     let library_home: LibraryHome = use_signal(|| 0_u32);
     use_context_provider(|| library_home);
@@ -331,7 +356,11 @@ fn App() -> Element {
         div {
             style: "height: 100%;",
             oncontextmenu: move |event| event.prevent_default(),
-            Router::<Route> {}
+            if needs_onboarding() == Some(true) {
+                Onboarding {}
+            } else {
+                Router::<Route> {}
+            }
         }
     }
 }

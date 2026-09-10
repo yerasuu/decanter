@@ -18,8 +18,9 @@ pub(super) fn find_launch_executable(
 ) -> Option<String> {
     let found = find_goggame_primary_executable(install_root, relative_paths)
         .or_else(|| find_primary_executable_heuristic(relative_paths, install_directory));
-    if found.is_none() {
-        tracing::warn!("couldn't determine a launch executable for {product_id}");
+    match &found {
+        Some(executable) => tracing::debug!(product_id, executable, "found launch executable"),
+        None => tracing::warn!(product_id, "couldn't determine a launch executable"),
     }
     found
 }
@@ -40,11 +41,20 @@ fn find_goggame_primary_executable(install_root: &Path, relative_paths: &[String
         return None;
     };
 
-    let Some(contents) = std::fs::read(install_root.join(info_path)).ok() else {
-        return None;
+    let info_file = install_root.join(info_path);
+    let contents = match std::fs::read(&info_file) {
+        Ok(contents) => contents,
+        Err(err) => {
+            tracing::warn!(path = %info_file.display(), error = %err, "couldn't read goggame info file");
+            return None;
+        }
     };
-    let Some(info): Option<serde_json::Value> = serde_json::from_slice(&contents).ok() else {
-        return None;
+    let info: serde_json::Value = match serde_json::from_slice(&contents) {
+        Ok(info) => info,
+        Err(err) => {
+            tracing::warn!(path = %info_file.display(), error = %err, "couldn't parse goggame info file");
+            return None;
+        }
     };
     let Some(play_tasks) = info.get("playTasks").and_then(serde_json::Value::as_array) else {
         return None;

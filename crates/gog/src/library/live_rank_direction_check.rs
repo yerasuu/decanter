@@ -11,14 +11,14 @@
 #[test]
 #[ignore]
 fn rank_direction_matches_real_purchase_dates() {
-    let profile_id = std::env::var("ACHV_LIVE_PROFILE_ID").expect("set ACHV_LIVE_PROFILE_ID");
+    let account_id = std::env::var("ACHV_LIVE_PROFILE_ID").expect("set ACHV_LIVE_PROFILE_ID");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
 
     let (products, purchased) = rt.block_on(async {
-        let (_owned_ids, access_token) = crate::with_session(&profile_id, |client| {
+        let (_owned_ids, access_token) = crate::with_session(&account_id, |client| {
             let owned_ids = crate::achv_try!(client.get_games().map_err(|err| anyhow::anyhow!("{err}")));
             Ok((owned_ids, client.token.borrow().access_token.clone()))
         })
@@ -29,7 +29,7 @@ fn rank_direction_matches_real_purchase_dates() {
         super::each_product_page(&access_token, async |page| products.extend(page))
             .await
             .expect("each_product_page");
-        let purchased = crate::orders::purchase_dates(&profile_id)
+        let purchased = crate::orders::purchase_dates(&account_id)
             .await
             .expect("purchase_dates");
         (products, purchased)

@@ -9,7 +9,6 @@
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension, params};
-use uuid::Uuid;
 
 use crate::catalog::Storefront;
 
@@ -55,9 +54,9 @@ pub struct CachedAchievement {
     pub unlocked_at: Option<String>,
 }
 
-/// Self-tracked, since bottles-next has no notion of a play session —
+/// Self-tracked: nothing upstream reports play sessions, so
 /// `seconds_total` accumulates whatever `achv` itself measured between a
-/// `Bottle::run` it made and the process exiting.
+/// launch it made and the process exiting.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Playtime {
     pub seconds_total: i64,
@@ -181,6 +180,7 @@ DROP TABLE IF EXISTS game_links;
 pub fn default_db_path() -> PathBuf {
     let dir = crate::data_dir();
     std::fs::create_dir_all(&dir).expect("creating achv data dir");
+    tracing::debug!(dir = %dir.display(), "ensured achv data dir exists");
     dir.join("links.db")
 }
 
@@ -193,6 +193,8 @@ const FIRST_SEEN_MIGRATION_SETTING: &str = "first_seen_migration_v1";
 
 impl Db {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        tracing::debug!(path = %path.display(), "opening db");
         let conn = Connection::open(path)?;
         // `achievement_cache` used to be keyed by program_id, and
         // `games_cache` had no catalog metadata columns; `CREATE TABLE IF
@@ -205,6 +207,10 @@ impl Db {
             |row| row.get(0),
         )?;
         if has_new_shape == 0 {
+            tracing::info!(
+                table = "achievement_cache",
+                "old-shaped table found, dropping and rebuilding"
+            );
             conn.execute_batch("DROP TABLE IF EXISTS achievement_cache;")?;
         }
         let games_cache_has_new_shape: i64 = conn.query_row(
@@ -213,6 +219,7 @@ impl Db {
             |row| row.get(0),
         )?;
         if games_cache_has_new_shape == 0 {
+            tracing::info!(table = "games_cache", "old-shaped table found, dropping and rebuilding");
             conn.execute_batch("DROP TABLE IF EXISTS games_cache;")?;
         }
         // These four used to be keyed by `profile_id`, back when a profile
@@ -226,13 +233,16 @@ impl Db {
                 |row| row.get(0),
             )?;
             if has_account_id == 0 {
+                tracing::info!(table, "table missing account_id column, dropping and rebuilding");
                 conn.execute_batch(&format!("DROP TABLE IF EXISTS {table};"))?;
             }
         }
 
         conn.execute_batch(SCHEMA)?;
+        tracing::debug!("applied schema");
         let db = Self { conn };
         db.reset_unbacked_first_seen()?;
+        tracing::debug!(path = %path.display(), "db opened");
         Ok(db)
     }
 
@@ -245,11 +255,12 @@ impl Db {
         if self.setting(FIRST_SEEN_MIGRATION_SETTING)?.is_some() {
             return Ok(());
         }
-        self.conn.execute(
+        let rows_reset = self.conn.execute(
             "UPDATE games_cache SET first_seen = 0
              WHERE first_seen != 0 AND purchased_at IS NULL AND release_date IS NULL",
             [],
         )?;
+        tracing::info!(rows_reset, "reset unbacked first_seen stamps (one-time migration)");
         self.set_setting(FIRST_SEEN_MIGRATION_SETTING, "1")
     }
 
@@ -310,13 +321,21 @@ impl Db {
                 game.installable,
             ],
         )?;
+        tracing::debug!(
+            account_id,
+            storefront = ?game.storefront,
+            product_id = %game.product_id,
+            confirmed_new,
+            "upserted cached game"
+        );
         Ok(())
     }
 
     /// Whether this account has ever had a game cached — lets a caller tell
     /// a first-ever sync apart from one that's merely empty right now.
     pub fn has_games(&self, account_id: &str) -> Result<bool> {
-        self.conn
+        let has_games = self
+            .conn
             .query_row(
                 "SELECT 1 FROM games_cache WHERE account_id = ?1 LIMIT 1",
                 params![account_id],
@@ -324,7 +343,9 @@ impl Db {
             )
             .optional()
             .map(|row| row.is_some())
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        tracing::debug!(account_id, has_games, "checked for cached games");
+        Ok(has_games)
     }
 
     /// Drops every cached game for `(account_id, storefront)` not in
@@ -334,6 +355,11 @@ impl Db {
     /// means the fetch itself failed, not that the account was emptied out.
     pub fn retain_games(&self, account_id: &str, storefront: Storefront, keep_ids: &[String]) -> Result<usize> {
         if keep_ids.is_empty() {
+            tracing::warn!(
+                account_id,
+                ?storefront,
+                "refusing to retain against an empty keep list, treating it as a failed fetch"
+            );
             return Ok(0);
         }
         let placeholders = keep_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
@@ -347,7 +373,15 @@ impl Db {
         for id in keep_ids {
             bound.push(id);
         }
-        stmt.execute(bound.as_slice()).map_err(Error::from)
+        let dropped = stmt.execute(bound.as_slice()).map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            keep_count = keep_ids.len(),
+            dropped,
+            "pruned stale cached games"
+        );
+        Ok(dropped)
     }
 
     /// Whatever the last `WatchGames` session cached for this account —
@@ -385,7 +419,9 @@ impl Db {
                 installable: row.get(12)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)
+        let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;
+        tracing::debug!(account_id, game_count = games.len(), "listed games");
+        Ok(games)
     }
 
     /// "Date added" per product id: a real purchase date, falling back to
@@ -403,7 +439,11 @@ impl Db {
         let rows = stmt.query_map(params![account_id, storefront as i32], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+        let dates = rows
+            .collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()
+            .map_err(Error::from)?;
+        tracing::debug!(account_id, ?storefront, count = dates.len(), "read first-seen dates");
+        Ok(dates)
     }
 
     /// GOG's own added-to-library order, by product id — only the games
@@ -420,7 +460,11 @@ impl Db {
         let rows = stmt.query_map(params![account_id, storefront as i32], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+        let ranks = rows
+            .collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()
+            .map_err(Error::from)?;
+        tracing::debug!(account_id, ?storefront, count = ranks.len(), "read library ranks");
+        Ok(ranks)
     }
 
     /// `(unlocked, total)` achievement counts cached for one game.
@@ -430,14 +474,24 @@ impl Db {
         storefront: Storefront,
         product_id: &str,
     ) -> Result<(usize, usize)> {
-        self.conn
+        let (unlocked, total) = self
+            .conn
             .query_row(
                 "SELECT COALESCE(SUM(unlocked), 0), COUNT(*) FROM achievement_cache
                  WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
                 params![account_id, storefront as i32, product_id],
                 |row| Ok((row.get::<_, i64>(0)? as usize, row.get::<_, i64>(1)? as usize)),
             )
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            unlocked,
+            total,
+            "read achievement counts"
+        );
+        Ok((unlocked, total))
     }
 
     /// Every cached achievement for one game, locked and unlocked alike.
@@ -465,7 +519,15 @@ impl Db {
                 unlocked_at: row.get(6)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)
+        let achievements = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            achievement_count = achievements.len(),
+            "listed achievements"
+        );
+        Ok(achievements)
     }
 
     /// Upserts the latest known achievement list for one game and returns
@@ -491,7 +553,23 @@ impl Db {
                 )
                 .optional()?;
 
+            // One row per achievement per game — trace, not debug, since a
+            // single sync can walk hundreds of these and each one alone is
+            // rarely worth a line at the default debug level.
+            tracing::trace!(
+                achievement_key = %item.achievement_key,
+                unlocked = item.unlocked,
+                "upserting achievement row"
+            );
+
             if item.unlocked && was_unlocked != Some(true) {
+                tracing::info!(
+                    account_id,
+                    ?storefront,
+                    product_id,
+                    achievement_key = %item.achievement_key,
+                    "achievement unlocked"
+                );
                 newly_unlocked.push(item.clone());
             }
 
@@ -521,11 +599,20 @@ impl Db {
         }
 
         tx.commit()?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            item_count = items.len(),
+            newly_unlocked = newly_unlocked.len(),
+            "upserted achievements"
+        );
         Ok(newly_unlocked)
     }
 
     pub fn is_favorite(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<bool> {
-        self.conn
+        let is_favorite = self
+            .conn
             .query_row(
                 "SELECT 1 FROM favorites WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
                 params![account_id, storefront as i32, product_id],
@@ -533,7 +620,15 @@ impl Db {
             )
             .optional()
             .map(|row| row.is_some())
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            is_favorite,
+            "checked favorite status"
+        );
+        Ok(is_favorite)
     }
 
     /// Every favorited product id for an account — the sidebar's
@@ -547,7 +642,11 @@ impl Db {
             .conn
             .prepare("SELECT product_id FROM favorites WHERE account_id = ?1 AND storefront = ?2")?;
         let rows = stmt.query_map(params![account_id, storefront as i32], |row| row.get(0))?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+        let ids = rows
+            .collect::<rusqlite::Result<std::collections::HashSet<_>>>()
+            .map_err(Error::from)?;
+        tracing::debug!(account_id, ?storefront, count = ids.len(), "listed favorite ids");
+        Ok(ids)
     }
 
     pub fn set_favorite(
@@ -568,11 +667,13 @@ impl Db {
                 params![account_id, storefront as i32, product_id],
             )?;
         }
+        tracing::debug!(account_id, ?storefront, product_id, favorite, "set favorite state");
         Ok(())
     }
 
     pub fn get_playtime(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<Playtime> {
-        self.conn
+        let playtime = self
+            .conn
             .query_row(
                 "SELECT seconds_total, last_played_at FROM playtime
                  WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
@@ -586,7 +687,15 @@ impl Db {
             )
             .optional()
             .map(Option::unwrap_or_default)
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            seconds_total = playtime.seconds_total,
+            "read playtime"
+        );
+        Ok(playtime)
     }
 
     /// Adds one session's worth of seconds and stamps `last_played_at` to
@@ -600,28 +709,19 @@ impl Db {
                 last_played_at = excluded.last_played_at",
             params![account_id, storefront as i32, product_id, seconds],
         )?;
+        // A milestone worth seeing at default level: one play session just
+        // ended and got credited, unlike the routine per-query reads above.
+        tracing::info!(account_id, ?storefront, product_id, seconds, "recorded playtime");
         Ok(())
-    }
-
-    /// Which bottle to install into when the user doesn't pick one
-    /// explicitly — a single global setting, not per-account: bottles
-    /// aren't tied to a GOG account, so there's no natural per-account
-    /// default the way there is for achievements/playtime.
-    pub fn default_bottle(&self) -> Result<Option<Uuid>> {
-        Ok(self
-            .setting("default_bottle_id")?
-            .and_then(|value| Uuid::parse_str(&value).ok()))
-    }
-
-    pub fn set_default_bottle(&self, bottle_id: Uuid) -> Result<()> {
-        self.set_setting("default_bottle_id", &bottle_id.to_string())
     }
 
     /// Whether closing the main window should hide it behind a tray icon
     /// instead of quitting — read once at launch (see `ui`'s `main.rs`),
     /// so this is a single global setting, not per-account.
     pub fn close_to_tray(&self) -> Result<bool> {
-        Ok(self.setting("close_to_tray")?.as_deref() == Some("1"))
+        let close_to_tray = self.setting("close_to_tray")?.as_deref() == Some("1");
+        tracing::debug!(close_to_tray, "read close_to_tray setting");
+        Ok(close_to_tray)
     }
 
     pub fn set_close_to_tray(&self, close_to_tray: bool) -> Result<()> {
@@ -632,7 +732,9 @@ impl Db {
     /// of its own — a bare name from `achv_runtime::steam_runners`, or
     /// `None` for `achv_runtime::Proton::Latest`.
     pub fn default_proton(&self) -> Result<Option<String>> {
-        self.setting("default_proton")
+        let proton = self.setting("default_proton")?;
+        tracing::debug!(proton = proton.as_deref(), "read default_proton setting");
+        Ok(proton)
     }
 
     pub fn set_default_proton(&self, proton: Option<&str>) -> Result<()> {
@@ -662,7 +764,11 @@ impl Db {
                 },
             ))
         })?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+        let playtimes = rows
+            .collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()
+            .map_err(Error::from)?;
+        tracing::debug!(account_id, ?storefront, count = playtimes.len(), "read all playtime");
+        Ok(playtimes)
     }
 
     /// Every product id's `(unlocked, total)` achievement counts for an
@@ -682,19 +788,34 @@ impl Db {
                 (row.get::<_, i64>(1)? as usize, row.get::<_, i64>(2)? as usize),
             ))
         })?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Error::from)
+        let counts = rows
+            .collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()
+            .map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            count = counts.len(),
+            "read all achievement counts"
+        );
+        Ok(counts)
     }
 
     /// Arbitrary key/value storage — one-off flags and view state that
     /// don't warrant a table of their own (see [`crate::adopt`] and
     /// [`crate::profiles`] for two callers).
     pub fn setting(&self, key: &str) -> Result<Option<String>> {
-        self.conn
+        // Called from several other Db methods on essentially every
+        // operation (active profile, close_to_tray, default_proton, ...),
+        // so this alone would flood debug level — trace instead.
+        let value = self
+            .conn
             .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |row| {
                 row.get(0)
             })
             .optional()
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        tracing::trace!(key, found = value.is_some(), "read setting");
+        Ok(value)
     }
 
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
@@ -703,6 +824,7 @@ impl Db {
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![key, value],
         )?;
+        tracing::debug!(key, value, "set setting");
         Ok(())
     }
 
@@ -711,6 +833,7 @@ impl Db {
     /// rather than "the empty string".
     pub fn delete_setting(&self, key: &str) -> Result<()> {
         self.conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+        tracing::debug!(key, "deleted setting");
         Ok(())
     }
 }
