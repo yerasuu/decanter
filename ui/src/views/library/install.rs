@@ -101,6 +101,7 @@ pub(super) async fn install(
     // its own. They go one at a time: they share a destination directory.
     installing.write().remove(&product_id_key);
     library.refresh_install_state(&account_id, &product_id);
+    sync_steam_shortcut_for(&account_id, &product_id, &library).await;
 
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
@@ -146,7 +147,74 @@ pub(super) async fn uninstall(
     );
     tracing::info!(account_id, product_id, "uninstall finished");
     library.refresh_install_state(&account_id, &product_id);
+    remove_steam_shortcut_for(&account_id, &product_id).await;
     Ok(())
+}
+
+/// Best-effort: exports (or re-syncs) this game's Steam shortcut after a
+/// successful install. Never fails the install over it — a missing Steam
+/// install, an unresolvable local Steam user, or a failed artwork
+/// download all just cost the Steam entry (or one image on it), logged
+/// and moved past.
+async fn sync_steam_shortcut_for(account_id: &str, product_id: &str, library: &crate::gog_library::GogLibrary) {
+    let Ok(db) = crate::core::db() else {
+        return;
+    };
+    // Writes into the real Steam user's own config files, so it's worth
+    // an easy way to turn off — see the Steam export toggle in Ajustes.
+    if !db.steam_export_enabled().unwrap_or(true) {
+        tracing::debug!(account_id, product_id, "steam export disabled in settings, skipping");
+        return;
+    }
+    let Ok(core_library) = crate::core::library() else {
+        return;
+    };
+    let Some(game) = core_library.read_manifest(account_id, decanter_core::Storefront::Gog, product_id) else {
+        tracing::debug!(
+            account_id,
+            product_id,
+            "no manifest to export to steam right after install"
+        );
+        return;
+    };
+    let Some(install_dir) = core_library.install_dir(&game.install_dir) else {
+        return;
+    };
+
+    let cached_game = library
+        .games
+        .peek()
+        .iter()
+        .find(|entry| entry.game.id == product_id)
+        .map(|entry| entry.game.clone());
+    let (cover_url, background_url, icon_url) = cached_game
+        .map(|game| (game.cover_url, game.background_url, game.icon_url))
+        .unwrap_or_default();
+
+    if let Err(err) = decanter_gog::sync_steam_shortcut(
+        &db,
+        account_id,
+        &game,
+        &install_dir,
+        cover_url.as_deref(),
+        background_url.as_deref(),
+        icon_url.as_deref(),
+    )
+    .await
+    {
+        tracing::warn!(account_id, product_id, %err, "failed to export steam shortcut");
+    }
+}
+
+/// Best-effort counterpart for uninstall — same "never fail the caller
+/// over this" rule as [`sync_steam_shortcut_for`].
+async fn remove_steam_shortcut_for(account_id: &str, product_id: &str) {
+    let Ok(db) = crate::core::db() else {
+        return;
+    };
+    if let Err(err) = decanter_gog::remove_steam_shortcut(&db, account_id, product_id).await {
+        tracing::warn!(account_id, product_id, %err, "failed to remove steam shortcut");
+    }
 }
 
 // Nothing to clean up here any more: a failed install never reaches the

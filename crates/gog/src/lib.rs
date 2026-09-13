@@ -26,6 +26,7 @@ mod library;
 mod orders;
 mod product;
 pub mod save_location;
+mod steam_export;
 mod updates;
 
 pub use auth::{Account, auth_url, extract_code, log_in, log_out, session};
@@ -35,6 +36,7 @@ pub use install::{
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
 pub use orders::purchase_dates;
+pub use steam_export::{remove_steam_shortcut, sync_steam_shortcut};
 pub use updates::{Branch, check_all_updates, check_update, list_branches, list_builds};
 
 /// Propagates a `Result`'s error out of the enclosing `anyhow::Result` fn,

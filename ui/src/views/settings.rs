@@ -379,6 +379,42 @@ fn GeneralTab() -> Element {
         p { class: "muted",
             "Requiere reiniciar Decanter para que el cambio tenga efecto."
         }
+        h2 { "Exportar a Steam" }
+        {
+            let steam_export_enabled = crate::core::db()
+                .and_then(|db| db.steam_export_enabled().map_err(|err| err.to_string()))
+                .inspect_err(|err| tracing::warn!(error = %err, "failed to read steam_export_enabled setting, defaulting to true"))
+                .unwrap_or(true);
+            rsx! {
+                label { class: "field-row",
+                    input {
+                        r#type: "checkbox",
+                        checked: steam_export_enabled,
+                        onchange: move |event| {
+                            let enabled = event.checked();
+                            match crate::core::db() {
+                                Ok(db) => match db.set_steam_export_enabled(enabled) {
+                                    Ok(()) => {
+                                        tracing::info!(enabled, "steam export setting changed");
+                                        generation.set(generation() + 1);
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(enabled, error = %err, "failed to save steam_export_enabled setting");
+                                    }
+                                },
+                                Err(err) => {
+                                    tracing::warn!(enabled, error = %err, "failed to open db, steam_export_enabled setting not saved");
+                                }
+                            }
+                        },
+                    }
+                    "Agregar cada juego instalado a la biblioteca real de Steam, con su portada y banner"
+                }
+                p { class: "muted",
+                    "Hay que reiniciar Steam para ver los cambios — Steam solo lee sus shortcuts al arrancar."
+                }
+            }
+        }
     }
 }
 

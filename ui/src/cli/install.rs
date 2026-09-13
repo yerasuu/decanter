@@ -29,10 +29,51 @@ pub async fn install(
     .await
     .context("installing");
     match &result {
-        Ok(()) => tracing::info!(account_id, product_id, "install finished"),
+        Ok(()) => {
+            tracing::info!(account_id, product_id, "install finished");
+            sync_steam_shortcut_after_install(account_id, product_id).await;
+        }
         Err(err) => tracing::error!(account_id, product_id, %err, "install failed"),
     }
     result
+}
+
+/// Best-effort, same rule as the GUI install path's own hook in
+/// `ui/src/views/library/install.rs`: never fails this CLI command over
+/// it, just logs and moves on.
+async fn sync_steam_shortcut_after_install(account_id: &str, product_id: &str) {
+    let Ok(db) = crate::core::db() else {
+        return;
+    };
+    let Ok(library) = crate::core::library() else {
+        return;
+    };
+    let Some(game) = library.read_manifest(account_id, decanter_core::Storefront::Gog, product_id) else {
+        return;
+    };
+    let Some(install_dir) = library.install_dir(&game.install_dir) else {
+        return;
+    };
+    // No cached catalog data on this headless path — an extra fetch, but
+    // this command's own doc comment already calls it a diagnostic one.
+    let catalog_game = decanter_gog::find_game(account_id, product_id).await.ok();
+    let (cover_url, background_url, icon_url) = catalog_game
+        .map(|game| (game.cover_url, game.background_url, game.icon_url))
+        .unwrap_or_default();
+
+    if let Err(err) = decanter_gog::sync_steam_shortcut(
+        &db,
+        account_id,
+        &game,
+        &install_dir,
+        cover_url.as_deref(),
+        background_url.as_deref(),
+        icon_url.as_deref(),
+    )
+    .await
+    {
+        tracing::warn!(account_id, product_id, %err, "failed to export steam shortcut");
+    }
 }
 
 /// For clearing out an install left running by a client that died

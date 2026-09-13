@@ -174,6 +174,14 @@ CREATE TABLE IF NOT EXISTS hidden (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS steam_shortcuts (
+    account_id  TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    product_id  TEXT NOT NULL,
+    appid       INTEGER NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
 DROP TABLE IF EXISTS game_links;
 ";
 
@@ -693,6 +701,65 @@ impl Db {
         Ok(())
     }
 
+    /// The Steam `shortcuts.vdf` appid decanter assigned this game, if it's
+    /// ever been exported — the removal path's only way to find the right
+    /// entry and grid artwork without re-deriving anything from the
+    /// game's (possibly since-changed) title.
+    pub fn steam_shortcut_appid(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+    ) -> Result<Option<i32>> {
+        let appid = self
+            .conn
+            .query_row(
+                "SELECT appid FROM steam_shortcuts WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Error::from)?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            found = appid.is_some(),
+            "read steam shortcut appid"
+        );
+        Ok(appid)
+    }
+
+    pub fn set_steam_shortcut_appid(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+        appid: i32,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO steam_shortcuts (account_id, storefront, product_id, appid) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET appid = excluded.appid",
+            params![account_id, storefront as i32, product_id, appid],
+        )?;
+        tracing::debug!(account_id, ?storefront, product_id, appid, "set steam shortcut appid");
+        Ok(())
+    }
+
+    pub fn remove_steam_shortcut_appid(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM steam_shortcuts WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+            params![account_id, storefront as i32, product_id],
+        )?;
+        tracing::debug!(account_id, ?storefront, product_id, "removed steam shortcut appid");
+        Ok(())
+    }
+
     pub fn get_playtime(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<Playtime> {
         let playtime = self
             .conn
@@ -748,6 +815,20 @@ impl Db {
 
     pub fn set_close_to_tray(&self, close_to_tray: bool) -> Result<()> {
         self.set_setting("close_to_tray", if close_to_tray { "1" } else { "0" })
+    }
+
+    /// Whether an install/uninstall should also write a real Steam
+    /// `shortcuts.vdf` entry for the game — on by default, since that's
+    /// the whole point of the feature, but this writes into the actual
+    /// Steam user's own config files, so it stays easy to turn off.
+    pub fn steam_export_enabled(&self) -> Result<bool> {
+        let enabled = self.setting("steam_export_enabled")?.as_deref() != Some("0");
+        tracing::debug!(enabled, "read steam_export_enabled setting");
+        Ok(enabled)
+    }
+
+    pub fn set_steam_export_enabled(&self, enabled: bool) -> Result<()> {
+        self.set_setting("steam_export_enabled", if enabled { "1" } else { "0" })
     }
 
     /// The Proton build to launch with when a game has no per-game choice

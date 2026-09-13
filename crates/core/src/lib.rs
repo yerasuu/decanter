@@ -10,6 +10,7 @@ mod db;
 mod disk;
 mod library;
 mod profiles;
+pub mod steam;
 mod vdf;
 
 pub use accounts::Account;
