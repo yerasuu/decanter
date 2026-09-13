@@ -14,7 +14,16 @@ tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "fs", "sync",
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.151"
 anyhow = "1.0.104"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+# `default-tls` pulls in native-tls, which links the system's OpenSSL —
+# rustls-tls is pure Rust, no system TLS library to find at build or link time.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls",
+    "charset",
+    "http2",
+    "system-proxy",
+] }
 thiserror = "2.0.20"
 chrono = { version = "0.4", features = ["serde"] }
 md5 = "0.7"
@@ -23,3 +32,8 @@ url = "2"
 futures-util = "0.3"
 tracing = "0.1.44"
 uuid = { version = "1", features = ["v4"] }
+
+# `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
+# default — pinning the same `curl` crate here with these features unifies
+# the whole build onto a vendored, statically-linked copy of both instead.
+curl = { version = "0.4", features = ["static-curl", "static-ssl"] }

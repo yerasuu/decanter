@@ -126,17 +126,25 @@ pub async fn fetch_many(client: &reqwest::Client, ids: &[i64]) -> Vec<Product> {
     }
 }
 
-/// Turns GOG's scheme-less, extension-less image path into a URL.
+/// Turns GOG's scheme-less image path into a URL.
 ///
 /// Unlike the owned-products listing, these paths carry no size suffix —
-/// the store serves whatever the base hash points at.
+/// the store serves whatever the base hash points at. Some of them (a
+/// logo path like `..._glx_logo.jpg`) already carry an extension; a bare
+/// hash doesn't. Appending `.jpg` unconditionally doubled it on the ones
+/// that already had one, which the CDN then 404s on.
 pub fn image_url(path: &str) -> Option<String> {
     let path = path.trim();
     if path.is_empty() {
         return None;
     }
     let base = path.strip_prefix("//").unwrap_or(path);
-    Some(format!("https://{base}.jpg"))
+    let has_extension = [".jpg", ".jpeg", ".png"].iter().any(|ext| base.ends_with(ext));
+    Some(if has_extension {
+        format!("https://{base}")
+    } else {
+        format!("https://{base}.jpg")
+    })
 }
 
 /// Strips tags and unescapes the handful of entities GOG's descriptions

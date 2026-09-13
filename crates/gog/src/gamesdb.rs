@@ -68,8 +68,18 @@ pub struct Image {
 }
 
 impl Image {
+    /// GamesDB's `url_format` is normally already a fully-qualified
+    /// `https://` URL, but only prepend a scheme when it's actually
+    /// missing — the webview serves the app under its own internal
+    /// scheme, not `https:`, so a bare `//host/...` URL (the convention
+    /// every other GOG endpoint in this crate uses) never resolves to a
+    /// real request and the image just shows as broken.
     pub fn resolve(&self) -> String {
-        self.url_format.replace("{formatter}", "").replace("{ext}", "jpg")
+        let resolved = self.url_format.replace("{formatter}", "").replace("{ext}", "jpg");
+        match resolved.strip_prefix("//") {
+            Some(base) => format!("https://{base}"),
+            None => resolved,
+        }
     }
 }
 

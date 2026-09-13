@@ -19,6 +19,13 @@ let
     atk
     harfbuzz
     glib
+    glib-networking # provides GIO's TLS backend -- without it libsoup (and
+                     # so WebKitGTK's network process) has no TLS
+                     # implementation at all to use `SSL_CERT_FILE` with,
+                     # and every https:// request the webview itself makes
+                     # (cover art, any other remote <img>) fails outright,
+                     # independently of the cert-file and sandbox fixes
+                     # below, which only matter once a backend exists.
     libsoup_3
     at-spi2-atk
     at-spi2-core
@@ -35,7 +42,11 @@ let
 in
 pkgs.mkShell {
   nativeBuildInputs = [ pkgs.pkg-config ];
-  buildInputs = runtimeLibs;
+  # `umu-launcher` is a runtime CLI dependency (decanter_runtime spawns
+  # `umu-run` by bare name, off PATH), not a linked library, so it's kept
+  # out of `runtimeLibs` above -- that list is specifically what needs to
+  # land on `LD_LIBRARY_PATH`.
+  buildInputs = runtimeLibs ++ [ pkgs.umu-launcher ];
 
   # `libxdo` (from xdotool) is linked via a plain `-lxdo` with no matching
   # `-L` from its build script, unlike webkitgtk's, which pkg-config
@@ -52,12 +63,35 @@ pkgs.mkShell {
   GST_PLUGIN_SYSTEM_PATH_1_0 = "${pkgs.gst_all_1.gst-plugins-base}/lib/gstreamer-1.0";
   LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
 
+  # WebKitGTK's network stack (glib-networking, on GnuTLS) looks for
+  # `SSL_CERT_FILE` specifically -- it doesn't fall back to the host's
+  # `/etc/ssl/certs` the way a normal FHS distro's TLS libraries do, and
+  # nix-shell doesn't set it for anything by default. Without this, every
+  # HTTPS request the webview itself makes (cover art, any other <img>/
+  # fetch straight from the page) fails TLS validation silently: no error
+  # in the app's own logs, since it's `reqwest` -- a separate TLS stack
+  # that resolves certs its own way -- that fetches and caches the URLs,
+  # not the webview. Only rendering them back out breaks.
+  SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+
+  # `SSL_CERT_FILE` above only matters once something actually implements
+  # TLS for GIO -- `glib-networking` ships that (`libgiognutls.so`), but
+  # unlike e.g. dconf's GIO module (which lands in `GIO_EXTRA_MODULES`
+  # through the ambient desktop session, not this shell) it has no
+  # nixpkgs setup-hook of its own, so being a buildInput alone doesn't put
+  # it on GIO's module search path. Without it libsoup has no TLS backend
+  # at all, and every https:// request the webview itself makes fails
+  # outright -- same symptom as the missing cert file, but the cert fix
+  # can't do anything about it. Prepended, not replacing, so whatever the
+  # session already exports (e.g. dconf's module) is kept.
+  #
   # gdk-pixbuf's own loaders.cache doesn't know about librsvg's SVG loader
   # (separate derivation) -- regenerate a merged one each time the shell
   # is entered, using the exact same gdk-pixbuf/librsvg this shell already
   # pins, so there's no version-mismatch risk like there would be reusing
   # anything from ~/.nix-profile.
   shellHook = ''
+    export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
     export GDK_PIXBUF_MODULE_FILE="$(mktemp --suffix=-gdk-pixbuf-loaders.cache)"
     ${pkgs.gdk-pixbuf.dev}/bin/gdk-pixbuf-query-loaders \
       ${pkgs.gdk-pixbuf.out}/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
@@ -71,6 +105,18 @@ pkgs.mkShell {
   # setups) — fall back to software rendering instead of crashing.
   WEBKIT_DISABLE_DMABUF_RENDERER = "1";
   WEBKIT_DISABLE_COMPOSITING_MODE = "1";
+
+  # WebKitGTK isolates its network process in a bubblewrap sandbox by
+  # default, which needs unprivileged user-namespace support from the
+  # kernel — not guaranteed inside a nix-shell running in a container.
+  # When bwrap can't set up the sandbox, the network process fails
+  # silently rather than falling back: page navigation and local assets
+  # (served from the dev server on localhost) keep working, but every
+  # `<img>` pointed at a real remote host never loads, with nothing
+  # logged anywhere in reach of the app itself. Disabling the sandbox
+  # here trades an isolation layer we don't get anyway for actually
+  # working network requests.
+  WEBKIT_DISABLE_SANDBOX = "1";
 
   # `LIBGL_ALWAYS_SOFTWARE` alone still asks EGL to negotiate against
   # whatever the *host's* driver is first, and nix's mesa doesn't match a
