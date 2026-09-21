@@ -4,12 +4,15 @@
 //! the fetched library away, and switching profiles swaps every account's
 //! stream at once instead of the view having to notice each one.
 //!
-//! Still seeds from the local cache on startup (see `stream`'s own doc for
-//! why), but doesn't trust it to paint the screen on its own any more:
-//! every activation starts `Loading`, and `Library` shows a loading
-//! screen instead of the real one until this session's first full sync
-//! actually lands — Steam's own shape, not the previous "flash the old
-//! cache, then silently rewrite it underneath you" one.
+//! Seeds from the local cache on startup (see `stream`'s own doc for why)
+//! and paints it straight away when every wanted account has synced
+//! before — a GOG account decanter already knows shouldn't have to wait
+//! on a network round trip just to open. `Library` only falls back to a
+//! loading screen for an account with nothing cached yet (a fresh login),
+//! since there truly is nothing else to show it. Either way the refresh
+//! that follows folds in over what's already on screen rather than
+//! wiping it first, so it never re-triggers the loading screen or visibly
+//! flickers the list once shown.
 
 use std::collections::HashMap;
 
@@ -47,6 +50,11 @@ pub enum LibraryState {
 // `PartialEq` so it can be passed as a component prop; the signals it
 // holds are handles, so comparing them compares identity, not contents.
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "by_account/tasks are deliberately private -- they're this type's own bookkeeping, \
+              not part of what a view is meant to read or write"
+)]
 pub struct GogLibrary {
     /// Every account's games, merged and deduped — see [`merge`]. What the
     /// Biblioteca view reads.
@@ -222,20 +230,20 @@ pub fn use_gog_library(active_profile: Signal<Option<String>>) -> GogLibrary {
             enrich_progress.set(None);
             return;
         }
-        state.set(LibraryState::Loading);
+        // Only a genuinely empty cache (a fresh login, nothing synced
+        // yet for that account) has to wait behind the loading screen —
+        // re-checked on every run of this effect, not just the first,
+        // so a later manual refresh() doesn't re-flash it once every
+        // wanted account has real data. `stream::watch_games` still moves
+        // a fresh account to `Loaded` itself once its first full fetch
+        // (list + catalog enrichment) actually lands.
+        let all_seeded = wanted.iter().all(|id| cache::has_synced_before(id));
+        state.set(if all_seeded { LibraryState::Loaded } else { LibraryState::Loading });
 
         for account_id in &wanted {
             if tasks.read().contains_key(account_id) {
                 continue;
             }
-            // Seeded from cache, but still `Loading` regardless of whether
-            // that seed is empty — a real second (or reopened) session
-            // shouldn't have to wait, but flashing a maybe-stale,
-            // maybe-incomplete list and then visibly rewriting it as the
-            // fetch lands is exactly the flicker this was rewritten to
-            // avoid. `stream::watch_games` moves `state` to `Loaded` only
-            // once every started account's first full fetch (list +
-            // catalog enrichment) is actually done.
             tracing::debug!(account_id, "starting gog library fetch task");
             let cached = cache::load_cached_games(account_id);
             let account_games = Signal::new(cached);

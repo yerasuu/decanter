@@ -58,8 +58,11 @@ impl VerifyReport {
 /// install time — a manifest for a build GOG has since retired can 404,
 /// which is reported as part of the outcome rather than failing the whole
 /// verification silently.
-pub async fn verify(account_id: &str, product_id: &str) -> anyhow::Result<VerifyReport> {
-    let library = crate::achv_try!(super::library());
+pub async fn verify(
+    library: &decanter_core::Library,
+    account_id: &str,
+    product_id: &str,
+) -> anyhow::Result<VerifyReport> {
     let game = crate::achv_try!(
         library
             .read_manifest(account_id, Storefront::Gog, product_id)
@@ -235,12 +238,16 @@ fn verify_file(path: &Path, chunks: &[crate::depot::DepotChunk]) -> std::io::Res
 /// Runs the same plan → download → move pipeline [`super::install`] uses,
 /// just filtered down to the broken set — a repair is a small install, not
 /// a special case of one.
-pub async fn repair(account_id: &str, product_id: &str, broken: &[BrokenFile]) -> anyhow::Result<()> {
+pub async fn repair(
+    library: &decanter_core::Library,
+    account_id: &str,
+    product_id: &str,
+    broken: &[BrokenFile],
+) -> anyhow::Result<()> {
     if broken.is_empty() {
         return Ok(());
     }
     tracing::info!(product_id, broken_count = broken.len(), "starting repair");
-    let library = crate::achv_try!(super::library());
     let game = crate::achv_try!(
         library
             .read_manifest(account_id, Storefront::Gog, product_id)

@@ -99,7 +99,11 @@ fn product_image(image: &str, suffix: &str) -> Option<String> {
 /// back too, for [`super::enrich_games`] to work through.
 ///
 /// This is the pass that must not fail: it's the library itself.
-pub async fn list_games(account_id: &str, on_batch: &mut impl FnMut(Batch)) -> anyhow::Result<Vec<LibraryEntry>> {
+pub async fn list_games(
+    library: &decanter_core::Library,
+    account_id: &str,
+    on_batch: &mut impl FnMut(Batch),
+) -> anyhow::Result<Vec<LibraryEntry>> {
     let (owned_ids, access_token) = crate::achv_try!(
         crate::with_session(account_id, |client| {
             let owned_ids = crate::achv_try!(
@@ -160,7 +164,7 @@ pub async fn list_games(account_id: &str, on_batch: &mut impl FnMut(Batch)) -> a
 
     let result: Vec<LibraryEntry> = entries
         .into_iter()
-        .map(|entry| with_install_state(account_id, entry))
+        .map(|entry| with_install_state(library, account_id, entry))
         .collect();
     tracing::info!(account_id, game_count = result.len(), "GOG library listing finished");
     Ok(result)
@@ -206,10 +210,8 @@ fn base_entry(id: i64, product: Option<&gog::gog::ProductDetails>) -> LibraryEnt
 /// Best-effort: a library that can't be read makes every game look not
 /// installed, which is wrong but harmless — the alternative is failing the
 /// whole listing over it.
-fn with_install_state(account_id: &str, mut entry: LibraryEntry) -> LibraryEntry {
-    let installed = crate::install::library()
-        .ok()
-        .and_then(|library| library.read_manifest(account_id, Storefront::Gog, &entry.game.id));
+fn with_install_state(library: &decanter_core::Library, account_id: &str, mut entry: LibraryEntry) -> LibraryEntry {
+    let installed = library.read_manifest(account_id, Storefront::Gog, &entry.game.id);
     if let Some(installed) = installed {
         entry.game.install_state = Some(InstallState {
             installed: true,

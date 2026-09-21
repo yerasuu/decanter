@@ -142,11 +142,12 @@ pub fn Library() -> Element {
 
     let profile_id = active_profile.read().clone();
 
-    // The whole view hides behind a Steam-style loading screen until this
-    // session's very first sync is fully done -- see `gog_library::stream`.
-    // Cheaper than letting the sidebar and detail pane mount on a
-    // half-resolved library and watch fields change under them as the
-    // rest of the fetch lands.
+    // Only reached for an account with nothing cached yet -- see
+    // `gog_library::use_gog_library`. A returning account paints its
+    // cached list immediately instead of hitting this at all; this stays
+    // up until that first-ever sync is fully done, cheaper than letting
+    // the sidebar and detail pane mount on a half-resolved library and
+    // watch fields change under them as the fetch lands.
     if matches!(state(), LibraryState::Loading) {
         return rsx! {
             LibraryLoading { count: games.read().len(), enriching: enrich_progress() }

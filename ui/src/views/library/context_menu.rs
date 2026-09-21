@@ -238,7 +238,6 @@ pub(super) fn ContextMenu(
                         autofocus: true,
                         oninput: move |event| new_name.set(event.value()),
                         onkeydown: {
-                            let profile_id = profile_id.clone();
                             let product_ids = target.product_ids.clone();
                             move |event: KeyboardEvent| {
                                 if event.key() != Key::Enter {

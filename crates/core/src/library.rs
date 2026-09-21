@@ -148,6 +148,13 @@ pub struct Library {
     root: PathBuf,
 }
 
+/// Progress through [`Library::move_to`]'s copy fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoveProgress {
+    pub bytes_copied: u64,
+    pub total_bytes: u64,
+}
+
 impl InstalledGame {
     /// `None` for a file that isn't a manifest decanter can use. Anything
     /// missing a game id, storefront or install directory is unusable
@@ -310,6 +317,76 @@ impl Library {
     #[inline]
     pub fn default_path() -> Option<PathBuf> {
         Some(crate::data_dir().join("steamapps"))
+    }
+
+    /// The actual root under `picked` — a folder a picker handed back —
+    /// content goes into.
+    ///
+    /// Confirmed against a real Steam client: adding a drive as a library
+    /// folder from Steam's own Storage settings creates exactly a
+    /// `steamapps/` subfolder plus a `libraryfolder.vdf` marker at the
+    /// drive root, never files loose at the root itself. `picked` is
+    /// treated the same way here — `<picked>/steamapps` if that's not
+    /// already there, or `picked` itself if its own name is already
+    /// `steamapps` (picking straight into an existing one, decanter's own
+    /// or Steam's, rather than nesting `steamapps/steamapps`).
+    #[must_use]
+    pub fn root_under(picked: &Path) -> PathBuf {
+        if picked.file_name().is_some_and(|name| name == "steamapps") {
+            picked.to_path_buf()
+        } else {
+            picked.join("steamapps")
+        }
+    }
+
+    /// Moves this library's entire root — `common/`, `compatdata/`,
+    /// `manifests/`, `libraryfolders.vdf` — to `new_root`, returning the
+    /// `Library` rooted there.
+    ///
+    /// Tries a plain rename first (instant, and the only thing that runs
+    /// when `new_root` is on the same filesystem as the current root);
+    /// falls back to a recursive copy, verified against a byte count taken
+    /// before copying starts, when the rename fails — moving to a
+    /// different disk is the actual point of this. The original root is
+    /// only removed once every byte the pre-copy walk counted has landed
+    /// on the other side, so a failure partway through the copy leaves it
+    /// untouched rather than straddling two locations. `on_progress` fires
+    /// only during that fallback — the rename path returns before it would
+    /// have anything to report.
+    ///
+    /// # Errors
+    /// Fails if `new_root` already has anything in it (refused rather than
+    /// risking mixing this library in with whatever's already there), or
+    /// any filesystem operation along the way fails.
+    #[inline]
+    pub fn move_to(&self, new_root: &Path, mut on_progress: impl FnMut(MoveProgress)) -> io::Result<Self> {
+        if new_root.is_dir() && fs::read_dir(new_root)?.next().is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("{} is not empty", new_root.display()),
+            ));
+        }
+
+        if fs::rename(&self.root, new_root).is_ok() {
+            tracing::info!(from = %self.root.display(), to = %new_root.display(), "moved library root (rename)");
+            return Ok(Self {
+                root: new_root.to_path_buf(),
+            });
+        }
+
+        tracing::debug!(
+            from = %self.root.display(),
+            to = %new_root.display(),
+            "rename failed (likely a different filesystem), falling back to copy"
+        );
+        let total_bytes = directory_size(&self.root)?;
+        let mut bytes_copied = 0u64;
+        copy_dir_recursive(&self.root, new_root, &mut bytes_copied, total_bytes, &mut on_progress)?;
+        fs::remove_dir_all(&self.root)?;
+        tracing::info!(from = %self.root.display(), to = %new_root.display(), total_bytes, "moved library root (copy)");
+        Ok(Self {
+            root: new_root.to_path_buf(),
+        })
     }
 
     /// Where a game's files go. `None` for an install directory that isn't
@@ -671,6 +748,52 @@ fn read_manifest_dir(directory: &Path) -> Vec<InstalledGame> {
         .collect()
 }
 
+/// Total bytes of every regular file under `dir`, recursively — the
+/// denominator [`Library::move_to`]'s copy fallback reports progress
+/// against, walked once before any copying starts so a mid-copy failure
+/// doesn't leave the total itself in question.
+fn directory_size(dir: &Path) -> io::Result<u64> {
+    let mut total = 0u64;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            total += directory_size(&entry.path())?;
+        } else {
+            total += entry.metadata()?.len();
+        }
+    }
+    Ok(total)
+}
+
+/// Copies every file under `src` into `dst` (creating directories as
+/// needed), reporting cumulative progress against `total_bytes` after
+/// each file. Leaves `src` alone either way — [`Library::move_to`] removes
+/// it itself, only once this returns `Ok`.
+fn copy_dir_recursive(
+    src: &Path,
+    dst: &Path,
+    bytes_copied: &mut u64,
+    total_bytes: u64,
+    on_progress: &mut impl FnMut(MoveProgress),
+) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let dst_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &dst_path, bytes_copied, total_bytes, on_progress)?;
+        } else {
+            fs::copy(entry.path(), &dst_path)?;
+            *bytes_copied += entry.metadata()?.len();
+            on_progress(MoveProgress {
+                bytes_copied: *bytes_copied,
+                total_bytes,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// A single path component that can't climb, hide, or reach an absolute
 /// path. Every value that reaches this came from a storefront's manifest
 /// or from an account id.
@@ -685,4 +808,109 @@ fn safe_component(value: &str) -> Option<&str> {
         return None;
     }
     Some(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("decanter-library-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn move_to_relocates_every_file_and_removes_the_original() {
+        let base = temp_dir("move-to");
+        let old_root = base.join("old");
+        let new_root = base.join("new");
+        fs::create_dir_all(old_root.join("common/SomeGame")).expect("nested dir");
+        fs::write(old_root.join("common/SomeGame/game.exe"), b"pretend exe").expect("write file");
+        fs::write(old_root.join("libraryfolders.vdf"), b"placeholder").expect("write file");
+
+        let library = Library::new(old_root.clone());
+        let moved = library.move_to(&new_root, |_| {}).expect("move succeeds");
+
+        assert_eq!(moved.root(), new_root.as_path());
+        assert!(!old_root.exists(), "original root must be gone after a successful move");
+        assert_eq!(
+            fs::read(new_root.join("common/SomeGame/game.exe")).expect("moved file readable"),
+            b"pretend exe"
+        );
+        assert_eq!(
+            fs::read(new_root.join("libraryfolders.vdf")).expect("moved file readable"),
+            b"placeholder"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn move_to_refuses_a_non_empty_destination() {
+        let base = temp_dir("move-to-refuse");
+        let old_root = base.join("old");
+        let new_root = base.join("new");
+        fs::create_dir_all(&old_root).expect("create dir");
+        fs::write(old_root.join("marker"), b"x").expect("write file");
+        fs::create_dir_all(&new_root).expect("create dir");
+        fs::write(new_root.join("already-here"), b"unrelated").expect("write file");
+
+        let library = Library::new(old_root.clone());
+        let result = library.move_to(&new_root, |_| {});
+
+        assert!(result.is_err(), "a non-empty destination must be refused");
+        assert!(
+            old_root.join("marker").is_file(),
+            "original must be untouched when refused"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn copy_dir_recursive_mirrors_every_file_and_reports_final_progress() {
+        let base = temp_dir("copy-walk");
+        let src = base.join("src");
+        let dst = base.join("dst");
+        fs::create_dir_all(src.join("nested")).expect("nested dir");
+        fs::write(src.join("a.txt"), b"aaaa").expect("write file");
+        fs::write(src.join("nested/b.txt"), b"bb").expect("write file");
+
+        let total = directory_size(&src).expect("sum sizes");
+        assert_eq!(total, 6);
+
+        let mut bytes_copied = 0u64;
+        let mut last_progress = None;
+        copy_dir_recursive(&src, &dst, &mut bytes_copied, total, &mut |progress| {
+            last_progress = Some(progress);
+        })
+        .expect("copy succeeds");
+
+        assert_eq!(
+            last_progress,
+            Some(MoveProgress {
+                bytes_copied: 6,
+                total_bytes: 6
+            })
+        );
+        assert_eq!(fs::read(dst.join("a.txt")).expect("copied file readable"), b"aaaa");
+        assert_eq!(fs::read(dst.join("nested/b.txt")).expect("copied file readable"), b"bb");
+        assert!(src.exists(), "copy_dir_recursive alone must never touch the source");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn root_under_adds_a_steamapps_level_under_a_plain_folder() {
+        let picked = PathBuf::from("/home/deck/data/Decanter");
+        assert_eq!(Library::root_under(&picked), picked.join("steamapps"));
+    }
+
+    #[test]
+    fn root_under_uses_an_existing_steamapps_folder_directly() {
+        let picked = PathBuf::from("/home/deck/data/Decanter/steamapps");
+        assert_eq!(Library::root_under(&picked), picked);
+    }
 }

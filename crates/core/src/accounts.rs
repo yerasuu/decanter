@@ -26,7 +26,7 @@
     reason = "Db's API is deliberately split by concern across modules, see lib.rs's doc comment"
 )]
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension as _, params};
 
 use crate::catalog::Storefront;
 use crate::db::{Db, Result};
@@ -81,6 +81,30 @@ impl Db {
         let accounts: Vec<_> = rows.flatten().collect();
         tracing::debug!(profile_id, account_count = accounts.len(), "listed accounts in profile");
         Ok(accounts)
+    }
+
+    /// Which profile groups `(id, storefront)`, if any account row matches
+    /// at all — the reverse of [`Db::accounts_in_profile`], for the call
+    /// sites that only have an account id to resolve a library location
+    /// (or anything else profile-scoped) from.
+    #[inline]
+    pub fn profile_id_for_account(&self, id: &str, storefront: Storefront) -> Result<Option<String>> {
+        let profile_id = self
+            .conn
+            .query_row(
+                "SELECT profile_id FROM accounts WHERE id = ?1 AND storefront = ?2",
+                params![id, storefront as i32],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(crate::db::Error::from)?;
+        tracing::debug!(
+            account_id = id,
+            ?storefront,
+            found = profile_id.is_some(),
+            "resolved profile for account"
+        );
+        Ok(profile_id)
     }
 
     /// Forgets the account itself (a logout). Its cached library,

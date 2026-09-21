@@ -184,7 +184,7 @@ fn GeneralTab(game: Game, account_id: String) -> Element {
     let installed = crate::core::installed_game(&account_id, &game.id);
     let playtime = crate::views::library::data::load_playtime(&account_id, &game.id);
     let path = installed.as_ref().and_then(|installed| {
-        let Some(library) = crate::core::library()
+        let Some(library) = crate::core::library_for_account(&account_id)
             .inspect_err(
                 |err| tracing::warn!(account_id, product_id = %game.id, error = %err, "failed to resolve library root"),
             )
@@ -317,7 +317,14 @@ fn UpdatesTab(game: Game, account_id: String) -> Element {
                                 error.set(String::new());
                                 tracing::info!(account_id, product_id, "update install started");
                                 spawn(async move {
+                                    let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+                                        tracing::error!(account_id, product_id, "could not resolve library, update install aborted");
+                                        error.set("no se pudo resolver la biblioteca".to_string());
+                                        updating.set(false);
+                                        return;
+                                    };
                                     let outcome = decanter_gog::install(
+                                            &core_library,
                                             &account_id,
                                             &product_id,
                                             None,
@@ -390,7 +397,13 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
                     report.set(None);
                     tracing::info!(account_id, product_id, "file verification started");
                     spawn(async move {
-                        match decanter_gog::verify(&account_id, &product_id).await {
+                        let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+                            tracing::error!(account_id, product_id, "could not resolve library, verification aborted");
+                            error.set("no se pudo resolver la biblioteca".to_string());
+                            verifying.set(false);
+                            return;
+                        };
+                        match decanter_gog::verify(&core_library, &account_id, &product_id).await {
                             Ok(outcome) => {
                                 tracing::info!(
                                     account_id,
@@ -438,7 +451,13 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
                                     error.set(String::new());
                                     tracing::info!(account_id, product_id, broken_count = broken.len(), "file repair started");
                                     spawn(async move {
-                                        if let Err(err) = decanter_gog::repair(&account_id, &product_id, &broken)
+                                        let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+                                            tracing::error!(account_id, product_id, "could not resolve library, repair aborted");
+                                            error.set("no se pudo resolver la biblioteca".to_string());
+                                            repairing.set(false);
+                                            return;
+                                        };
+                                        if let Err(err) = decanter_gog::repair(&core_library, &account_id, &product_id, &broken)
                                             .await
                                         {
                                             tracing::error!(account_id, product_id, error = %err, "file repair failed");
@@ -447,7 +466,7 @@ fn LocalFilesTab(game: Game, account_id: String) -> Element {
                                             return;
                                         }
                                         tracing::info!(account_id, product_id, "file repair finished");
-                                        match decanter_gog::verify(&account_id, &product_id).await {
+                                        match decanter_gog::verify(&core_library, &account_id, &product_id).await {
                                             Ok(outcome) => report.set(Some(outcome)),
                                             Err(err) => {
                                                 tracing::error!(account_id, product_id, error = %err, "re-verify after repair failed");
@@ -951,8 +970,15 @@ fn DlcTab(game: Game, account_id: String) -> Element {
                                         busy.set(Some(dlc_id.clone()));
                                         tracing::info!(account_id, parent_id, dlc_id, on, "dlc install state toggled");
                                         spawn(async move {
+                                            let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+                                                tracing::error!(account_id, parent_id, dlc_id, "could not resolve library, dlc toggle aborted");
+                                                error.set("no se pudo resolver la biblioteca".to_string());
+                                                busy.set(None);
+                                                return;
+                                            };
                                             let outcome = if on {
                                                 decanter_gog::install(
+                                                    &core_library,
                                                     &account_id,
                                                     &dlc_id,
                                                     Some(&parent_id),
@@ -963,7 +989,7 @@ fn DlcTab(game: Game, account_id: String) -> Element {
                                                 )
                                                 .await
                                             } else {
-                                                decanter_gog::uninstall_dlc(&account_id, &dlc_id, &parent_id).await
+                                                decanter_gog::uninstall_dlc(&core_library, &account_id, &dlc_id, &parent_id).await
                                             };
                                             busy.set(None);
                                             match outcome {
@@ -1187,7 +1213,14 @@ fn VersionsTab(game: Game, account_id: String) -> Element {
                                                 error.set(String::new());
                                                 tracing::info!(account_id, product_id, target_build_id, "build rollback started");
                                                 spawn(async move {
+                                                    let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+                                                        tracing::error!(account_id, product_id, "could not resolve library, rollback aborted");
+                                                        error.set("no se pudo resolver la biblioteca".to_string());
+                                                        installing.set(None);
+                                                        return;
+                                                    };
                                                     let outcome = decanter_gog::install(
+                                                            &core_library,
                                                             &account_id,
                                                             &product_id,
                                                             None,
@@ -1236,7 +1269,7 @@ fn VersionsTab(game: Game, account_id: String) -> Element {
 /// Pins (or unpins) a game's Proton by rewriting its manifest — the
 /// manifests are the record, so there's nowhere else to put it.
 fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Result<(), String> {
-    let library = crate::achv_try!(crate::core::library().inspect_err(
+    let library = crate::achv_try!(crate::core::library_for_account(account_id).inspect_err(
         |err| tracing::error!(account_id, product_id, error = %err, "failed to resolve library, proton pin not changed")
     ));
     // Re-read rather than editing the copy this tab rendered from, so a
@@ -1317,7 +1350,14 @@ fn BetasTab(game: Game, account_id: String) -> Element {
                                                 error.set(String::new());
                                                 tracing::info!(account_id, product_id, branch = branch_name, "branch switch started");
                                                 spawn(async move {
+                                                    let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+                                                        tracing::error!(account_id, product_id, "could not resolve library, branch switch aborted");
+                                                        error.set("no se pudo resolver la biblioteca".to_string());
+                                                        switching.set(None);
+                                                        return;
+                                                    };
                                                     let outcome = decanter_gog::install(
+                                                            &core_library,
                                                             &account_id,
                                                             &product_id,
                                                             None,

@@ -86,9 +86,9 @@ pub struct LibraryEntry {
 /// returned all at once — see the module docs.
 pub type Batch = Vec<LibraryEntry>;
 
-pub async fn find_game(account_id: &str, product_id: &str) -> anyhow::Result<Game> {
+pub async fn find_game(library: &decanter_core::Library, account_id: &str, product_id: &str) -> anyhow::Result<Game> {
     // Ignored: this only needs the finished list, not the progress.
-    crate::achv_try!(list_games(account_id, &mut |_| {}).await)
+    crate::achv_try!(list_games(library, account_id, &mut |_| {}).await)
         .into_iter()
         .map(|entry| entry.game)
         .find(|game| game.id == product_id)

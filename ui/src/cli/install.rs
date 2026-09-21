@@ -12,26 +12,38 @@ pub async fn install(
     build_id: Option<&str>,
 ) -> anyhow::Result<()> {
     tracing::info!(account_id, product_id, title, branch, build_id, "install started");
+    let library = crate::achv_try!(
+        crate::core::library_for_account(account_id).map_err(|err| anyhow::anyhow!("resolving library: {err}"))
+    );
     let mut events = 0u64;
-    let result = decanter_gog::install(account_id, product_id, None, title, branch, build_id, move |progress| {
-        events += 1;
-        if events % 200 == 1 {
-            tracing::info!(
-                file = %progress.current_file,
-                downloaded = progress.bytes_downloaded,
-                total = ?progress.total_bytes,
-                rate = progress.bytes_per_second,
-                events,
-                "progress"
-            );
-        }
-    })
+    let result = decanter_gog::install(
+        &library,
+        account_id,
+        product_id,
+        None,
+        title,
+        branch,
+        build_id,
+        move |progress| {
+            events += 1;
+            if events % 200 == 1 {
+                tracing::info!(
+                    file = %progress.current_file,
+                    downloaded = progress.bytes_downloaded,
+                    total = ?progress.total_bytes,
+                    rate = progress.bytes_per_second,
+                    events,
+                    "progress"
+                );
+            }
+        },
+    )
     .await
     .context("installing");
     match &result {
         Ok(()) => {
             tracing::info!(account_id, product_id, "install finished");
-            sync_steam_shortcut_after_install(account_id, product_id).await;
+            sync_steam_shortcut_after_install(&library, account_id, product_id).await;
         }
         Err(err) => tracing::error!(account_id, product_id, %err, "install failed"),
     }
@@ -41,11 +53,8 @@ pub async fn install(
 /// Best-effort, same rule as the GUI install path's own hook in
 /// `ui/src/views/library/install.rs`: never fails this CLI command over
 /// it, just logs and moves on.
-async fn sync_steam_shortcut_after_install(account_id: &str, product_id: &str) {
+async fn sync_steam_shortcut_after_install(library: &decanter_core::Library, account_id: &str, product_id: &str) {
     let Ok(db) = crate::core::db() else {
-        return;
-    };
-    let Ok(library) = crate::core::library() else {
         return;
     };
     let Some(game) = library.read_manifest(account_id, decanter_core::Storefront::Gog, product_id) else {
@@ -56,7 +65,7 @@ async fn sync_steam_shortcut_after_install(account_id: &str, product_id: &str) {
     };
     // No cached catalog data on this headless path — an extra fetch, but
     // this command's own doc comment already calls it a diagnostic one.
-    let catalog_game = decanter_gog::find_game(account_id, product_id).await.ok();
+    let catalog_game = decanter_gog::find_game(library, account_id, product_id).await.ok();
     let (cover_url, background_url, icon_url) = catalog_game
         .map(|game| (game.cover_url, game.background_url, game.icon_url))
         .unwrap_or_default();

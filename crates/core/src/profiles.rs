@@ -39,6 +39,11 @@ pub struct Profile {
     /// rather than parsed and re-serialized on each read.
     pub id: String,
     pub name: String,
+    /// Where this profile's games, prefixes and manifests live. `None`
+    /// means `decanter_core::Library::default_path()` — the shared path
+    /// every profile used before a per-profile location existed, and still
+    /// what a profile that's never chosen one of its own resolves to.
+    pub library_path: Option<String>,
 }
 
 impl Db {
@@ -55,18 +60,26 @@ impl Db {
         };
         let profile = self
             .conn
-            .query_row("SELECT id, name FROM profiles WHERE id = ?1", params![id], |row| {
-                Ok(Profile {
-                    id: match row.get(0) {
-                        Ok(value) => value,
-                        Err(err) => return Err(err),
-                    },
-                    name: match row.get(1) {
-                        Ok(value) => value,
-                        Err(err) => return Err(err),
-                    },
-                })
-            })
+            .query_row(
+                "SELECT id, name, library_path FROM profiles WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(Profile {
+                        id: match row.get(0) {
+                            Ok(value) => value,
+                            Err(err) => return Err(err),
+                        },
+                        name: match row.get(1) {
+                            Ok(value) => value,
+                            Err(err) => return Err(err),
+                        },
+                        library_path: match row.get(2) {
+                            Ok(value) => value,
+                            Err(err) => return Err(err),
+                        },
+                    })
+                },
+            )
             .optional()
             .map_err(Error::from)?;
         if profile.is_none() {
@@ -113,7 +126,7 @@ impl Db {
     pub fn list_profiles(&self) -> Result<Vec<Profile>> {
         let mut statement = match self
             .conn
-            .prepare("SELECT id, name FROM profiles ORDER BY created_at ASC, name ASC")
+            .prepare("SELECT id, name, library_path FROM profiles ORDER BY created_at ASC, name ASC")
         {
             Ok(statement) => statement,
             Err(err) => return Err(err.into()),
@@ -125,6 +138,10 @@ impl Db {
                     Err(err) => return Err(err),
                 },
                 name: match row.get(1) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                },
+                library_path: match row.get(2) {
                     Ok(value) => value,
                     Err(err) => return Err(err),
                 },
@@ -162,9 +179,51 @@ impl Db {
         // A milestone worth seeing at default level, same tier as
         // `Db::upsert_account`'s own info!.
         tracing::info!(profile_id = id, name, "upserted profile");
+        // Read back rather than assuming `None`: a rename of a profile that
+        // already picked its own library location must not report that
+        // location as unset just because this call never touches the column.
+        let library_path = self
+            .conn
+            .query_row("SELECT library_path FROM profiles WHERE id = ?1", params![id], |row| {
+                row.get(0)
+            })
+            .map_err(Error::from)?;
         Ok(Profile {
             id: id.to_owned(),
             name: name.to_owned(),
+            library_path,
         })
+    }
+
+    /// Where `profile_id`'s library lives, if it's ever chosen one of its
+    /// own — `None` means `decanter_core::Library::default_path()`.
+    #[inline]
+    pub fn profile_library_path(&self, profile_id: &str) -> Result<Option<String>> {
+        let path = self
+            .conn
+            .query_row(
+                "SELECT library_path FROM profiles WHERE id = ?1",
+                params![profile_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Error::from)?
+            .flatten();
+        tracing::debug!(profile_id, found = path.is_some(), "read profile library path");
+        Ok(path)
+    }
+
+    /// Sets (or clears, with `None`) the profile's chosen library location.
+    #[inline]
+    pub fn set_profile_library_path(&self, profile_id: &str, path: Option<&str>) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE profiles SET library_path = ?2 WHERE id = ?1",
+            params![profile_id, path],
+        ) {
+            Ok(_) => {}
+            Err(err) => return Err(err.into()),
+        }
+        tracing::info!(profile_id, path, "set profile library path");
+        Ok(())
     }
 }

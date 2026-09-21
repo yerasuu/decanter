@@ -45,8 +45,18 @@ pub(super) async fn install(
         "install started"
     );
 
+    let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+        tracing::error!(account_id, product_id, "could not resolve library, install aborted");
+        installing.write().insert(
+            product_id_key,
+            InstallStatus::Failed("no se pudo resolver la biblioteca".to_string()),
+        );
+        return;
+    };
+
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_gog::Progress>();
     let install = decanter_gog::install(
+        &core_library,
         &account_id,
         &product_id,
         parent_id.as_deref(),
@@ -106,8 +116,17 @@ pub(super) async fn install(
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
         installing.write().insert(dlc_id.clone(), InstallStatus::Queued);
-        let outcome =
-            decanter_gog::install(&account_id, &dlc_id, Some(&product_id), &dlc_title, None, None, |_| {}).await;
+        let outcome = decanter_gog::install(
+            &core_library,
+            &account_id,
+            &dlc_id,
+            Some(&product_id),
+            &dlc_title,
+            None,
+            None,
+            |_| {},
+        )
+        .await;
         match outcome {
             // A DLC that failed is worth surfacing, but it doesn't undo
             // the game that installed fine just before it.
@@ -137,8 +156,11 @@ pub(super) async fn uninstall(
     library: crate::gog_library::GogLibrary,
 ) -> Result<(), String> {
     tracing::info!(account_id, product_id, "uninstall started");
+    let core_library = crate::achv_try!(
+        crate::core::library_for_account(&account_id).map_err(|err| format!("resolviendo la biblioteca: {err}"))
+    );
     crate::achv_try!(
-        decanter_gog::uninstall(&account_id, &product_id)
+        decanter_gog::uninstall(&core_library, &account_id, &product_id)
             .await
             .map_err(|err| err.to_string())
             // Bubbles up to the confirm dialog's red error text — this is
@@ -166,7 +188,7 @@ async fn sync_steam_shortcut_for(account_id: &str, product_id: &str, library: &c
         tracing::debug!(account_id, product_id, "steam export disabled in settings, skipping");
         return;
     }
-    let Ok(core_library) = crate::core::library() else {
+    let Ok(core_library) = crate::core::library_for_account(account_id) else {
         return;
     };
     let Some(game) = core_library.read_manifest(account_id, decanter_core::Storefront::Gog, product_id) else {

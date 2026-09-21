@@ -99,6 +99,7 @@ fn AccountTab(profile_id: String) -> Element {
     });
 
     rsx! {
+        LibraryLocationRow { profile_id: profile_id.clone() }
         p { class: "muted",
             "Las cuentas de este perfil. Todas aportan a la Biblioteca a la vez — no hace falta elegir una activa."
         }
@@ -109,7 +110,7 @@ fn AccountTab(profile_id: String) -> Element {
                 for account in accounts() {
                     AccountRow {
                         key: "{account.storefront.as_str_name()}-{account.id}",
-                        account: account.clone(),
+                        account,
                         on_change: move |()| generation.set(generation() + 1),
                     }
                 }
@@ -118,6 +119,129 @@ fn AccountTab(profile_id: String) -> Element {
         AddGogAccount {
             profile_id,
             on_added: move |()| generation.set(generation() + 1),
+        }
+    }
+}
+
+/// Where this profile's library lives, with a button to move it (and
+/// whatever's already installed in it) somewhere else — a different disk,
+/// most likely, which is why the move falls back to a real copy rather
+/// than assuming a plain rename always works (see
+/// `decanter_core::Library::move_to`'s own doc).
+#[component]
+fn LibraryLocationRow(profile_id: String) -> Element {
+    let background = use_context::<crate::background::Background>();
+    let mut generation = use_signal(|| 0_u32);
+    let mut moving = use_signal(|| false);
+    let mut move_progress = use_signal(|| None::<(u64, u64)>);
+    let mut move_error = use_signal(|| None::<String>);
+    let _ = generation();
+
+    let current_path = crate::core::library_for_profile(&profile_id)
+        .map(|library| library.root().display().to_string())
+        .unwrap_or_else(|_| "desconocida".to_string());
+
+    rsx! {
+        h3 { "Ubicación de la biblioteca" }
+        p { class: "muted", "{current_path}" }
+        if let Some((copied, total)) = move_progress() {
+            p { class: "muted", "Moviendo... {crate::format::bytes(copied)} de {crate::format::bytes(total)}" }
+        }
+        if let Some(err) = move_error() {
+            p { class: "error", "{err}" }
+        }
+        button {
+            class: "secondary",
+            disabled: moving(),
+            onclick: move |_| {
+                let profile_id = profile_id.clone();
+                spawn(async move {
+                    let Some(folder) = rfd::AsyncFileDialog::new()
+                        .set_title("Elegí la nueva ubicación de la biblioteca")
+                        .pick_folder()
+                        .await
+                    else {
+                        return;
+                    };
+                    // Content goes under `.../steamapps`, matching
+                    // Steam's own layout for a library folder — see
+                    // `Library::root_under`'s own doc.
+                    let new_root = decanter_core::Library::root_under(folder.path());
+
+                    let Ok(db) = crate::core::db() else {
+                        move_error.set(Some("no se pudo abrir la base de datos".to_string()));
+                        return;
+                    };
+                    let Ok(accounts) = db.accounts_in_profile(&profile_id) else {
+                        move_error.set(Some("no se pudieron leer las cuentas del perfil".to_string()));
+                        return;
+                    };
+                    let Ok(library) = crate::core::library_for_profile(&profile_id) else {
+                        move_error.set(Some("no se pudo resolver la biblioteca actual".to_string()));
+                        return;
+                    };
+
+                    // Nothing belonging to this profile may be live during
+                    // the move — a running game still writing into
+                    // `compatdata/`, or an install still writing into
+                    // `common/`, would corrupt mid-copy.
+                    {
+                        let running = background.running.peek();
+                        let installing = background.installing.peek();
+                        for account in &accounts {
+                            let games = library.scan(&account.id);
+                            if games.keys().any(|id| running.contains(id) || installing.contains_key(id)) {
+                                move_error.set(Some(
+                                    "hay un juego de este perfil corriendo o instalándose — cerralo antes de mover la biblioteca"
+                                        .to_string(),
+                                ));
+                                return;
+                            }
+                        }
+                    }
+
+                    moving.set(true);
+                    move_error.set(None);
+                    move_progress.set(Some((0, 0)));
+                    tracing::info!(profile_id, to = %new_root.display(), "moving library");
+
+                    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_core::MoveProgress>();
+                    let move_task = tokio::task::spawn_blocking(move || {
+                        library.move_to(&new_root, move |progress| {
+                            let _ = tx.send(progress);
+                        })
+                    });
+
+                    while let Some(progress) = rx.recv().await {
+                        move_progress.set(Some((progress.bytes_copied, progress.total_bytes)));
+                    }
+
+                    let outcome = move_task.await;
+                    moving.set(false);
+                    move_progress.set(None);
+                    match outcome {
+                        Ok(Ok(moved)) => match db.set_profile_library_path(&profile_id, Some(&moved.root().display().to_string())) {
+                            Ok(()) => {
+                                tracing::info!(profile_id, "library moved");
+                                generation.set(generation() + 1);
+                            }
+                            Err(err) => {
+                                tracing::error!(profile_id, %err, "library moved but failed to save new path");
+                                move_error.set(Some(format!("se movió, pero no se pudo guardar la nueva ruta: {err}")));
+                            }
+                        },
+                        Ok(Err(err)) => {
+                            tracing::error!(profile_id, %err, "failed to move library");
+                            move_error.set(Some(err.to_string()));
+                        }
+                        Err(err) => {
+                            tracing::error!(profile_id, %err, "move task panicked");
+                            move_error.set(Some(format!("la tarea interna falló: {err}")));
+                        }
+                    }
+                });
+            },
+            if moving() { "Moviendo..." } else { "Cambiar ubicación" }
         }
     }
 }
@@ -274,7 +398,6 @@ fn AddGogAccount(profile_id: String, on_added: EventHandler<()>) -> Element {
                 button {
                     disabled: *status.read() == AccountStatus::Working || pasted.read().trim().is_empty(),
                     onclick: {
-                        let profile_id = profile_id.clone();
                         move |_| {
                             let profile_id = profile_id.clone();
                             let code = pasted.read().clone();
@@ -344,6 +467,8 @@ enum AccountStatus {
 #[component]
 fn GeneralTab() -> Element {
     let mut generation = use_signal(|| 0_u32);
+    let mut restarting_steam = use_signal(|| false);
+    let mut restart_error = use_signal(|| None::<String>);
     let _ = generation();
     let close_to_tray = crate::core::db()
         .and_then(|db| db.close_to_tray().map_err(|err| err.to_string()))
@@ -412,6 +537,38 @@ fn GeneralTab() -> Element {
                 }
                 p { class: "muted",
                     "Hay que reiniciar Steam para ver los cambios — Steam solo lee sus shortcuts al arrancar."
+                }
+            }
+        }
+        if crate::core::steam_shortcuts_pending() {
+            div { class: "callout",
+                p {
+                    "Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se agregaron, "
+                    "asi que todavia no los pisa su propia copia en memoria."
+                }
+                button {
+                    disabled: restarting_steam(),
+                    onclick: move |_| {
+                        restarting_steam.set(true);
+                        restart_error.set(None);
+                        spawn(async move {
+                            match crate::core::restart_steam_to_apply_pending().await {
+                                Ok(()) => {
+                                    tracing::info!("steam restarted to apply pending shortcuts");
+                                    generation.set(generation() + 1);
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "failed to restart steam");
+                                    restart_error.set(Some(err));
+                                }
+                            }
+                            restarting_steam.set(false);
+                        });
+                    },
+                    if restarting_steam() { "Reiniciando Steam..." } else { "Reiniciar Steam ahora" }
+                }
+                if let Some(err) = restart_error() {
+                    p { class: "error", "{err}" }
                 }
             }
         }

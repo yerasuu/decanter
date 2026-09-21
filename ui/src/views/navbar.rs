@@ -181,7 +181,29 @@ const NEW_PROFILE_OPTION: &str = "__new__";
 fn NewProfileForm(on_done: EventHandler<()>) -> Element {
     let mut active_profile = use_context::<ActiveProfile>();
     let mut name = use_signal(String::new);
+    let mut library_path = use_signal(|| {
+        decanter_core::Library::default_path().map_or_else(|| String::new(), |path| path.display().to_string())
+    });
+    // Only `Some` once the user actually picks a folder — same rule as
+    // `Onboarding`'s own copy of this form.
+    let mut library_path_chosen = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
+
+    let mut submit = move || {
+        let name = name.read().trim().to_string();
+        let chosen_path = library_path_chosen().then(|| library_path.read().clone());
+        match crate::core::create_profile(&name, chosen_path.as_deref()) {
+            Ok(profile) => {
+                tracing::info!(profile_id = %profile.id, name, "profile created");
+                active_profile.set(Some(profile.id));
+                on_done.call(());
+            }
+            Err(err) => {
+                tracing::error!(name, error = %err, "failed to create profile");
+                error.set(Some(err));
+            }
+        }
+    };
 
     rsx! {
         // Same backdrop-plus-floating-panel pairing every other popup in
@@ -200,20 +222,35 @@ fn NewProfileForm(on_done: EventHandler<()>) -> Element {
                 oninput: move |event| name.set(event.value()),
                 onkeydown: move |event: KeyboardEvent| {
                     if event.key() == Key::Enter && !name.read().trim().is_empty() {
-                        let name = name.read().trim().to_string();
-                        match crate::core::create_profile(&name) {
-                            Ok(profile) => {
-                                tracing::info!(profile_id = %profile.id, name, "profile created");
-                                active_profile.set(Some(profile.id));
-                                on_done.call(());
-                            }
-                            Err(err) => {
-                                tracing::error!(name, error = %err, "failed to create profile");
-                                error.set(Some(err));
-                            }
-                        }
+                        submit();
                     }
                 },
+            }
+            p { class: "muted", "Dónde vive la biblioteca de este perfil:" }
+            div { class: "field-row",
+                input { r#type: "text", readonly: true, value: "{library_path}" }
+                button {
+                    class: "secondary",
+                    onclick: move |_| {
+                        spawn(async move {
+                            if let Some(folder) = rfd::AsyncFileDialog::new()
+                                .set_title("Elegí dónde vive la biblioteca de este perfil")
+                                .pick_folder()
+                                .await
+                            {
+                                // Content goes under `.../steamapps`,
+                                // matching Steam's own layout for a
+                                // library folder — see
+                                // `Library::root_under`'s own doc.
+                                let root = decanter_core::Library::root_under(folder.path());
+                                tracing::debug!(path = %root.display(), "profile library path picked from file dialog");
+                                library_path.set(root.to_string_lossy().into_owned());
+                                library_path_chosen.set(true);
+                            }
+                        });
+                    },
+                    "Elegir carpeta"
+                }
             }
             if let Some(message) = &*error.read() {
                 p { class: "error", "{message}" }
@@ -222,20 +259,7 @@ fn NewProfileForm(on_done: EventHandler<()>) -> Element {
                 button { class: "secondary", onclick: move |_| on_done.call(()), "Cancelar" }
                 button {
                     disabled: name.read().trim().is_empty(),
-                    onclick: move |_| {
-                        let name = name.read().trim().to_string();
-                        match crate::core::create_profile(&name) {
-                            Ok(profile) => {
-                                tracing::info!(profile_id = %profile.id, name, "profile created");
-                                active_profile.set(Some(profile.id));
-                                on_done.call(());
-                            }
-                            Err(err) => {
-                                tracing::error!(name, error = %err, "failed to create profile");
-                                error.set(Some(err));
-                            }
-                        }
-                    },
+                    onclick: move |_| submit(),
                     "Crear"
                 }
             }

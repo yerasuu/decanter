@@ -112,10 +112,7 @@ pub async fn list_builds(account_id: &str, product_id: &str, branch: Option<&str
 /// ones that actually have an update — a failed lookup for one game (a
 /// delisted product, a network hiccup) is skipped rather than failing the
 /// whole sweep.
-pub async fn check_all_updates(account_id: &str) -> Vec<(InstalledGame, String)> {
-    let Ok(library) = crate::install::library() else {
-        return Vec::new();
-    };
+pub async fn check_all_updates(library: &decanter_core::Library, account_id: &str) -> Vec<(InstalledGame, String)> {
     let mut outdated = Vec::new();
     for game in library.scan(account_id).into_values() {
         if game.storefront != Storefront::Gog {

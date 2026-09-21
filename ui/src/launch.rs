@@ -245,7 +245,7 @@ fn record_last_played(account_id: &str, game: &InstalledGame) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
-    let Ok(library) = crate::core::library() else {
+    let Ok(library) = crate::core::library_for_account(account_id) else {
         tracing::debug!(game_id = %game.game_id, "could not record last played, library unavailable");
         return;
     };

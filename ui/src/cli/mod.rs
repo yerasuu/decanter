@@ -108,7 +108,8 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
     match cmd {
         Cmd::Library { account_id } => {
             tracing::debug!(account_id, "listing gog library");
-            let games = decanter_gog::list_games(&account_id, &mut |_| {}).await?;
+            let library = crate::core::library_for_account(&account_id).map_err(|err| anyhow::anyhow!(err))?;
+            let games = decanter_gog::list_games(&library, &account_id, &mut |_| {}).await?;
             tracing::info!(account_id, count = games.len(), "gog library listed");
             for entry in games {
                 println!("{}\t{}", entry.game.id, entry.game.title);

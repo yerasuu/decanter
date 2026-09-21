@@ -36,7 +36,12 @@ pub fn db() -> Result<Db, String> {
 /// profile comes to exist: onboarding's first-run screen and the navbar
 /// switcher's "+ Crear perfil" both call this rather than each rolling
 /// their own id/timestamp/activation logic.
-pub fn create_profile(name: &str) -> Result<Profile, String> {
+///
+/// `library_path`: `Some` only when the user picked a folder in the
+/// creation form instead of leaving it on the pre-filled default — `None`
+/// leaves the profile's `library_path` column unset, same as every profile
+/// created before this existed.
+pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile, String> {
     let db = db()?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = std::time::SystemTime::now()
@@ -47,6 +52,13 @@ pub fn create_profile(name: &str) -> Result<Profile, String> {
             .inspect_err(|err| tracing::error!(profile_name = name, %err, "failed to create profile"))
             .map_err(|err| err.to_string())
     );
+    if let Some(path) = library_path {
+        crate::achv_try!(
+            db.set_profile_library_path(&profile.id, Some(path))
+                .inspect_err(|err| tracing::error!(profile_id = %profile.id, path, %err, "failed to set new profile's library path"))
+                .map_err(|err| err.to_string())
+        );
+    }
     crate::achv_try!(
         db.set_active_profile(&profile.id)
             .inspect_err(|err| tracing::error!(profile_id = %profile.id, %err, "failed to activate new profile"))
@@ -56,6 +68,9 @@ pub fn create_profile(name: &str) -> Result<Profile, String> {
     Ok(profile)
 }
 
+/// Where a library lives when nothing more specific is known — every
+/// profile before per-profile locations existed, and the fallback for an
+/// account that (for whatever reason) resolves to no profile at all.
 pub fn library() -> Result<Library, String> {
     match Library::default_path() {
         Some(path) => Ok(Library::new(path)),
@@ -63,6 +78,40 @@ pub fn library() -> Result<Library, String> {
             tracing::warn!("no data directory for this platform");
             Err("no hay directorio de datos en esta plataforma".to_string())
         }
+    }
+}
+
+/// The `Library` `profile_id` actually uses — its own chosen location if
+/// it's ever set one, otherwise [`library`]'s shared default.
+pub fn library_for_profile(profile_id: &str) -> Result<Library, String> {
+    let db = db()?;
+    let chosen = crate::achv_try!(
+        db.profile_library_path(profile_id)
+            .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to read profile library path, using default"))
+            .map_err(|err| err.to_string())
+    );
+    match chosen {
+        Some(path) => Ok(Library::new(path)),
+        None => library(),
+    }
+}
+
+/// Same as [`library_for_profile`], resolved from an account id instead —
+/// every account-scoped call site in this module has one of these in
+/// scope, not a `profile_id`. Falls back to [`library`] for an account
+/// that resolves to no profile (shouldn't happen in practice, but an
+/// orphaned account is still better served by the shared default than a
+/// hard failure).
+pub fn library_for_account(account_id: &str) -> Result<Library, String> {
+    let db = db()?;
+    let profile_id = crate::achv_try!(
+        db.profile_id_for_account(account_id, Storefront::Gog)
+            .inspect_err(|err| tracing::warn!(account_id, %err, "failed to resolve profile for account, using default"))
+            .map_err(|err| err.to_string())
+    );
+    match profile_id {
+        Some(profile_id) => library_for_profile(&profile_id),
+        None => library(),
     }
 }
 
@@ -76,7 +125,7 @@ pub async fn init() -> Result<Core, String> {
 /// An unreadable library reads as "nothing installed", which is a better
 /// failure than a screen that won't render.
 pub fn installed(account_id: &str) -> std::collections::BTreeMap<String, InstalledGame> {
-    library()
+    library_for_account(account_id)
         .map(|library| {
             let games = library.scan(account_id);
             tracing::debug!(account_id, count = games.len(), "scanned installed games");
@@ -90,7 +139,7 @@ pub fn installed(account_id: &str) -> std::collections::BTreeMap<String, Install
 }
 
 pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> {
-    let Some(library) = library().ok() else {
+    let Some(library) = library_for_account(account_id).ok() else {
         tracing::debug!(
             account_id,
             game_id,
@@ -105,7 +154,7 @@ pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> 
 /// Saves bucket — usually pre-filled from [`detect_cloud_save_locations`],
 /// but always overridable by hand.
 pub fn set_cloud_save_path(account_id: &str, product_id: &str, path: Option<&str>) -> Result<(), String> {
-    let library = crate::achv_try!(library());
+    let library = crate::achv_try!(library_for_account(account_id));
     let mut current =
         crate::achv_try!(installed_game(account_id, product_id).ok_or("el juego ya no figura como instalado"));
     current.cloud_save_path = path.filter(|value| !value.is_empty()).map(str::to_string);
@@ -124,7 +173,7 @@ pub async fn detect_cloud_save_locations(
     account_id: &str,
     game: &InstalledGame,
 ) -> Result<Vec<decanter_gog::save_location::SaveLocation>, String> {
-    let library = crate::achv_try!(library());
+    let library = crate::achv_try!(library_for_account(account_id));
     let install_dir = crate::achv_try!(
         library
             .install_dir(&game.install_dir)
@@ -147,7 +196,7 @@ pub async fn detect_cloud_save_locations(
 /// Stamps the manifest with when cloud saves last synced cleanly — the
 /// "changed since when" threshold the next sync classifies against.
 pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64) -> Result<(), String> {
-    let library = crate::achv_try!(library());
+    let library = crate::achv_try!(library_for_account(account_id));
     let mut current =
         crate::achv_try!(installed_game(account_id, product_id).ok_or("el juego ya no figura como instalado"));
     current.cloud_save_last_sync = Some(last_sync);
@@ -162,7 +211,7 @@ pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64
 /// installed. Kept apart from the GOG catalog entirely: a shortcut has no
 /// product to fetch metadata for, so it's just whatever the user typed.
 pub fn shortcuts(account_id: &str) -> Vec<InstalledGame> {
-    let shortcuts: Vec<InstalledGame> = library()
+    let shortcuts: Vec<InstalledGame> = library_for_account(account_id)
         .map(|library| library.scan(account_id))
         .unwrap_or_else(|_| {
             tracing::debug!(account_id, "reporting no shortcuts, library unavailable");
@@ -180,7 +229,7 @@ pub fn shortcuts(account_id: &str) -> Vec<InstalledGame> {
 /// shortcut can reuse every path that's keyed by (account, `game_id)`:
 /// `compatdata`, playtime, the DLC-less manifest shape.
 pub fn add_shortcut(account_id: &str, id: &str, name: &str, executable: &std::path::Path) -> Result<(), String> {
-    let library = crate::achv_try!(library());
+    let library = crate::achv_try!(library_for_account(account_id));
     let result = library
         .write_manifest(&InstalledGame {
             account_id: account_id.to_string(),
@@ -212,7 +261,7 @@ pub fn add_shortcut(account_id: &str, id: &str, name: &str, executable: &std::pa
 /// Removes a shortcut and its prefix. There are no `common/` files to
 /// decide about — a shortcut never had any.
 pub fn remove_shortcut(account_id: &str, id: &str) -> Result<(), String> {
-    let library = crate::achv_try!(library());
+    let library = crate::achv_try!(library_for_account(account_id));
     crate::achv_try!(
         library
             .remove_manifest(account_id, Storefront::Unspecified, id)
@@ -234,7 +283,7 @@ pub fn remove_shortcut(account_id: &str, id: &str) -> Result<(), String> {
 /// Where a game runs: its own prefix, per account, created by umu on first
 /// launch.
 pub fn prefix_for(account_id: &str, game_id: &str) -> Option<decanter_runtime::Prefix> {
-    let Some(library) = library().ok() else {
+    let Some(library) = library_for_account(account_id).ok() else {
         tracing::debug!(account_id, game_id, "no prefix, library unavailable");
         return None;
     };
@@ -259,7 +308,7 @@ pub fn executable_for(game: &InstalledGame) -> Option<std::path::PathBuf> {
     if game.storefront == Storefront::Unspecified {
         return Some(std::path::PathBuf::from(executable));
     }
-    let Some(library) = library().ok() else {
+    let Some(library) = library_for_account(&game.account_id).ok() else {
         tracing::debug!(game_id = %game.game_id, "no executable path, library unavailable");
         return None;
     };
@@ -292,4 +341,40 @@ pub fn proton_for(game: &InstalledGame) -> decanter_runtime::Proton {
         Some(proton) => decanter_runtime::Proton::Named(proton),
         None => decanter_runtime::Proton::Latest,
     }
+}
+
+/// Whether a Steam shortcut export is staged and waiting for Steam to be
+/// restarted to take effect — see `decanter_core::steam::export`'s own
+/// doc for why a write can't always go straight to `shortcuts.vdf`.
+/// `false` for anything that can't be resolved (no Steam install, no
+/// local user) — nothing pending is exactly what that looks like too.
+#[must_use]
+pub fn steam_shortcuts_pending() -> bool {
+    let Some(steam_root) = decanter_core::steam::steam_root() else {
+        return false;
+    };
+    let Some(user_id) = decanter_core::steam::local_user_id(&steam_root) else {
+        return false;
+    };
+    decanter_core::steam::has_pending_changes(&steam_root, &user_id)
+}
+
+/// Shuts Steam down, swaps the staged `shortcuts.vdf` into place, and
+/// starts it back up — the button behind [`steam_shortcuts_pending`]'s
+/// banner. Runs on a blocking worker since it waits (synchronously, with
+/// its own timeout) for the real Steam process to exit.
+pub async fn restart_steam_to_apply_pending() -> Result<(), String> {
+    crate::achv_try!(
+        tokio::task::spawn_blocking(|| {
+            let steam_root = decanter_core::steam::steam_root()
+                .ok_or_else(|| "no se encontro una instalacion de Steam".to_string())?;
+            let user_id = decanter_core::steam::local_user_id(&steam_root)
+                .ok_or_else(|| "no se pudo resolver el usuario local de Steam".to_string())?;
+            decanter_core::steam::apply_pending_and_restart_steam(&steam_root, &user_id)
+                .inspect_err(|err| tracing::error!(%err, "failed to restart steam to apply pending shortcuts"))
+                .map_err(|err| err.to_string())
+        })
+        .await
+        .map_err(|err| format!("la tarea interna fallo: {err}"))
+    )
 }

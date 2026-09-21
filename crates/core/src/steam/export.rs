@@ -9,14 +9,6 @@
 //! UI is worse than failing this sync for one game.
 
 #![expect(
-    clippy::std_instead_of_alloc,
-    reason = "desktop app, no no_std target exists to justify alloc:: here"
-)]
-#![expect(
-    clippy::std_instead_of_core,
-    reason = "desktop app, no no_std target exists to justify core:: here"
-)]
-#![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"
 )]
@@ -30,7 +22,7 @@ use std::{fs, io};
 
 use super::appid::{grid_appid, legacy_appid};
 use super::binary_vdf::{self, Value};
-use super::paths;
+use super::{paths, process};
 
 /// What a shortcut entry needs beyond its artwork.
 pub struct ShortcutSpec<'spec> {
@@ -103,7 +95,7 @@ pub fn sync(steam_root: &Path, user_id: &str, spec: &ShortcutSpec<'_>, artwork: 
     tags.push("0", TAG);
     entry.push("tags", tags);
 
-    let path = paths::shortcuts_vdf_path(steam_root, user_id);
+    let path = resolve_write_target(steam_root, user_id)?;
     let mut root = read_shortcuts(&path)?;
     upsert_entry(&mut root, appid, entry);
     write_shortcuts(&path, &root)?;
@@ -121,7 +113,7 @@ pub fn sync(steam_root: &Path, user_id: &str, spec: &ShortcutSpec<'_>, artwork: 
 /// rewritten file can't be written.
 #[inline]
 pub fn remove(steam_root: &Path, user_id: &str, appid: i32) -> io::Result<()> {
-    let path = paths::shortcuts_vdf_path(steam_root, user_id);
+    let path = resolve_write_target(steam_root, user_id)?;
     let mut root = read_shortcuts(&path)?;
     if let Value::Map(entries) = &mut root {
         entries.retain(|(_, entry)| entry.get("appid").and_then(Value::as_int) != Some(appid));
@@ -136,6 +128,73 @@ pub fn remove(steam_root: &Path, user_id: &str, appid: i32) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+/// Where a staged change waits when Steam is running and can't be written
+/// to directly — see [`resolve_write_target`].
+fn pending_path(steam_root: &Path, user_id: &str) -> PathBuf {
+    paths::shortcuts_vdf_path(steam_root, user_id).with_extension("vdf.pending")
+}
+
+/// Whether a staged change is waiting for [`apply_pending_and_restart_steam`]
+/// to pick it up.
+#[must_use]
+#[inline]
+pub fn has_pending_changes(steam_root: &Path, user_id: &str) -> bool {
+    pending_path(steam_root, user_id).is_file()
+}
+
+/// Picks the file [`sync`]/[`remove`] should actually write to: the real
+/// `shortcuts.vdf`, unless Steam is currently running — in which case any
+/// direct write would just get clobbered the next time Steam re-saves its
+/// own in-memory copy of that file (confirmed behavior, not a guess: an
+/// entry written this way was later found wiped, with a live Steam client
+/// running the whole time). Instead the change goes to a pending file
+/// beside it, seeded from whatever the real file currently holds the
+/// first time one is needed, so it starts as a faithful copy rather than
+/// dropping entries Steam already has that decanter doesn't know about.
+fn resolve_write_target(steam_root: &Path, user_id: &str) -> io::Result<PathBuf> {
+    let real = paths::shortcuts_vdf_path(steam_root, user_id);
+    if !process::is_steam_running(steam_root) {
+        return Ok(real);
+    }
+    let pending = pending_path(steam_root, user_id);
+    if !pending.is_file() {
+        let seed = read_shortcuts(&real)?;
+        write_shortcuts(&pending, &seed)?;
+    }
+    Ok(pending)
+}
+
+/// Applies whatever is staged in the pending file to the real
+/// `shortcuts.vdf`, restarting Steam around the swap so it reads the
+/// result fresh instead of clobbering it again. A no-op if nothing is
+/// pending.
+///
+/// Steam is asked to shut down cleanly (`steam -shutdown`) rather than
+/// killed outright, and this call blocks until it's confirmed gone before
+/// touching the file — writing while it's still tearing down would be the
+/// same race this exists to avoid.
+///
+/// # Errors
+/// Fails if Steam doesn't exit within the shutdown timeout (nothing is
+/// overwritten in that case), if the pending file can't be moved into
+/// place, or if Steam can't be relaunched afterward.
+#[inline]
+pub fn apply_pending_and_restart_steam(steam_root: &Path, user_id: &str) -> io::Result<()> {
+    let pending = pending_path(steam_root, user_id);
+    if !pending.is_file() {
+        return Ok(());
+    }
+
+    if process::is_steam_running(steam_root) {
+        process::shutdown(steam_root)?;
+        process::wait_for_exit(steam_root)?;
+    }
+
+    let real = paths::shortcuts_vdf_path(steam_root, user_id);
+    fs::rename(&pending, &real)?;
+    process::launch(steam_root)
 }
 
 fn quote(value: &str) -> String {
@@ -293,6 +352,28 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].1.get("appid").and_then(Value::as_int), Some(appid_b));
         assert_eq!(entries[0].0, "0", "remaining entry must be renumbered to 0");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_pending_file_until_one_is_staged() {
+        let dir = std::env::temp_dir().join(format!("decanter-steam-export-test-pending-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("temp dir");
+        let steam_root = dir.join("Steam");
+
+        assert!(!has_pending_changes(&steam_root, "1"));
+
+        // A normal sync with no Steam process running for this fake root
+        // writes straight to the real file — nothing should ever land in
+        // the pending path in that case.
+        let exe = dir.join("game.exe");
+        sync(&steam_root, "1", &spec(&exe, &dir), &Artwork::default()).expect("sync");
+        assert!(!has_pending_changes(&steam_root, "1"));
+
+        // `apply_pending_and_restart_steam` with nothing staged must be a
+        // pure no-op — it must never touch Steam or the real file.
+        apply_pending_and_restart_steam(&steam_root, "1").expect("no-op apply");
 
         let _ = fs::remove_dir_all(&dir);
     }

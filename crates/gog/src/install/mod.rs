@@ -79,7 +79,13 @@ pub struct Progress {
 /// On success an appmanifest records the install — where the files are,
 /// which build (and branch), and, when it could be identified, what
 /// launches it.
+///
+/// `library` is the caller's to resolve (a profile can pick its own
+/// location — see `decanter_core::Library`'s own callers for how) rather
+/// than assumed here, so this crate has no opinion of its own on where
+/// anything lives.
 pub async fn install(
+    library: &Library,
     account_id: &str,
     product_id: &str,
     parent_id: Option<&str>,
@@ -123,7 +129,7 @@ pub async fn install(
     let (build_owner, effective_branch) = match parent_id {
         Some(parent_id) => {
             let owner: i64 = crate::achv_try!(parent_id.parse().context("GOG parent product id must be numeric"));
-            let parent_branch = crate::achv_try!(library())
+            let parent_branch = library
                 .read_manifest(account_id, Storefront::Gog, parent_id)
                 .and_then(|parent| parent.branch);
             (owner, parent_branch)
@@ -156,6 +162,7 @@ pub async fn install(
     }
 
     install_into(
+        library,
         account_id,
         product_id,
         parent_id,
@@ -167,14 +174,12 @@ pub async fn install(
     .await
 }
 
-/// The library every install writes into.
-pub(crate) fn library() -> anyhow::Result<Library> {
-    Library::default_path()
-        .map(Library::new)
-        .context("no data directory on this platform")
-}
-
+#[expect(
+    clippy::too_many_arguments,
+    reason = "same shape as install's own, which this is the guts of"
+)]
 async fn install_into(
+    library: &Library,
     account_id: &str,
     product_id: &str,
     parent_id: Option<&str>,
@@ -183,8 +188,6 @@ async fn install_into(
     plan: Plan,
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
 ) -> anyhow::Result<()> {
-    let library = crate::achv_try!(library());
-
     // A DLC has no directory of its own: its files belong in the base
     // game's, so the base game has to be installed first. Refused here,
     // before anything is downloaded, rather than landing files somewhere
@@ -368,12 +371,11 @@ async fn install_into(
 ///
 /// The files are shared, so deleting them is conditional. The prefix is
 /// not: it belongs to this (profile, game) alone.
-pub async fn uninstall(account_id: &str, product_id: &str) -> anyhow::Result<()> {
+pub async fn uninstall(library: &Library, account_id: &str, product_id: &str) -> anyhow::Result<()> {
     // An in-flight install would keep writing files into the directory
     // this is about to delete, leaving an untracked half-install behind.
     cancel(account_id, product_id).await;
 
-    let library = crate::achv_try!(library());
     let Some(game) = crate::achv_try!(
         library
             .remove_manifest(account_id, Storefront::Gog, product_id)
@@ -415,10 +417,14 @@ pub async fn uninstall(account_id: &str, product_id: &str) -> anyhow::Result<()>
 ///
 /// Removing a DLC that isn't recorded is a no-op: that is the state being
 /// asked for.
-pub async fn uninstall_dlc(account_id: &str, product_id: &str, parent_id: &str) -> anyhow::Result<()> {
+pub async fn uninstall_dlc(
+    library: &Library,
+    account_id: &str,
+    product_id: &str,
+    parent_id: &str,
+) -> anyhow::Result<()> {
     cancel(account_id, product_id).await;
 
-    let library = crate::achv_try!(library());
     let Some(mut parent) = library.read_manifest(account_id, Storefront::Gog, parent_id) else {
         return Ok(());
     };

@@ -163,7 +163,6 @@ pub(super) fn DetailPane(
                     if is_installed {
                         {
                             let game = game.clone();
-                            let account_id = account_id.clone();
                             rsx! {
                                 button {
                                     class: "icon-btn",
@@ -362,7 +361,7 @@ pub(super) fn game_install_path(account_id: &str, product_id: &str) -> Option<st
         );
         return None;
     };
-    let Some(library) = crate::core::library()
+    let Some(library) = crate::core::library_for_account(account_id)
         .inspect_err(|err| tracing::warn!(account_id, product_id, error = %err, "failed to resolve library root"))
         .ok()
     else {
@@ -612,9 +611,10 @@ fn InstallAction(
 
 /// Confirms an install before it starts, the way Steam does — where the
 /// files go, and which branch to install (mainline by default, same as
-/// Steam defaults to no beta opt-in). There's only one library location
-/// today, so that row is informational rather than a picker; the branch
-/// choice is the real one.
+/// Steam defaults to no beta opt-in). The library location shown here is
+/// whatever this account's profile already resolved to (its own chosen
+/// location, or the shared default) — informational, since changing it is
+/// a per-profile setting, not something to pick mid-install.
 #[component]
 fn InstallDialog(
     game: Game,
@@ -624,7 +624,7 @@ fn InstallDialog(
     on_close: EventHandler<()>,
 ) -> Element {
     let branches = use_resource({
-        let account_id = account_id;
+        let account_id = account_id.clone();
         let product_id = game.id.clone();
         move || {
             let account_id = account_id.clone();
@@ -638,7 +638,9 @@ fn InstallDialog(
         }
     });
     let mut chosen = use_signal(|| None::<String>);
-    let library_path = crate::core::library().ok().map(|library| library.common());
+    let library_path = crate::core::library_for_account(&account_id)
+        .ok()
+        .map(|library| library.common());
 
     rsx! {
         div {

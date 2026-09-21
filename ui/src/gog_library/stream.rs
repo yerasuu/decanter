@@ -7,11 +7,14 @@
 //! list takes seconds, the catalog metadata takes a minute. Both write
 //! into `games` as they go regardless — the cache still gets each group as
 //! soon as it lands, so the app has something to seed from on a later
-//! restart — but `state` only reaches `Loaded` once this session's own
-//! first cycle has done *both* passes (see the bottom of the loop below).
-//! Until then `Library` keeps the whole view behind a loading screen
-//! instead of mounting it against a list that's still filling in under
-//! it, the way Steam's own "Syncing..." splash does.
+//! restart. For an account with nothing cached yet, `super::use_gog_library`
+//! leaves `state` at `Loading` until this first cycle has done *both*
+//! passes (see the bottom of the loop below), and `Library` keeps the
+//! whole view behind a loading screen until then instead of mounting it
+//! against a list that's still filling in under it, the way Steam's own
+//! "Syncing..." splash does. An account that already had a cache skips
+//! straight to `Loaded` before this even starts — this loop's writes just
+//! update what's already on screen.
 //!
 //! This replaced a `Library.WatchGames` stream. There's no server pushing
 //! updates any more, so it re-fetches on an interval instead — the only
@@ -60,12 +63,20 @@ pub(super) async fn watch_games(
         // that's settled by pruning once the fetch is whole, below.
         let mut shown: Vec<LibraryEntry> = games.peek().clone();
         tracing::debug!(account_id, "listing gog games");
-        let listed = decanter_gog::list_games(&account_id, &mut |batch| {
-            absorb(&account_id, confirmed_new, &mut shown, batch);
-            games.set(shown.clone());
-            on_update();
-        })
-        .await;
+        // Resolved fresh each cycle, not once outside the loop: a library
+        // moved to a new location (see Ajustes) should be picked up by the
+        // very next refresh, not only after this whole watch restarts.
+        let listed = match crate::core::library_for_account(&account_id) {
+            Ok(library) => {
+                decanter_gog::list_games(&library, &account_id, &mut |batch| {
+                    absorb(&account_id, confirmed_new, &mut shown, batch);
+                    games.set(shown.clone());
+                    on_update();
+                })
+                .await
+            }
+            Err(err) => Err(anyhow::anyhow!(err)),
+        };
         let listed_ok = listed.is_ok();
 
         let collected = match listed {

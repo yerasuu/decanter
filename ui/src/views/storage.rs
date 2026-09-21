@@ -41,8 +41,8 @@ pub fn Storage() -> Element {
         total_bytes = total,
         "computed storage usage"
     );
-    let library_path = crate::core::library()
-        .inspect_err(|err| tracing::warn!(error = %err, "failed to resolve library root for storage view"))
+    let library_path = crate::core::library_for_profile(&profile_id)
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to resolve library root for storage view"))
         .ok()
         .map(|library| library.root().to_path_buf());
     let disk = library_path.as_deref().and_then(decanter_core::disk_usage);
