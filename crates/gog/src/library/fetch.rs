@@ -131,7 +131,7 @@ pub async fn list_games(
                 seen.insert(product.id);
                 let mut entry = base_entry(product.id, Some(&product));
                 entry.library_rank = Some((start + index) as i64);
-                entry
+                with_install_state(library, account_id, entry)
             })
             .collect();
         entries.extend(batch.iter().cloned());
@@ -151,7 +151,7 @@ pub async fn list_games(
     let leftovers: Batch = owned_ids
         .into_iter()
         .filter(|id| !seen.contains(id))
-        .map(|id| base_entry(id, None))
+        .map(|id| with_install_state(library, account_id, base_entry(id, None)))
         .collect();
     if !leftovers.is_empty() {
         tracing::debug!(
@@ -162,12 +162,15 @@ pub async fn list_games(
         on_batch(leftovers);
     }
 
-    let result: Vec<LibraryEntry> = entries
-        .into_iter()
-        .map(|entry| with_install_state(library, account_id, entry))
-        .collect();
-    tracing::info!(account_id, game_count = result.len(), "GOG library listing finished");
-    Ok(result)
+    // Already install-state-annotated above, per batch — not redone here:
+    // `absorb` (ui/src/gog_library/stream.rs) wholesale-replaces whatever
+    // it already had shown for an id with exactly what each `on_batch`
+    // call carried, so an entry emitted above without this would have
+    // clobbered a game's just-applied install/uninstall state until pass
+    // two happened to re-emit that same entry for an unrelated reason —
+    // which for an already-fully-cataloged game, it often never does.
+    tracing::info!(account_id, game_count = entries.len(), "GOG library listing finished");
+    Ok(entries)
 }
 
 /// Everything an entry can be without touching GamesDB: GOG's own product

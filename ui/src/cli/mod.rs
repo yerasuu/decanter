@@ -19,7 +19,7 @@ mod install;
 mod launch;
 
 #[derive(Parser)]
-#[command(name = "decanter-tray")]
+#[command(name = "decanter")]
 pub struct Cli {
     #[command(subcommand)]
     pub cmd: Option<Cmd>,

@@ -163,6 +163,11 @@ fn main() {
         cli::run(cmd);
     }
 
+    // Only the GUI path below ever creates a webview, so only it needs
+    // nix-shell's own graphics env restored — see the function's own doc.
+    #[cfg(all(feature = "desktop", target_os = "linux"))]
+    relaunch_with_nix_env();
+
     // No native title bar: `Navbar`'s own topbar draws the drag region
     // and the minimize/maximize/close controls instead, so there's one
     // bar at the top of the window rather than the OS's plus ours
@@ -171,6 +176,22 @@ fn main() {
     // `with_resizable` is what makes those strips do anything.
     #[cfg(feature = "desktop")]
     {
+        // `Config::with_data_directory` below only reaches WebKitGTK's
+        // indexeddb/localStorage/media-keys storage -- its HSTS enforcer and
+        // favicon database ignore it outright, and its disk cache
+        // (`WebKitCache`, `CacheStorage`) has no override at all in `wry`
+        // (see `wry::webkitgtk::WebContext::new`, which only wires
+        // `base_data_directory`). All of those fall back to GLib's own
+        // `g_get_user_data_dir()`/`g_get_user_cache_dir()` joined with
+        // `g_get_prgname()`, which defaults to `argv[0]`'s basename -- "decanter"
+        // for a plain binary, but the literal AppImage filename (e.g.
+        // "decanter_0.1.0_x86_64.AppImage") when launched that way. Pinning it
+        // here keeps those leftover directories stable across how the binary
+        // is invoked, instead of scattering a fresh pair under
+        // `~/.local/share` and `~/.cache` for every AppImage version.
+        #[cfg(target_os = "linux")]
+        glib::set_prgname(Some("decanter"));
+
         let mut config = dioxus::desktop::Config::new()
             .with_menu(None)
             .with_data_directory(webview_data_dir())
@@ -187,6 +208,79 @@ fn main() {
     }
     #[cfg(not(feature = "desktop"))]
     dioxus::launch(App);
+}
+
+/// Re-execs this same binary once, with the environment WebKitGTK's own
+/// `WebProcess` needs, restored.
+///
+/// `ui`'s own release binary is built under this project's nix-shell (see
+/// `../shell.nix`) — that's also true of the AppImage `dx bundle` produces
+/// from it, since linuxdeploy only bundles this binary's own *linked*
+/// dependencies, never the display stack a webview dlopens at runtime
+/// (mesa's GL/EGL drivers) or the helper process WebKitGTK spawns for its
+/// own content process (`WebKitWebProcess`, resolved by an absolute path
+/// baked into `libwebkit2gtk` itself, not something this crate controls).
+/// Both still come from that exact nix-shell snapshot no matter how the
+/// binary is launched, so outside the shell — a plain double-click, or
+/// the AppImage — `WebKitWebProcess` aborts trying to create its EGL
+/// display: it can't find its own GL/EGL libraries without nix-shell's own
+/// `LD_LIBRARY_PATH`, confirmed the hard way against the exact crash
+/// (`PlatformDisplayDefault::create` aborting with `EGL_BAD_PARAMETER`)
+/// this restores. Same story for glib-networking's TLS backend and CA
+/// bundle: `game.cover_url` (see `views::library::browser`) points
+/// straight at GOG's own CDN, rendered through a plain `<img src>` the
+/// webview fetches itself — without these, that request fails TLS
+/// validation with nothing logged anywhere in reach of this process.
+///
+/// This can't fix that by setting env vars in-process: `std::env::set_var`
+/// is `unsafe` (races with any other thread reading the environment), and
+/// this workspace forbids unsafe code outright. Re-executing with a
+/// corrected environment needs none — `CommandExt::exec` replaces this
+/// process's image in place (same pid, same parent), so anything watching
+/// this process (`dx serve`'s own dev server included) never sees the
+/// difference. The sentinel stops a second relaunch once that's already
+/// applied.
+#[cfg(all(feature = "desktop", target_os = "linux"))]
+fn relaunch_with_nix_env() {
+    use std::os::unix::process::CommandExt as _;
+
+    const SENTINEL: &str = "DECANTER_NIX_ENV_APPLIED";
+    if std::env::var_os(SENTINEL).is_some() {
+        return;
+    }
+    let nix_ld_library_path = env!("DECANTER_NIX_LD_LIBRARY_PATH");
+    if nix_ld_library_path.is_empty() {
+        // Built outside nix-shell (see the README's "Without Nix" section)
+        // — the host's own webkitgtk/mesa are already on its normal
+        // search paths, nothing to restore.
+        return;
+    }
+    let Ok(current_exe) = std::env::current_exe() else {
+        return;
+    };
+    let mut command = std::process::Command::new(current_exe);
+    command
+        .args(std::env::args_os().skip(1))
+        .env(SENTINEL, "1")
+        .env("LD_LIBRARY_PATH", nix_ld_library_path)
+        .env("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+        .env("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+        .env("WEBKIT_DISABLE_SANDBOX", "1")
+        .env("LIBGL_ALWAYS_SOFTWARE", "1")
+        .env("GALLIUM_DRIVER", "llvmpipe");
+    let nix_gio_extra_modules = env!("DECANTER_NIX_GIO_EXTRA_MODULES");
+    if !nix_gio_extra_modules.is_empty() {
+        command.env("GIO_EXTRA_MODULES", nix_gio_extra_modules);
+    }
+    let nix_ssl_cert_file = env!("DECANTER_NIX_SSL_CERT_FILE");
+    if !nix_ssl_cert_file.is_empty() {
+        command.env("SSL_CERT_FILE", nix_ssl_cert_file);
+    }
+    let err = command
+        .exec();
+    // `exec` only returns on failure — fall through and run unpatched
+    // rather than exit outright over a fixup that's best-effort anyway.
+    tracing::warn!(%err, "failed to relaunch with the nix-shell graphics environment restored");
 }
 
 /// Whether closing the window should hide it behind a tray icon instead of
@@ -312,7 +406,17 @@ fn App() -> Element {
                 // Games outlive decanter by design (see `launch::stop_everything`'s
                 // doc) — quitting from the tray is the same "just exit" a normal
                 // window close already was before this setting existed.
-                "decanter-tray-quit" => std::process::exit(0),
+                //
+                // Not `std::process::exit`: see the matching comment in
+                // `launch::exit_with_games_on_signal` on why that races
+                // OpenSSL's own `atexit` cleanup against a still-in-flight
+                // background GOG call. `set_close_behavior` first, since this
+                // branch only exists while the window is set to hide instead
+                // of close.
+                "decanter-tray-quit" => {
+                    desktop.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowCloses);
+                    desktop.close();
+                }
                 _ => {}
             }
         });
@@ -334,7 +438,12 @@ fn App() -> Element {
                         desktop.window.set_visible(true);
                         desktop.window.set_focus();
                     }
-                    Some(tray_linux::TrayCommand::Quit) => std::process::exit(0),
+                    // Not `std::process::exit`: same OpenSSL/atexit race as
+                    // the other tray-quit path above.
+                    Some(tray_linux::TrayCommand::Quit) => {
+                        desktop.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowCloses);
+                        desktop.close();
+                    }
                     None => break,
                 }
             }

@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # Every shared library decanter-tray's desktop build (webkitgtk + gtk3 +
+  # Every shared library decanter's desktop build (webkitgtk + gtk3 +
   # xdotool + wayland + TLS) links against, needed again at runtime —
   # nix-shell doesn't put a package's `lib` dir on the dynamic loader's
   # search path just because it's a buildInput, and `makeLibraryPath`
@@ -42,7 +42,7 @@ let
   # Cross-compiling `crates/hook` into `Galaxy64.dll` -- a real Windows
   # PE, not anything this shell otherwise touches. Kept apart from
   # `runtimeLibs`/`buildInputs` above, which are all about running
-  # decanter-tray itself on Linux.
+  # decanter itself on Linux.
   mingw = pkgs.pkgsCross.mingwW64;
 in
 pkgs.mkShell {
@@ -70,6 +70,22 @@ pkgs.mkShell {
   # without this failed with "cannot find -l:libpthread.a". `windows.pthreads`
   # is nixpkgs' separate winpthreads package that actually has it.
   CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-L ${mingw.windows.pthreads}/lib";
+
+  # `mkShell` pulls in its own stdenv gcc even though nothing above lists
+  # it as a buildInput, so the native x86_64-linux build links against
+  # *this* glibc too -- its ELF interpreter ends up hardcoded to this
+  # store path, e.g. `/nix/store/.../glibc-.../lib/ld-linux-x86-64.so.2`.
+  # That path only exists on this machine: a `cargo build --release`
+  # binary, or the same binary once linuxdeploy bundles it into an
+  # AppImage, fails to even exec elsewhere (glibc's own .so files are
+  # never bundled -- linuxdeploy's own exclude-list drops them on
+  # purpose, expecting the host's). Forcing the standard FHS loader path
+  # here instead is what every non-Nix build already gets for free, and
+  # is safe to run under this shell too: the host's own ld.so pairs with
+  # its own libc.so.6, and glibc keeps forward compatibility, so a host
+  # glibc equal to or newer than this one still satisfies every symbol
+  # version the binary was linked against.
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-Wl,--dynamic-linker=/lib64/ld-linux-x86-64.so.2";
 
   # `libxdo` (from xdotool) is linked via a plain `-lxdo` with no matching
   # `-L` from its build script, unlike webkitgtk's, which pkg-config

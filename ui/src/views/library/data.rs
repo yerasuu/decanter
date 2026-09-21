@@ -29,7 +29,7 @@ pub(super) enum PollStatus {
 }
 
 /// Hits the GOG API and refreshes the cache — the thing that used to
-/// require running `decanter-tray achievements` by hand.
+/// require running `decanter achievements` by hand.
 pub(super) async fn poll_achievements(account_id: String, product_id: String) -> Result<(), String> {
     tracing::debug!(account_id = %account_id, product_id = %product_id, "polling gog for achievement updates");
     let mut db = crate::achv_try!(Db::open(decanter_core::default_db_path()).map_err(|err| err.to_string()).inspect_err(

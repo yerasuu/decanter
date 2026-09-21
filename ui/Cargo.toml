@@ -1,8 +1,9 @@
 [package]
-name = "decanter-tray"
+name = "decanter"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+build = "build.rs"
 
 [lints]
 workspace = true
@@ -30,6 +31,7 @@ rfd = "0.17.2"
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3.6"
 image = "0.25.10"
+glib = "0.18.5"
 
 [features]
 default = ["desktop"]

@@ -243,7 +243,21 @@ pub fn exit_with_games_on_signal() {
             _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
         }
         stop_everything().await;
-        std::process::exit(0);
+
+        // Not `std::process::exit` -- that tears the process down while other
+        // tokio worker threads (a still-in-flight GOG library fetch, say) may
+        // still be inside OpenSSL, racing its own `atexit` cleanup and
+        // segfaulting in `OPENSSL_cleanup` (confirmed via coredumpctl: SIGSEGV
+        // in `ossl_lib_ctx_default_deinit`, concurrent with a `spawn_blocking`
+        // GOG session call). Force-closing the window instead lets dioxus's
+        // event loop exit normally, so its own `tokio::runtime::Runtime` gets
+        // dropped the ordinary way -- which blocks until outstanding
+        // `spawn_blocking` work finishes, so nothing is still touching OpenSSL
+        // by the time the process actually exits. `set_close_behavior` first:
+        // close-to-tray mode leaves this window set to hide instead of close.
+        let window = dioxus::desktop::window();
+        window.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowCloses);
+        window.close();
     });
 }
 

@@ -1468,6 +1468,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "decanter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "decanter-core",
+ "decanter-gog",
+ "decanter-runtime",
+ "dioxus",
+ "dirs 7.0.0",
+ "glib",
+ "image",
+ "ksni",
+ "open",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "decanter-core"
 version = "0.1.0"
 dependencies = [
@@ -1516,30 +1541,6 @@ dependencies = [
  "reqwest 0.12.28",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "decanter-tray"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "decanter-core",
- "decanter-gog",
- "decanter-runtime",
- "dioxus",
- "dirs 7.0.0",
- "image",
- "ksni",
- "open",
- "rfd",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

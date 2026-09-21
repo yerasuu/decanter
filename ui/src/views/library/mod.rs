@@ -95,7 +95,7 @@ pub fn Library() -> Element {
     });
     let selected_account_id = selected_game.as_ref().map(|game| game.account_id.clone());
 
-    // Selecting a game used to show only whatever `decanter-tray
+    // Selecting a game used to show only whatever `decanter
     // achievements` had last cached, by hand. Poll GOG live right here
     // instead — cache still shows instantly, this just refreshes it. The
     // status (not just the resulting cache) is tracked so the empty case
