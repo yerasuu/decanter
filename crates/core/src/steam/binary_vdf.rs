@@ -142,11 +142,22 @@ const TYPE_INT: u8 = 0x02;
 const TYPE_END: u8 = 0x08;
 
 /// Encodes `root` under `root_key` as Steam writes `shortcuts.vdf`.
+///
+/// The file has one more closing byte than it looks like it should: `root`
+/// is written as if it were the single entry of an implicit, keyless
+/// level-0 object — `root_key`'s own open/children/close, *then* one more
+/// [`TYPE_END`] closing that outer, never-opened object. Confirmed against
+/// the reference Python `vdf` library's `_binary_dump_gen`, whose trailing
+/// `yield BIN_END` runs once per call regardless of nesting depth — a
+/// version of this file missing that last byte is exactly what a real
+/// Steam client logs `CSteamDoc::LoadShortcuts: failed to load shortcut
+/// file` against.
 #[must_use]
 #[inline]
 pub fn encode(root_key: &str, root: &Value) -> Vec<u8> {
     let mut out = Vec::new();
     write_value(&mut out, root_key, root);
+    out.push(TYPE_END);
     out
 }
 
@@ -192,6 +203,12 @@ pub fn decode(bytes: &[u8]) -> Result<(String, Value), Error> {
     }
     let key = cursor.read_cstr()?;
     let value = read_value(&mut cursor)?;
+    // The implicit level-0 object's own closing byte — see `encode`'s doc
+    // for why this isn't just `value`'s own closing `TYPE_END`.
+    let closing = cursor.read_u8()?;
+    if closing != TYPE_END {
+        return Err(Error::UnknownType(closing));
+    }
     Ok((key, value))
 }
 
@@ -290,8 +307,25 @@ mod tests {
         expected.extend_from_slice(&7_i32.to_le_bytes());
         expected.push(0x08); // closes "0"
         expected.push(0x08); // closes "shortcuts"
+        expected.push(0x08); // closes the implicit level-0 object itself
 
         assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn decode_rejects_a_file_missing_the_final_top_level_close() {
+        // The exact bug that made a real Steam client log
+        // `CSteamDoc::LoadShortcuts: failed to load shortcut file` and
+        // silently drop the entry: one `TYPE_END` short at the very end.
+        let mut entry = Value::map();
+        entry.push("appid", 7_i32);
+        let mut root = Value::map();
+        root.push("0", entry);
+
+        let mut bytes = encode("shortcuts", &root);
+        bytes.pop();
+
+        assert!(matches!(decode(&bytes), Err(Error::UnexpectedEnd)));
     }
 
     #[test]

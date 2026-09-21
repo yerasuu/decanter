@@ -10,17 +10,19 @@
 //! used for scripting and for observing a launch independent of the app.
 
 use anyhow::{Context, bail};
-use decanter_core::{Library, Storefront};
+use decanter_core::Storefront;
 use decanter_runtime::Launch;
 
 use super::report_poll;
 
 pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &str) -> anyhow::Result<()> {
-    let Some(library_path) = Library::default_path() else {
-        tracing::error!("could not resolve the default library path");
-        bail!("could not resolve the default library path");
+    let library = match crate::core::library_for_account(account_id) {
+        Ok(library) => library,
+        Err(err) => {
+            tracing::error!(account_id, %err, "could not resolve library");
+            bail!("could not resolve library: {err}");
+        }
     };
-    let library = Library::new(library_path);
 
     let Some(game) = library.read_manifest(account_id, Storefront::Gog, product_id) else {
         tracing::error!(account_id, product_id, "not installed for this account");
@@ -45,6 +47,14 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     // the actual proxy is a separate crate (decanter-hook).
     let mut launch = Launch::new(install_dir.join(executable), format!("umu-{product_id}")).store("gog");
     launch.dll_overrides.push(("Galaxy64".to_owned(), "n".to_owned()));
+    // Same pin the GUI applies (`crate::launch::start`) — without it this
+    // path falls back to `Proton::Latest`, which lets umu pick whatever
+    // build it wants and can land on a different one than the prefix was
+    // created with. Proton "upgrades" a prefix across builds in place
+    // rather than refusing, corrupting it and making the game crash on
+    // launch (seen firsthand: exit code 3, "Prefix has an invalid
+    // version?!").
+    launch.proton = crate::core::proton_for(&game);
 
     let session = decanter_runtime::start(&prefix, launch)
         .await

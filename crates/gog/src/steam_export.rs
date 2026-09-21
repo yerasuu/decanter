@@ -71,24 +71,30 @@ pub async fn sync_steam_shortcut(
         hero,
     };
 
-    let appid = tokio::task::spawn_blocking(move || {
-        let spec = decanter_core::steam::ShortcutSpec {
-            name: &name,
-            exe: &exe,
-            start_dir: &start_dir,
-        };
-        decanter_core::steam::sync(&steam_root, &user_id, &spec, &artwork)
-    })
-    .await
-    .context("steam shortcut sync worker task panicked")?
-    .context("writing steam shortcut")?;
+    let appid = crate::achv_try!(
+        crate::achv_try!(
+            tokio::task::spawn_blocking(move || {
+                let spec = decanter_core::steam::ShortcutSpec {
+                    name: &name,
+                    exe: &exe,
+                    start_dir: &start_dir,
+                };
+                decanter_core::steam::sync(&steam_root, &user_id, &spec, &artwork)
+            })
+            .await
+            .context("steam shortcut sync worker task panicked")
+        )
+        .context("writing steam shortcut")
+    );
 
     if let Err(err) = tokio::fs::remove_dir_all(&temp_dir).await {
         tracing::debug!(path = %temp_dir.display(), %err, "could not clean up artwork temp dir");
     }
 
-    db.set_steam_shortcut_appid(account_id, Storefront::Gog, &game.game_id, appid)
-        .context("persisting steam shortcut appid")?;
+    crate::achv_try!(
+        db.set_steam_shortcut_appid(account_id, Storefront::Gog, &game.game_id, appid)
+            .context("persisting steam shortcut appid")
+    );
     tracing::info!(account_id, product_id = %game.game_id, appid, "synced steam shortcut");
     Ok(())
 }
@@ -102,10 +108,10 @@ pub async fn sync_steam_shortcut(
 /// Fails if the recorded appid can't be read from `db`, or the shortcut
 /// removal itself fails.
 pub async fn remove_steam_shortcut(db: &Db, account_id: &str, product_id: &str) -> anyhow::Result<()> {
-    let Some(appid) = db
-        .steam_shortcut_appid(account_id, Storefront::Gog, product_id)
-        .context("reading steam shortcut appid")?
-    else {
+    let Some(appid) = crate::achv_try!(
+        db.steam_shortcut_appid(account_id, Storefront::Gog, product_id)
+            .context("reading steam shortcut appid")
+    ) else {
         tracing::debug!(account_id, product_id, "no steam shortcut recorded, nothing to remove");
         return Ok(());
     };
@@ -126,13 +132,19 @@ pub async fn remove_steam_shortcut(db: &Db, account_id: &str, product_id: &str) 
         return Ok(());
     };
 
-    tokio::task::spawn_blocking(move || decanter_core::steam::remove(&steam_root, &user_id, appid))
-        .await
-        .context("steam shortcut removal worker task panicked")?
-        .context("removing steam shortcut")?;
+    crate::achv_try!(
+        crate::achv_try!(
+            tokio::task::spawn_blocking(move || decanter_core::steam::remove(&steam_root, &user_id, appid))
+                .await
+                .context("steam shortcut removal worker task panicked")
+        )
+        .context("removing steam shortcut")
+    );
 
-    db.remove_steam_shortcut_appid(account_id, Storefront::Gog, product_id)
-        .context("clearing steam shortcut appid record")?;
+    crate::achv_try!(
+        db.remove_steam_shortcut_appid(account_id, Storefront::Gog, product_id)
+            .context("clearing steam shortcut appid record")
+    );
     tracing::info!(account_id, product_id, appid, "removed steam shortcut");
     Ok(())
 }
@@ -147,7 +159,9 @@ async fn download_artwork(
     temp_dir: &Path,
     filename_stem: &str,
 ) -> Option<PathBuf> {
-    let url = url?;
+    let Some(url) = url else {
+        return None;
+    };
     let response = match client.get(url).send().await {
         Ok(response) => response,
         Err(err) => {

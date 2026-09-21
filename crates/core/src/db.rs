@@ -201,6 +201,29 @@ pub struct Db {
 /// Guards the one-time reset in [`Db::reset_unbacked_first_seen`].
 const FIRST_SEEN_MIGRATION_SETTING: &str = "first_seen_migration_v1";
 
+/// Whether `table` has been created yet — `pragma_table_info` alone can't
+/// tell a genuinely missing table from one that's just missing a column,
+/// since both return zero rows.
+fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Whether `table` has a column named `column`. Only meaningful once
+/// [`table_exists`] has confirmed the table is actually there.
+fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        [column],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 impl Db {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -211,24 +234,19 @@ impl Db {
         // NOT EXISTS` leaves an old-shaped table alone, so a real
         // incompatible schema change needs an explicit drop first. Local
         // single-user cache — safe to just rebuild rather than migrate rows.
-        let has_new_shape: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('achievement_cache') WHERE name = 'account_id'",
-            [],
-            |row| row.get(0),
-        )?;
-        if has_new_shape == 0 {
+        // Gated on the table actually existing first: `pragma_table_info`
+        // on a table that was never created also returns zero rows, same
+        // as one that's missing the column — without the gate, a brand
+        // new db logged (and "rebuilt") tables that were never there to
+        // begin with.
+        if table_exists(&conn, "achievement_cache")? && !has_column(&conn, "achievement_cache", "account_id")? {
             tracing::info!(
                 table = "achievement_cache",
                 "old-shaped table found, dropping and rebuilding"
             );
             conn.execute_batch("DROP TABLE IF EXISTS achievement_cache;")?;
         }
-        let games_cache_has_new_shape: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('games_cache') WHERE name = 'kind'",
-            [],
-            |row| row.get(0),
-        )?;
-        if games_cache_has_new_shape == 0 {
+        if table_exists(&conn, "games_cache")? && !has_column(&conn, "games_cache", "kind")? {
             tracing::info!(table = "games_cache", "old-shaped table found, dropping and rebuilding");
             conn.execute_batch("DROP TABLE IF EXISTS games_cache;")?;
         }
@@ -237,12 +255,7 @@ impl Db {
         // column at all, so the detail pane fell back to `cover_url` (or
         // nothing) for every cached row until the next live fetch overwrote
         // it. Same drop-and-rebuild as above, not a row migration.
-        let games_cache_has_background_url: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('games_cache') WHERE name = 'background_url'",
-            [],
-            |row| row.get(0),
-        )?;
-        if games_cache_has_background_url == 0 {
+        if table_exists(&conn, "games_cache")? && !has_column(&conn, "games_cache", "background_url")? {
             tracing::info!(
                 table = "games_cache",
                 "table missing background_url column, dropping and rebuilding"
@@ -254,12 +267,7 @@ impl Db {
         // group several accounts, so the cache has to key by account
         // instead. Same drop-and-rebuild as above, not a row migration.
         for table in ["games_cache", "favorites", "playtime", "hidden"] {
-            let has_account_id: i64 = conn.query_row(
-                &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = 'account_id'"),
-                [],
-                |row| row.get(0),
-            )?;
-            if has_account_id == 0 {
+            if table_exists(&conn, table)? && !has_column(&conn, table, "account_id")? {
                 tracing::info!(table, "table missing account_id column, dropping and rebuilding");
                 conn.execute_batch(&format!("DROP TABLE IF EXISTS {table};"))?;
             }
@@ -267,6 +275,20 @@ impl Db {
 
         conn.execute_batch(SCHEMA)?;
         tracing::debug!("applied schema");
+
+        // Additive, unlike the drop-and-rebuild migrations above: `profiles`
+        // holds real user data (which accounts are grouped where), not a
+        // cache, so a missing column gets a column, never a dropped table.
+        let profiles_has_library_path: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('profiles') WHERE name = 'library_path'",
+            [],
+            |row| row.get(0),
+        )?;
+        if profiles_has_library_path == 0 {
+            tracing::info!(table = "profiles", "adding library_path column");
+            conn.execute_batch("ALTER TABLE profiles ADD COLUMN library_path TEXT;")?;
+        }
+
         let db = Self { conn };
         db.reset_unbacked_first_seen()?;
         tracing::debug!(path = %path.display(), "db opened");

@@ -2,7 +2,7 @@
 //! [`super::list_games`] already returned. See the module docs on
 //! [`super`] for how this fits with [`super::fetch`].
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use futures_util::StreamExt;
 
@@ -72,7 +72,6 @@ pub async fn enrich_games(
     .buffered(ENRICH_CONCURRENCY);
 
     let mut all: Vec<LibraryEntry> = Vec::new();
-    let mut unindexed: HashSet<usize> = HashSet::new();
     let mut batch: Batch = Vec::with_capacity(ENRICH_BATCH);
     while let Some((entry, indexed)) = resolved.next().await {
         // Fine-grained per-entry step inside a stream that can churn through
@@ -85,8 +84,6 @@ pub async fn enrich_games(
                 on_batch(std::mem::take(&mut batch));
                 batch.reserve(ENRICH_BATCH);
             }
-        } else {
-            unindexed.insert(all.len());
         }
         all.push(entry);
         on_progress(all.len(), total);
@@ -95,7 +92,7 @@ pub async fn enrich_games(
         on_batch(batch);
     }
 
-    apply_products(&mut all, &unindexed, &http, on_batch).await;
+    apply_products(&mut all, &http, on_batch).await;
 
     // Best-effort: an undocumented endpoint going quiet should cost the
     // purchase dates, not the library. Narrower than the ranking from
@@ -141,21 +138,19 @@ pub async fn enrich_games(
     tracing::info!(account_id, game_count, dated_count, "GOG library enrichment finished");
 }
 
-/// Step two: GOG's own product API for everything GamesDB didn't index —
-/// DLC, bundles, and games it never catalogued.
+/// Step two: GOG's own product API, for every entry — the category
+/// correction it carries applies regardless of GamesDB coverage, and it's
+/// also the only source for DLC/bundle parentage and for any field
+/// (background art, most often) a GamesDB-indexed entry's own release
+/// record still left blank.
 ///
 /// Asked in batches of [`crate::product::BATCH`]. One request per entry
-/// turned a few hundred unindexed products into a few hundred round
-/// trips, which on a real library was the slowest thing in the whole
-/// fetch.
-async fn apply_products(
-    all: &mut [LibraryEntry],
-    unindexed: &HashSet<usize>,
-    http: &reqwest::Client,
-    on_batch: &mut impl FnMut(Batch),
-) {
-    // Every entry, not just the unindexed ones: a base game GamesDB
-    // covered perfectly is still the only place its DLC are listed.
+/// turned a few hundred products into a few hundred round trips, which on
+/// a real library was the slowest thing in the whole fetch.
+async fn apply_products(all: &mut [LibraryEntry], http: &reqwest::Client, on_batch: &mut impl FnMut(Batch)) {
+    // Every entry: a base game GamesDB covered perfectly is still the only
+    // place its DLC are listed, and its own release record can still be
+    // missing a field GOG's product API has.
     let every: Vec<usize> = (0..all.len()).collect();
     let mut parents: HashMap<String, String> = HashMap::new();
 
@@ -186,9 +181,11 @@ async fn apply_products(
             // as `isGame: false`, and GamesDB having catalogued one says
             // nothing about that.
             let mut changed = apply_product_facts(&mut all[index], &product);
-            // Metadata, on the other hand, only fills holes GamesDB left.
-            if unindexed.contains(&index) {
-                apply_product(&mut all[index], product);
+            // Metadata only fills holes GamesDB left — run unconditionally
+            // rather than gating on `unindexed`, since an indexed entry can
+            // still be missing a single field (e.g. no `background` on its
+            // GamesDB release) that this alone can fill.
+            if apply_product(&mut all[index], product) {
                 changed = true;
             }
             if changed {
@@ -247,7 +244,11 @@ async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, http: &reqwest::
         game.title = title;
     }
     game.description = release.summary.as_ref().and_then(Localized::resolve);
-    game.icon_url = release.icon.as_ref().map(Image::resolve).or(game.icon_url.take());
+    // GamesDB's `icon` field is often a landscape crop rather than a real
+    // square icon, so a base icon GOG's own owned-products listing already
+    // set is kept in preference to it — only fills the gap when there was
+    // none yet.
+    game.icon_url = game.icon_url.take().or(release.icon.as_ref().map(Image::resolve));
     // GamesDB's portrait crop is a real cover; GOG's product shot is
     // square, so prefer the former when it exists.
     game.cover_url = release
@@ -282,24 +283,31 @@ async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, http: &reqwest::
 /// Only ever adds. GOG's owned-products listing already supplied a title
 /// and art for most entries, and this must not overwrite a good value
 /// with a worse one — the exception is a title that is still just the
-/// numeric id, which is not a title at all.
-fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) {
+/// numeric id, which is not a title at all. Returns whether anything was
+/// actually filled, so a caller isn't left re-emitting entries that gained
+/// nothing.
+fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> bool {
+    let mut changed = false;
     if let Some(title) = product.title.filter(|title| !title.trim().is_empty())
         && entry.game.title == entry.game.id
     {
         entry.game.title = title;
+        changed = true;
     }
     if entry.game.description.is_none()
         && let Some(lead) = product.description.lead
     {
         let text = crate::product::html_to_text(&lead);
         entry.game.description = (!text.is_empty()).then_some(text);
+        changed = changed || entry.game.description.is_some();
     }
     if entry.game.release_date.is_none() {
         entry.game.release_date = product.release_date.as_deref().and_then(gamesdb::parse_release_date);
+        changed = changed || entry.game.release_date.is_some();
     }
     if entry.game.background_url.is_none() {
         entry.game.background_url = product.images.background.as_deref().and_then(crate::product::image_url);
+        changed = changed || entry.game.background_url.is_some();
     }
     if entry.game.icon_url.is_none() {
         entry.game.icon_url = product
@@ -308,7 +316,9 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) {
             .as_deref()
             .or(product.images.logo.as_deref())
             .and_then(crate::product::image_url);
+        changed = changed || entry.game.icon_url.is_some();
     }
+    changed
 }
 
 /// Applies the two facts only GOG's product record carries — what kind of
