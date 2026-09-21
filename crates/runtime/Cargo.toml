@@ -9,11 +9,19 @@ workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
+decanter-core = { path = "../core" }
 futures-util = "0.3.34"
 nix = { version = "0.31.3", default-features = false, features = ["signal"] }
-tokio = { version = "1.53.1", features = ["process", "time"] }
+# `default-tls` pulls in native-tls, which links the system's OpenSSL —
+# rustls-tls is pure Rust, no system TLS library to find at build or link time.
+reqwest = { version = "0.12", default-features = false, features = [
+    "stream",
+    "rustls-tls",
+    "http2",
+    "system-proxy",
+] }
+tokio = { version = "1.53.1", features = ["process", "time", "fs", "io-util"] }
 tracing = "0.1.44"
 
 [dev-dependencies]
-decanter-core = { path = "../core" }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }

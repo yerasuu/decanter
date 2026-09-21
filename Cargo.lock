@@ -1513,6 +1513,7 @@ dependencies = [
  "decanter-core",
  "futures-util",
  "nix",
+ "reqwest 0.12.28",
  "tokio",
  "tracing",
 ]
