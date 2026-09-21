@@ -8,6 +8,7 @@
 //! and compared. No re-download, no CDN chunk URLs, until something
 //! actually needs fixing.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -15,6 +16,7 @@ use anyhow::Context;
 use decanter_core::Storefront;
 
 use super::plan::{manifest_relative_path, resolve_depot_files};
+use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
 
 /// One file that didn't match its manifest.
 #[derive(Debug, Clone)]
@@ -171,7 +173,7 @@ async fn verify_content(
                 let path = install_root.join(&relative_path);
                 checked += 1;
 
-                let reason = match verify_file(&path, &file.chunks) {
+                let reason = match verify_file(&verification_target(&path), &file.chunks) {
                     Ok(true) => {
                         tracing::debug!(relative_path = %relative_path.display(), "file verified ok");
                         continue;
@@ -197,6 +199,33 @@ async fn verify_content(
     report.files_checked += checked;
     report.broken.extend(broken);
     Ok(())
+}
+
+/// Where to actually read `path`'s bytes from for verification.
+///
+/// `Galaxy64.dll` is the one manifest file this pipeline installs and
+/// then lets something else legitimately replace: decanter's own
+/// achievement hook swaps in a proxy under that exact name and renames
+/// the real DLL to [`HOOKED_GALAXY_DLL_BACKUP`] beside it. Without this
+/// redirect, every verify after the hook installs would report a
+/// permanent, "unrepairable" mismatch on a file that is deliberately not
+/// what the manifest describes — and `repair` would silently overwrite
+/// decanter's own hook with the genuine DLL, undoing it. The renamed copy
+/// is what still has to match the manifest; if it isn't there, `path` is
+/// checked as normal, which also covers a game the hook was never
+/// installed for.
+fn verification_target(path: &Path) -> Cow<'_, Path> {
+    let is_galaxy_dll = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("Galaxy64.dll"));
+    if !is_galaxy_dll {
+        return Cow::Borrowed(path);
+    }
+    let Some(backup) = path.parent().map(|parent| parent.join(HOOKED_GALAXY_DLL_BACKUP)) else {
+        return Cow::Borrowed(path);
+    };
+    if backup.is_file() { Cow::Owned(backup) } else { Cow::Borrowed(path) }
 }
 
 /// Reads `path` in the manifest's own chunk boundaries and hashes each
@@ -346,4 +375,42 @@ pub async fn repair(
     }
     tracing::info!(product_id, "repair completed");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("decanter-verify-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn verification_target_leaves_an_ordinary_file_alone() {
+        let dir = temp_dir("ordinary");
+        let path = dir.join("Betrayer.exe");
+        assert_eq!(verification_target(&path), Cow::Borrowed(path.as_path()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verification_target_redirects_to_the_backup_when_the_hook_is_installed() {
+        let dir = temp_dir("hooked");
+        let dll = dir.join("Galaxy64.dll");
+        let backup = dir.join(HOOKED_GALAXY_DLL_BACKUP);
+        std::fs::write(&backup, b"the real dll").expect("write backup");
+        assert_eq!(verification_target(&dll), Cow::Owned::<Path>(backup));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verification_target_checks_galaxy64_directly_when_no_hook_is_installed() {
+        let dir = temp_dir("unhooked");
+        let dll = dir.join("Galaxy64.dll");
+        assert_eq!(verification_target(&dll), Cow::Borrowed(dll.as_path()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

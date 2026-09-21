@@ -44,6 +44,19 @@ pub async fn start(account_id: String, game: InstalledGame, mut running: Running
     let mut launch = Launch::new(executable, format!("umu-{}", game.game_id)).store("gog");
     launch.proton = crate::core::proton_for(&game);
 
+    // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL
+    // to patch) reads both of these itself; setting them here is what
+    // lets it write somewhere decanter actually knows to look afterward,
+    // and tag what it wrote with the right product id.
+    let achievement_log = (game.storefront == decanter_core::Storefront::Gog).then(|| {
+        let path = decanter_gog::hook::achievement_log_path(&prefix);
+        launch.env.push(("DECANTER_PRODUCT_ID".to_owned(), game.game_id.clone()));
+        launch
+            .env
+            .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), path.display().to_string()));
+        path
+    });
+
     let session = match decanter_runtime::start(&prefix, launch).await {
         Ok(session) => session,
         Err(err) => {
@@ -66,7 +79,38 @@ pub async fn start(account_id: String, game: InstalledGame, mut running: Running
 
     sync_cloud_saves_after_exit(&account_id, &game, cloud_save_checkpoint).await;
     record_last_played(&account_id, &game);
+    apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)
+}
+
+/// Folds in whatever decanter-hook recorded this session: a locally
+/// witnessed achievement unlock GOG's own servers never hear about under
+/// Wine, and any failure to install its vtable patch in the first place.
+/// Runs after [`record_last_played`], not before: neither ordering
+/// matters to the other, so this just goes last as the newest addition.
+///
+/// Polls GOG first, same as decanter's own CLI launch path already does
+/// after every session -- [`decanter_gog::hook::process_log`] can only
+/// attach a local unlock to an achievement this game's cache already
+/// knows the name of, so a game whose achievements were never fetched
+/// yet (never opened past its library card) would otherwise lose that
+/// unlock the moment the log is removed, with no cache row to retry it
+/// against later.
+async fn apply_hook_log(account_id: &str, game: &InstalledGame, achievement_log: Option<&std::path::Path>) {
+    let Some(path) = achievement_log else {
+        return;
+    };
+    let Ok(mut db) = decanter_core::Db::open(decanter_core::default_db_path()) else {
+        tracing::debug!(game_id = %game.game_id, "could not open db, decanter-hook log not applied");
+        return;
+    };
+    if let Err(err) = decanter_gog::poll_achievements(&mut db, account_id, &game.game_id).await {
+        tracing::warn!(game_id = %game.game_id, %err, "post-session achievement poll failed");
+    }
+    let applied = decanter_gog::hook::process_log(&db, account_id, &game.game_id, path).await;
+    if applied > 0 {
+        tracing::info!(game_id = %game.game_id, applied, "applied locally-witnessed achievement unlocks");
+    }
 }
 
 /// Pulls cloud saves down before a session starts, if this game has a

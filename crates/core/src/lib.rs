@@ -17,7 +17,7 @@ pub use accounts::Account;
 pub use catalog::{Game, InstallState, Storefront, UnknownStorefront};
 pub use collections::Collection;
 pub use credentials::{KeyringError, delete as delete_session, load as load_session, save as save_session};
-pub use db::{CachedAchievement, CachedGame, Db, Error, Playtime, Result, default_db_path};
+pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result, default_db_path};
 pub use disk::disk_usage;
 pub use library::{InstalledDlc, InstalledGame, Library, MoveProgress};
 pub use profiles::Profile;

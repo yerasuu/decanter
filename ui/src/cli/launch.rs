@@ -42,9 +42,11 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     };
     let prefix = decanter_runtime::Prefix::new(prefix_path);
 
-    // Capa 1 (hook DLL) placeholder: harmless with no decanter-hook.dll
-    // deployed yet, Wine just keeps using the real Galaxy64.dll. Wiring
-    // the actual proxy is a separate crate (decanter-hook).
+    // `n` (native) rather than the default `b` (builtin then native):
+    // makes Wine prefer whatever's actually on disk at `Galaxy64.dll`
+    // over any builtin stub of the same name, which is what makes
+    // decanter-hook's proxy (see `decanter_gog::hook::deploy`, run at
+    // install time) the one that actually loads.
     let mut launch = Launch::new(install_dir.join(executable), format!("umu-{product_id}")).store("gog");
     launch.dll_overrides.push(("Galaxy64".to_owned(), "n".to_owned()));
     // Same pin the GUI applies (`crate::launch::start`) — without it this
@@ -56,6 +58,12 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     // version?!").
     launch.proton = crate::core::proton_for(&game);
 
+    let achievement_log = decanter_gog::hook::achievement_log_path(&prefix);
+    launch.env.push(("DECANTER_PRODUCT_ID".to_owned(), product_id.to_owned()));
+    launch
+        .env
+        .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), achievement_log.display().to_string()));
+
     let session = decanter_runtime::start(&prefix, launch)
         .await
         .context("launching program")?;
@@ -66,5 +74,10 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
 
     tracing::debug!(account_id, product_id, "polling achievements after launch");
     report_poll(decanter_gog::poll_achievements(db, account_id, product_id).await?);
+
+    let applied = decanter_gog::hook::process_log(db, account_id, product_id, &achievement_log).await;
+    if applied > 0 {
+        tracing::info!(product_id, applied, "applied locally-witnessed achievement unlocks");
+    }
     Ok(())
 }

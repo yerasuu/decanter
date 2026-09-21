@@ -55,6 +55,18 @@ pub struct CachedAchievement {
     pub unlocked_at: Option<String>,
 }
 
+/// One `decanter-hook` failure to install its `SetAchievement` patch,
+/// carried home from that game's own JSONL log -- see that crate's
+/// `log::report_diagnostic` for what `stage` and `detail` actually hold.
+/// Kept distinct from a plain trace line because these are exactly the
+/// cases worth going back to adapt `abi_scan` for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HookDiagnostic {
+    pub recorded_at: i64,
+    pub stage: String,
+    pub detail: String,
+}
+
 /// Self-tracked: nothing upstream reports play sessions, so
 /// `seconds_total` accumulates whatever `decanter` itself measured between a
 /// launch it made and the process exiting.
@@ -114,6 +126,16 @@ CREATE TABLE IF NOT EXISTS achievement_cache (
     unlocked          INTEGER NOT NULL DEFAULT 0,
     unlocked_at       TEXT,
     PRIMARY KEY (account_id, storefront, product_id, achievement_key)
+);
+
+CREATE TABLE IF NOT EXISTS hook_diagnostics (
+    account_id  TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    product_id  TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,
+    stage       TEXT NOT NULL,
+    detail      TEXT NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id, recorded_at, stage)
 );
 
 CREATE TABLE IF NOT EXISTS favorites (
@@ -660,6 +682,102 @@ impl Db {
             "upserted achievements"
         );
         Ok(newly_unlocked)
+    }
+
+    /// Marks one already-cached achievement unlocked from decanter-hook's
+    /// own local record, for a game whose real `Galaxy64.dll` never gets
+    /// to tell GOG's servers -- there's no Galaxy client under Wine to
+    /// relay it, so GOG's own achievement API never learns about it
+    /// either, and a normal [`Self::upsert_achievements`] sync would keep
+    /// reporting it locked forever.
+    ///
+    /// Update-only, deliberately: an insert would need a `name` this
+    /// call site never has (the hook only ever sees the raw achievement
+    /// key, not its display metadata). Returns whether a row actually
+    /// matched -- `false` means this game's achievement list was never
+    /// synced from GOG yet, so there was nothing to mark; the caller is
+    /// expected to run this again after the next real sync.
+    pub fn mark_local_unlock(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+        achievement_key: &str,
+        unlocked_at: &str,
+    ) -> Result<bool> {
+        let updated = self.conn.execute(
+            "UPDATE achievement_cache SET unlocked = 1, unlocked_at = ?5
+             WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3 AND achievement_key = ?4
+                   AND unlocked = 0",
+            params![account_id, storefront as i32, product_id, achievement_key, unlocked_at],
+        )?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            achievement_key,
+            matched = updated > 0,
+            "applied a local (hook-reported) achievement unlock"
+        );
+        Ok(updated > 0)
+    }
+
+    /// Records one hook-installation failure so it can be reviewed later
+    /// instead of only ever existing inside a game's own, ephemeral log
+    /// file.
+    pub fn record_hook_diagnostic(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+        diagnostic: &HookDiagnostic,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO hook_diagnostics (account_id, storefront, product_id, recorded_at, stage, detail)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(account_id, storefront, product_id, recorded_at, stage) DO NOTHING",
+            params![
+                account_id,
+                storefront as i32,
+                product_id,
+                diagnostic.recorded_at,
+                diagnostic.stage,
+                diagnostic.detail,
+            ],
+        )?;
+        tracing::warn!(
+            account_id,
+            ?storefront,
+            product_id,
+            stage = diagnostic.stage,
+            detail = diagnostic.detail,
+            "decanter-hook failed to install for this game"
+        );
+        Ok(())
+    }
+
+    /// Every recorded hook failure for one game, newest first -- what a
+    /// developer adapting `abi_scan` for a new `Galaxy64.dll` shape would
+    /// pull up.
+    pub fn list_hook_diagnostics(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+    ) -> Result<Vec<HookDiagnostic>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT recorded_at, stage, detail FROM hook_diagnostics
+             WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3
+             ORDER BY recorded_at DESC",
+        )?;
+        let rows = stmt.query_map(params![account_id, storefront as i32, product_id], |row| {
+            Ok(HookDiagnostic {
+                recorded_at: row.get(0)?,
+                stage: row.get(1)?,
+                detail: row.get(2)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)
     }
 
     pub fn is_favorite(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<bool> {

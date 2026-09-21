@@ -39,14 +39,37 @@ let
     gst_all_1.gst-plugins-base   # appsink, para <video>/<audio> del webview
     librsvg                      # loader de SVG para gdk-pixbuf (iconos breeze-dark)
   ];
+  # Cross-compiling `crates/hook` into `Galaxy64.dll` -- a real Windows
+  # PE, not anything this shell otherwise touches. Kept apart from
+  # `runtimeLibs`/`buildInputs` above, which are all about running
+  # decanter-tray itself on Linux.
+  mingw = pkgs.pkgsCross.mingwW64;
 in
 pkgs.mkShell {
-  nativeBuildInputs = [ pkgs.pkg-config ];
+  nativeBuildInputs = [ pkgs.pkg-config mingw.buildPackages.gcc ];
   # `umu-launcher` is a runtime CLI dependency (decanter_runtime spawns
   # `umu-run` by bare name, off PATH), not a linked library, so it's kept
   # out of `runtimeLibs` above -- that list is specifically what needs to
   # land on `LD_LIBRARY_PATH`.
+  #
+  # `mingw.windows.pthreads` is deliberately *not* here: only its store
+  # path (below, as a plain string for `RUSTFLAGS`) is needed. Making it
+  # an actual buildInput puts its headers on this shell's generic C
+  # search paths too -- confirmed the hard way, it broke the *native*
+  # build's own OpenSSL (`curl`'s `static-ssl` feature) by handing its
+  # build script mingw's `pthread.h` instead of glibc's.
   buildInputs = runtimeLibs ++ [ pkgs.umu-launcher ];
+
+  # `rustup target add x86_64-pc-windows-gnu` only installs the target's
+  # std/core; it still needs a real cross linker, which is what the
+  # mingw toolchain above provides.
+  CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "${mingw.buildPackages.gcc}/bin/x86_64-w64-mingw32-gcc";
+  # `windows-gnu` links `-lpthread` unconditionally (it's the threading
+  # model the target expects), but nixpkgs' own mingw gcc doesn't bundle
+  # `libpthread.a` -- confirmed the hard way: linking `decanter-hook`
+  # without this failed with "cannot find -l:libpthread.a". `windows.pthreads`
+  # is nixpkgs' separate winpthreads package that actually has it.
+  CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-L ${mingw.windows.pthreads}/lib";
 
   # `libxdo` (from xdotool) is linked via a plain `-lxdo` with no matching
   # `-L` from its build script, unlike webkitgtk's, which pkg-config

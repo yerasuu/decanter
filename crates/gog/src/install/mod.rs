@@ -303,6 +303,16 @@ async fn install_into(
         tracing::warn!(path = %staging.display(), error = %err, "couldn't remove staging directory after install");
     }
 
+    // Best-effort and after the fact rather than folded into the
+    // download/move above: most installs have nothing to hook at all,
+    // and a failure here (a locked file, an odd permission) shouldn't
+    // undo bytes that already landed correctly.
+    match crate::hook::deploy(&destination_root, &relative_paths).await {
+        Ok(true) => tracing::info!(product_id, "achievement hook deployed"),
+        Ok(false) => {}
+        Err(err) => tracing::warn!(product_id, error = %err, "failed to deploy the achievement hook"),
+    }
+
     // A DLC is recorded on the game it went into. Its own launch
     // executable is not looked for: whatever a DLC ships, the thing you
     // start is still the base game.

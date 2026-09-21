@@ -75,6 +75,17 @@ pub enum Cmd {
         #[arg(long)]
         product_id: String,
     },
+    /// Lists every decanter-hook installation failure recorded for this
+    /// game — the forensic detail `abi_scan` would need to be adapted
+    /// for whatever `Galaxy64.dll` shape this one shipped. Empty either
+    /// means the hook installed fine, or this game has no Galaxy
+    /// integration to hook in the first place.
+    HookDiagnostics {
+        #[arg(long)]
+        account_id: String,
+        #[arg(long)]
+        product_id: String,
+    },
 }
 
 /// Runs one CLI command to completion and exits the process. Called from
@@ -134,6 +145,16 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
         Cmd::CancelInstall { account_id, product_id } => {
             install::cancel(&account_id, &product_id).await;
             println!("cancelled (or nothing was in flight)");
+        }
+        Cmd::HookDiagnostics { account_id, product_id } => {
+            let diagnostics =
+                db.list_hook_diagnostics(&account_id, decanter_core::Storefront::Gog, &product_id)?;
+            if diagnostics.is_empty() {
+                println!("no hook diagnostics recorded for {product_id}");
+            }
+            for diagnostic in diagnostics {
+                println!("{}\t{}\t{}", diagnostic.recorded_at, diagnostic.stage, diagnostic.detail);
+            }
         }
     }
 
