@@ -6,7 +6,8 @@ use std::rc::Rc;
 
 use decanter_core::Profile;
 use gpui::{
-    AnyElement, App, Context, Entity, FontWeight, SharedString, Subscription, Window, div, point, prelude::*, px, rgb,
+    AnyElement, App, Context, Entity, FontWeight, SharedString, StyleRefinement, Subscription, Window, div, point,
+    prelude::*, px, rgb,
 };
 
 use super::chrome;
@@ -92,9 +93,10 @@ impl Shell {
         }
         match page {
             Page::Library => {}
-            Page::Storage => {
-                self.storage.get_or_insert_with(|| cx.new(StorageView::new));
-            }
+            Page::Storage => match &self.storage {
+                Some(storage) => storage.update(cx, StorageView::rescan),
+                None => self.storage = Some(cx.new(StorageView::new)),
+            },
             Page::Downloads => {
                 self.downloads.get_or_insert_with(|| cx.new(DownloadsView::new));
             }
@@ -342,20 +344,23 @@ impl Render for Shell {
                     .child(chrome::window_controls(Rc::clone(&self.on_close))),
             );
 
+        // Cached: a page re-renders when it notifies, not every time a
+        // hover or a tick elsewhere in the window redraws the shell.
+        let page = || StyleRefinement::default().size_full();
         let body: AnyElement = match self.page {
-            Page::Library => self.library.clone().into_any_element(),
-            Page::Storage => self
-                .storage
-                .clone()
-                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
-            Page::Downloads => self
-                .downloads
-                .clone()
-                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
-            Page::Settings => self
-                .settings
-                .clone()
-                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Page::Library => self.library.clone().cached(page()).into_any_element(),
+            Page::Storage => self.storage.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::Downloads => self.downloads.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::Settings => self.settings.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
         };
 
         // A floating popup, not inline in the topbar: the topbar is a fixed

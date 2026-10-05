@@ -44,6 +44,23 @@ pub struct PopupState {
     /// current target; Escape always just closes.
     pub on_submit: Option<Callback>,
     on_cancel: Option<Rc<dyn Fn(&mut App)>>,
+    data: Option<MenuData>,
+}
+
+/// The game menu's sqlite reads, kept for as long as the menu is open.
+#[derive(Clone)]
+struct MenuData {
+    organisation: u32,
+    /// The library's revision: an install or uninstall finishing changes
+    /// what the manifest reads below return.
+    revision: u64,
+    is_fav: bool,
+    is_hidden: bool,
+    collections: super::data::Collections,
+    /// For a single game only: what Jugar would launch, and where its
+    /// files are. Both are manifest reads.
+    launch_target: Option<decanter_core::InstalledGame>,
+    install_path: Option<std::path::PathBuf>,
 }
 
 impl PopupState {
@@ -75,6 +92,7 @@ impl PopupState {
             name,
             on_submit: None,
             on_cancel: None,
+            data: None,
         }
     }
 }
@@ -142,27 +160,22 @@ fn game_menu(
     close: &menu::Dismiss,
     cx: &mut Context<LibraryView>,
 ) -> AnyElement {
-    let games = AppState::get(cx).library.read(cx).games.clone();
     // Each product id in the target carries its own account (two accounts
     // in this profile can each own a copy), so favorites/hidden go through
     // that account, not a single one for the whole menu.
-    let account_for = move |product_id: &str| {
-        games
-            .iter()
-            .find(|entry| entry.game.id == product_id)
-            .map(|entry| entry.game.account_id.clone())
-    };
-    // "Every one of them already is" decides which way a toggle goes, so a
-    // mixed selection moves to the same state rather than inverting each
-    // game independently.
-    let is_fav = target
-        .product_ids
+    let accounts: std::collections::HashMap<String, String> = AppState::get(cx)
+        .library
+        .read(cx)
+        .games
         .iter()
-        .all(|id| account_for(id).is_some_and(|account_id| data::is_favorite(&account_id, id)));
-    let is_hidden = target
-        .product_ids
-        .iter()
-        .all(|id| account_for(id).is_some_and(|account_id| data::hidden_ids(&account_id).contains(id)));
+        .filter(|entry| target.product_ids.contains(&entry.game.id))
+        .map(|entry| (entry.game.id.clone(), entry.game.account_id.clone()))
+        .collect();
+    let account_for = move |product_id: &str| accounts.get(product_id).cloned();
+    // Read once per change to favourites/collections, not on every frame
+    // the menu is open (hovering its items redraws it).
+    let organisation = AppState::get(cx).background.read(cx).organisation;
+    let revision = AppState::get(cx).library.read(cx).revision;
     let single_entry = match target.product_ids.as_slice() {
         [only_id] => AppState::get(cx)
             .library
@@ -173,13 +186,55 @@ fn game_menu(
             .cloned(),
         _ => None,
     };
-    let collections = data::load_collections(profile_id);
+    if state
+        .read(cx)
+        .data
+        .as_ref()
+        .is_none_or(|data| data.organisation != organisation || data.revision != revision)
+    {
+        // "Every one of them already is" decides which way a toggle goes,
+        // so a mixed selection moves to the same state rather than
+        // inverting each game independently.
+        let data = MenuData {
+            is_fav: target
+                .product_ids
+                .iter()
+                .all(|id| account_for(id).is_some_and(|account_id| data::is_favorite(&account_id, id))),
+            is_hidden: target
+                .product_ids
+                .iter()
+                .all(|id| account_for(id).is_some_and(|account_id| data::hidden_ids(&account_id).contains(id))),
+            collections: data::load_collections(profile_id),
+            launch_target: single_entry
+                .as_ref()
+                .filter(|entry| entry.kind == GameKind::Game)
+                .and_then(|entry| resolve_launch_target(&entry.game.account_id, &entry.game)),
+            install_path: single_entry
+                .as_ref()
+                .filter(|entry| entry.kind == GameKind::Game)
+                .and_then(|entry| game_install_path(&entry.game.account_id, &entry.game.id)),
+            organisation,
+            revision,
+        };
+        state.update(cx, |state, _| state.data = Some(data));
+    }
+    let Some(MenuData {
+        is_fav,
+        is_hidden,
+        collections,
+        launch_target,
+        install_path,
+        ..
+    }) = state.read(cx).data.as_ref().map(MenuData::clone)
+    else {
+        return div().into_any_element();
+    };
 
     let mut panel = menu::panel().child(menu::title(target.title.clone()));
     if let Some(entry) = single_entry.filter(|entry| entry.kind == GameKind::Game) {
         panel = panel
-            .children(game_action_item(&entry, close, cx))
-            .children(open_folder_item(&entry, close))
+            .children(game_action_item(&entry, launch_target, close, cx))
+            .children(open_folder_item(install_path, close))
             .child(properties_item(&entry, close))
             .child(menu::separator());
     }
@@ -332,7 +387,12 @@ pub fn auto_tag(text: &str) -> gpui::Div {
 /// Jugar/Instalar/Cancelar/Detener for the one game the menu is on — the
 /// same actions the detail pane's action bar offers, reachable without
 /// first clicking through to it.
-fn game_action_item(entry: &LibraryEntry, close: &menu::Dismiss, cx: &App) -> Option<AnyElement> {
+fn game_action_item(
+    entry: &LibraryEntry,
+    launch_target: Option<decanter_core::InstalledGame>,
+    close: &menu::Dismiss,
+    cx: &App,
+) -> Option<AnyElement> {
     let account_id = entry.game.account_id.clone();
     let background = AppState::get(cx).background.read(cx);
     let status = background.installing.get(&entry.game.id).cloned();
@@ -381,7 +441,7 @@ fn game_action_item(entry: &LibraryEntry, close: &menu::Dismiss, cx: &App) -> Op
         );
     }
 
-    let Some(installed) = resolve_launch_target(&account_id, &entry.game) else {
+    let Some(installed) = launch_target else {
         return Some(
             menu::item("menu-action", false)
                 .opacity(0.5)
@@ -413,8 +473,8 @@ fn game_action_item(entry: &LibraryEntry, close: &menu::Dismiss, cx: &App) -> Op
 
 /// Opens the install directory — needs only the files, not a resolved
 /// launch executable, so it also shows in the "sin ejecutable" case.
-fn open_folder_item(entry: &LibraryEntry, close: &menu::Dismiss) -> Option<AnyElement> {
-    let Some(path) = game_install_path(&entry.game.account_id, &entry.game.id) else {
+fn open_folder_item(install_path: Option<std::path::PathBuf>, close: &menu::Dismiss) -> Option<AnyElement> {
+    let Some(path) = install_path else {
         return None;
     };
     let close = Rc::clone(close);

@@ -14,8 +14,8 @@ use decanter_core::{Game, Storefront};
 use decanter_gog::LibraryEntry;
 use gpui::{
     AnyElement, App, BoxShadow, ClickEvent, Context, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent,
-    MouseButton, MouseDownEvent, ObjectFit, SharedString, Stateful, Subscription, Window, div, img, point, prelude::*,
-    px, rgb,
+    ListAlignment, ListState, MouseButton, MouseDownEvent, ObjectFit, SharedString, Stateful, Subscription, Window,
+    div, img, list, point, prelude::*, px, rgb,
 };
 
 use super::context_menu::{MenuTarget, auto_tag};
@@ -25,7 +25,7 @@ use super::filters::{
     pending_install_ids, sort_entries,
 };
 use super::shelf_popups::ShelfMenuTarget;
-use super::shelves::{self, Shelf};
+use super::shelves;
 use super::{LibraryModel, LibraryPopup};
 use crate::state::{AppState, LibraryState};
 use crate::theme;
@@ -115,16 +115,78 @@ const fn storefront_label(storefront: Storefront) -> &'static str {
     }
 }
 
+type CacheKey = (String, u32, u32);
+
 /// Per-profile sqlite reads, kept until something they depend on moves —
-/// the sidebar re-renders on every artwork arrival and install tick.
+/// the sidebar re-renders on every artwork arrival and install tick. Read
+/// on a background thread; the previous copy stays on screen meanwhile.
 #[derive(Default)]
 struct Cache {
-    key: Option<(String, u32, u32)>,
+    key: Option<CacheKey>,
     favorites: HashSet<String>,
     hidden: HashSet<String>,
     stats: LibraryStats,
     collections: Collections,
     accounts: Vec<(String, String)>,
+}
+
+impl Cache {
+    fn load(key: CacheKey) -> Self {
+        let profile_id = key.0.as_str();
+        Self {
+            favorites: data::favorite_ids_in_profile(profile_id),
+            hidden: data::hidden_ids_in_profile(profile_id),
+            stats: data::library_stats(profile_id),
+            collections: data::load_collections(profile_id),
+            accounts: data::gog_accounts_with_names(profile_id),
+            key: Some(key),
+        }
+    }
+}
+
+/// Everything the list's rows are derived from; the rows are rebuilt only
+/// when one of these moves, not on every render.
+#[derive(PartialEq)]
+struct RowsKey {
+    revision: u64,
+    kind: KindSelection,
+    query: String,
+    filters: Filters,
+    cache: Option<CacheKey>,
+    pending_installs: HashSet<String>,
+    collapsed: HashSet<String>,
+    renaming: Option<String>,
+    state: LibraryState,
+}
+
+struct ShelfHead {
+    shelf_id: String,
+    title: String,
+    collection_id: Option<String>,
+    dynamic: bool,
+    installed: usize,
+    total: usize,
+    collapsed: bool,
+}
+
+/// One line of the virtual list: the shelves flattened, so only the rows
+/// on screen are laid out — and only their icons fetched.
+enum Row {
+    Message(&'static str),
+    Error(String),
+    Rename,
+    Head(ShelfHead),
+    /// `shelf` is the owning collection, so a dragged shelf dims whole.
+    Item {
+        game: Game,
+        installed: bool,
+        shelf: Option<String>,
+    },
+    Empty {
+        shelf: Option<String>,
+    },
+    /// `.library-list`'s 8px bottom padding.
+    Spacer,
 }
 
 /// A game row being dragged onto a collection's header to join it.
@@ -182,6 +244,13 @@ pub struct SidebarView {
     saving: bool,
     save_name: Entity<TextInput>,
     cache: Cache,
+    cache_loading: Option<CacheKey>,
+    rows: Vec<Row>,
+    rows_key: Option<RowsKey>,
+    /// Collections in display order — what a drag-reorder drop needs to
+    /// turn "dropped on this shelf" into a delta.
+    order: Vec<String>,
+    list: ListState,
 }
 
 impl SidebarView {
@@ -222,6 +291,11 @@ impl SidebarView {
             saving: false,
             save_name,
             cache: Cache::default(),
+            cache_loading: None,
+            rows: Vec::new(),
+            rows_key: None,
+            order: Vec::new(),
+            list: ListState::new(0, ListAlignment::Top, px(400.)),
         }
     }
 
@@ -287,7 +361,7 @@ impl SidebarView {
         cx.notify();
     }
 
-    fn refresh_cache(&mut self, profile_id: &str, cx: &App) {
+    fn refresh_cache(&mut self, profile_id: &str, cx: &mut Context<Self>) {
         let background = AppState::get(cx).background.read(cx);
         // Playtime too: otherwise a session's playtime only shows up here
         // after some unrelated re-render.
@@ -296,17 +370,23 @@ impl SidebarView {
             background.organisation,
             background.playtime_generation,
         );
-        if self.cache.key.as_ref() == Some(&key) {
+        if self.cache.key.as_ref() == Some(&key) || self.cache_loading.as_ref() == Some(&key) {
             return;
         }
-        self.cache = Cache {
-            favorites: data::favorite_ids_in_profile(profile_id),
-            hidden: data::hidden_ids_in_profile(profile_id),
-            stats: data::library_stats(profile_id),
-            collections: data::load_collections(profile_id),
-            accounts: data::gog_accounts_with_names(profile_id),
-            key: Some(key),
-        };
+        self.cache_loading = Some(key.clone());
+        let load = cx.background_spawn(async move { Cache::load(key) });
+        cx.spawn(async move |this, cx| {
+            let loaded = load.await;
+            let _ = this.update(cx, |this, cx| {
+                // A newer request supersedes this one.
+                if this.cache_loading == loaded.key {
+                    this.cache_loading = None;
+                    this.cache = loaded;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn set_panel(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -408,16 +488,18 @@ impl SidebarView {
             .gap(px(6.))
             .mb_2()
             .child(
-                Select::new("kind-select", kind_options, self.kind.value())
-                    .style(SelectStyle::Kind)
-                    .full_width()
-                    .on_change(move |value, _, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.kind = KindSelection::from_value(value);
-                            this.persist(cx);
-                            cx.notify();
-                        });
-                    }),
+                div().flex_1().min_w_0().child(
+                    Select::new("kind-select", kind_options, self.kind.value())
+                        .style(SelectStyle::Kind)
+                        .full_width()
+                        .on_change(move |value, _, cx| {
+                            entity.update(cx, |this, cx| {
+                                this.kind = KindSelection::from_value(value);
+                                this.persist(cx);
+                                cx.notify();
+                            });
+                        }),
+                ),
             )
             // Shortcuts to two panel settings that get reached for
             // constantly. They toggle the same state the panel edits, so
@@ -511,30 +593,169 @@ impl SidebarView {
         reason = "one shelf's header, its rename field and its rows, each wired for clicks, menus and \
                   both kinds of drop; splitting it would only scatter the shared captures"
     )]
-    fn shelf(
-        &self,
-        shelf: Shelf,
-        order: &[String],
-        pending_installs: &HashSet<String>,
-        selected: Option<&str>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let shelf_id = shelf.id.clone();
-        let is_collapsed = self.collapsed.contains(&shelf_id);
+    fn rebuild_rows(&mut self, cx: &App) {
+        let state = AppState::get(cx);
+        let library = state.library.read(cx);
+        let key = RowsKey {
+            revision: library.revision,
+            kind: self.kind,
+            query: self.search.read(cx).text().to_lowercase(),
+            filters: self.model.read(cx).filters.clone(),
+            cache: self.cache.key.clone(),
+            // A queued or downloading game should already read as
+            // installed here, not just once the manifest scan catches up.
+            pending_installs: pending_install_ids(&state.background.read(cx).installing),
+            collapsed: self.collapsed.clone(),
+            renaming: self.rename.as_ref().map(|(id, ..)| id.clone()),
+            state: library.state.clone(),
+        };
+        if self.rows_key.as_ref() == Some(&key) {
+            return;
+        }
+        let cache = &self.cache;
+        let mut rows = Vec::new();
+        match &key.state {
+            LibraryState::Idle => rows.push(Row::Message("Elegi un perfil arriba.")),
+            LibraryState::Failed(err) => rows.push(Row::Error(err.clone())),
+            // `Loading` never reaches here — the library page shows its own
+            // full-screen splash for that.
+            LibraryState::Loading | LibraryState::Loaded => {
+                let mut visible: Vec<LibraryEntry> = library
+                    .games
+                    .iter()
+                    .filter(|entry| key.kind.accepts(entry.kind))
+                    .filter(|entry| !cache.hidden.contains(&entry.game.id))
+                    .filter(|entry| {
+                        key.filters.accepts(
+                            entry,
+                            &cache.favorites,
+                            &cache.stats,
+                            &cache.collections,
+                            &key.pending_installs,
+                        )
+                    })
+                    .filter(|entry| key.query.is_empty() || entry.game.title.to_lowercase().contains(&key.query))
+                    .cloned()
+                    .collect();
+                if visible.is_empty() {
+                    rows.push(Row::Message("Sin resultados."));
+                } else {
+                    sort_entries(&mut visible, key.filters.sort, &cache.stats);
+                    let shelves = shelves::build(
+                        &visible,
+                        &cache.collections,
+                        &cache.favorites,
+                        &cache.stats,
+                        &key.pending_installs,
+                    );
+                    for shelf in shelves {
+                        let collapsed = self.collapsed.contains(&shelf.id);
+                        if shelf.collection_id.is_some() && shelf.collection_id == key.renaming {
+                            rows.push(Row::Rename);
+                        }
+                        rows.push(Row::Head(ShelfHead {
+                            installed: shelf.installed_count(&key.pending_installs),
+                            total: shelf.entries.len(),
+                            shelf_id: shelf.id.clone(),
+                            title: shelf.title.clone(),
+                            collection_id: shelf.collection_id.clone(),
+                            dynamic: shelf.dynamic,
+                            collapsed,
+                        }));
+                        if collapsed {
+                            continue;
+                        }
+                        if shelf.entries.is_empty() {
+                            rows.push(Row::Empty {
+                                shelf: shelf.collection_id.clone(),
+                            });
+                        }
+                        for entry in shelf.entries {
+                            rows.push(Row::Item {
+                                installed: is_installed(&entry.game, &key.pending_installs),
+                                game: entry.game,
+                                shelf: shelf.collection_id.clone(),
+                            });
+                        }
+                    }
+                    rows.push(Row::Spacer);
+                }
+            }
+        }
+        self.order = cache
+            .collections
+            .list
+            .iter()
+            .map(|collection| collection.id.clone())
+            .collect();
+        // `splice`, not `reset`: a reset scrolls the list back to the top
+        // on every library batch or filter tick.
+        self.list.splice(0..self.rows.len(), rows.len());
+        self.rows = rows;
+        self.rows_key = Some(key);
+    }
+
+    fn render_row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let Some(row) = self.rows.get(index) else {
+            return div().into_any_element();
+        };
+        let dims = |shelf: &Option<String>| shelf.is_some() && self.dragging_shelf.as_deref() == shelf.as_deref();
+        match row {
+            Row::Message(text) => div()
+                .px(px(14.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .child(*text)
+                .into_any_element(),
+            Row::Error(err) => div().mx(px(14.)).child(theme::error(err.clone())).into_any_element(),
+            Row::Rename => match &self.rename {
+                Some((_, input, _)) => div()
+                    .mx(px(14.))
+                    .mt(px(10.))
+                    .mb(px(2.))
+                    .child(input.clone())
+                    .into_any_element(),
+                None => div().into_any_element(),
+            },
+            Row::Head(head) => {
+                let dragging = dims(&head.collection_id);
+                self.shelf_head(head, cx)
+                    .when(dragging, |head| head.opacity(0.45))
+                    .into_any_element()
+            }
+            Row::Item { game, installed, shelf } => {
+                let selected = self.model.read(cx).selected.clone();
+                self.item(game, *installed, selected.as_deref(), cx)
+                    .when(dims(shelf), |item| item.opacity(0.45))
+                    .into_any_element()
+            }
+            Row::Empty { shelf } => div()
+                .mx(px(14.))
+                .px_3()
+                .py(px(10.))
+                .border_1()
+                .border_dashed()
+                .border_color(rgb(theme::LINE))
+                .rounded(px(theme::RADIUS))
+                .text_color(rgb(theme::TEXT_DIM))
+                .text_size(px(12.))
+                .when(dims(shelf), |empty| empty.opacity(0.45))
+                .child("Vacia")
+                .into_any_element(),
+            Row::Spacer => div().h_2().into_any_element(),
+        }
+    }
+
+    fn shelf_head(&self, shelf: &ShelfHead, cx: &mut Context<Self>) -> Stateful<gpui::Div> {
+        let shelf_id = shelf.shelf_id.clone();
+        let is_collapsed = shelf.collapsed;
         // Games can be dropped only on a collection whose members are a
         // list, not a filter.
         let drop_collection = shelf.collection_id.clone().filter(|_| !shelf.dynamic);
         let reorder_id = shelf.collection_id.clone();
-        let is_dragging_this = reorder_id.is_some() && self.dragging_shelf.as_deref() == reorder_id.as_deref();
-        let installed = shelf.installed_count(pending_installs);
-        let total = shelf.entries.len();
+        let installed = shelf.installed;
+        let total = shelf.total;
         let title: SharedString = shelf.title.clone().into();
-
-        let rename = self
-            .rename
-            .as_ref()
-            .filter(|(id, ..)| shelf.collection_id.as_deref() == Some(id.as_str()))
-            .map(|(_, input, _)| div().mx(px(14.)).mt(px(10.)).mb(px(2.)).child(input.clone()));
+        let order = &self.order;
 
         let mut head = div()
             .id(SharedString::from(format!("shelf-head-{shelf_id}")))
@@ -662,36 +883,7 @@ impl SidebarView {
             }));
         }
 
-        let body = (!is_collapsed).then(|| {
-            if shelf.entries.is_empty() {
-                div()
-                    .mx(px(14.))
-                    .px_3()
-                    .py(px(10.))
-                    .border_1()
-                    .border_dashed()
-                    .border_color(rgb(theme::LINE))
-                    .rounded(px(theme::RADIUS))
-                    .text_color(rgb(theme::TEXT_DIM))
-                    .text_size(px(12.))
-                    .child("Vacia")
-                    .into_any_element()
-            } else {
-                div()
-                    .children(shelf.entries.iter().map(|entry| {
-                        let installed = is_installed(&entry.game, pending_installs);
-                        self.item(&entry.game, installed, selected, cx).into_any_element()
-                    }))
-                    .into_any_element()
-            }
-        });
-
-        div()
-            .when(is_dragging_this, |shelf| shelf.opacity(0.45))
-            .children(rename)
-            .child(head)
-            .children(body)
-            .into_any_element()
+        head
     }
 
     fn item(
@@ -1295,79 +1487,11 @@ impl Render for SidebarView {
         if !cx.has_active_drag() {
             self.dragging_shelf = None;
         }
-        let profile_id = Self::profile(cx);
-        if let Some(profile_id) = profile_id.as_deref() {
-            self.refresh_cache(profile_id, cx);
+        if let Some(profile_id) = Self::profile(cx) {
+            self.refresh_cache(&profile_id, cx);
         }
-        let state = AppState::get(cx).clone();
-        // A queued or downloading game should already read as installed
-        // here, not just once the manifest scan catches up.
-        let pending_installs = pending_install_ids(&state.background.read(cx).installing);
-        let current = self.model.read(cx).filters.clone();
-        let selected = self.model.read(cx).selected.clone();
-        let library_state = state.library.read(cx).state.clone();
-        let query = self.search.read(cx).text().to_lowercase();
-        let kind = self.kind;
-
-        let shelves = {
-            let cache = &self.cache;
-            let mut visible: Vec<LibraryEntry> = state
-                .library
-                .read(cx)
-                .games
-                .iter()
-                .filter(|entry| kind.accepts(entry.kind))
-                .filter(|entry| !cache.hidden.contains(&entry.game.id))
-                .filter(|entry| {
-                    current.accepts(
-                        entry,
-                        &cache.favorites,
-                        &cache.stats,
-                        &cache.collections,
-                        &pending_installs,
-                    )
-                })
-                .filter(|entry| query.is_empty() || entry.game.title.to_lowercase().contains(&query))
-                .cloned()
-                .collect();
-            sort_entries(&mut visible, current.sort, &cache.stats);
-            shelves::build(
-                &visible,
-                &cache.collections,
-                &cache.favorites,
-                &cache.stats,
-                &pending_installs,
-            )
-        };
-        // Collections only, in display order — what a drag-reorder drop
-        // needs to turn "dropped on this shelf" into a delta.
-        let order: Vec<String> = self
-            .cache
-            .collections
-            .list
-            .iter()
-            .map(|collection| collection.id.clone())
-            .collect();
-        let message = |text: &'static str| {
-            div()
-                .px(px(14.))
-                .text_color(rgb(theme::TEXT_MUTED))
-                .child(text)
-                .into_any_element()
-        };
-        let list: Vec<AnyElement> = match library_state {
-            LibraryState::Idle => vec![message("Elegi un perfil arriba.")],
-            LibraryState::Failed(err) => vec![div().mx(px(14.)).child(theme::error(err)).into_any_element()],
-            // `Loading` never reaches here — the library page shows its own
-            // full-screen splash for that.
-            _ if shelves.iter().all(|shelf| shelf.entries.is_empty()) && shelves.is_empty() => {
-                vec![message("Sin resultados.")]
-            }
-            _ => shelves
-                .into_iter()
-                .map(|shelf| self.shelf(shelf, &order, &pending_installs, selected.as_deref(), cx))
-                .collect(),
-        };
+        self.rebuild_rows(cx);
+        let active_filters = self.model.read(cx).filters.active_count();
 
         div()
             .w(px(SIDEBAR_WIDTH))
@@ -1379,15 +1503,14 @@ impl Render for SidebarView {
             .bg(rgb(theme::BG_PANEL_3))
             .border_r_1()
             .border_color(rgb(theme::LINE))
-            .child(self.header(current.active_count(), cx))
+            .child(self.header(active_filters, cx))
             .child(
-                div()
-                    .id("library-list")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .pb_2()
-                    .children(list),
+                list(
+                    self.list.clone(),
+                    cx.processor(|this, index, _, cx| this.render_row(index, cx)),
+                )
+                .flex_1()
+                .min_h_0(),
             )
     }
 }

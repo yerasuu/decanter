@@ -287,7 +287,7 @@ impl RenderOnce for Select {
 
         div()
             .flex()
-            .when(full_width, |select| select.flex_1().w_full())
+            .when(full_width, |select| select.w_full())
             .child(trigger)
             .children(popup)
     }

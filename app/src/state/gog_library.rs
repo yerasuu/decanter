@@ -29,6 +29,18 @@ use gpui::{AsyncApp, Context, Entity, Task, WeakEntity};
 use super::Session;
 use super::cache::{has_synced_before, load_cached_games, save_entry};
 
+/// Raised by `main` once GPUI has returned and before the tokio runtime is
+/// dropped. Each loop drives its own `block_on` on a blocking-pool thread,
+/// and dropping the runtime waits for those threads — so they have to be
+/// told to end first, or the next timer they poll panics on a runtime
+/// that's already shutting down.
+static SHUTDOWN: std::sync::LazyLock<tokio::sync::watch::Sender<bool>> =
+    std::sync::LazyLock::new(|| tokio::sync::watch::Sender::new(false));
+
+pub fn shut_down_fetch_loops() {
+    SHUTDOWN.send_replace(true);
+}
+
 /// Long enough that a full re-resolve never overlaps itself in practice.
 const REFRESH_INTERVAL: Duration = Duration::from_mins(15);
 
@@ -59,6 +71,9 @@ pub struct GogLibrary {
     /// Every account's games, merged and deduped — see [`merge`]. What the
     /// Biblioteca view reads.
     pub games: Vec<LibraryEntry>,
+    /// Bumped on every change to `games`, so views can cache what they
+    /// derive from it instead of re-deriving on every render.
+    pub revision: u64,
     pub state: LibraryState,
     /// "N of M enriched" while pass two runs, `None` otherwise — a rough
     /// progress hint for [`LibraryState::Loading`], not tracked per
@@ -88,6 +103,7 @@ impl GogLibrary {
         .detach();
         let mut this = Self {
             games: Vec::new(),
+            revision: 0,
             state: LibraryState::Idle,
             enrich_progress: None,
             profile: session.read(cx).active_profile.clone(),
@@ -135,6 +151,7 @@ impl GogLibrary {
             entry.game.install_state = install_state;
         }
         self.games = merge(&self.by_account, &self.wanted);
+        self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
 
@@ -154,6 +171,7 @@ impl GogLibrary {
         self.by_account.remove(account_id);
         self.wanted.retain(|wanted| wanted != account_id);
         self.games = merge(&self.by_account, &self.wanted);
+        self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
 
@@ -193,6 +211,7 @@ impl GogLibrary {
 
         if self.wanted.is_empty() {
             self.games.clear();
+            self.revision = self.revision.wrapping_add(1);
             self.state = LibraryState::Idle;
             self.enrich_progress = None;
             cx.notify();
@@ -225,17 +244,19 @@ impl GogLibrary {
             self.tasks.insert(account_id, task);
         }
         self.games = merge(&self.by_account, &self.wanted);
+        self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
 
     /// Replaces one account's raw list and re-merges. `false` once the
     /// account is gone (logged out mid-fetch), so the loop can stop writing.
-    fn store(&mut self, account_id: &str, shown: &[LibraryEntry], cx: &mut Context<Self>) -> bool {
+    fn store(&mut self, account_id: &str, shown: Vec<LibraryEntry>, cx: &mut Context<Self>) -> bool {
         let Some(account_games) = self.by_account.get_mut(account_id) else {
             return false;
         };
-        shown.clone_into(account_games);
+        *account_games = shown;
         self.games = merge(&self.by_account, &self.wanted);
+        self.revision = self.revision.wrapping_add(1);
         cx.notify();
         true
     }
@@ -262,113 +283,169 @@ fn merge(by_account: &HashMap<String, Vec<LibraryEntry>>, order: &[String]) -> V
     merged
 }
 
-/// One account's fetch loop. Ends on its own once the account is forgotten
-/// (its list is gone from [`GogLibrary`]) or the library entity is dropped.
+/// What a fetch loop reports back to the UI thread.
+enum Update {
+    /// The account's whole list as it now stands.
+    Shown(Vec<LibraryEntry>),
+    Progress(usize, usize),
+    Failed(String),
+    /// A cycle finished; `listed` says whether pass one succeeded.
+    CycleDone {
+        listed: bool,
+    },
+}
+
+/// One account's fetch loop, split in two: the fetch itself, the cache
+/// writes and the merging of each batch run on a tokio worker, so a sync
+/// of hundreds of games never stalls the window; this half only applies
+/// what the worker reports. Ends once the account is forgotten or the
+/// library entity is dropped.
 async fn watch_games(account_id: String, this: WeakEntity<GogLibrary>, cx: &mut AsyncApp) {
-    let publish = |shown: &[LibraryEntry], cx: &mut AsyncApp| {
-        this.update(cx, |library, cx| library.store(&account_id, shown, cx))
-            .unwrap_or(false)
+    let Ok(Some(seed)) = this.read_with(cx, |library, _| library.by_account.get(&account_id).cloned()) else {
+        return;
     };
-    loop {
-        // Checked once per cycle, before any of this round's writes land:
-        // a first-ever sync means every row is about to be a fresh INSERT,
-        // and none of them carries evidence of having just been added.
-        let confirmed_new = has_synced_before(&account_id);
-
-        // Pass one merges into whatever is already on screen rather than
-        // starting from empty, so a full cache isn't wiped on every launch
-        // and rebuilt over the next ten seconds. Ownership can still drop —
-        // a refund, a revoked key — but that's settled by pruning once the
-        // fetch is whole, below.
-        let Ok(Some(mut shown)) = this.read_with(cx, |library, _| library.by_account.get(&account_id).cloned()) else {
-            return;
-        };
-        tracing::debug!(account_id, "listing gog games");
-        // Resolved fresh each cycle, not once outside the loop: a library
-        // moved to a new location (see Ajustes) should be picked up by the
-        // very next refresh, not only after this whole loop restarts.
-        let listed = match crate::core::library_for_account(&account_id) {
-            Ok(library) => {
-                decanter_gog::list_games(&library, &account_id, &mut |batch| {
-                    absorb(&account_id, confirmed_new, &mut shown, batch);
-                    publish(&shown, cx);
-                })
-                .await
-            }
-            Err(err) => Err(anyhow::anyhow!(err)),
-        };
-        let listed_ok = listed.is_ok();
-
-        let collected = match listed {
-            Ok(collected) => {
-                tracing::info!(account_id, count = collected.len(), "gog library listed");
-                // A complete listing is the whole truth about what's
-                // owned, so anything it didn't mention isn't any more.
-                prune(&account_id, &mut shown, &collected);
-                if !publish(&shown, cx) {
-                    return;
-                }
-                collected
-            }
-            Err(err) => {
-                // Whatever the cache seeded stays, unpruned: a failed
-                // refresh shouldn't blank a library the user could still
-                // browse, and a partial listing is no evidence of a
-                // dropped entitlement.
-                tracing::warn!(account_id, %err, "gog library listing failed, keeping what was cached");
-                let failed = this.update(cx, |library, cx| {
-                    library.state = LibraryState::Failed(err.to_string());
-                    cx.notify();
-                });
-                if failed.is_err() {
-                    return;
-                }
-                Vec::new()
-            }
-        };
-
-        // Pass two updates entries in place. Everything it does is
-        // best-effort inside, so there's nothing to handle out here.
-        if !collected.is_empty() {
-            tracing::debug!(account_id, count = collected.len(), "enriching gog catalog metadata");
-            // A second handle to the app: both callbacks need one, and they're
-            // never running at the same time.
-            let mut progress_cx = cx.clone();
-            let progress = this.clone();
-            decanter_gog::enrich_games(
-                &account_id,
-                collected,
-                &mut |batch| {
-                    absorb(&account_id, confirmed_new, &mut shown, batch);
-                    publish(&shown, cx);
-                },
-                &mut |done, total| {
-                    let _ = progress.update(&mut progress_cx, |library, cx| {
-                        library.enrich_progress = Some((done, total));
-                        cx.notify();
-                    });
-                },
-            )
-            .await;
-            tracing::debug!(account_id, "gog catalog enrichment finished");
+    let (updates, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+    // `decanter_gog`'s futures aren't `Send` (their batch callbacks are
+    // borrowed closures), so the loop gets a blocking-pool thread of its
+    // own and drives itself there. Dropping `receiver` — this task being
+    // cancelled — is what tells it to stop.
+    let runtime = tokio::runtime::Handle::current();
+    let worker_account = account_id.clone();
+    tokio::task::spawn_blocking(move || runtime.block_on(fetch_loop(worker_account, seed, updates)));
+    // A burst of batches costs one re-render, not one per batch: only the
+    // newest list in each burst is applied.
+    while let Some(first) = receiver.recv().await {
+        let mut burst = vec![first];
+        while let Ok(update) = receiver.try_recv() {
+            burst.push(update);
         }
-
-        // `state` starts as `Loading` for a fresh account (see `reconcile`)
-        // and this is the one place that ever moves it to `Loaded` — on
-        // every later cycle it's already `Loaded`, so this is a no-op.
         let alive = this.update(cx, |library, cx| {
-            library.enrich_progress = None;
-            if listed_ok {
-                tracing::info!(account_id, "gog library ready");
-                library.state = LibraryState::Loaded;
+            let mut latest = None;
+            for update in burst {
+                match update {
+                    Update::Shown(shown) => latest = Some(shown),
+                    Update::Progress(done, total) => library.enrich_progress = Some((done, total)),
+                    Update::Failed(err) => library.state = LibraryState::Failed(err),
+                    Update::CycleDone { listed } => {
+                        library.enrich_progress = None;
+                        // `state` starts as `Loading` for a fresh account
+                        // (see `reconcile`) and this is the one place that
+                        // ever moves it to `Loaded`.
+                        if listed {
+                            tracing::info!(account_id, "gog library ready");
+                            library.state = LibraryState::Loaded;
+                        }
+                    }
+                }
             }
+            let stored = latest.is_none_or(|shown| library.store(&account_id, shown, cx));
             cx.notify();
+            stored
         });
-        if alive.is_err() {
+        if !matches!(alive, Ok(true)) {
             return;
         }
+    }
+}
 
-        tokio::time::sleep(REFRESH_INTERVAL).await;
+async fn fetch_loop(
+    account_id: String,
+    mut shown: Vec<LibraryEntry>,
+    updates: tokio::sync::mpsc::UnboundedSender<Update>,
+) {
+    let send = |update: Update| updates.send(update).is_ok();
+    let mut shutdown = SHUTDOWN.subscribe();
+    loop {
+        // The whole pass is dropped the moment the UI side goes away (the
+        // account forgotten, the app quitting) instead of running on into
+        // a runtime that's shutting down.
+        let cycle = async {
+            // Checked once per cycle, before any of this round's writes land:
+            // a first-ever sync means every row is about to be a fresh INSERT,
+            // and none of them carries evidence of having just been added.
+            let confirmed_new = has_synced_before(&account_id);
+
+            // Pass one merges into whatever is already on screen rather than
+            // starting from empty, so a full cache isn't wiped on every launch
+            // and rebuilt over the next ten seconds. Ownership can still drop —
+            // a refund, a revoked key — but that's settled by pruning once the
+            // fetch is whole, below.
+            tracing::debug!(account_id, "listing gog games");
+            // Resolved fresh each cycle, not once outside the loop: a library
+            // moved to a new location (see Ajustes) should be picked up by the
+            // very next refresh, not only after this whole loop restarts.
+            let listed = match crate::core::library_for_account(&account_id) {
+                Ok(library) => {
+                    decanter_gog::list_games(&library, &account_id, &mut |batch| {
+                        absorb(&account_id, confirmed_new, &mut shown, batch);
+                        send(Update::Shown(shown.clone()));
+                    })
+                    .await
+                }
+                Err(err) => Err(anyhow::anyhow!(err)),
+            };
+            let listed_ok = listed.is_ok();
+
+            let collected = match listed {
+                Ok(collected) => {
+                    tracing::info!(account_id, count = collected.len(), "gog library listed");
+                    // A complete listing is the whole truth about what's
+                    // owned, so anything it didn't mention isn't any more.
+                    prune(&account_id, &mut shown, &collected);
+                    if !send(Update::Shown(shown.clone())) {
+                        return None;
+                    }
+                    collected
+                }
+                Err(err) => {
+                    // Whatever the cache seeded stays, unpruned: a failed
+                    // refresh shouldn't blank a library the user could still
+                    // browse, and a partial listing is no evidence of a
+                    // dropped entitlement.
+                    tracing::warn!(account_id, %err, "gog library listing failed, keeping what was cached");
+                    if !send(Update::Failed(err.to_string())) {
+                        return None;
+                    }
+                    Vec::new()
+                }
+            };
+
+            // Pass two updates entries in place. Everything it does is
+            // best-effort inside, so there's nothing to handle out here.
+            if !collected.is_empty() {
+                tracing::debug!(account_id, count = collected.len(), "enriching gog catalog metadata");
+                decanter_gog::enrich_games(
+                    &account_id,
+                    collected,
+                    &mut |batch| {
+                        absorb(&account_id, confirmed_new, &mut shown, batch);
+                        send(Update::Shown(shown.clone()));
+                    },
+                    &mut |done, total| {
+                        send(Update::Progress(done, total));
+                    },
+                )
+                .await;
+                tracing::debug!(account_id, "gog catalog enrichment finished");
+            }
+            Some(listed_ok)
+        };
+        let listed_ok = tokio::select! {
+            listed = cycle => listed,
+            () = updates.closed() => return,
+            _ = shutdown.wait_for(|down| *down) => return,
+        };
+        let Some(listed_ok) = listed_ok else {
+            return;
+        };
+        if !send(Update::CycleDone { listed: listed_ok }) {
+            return;
+        }
+        tokio::select! {
+            () = tokio::time::sleep(REFRESH_INTERVAL) => {}
+            () = updates.closed() => return,
+            _ = shutdown.wait_for(|down| *down) => return,
+        }
     }
 }
 

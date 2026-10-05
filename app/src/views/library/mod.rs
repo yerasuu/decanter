@@ -20,7 +20,7 @@ mod shelves;
 mod sidebar;
 
 use decanter_core::CachedAchievement;
-use gpui::{Context, Entity, Pixels, Point, Task, Window, div, prelude::*, px, relative, rgb};
+use gpui::{Context, Entity, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb};
 
 use browser::BrowserView;
 use context_menu::MenuTarget;
@@ -215,7 +215,11 @@ impl Render for LibraryView {
             // Nothing selected: the shelf browser stands in for an empty
             // pane, so the default view is the library rather than a
             // prompt to go find it.
-            (false, true) => self.browser.clone().into_any_element(),
+            (false, true) => self
+                .browser
+                .clone()
+                .cached(StyleRefinement::default().size_full())
+                .into_any_element(),
             (_, false) => div()
                 .m_8()
                 .child(theme::empty("Elegi un perfil arriba."))
@@ -229,7 +233,11 @@ impl Render for LibraryView {
             .relative()
             .flex()
             .overflow_hidden()
-            .child(self.sidebar.clone())
+            .child(
+                self.sidebar
+                    .clone()
+                    .cached(StyleRefinement::default().w(px(292.)).h_full().flex_none()),
+            )
             .child(div().flex_1().min_w_0().h_full().child(pane))
             .children(filter_panel)
             .children(popup)

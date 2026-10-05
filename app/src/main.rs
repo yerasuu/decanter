@@ -157,6 +157,7 @@ fn main() {
             views::show_main_window(cx);
         });
 
+    state::gog_library::shut_down_fetch_loops();
     drop(tokio_context);
     // Dropping the runtime blocks until outstanding `spawn_blocking` work
     // finishes — the reason quitting goes through here rather than

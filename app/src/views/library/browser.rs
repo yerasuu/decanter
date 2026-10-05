@@ -137,7 +137,6 @@ struct OrganisationKey {
     /// unrelated change — the detail pane already reacts to this same
     /// counter for its own stat.
     playtime: u32,
-    games: u64,
 }
 
 struct Organisation {
@@ -163,9 +162,12 @@ impl Organisation {
 
 /// Everything the shelves are derived from, so they're rebuilt only when
 /// one of these changed rather than on every frame.
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 struct ShelvesKey {
     organisation: OrganisationKey,
+    /// The library's own revision: a fetch batch reshapes the shelves but
+    /// leaves the sqlite reads above as they were.
+    games: u64,
     installed_only: bool,
     pending_installs: HashSet<String>,
     slots: u64,
@@ -289,6 +291,15 @@ fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Organisation, 
     }
 }
 
+/// A capsule's width plus the row's gap: every card takes the same room,
+/// which is what lets a row lay out only the ones in view.
+const CARD_GAP: f32 = 13.;
+const CARD_STRIDE: f32 = 136. + CARD_GAP;
+const ROW_PADDING: f32 = 26.;
+/// Capsules kept laid out past either edge, so a quick scroll doesn't show
+/// the row filling in.
+const OVERSCAN: isize = 3;
+
 /// One shelf row's horizontal scroll, kept across renders by slot key.
 #[derive(Default)]
 struct RowState {
@@ -335,6 +346,9 @@ pub struct BrowserView {
     games_epoch: u64,
     organisation: Option<(OrganisationKey, Organisation)>,
     derived: Option<Derived>,
+    /// The key a background rebuild is working on; the previous shelves
+    /// stay on screen until it lands.
+    deriving: Option<ShelvesKey>,
     rows: HashMap<u32, RowState>,
     /// Which shelf is being dragged, for the header-drag reordering Steam
     /// uses. Only trusted while GPUI still has a drag active, since a drag
@@ -369,6 +383,7 @@ impl BrowserView {
             games_epoch: 0,
             organisation: None,
             derived: None,
+            deriving: None,
             rows: HashMap::new(),
             dragging: None,
         };
@@ -473,44 +488,60 @@ impl BrowserView {
             self.derived = None;
             return;
         };
-        let state = AppState::get(cx);
+        let state = AppState::get(cx).clone();
         let background = state.background.read(cx);
         let organisation_key = OrganisationKey {
             profile,
             organisation: background.organisation,
             playtime: background.playtime_generation,
-            games: self.games_epoch,
         };
-        // A queued or downloading game should already read as installed
-        // here, not just once the manifest scan catches up.
-        let pending_installs = pending_install_ids(&background.installing);
-        let installed_only = self.model.read(cx).filters.states.contains(&PlayState::Installed);
-
-        if self
-            .organisation
-            .as_ref()
-            .is_none_or(|(key, _)| *key != organisation_key)
-        {
-            let loaded = Organisation::load(&organisation_key.profile);
-            self.organisation = Some((organisation_key.clone(), loaded));
-        }
         let key = ShelvesKey {
             organisation: organisation_key,
-            installed_only,
-            pending_installs,
+            games: self.games_epoch,
+            installed_only: self.model.read(cx).filters.states.contains(&PlayState::Installed),
+            // A queued or downloading game should already read as installed
+            // here, not just once the manifest scan catches up.
+            pending_installs: pending_install_ids(&background.installing),
             slots: self.slots_epoch,
         };
-        if self.derived.as_ref().is_some_and(|derived| derived.key == key) {
+        if self.derived.as_ref().is_some_and(|derived| derived.key == key) || self.deriving.as_ref() == Some(&key) {
             return;
         }
-        let Some((_, organisation)) = &self.organisation else {
-            return;
-        };
-        let games = &state.library.read(cx).games;
-        self.derived = Some(derive(key, games, organisation, &self.slots));
-        for slot in &self.slots {
-            self.rows.entry(slot.key).or_default();
-        }
+        self.deriving = Some(key.clone());
+        // The sqlite reads and the sorting/grouping of hundreds of entries
+        // run off the UI thread; only a still-valid sqlite read is reused.
+        let organisation = self
+            .organisation
+            .take()
+            .filter(|(organisation_key, _)| *organisation_key == key.organisation);
+        let games = state.library.read(cx).games.clone();
+        let slots = self.slots.clone();
+        let work = cx.background_spawn(async move {
+            let organisation = organisation.unwrap_or_else(|| {
+                let loaded = Organisation::load(&key.organisation.profile);
+                (key.organisation.clone(), loaded)
+            });
+            let derived = derive(key, &games, &organisation.1, &slots);
+            (organisation, derived)
+        });
+        cx.spawn(async move |this, cx| {
+            let (organisation, derived) = work.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.organisation.is_none() {
+                    this.organisation = Some(organisation);
+                }
+                if this.deriving.as_ref() != Some(&derived.key) {
+                    return;
+                }
+                this.deriving = None;
+                for slot in &this.slots {
+                    this.rows.entry(slot.key).or_default();
+                }
+                this.derived = Some(derived);
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn render_shelf(
@@ -730,6 +761,20 @@ impl BrowserView {
                 )
         };
 
+        // Only the capsules in view (and a few either side) are laid out:
+        // a "Toda la biblioteca" shelf is hundreds of covers, and laying
+        // all of them out on every hover or progress tick was the slowdown.
+        // Spacers stand in for the rest so the scroll range stays whole.
+        let count = shelf.capsules.len();
+        let viewport = scroll.bounds().size.width.as_f32();
+        // Not laid out yet on the first frame; a wide guess beats a blank row.
+        let viewport = if viewport > 0. { viewport } else { 2560. };
+        let scrolled = -offset.as_f32();
+        let first = (((scrolled - ROW_PADDING) / CARD_STRIDE).floor() as isize - OVERSCAN).max(0) as usize;
+        let last = ((((scrolled + viewport) / CARD_STRIDE).ceil() as isize + OVERSCAN).max(0) as usize).min(count);
+        let first = first.min(last);
+        let spacer = |cards: usize| div().flex_none().w(px(cards as f32 * CARD_STRIDE - CARD_GAP));
+
         let model = self.model.clone();
         div()
             .id(("browser-viewport", key))
@@ -753,7 +798,16 @@ impl BrowserView {
                     // instead of scrolling the browser past it.
                     .restrict_scroll_to_axis()
                     .track_scroll(&scroll)
-                    .children(shelf.capsules.iter().map(|capsule| cover_card(capsule, &model))),
+                    // Windowing below depends on the offset, so a scroll
+                    // has to re-render the row, not just repaint it.
+                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                    .when(first > 0, |row| row.child(spacer(first)))
+                    .children(
+                        shelf.capsules[first..last]
+                            .iter()
+                            .map(|capsule| cover_card(capsule, &model)),
+                    )
+                    .when(last < count, |row| row.child(spacer(count - last))),
             )
             // An arrow with nothing left behind it is taken out entirely
             // rather than lighting up on hover and doing nothing.

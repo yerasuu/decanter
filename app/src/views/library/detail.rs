@@ -11,8 +11,8 @@ use std::rc::Rc;
 use decanter_core::{CachedAchievement, Game, InstallState, InstalledGame, Playtime};
 use decanter_gog::{Branch, LibraryEntry};
 use gpui::{
-    AnyElement, BoxShadow, Context, Div, Entity, FontWeight, ObjectFit, Pixels, SharedString, Task, WeakEntity,
-    Window, canvas, div, img, point, prelude::*, px, relative, rgb,
+    AnyElement, BoxShadow, Context, Div, Entity, FontWeight, ObjectFit, Pixels, SharedString, Task, WeakEntity, Window,
+    canvas, div, img, point, prelude::*, px, relative, rgb,
 };
 
 use super::data::PollStatus;
