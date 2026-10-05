@@ -1,51 +1,28 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # Every shared library decanter's desktop build (webkitgtk + gtk3 +
-  # xdotool + wayland + TLS) links against, needed again at runtime —
-  # nix-shell doesn't put a package's `lib` dir on the dynamic loader's
-  # search path just because it's a buildInput, and `makeLibraryPath`
-  # below isn't transitive, so each real link-time dependency is listed
-  # explicitly rather than relying on gtk3/webkitgtk_4_1 to pull it in.
+  # What decanter needs on the dynamic loader's search path at run time —
+  # GPUI dlopens its graphics, windowing and font libraries rather than
+  # linking them, and nix-shell doesn't put a package's `lib` dir there
+  # just because it's a buildInput (nor is `makeLibraryPath` below
+  # transitive), so each one is listed explicitly.
   runtimeLibs = with pkgs; [
-    webkitgtk_4_1
-    gtk3
-    xdotool
-    wayland
-    openssl
-    cairo
-    pango
-    gdk-pixbuf
-    atk
-    harfbuzz
-    glib
-    glib-networking # provides GIO's TLS backend -- without it libsoup (and
-                     # so WebKitGTK's network process) has no TLS
-                     # implementation at all to use `SSL_CERT_FILE` with,
-                     # and every https:// request the webview itself makes
-                     # (cover art, any other remote <img>) fails outright,
-                     # independently of the cert-file and sandbox fixes
-                     # below, which only matter once a backend exists.
-    libsoup_3
-    at-spi2-atk
-    at-spi2-core
-    dbus
-    fontconfig
-    freetype
-    libGL
-    mesa
-    libxkbcommon
-    curl
-    gst_all_1.gst-plugins-base   # appsink, para <video>/<audio> del webview
-    librsvg                      # loader de SVG para gdk-pixbuf (iconos breeze-dark)
-    # The GPUI build (`app/`) dlopens these at run time rather than
-    # linking them, so being on the library path is the only way it finds them.
     vulkan-loader
+    wayland
+    libxkbcommon
     libx11
     libxcb
     libxcursor
     libxi
     libxrandr
+    fontconfig
+    freetype
+    # The host registers Mesa's `device_select` implicit Vulkan layer by
+    # bare library name; without nix's Mesa here the loader can't find it.
+    mesa
+    # keyring's secret-service backend and the tray talk D-Bus.
+    dbus
+    openssl
   ];
   # Cross-compiling `crates/hook` into `Galaxy64.dll` -- a real Windows
   # PE, not anything this shell otherwise touches. Kept apart from
@@ -95,92 +72,24 @@ pkgs.mkShell {
   # version the binary was linked against.
   CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-Wl,--dynamic-linker=/lib64/ld-linux-x86-64.so.2";
 
-  # `libxdo` (from xdotool) is linked via a plain `-lxdo` with no matching
-  # `-L` from its build script, unlike webkitgtk's, which pkg-config
-  # already resolves — so its lib dir has to land on LIBRARY_PATH by hand
-  # for the linker to find it.
-  LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.xdotool ];
-
-  # Same gap at runtime, but for the whole stack: `dx serve` runs the
-  # built binary as a child process of this shell, and it inherits
-  # LD_LIBRARY_PATH — without it, none of the above are on the loader's
-  # default search path either.
+  # `cargo run` starts the binary as a child of this shell, and it
+  # inherits LD_LIBRARY_PATH — without it, none of the above are on the
+  # loader's default search path.
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
 
-  GST_PLUGIN_SYSTEM_PATH_1_0 = "${pkgs.gst_all_1.gst-plugins-base}/lib/gstreamer-1.0";
   LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
 
-  # WebKitGTK's network stack (glib-networking, on GnuTLS) looks for
-  # `SSL_CERT_FILE` specifically -- it doesn't fall back to the host's
-  # `/etc/ssl/certs` the way a normal FHS distro's TLS libraries do, and
-  # nix-shell doesn't set it for anything by default. Without this, every
-  # HTTPS request the webview itself makes (cover art, any other <img>/
-  # fetch straight from the page) fails TLS validation silently: no error
-  # in the app's own logs, since it's `reqwest` -- a separate TLS stack
-  # that resolves certs its own way -- that fetches and caches the URLs,
-  # not the webview. Only rendering them back out breaks.
+  # nix-shell sets no CA bundle of its own, and rustls's system verifier
+  # looks for `SSL_CERT_FILE` before anything host-specific, so pointing
+  # it at nix's keeps every HTTPS request (GOG's API, cover art) verifying
+  # the same way inside the shell as on the host.
   SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 
-  # `SSL_CERT_FILE` above only matters once something actually implements
-  # TLS for GIO -- `glib-networking` ships that (`libgiognutls.so`), but
-  # unlike e.g. dconf's GIO module (which lands in `GIO_EXTRA_MODULES`
-  # through the ambient desktop session, not this shell) it has no
-  # nixpkgs setup-hook of its own, so being a buildInput alone doesn't put
-  # it on GIO's module search path. Without it libsoup has no TLS backend
-  # at all, and every https:// request the webview itself makes fails
-  # outright -- same symptom as the missing cert file, but the cert fix
-  # can't do anything about it. Prepended, not replacing, so whatever the
-  # session already exports (e.g. dconf's module) is kept.
-  #
-  # gdk-pixbuf's own loaders.cache doesn't know about librsvg's SVG loader
-  # (separate derivation) -- regenerate a merged one each time the shell
-  # is entered, using the exact same gdk-pixbuf/librsvg this shell already
-  # pins, so there's no version-mismatch risk like there would be reusing
-  # anything from ~/.nix-profile.
-  #
   # `VK_DRIVER_FILES`: the host's Mesa Vulkan ICDs can't load into a
-  # nix-built binary (same mismatch as the GL one further down), so GPUI's
-  # renderer is pointed at nix's own Mesa instead. Only defaulted, so an
-  # explicit override from the caller still wins.
+  # nix-built binary, so GPUI's renderer is pointed at nix's own Mesa
+  # instead. Only defaulted, so an explicit override from the caller still
+  # wins.
   shellHook = ''
     export VK_DRIVER_FILES=''${VK_DRIVER_FILES:-${pkgs.mesa}/share/vulkan/icd.d/radeon_icd.x86_64.json:${pkgs.mesa}/share/vulkan/icd.d/intel_icd.x86_64.json}
-    export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
-    export GDK_PIXBUF_MODULE_FILE="$(mktemp --suffix=-gdk-pixbuf-loaders.cache)"
-    ${pkgs.gdk-pixbuf.dev}/bin/gdk-pixbuf-query-loaders \
-      ${pkgs.gdk-pixbuf.out}/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
-      ${pkgs.librsvg}/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
-      > "$GDK_PIXBUF_MODULE_FILE"
   '';
-
-  # WebKitGTK 2.5x defaults to a DMA-BUF/EGL renderer that aborts with
-  # "Could not create default EGL display: EGL_BAD_PARAMETER" wherever
-  # direct GPU access isn't set up for it (sandboxes, some Wayland/Nvidia
-  # setups) — fall back to software rendering instead of crashing.
-  WEBKIT_DISABLE_DMABUF_RENDERER = "1";
-  WEBKIT_DISABLE_COMPOSITING_MODE = "1";
-
-  # WebKitGTK isolates its network process in a bubblewrap sandbox by
-  # default, which needs unprivileged user-namespace support from the
-  # kernel — not guaranteed inside a nix-shell running in a container.
-  # When bwrap can't set up the sandbox, the network process fails
-  # silently rather than falling back: page navigation and local assets
-  # (served from the dev server on localhost) keep working, but every
-  # `<img>` pointed at a real remote host never loads, with nothing
-  # logged anywhere in reach of the app itself. Disabling the sandbox
-  # here trades an isolation layer we don't get anyway for actually
-  # working network requests.
-  WEBKIT_DISABLE_SANDBOX = "1";
-
-  # `LIBGL_ALWAYS_SOFTWARE` alone still asks EGL to negotiate against
-  # whatever the *host's* driver is first, and nix's mesa doesn't match a
-  # foreign distro's own AMDGPU driver (e.g. SteamOS) — that mismatch is
-  # what `EGL_BAD_PARAMETER` on display creation usually means here.
-  # Pointing straight at nix's own llvmpipe (software) Gallium driver
-  # sidesteps the host driver entirely instead of trying to reconcile it.
-  LIBGL_ALWAYS_SOFTWARE = "1";
-  GALLIUM_DRIVER = "llvmpipe";
-  # 'mesa.drivers' es el nombre viejo del attribute -- nixpkgs lo fusiono
-  # en 'mesa' directamente (mismo path de todos modos), y el nombre viejo
-  # tira un evaluation warning de deprecado.
-  LIBGL_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
 }

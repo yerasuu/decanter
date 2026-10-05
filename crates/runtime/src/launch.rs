@@ -223,7 +223,7 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
         .args(&launch.args)
         .current_dir(&working_directory)
         // A game never needs decanter's own library path (set for its
-        // GTK/WebKit dependencies, e.g. under Nix); umu/Proton build
+        // graphics dependencies, e.g. under Nix); umu/Proton build
         // whatever environment the container needs internally, and
         // leaking this one in has caused real, unrelated breakage before
         // (see `decanter_core::steam::process::sanitize_env` for the same

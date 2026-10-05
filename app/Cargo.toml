@@ -1,93 +1,35 @@
 [package]
-name = "decanter-gpui"
-# Kept in step with the root workspace's `[workspace.package]` by hand
-# while this crate lives outside it (see the root Cargo.toml).
-version = "0.1.1"
-authors = []
-edition = "2024"
+name = "decanter"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
-# Its own workspace for now: gpui and dioxus can't share a lockfile.
-[workspace]
+[lints]
+workspace = true
 
 [dependencies]
-# Zed's repository at a pinned commit: the crates.io release of gpui no
-# longer builds. `gpui_platform` without `wayland`/`x11` silently runs headless.
-gpui = { git = "https://github.com/zed-industries/zed", rev = "8fda6e46539bdf056e3e326cfcab7deea831ff40" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "8fda6e46539bdf056e3e326cfcab7deea831ff40", features = ["wayland", "x11"] }
-decanter-core = { path = "../crates/core" }
-decanter-gog = { path = "../crates/gog" }
-decanter-runtime = { path = "../crates/runtime" }
-uuid = { version = "1.26.0", features = ["v4"] }
-anyhow = "1.0.104"
-tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
-clap = { version = "4.6.6", features = ["derive"] }
-tokio = { version = "1.53.1", features = ["time", "fs", "signal", "sync", "rt-multi-thread", "macros"] }
-open = "5.4.3"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-chrono = "0.4.45"
-rfd = "0.17.2"
-futures = "0.3"
-md5 = "0.7"
-unicode-segmentation = "1"
-# Same TLS choice as decanter-gog: pure-Rust rustls, nothing system-side to link.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+gpui.workspace = true
+# Without `wayland`/`x11`, gpui_platform silently runs headless.
+gpui_platform = { workspace = true, features = ["wayland", "x11"] }
+decanter-core.workspace = true
+decanter-gog.workspace = true
+decanter-runtime.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["time", "fs", "signal", "sync", "rt-multi-thread", "macros"] }
+open.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+chrono.workspace = true
+rfd.workspace = true
+futures.workspace = true
+md5.workspace = true
+unicode-segmentation.workspace = true
+reqwest.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ksni = "0.3.6"
-image = "0.25.10"
-
-# GPUI unoptimized is slow enough to misjudge the app's own performance by,
-# so dependencies are always built optimized; ours stays quick to rebuild.
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 3
-
-# Copied from the root workspace's lints, same reason as above.
-[lints.rust]
-unsafe_code = "forbid"
-
-[lints.clippy]
-all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-restriction = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-
-blanket_clippy_restriction_lints = "allow"
-
-redundant_clone = "deny"
-clone_on_ref_ptr = "deny"
-unnecessary_to_owned = "deny"
-
-unnecessary_cast = "deny"
-let_unit_value = "deny"
-unnecessary_wraps = "deny"
-
-trait_duplication_in_bounds = "deny"
-extra_unused_type_parameters = "deny"
-multiple_bound_locations = "deny"
-
-unnecessary_filter_map = "deny"
-needless_collect = "deny"
-manual_flatten = "deny"
-flat_map_option = "deny"
-
-mutex_atomic = "deny"
-mutex_integer = "deny"
-
-format_in_format_args = "deny"
-to_string_in_format_args = "deny"
-string_lit_as_bytes = "deny"
-uninlined_format_args = "deny"
-
-derivable_impls = "deny"
-partial_pub_fields = "deny"
-
-match_like_matches_macro = "deny"
-match_same_arms = "deny"
-match_wild_err_arm = "deny"
-
-empty_docs = "warn"
+ksni.workspace = true
+image.workspace = true

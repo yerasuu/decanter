@@ -1,26 +1,74 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/gog", "crates/runtime", "ui"]
-# `ui` is the workspace's only binary crate (decanter) — this is what lets
-# `dx serve`/`cargo run`/`cargo build` from the workspace root pick it
-# without needing an explicit `-p`/`--package`.
-default-members = ["ui"]
-# `app` (the GPUI port of `ui`) can't share this lockfile with dioxus --
-# gpui and dioxus-desktop pin incompatible `cocoa` versions -- so it's its
-# own workspace until `ui` is gone.
-#
+members = ["crates/core", "crates/gog", "crates/runtime", "app"]
+# `app` is the workspace's only binary crate (decanter) — this is what lets
+# `cargo run`/`cargo build` from the workspace root pick it without an
+# explicit `-p`/`--package`.
+default-members = ["app"]
 # `crates/hook` cross-compiles a Windows cdylib (`unsafe_code = "forbid"`
 # above doesn't even apply to it) and is built with its own target and
 # linker -- joining this workspace would apply this Cargo.lock and these
 # lints to a crate neither fits, and previously left it unable to run
 # `cargo check`/`cargo build` on its own at all (`cargo` refuses a nested
 # manifest that "believes it's in a workspace when it's not" without this).
-exclude = ["crates/hook", "app"]
+exclude = ["crates/hook"]
 
 [workspace.package]
 version = "0.1.1"
 authors = []
 edition = "2024"
+
+# One version of each dependency for the whole workspace; members pick the
+# features they need on top.
+[workspace.dependencies]
+decanter-core = { path = "crates/core" }
+decanter-gog = { path = "crates/gog" }
+decanter-runtime = { path = "crates/runtime" }
+# Zed's repository at a pinned commit: the crates.io release of gpui no
+# longer builds.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "8fda6e46539bdf056e3e326cfcab7deea831ff40" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "8fda6e46539bdf056e3e326cfcab7deea831ff40" }
+anyhow = "1.0.104"
+chrono = "0.4.45"
+clap = "4.6.7"
+# `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
+# default — see crates/gog for the features that vendor both instead.
+curl = "0.4"
+dirs = "7.0.0"
+flate2 = "1"
+futures = "0.3.34"
+futures-util = "0.3.34"
+gog = "0.5.0"
+image = "0.25.10"
+keyring = "4.2.0"
+ksni = "0.3.6"
+md5 = "0.8.1"
+nix = { version = "0.31.3", default-features = false }
+open = "5.4.4"
+# `default-tls` pulls in native-tls, which links the system's OpenSSL —
+# rustls is pure Rust, no system TLS library to find at build or link time.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
+rfd = "0.17.2"
+rusqlite = "0.40.2"
+serde = "1.0.229"
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+tokio = "1.53.2"
+toml = "1.1.5"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+unicode-segmentation = "1.13.3"
+url = "2"
+uuid = "1.27.0"
+
+# GPUI unoptimized is slow enough to misjudge the app's own performance by,
+# so dependencies are always built optimized; the workspace's own crates
+# stay quick to rebuild.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

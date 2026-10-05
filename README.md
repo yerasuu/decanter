@@ -15,7 +15,7 @@ unlocks earned under Wine that GOG's own Galaxy client never sees.
 - `crates/hook` — `Galaxy64.dll` proxy that captures achievement
   unlocks under Wine and logs them for decanter to pick up. Cross-compiled
   as a Windows cdylib, excluded from the main workspace.
-- `ui` — the app itself (`decanter`), built with Dioxus. Also exposes
+- `app` — the app itself (`decanter`), built with GPUI. Also exposes
   a headless CLI (`decanter <subcommand>`) for library listing,
   installs, launches, and achievement polling without the GUI.
 
@@ -23,35 +23,32 @@ unlocks earned under Wine that GOG's own Galaxy client never sees.
 
 ### With Nix
 
-`shell.nix` pins every dependency (webkitgtk, gtk3, mingw cross toolchain
-for `crates/hook`, `umu-launcher`, TLS/GL env vars) — nothing else to
-install:
+`shell.nix` pins every dependency (Vulkan/Wayland/X11 libraries GPUI
+loads at run time, mingw cross toolchain for `crates/hook`,
+`umu-launcher`, TLS env vars) — nothing else to install:
 
 ```
-nix-shell --run 'dx serve'                                    # dev
-nix-shell --run 'cargo build --release'                       # binary
-nix-shell --run 'unset SOURCE_DATE_EPOCH && dx bundle --package decanter --platform linux --package-types appimage --release'  # AppImage
+nix-shell --run 'cargo run'              # dev
+nix-shell --run 'cargo build --release'  # binary
 ```
 
-`SOURCE_DATE_EPOCH` (set by Nix for build reproducibility) makes
-`mksquashfs` reject appimagetool's own timestamp flag — unset it just
-for this step, only needed under Nix.
+The binary links against nix's glibc, which can be newer than the host's
+(SteamOS's is): if it refuses to start with ``GLIBC_2.xx' not found``,
+start it through nix's own loader from inside the shell:
+
+```
+nix-shell --run '$(cc -print-file-name=ld-linux-x86-64.so.2) target/debug/decanter'
+```
 
 ### Without Nix
 
 Same commands, no `nix-shell --run` wrapper, once these are on the
 system instead:
 
-```
-dx serve                                    # dev
-cargo build --release                       # binary
-dx bundle --package decanter --platform linux --package-types appimage --release  # AppImage
-```
-
-- Rust + the [Dioxus CLI](https://dioxuslabs.com/learn/0.6/CLI/) (`dx`).
-- `pkg-config`, `webkitgtk` 4.1, `gtk3`, `xdotool`, `openssl` — the
-  desktop build links against these; check `shell.nix`'s `runtimeLibs`
-  for the exact list if something's missing at link or run time.
+- Rust.
+- `pkg-config`, `dbus`, and what GPUI loads at run time: `vulkan-loader`,
+  `wayland`, `libxkbcommon`, the X11/xcb libraries, `fontconfig`,
+  `freetype` — check `shell.nix`'s `runtimeLibs` for the exact list.
 - `umu-launcher` on `PATH` — decanter spawns `umu-run` from it.
 - A `x86_64-pc-windows-gnu` target (`rustup target add
   x86_64-pc-windows-gnu`) plus a mingw-w64 cross gcc and its
