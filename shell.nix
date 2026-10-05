@@ -38,6 +38,14 @@ let
     curl
     gst_all_1.gst-plugins-base   # appsink, para <video>/<audio> del webview
     librsvg                      # loader de SVG para gdk-pixbuf (iconos breeze-dark)
+    # The GPUI build (`app/`) dlopens these at run time rather than
+    # linking them, so being on the library path is the only way it finds them.
+    vulkan-loader
+    libx11
+    libxcb
+    libxcursor
+    libxi
+    libxrandr
   ];
   # Cross-compiling `crates/hook` into `Galaxy64.dll` -- a real Windows
   # PE, not anything this shell otherwise touches. Kept apart from
@@ -129,7 +137,13 @@ pkgs.mkShell {
   # is entered, using the exact same gdk-pixbuf/librsvg this shell already
   # pins, so there's no version-mismatch risk like there would be reusing
   # anything from ~/.nix-profile.
+  #
+  # `VK_DRIVER_FILES`: the host's Mesa Vulkan ICDs can't load into a
+  # nix-built binary (same mismatch as the GL one further down), so GPUI's
+  # renderer is pointed at nix's own Mesa instead. Only defaulted, so an
+  # explicit override from the caller still wins.
   shellHook = ''
+    export VK_DRIVER_FILES=''${VK_DRIVER_FILES:-${pkgs.mesa}/share/vulkan/icd.d/radeon_icd.x86_64.json:${pkgs.mesa}/share/vulkan/icd.d/intel_icd.x86_64.json}
     export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
     export GDK_PIXBUF_MODULE_FILE="$(mktemp --suffix=-gdk-pixbuf-loaders.cache)"
     ${pkgs.gdk-pixbuf.dev}/bin/gdk-pixbuf-query-loaders \

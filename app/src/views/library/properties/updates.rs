@@ -1,0 +1,170 @@
+use std::rc::Rc;
+
+use decanter_core::InstalledGame;
+use gpui::{Context, Window, prelude::*};
+
+use super::{Target, error_line, field_row, not_installed, pane, row, rows};
+use crate::theme;
+use crate::widgets::{ButtonKind, button};
+
+pub(super) struct UpdatesTab {
+    target: Rc<Target>,
+    installed: Option<InstalledGame>,
+    checking: bool,
+    /// `None` until a check has run; then the newer build's id, or `None`
+    /// inside for "already up to date".
+    result: Option<Option<String>>,
+    updating: bool,
+    error: String,
+}
+
+impl UpdatesTab {
+    pub(super) fn new(target: Rc<Target>) -> Self {
+        let installed = crate::core::installed_game(&target.account_id, &target.product_id);
+        Self {
+            target,
+            installed,
+            checking: false,
+            result: None,
+            updating: false,
+            error: String::new(),
+        }
+    }
+
+    fn reload(&mut self) {
+        self.installed = crate::core::installed_game(&self.target.account_id, &self.target.product_id);
+    }
+
+    fn check(&mut self, cx: &mut Context<Self>) {
+        let Some(installed) = self.installed.clone() else {
+            return;
+        };
+        let account_id = self.target.account_id.clone();
+        self.checking = true;
+        self.error.clear();
+        tracing::debug!(account_id, product_id = %installed.game_id, "checking gog for a newer build");
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let outcome = decanter_gog::check_update(&account_id, &installed).await;
+            let _ = this.update(cx, |this, cx| {
+                match outcome {
+                    Ok(update) => this.result = Some(update),
+                    Err(err) => {
+                        tracing::error!(account_id, product_id = %installed.game_id, error = %err, "update check failed");
+                        this.error = err.to_string();
+                    }
+                }
+                this.checking = false;
+                this.reload();
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn install_update(&mut self, cx: &mut Context<Self>) {
+        let target = Rc::clone(&self.target);
+        self.updating = true;
+        self.error.clear();
+        tracing::info!(
+            account_id = target.account_id,
+            product_id = target.product_id,
+            "update install started"
+        );
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let account_id = target.account_id.as_str();
+            let product_id = target.product_id.as_str();
+            let Ok(core_library) = crate::core::library_for_account(account_id) else {
+                tracing::error!(
+                    account_id,
+                    product_id,
+                    "could not resolve library, update install aborted"
+                );
+                let _ = this.update(cx, |this, cx| {
+                    this.error = "no se pudo resolver la biblioteca".to_string();
+                    this.updating = false;
+                    cx.notify();
+                });
+                return;
+            };
+            let outcome = decanter_gog::install(
+                &core_library,
+                account_id,
+                product_id,
+                None,
+                &target.title,
+                None,
+                None,
+                |_| {},
+            )
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                match outcome {
+                    Ok(()) => {
+                        tracing::info!(account_id, product_id, "update install finished");
+                        this.result = Some(None);
+                    }
+                    Err(err) => {
+                        tracing::error!(account_id, product_id, error = %err, "update install failed");
+                        this.error = err.to_string();
+                    }
+                }
+                this.updating = false;
+                this.reload();
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+}
+
+impl Render for UpdatesTab {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(installed) = &self.installed else {
+            return not_installed();
+        };
+
+        let check_label = if self.checking {
+            "Buscando..."
+        } else {
+            "Buscar actualización"
+        };
+        let mut actions = field_row().child(
+            button("check-update", ButtonKind::Secondary, check_label, self.checking).when(!self.checking, |b| {
+                b.on_click(cx.listener(|this, _, _, cx| this.check(cx)))
+            }),
+        );
+        match &self.result {
+            Some(Some(build_id)) => {
+                let update_label = if self.updating {
+                    "Actualizando..."
+                } else {
+                    "Actualizar ahora"
+                };
+                actions = actions
+                    .child(theme::muted(format!("Hay una nueva build: {build_id}")))
+                    .child(
+                        button("install-update", ButtonKind::Primary, update_label, self.updating)
+                            .when(!self.updating, |b| {
+                                b.on_click(cx.listener(|this, _, _, cx| this.install_update(cx)))
+                            }),
+                    );
+            }
+            Some(None) => actions = actions.child(theme::muted("Al día.")),
+            None => {}
+        }
+
+        pane()
+            .child(
+                rows()
+                    .child(row("Build instalado", installed.build_id.clone()))
+                    .child(row(
+                        "Rama",
+                        installed.branch.clone().unwrap_or_else(|| "mainline".to_string()),
+                    )),
+            )
+            .child(actions)
+            .children(error_line(&self.error))
+    }
+}
