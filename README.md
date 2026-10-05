@@ -30,7 +30,11 @@ loads at run time, mingw cross toolchain for `crates/hook`,
 ```
 nix-shell --run 'cargo run'              # dev
 nix-shell --run 'cargo build --release'  # binary
+scripts/appimage                         # target/appimage/Decanter-x86_64.AppImage
 ```
+
+The AppImage carries the nix glibc the binary was built against, so it
+runs on hosts with an older one too; see the script for how.
 
 The binary links against nix's glibc, which can be newer than the host's
 (SteamOS's is): if it refuses to start with ``GLIBC_2.xx' not found``,

@@ -31,7 +31,13 @@ let
   mingw = pkgs.pkgsCross.mingwW64;
 in
 pkgs.mkShell {
-  nativeBuildInputs = [ pkgs.pkg-config mingw.buildPackages.gcc ];
+  # squashfsTools only for `scripts/appimage`, which packs the AppDir by
+  # hand (nixpkgs has no appimagetool).
+  nativeBuildInputs = [
+    pkgs.pkg-config
+    mingw.buildPackages.gcc
+    pkgs.squashfsTools
+  ];
   # `umu-launcher` is a runtime CLI dependency (decanter_runtime spawns
   # `umu-run` by bare name, off PATH), not a linked library, so it's kept
   # out of `runtimeLibs` above -- that list is specifically what needs to

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Builds Decanter-x86_64.AppImage from a release build.
+#
+# The binary is built inside the project's nix-shell, so it's linked
+# against nix's glibc — newer than some hosts' (SteamOS's included), where
+# it then refuses to start. Rather than rebuild against an old glibc, the
+# AppImage carries the glibc it was built with: AppRun starts the binary
+# through the bundled loader, with the bundled libraries first and the
+# host's after them, so GPUI still finds the host's own Vulkan/Mesa,
+# Wayland and X11 libraries (a host library built for an older glibc runs
+# fine on a newer one, never the reverse). `--library-path` only applies
+# to this process, so whatever decanter spawns (umu-run, xdg-open) runs
+# against the host as normal.
+#
+# nixpkgs has no appimagetool, so the AppImage is put together by hand: an
+# AppImage is the type-2 runtime followed by a squashfs of the AppDir.
+#
+# Usage: scripts/appimage   (from anywhere; enters nix-shell itself)
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -z "${IN_NIX_SHELL:-}" ]]; then
+    exec nix-shell "$repo_root/shell.nix" --run "$(printf '%q' "${BASH_SOURCE[0]}")"
+fi
+
+# Pinned so the download can be checked; bump both together.
+runtime_version=20251108
+runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+runtime_cache="${XDG_CACHE_HOME:-$HOME/.cache}/decanter-appimage/runtime-x86_64-$runtime_version"
+
+cd "$repo_root"
+cargo build --release
+
+out_dir="$repo_root/target/appimage"
+app_dir="$out_dir/AppDir"
+rm -rf "$app_dir"
+mkdir -p "$app_dir/usr/bin" "$app_dir/usr/lib"
+cp target/release/decanter "$app_dir/usr/bin/decanter"
+
+# Everything the binary links against, from the nix store — glibc and its
+# loader included, which is the point.
+loader="$(cc -print-file-name=ld-linux-x86-64.so.2)"
+"$loader" --list target/release/decanter \
+    | awk '/=> \// && !/ld-linux/ { print $3 }' \
+    | while read -r lib; do
+        cp -L -- "$lib" "$app_dir/usr/lib/"
+    done
+cp -L -- "$loader" "$app_dir/usr/lib/ld-linux-x86-64.so.2"
+chmod -R u+w "$app_dir/usr/lib"
+
+cat > "$app_dir/AppRun" <<'APPRUN'
+#!/bin/sh
+here="$(dirname "$(readlink -f "$0")")"
+host="/usr/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/lib:/lib64:/lib/x86_64-linux-gnu"
+exec "$here/usr/lib/ld-linux-x86-64.so.2" --library-path "$here/usr/lib:$host" "$here/usr/bin/decanter" "$@"
+APPRUN
+chmod +x "$app_dir/AppRun"
+
+# `StartupWMClass` matches the window's `app_id`, so the desktop pairs the
+# window with this entry (and its icon) on Wayland.
+cat > "$app_dir/decanter.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Decanter
+Exec=decanter
+Icon=decanter
+StartupWMClass=decanter
+Categories=Game;
+DESKTOP
+cp app/assets/decanter.png "$app_dir/decanter.png"
+ln -sf decanter.png "$app_dir/.DirIcon"
+
+if [[ ! -f "$runtime_cache" ]] || ! echo "$runtime_sha256  $runtime_cache" | sha256sum --check --status; then
+    mkdir -p "$(dirname "$runtime_cache")"
+    curl --fail --location --silent --show-error --output "$runtime_cache" \
+        "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-x86_64"
+    echo "$runtime_sha256  $runtime_cache" | sha256sum --check --status \
+        || { echo "AppImage runtime checksum mismatch" >&2; rm -f "$runtime_cache"; exit 1; }
+fi
+
+squashfs="$out_dir/decanter.squashfs"
+rm -f "$squashfs"
+mksquashfs "$app_dir" "$squashfs" -root-owned -noappend -comp zstd -quiet -no-progress
+appimage="$out_dir/Decanter-x86_64.AppImage"
+cat "$runtime_cache" "$squashfs" > "$appimage"
+chmod +x "$appimage"
+rm -f "$squashfs"
+echo "$appimage"
