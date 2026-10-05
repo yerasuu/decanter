@@ -430,23 +430,30 @@ fn App() -> Element {
         // this loop, so an `Rc<RefCell<_>>` around it is just satisfying
         // that bound, not sharing it.
         let commands = use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(tray_linux::spawn())));
-        spawn(async move {
-            loop {
-                let command = commands.borrow_mut().recv().await;
-                match command {
-                    Some(tray_linux::TrayCommand::Show) => {
-                        desktop.window.set_visible(true);
-                        desktop.window.set_focus();
+        // `spawn` outside `use_hook` re-fires on every re-render, and each new
+        // task would call `commands.borrow_mut()` while the previous task's
+        // loop iteration still holds that borrow across its `.await` --
+        // panicking with "already borrowed". `use_hook` keeps this to the one
+        // task the `Rc<RefCell<_>>` above was sized for.
+        use_hook(|| {
+            spawn(async move {
+                loop {
+                    let command = commands.borrow_mut().recv().await;
+                    match command {
+                        Some(tray_linux::TrayCommand::Show) => {
+                            desktop.window.set_visible(true);
+                            desktop.window.set_focus();
+                        }
+                        // Not `std::process::exit`: same OpenSSL/atexit race as
+                        // the other tray-quit path above.
+                        Some(tray_linux::TrayCommand::Quit) => {
+                            desktop.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowCloses);
+                            desktop.close();
+                        }
+                        None => break,
                     }
-                    // Not `std::process::exit`: same OpenSSL/atexit race as
-                    // the other tray-quit path above.
-                    Some(tray_linux::TrayCommand::Quit) => {
-                        desktop.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowCloses);
-                        desktop.close();
-                    }
-                    None => break,
                 }
-            }
+            });
         });
     }
 
