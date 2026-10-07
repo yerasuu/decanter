@@ -14,8 +14,8 @@ use decanter_core::{Game, Storefront};
 use decanter_gog::LibraryEntry;
 use gpui::{
     AnyElement, App, BoxShadow, ClickEvent, Context, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent,
-    ListAlignment, ListState, MouseButton, MouseDownEvent, ObjectFit, SharedString, Stateful, Subscription, Window,
-    div, img, list, point, prelude::*, px, rgb,
+    ListAlignment, ListState, MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels, SharedString, Stateful,
+    Subscription, Window, div, img, list, point, prelude::*, px, rgb,
 };
 
 use super::context_menu::{MenuTarget, auto_tag};
@@ -251,6 +251,19 @@ pub struct SidebarView {
     /// turn "dropped on this shelf" into a delta.
     order: Vec<String>,
     list: ListState,
+    /// Where on the scrollbar thumb the pointer took hold of it, while it's
+    /// being dragged.
+    thumb_grab: Option<Pixels>,
+}
+
+/// The scrollbar thumb's place, all in pixels: offset from the top of the
+/// list, its length, how far it can travel, and the list's own furthest
+/// scroll offset.
+struct Thumb {
+    top: Pixels,
+    length: Pixels,
+    travel: Pixels,
+    max_scroll: Pixels,
 }
 
 impl SidebarView {
@@ -277,6 +290,13 @@ impl SidebarView {
             InputEvent::Changed => {}
         })
         .detach();
+        let list = ListState::new(0, ListAlignment::Top, px(400.));
+        // The scrollbar is drawn from the list's offset, so a wheel scroll
+        // has to re-render this view and not only the list.
+        let this = cx.entity().downgrade();
+        list.set_scroll_handler(move |_, _, cx| {
+            let _ = this.update(cx, |_, cx| cx.notify());
+        });
         Self {
             model,
             search,
@@ -295,8 +315,105 @@ impl SidebarView {
             rows: Vec::new(),
             rows_key: None,
             order: Vec::new(),
-            list: ListState::new(0, ListAlignment::Top, px(400.)),
+            list,
+            thumb_grab: None,
         }
+    }
+
+    fn thumb(&self) -> Option<Thumb> {
+        let viewport = self.list.viewport_bounds().size.height;
+        let max_scroll = self.list.max_offset_for_scrollbar().y;
+        if viewport <= px(0.) || max_scroll <= px(0.) {
+            return None;
+        }
+        let length = (viewport * (viewport / (viewport + max_scroll))).max(px(24.));
+        let travel = viewport - length;
+        let scrolled = -self.list.scroll_px_offset_for_scrollbar().y;
+        Some(Thumb {
+            top: travel * (scrolled / max_scroll).clamp(0., 1.),
+            length,
+            travel,
+            max_scroll,
+        })
+    }
+
+    /// Scrolls so the thumb's grabbed point sits under the pointer.
+    fn scroll_to_pointer(&self, pointer_y: Pixels, grab: Pixels, thumb: &Thumb) {
+        let top = (pointer_y - self.list.viewport_bounds().origin.y - grab)
+            .max(px(0.))
+            .min(thumb.travel);
+        let fraction = if thumb.travel > px(0.) { top / thumb.travel } else { 0. };
+        self.list
+            .set_offset_from_scrollbar(point(px(0.), -(thumb.max_scroll * fraction)));
+    }
+
+    /// GPUI draws no scrollbar of its own; without one a library of
+    /// hundreds of games gave no sign the list went on, or how far.
+    fn scrollbar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let Some(thumb) = self.thumb() else {
+            return None;
+        };
+        let dragging = self.thumb_grab.is_some();
+        Some(
+            div()
+                .id("sidebar-scrollbar")
+                .absolute()
+                .top_0()
+                .right_0()
+                .h_full()
+                .w(px(10.))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                        let Some(thumb) = this.thumb() else {
+                            return;
+                        };
+                        let on_thumb = event.position.y - this.list.viewport_bounds().origin.y - thumb.top;
+                        // Pressing the track rather than the thumb jumps the
+                        // thumb's middle to the pointer, then drags from there.
+                        let grab = if on_thumb >= px(0.) && on_thumb <= thumb.length {
+                            on_thumb
+                        } else {
+                            thumb.length / 2.
+                        };
+                        this.list.scrollbar_drag_started();
+                        this.scroll_to_pointer(event.position.y, grab, &thumb);
+                        this.thumb_grab = Some(grab);
+                        cx.stop_propagation();
+                        cx.notify();
+                    }),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top(thumb.top)
+                        .right(px(2.))
+                        .w(px(5.))
+                        .h(thumb.length)
+                        .rounded_full()
+                        .bg(theme::alpha(theme::TEXT_MUTED, if dragging { 0.7 } else { 0.4 }))
+                        .hover(|thumb| thumb.bg(theme::alpha(theme::TEXT_MUTED, 0.7))),
+                ),
+        )
+    }
+
+    /// Follows the pointer anywhere over the sidebar while the thumb is
+    /// held, and lets go once the button is up — a release outside the
+    /// window never reaches a mouse-up handler here.
+    fn drag_thumb(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(grab) = self.thumb_grab else {
+            return;
+        };
+        if event.pressed_button != Some(MouseButton::Left) {
+            self.thumb_grab = None;
+            self.list.scrollbar_drag_ended();
+            cx.notify();
+            return;
+        }
+        if let Some(thumb) = self.thumb() {
+            self.scroll_to_pointer(event.position.y, grab, &thumb);
+        }
+        cx.notify();
     }
 
     fn profile(cx: &App) -> Option<String> {
@@ -691,6 +808,10 @@ impl SidebarView {
         // `splice`, not `reset`: a reset scrolls the list back to the top
         // on every library batch or filter tick.
         self.list.splice(0..self.rows.len(), rows.len());
+        // Spliced-in rows count as zero height until drawn, which sized the
+        // scrollbar thumb for the few rows seen so far. A game row's height
+        // stands in for them; drawn rows keep their measured one.
+        let _ = self.list.clone().with_uniform_item_height(px(40.));
         self.rows = rows;
         self.rows_key = Some(key);
     }
@@ -911,6 +1032,9 @@ impl SidebarView {
         let menu_title = game.title.clone();
         div()
             .id(SharedString::from(format!("sidebar-item-{}", game.id)))
+            // Otherwise the row is as wide as its title, which ran a long
+            // one past the panel's edge instead of truncating it.
+            .w_full()
             .flex()
             .items_center()
             .gap(px(10.))
@@ -932,7 +1056,7 @@ impl SidebarView {
                     .border_color(rgb(theme::ACCENT_BLUE))
             })
             .child(icon)
-            .child(div().min_w_0().truncate().child(game.title.clone()))
+            .child(div().flex_1().min_w_0().truncate().child(game.title.clone()))
             .when(installed, |item| {
                 item.child(
                     div()
@@ -1503,14 +1627,21 @@ impl Render for SidebarView {
             .bg(rgb(theme::BG_PANEL_3))
             .border_r_1()
             .border_color(rgb(theme::LINE))
+            .on_mouse_move(cx.listener(Self::drag_thumb))
             .child(self.header(active_filters, cx))
             .child(
-                list(
-                    self.list.clone(),
-                    cx.processor(|this, index, _, cx| this.render_row(index, cx)),
-                )
-                .flex_1()
-                .min_h_0(),
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        list(
+                            self.list.clone(),
+                            cx.processor(|this, index, _, cx| this.render_row(index, cx)),
+                        )
+                        .size_full(),
+                    )
+                    .children(self.scrollbar(cx)),
             )
     }
 }

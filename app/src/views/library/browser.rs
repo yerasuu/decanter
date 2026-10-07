@@ -296,9 +296,6 @@ fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Organisation, 
 const CARD_GAP: f32 = 13.;
 const CARD_STRIDE: f32 = 136. + CARD_GAP;
 const ROW_PADDING: f32 = 26.;
-/// Capsules kept laid out past either edge, so a quick scroll doesn't show
-/// the row filling in.
-const OVERSCAN: isize = 3;
 
 /// One shelf row's horizontal scroll, kept across renders by slot key.
 #[derive(Default)]
@@ -748,11 +745,16 @@ impl BrowserView {
                 .cursor_pointer()
                 .hover(|arrow| arrow.text_color(rgb(theme::ACCENT_BLUE)))
                 .active(|arrow| arrow.top(px(1.)).bottom(px(17.)))
-                // Wheel still reaches the row underneath, but a click on
-                // the arrow mustn't also open the capsule behind it.
-                .block_mouse_except_scroll()
+                // A click on the arrow mustn't also open the capsule behind
+                // it. Not `block_mouse_except_scroll`: that also takes hover
+                // away from the viewport this arrow lives in, which removed
+                // the arrow the moment the pointer reached it.
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .tooltip(tooltip(label))
-                .on_click(cx.listener(move |this, _, _, cx| this.page_row(key, direction, cx)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.page_row(key, direction, cx);
+                }))
                 .child(glyph)
                 .with_animation(
                     (id, key),
@@ -770,8 +772,12 @@ impl BrowserView {
         // Not laid out yet on the first frame; a wide guess beats a blank row.
         let viewport = if viewport > 0. { viewport } else { 2560. };
         let scrolled = -offset.as_f32();
-        let first = (((scrolled - ROW_PADDING) / CARD_STRIDE).floor() as isize - OVERSCAN).max(0) as usize;
-        let last = ((((scrolled + viewport) / CARD_STRIDE).ceil() as isize + OVERSCAN).max(0) as usize).min(count);
+        // A full page laid out past either edge: a page arrow moves the row
+        // by most of its width, and with any less the capsules it brought
+        // in arrived still waiting on their art.
+        let overscan = (viewport / CARD_STRIDE).ceil() as isize;
+        let first = (((scrolled - ROW_PADDING) / CARD_STRIDE).floor() as isize - overscan).max(0) as usize;
+        let last = ((((scrolled + viewport) / CARD_STRIDE).ceil() as isize + overscan).max(0) as usize).min(count);
         let first = first.min(last);
         let spacer = |cards: usize| div().flex_none().w(px(cards as f32 * CARD_STRIDE - CARD_GAP));
 

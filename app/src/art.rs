@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, OnceLock};
+use std::time::{Duration, Instant};
 
 use gpui::{
     App, Asset, Global, ImageAssetLoader, ImageCacheError, ImageSource, RenderImage, Resource, SharedString, Size,
@@ -207,12 +208,18 @@ impl Asset for CachedArt {
 /// drawn — the eviction GPUI's asset cache doesn't do on its own.
 #[derive(Default)]
 struct Decoded {
-    images: HashMap<Arc<Path>, (Arc<RenderImage>, u64)>,
+    images: HashMap<Arc<Path>, (Arc<RenderImage>, Instant)>,
     bytes: usize,
-    clock: u64,
+    eviction_scheduled: bool,
 }
 
 impl Global for Decoded {}
+
+/// Art drawn this recently is never evicted, however far over budget:
+/// everything on screen is redrawn every frame, so this keeps it all, and
+/// a screen that needs more than the budget just runs over it for a while
+/// rather than dropping and reloading its own images in a loop.
+const IN_VIEW: Duration = Duration::from_millis(500);
 
 fn decoded_bytes(image: &RenderImage) -> usize {
     (0..image.frame_count())
@@ -222,24 +229,30 @@ fn decoded_bytes(image: &RenderImage) -> usize {
 
 fn remember(path: &Arc<Path>, image: &Arc<RenderImage>, window: &mut Window, cx: &mut App) {
     let decoded = cx.default_global::<Decoded>();
-    decoded.clock = decoded.clock.wrapping_add(1);
-    let now = decoded.clock;
-    match decoded.images.get_mut(path) {
-        Some((_, drawn)) => {
-            *drawn = now;
-            return;
-        }
-        None => {
-            decoded.bytes = decoded.bytes.saturating_add(decoded_bytes(image));
-            decoded.images.insert(Arc::clone(path), (Arc::clone(image), now));
-        }
+    let now = Instant::now();
+    if let Some((_, drawn)) = decoded.images.get_mut(path) {
+        *drawn = now;
+        return;
     }
+    decoded.bytes = decoded.bytes.saturating_add(decoded_bytes(image));
+    decoded.images.insert(Arc::clone(path), (Arc::clone(image), now));
+    // Deferred to the next frame: images later in this one haven't been
+    // marked drawn yet, and would look like the oldest.
+    if decoded.bytes > DECODED_BUDGET && !decoded.eviction_scheduled {
+        decoded.eviction_scheduled = true;
+        window.on_next_frame(evict);
+    }
+}
+
+fn evict(window: &mut Window, cx: &mut App) {
+    let decoded = cx.default_global::<Decoded>();
+    decoded.eviction_scheduled = false;
     let mut evicted = Vec::new();
     while decoded.bytes > DECODED_BUDGET {
         let Some(oldest) = decoded
             .images
             .iter()
-            .filter(|(candidate, _)| *candidate != path)
+            .filter(|(_, (_, drawn))| drawn.elapsed() >= IN_VIEW)
             .min_by_key(|(_, (_, drawn))| *drawn)
             .map(|(candidate, _)| Arc::clone(candidate))
         else {
