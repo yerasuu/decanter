@@ -108,13 +108,17 @@ pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
 /// `confirmed_new` is the account-wide "have we synced this account
 /// before" flag from [`super::gog_library`] — see [`decanter_core::Db::upsert_game`]
 /// for why a single game entry can't answer that for itself.
-pub(super) fn save_entry(account_id: &str, entry: &LibraryEntry, confirmed_new: bool) {
-    match Db::open(decanter_core::default_db_path()) {
-        Ok(db) => {
-            if let Err(err) = db.upsert_game(account_id, &to_cached(entry), confirmed_new) {
-                tracing::warn!(account_id, product_id = %entry.game.id, %err, "failed to cache game entry");
-            }
+pub(super) fn save_entries(account_id: &str, entries: &[LibraryEntry], confirmed_new: bool) {
+    let db = match Db::open(decanter_core::default_db_path()) {
+        Ok(db) => db,
+        Err(err) => {
+            tracing::warn!(account_id, %err, "could not open cache db to save game entries");
+            return;
         }
-        Err(err) => tracing::warn!(account_id, %err, "could not open cache db to save game entry"),
+    };
+    for entry in entries {
+        if let Err(err) = db.upsert_game(account_id, &to_cached(entry), confirmed_new) {
+            tracing::warn!(account_id, product_id = %entry.game.id, %err, "failed to cache game entry");
+        }
     }
 }

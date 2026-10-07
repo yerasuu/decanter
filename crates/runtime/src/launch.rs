@@ -230,6 +230,9 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
         // fix on the Steam-launch side).
         .env_remove("LD_LIBRARY_PATH")
         .env_remove("LD_PRELOAD")
+        // decanter's own malloc arena cap (see scripts/appimage), sized
+        // for a launcher; a game's threads shouldn't inherit it.
+        .env_remove("GLIBC_TUNABLES")
         .env("WINEPREFIX", &prefix.path)
         .env("GAMEID", &launch.game_id)
         // Proton's default verb, set explicitly because it is what makes

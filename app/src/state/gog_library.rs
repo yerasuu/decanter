@@ -19,15 +19,15 @@
 //! themselves). A later cycle never re-enters "loading": `state` only ever
 //! moves forward.
 
-use std::collections::HashMap;
-use std::time::Duration;
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
-use decanter_core::InstallState;
+use decanter_core::{Game, InstallState};
 use decanter_gog::{Batch, LibraryEntry};
 use gpui::{AsyncApp, Context, Entity, Task, WeakEntity};
 
 use super::Session;
-use super::cache::{has_synced_before, load_cached_games, save_entry};
+use super::cache::{has_synced_before, load_cached_games, save_entries};
 
 /// Raised by `main` once GPUI has returned and before the tokio runtime is
 /// dropped. Each loop drives its own `block_on` on a blocking-pool thread,
@@ -43,6 +43,10 @@ pub fn shut_down_fetch_loops() {
 
 /// Long enough that a full re-resolve never overlaps itself in practice.
 const REFRESH_INTERVAL: Duration = Duration::from_mins(15);
+
+/// How often every owned game's catalog data is looked up again, rather
+/// than only the ones a cycle hasn't seen before.
+const FULL_ENRICH_INTERVAL: Duration = Duration::from_hours(24);
 
 /// Whether this game is installed, from this account's appmanifest. The
 /// one part of a `Game` that isn't catalog data, and the only part that
@@ -355,6 +359,11 @@ async fn fetch_loop(
 ) {
     let send = |update: Update| updates.send(update).is_ok();
     let mut shutdown = SHUTDOWN.subscribe();
+    // Catalog data barely moves, so after one full enrichment per session
+    // a cycle only enriches what it hasn't seen yet, until the next full
+    // pass is due.
+    let mut enriched_at: Option<Instant> = None;
+    let mut enriched: HashSet<String> = HashSet::new();
     loop {
         // The whole pass is dropped the moment the UI side goes away (the
         // account forgotten, the app quitting) instead of running on into
@@ -377,8 +386,11 @@ async fn fetch_loop(
             let listed = match crate::core::library_for_account(&account_id) {
                 Ok(library) => {
                     decanter_gog::list_games(&library, &account_id, &mut |batch| {
-                        absorb(&account_id, confirmed_new, &mut shown, batch);
-                        send(Update::Shown(shown.clone()));
+                        let changed = absorb(&account_id, &mut shown, batch, Pass::Listed);
+                        if !changed.is_empty() {
+                            save_entries(&account_id, &changed, confirmed_new);
+                            send(Update::Shown(shown.clone()));
+                        }
                     })
                     .await
                 }
@@ -391,8 +403,7 @@ async fn fetch_loop(
                     tracing::info!(account_id, count = collected.len(), "gog library listed");
                     // A complete listing is the whole truth about what's
                     // owned, so anything it didn't mention isn't any more.
-                    prune(&account_id, &mut shown, &collected);
-                    if !send(Update::Shown(shown.clone())) {
+                    if prune(&account_id, &mut shown, &collected) && !send(Update::Shown(shown.clone())) {
                         return None;
                     }
                     collected
@@ -410,23 +421,56 @@ async fn fetch_loop(
                 }
             };
 
+            let full = enriched_at.is_none_or(|at| at.elapsed() >= FULL_ENRICH_INTERVAL);
+            let to_enrich: Vec<LibraryEntry> = collected
+                .into_iter()
+                .filter(|entry| full || !enriched.contains(&entry.game.id))
+                .collect();
+
             // Pass two updates entries in place. Everything it does is
             // best-effort inside, so there's nothing to handle out here.
-            if !collected.is_empty() {
-                tracing::debug!(account_id, count = collected.len(), "enriching gog catalog metadata");
+            if !to_enrich.is_empty() {
+                tracing::debug!(
+                    account_id,
+                    count = to_enrich.len(),
+                    full,
+                    "enriching gog catalog metadata"
+                );
+                let ids: Vec<String> = to_enrich.iter().map(|entry| entry.game.id.clone()).collect();
+                // Its batches each carry an entry as far as enrichment has
+                // got with it — a GamesDB batch still has pass one's
+                // category, which the product batch after it corrects — so
+                // they're folded into a copy and only the settled result is
+                // shown and cached. A first sync has nothing better on
+                // screen, so it streams them as they come.
+                let mut working = shown.clone();
                 decanter_gog::enrich_games(
                     &account_id,
-                    collected,
+                    to_enrich,
                     &mut |batch| {
-                        absorb(&account_id, confirmed_new, &mut shown, batch);
-                        send(Update::Shown(shown.clone()));
+                        absorb(&account_id, &mut working, batch, Pass::Enriched);
+                        if !confirmed_new {
+                            send(Update::Shown(working.clone()));
+                        }
                     },
                     &mut |done, total| {
                         send(Update::Progress(done, total));
                     },
                 )
                 .await;
-                tracing::debug!(account_id, "gog catalog enrichment finished");
+                let changed = changed_since(&shown, &working);
+                tracing::debug!(account_id, changed = changed.len(), "gog catalog enrichment finished");
+                if !changed.is_empty() {
+                    save_entries(&account_id, &changed, confirmed_new);
+                    shown = working;
+                    if !send(Update::Shown(shown.clone())) {
+                        return None;
+                    }
+                }
+                enriched.extend(ids);
+                if full {
+                    enriched_at = Some(Instant::now());
+                }
             }
             Some(listed_ok)
         };
@@ -451,9 +495,11 @@ async fn fetch_loop(
 
 /// Drops whatever a complete fetch didn't list, on screen and in the
 /// cache alike — the only thing that ever notices an entitlement going
-/// away, since a dropped id simply stops coming back.
-fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntry]) {
-    let owned: std::collections::HashSet<&str> = fetched.iter().map(|entry| entry.game.id.as_str()).collect();
+/// away, since a dropped id simply stops coming back. `true` if anything
+/// on screen went.
+fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntry]) -> bool {
+    let owned: HashSet<&str> = fetched.iter().map(|entry| entry.game.id.as_str()).collect();
+    let before = shown.len();
     shown.retain(|entry| owned.contains(entry.game.id.as_str()));
 
     let keep: Vec<String> = fetched.iter().map(|entry| entry.game.id.clone()).collect();
@@ -465,24 +511,164 @@ fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntr
         },
         Err(err) => tracing::warn!(account_id, %err, "failed to open db while pruning dropped games"),
     }
+    shown.len() != before
 }
 
-/// Caches a group and folds it into what's on screen.
+/// Which of the two fetch passes a batch came from — they own different
+/// parts of an entry. See [`absorb`].
+#[derive(Clone, Copy)]
+enum Pass {
+    Listed,
+    Enriched,
+}
+
+/// Folds a batch into `shown` and returns the entries that actually
+/// changed, as they now stand — what's worth caching and re-rendering.
 ///
 /// Position is kept for an entry that's already there, so pass two filling
 /// in a cover doesn't reshuffle the list under someone mid-scroll. Sorting
 /// is the UI's job, not the fetch's.
-fn absorb(account_id: &str, confirmed_new: bool, shown: &mut Vec<LibraryEntry>, batch: Batch) {
+///
+/// Pass one only knows GOG's bare product listing: for a game already on
+/// screen it updates just install state and library rank, since its art,
+/// category and title are the unenriched ones pass two had already
+/// replaced — taking them flipped every cover back to GOG's landscape
+/// product shot until pass two came round again. Pass two's batches do
+/// replace an entry, but never blank a field it already had: a lookup
+/// that failed this cycle isn't news that the data went away.
+fn absorb(account_id: &str, shown: &mut Vec<LibraryEntry>, batch: Batch, pass: Pass) -> Vec<LibraryEntry> {
+    let mut changed = Vec::new();
     for mut entry in batch {
         // Tagged here rather than by decanter_gog itself: this is the one
         // place that knows both the entry and which account's loop it came
         // from, and the merged multi-account view needs to tell two
         // accounts' copies of the same game apart.
         entry.game.account_id = account_id.to_owned();
-        save_entry(account_id, &entry, confirmed_new);
-        match shown.iter_mut().find(|existing| existing.game.id == entry.game.id) {
-            Some(existing) => *existing = entry,
-            None => shown.push(entry),
+        let Some(existing) = shown.iter_mut().find(|existing| existing.game.id == entry.game.id) else {
+            changed.push(entry.clone());
+            shown.push(entry);
+            continue;
+        };
+        let merged = match pass {
+            Pass::Listed => LibraryEntry {
+                library_rank: entry.library_rank.or(existing.library_rank),
+                game: Game {
+                    install_state: entry.game.install_state,
+                    ..existing.game.clone()
+                },
+                ..existing.clone()
+            },
+            Pass::Enriched => keep_known(entry, existing),
+        };
+        if merged != *existing {
+            *existing = merged;
+            changed.push(existing.clone());
         }
+    }
+    changed
+}
+
+/// `entry`, with anything it left blank taken from `previous`.
+fn keep_known(mut entry: LibraryEntry, previous: &LibraryEntry) -> LibraryEntry {
+    fn keep<T: Clone>(field: &mut Option<T>, previous: Option<&T>) {
+        if field.is_none() {
+            *field = previous.cloned();
+        }
+    }
+    let (game, old) = (&mut entry.game, &previous.game);
+    keep(&mut game.icon_url, old.icon_url.as_ref());
+    keep(&mut game.cover_url, old.cover_url.as_ref());
+    keep(&mut game.background_url, old.background_url.as_ref());
+    keep(&mut game.description, old.description.as_ref());
+    keep(&mut game.developer, old.developer.as_ref());
+    keep(&mut game.publisher, old.publisher.as_ref());
+    keep(&mut game.rating, old.rating.as_ref());
+    keep(&mut game.release_date, old.release_date.as_ref());
+    if game.genres.is_empty() {
+        game.genres.clone_from(&old.genres);
+    }
+    keep(&mut entry.purchased_at, previous.purchased_at.as_ref());
+    keep(&mut entry.library_rank, previous.library_rank.as_ref());
+    keep(&mut entry.parent_id, previous.parent_id.as_ref());
+    entry
+}
+
+/// The entries of `after` that are new or differ from `before`.
+fn changed_since(before: &[LibraryEntry], after: &[LibraryEntry]) -> Vec<LibraryEntry> {
+    let before: HashMap<&str, &LibraryEntry> = before.iter().map(|entry| (entry.game.id.as_str(), entry)).collect();
+    after
+        .iter()
+        .filter(|entry| before.get(entry.game.id.as_str()) != Some(entry))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use decanter_core::Game;
+    use decanter_gog::{GameKind, LibraryEntry};
+
+    use super::{Pass, absorb};
+
+    fn entry(cover: &str, kind: GameKind) -> LibraryEntry {
+        LibraryEntry {
+            game: Game {
+                id: "1207658924".to_owned(),
+                account_id: "acct".to_owned(),
+                title: "Betrayer".to_owned(),
+                cover_url: Some(cover.to_owned()),
+                ..Default::default()
+            },
+            kind,
+            purchased_at: None,
+            library_rank: None,
+            installable: true,
+            parent_id: None,
+        }
+    }
+
+    #[test]
+    fn listing_keeps_enriched_art_and_category() {
+        let mut enriched = entry("vertical.jpg?namespace=gamesdb", GameKind::Game);
+        enriched.game.genres = vec!["Horror".to_owned()];
+        let mut shown = vec![enriched.clone()];
+
+        let mut listed = entry("_392.jpg", GameKind::Extra);
+        listed.library_rank = Some(3);
+        let changed = absorb("acct", &mut shown, vec![listed], Pass::Listed);
+
+        assert_eq!(changed.len(), 1);
+        assert_eq!(shown[0].game.cover_url, enriched.game.cover_url);
+        assert_eq!(shown[0].kind, GameKind::Game);
+        assert_eq!(shown[0].game.genres, enriched.game.genres);
+        assert_eq!(shown[0].library_rank, Some(3));
+    }
+
+    #[test]
+    fn unchanged_listing_is_not_a_change() {
+        let mut shown = vec![entry("vertical.jpg", GameKind::Game)];
+        let changed = absorb(
+            "acct",
+            &mut shown,
+            vec![entry("_392.jpg", GameKind::Extra)],
+            Pass::Listed,
+        );
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn enrichment_never_blanks_a_known_field() {
+        let mut known = entry("vertical.jpg", GameKind::Game);
+        known.parent_id = Some("1".to_owned());
+        known.game.background_url = Some("bg.jpg".to_owned());
+        let mut shown = vec![known];
+
+        let mut partial = entry("vertical.jpg", GameKind::Game);
+        partial.game.description = Some("A ghost story.".to_owned());
+        absorb("acct", &mut shown, vec![partial], Pass::Enriched);
+
+        assert_eq!(shown[0].parent_id.as_deref(), Some("1"));
+        assert_eq!(shown[0].game.background_url.as_deref(), Some("bg.jpg"));
+        assert_eq!(shown[0].game.description.as_deref(), Some("A ghost story."));
     }
 }

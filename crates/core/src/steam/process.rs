@@ -111,9 +111,14 @@ fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
 /// unable to find its own bundled 32-bit runtime and warned about missing
 /// libraries. Steam's own `steam.sh` sets up whatever linking it needs
 /// internally; inheriting this process's is never required and, as
-/// observed, can actively break it.
+/// observed, can actively break it. `GLIBC_TUNABLES` goes too: the
+/// AppImage caps decanter's own malloc arenas with it, a limit meant for
+/// this process, not for Steam.
 fn sanitize_env(command: &mut Command) {
-    command.env_remove("LD_LIBRARY_PATH").env_remove("LD_PRELOAD");
+    command
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
+        .env_remove("GLIBC_TUNABLES");
 }
 
 /// Blocks until [`is_steam_running`] reports Steam gone, or

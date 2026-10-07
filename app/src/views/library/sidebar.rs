@@ -896,7 +896,7 @@ impl SidebarView {
         let is_active = selected == Some(game.id.as_str());
         let is_marked = self.marked.contains(&game.id);
         let icon = match game.icon_url.as_deref() {
-            Some(url) => img(crate::art::source(url))
+            Some(url) => img(crate::art::source(url, gpui::size(26., 26.)))
                 .size(px(26.))
                 .flex_none()
                 .rounded(px(theme::RADIUS_SM))

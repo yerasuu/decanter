@@ -121,7 +121,14 @@ fn main() {
         cli::run(cmd);
     }
 
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    // Everything on this runtime waits on the network or disk; the default
+    // of one worker per core (32 here) only bought idle threads, each with
+    // a stack and allocator state of its own.
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(err) => {
             tracing::error!(%err, "cannot start the tokio runtime");

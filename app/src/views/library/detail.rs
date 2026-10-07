@@ -349,7 +349,9 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
     // webview build, so the gradients only ever showed with no art at all.
     let hero = match art {
         Some(url) => hero.child(
-            img(crate::art::source(url))
+            // Wide enough for the detail pane on a maximized 1080p window;
+            // the hero's height follows its text, 300 px at the least.
+            img(crate::art::source(url, gpui::size(1600., 400.)))
                 .absolute()
                 .top_0()
                 .left_0()
@@ -947,7 +949,7 @@ fn achievement_tile(achievement: &CachedAchievement) -> Div {
         .bg(rgb(theme::BG_PANEL_LIGHT))
         .overflow_hidden()
         .children(icon_for(achievement).map(|url| {
-            img(crate::art::source(url))
+            img(crate::art::source(url, gpui::size(40., 40.)))
                 .size_full()
                 .rounded(px(theme::RADIUS_SM))
                 .object_fit(ObjectFit::Cover)

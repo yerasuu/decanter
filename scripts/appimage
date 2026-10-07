@@ -12,6 +12,12 @@
 # to this process, so whatever decanter spawns (umu-run, xdg-open) runs
 # against the host as normal.
 #
+# glibc's malloc gives each thread that allocates an arena of its own and
+# rarely returns their free pages; with GPUI's per-core thread pool that
+# kept ~90 MB resident holding nothing live. `arena_max=2` caps it — set
+# here because `mallopt` would need `unsafe`, and the tunable has to be in
+# place before the process starts. Game and Steam launches drop it again.
+#
 # nixpkgs has no appimagetool, so the AppImage is put together by hand: an
 # AppImage is the type-2 runtime followed by a squashfs of the AppDir.
 #
@@ -53,7 +59,8 @@ cat > "$app_dir/AppRun" <<'APPRUN'
 #!/bin/sh
 here="$(dirname "$(readlink -f "$0")")"
 host="/usr/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/lib:/lib64:/lib/x86_64-linux-gnu"
-exec "$here/usr/lib/ld-linux-x86-64.so.2" --library-path "$here/usr/lib:$host" "$here/usr/bin/decanter" "$@"
+GLIBC_TUNABLES="glibc.malloc.arena_max=2${GLIBC_TUNABLES:+:$GLIBC_TUNABLES}" \
+    exec "$here/usr/lib/ld-linux-x86-64.so.2" --library-path "$here/usr/lib:$host" "$here/usr/bin/decanter" "$@"
 APPRUN
 chmod +x "$app_dir/AppRun"
 

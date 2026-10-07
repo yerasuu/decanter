@@ -91,6 +91,10 @@ pkgs.mkShell {
   # the same way inside the shell as on the host.
   SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 
+  # Same allocator setting the AppImage's AppRun uses (see scripts/appimage),
+  # so memory measured from `cargo run` matches what ships.
+  GLIBC_TUNABLES = "glibc.malloc.arena_max=2";
+
   # `VK_DRIVER_FILES`: the host's Mesa Vulkan ICDs can't load into a
   # nix-built binary, so GPUI's renderer is pointed at nix's own Mesa
   # instead. Only defaulted, so an explicit override from the caller still

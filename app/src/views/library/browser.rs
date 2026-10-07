@@ -930,7 +930,7 @@ fn cover_card(capsule: &Capsule, model: &Entity<LibraryModel>) -> impl IntoEleme
         .group_active(CARD_GROUP, |art| art.top(px(-1.)))
         .when_some(capsule.cover.as_deref(), |art, cover| {
             art.child(
-                img(art::source(cover))
+                img(art::source(cover, gpui::size(136., 204.)))
                     .absolute()
                     .top_0()
                     .left_0()
