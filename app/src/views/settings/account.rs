@@ -216,7 +216,7 @@ impl AccountTab {
     }
 
     fn open_gog(&mut self, cx: &mut Context<Self>) {
-        if let Err(err) = open::that_detached(decanter_gog::auth_url()) {
+        if let Err(err) = crate::desktop::open(decanter_gog::auth_url()) {
             tracing::error!(error = %err, "failed to open browser for gog login");
             self.add_status = AccountStatus::Failed(format!("no se pudo abrir el navegador: {err}"));
             cx.notify();

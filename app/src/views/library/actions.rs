@@ -53,7 +53,7 @@ pub fn game_install_path(account_id: &str, product_id: &str) -> Option<std::path
 
 /// Hands a path to whatever the desktop's own file manager is.
 pub fn open_in_file_manager(path: &std::path::Path) {
-    if let Err(err) = std::process::Command::new("xdg-open").arg(path).spawn() {
+    if let Err(err) = crate::desktop::open(path) {
         tracing::warn!("couldn't open {}: {err}", path.display());
     }
 }

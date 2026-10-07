@@ -55,7 +55,7 @@ impl Render for GeneralTab {
         pane().child(table).children(self.path.clone().map(|path| {
             inline(
                 button("open-folder", ButtonKind::Secondary, "Abrir carpeta", false).on_click(move |_, _, _| {
-                    if let Err(err) = open::that_detached(&path) {
+                    if let Err(err) = crate::desktop::open(&path) {
                         tracing::error!("no se pudo abrir la carpeta: {err}");
                     }
                 }),

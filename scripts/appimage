@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Decanter-x86_64.AppImage from a release build.
+# Builds Decanter-x86_64.AppImage from a `dist` (LTO) build.
 #
 # The binary is built inside the project's nix-shell, so it's linked
 # against nix's glibc — newer than some hosts' (SteamOS's included), where
@@ -16,7 +16,15 @@
 # rarely returns their free pages; with GPUI's per-core thread pool that
 # kept ~90 MB resident holding nothing live. `arena_max=2` caps it — set
 # here because `mallopt` would need `unsafe`, and the tunable has to be in
-# place before the process starts. Game and Steam launches drop it again.
+# place before the process starts. Whatever decanter starts drops it again.
+#
+# Where the host has a Vulkan driver, `__EGL_VENDOR_LIBRARY_FILENAMES` is
+# pointed at a file that doesn't exist, so libglvnd loads no EGL driver:
+# GPUI renders through Vulkan, but its wgpu instance also opens GL, which
+# pulled in Mesa's GL driver and LLVM (~45 MB) for nothing. Without a
+# Vulkan ICD for the GPU it's left alone, keeping GL as the fallback.
+# The value must match `decanter_core::VULKAN_ONLY_EGL_VENDORS`, which is
+# how children get it stripped again.
 #
 # nixpkgs has no appimagetool, so the AppImage is put together by hand: an
 # AppImage is the type-2 runtime followed by a squashfs of the AppDir.
@@ -36,18 +44,18 @@ runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 runtime_cache="${XDG_CACHE_HOME:-$HOME/.cache}/decanter-appimage/runtime-x86_64-$runtime_version"
 
 cd "$repo_root"
-cargo build --release
+cargo build --profile dist
 
 out_dir="$repo_root/target/appimage"
 app_dir="$out_dir/AppDir"
 rm -rf "$app_dir"
 mkdir -p "$app_dir/usr/bin" "$app_dir/usr/lib"
-cp target/release/decanter "$app_dir/usr/bin/decanter"
+cp target/dist/decanter "$app_dir/usr/bin/decanter"
 
 # Everything the binary links against, from the nix store — glibc and its
 # loader included, which is the point.
 loader="$(cc -print-file-name=ld-linux-x86-64.so.2)"
-"$loader" --list target/release/decanter \
+"$loader" --list target/dist/decanter \
     | awk '/=> \// && !/ld-linux/ { print $3 }' \
     | while read -r lib; do
         cp -L -- "$lib" "$app_dir/usr/lib/"
@@ -59,6 +67,17 @@ cat > "$app_dir/AppRun" <<'APPRUN'
 #!/bin/sh
 here="$(dirname "$(readlink -f "$0")")"
 host="/usr/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/lib:/lib64:/lib/x86_64-linux-gnu"
+if [ -z "${__EGL_VENDOR_LIBRARY_FILENAMES:-}" ]; then
+    for icd in /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json /usr/local/share/vulkan/icd.d/*.json; do
+        # lavapipe is Mesa's CPU Vulkan, installed nearly everywhere; it
+        # says nothing about the GPU having a Vulkan driver.
+        case "$icd" in *lvp_icd*) continue ;; esac
+        if [ -e "$icd" ]; then
+            export __EGL_VENDOR_LIBRARY_FILENAMES=/nonexistent/decanter-vulkan-only.json
+            break
+        fi
+    done
+fi
 GLIBC_TUNABLES="glibc.malloc.arena_max=2${GLIBC_TUNABLES:+:$GLIBC_TUNABLES}" \
     exec "$here/usr/lib/ld-linux-x86-64.so.2" --library-path "$here/usr/lib:$host" "$here/usr/bin/decanter" "$@"
 APPRUN

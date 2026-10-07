@@ -102,6 +102,7 @@ macro_rules! achv_try {
 mod art;
 mod cli;
 mod core;
+mod desktop;
 mod format;
 mod launch;
 mod state;
