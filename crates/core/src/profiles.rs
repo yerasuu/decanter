@@ -27,54 +27,9 @@
     reason = "Db's API is deliberately split by concern across modules, see lib.rs's doc comment"
 )]
 
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::{OptionalExtension as _, params};
 
 use crate::db::{Db, Error, Result};
-
-/// What a profile plays, which decides the sections it shows.
-///
-/// Fixed at creation: a PS profile has no storefront accounts and a PC
-/// profile has no PS game folders, so switching one over would strand
-/// what it holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProfileKind {
-    /// GOG accounts, the Proton library and everything built around them.
-    Pc,
-    /// PS4/PS5 dumps run through the native ports.
-    Ps,
-}
-
-impl ProfileKind {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pc => "pc",
-            Self::Ps => "ps",
-        }
-    }
-}
-
-impl ToSql for ProfileKind {
-    #[inline]
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        Ok(ToSqlOutput::from(self.as_str()))
-    }
-}
-
-impl FromSql for ProfileKind {
-    /// An unknown kind is an error rather than a fallback to `Pc`: it means
-    /// a newer decanter wrote this row, and treating its profile as PC would
-    /// show it sections built for accounts it doesn't have.
-    #[inline]
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        match value.as_str() {
-            Ok("pc") => Ok(Self::Pc),
-            Ok("ps") => Ok(Self::Ps),
-            Ok(other) => Err(FromSqlError::Other(format!("unknown profile kind {other:?}").into())),
-            Err(err) => Err(err),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -89,7 +44,6 @@ pub struct Profile {
     /// every profile used before a per-profile location existed, and still
     /// what a profile that's never chosen one of its own resolves to.
     pub library_path: Option<String>,
-    pub kind: ProfileKind,
 }
 
 impl Db {
@@ -107,7 +61,7 @@ impl Db {
         let profile = self
             .conn
             .query_row(
-                "SELECT id, name, library_path, kind FROM profiles WHERE id = ?1",
+                "SELECT id, name, library_path FROM profiles WHERE id = ?1",
                 params![id],
                 |row| {
                     Ok(Profile {
@@ -120,10 +74,6 @@ impl Db {
                             Err(err) => return Err(err),
                         },
                         library_path: match row.get(2) {
-                            Ok(value) => value,
-                            Err(err) => return Err(err),
-                        },
-                        kind: match row.get(3) {
                             Ok(value) => value,
                             Err(err) => return Err(err),
                         },
@@ -185,7 +135,7 @@ impl Db {
     pub fn list_profiles(&self) -> Result<Vec<Profile>> {
         let mut statement = match self
             .conn
-            .prepare("SELECT id, name, library_path, kind FROM profiles ORDER BY created_at ASC, name ASC")
+            .prepare("SELECT id, name, library_path FROM profiles ORDER BY created_at ASC, name ASC")
         {
             Ok(statement) => statement,
             Err(err) => return Err(err.into()),
@@ -201,10 +151,6 @@ impl Db {
                     Err(err) => return Err(err),
                 },
                 library_path: match row.get(2) {
-                    Ok(value) => value,
-                    Err(err) => return Err(err),
-                },
-                kind: match row.get(3) {
                     Ok(value) => value,
                     Err(err) => return Err(err),
                 },
@@ -228,14 +174,13 @@ impl Db {
 
     /// Adds a profile, or renames the one that already has this id.
     /// `created_at` only orders the listing, so re-adding never reshuffles
-    /// what the user is used to seeing. `kind` only applies to a new
-    /// profile: a rename keeps the kind it was created with.
+    /// what the user is used to seeing.
     #[inline]
-    pub fn upsert_profile(&self, id: &str, name: &str, kind: ProfileKind, created_at: i64) -> Result<Profile> {
+    pub fn upsert_profile(&self, id: &str, name: &str, created_at: i64) -> Result<Profile> {
         match self.conn.execute(
-            "INSERT INTO profiles (id, name, kind, created_at) VALUES (?1, ?2, ?3, ?4)
+            "INSERT INTO profiles (id, name, created_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(id) DO UPDATE SET name = excluded.name",
-            params![id, name, kind, created_at],
+            params![id, name, created_at],
         ) {
             Ok(_) => {}
             Err(err) => return Err(err.into()),
@@ -243,26 +188,19 @@ impl Db {
         // A milestone worth seeing at default level, same tier as
         // `Db::upsert_account`'s own info!.
         tracing::info!(profile_id = id, name, "upserted profile");
-        // Read back rather than assuming: a rename of a profile that
+        // Read back rather than assuming `None`: a rename of a profile that
         // already picked its own library location must not report that
-        // location as unset, nor its kind as the one passed in, just
-        // because this call never touches those columns.
-        let (library_path, stored_kind) = self
+        // location as unset just because this call never touches the column.
+        let library_path = self
             .conn
-            .query_row(
-                "SELECT library_path, kind FROM profiles WHERE id = ?1",
-                params![id],
-                |row| match (row.get(0), row.get(1)) {
-                    (Ok(library_path), Ok(stored_kind)) => Ok((library_path, stored_kind)),
-                    (Err(err), _) | (_, Err(err)) => Err(err),
-                },
-            )
+            .query_row("SELECT library_path FROM profiles WHERE id = ?1", params![id], |row| {
+                row.get(0)
+            })
             .map_err(Error::from)?;
         Ok(Profile {
             id: id.to_owned(),
             name: name.to_owned(),
             library_path,
-            kind: stored_kind,
         })
     }
 
@@ -300,7 +238,7 @@ impl Db {
 }
 
 impl Db {
-    /// A PS profile's game folders, in the order they were added.
+    /// A profile's PS game folders, in the order they were added.
     #[inline]
     pub fn ps_scan_dirs(&self, profile_id: &str) -> Result<Vec<String>> {
         let mut statement = match self
@@ -350,21 +288,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rename_keeps_the_kind_a_profile_was_created_with() {
-        let db = Db::open(":memory:").unwrap();
-        db.upsert_profile("a", "Consola", ProfileKind::Ps, 1).unwrap();
-        let renamed = db.upsert_profile("a", "Sala", ProfileKind::Pc, 2).unwrap();
-        assert_eq!((renamed.name.as_str(), renamed.kind), ("Sala", ProfileKind::Ps));
-        let listed = db.list_profiles().unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].kind, ProfileKind::Ps);
-    }
-
-    #[test]
     fn scan_dirs_belong_to_their_profile_and_go_with_it() {
         let db = Db::open(":memory:").unwrap();
-        db.upsert_profile("a", "Consola", ProfileKind::Ps, 1).unwrap();
-        db.upsert_profile("b", "Otra", ProfileKind::Ps, 2).unwrap();
+        db.upsert_profile("a", "Uno", 1).unwrap();
+        db.upsert_profile("b", "Otro", 2).unwrap();
         db.add_ps_scan_dir("a", "/games/ps4").unwrap();
         db.add_ps_scan_dir("a", "/games/ps5").unwrap();
         db.add_ps_scan_dir("a", "/games/ps4").unwrap();
@@ -375,24 +302,5 @@ mod tests {
         db.delete_profile("a").unwrap();
         assert!(db.ps_scan_dirs("a").unwrap().is_empty());
         assert_eq!(db.ps_scan_dirs("b").unwrap(), ["/other"]);
-    }
-
-    #[test]
-    fn profiles_from_before_kinds_open_as_pc() {
-        let path = std::env::temp_dir().join(format!("decanter-profiles-{}.db", std::process::id()));
-        {
-            let conn = rusqlite::Connection::open(&path).unwrap();
-            conn.execute_batch(
-                "CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL);
-                 INSERT INTO profiles VALUES ('old', 'Antiguo', 1);",
-            )
-            .unwrap();
-        }
-        let db = Db::open(&path).unwrap();
-        let profiles = db.list_profiles().unwrap();
-        drop(db);
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(profiles.len(), 1);
-        assert_eq!(profiles[0].kind, ProfileKind::Pc);
     }
 }

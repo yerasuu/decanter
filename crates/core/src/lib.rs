@@ -22,7 +22,7 @@ pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime,
 pub use disk::disk_usage;
 pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env};
 pub use library::{InstalledDlc, InstalledGame, Library, MoveProgress};
-pub use profiles::{Profile, ProfileKind};
+pub use profiles::Profile;
 
 /// Where decanter keeps everything it writes: the cache database, the game
 /// library, and anything else that isn't a per-OS keyring entry.

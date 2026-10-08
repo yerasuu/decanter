@@ -5,8 +5,8 @@
 
 use decanter_ps::process::{Job, State};
 use gpui::{
-    Context, Entity, ScrollStrategy, SharedString, UniformListScrollHandle, Window, div, prelude::*, px, rgb,
-    uniform_list,
+    ClipboardItem, Context, Entity, ScrollStrategy, SharedString, UniformListScrollHandle, Window, div, prelude::*, px,
+    rgb, uniform_list,
 };
 
 use crate::theme;
@@ -14,6 +14,8 @@ use crate::theme;
 pub struct LogView {
     job: Entity<Job>,
     scroll: UniformListScrollHandle,
+    /// Shows "Copiado" until the job writes again.
+    copied: bool,
 }
 
 impl LogView {
@@ -24,10 +26,32 @@ impl LogView {
             if lines > 0 {
                 this.scroll.scroll_to_item(lines - 1, ScrollStrategy::Bottom);
             }
+            this.copied = false;
             cx.notify();
         })
         .detach();
-        Self { job, scroll }
+        Self {
+            job,
+            scroll,
+            copied: false,
+        }
+    }
+
+    /// The status line and every kept line, built only when asked for:
+    /// a game's log can hold 5000 lines.
+    fn copy(&mut self, status: &str, cx: &mut Context<Self>) {
+        let job = self.job.read(cx);
+        let mut text =
+            String::with_capacity(job.lines.iter().map(|line| line.len() + 1).sum::<usize>() + status.len() + 1);
+        text.push_str(status);
+        text.push('\n');
+        for line in &job.lines {
+            text.push_str(line);
+            text.push('\n');
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        self.copied = true;
+        cx.notify();
     }
 
     pub fn job(&self) -> &Entity<Job> {
@@ -57,13 +81,26 @@ impl Render for LogView {
             .rounded(px(theme::RADIUS_SM))
             .child(
                 div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
                     .px_3()
                     .py_2()
                     .border_b_1()
                     .border_color(rgb(theme::LINE))
                     .text_size(px(11.))
                     .text_color(rgb(theme::TEXT_MUTED))
-                    .child(status),
+                    .child(div().flex_1().min_w_0().truncate().child(status.clone()))
+                    .child(
+                        div()
+                            .id("ps-log-copy")
+                            .flex_none()
+                            .cursor_pointer()
+                            .text_color(rgb(theme::ACCENT_BLUE))
+                            .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
+                            .on_click(cx.listener(move |this, _, _, cx| this.copy(&status, cx)))
+                            .child(if self.copied { "Copiado" } else { "Copiar registro" }),
+                    ),
             )
             .child(
                 uniform_list("ps-log", count, move |range, _, cx| {

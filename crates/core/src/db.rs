@@ -204,7 +204,7 @@ CREATE TABLE IF NOT EXISTS steam_shortcuts (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
--- A PS profile's game folders: its whole library, since a PS game is a
+-- A profile's PS game folders: its whole PS library, since a PS game is a
 -- dump read where the user keeps it rather than an install decanter owns.
 CREATE TABLE IF NOT EXISTS ps_scan_dirs (
     profile_id  TEXT NOT NULL,
@@ -317,11 +317,6 @@ impl Db {
         if profiles_has_library_path == 0 {
             tracing::info!(table = "profiles", "adding library_path column");
             conn.execute_batch("ALTER TABLE profiles ADD COLUMN library_path TEXT;")?;
-        }
-        // Every profile before kinds existed was a PC one.
-        if !has_column(&conn, "profiles", "kind")? {
-            tracing::info!(table = "profiles", "adding kind column");
-            conn.execute_batch("ALTER TABLE profiles ADD COLUMN kind TEXT NOT NULL DEFAULT 'pc';")?;
         }
 
         let db = Self { conn };

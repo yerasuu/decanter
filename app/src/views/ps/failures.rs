@@ -17,6 +17,8 @@ pub struct FailuresView {
     /// The failure whose output is unfolded, by its time and message.
     expanded: Option<(u64, String)>,
     confirm_clear: bool,
+    /// Shows "Copiado" until the record changes.
+    copied: bool,
     error: Option<String>,
 }
 
@@ -29,6 +31,7 @@ impl FailuresView {
             read_at: None,
             expanded: None,
             confirm_clear: false,
+            copied: false,
             error: None,
         };
         this.reload(cx);
@@ -55,10 +58,25 @@ impl FailuresView {
             let _ = this.update(cx, |this, cx| {
                 this.records = records;
                 this.records.reverse();
+                this.copied = false;
                 cx.notify();
             });
         })
         .detach();
+    }
+
+    /// Every listed failure's report, newest first, one after another.
+    fn copy_all(&mut self, cx: &mut Context<Self>) {
+        let mut text = String::new();
+        for report in self.records.iter().map(Failure::report) {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(&report);
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        self.copied = true;
+        cx.notify();
     }
 
     fn clear(&mut self, cx: &mut Context<Self>) {
@@ -216,19 +234,29 @@ impl Render for FailuresView {
                         .gap_3()
                         .child(theme::h2("Fallos").flex_1())
                         .when(!empty, |header| {
-                            header.child(
-                                button("ps-failures-clear", ButtonKind::Secondary, clear_label, false).on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        if this.confirm_clear {
-                                            this.confirm_clear = false;
-                                            this.clear(cx);
-                                        } else {
-                                            this.confirm_clear = true;
-                                        }
-                                        cx.notify();
-                                    }),
-                                ),
-                            )
+                            header
+                                .child(
+                                    button(
+                                        "ps-failures-copy",
+                                        ButtonKind::Secondary,
+                                        if self.copied { "Copiado" } else { "Copiar todo" },
+                                        false,
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| this.copy_all(cx))),
+                                )
+                                .child(
+                                    button("ps-failures-clear", ButtonKind::Secondary, clear_label, false).on_click(
+                                        cx.listener(|this, _, _, cx| {
+                                            if this.confirm_clear {
+                                                this.confirm_clear = false;
+                                                this.clear(cx);
+                                            } else {
+                                                this.confirm_clear = true;
+                                            }
+                                            cx.notify();
+                                        }),
+                                    ),
+                                )
                         }),
                 )
                 .child(theme::muted(

@@ -16,7 +16,7 @@ use gpui::{AsyncApp, Context, Task, WeakEntity};
 use super::Ps;
 use super::jobs::{self, JobKey};
 
-/// How often upstream is checked while a PS profile is in use.
+/// How often upstream is checked once the PS section has been opened.
 const UPDATE_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
 pub type Prepared = Result<Toolchain, String>;

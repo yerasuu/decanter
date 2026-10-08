@@ -1,4 +1,4 @@
-//! The PS section's state: the active PS profile's folders and the games
+//! The PS section's state: the active profile's PS folders and the games
 //! found in them.
 //!
 //! Created the first time the section opens, not at startup, so a PC
@@ -13,7 +13,6 @@ mod ports;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use decanter_core::ProfileKind;
 use decanter_ps::library;
 use decanter_ps::port::Port;
 use decanter_ps::process::Job;
@@ -109,7 +108,7 @@ impl Ps {
         self.failures_revision
     }
 
-    /// Where the active profile's failures are kept, when a PS profile is active.
+    /// Where the active profile's failures are kept.
     pub fn failures_path(&self) -> Option<PathBuf> {
         self.profile_id
             .as_deref()
@@ -130,10 +129,7 @@ impl Ps {
     }
 
     fn sync_profile(&mut self, cx: &mut Context<Self>) {
-        let session = AppState::get(cx).session.read(cx);
-        let profile_id = (session.active_kind == ProfileKind::Ps)
-            .then(|| session.active_profile.clone())
-            .flatten();
+        let profile_id = AppState::get(cx).session.read(cx).active_profile.clone();
         if profile_id == self.profile_id {
             return;
         }
@@ -145,7 +141,7 @@ impl Ps {
         self.import_psport(cx);
     }
 
-    /// What the standalone psport left behind, brought into the first PS
+    /// What the standalone psport left behind, brought into the first
     /// profile that opens the section; once per database.
     fn import_psport(&self, cx: &mut Context<Self>) {
         const DONE: &str = "psport_import_v1";

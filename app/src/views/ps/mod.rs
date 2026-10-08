@@ -1,4 +1,4 @@
-//! The PS section: a submenu over everything a PS profile has — its games,
+//! The PS section: a submenu over everything PS a profile has — its games,
 //! the ports that run them, and its settings — in one place rather than
 //! spread over Ajustes.
 

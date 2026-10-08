@@ -10,7 +10,7 @@ mod compatibility;
 mod general;
 mod shortcuts;
 
-use decanter_core::{ProfileKind, Storefront};
+use decanter_core::Storefront;
 use gpui::{Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
 
 use crate::state::AppState;
@@ -35,17 +35,6 @@ const TABS: [(Tab, &str); 4] = [
     (Tab::Shortcuts, "Externos"),
 ];
 
-/// A PS profile has no storefront accounts, Proton or external shortcuts;
-/// its own settings live in its section.
-const PS_TABS: [(Tab, &str); 1] = [(Tab::General, "General")];
-
-const fn tabs_for(kind: ProfileKind) -> &'static [(Tab, &'static str)] {
-    match kind {
-        ProfileKind::Pc => &TABS,
-        ProfileKind::Ps => &PS_TABS,
-    }
-}
-
 /// The open tab's own entity. Rebuilt on every tab switch or profile
 /// change, so a tab's local state (a half-typed GOG URL, a session check)
 /// starts over the way a remounted component's did in the webview build.
@@ -58,7 +47,6 @@ enum Body {
 
 pub struct SettingsView {
     tab: Tab,
-    kind: ProfileKind,
     profile: Option<String>,
     body: Option<Body>,
 }
@@ -69,7 +57,6 @@ impl SettingsView {
         cx.observe(&session, |this, _, cx| this.sync_profile(cx)).detach();
         let mut this = Self {
             tab: Tab::Account,
-            kind: ProfileKind::Pc,
             profile: None,
             body: None,
         };
@@ -82,10 +69,6 @@ impl SettingsView {
         let profile = session.core.is_ok().then(|| session.active_profile.clone()).flatten();
         if profile == self.profile && (profile.is_none() || self.body.is_some()) {
             return;
-        }
-        self.kind = session.active_kind;
-        if !tabs_for(self.kind).iter().any(|&(tab, _)| tab == self.tab) {
-            self.tab = Tab::General;
         }
         self.profile = profile;
         self.rebuild(cx);
@@ -113,7 +96,7 @@ impl SettingsView {
 impl Render for SettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let tabs = crate::widgets::tabs("settings-tabs", tabs_for(self.kind), self.tab, move |tab, _, cx| {
+        let tabs = crate::widgets::tabs("settings-tabs", &TABS, self.tab, move |tab, _, cx| {
             entity.update(cx, |this, cx| this.select(tab, cx));
         })
         .mt_6()

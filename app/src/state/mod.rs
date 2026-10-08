@@ -7,7 +7,6 @@ mod cache;
 pub mod gog_library;
 mod ps;
 
-use decanter_core::ProfileKind;
 use gpui::{App, AppContext as _, Entity, Global};
 
 pub use background::{Background, InstallStatus};
@@ -22,9 +21,6 @@ pub struct Session {
     /// The profile the topbar's switcher has active — read by everything
     /// that's per-profile instead of each screen picking its own.
     pub active_profile: Option<String>,
-    /// Which sections the topbar and Ajustes show. Set together with
-    /// `active_profile`; `Pc` while no profile is active.
-    pub active_kind: ProfileKind,
     /// Bumped whenever the topbar's "Biblioteca" link is clicked, even
     /// while already on that page, so the library drops back to the shelf
     /// browser instead of leaving whatever game detail was open.
@@ -34,15 +30,15 @@ pub struct Session {
 impl Session {
     fn load() -> Self {
         let core = crate::core::db().map(|_| ());
-        let active = crate::core::db()
+        let active_profile = crate::core::db()
             .and_then(|db| db.active_profile().map_err(|err| err.to_string()))
             .inspect_err(|err| tracing::warn!(%err, "could not read the active profile"))
             .ok()
-            .flatten();
+            .flatten()
+            .map(|profile| profile.id);
         Self {
             core,
-            active_kind: active.as_ref().map_or(ProfileKind::Pc, |profile| profile.kind),
-            active_profile: active.map(|profile| profile.id),
+            active_profile,
             library_home: 0,
         }
     }
