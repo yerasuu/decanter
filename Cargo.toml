@@ -14,7 +14,7 @@ default-members = ["app"]
 exclude = ["crates/hook"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 authors = []
 edition = "2024"
 
