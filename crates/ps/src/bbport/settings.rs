@@ -23,6 +23,14 @@ impl LauncherSettings {
             .unwrap_or_default()
     }
 
+    /// One change against the file as it is now, for edits made outside
+    /// the settings table (folders, extra environment).
+    pub fn edit(change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
+        let mut settings = Self::load();
+        change(&mut settings);
+        settings.save()
+    }
+
     pub fn save(&self) -> std::io::Result<()> {
         let text = serde_json::to_string_pretty(&self.0).map_err(std::io::Error::other)?;
         crate::files::write_atomic(&path(), text.as_bytes())

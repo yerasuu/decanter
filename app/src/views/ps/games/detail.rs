@@ -3,9 +3,16 @@
 
 use std::path::PathBuf;
 
+use decanter_ps::anyps5::AnyPs5;
+use decanter_ps::bbport::Bbport;
+use decanter_ps::mapping::Target;
+use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
 use gpui::{AnyElement, Context, Entity, Window, div, prelude::*, px, rgb};
 
+use super::controls::ControlsView;
+use super::graphics::GraphicsView;
+use super::mods::ModsView;
 use super::{display_title, platform_label};
 use crate::state::{JobKey, Ps};
 use crate::theme;
@@ -15,10 +22,29 @@ use crate::widgets::{ButtonKind, button};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Overview,
+    Controls,
+    Graphics,
+    Mods,
     Log,
 }
 
-const TABS: [(Tab, &str); 2] = [(Tab::Overview, "Resumen"), (Tab::Log, "Registro")];
+const TABS: [(Tab, &str); 3] = [
+    (Tab::Overview, "Resumen"),
+    (Tab::Controls, "Controles"),
+    (Tab::Log, "Registro"),
+];
+
+/// bbport has settings of its own; AnyPS5 takes none.
+const BBPORT_TABS: [(Tab, &str); 5] = [
+    (Tab::Overview, "Resumen"),
+    (Tab::Controls, "Controles"),
+    (Tab::Graphics, "Gráficos"),
+    (Tab::Mods, "Mods"),
+    (Tab::Log, "Registro"),
+];
+
+/// A game no port runs has nothing to bind.
+const UNSUPPORTED_TABS: [(Tab, &str); 1] = [(Tab::Overview, "Resumen")];
 
 pub struct DetailView {
     ps: Entity<Ps>,
@@ -27,6 +53,11 @@ pub struct DetailView {
     selected: Option<PathBuf>,
     tab: Tab,
     log: Option<Entity<LogView>>,
+    /// The bindings of `selected`, read when its Controles tab opens.
+    controls: Option<Result<Entity<ControlsView>, String>>,
+    /// Shared by every Bloodborne copy, so kept across selections.
+    graphics: Option<Entity<GraphicsView>>,
+    mods: Option<Entity<ModsView>>,
 }
 
 impl DetailView {
@@ -41,6 +72,9 @@ impl DetailView {
             selected: None,
             tab: Tab::Overview,
             log: None,
+            controls: None,
+            graphics: None,
+            mods: None,
         }
     }
 
@@ -51,8 +85,50 @@ impl DetailView {
     pub fn select(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
         self.selected = Some(dir);
         self.tab = Tab::Overview;
+        self.controls = None;
         self.sync_log(cx);
         cx.notify();
+    }
+
+    fn select_tab(&mut self, tab: Tab, entry: Option<(Port, String)>, cx: &mut Context<Self>) {
+        self.tab = tab;
+        if tab == Tab::Graphics && self.graphics.is_none() {
+            let ps = self.ps.clone();
+            self.graphics = Some(cx.new(|cx| GraphicsView::new(&ps, cx)));
+        }
+        if tab == Tab::Mods && self.mods.is_none() {
+            let ps = self.ps.clone();
+            self.mods = Some(cx.new(|cx| ModsView::new(ps, cx)));
+        }
+        if tab == Tab::Controls
+            && self.controls.is_none()
+            && let Some((port, title_id)) = entry
+        {
+            self.load_controls(port, title_id, cx);
+        }
+        cx.notify();
+    }
+
+    fn load_controls(&mut self, port: Port, title_id: String, cx: &mut Context<Self>) {
+        let (target, path) = match port {
+            Port::Bbport => (Target::Bbport, Bbport::ini_path()),
+            Port::AnyPs5 => (Target::AnyPs5, AnyPs5::binds_path(&title_id)),
+        };
+        let selected = self.selected.clone();
+        let read_path = path.clone();
+        let task = cx.background_spawn(async move { decanter_ps::binds::read(target, &read_path) });
+        cx.spawn(async move |this, cx| {
+            let mapping = task.await;
+            let _ = this.update(cx, |this, cx| {
+                // Another game picked meanwhile: its own tab reads its own file.
+                if this.selected != selected {
+                    return;
+                }
+                this.controls = Some(mapping.map(|mapping| cx.new(|cx| ControlsView::new(target, path, mapping, cx))));
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// Follows the selected game's latest job, which a new run replaces.
@@ -208,16 +284,35 @@ impl Render for DetailView {
                 .into_any_element();
         };
         let entity = cx.entity();
-        let tabs = crate::widgets::tabs("ps-detail-tabs", &TABS, self.tab, move |tab, _, cx| {
-            entity.update(cx, |this, cx| {
-                this.tab = tab;
-                cx.notify();
-            });
+        let port = entry.port.map(|port| (port, entry.game.title_id.clone()));
+        let tabs: &[(Tab, &str)] = match entry.port {
+            Some(Port::Bbport) => &BBPORT_TABS,
+            Some(Port::AnyPs5) => &TABS,
+            None => &UNSUPPORTED_TABS,
+        };
+        let tabs = crate::widgets::tabs("ps-detail-tabs", tabs, self.tab, move |tab, _, cx| {
+            let port = port.clone();
+            entity.update(cx, |this, cx| this.select_tab(tab, port, cx));
         });
-        let body = match (self.tab, &self.log) {
-            (Tab::Log, Some(log)) => div().h(px(460.)).child(log.clone()).into_any_element(),
-            (Tab::Log, None) => theme::muted("Todavía no se ejecutó nada para este juego.").into_any_element(),
-            (Tab::Overview, _) => self.overview(&entry, cx),
+        let body = match self.tab {
+            Tab::Log => match &self.log {
+                Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
+                None => theme::muted("Todavía no se ejecutó nada para este juego.").into_any_element(),
+            },
+            Tab::Controls => match &self.controls {
+                Some(Ok(controls)) => controls.clone().into_any_element(),
+                Some(Err(err)) => theme::error(err.clone()).into_any_element(),
+                None => theme::muted("Leyendo los controles…").into_any_element(),
+            },
+            Tab::Graphics => self
+                .graphics
+                .clone()
+                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Mods => self
+                .mods
+                .clone()
+                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Overview => self.overview(&entry, cx),
         };
         div()
             .id("ps-detail")

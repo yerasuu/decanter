@@ -9,6 +9,8 @@
 mod groups;
 mod ini;
 mod settings;
+pub mod tools;
+pub mod values;
 
 use std::fs;
 use std::io;

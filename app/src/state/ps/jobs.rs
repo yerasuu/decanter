@@ -20,6 +20,8 @@ pub enum JobKey {
     Port(Port),
     /// Playing or converting the game in this folder.
     Game(PathBuf),
+    /// Recording FSR 4.1.1 from an AMD DLL.
+    Fsr411,
 }
 
 pub struct Finished {

@@ -5,6 +5,7 @@
 //! profile never pays for it; kept after that, so jobs started from the
 //! section outlive switching to another one.
 
+mod fsr;
 mod jobs;
 mod play;
 mod ports;
@@ -19,6 +20,7 @@ use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
 
+pub use fsr::DllOutcome;
 pub use jobs::JobKey;
 pub use ports::{PortState, Stage};
 
@@ -35,6 +37,8 @@ pub struct Ps {
     /// Bumped whenever the profile's failure record changes, for the
     /// view that reads it to know when to read it again.
     failures_revision: u32,
+    /// Bumped when an FSR 4.1.1 build ends, so its status is checked again.
+    fsr_revision: u32,
     /// Bumped per scan, so a slow scan that finishes after a newer one,
     /// or after a profile switch, is dropped instead of shown.
     scan: u32,
@@ -65,6 +69,7 @@ impl Ps {
                 error: None,
                 scan: 0,
                 failures_revision: 0,
+                fsr_revision: 0,
                 jobs: HashMap::new(),
                 ports: HashMap::new(),
             };
@@ -94,6 +99,10 @@ impl Ps {
 
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
+    }
+
+    pub const fn fsr_revision(&self) -> u32 {
+        self.fsr_revision
     }
 
     pub const fn failures_revision(&self) -> u32 {
@@ -133,6 +142,56 @@ impl Ps {
         self.entries.clear();
         self.notice = None;
         self.rescan(cx);
+        self.import_psport(cx);
+    }
+
+    /// What the standalone psport left behind, brought into the first PS
+    /// profile that opens the section; once per database.
+    fn import_psport(&self, cx: &mut Context<Self>) {
+        const DONE: &str = "psport_import_v1";
+        let Some(profile_id) = self.profile_id.clone() else {
+            return;
+        };
+        let task = cx.background_spawn(async move {
+            let db = match crate::core::db() {
+                Ok(db) => db,
+                Err(err) => return Err(err),
+            };
+            if db.setting(DONE).map_err(|err| err.to_string())?.is_some() {
+                return Ok(false);
+            }
+            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+            let sources = decanter_ps::import::Sources::from_home(&home);
+            let imported = decanter_ps::import::import(&sources, &profile_id).map_err(|err| err.to_string())?;
+            for dir in &imported.scan_dirs {
+                db.add_ps_scan_dir(&profile_id, &dir.to_string_lossy())
+                    .map_err(|err| err.to_string())?;
+            }
+            db.set_setting(DONE, "1").map_err(|err| err.to_string())?;
+            tracing::info!(
+                profile_id,
+                folders = imported.scan_dirs.len(),
+                copied = ?imported.copied,
+                "imported psport's data"
+            );
+            Ok(!imported.scan_dirs.is_empty() || !imported.copied.is_empty())
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(true) => {
+                    this.notice = Some(("Se importaron los datos de psport".to_owned(), false));
+                    this.rescan(cx);
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    tracing::warn!(%err, "could not import psport's data");
+                    this.notice = Some((format!("No se pudieron importar los datos de psport: {err}"), true));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// Reads the folder list and every dump in it again, off the UI thread.
