@@ -4,6 +4,7 @@ mod chrome;
 mod downloads;
 pub mod library;
 mod profile_form;
+mod ps;
 mod settings;
 mod shell;
 mod storage;

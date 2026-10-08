@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/gog", "crates/runtime", "app"]
+members = ["crates/core", "crates/gog", "crates/ps", "crates/runtime", "app"]
 # `app` is the workspace's only binary crate (decanter) — this is what lets
 # `cargo run`/`cargo build` from the workspace root pick it without an
 # explicit `-p`/`--package`.
@@ -23,6 +23,7 @@ edition = "2024"
 [workspace.dependencies]
 decanter-core = { path = "crates/core" }
 decanter-gog = { path = "crates/gog" }
+decanter-ps = { path = "crates/ps" }
 decanter-runtime = { path = "crates/runtime" }
 # Zed's repository at a pinned commit: the crates.io release of gpui no
 # longer builds.
@@ -52,6 +53,9 @@ rfd = "0.17.2"
 rusqlite = "0.40.2"
 serde = "1.0.229"
 serde_json = "1.0.151"
+# Already in the graph through the TLS stack; listed for the nix-portable
+# checksum in crates/ps.
+sha2 = "0.10.9"
 thiserror = "2.0.20"
 tokio = "1.53.2"
 toml = "1.1.5"

@@ -1518,6 +1518,7 @@ dependencies = [
  "clap",
  "decanter-core",
  "decanter-gog",
+ "decanter-ps",
  "decanter-runtime",
  "futures",
  "gpui",
@@ -1573,6 +1574,21 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "decanter-ps"
+version = "0.1.2"
+dependencies = [
+ "decanter-core",
+ "nix",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

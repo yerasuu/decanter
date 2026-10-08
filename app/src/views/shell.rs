@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use decanter_core::Profile;
+use decanter_core::{Profile, ProfileKind};
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, SharedString, StyleRefinement, Subscription, Window, div, point,
     prelude::*, px, rgb,
@@ -14,6 +14,7 @@ use super::chrome;
 use super::downloads::DownloadsView;
 use super::library::LibraryView;
 use super::profile_form::{self, ProfileForm};
+use super::ps::PsView;
 use super::settings::SettingsView;
 use super::storage::StorageView;
 use crate::state::{AppState, InstallStatus};
@@ -25,6 +26,7 @@ pub enum Page {
     Library,
     Storage,
     Downloads,
+    Ps,
     Settings,
 }
 
@@ -39,6 +41,7 @@ pub struct Shell {
     /// as it was left.
     storage: Option<Entity<StorageView>>,
     downloads: Option<Entity<DownloadsView>>,
+    ps: Option<Entity<PsView>>,
     settings: Option<Entity<SettingsView>>,
     profiles: Vec<Profile>,
     new_profile: Option<(Entity<ProfileForm>, Subscription)>,
@@ -48,8 +51,17 @@ pub struct Shell {
 impl Shell {
     pub fn new(on_close: Rc<dyn Fn(&mut Window, &mut App)>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::get(cx).clone();
-        cx.observe(&state.session, |this, _, cx| {
+        cx.observe_in(&state.session, window, |this, session, window, cx| {
             this.reload_profiles();
+            // Each kind has sections the other lacks; landing on one that
+            // isn't there falls back to the kind's own first section.
+            match (session.read(cx).active_kind, this.page) {
+                (ProfileKind::Ps, Page::Library | Page::Storage | Page::Downloads) => {
+                    this.navigate(Page::Ps, window, cx);
+                }
+                (ProfileKind::Pc, Page::Ps) => this.navigate(Page::Library, window, cx),
+                _ => {}
+            }
             cx.notify();
         })
         .detach();
@@ -60,12 +72,16 @@ impl Shell {
             library: cx.new(|cx| LibraryView::new(window, cx)),
             storage: None,
             downloads: None,
+            ps: None,
             settings: None,
             profiles: Vec::new(),
             new_profile: None,
             on_close,
         };
         this.reload_profiles();
+        if state.session.read(cx).active_kind == ProfileKind::Ps {
+            this.navigate(Page::Ps, window, cx);
+        }
         this
     }
 
@@ -100,6 +116,9 @@ impl Shell {
             Page::Downloads => {
                 self.downloads.get_or_insert_with(|| cx.new(DownloadsView::new));
             }
+            Page::Ps => {
+                self.ps.get_or_insert_with(|| cx.new(PsView::new));
+            }
             Page::Settings => {
                 if self.settings.is_none() {
                     self.settings = Some(cx.new(|cx| SettingsView::new(window, cx)));
@@ -125,8 +144,14 @@ impl Shell {
             Ok(()) => {
                 tracing::info!(profile_id = chosen, "active profile switched");
                 let session = AppState::get(cx).session.clone();
+                let kind = self
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id == chosen)
+                    .map_or(ProfileKind::Pc, |profile| profile.kind);
                 let chosen = chosen.to_owned();
                 session.update(cx, |session, cx| {
+                    session.active_kind = kind;
                     session.active_profile = Some(chosen);
                     cx.notify();
                 });
@@ -179,10 +204,11 @@ impl Shell {
             .profiles
             .iter()
             .map(|profile| {
-                (
-                    SharedString::from(profile.id.clone()),
-                    SharedString::from(profile.name.clone()),
-                )
+                let label = match profile.kind {
+                    ProfileKind::Pc => SharedString::from(profile.name.clone()),
+                    ProfileKind::Ps => SharedString::from(format!("{} · PS", profile.name)),
+                };
+                (SharedString::from(profile.id.clone()), label)
             })
             .chain([(NEW_PROFILE_OPTION.into(), "+ Crear perfil".into())]);
         let entity = cx.entity();
@@ -284,6 +310,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pc = AppState::get(cx).session.read(cx).active_kind == ProfileKind::Pc;
         let installing = AppState::get(cx).background.read(cx).installing.len();
         let downloads_link =
             self.nav_link("nav-downloads", "Descargas", Page::Downloads, cx)
@@ -316,9 +343,13 @@ impl Render for Shell {
                     .flex()
                     .flex_none()
                     .gap_1()
-                    .child(self.nav_link("nav-library", "Biblioteca", Page::Library, cx))
-                    .child(self.nav_link("nav-storage", "Almacenamiento", Page::Storage, cx))
-                    .child(downloads_link),
+                    .when(pc, |links| {
+                        links
+                            .child(self.nav_link("nav-library", "Biblioteca", Page::Library, cx))
+                            .child(self.nav_link("nav-storage", "Almacenamiento", Page::Storage, cx))
+                            .child(downloads_link)
+                    })
+                    .when(!pc, |links| links.child(self.nav_link("nav-ps", "PS", Page::Ps, cx))),
             )
             // Empty on purpose: the window's only plain move surface, never
             // covered by a link, the profile switcher or the window buttons.
@@ -357,6 +388,10 @@ impl Render for Shell {
                 || div().into_any_element(),
                 |view| view.cached(page()).into_any_element(),
             ),
+            Page::Ps => self.ps.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
             Page::Settings => self.settings.clone().map_or_else(
                 || div().into_any_element(),
                 |view| view.cached(page()).into_any_element(),
@@ -388,7 +423,7 @@ impl Render for Shell {
             .flex_col()
             .child(topbar)
             .child(div().flex_1().min_h_0().overflow_hidden().child(body))
-            .children(Self::download_bar(cx))
+            .children(pc.then(|| Self::download_bar(cx)).flatten())
             .children(new_profile)
             .children(chrome::resize_edges())
     }

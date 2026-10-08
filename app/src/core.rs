@@ -7,7 +7,7 @@
 //! for the query they're making, the way `library::data` always has. Whether
 //! the database opened at all is resolved once, in `state::Session`.
 
-use decanter_core::{Db, InstalledGame, Library, Profile, Storefront, default_db_path};
+use decanter_core::{Db, InstalledGame, Library, Profile, ProfileKind, Storefront, default_db_path};
 
 pub fn db() -> Result<Db, String> {
     match Db::open(default_db_path()) {
@@ -36,14 +36,14 @@ pub fn db() -> Result<Db, String> {
 /// creation form instead of leaving it on the pre-filled default — `None`
 /// leaves the profile's `library_path` column unset, same as every profile
 /// created before this existed.
-pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile, String> {
+pub fn create_profile(name: &str, kind: ProfileKind, library_path: Option<&str>) -> Result<Profile, String> {
     let db = db()?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
     let profile = crate::achv_try!(
-        db.upsert_profile(&id, name, now)
+        db.upsert_profile(&id, name, kind, now)
             .inspect_err(|err| tracing::error!(profile_name = name, %err, "failed to create profile"))
             .map_err(|err| err.to_string())
     );

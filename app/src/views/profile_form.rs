@@ -6,6 +6,7 @@
 //! creating a profile here makes it active, and the check that led here
 //! never fires again with a profile already active.
 
+use decanter_core::ProfileKind;
 use gpui::{Context, Entity, EventEmitter, Focusable as _, FontWeight, Window, div, prelude::*, px, relative, rgb};
 
 use crate::state::AppState;
@@ -25,6 +26,7 @@ pub struct Done;
 
 pub struct ProfileForm {
     layout: Layout,
+    kind: ProfileKind,
     name: Entity<TextInput>,
     library_path: Entity<TextInput>,
     /// Only set once the user actually picks a folder — leaving the
@@ -58,6 +60,7 @@ impl ProfileForm {
         window.focus(&name.focus_handle(cx), cx);
         Self {
             layout,
+            kind: ProfileKind::Pc,
             name,
             library_path,
             library_path_chosen: false,
@@ -70,14 +73,16 @@ impl ProfileForm {
         if name.is_empty() {
             return;
         }
-        let chosen_path = self
-            .library_path_chosen
+        // A PS profile never reaches the Proton library, so a folder picked
+        // before switching the kind over is dropped rather than stored.
+        let chosen_path = (self.library_path_chosen && self.kind == ProfileKind::Pc)
             .then(|| self.library_path.read(cx).text().to_owned());
-        match crate::core::create_profile(&name, chosen_path.as_deref()) {
+        match crate::core::create_profile(&name, self.kind, chosen_path.as_deref()) {
             Ok(profile) => {
                 tracing::info!(profile_id = %profile.id, name, "profile created");
                 let session = AppState::get(cx).session.clone();
                 session.update(cx, |session, cx| {
+                    session.active_kind = profile.kind;
                     session.active_profile = Some(profile.id);
                     cx.notify();
                 });
@@ -125,6 +130,25 @@ impl ProfileForm {
             )
     }
 
+    fn kind_row(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let choice = |id: &'static str, kind: ProfileKind, label: &'static str| {
+            let style = if self.kind == kind {
+                ButtonKind::Primary
+            } else {
+                ButtonKind::Secondary
+            };
+            button(id, style, label, false).on_click(cx.listener(move |this, _, _, cx| {
+                this.kind = kind;
+                cx.notify();
+            }))
+        };
+        div()
+            .flex()
+            .gap_2()
+            .child(choice("kind-pc", ProfileKind::Pc, "PC"))
+            .child(choice("kind-ps", ProfileKind::Ps, "PS"))
+    }
+
     fn error_line(&self) -> Option<gpui::Div> {
         self.error.as_ref().map(|message| theme::error(message.clone()))
     }
@@ -149,9 +173,10 @@ impl Render for ProfileForm {
                         .text_center()
                         .child(theme::h1("Bienvenido a Decanter"))
                         .child(theme::muted(
-                            "Creá un perfil para empezar — después podés sumarle cuentas de GOG (y de otras \
-                             tiendas más adelante) desde Ajustes.",
+                            "Creá un perfil para empezar: PC para tus cuentas de GOG con Proton, PS para \
+                             volcados de PS4 y PS5 con los ports nativos.",
                         ))
+                        .child(self.kind_row(cx).mt(px(20.)))
                         .child(
                             div()
                                 .flex()
@@ -165,10 +190,13 @@ impl Render for ProfileForm {
                                         .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
                                 ),
                         )
-                        .child(theme::muted(
-                            "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):",
-                        ))
-                        .child(self.path_row(cx).mt(px(20.)).w_full().max_w(px(320.)))
+                        .when(self.kind == ProfileKind::Pc, |column| {
+                            column
+                                .child(theme::muted(
+                                    "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):",
+                                ))
+                                .child(self.path_row(cx).mt(px(20.)).w_full().max_w(px(320.)))
+                        })
                         .children(self.error_line()),
                 )
                 .into_any_element(),
@@ -188,9 +216,13 @@ impl Render for ProfileForm {
                         .mb_3()
                         .child("NUEVO PERFIL"),
                 )
+                .child(self.kind_row(cx).mb_3())
                 .child(self.name.clone())
-                .child(theme::muted("Dónde vive la biblioteca de este perfil:"))
-                .child(self.path_row(cx).mb_3())
+                .when(self.kind == ProfileKind::Pc, |panel| {
+                    panel
+                        .child(theme::muted("Dónde vive la biblioteca de este perfil:"))
+                        .child(self.path_row(cx).mb_3())
+                })
                 .children(self.error_line())
                 .child(
                     div()

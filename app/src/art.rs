@@ -1,5 +1,6 @@
 //! GOG's cover, icon and background art, fetched once and kept on disk at
-//! the size it's drawn at.
+//! the size it's drawn at — and a PS dump's own icon, read from the dump
+//! the same way through a `file://` URL.
 //!
 //! The webview build pointed `<img src>` straight at GOG's CDN and let
 //! WebKit's HTTP cache deal with it. GPUI's own URI loader keeps nothing
@@ -143,16 +144,33 @@ fn fit(bytes: Vec<u8>, width: u32, height: u32) -> anyhow::Result<Vec<u8>> {
 }
 
 async fn download(key: ArtKey, path: PathBuf) -> anyhow::Result<()> {
-    let bytes = match webp_variant(&key.url) {
+    let bytes = if let Some(local) = key.url.strip_prefix("file://") {
+        match tokio::fs::read(local).await {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(anyhow::anyhow!("reading {local}: {err}")),
+        }
+    } else {
+        crate::achv_try!(fetch(&key.url).await)
+    };
+    crate::achv_try!(store(&key, &path, bytes).await);
+    Ok(())
+}
+
+async fn fetch(url: &str) -> anyhow::Result<Vec<u8>> {
+    let bytes = match webp_variant(url) {
         Some(webp) => match get(&webp).await {
             Ok(bytes) => bytes,
             Err(err) => {
-                tracing::debug!(url = %key.url, %err, "no webp variant, fetching the original");
-                crate::achv_try!(get(&key.url).await)
+                tracing::debug!(url, %err, "no webp variant, fetching the original");
+                crate::achv_try!(get(url).await)
             }
         },
-        None => crate::achv_try!(get(&key.url).await),
+        None => crate::achv_try!(get(url).await),
     };
+    Ok(bytes)
+}
+
+async fn store(key: &ArtKey, path: &Path, bytes: Vec<u8>) -> anyhow::Result<()> {
     // Decoding and resampling is CPU work; the runtime only has two
     // workers, and they're for I/O.
     let (width, height) = (key.width, key.height);
@@ -170,7 +188,7 @@ async fn download(key: ArtKey, path: PathBuf) -> anyhow::Result<()> {
     if let Err(err) = tokio::fs::write(&partial, &fitted).await {
         return Err(anyhow::anyhow!("writing {}: {err}", partial.display()));
     }
-    if let Err(err) = tokio::fs::rename(&partial, &path).await {
+    if let Err(err) = tokio::fs::rename(&partial, path).await {
         return Err(anyhow::anyhow!("moving {} into place: {err}", path.display()));
     }
     Ok(())
