@@ -1581,6 +1581,9 @@ name = "decanter-ps"
 version = "0.1.2"
 dependencies = [
  "decanter-core",
+ "flate2",
+ "image",
+ "md5",
  "nix",
  "reqwest 0.13.5",
  "serde",

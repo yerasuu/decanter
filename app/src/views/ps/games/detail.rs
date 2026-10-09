@@ -10,8 +10,9 @@ use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
 use gpui::{AnyElement, Context, Entity, Window, div, prelude::*, px, rgb};
 
-use super::controls::ControlsView;
+use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
+use super::keyboard::KeyboardView;
 use super::mods::ModsView;
 use super::{display_title, platform_label};
 use crate::state::{JobKey, Ps};
@@ -22,7 +23,8 @@ use crate::widgets::{ButtonKind, button};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Overview,
-    Controls,
+    Keyboard,
+    Gamepad,
     Graphics,
     Mods,
     Log,
@@ -30,14 +32,16 @@ enum Tab {
 
 const TABS: [(Tab, &str); 3] = [
     (Tab::Overview, "Resumen"),
-    (Tab::Controls, "Controles"),
+    (Tab::Keyboard, "Teclado"),
     (Tab::Log, "Registro"),
 ];
 
-/// bbport has settings of its own; AnyPS5 takes none.
-const BBPORT_TABS: [(Tab, &str); 5] = [
+/// bbport has settings and gamepad layouts of its own; AnyPS5 reads the
+/// controller as it is and takes no settings.
+const BBPORT_TABS: [(Tab, &str); 6] = [
     (Tab::Overview, "Resumen"),
-    (Tab::Controls, "Controles"),
+    (Tab::Keyboard, "Teclado"),
+    (Tab::Gamepad, "Mando"),
     (Tab::Graphics, "Gráficos"),
     (Tab::Mods, "Mods"),
     (Tab::Log, "Registro"),
@@ -54,7 +58,9 @@ pub struct DetailView {
     tab: Tab,
     log: Option<Entity<LogView>>,
     /// The bindings of `selected`, read when its Controles tab opens.
-    controls: Option<Result<Entity<ControlsView>, String>>,
+    controls: Option<Result<Entity<KeyboardView>, String>>,
+    /// Shared by every Bloodborne copy, so kept across selections.
+    gamepad: Option<Entity<GamepadView>>,
     /// Shared by every Bloodborne copy, so kept across selections.
     graphics: Option<Entity<GraphicsView>>,
     mods: Option<Entity<ModsView>>,
@@ -73,6 +79,7 @@ impl DetailView {
             tab: Tab::Overview,
             log: None,
             controls: None,
+            gamepad: None,
             graphics: None,
             mods: None,
         }
@@ -92,6 +99,10 @@ impl DetailView {
 
     fn select_tab(&mut self, tab: Tab, entry: Option<(Port, String)>, cx: &mut Context<Self>) {
         self.tab = tab;
+        if tab == Tab::Gamepad && self.gamepad.is_none() {
+            let ps = self.ps.clone();
+            self.gamepad = Some(cx.new(|cx| GamepadView::new(&ps, cx)));
+        }
         if tab == Tab::Graphics && self.graphics.is_none() {
             let ps = self.ps.clone();
             self.graphics = Some(cx.new(|cx| GraphicsView::new(&ps, cx)));
@@ -100,7 +111,7 @@ impl DetailView {
             let ps = self.ps.clone();
             self.mods = Some(cx.new(|cx| ModsView::new(ps, cx)));
         }
-        if tab == Tab::Controls
+        if tab == Tab::Keyboard
             && self.controls.is_none()
             && let Some((port, title_id)) = entry
         {
@@ -116,7 +127,11 @@ impl DetailView {
         };
         let selected = self.selected.clone();
         let read_path = path.clone();
-        let task = cx.background_spawn(async move { decanter_ps::binds::read(target, &read_path) });
+        let task = cx.background_spawn(async move {
+            let store =
+                decanter_ps::layouts::Store::load().map_err(|err| format!("No se pudieron leer los layouts: {err}"));
+            decanter_ps::binds::read(target, &read_path).and_then(|mapping| store.map(|store| (mapping, store)))
+        });
         cx.spawn(async move |this, cx| {
             let mapping = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -124,7 +139,9 @@ impl DetailView {
                 if this.selected != selected {
                     return;
                 }
-                this.controls = Some(mapping.map(|mapping| cx.new(|cx| ControlsView::new(target, path, mapping, cx))));
+                this.controls = Some(
+                    mapping.map(|(mapping, store)| cx.new(|cx| KeyboardView::new(target, path, mapping, store, cx))),
+                );
                 cx.notify();
             });
         })
@@ -299,10 +316,14 @@ impl Render for DetailView {
                 Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
                 None => theme::muted("Todavía no se ejecutó nada para este juego.").into_any_element(),
             },
-            Tab::Controls => match &self.controls {
+            Tab::Gamepad => self
+                .gamepad
+                .clone()
+                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Keyboard => match &self.controls {
                 Some(Ok(controls)) => controls.clone().into_any_element(),
                 Some(Err(err)) => theme::error(err.clone()).into_any_element(),
-                None => theme::muted("Leyendo los controles…").into_any_element(),
+                None => theme::muted("Leyendo el teclado…").into_any_element(),
             },
             Tab::Graphics => self
                 .graphics

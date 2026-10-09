@@ -9,6 +9,9 @@ workspace = true
 
 [dependencies]
 decanter-core.workspace = true
+flate2.workspace = true
+image.workspace = true
+md5.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest.workspace = true
 serde = { workspace = true, features = ["derive"] }

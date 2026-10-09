@@ -23,6 +23,7 @@ pub mod failures;
 mod files;
 pub mod import;
 pub mod keys;
+pub mod layouts;
 pub mod library;
 pub mod mapping;
 pub mod paths;

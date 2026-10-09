@@ -96,6 +96,12 @@ impl Values {
         }
     }
 
+    /// A launch setting outside the table, shown at once; the caller saves
+    /// it with [`super::LauncherSettings::edit`].
+    pub fn set_launch_text(&mut self, key: &str, value: &str) {
+        self.launch.set_text(key, value);
+    }
+
     /// Shows `value` at once; [`save`] writes it.
     pub fn set(&mut self, setting: &Setting, value: &str) {
         apply(&mut self.ini, &mut self.launch, setting, value);

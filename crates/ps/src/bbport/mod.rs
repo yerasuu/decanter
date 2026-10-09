@@ -7,7 +7,10 @@
 //! directory.
 
 mod groups;
+pub mod icons;
 mod ini;
+pub mod mods;
+pub mod pad;
 mod settings;
 pub mod tools;
 pub mod values;
@@ -134,13 +137,15 @@ impl Bbport {
     /// The same environment bbport's own launcher built (`game_environment`
     /// in `launcher/bbport_launcher.py`), for the settings decanter knows,
     /// plus what keeps `run.sh` from building and from writing into the
-    /// checkout. `user_dir` holds the profile's saves.
+    /// checkout. `user_dir` holds the profile's saves; `mods` comes from
+    /// [`mods::prepare`].
     pub async fn launch_command(
         &self,
         toolchain: &Toolchain,
         game_dir: &Path,
         user_dir: &Path,
         settings: &LauncherSettings,
+        mods: &mods::Mods,
     ) -> io::Result<Command> {
         let mut command = match toolchain.command(Port::Bbport, &self.checkout, "bash run.sh").await {
             Ok(command) => command,
@@ -154,12 +159,9 @@ impl Bbport {
             .env("BB_DATA_DIR", &data)
             .env("BB_USER_DIR", user_dir)
             .env("BB_GAME_DIR", game_dir)
-            .env("BB_MODS_DIR", path_or("mods_dir", data.join("mods")))
-            .env("BB_MODS_CONFIG", data.join("mods.json"))
-            .env(
-                "BB_MODS_ENABLED",
-                if settings.flag("mods_enabled", true) { "1" } else { "0" },
-            )
+            .env("BB_MODS_DIR", &mods.dir)
+            .env("BB_MODS_CONFIG", &mods.config)
+            .env("BB_MODS_ENABLED", if mods.enabled { "1" } else { "0" })
             .env("BB_PATCHES_DIR", path_or("patches_dir", data.join("patches")))
             .env("BB_PATCHES_CONFIG", data.join("patches.json"))
             .env("BB_LANGUAGE", settings.text("language").unwrap_or("1"))

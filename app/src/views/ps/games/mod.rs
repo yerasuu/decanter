@@ -1,10 +1,11 @@
 //! Juegos: the profile's dumps in a list on the left, the selected one on
 //! the right.
 
-mod controls;
 mod detail;
 mod extras;
+mod gamepad;
 mod graphics;
+mod keyboard;
 mod mods;
 
 use decanter_ps::library::{Game, Platform};

@@ -1,18 +1,21 @@
-//! Controles: one game's keyboard and mouse bindings, captured by pressing
-//! them. A controller needs no setup; both ports read it directly.
+//! Teclado: one game's keyboard and mouse bindings, captured by pressing
+//! them, kept as named layouts. Any layout can be copied into a new
+//! editable one; the one picked is the one in the port's file. The controller is the Mando tab's, for bbport; AnyPS5 reads it
+//! as it is.
 
 use std::path::PathBuf;
 
 use gpui::{
-    Context, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
+    Context, Entity, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
     NavigationDirection, ScrollDelta, ScrollWheelEvent, SharedString, Window, div, prelude::*, px, rgb,
 };
 
 use decanter_ps::keys::sdl_key_name;
+use decanter_ps::layouts::{self, KeyLayout, Store};
 use decanter_ps::mapping::{Action, Mapping, MouseButton, Source, Target, Wheel};
 
 use crate::theme;
-use crate::widgets::{ButtonKind, button};
+use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
 
 const GROUPS: [(&str, &[Action]); 5] = [
     (
@@ -89,30 +92,152 @@ fn source_label(source: &Source) -> String {
     }
 }
 
-pub struct ControlsView {
+/// The layout select's value while the file matches no layout.
+const CUSTOM: &str = "custom";
+
+pub struct KeyboardView {
     target: Target,
     path: PathBuf,
     defaults: Mapping,
     mapping: Mapping,
     saved: Mapping,
+    store: Store,
+    /// The id of the layout in the port's file; `None` when it matches none.
+    current: Option<String>,
+    name: Entity<TextInput>,
     /// The action waiting for its next key, mouse button or wheel step.
     capturing: Option<Action>,
     status: Option<(SharedString, bool)>,
     focus: FocusHandle,
 }
 
-impl ControlsView {
-    pub fn new(target: Target, path: PathBuf, mapping: Mapping, cx: &mut Context<Self>) -> Self {
-        Self {
+impl KeyboardView {
+    pub fn new(target: Target, path: PathBuf, mapping: Mapping, store: Store, cx: &mut Context<Self>) -> Self {
+        let current = layouts::current_keys(target, &mapping, &store.key_layouts(target));
+        let name = cx.new(|cx| TextInput::new("Nombre del layout", cx));
+        cx.subscribe(&name, |this, name, event, cx| {
+            if matches!(event, InputEvent::Submit) {
+                let text = name.read(cx).text().trim().to_owned();
+                this.rename(text, cx);
+            }
+        })
+        .detach();
+        let mut this = Self {
             target,
             path,
             defaults: target.defaults(),
             saved: mapping.clone(),
             mapping,
+            store,
+            current,
+            name,
             capturing: None,
             status: None,
             focus: cx.focus_handle(),
-        }
+        };
+        this.sync_name(cx);
+        this
+    }
+
+    fn layout(&self) -> Option<KeyLayout> {
+        let id = self.current.as_deref()?;
+        self.store
+            .key_layouts(self.target)
+            .into_iter()
+            .find(|layout| layout.id == id)
+    }
+
+    /// Only the user's own layouts change; the shipped ones are copied first.
+    fn editable(&self) -> bool {
+        self.layout().is_some_and(|layout| !layout.builtin)
+    }
+
+    fn sync_name(&mut self, cx: &mut Context<Self>) {
+        let name = self.layout().map(|layout| layout.name).unwrap_or_default();
+        self.name.update(cx, |input, cx| input.set_text(name, cx));
+    }
+
+    /// Writes `self.mapping` into the port's file, and the store first when
+    /// it changed; both off the UI thread.
+    fn persist(&mut self, store_changed: bool, cx: &mut Context<Self>) {
+        let (target, path, mapping) = (self.target, self.path.clone(), self.mapping.clone());
+        let store = store_changed.then(|| self.store.clone());
+        let task = cx.background_spawn(async move {
+            if let Some(store) = store
+                && let Err(err) = store.save()
+            {
+                return Err(err);
+            }
+            decanter_ps::binds::save(target, &path, &mapping).map(|()| mapping)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.status = Some(match result {
+                    Ok(saved) => {
+                        this.saved = saved;
+                        ("Guardado".into(), false)
+                    }
+                    Err(err) => (
+                        format!("No se pudo guardar {}: {err}", this.path.display()).into(),
+                        true,
+                    ),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+        self.sync_name(cx);
+        cx.notify();
+    }
+
+    fn choose(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(layout) = self
+            .store
+            .key_layouts(self.target)
+            .into_iter()
+            .find(|layout| layout.id == id)
+        else {
+            return;
+        };
+        self.mapping = layout.mapping(self.target);
+        self.current = Some(layout.id);
+        self.capturing = None;
+        self.persist(false, cx);
+    }
+
+    /// A new editable layout from what is shown, edits not yet saved
+    /// included, so nothing typed so far is lost.
+    fn copy(&mut self, cx: &mut Context<Self>) {
+        let mut source = self.layout().unwrap_or_else(|| KeyLayout {
+            id: String::new(),
+            name: "Personalizado".to_owned(),
+            text: String::new(),
+            builtin: true,
+        });
+        source.set_mapping(self.target, &self.mapping);
+        let copy = self.store.copy_keys(self.target, &source);
+        self.current = Some(copy.id);
+        self.persist(true, cx);
+    }
+
+    fn rename(&mut self, name: String, cx: &mut Context<Self>) {
+        let Some(mut layout) = self.layout().filter(|layout| !layout.builtin && !name.is_empty()) else {
+            return;
+        };
+        layout.name = name;
+        self.store.update_keys(self.target, &layout);
+        self.persist(true, cx);
+    }
+
+    fn remove(&mut self, cx: &mut Context<Self>) {
+        let Some(layout) = self.layout().filter(|layout| !layout.builtin) else {
+            return;
+        };
+        self.store.remove_keys(self.target, &layout.id);
+        self.current = Some("default".to_owned());
+        self.mapping = self.defaults.clone();
+        self.persist(true, cx);
     }
 
     fn capture(&mut self, source: Source, cx: &mut Context<Self>) {
@@ -187,32 +312,19 @@ impl ControlsView {
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
-        let (target, path, mapping) = (self.target, self.path.clone(), self.mapping.clone());
-        let task =
-            cx.background_spawn(async move { decanter_ps::binds::save(target, &path, &mapping).map(|()| mapping) });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.status = Some(match result {
-                    Ok(saved) => {
-                        this.saved = saved;
-                        ("Guardado".into(), false)
-                    }
-                    Err(err) => (
-                        format!("No se pudo guardar {}: {err}", this.path.display()).into(),
-                        true,
-                    ),
-                });
-                cx.notify();
-            });
-        })
-        .detach();
+        let Some(mut layout) = self.layout().filter(|layout| !layout.builtin) else {
+            return;
+        };
+        layout.set_mapping(self.target, &self.mapping);
+        self.store.update_keys(self.target, &layout);
+        self.persist(true, cx);
     }
 
     fn row(&self, action: Action, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let sources = self.mapping.get(action);
         let changed = sources != self.defaults.get(action);
-        let removable = self.target.allows_unbound() || sources.len() > 1;
+        let editable = self.editable();
+        let removable = editable && (self.target.allows_unbound() || sources.len() > 1);
         let capturing = self.capturing == Some(action);
         div()
             .flex()
@@ -273,38 +385,89 @@ impl ControlsView {
                             })
                     })),
             )
-            .child(
-                button(
-                    SharedString::from(format!("add-{}", action.name())),
-                    ButtonKind::Secondary,
-                    "+ Asignar",
-                    false,
+            .when(editable, |row| {
+                row.child(
+                    button(
+                        SharedString::from(format!("add-{}", action.name())),
+                        ButtonKind::Secondary,
+                        "+ Asignar",
+                        false,
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.capturing = Some(action);
+                        this.status = None;
+                        window.focus(&this.focus, cx);
+                        cx.notify();
+                    })),
                 )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.capturing = Some(action);
-                    this.status = None;
-                    window.focus(&this.focus, cx);
-                    cx.notify();
-                })),
-            )
-            .child(
-                button(
-                    SharedString::from(format!("reset-{}", action.name())),
-                    ButtonKind::Secondary,
-                    "↺",
-                    false,
+                .child(
+                    button(
+                        SharedString::from(format!("reset-{}", action.name())),
+                        ButtonKind::Secondary,
+                        "↺",
+                        false,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.mapping.reset(action, &this.defaults);
+                        cx.notify();
+                    })),
                 )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.mapping.reset(action, &this.defaults);
-                    cx.notify();
-                })),
-            )
+            })
     }
 }
 
-impl Render for ControlsView {
+impl Render for KeyboardView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dirty = self.mapping != self.saved;
+        let editable = self.editable();
+        let layouts = self.store.key_layouts(self.target);
+        let entity = cx.entity();
+        let selected = self.current.clone().unwrap_or_else(|| CUSTOM.to_owned());
+        let options: Vec<(SharedString, SharedString)> = layouts
+            .iter()
+            .map(|layout| {
+                (
+                    SharedString::from(layout.id.clone()),
+                    SharedString::from(layout.name.clone()),
+                )
+            })
+            .chain(
+                self.current
+                    .is_none()
+                    .then(|| (SharedString::from(CUSTOM), SharedString::from("Personalizado"))),
+            )
+            .collect();
+        let layout_bar = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_2()
+            .child("Layout")
+            .child(
+                Select::new("ps-key-layout", options, selected)
+                    .style(SelectStyle::Compact)
+                    .on_change(move |value, _, cx| {
+                        let id = value.to_string();
+                        entity.update(cx, |this, cx| this.choose(&id, cx));
+                    }),
+            )
+            .child(
+                button("ps-key-copy", ButtonKind::Secondary, "Copiar como nuevo", false)
+                    .on_click(cx.listener(|this, _, _, cx| this.copy(cx))),
+            )
+            .when(editable, |bar| {
+                bar.child(div().w(px(220.)).child(self.name.clone())).child(
+                    button("ps-key-remove", ButtonKind::Secondary, "Borrar layout", false)
+                        .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
+                )
+            });
+        let hint = if editable {
+            "Tu layout: + Asignar y pulsá la tecla; Guardar lo escribe. Enter guarda el nombre."
+        } else if self.current.is_some() {
+            "Los layouts de fábrica no se editan: copialo como nuevo para cambiarlo."
+        } else {
+            "El archivo tiene teclas editadas a mano; copialas como nuevo para guardarlas como layout."
+        };
         let status = self.status.clone();
         let mut groups = div().flex().flex_col().gap_5();
         for (title, actions) in GROUPS {
@@ -373,24 +536,29 @@ impl Render for ControlsView {
                             }))
                             .child(text)
                     }))
-                    .child(
-                        button("binds-reset-all", ButtonKind::Secondary, "Restaurar todo", false).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.mapping = this.defaults.clone();
-                                cx.notify();
-                            }),
-                        ),
-                    )
-                    .child(
-                        button(
-                            "binds-save",
-                            ButtonKind::Primary,
-                            if dirty { "Guardar" } else { "Guardado" },
-                            !dirty,
-                        )
-                        .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
-                    ),
+                    .when(editable, |header| {
+                        header
+                            .child(
+                                button("binds-reset-all", ButtonKind::Secondary, "Restaurar todo", false).on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.mapping = this.defaults.clone();
+                                        cx.notify();
+                                    }),
+                                ),
+                            )
+                            .child(
+                                button(
+                                    "binds-save",
+                                    ButtonKind::Primary,
+                                    if dirty { "Guardar" } else { "Guardado" },
+                                    !dirty,
+                                )
+                                .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
+                            )
+                    }),
             )
+            .child(layout_bar)
+            .child(theme::muted(hint).text_size(px(12.)))
             .child(groups)
             // While capturing, an overlay takes every click and wheel step so they bind instead of
             // pressing the buttons underneath; only its Cancel button escapes.

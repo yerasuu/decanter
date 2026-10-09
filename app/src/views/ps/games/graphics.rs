@@ -3,8 +3,7 @@
 //! shares them; they apply on the next start.
 
 use decanter_ps::bbport::values::{self, Values};
-use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
-use decanter_ps::port::Port;
+use decanter_ps::bbport::{Control, GROUPS, Setting};
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 
 use super::extras::ExtrasView;
@@ -14,8 +13,6 @@ use crate::widgets::{Select, checkbox, select::SelectStyle};
 
 pub struct GraphicsView {
     values: Option<Values>,
-    /// Connected controllers `(GUID, name)`, read when the view opens.
-    gamepads: Vec<(String, String)>,
     error: Option<String>,
     extras: Entity<ExtrasView>,
 }
@@ -31,27 +28,9 @@ impl GraphicsView {
             });
         })
         .detach();
-        // Only once bbport is built: the list comes from a tool it builds.
-        let toolchain = ps
-            .read(cx)
-            .port(Port::Bbport)
-            .and_then(|state| state.toolchain().cloned());
-        if let Some(toolchain) = toolchain {
-            cx.spawn(async move |this, cx| {
-                let found = Bbport::new(Port::Bbport.checkout())
-                    .connected_gamepads(&toolchain)
-                    .await;
-                let _ = this.update(cx, |this, cx| {
-                    this.gamepads = found;
-                    cx.notify();
-                });
-            })
-            .detach();
-        }
         let ps = ps.clone();
         Self {
             values: None,
-            gamepads: Vec::new(),
             error: None,
             extras: cx.new(|cx| ExtrasView::new(ps, cx)),
         }
@@ -62,13 +41,7 @@ impl GraphicsView {
             return;
         };
         values.set(setting, &value);
-        let gamepad_name = matches!(setting.control, Control::Gamepad).then(|| {
-            self.gamepads
-                .iter()
-                .find(|(guid, _)| *guid == value)
-                .map_or_else(String::new, |(_, name)| name.clone())
-        });
-        let task = cx.background_spawn(async move { values::save(setting, &value, gamepad_name.as_deref()) });
+        let task = cx.background_spawn(async move { values::save(setting, &value, None) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -131,32 +104,8 @@ impl GraphicsView {
                 let (down, up) = (values.stepped(setting, -1, &[]), values.stepped(setting, 1, &[]));
                 (self.stepper(setting, shown, down, up, cx), setting.note)
             }
-            Control::Gamepad => {
-                let guid = current.unwrap_or_default();
-                let unplugged =
-                    (!guid.is_empty() && !self.gamepads.iter().any(|(known, _)| *known == guid)).then(|| {
-                        let name = values.launch().text("gamepad_name").unwrap_or(&guid);
-                        (
-                            SharedString::from(guid.clone()),
-                            SharedString::from(format!("{name} (desconectado)")),
-                        )
-                    });
-                let options = std::iter::once((SharedString::default(), SharedString::from("Automático (el primero)")))
-                    .chain(
-                        self.gamepads
-                            .iter()
-                            .map(|(guid, name)| (SharedString::from(guid.clone()), SharedString::from(name.clone()))),
-                    )
-                    .chain(unplugged);
-                let entity = cx.entity();
-                let select = Select::new(SharedString::from(setting.key), options, guid)
-                    .style(SelectStyle::Compact)
-                    .on_change(move |value, _, cx| {
-                        let value = value.to_string();
-                        entity.update(cx, |this, cx| this.change(setting, value, cx));
-                    });
-                (select.into_any_element(), setting.note)
-            }
+            // Its own tab, Mando; `GROUPS` rows of it are skipped below.
+            Control::Gamepad => (div().into_any_element(), None),
         }
     }
 
@@ -212,11 +161,19 @@ impl Render for GraphicsView {
         };
         let groups: Vec<AnyElement> = GROUPS
             .iter()
-            .map(|group| {
-                let count = group.settings.len();
-                let rows: Vec<AnyElement> = group
+            .filter_map(|group| {
+                // The controller is the Mando tab's; a group left empty goes.
+                let settings: Vec<&'static Setting> = group
                     .settings
                     .iter()
+                    .filter(|setting| !matches!(setting.control, Control::Gamepad))
+                    .collect();
+                if settings.is_empty() {
+                    return None;
+                }
+                let count = settings.len();
+                let rows: Vec<AnyElement> = settings
+                    .into_iter()
                     .enumerate()
                     .map(|(index, setting)| {
                         let (control, note) = self.control(&values, setting, cx);
@@ -240,14 +197,16 @@ impl Render for GraphicsView {
                             .into_any_element()
                     })
                     .collect();
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(theme::h3(group.title))
-                    .children(group.note.map(|note| theme::muted(note).text_size(px(12.))))
-                    .child(theme::card().children(rows))
-                    .into_any_element()
+                Some(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(theme::h3(group.title))
+                        .children(group.note.map(|note| theme::muted(note).text_size(px(12.))))
+                        .child(theme::card().children(rows))
+                        .into_any_element(),
+                )
             })
             .collect();
         div()

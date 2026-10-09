@@ -55,6 +55,14 @@ impl Ini {
             .retain(|l| l.trim_start().starts_with('#') || l.split_once('=').is_none_or(|(k, _)| k.trim() != key));
     }
 
+    /// Every key starting with `prefix`, with its value, in no set order.
+    pub fn prefixed<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> + 'a {
+        self.values
+            .iter()
+            .filter(move |(key, _)| key.starts_with(prefix))
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+    }
+
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         crate::files::write_atomic(path, (self.lines.join("\n") + "\n").as_bytes())
     }
