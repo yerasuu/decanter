@@ -25,6 +25,8 @@ pub struct Session {
     /// while already on that page, so the library drops back to the shelf
     /// browser instead of leaving whatever game detail was open.
     pub library_home: u32,
+    /// The same for the PS section: back from a game to its covers.
+    pub ps_home: u32,
 }
 
 impl Session {
@@ -40,6 +42,7 @@ impl Session {
             core,
             active_profile,
             library_home: 0,
+            ps_home: 0,
         }
     }
 }

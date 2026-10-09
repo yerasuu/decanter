@@ -88,9 +88,9 @@ fn count_options(
     tallies
 }
 
-/// Every storefront an entry in the library actually belongs to — only
-/// ever `[Gog]` today, but drawn from the entries rather than hardcoded so
-/// the next storefront needs no change here either.
+/// Every storefront an entry in the library actually belongs to, drawn
+/// from the entries rather than hardcoded so a new storefront, or games
+/// added from outside any (`Unspecified`), show up here on their own.
 fn available_storefronts(entries: &[&LibraryEntry]) -> Vec<Storefront> {
     let mut found: Vec<Storefront> = entries
         .iter()
@@ -104,7 +104,9 @@ fn available_storefronts(entries: &[&LibraryEntry]) -> Vec<Storefront> {
 
 const fn storefront_label(storefront: Storefront) -> &'static str {
     match storefront {
-        Storefront::Unspecified => "Sin tienda",
+        // A library entry with no storefront is a game added from outside
+        // one, which is what the filter calls it.
+        Storefront::Unspecified => "Externos",
         Storefront::Steam => "Steam",
         Storefront::EpicGames => "Epic Games",
         Storefront::Gog => "GOG",
@@ -1345,7 +1347,9 @@ impl SidebarView {
                 })),
             );
         }
-        if storefronts.len() > 1 {
+        // Shown with a single storefront too, so the section is already
+        // where people look when a second one, or external games, arrive.
+        if !storefronts.is_empty() {
             grid = grid.child(
                 group("Tienda", "Alternativas: marcar dos amplia el resultado.").children(storefronts.into_iter().map(
                     |storefront| {

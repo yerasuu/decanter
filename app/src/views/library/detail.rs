@@ -417,7 +417,9 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
             .flex()
             .flex_col()
             .gap(px(6.))
-            .child(theme::badge("GOG", true))
+            // In a row of its own: the column stretches its children, which
+            // drew the badge as a bar across the whole hero.
+            .child(div().flex().child(theme::badge("GOG", true)))
             // Beside the title rather than at the end of the action bar: it
             // says something about the game, not something to do with it,
             // and buried after DESINSTALAR is the last place anyone looks

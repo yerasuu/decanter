@@ -1,6 +1,7 @@
-//! Juegos: the profile's dumps in a list on the left, the selected one on
-//! the right.
+//! Juegos: the profile's dumps in a sidebar, and beside it either the
+//! cover browser or the selected game — the same shape as Biblioteca.
 
+mod browser;
 mod detail;
 mod extras;
 mod gamepad;
@@ -10,37 +11,33 @@ mod mods;
 
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::Status;
-use gpui::{AnyElement, Context, Entity, ObjectFit, SharedString, Window, div, img, prelude::*, px, rgb, uniform_list};
+use gpui::{
+    AnyElement, Context, Entity, ObjectFit, SharedString, StyleRefinement, Window, div, img, prelude::*, px, rgb,
+    uniform_list,
+};
 
-use crate::state::Ps;
+use crate::state::{AppState, Ps};
 use crate::theme;
+use crate::widgets::{InputEvent, TextInput, tooltip};
+use browser::BrowserView;
 use detail::DetailView;
 
-const ICON: f32 = 36.;
+const SIDEBAR_WIDTH: f32 = 292.;
+const ICON: f32 = 26.;
+/// One height for headers and games alike, so the list can be uniform.
+const ROW: f32 = 40.;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Filter {
-    All,
-    Ps4,
-    Ps5,
-}
-
-const FILTERS: [(Filter, &str); 3] = [(Filter::All, "Todos"), (Filter::Ps4, "PS4"), (Filter::Ps5, "PS5")];
-
-impl Filter {
-    fn keeps(self, game: &Game) -> bool {
-        match self {
-            Self::All => true,
-            Self::Ps4 => game.platform == Platform::Ps4,
-            Self::Ps5 => game.platform == Platform::Ps5,
-        }
-    }
+#[derive(Clone, Copy)]
+enum Row {
+    Header(Platform, usize),
+    Game(usize),
 }
 
 pub struct GamesView {
     ps: Entity<Ps>,
-    filter: Filter,
+    search: Entity<TextInput>,
     detail: Entity<DetailView>,
+    browser: Entity<BrowserView>,
 }
 
 impl GamesView {
@@ -48,56 +45,96 @@ impl GamesView {
         cx.observe(&ps, |_, _, cx| cx.notify()).detach();
         let detail = cx.new(|cx| DetailView::new(ps.clone(), cx));
         cx.observe(&detail, |_, _, cx| cx.notify()).detach();
+        let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), cx));
+        let search = cx.new(|cx| TextInput::new("Buscar", cx));
+        cx.subscribe(&search, |_, _, event, cx| {
+            if matches!(event, InputEvent::Changed) {
+                cx.notify();
+            }
+        })
+        .detach();
+        // Clicking PS in the topbar again goes back to the covers, the way
+        // Biblioteca does.
+        let session = AppState::get(cx).session.clone();
+        let mut home = session.read(cx).ps_home;
+        cx.observe(&session, move |this, session, cx| {
+            let now = session.read(cx).ps_home;
+            if now != home {
+                home = now;
+                this.detail.update(cx, DetailView::clear);
+            }
+        })
+        .detach();
         Self {
             ps,
-            filter: Filter::All,
+            search,
             detail,
+            browser,
         }
     }
 
+    /// Headers and games in list order: PS4 first, then PS5, each by title,
+    /// narrowed by the search box.
+    fn rows(&self, cx: &gpui::App) -> Vec<Row> {
+        let query = self.search.read(cx).text().trim().to_lowercase();
+        let entries = self.ps.read(cx).entries();
+        let mut rows = Vec::with_capacity(entries.len() + 2);
+        for platform in [Platform::Ps4, Platform::Ps5] {
+            let start = rows.len();
+            rows.push(Row::Header(platform, 0));
+            rows.extend(
+                entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.game.platform == platform)
+                    .filter(|(_, entry)| query.is_empty() || display_title(&entry.game).to_lowercase().contains(&query))
+                    .map(|(index, _)| Row::Game(index)),
+            );
+            let count = rows.len() - start - 1;
+            if count == 0 {
+                rows.truncate(start);
+            } else {
+                rows[start] = Row::Header(platform, count);
+            }
+        }
+        rows
+    }
+
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let entity = cx.entity();
-        let filters = crate::widgets::tabs("ps-filter", &FILTERS, self.filter, move |filter, _, cx| {
-            entity.update(cx, |this, cx| {
-                this.filter = filter;
-                cx.notify();
-            });
-        })
-        .px(px(14.))
-        .pt_3();
+        let rows = self.rows(cx);
         let ps = self.ps.read(cx);
-        let visible: Vec<usize> = ps
-            .entries()
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| self.filter.keeps(&entry.game))
-            .map(|(index, _)| index)
-            .collect();
-        let body = if visible.is_empty() {
+        let body = if rows.is_empty() {
             let message = if ps.scanning() {
                 "Buscando juegos…"
             } else if ps.dirs().is_empty() {
                 "Añadí una carpeta con tus volcados en Ajustes."
-            } else {
+            } else if ps.entries().is_empty() {
                 "No hay volcados de PS4 o PS5 en tus carpetas."
+            } else {
+                "Nada coincide con la búsqueda."
             };
             div().p_4().child(theme::muted(message)).into_any_element()
         } else {
             let view = cx.entity();
-            uniform_list("ps-games", visible.len(), move |range, _, cx| {
+            uniform_list("ps-games", rows.len(), move |range, _, cx| {
                 let cx: &gpui::App = cx;
                 let this = view.read(cx);
-                let ps = this.ps.read(cx);
+                let entries = this.ps.read(cx).entries();
                 range
-                    .filter_map(|row| visible.get(row).and_then(|&index| ps.entries().get(index)))
-                    .map(|entry| this.row(&entry.game, &entry.status, view.clone(), cx))
+                    .filter_map(|index| rows.get(index))
+                    .filter_map(|row| match *row {
+                        Row::Header(platform, count) => Some(header(platform, count)),
+                        Row::Game(index) => entries
+                            .get(index)
+                            .map(|entry| this.row(&entry.game, &entry.status, view.clone(), cx)),
+                    })
                     .collect()
             })
             .flex_1()
             .into_any_element()
         };
         div()
-            .w(px(300.))
+            .w(px(SIDEBAR_WIDTH))
             .flex_none()
             .h_full()
             .flex()
@@ -105,60 +142,86 @@ impl GamesView {
             .bg(rgb(theme::BG_PANEL_3))
             .border_r_1()
             .border_color(rgb(theme::LINE))
-            .child(filters)
+            .child(div().p(px(14.)).pb(px(8.)).child(self.search.clone()))
             .child(body)
     }
 
     fn row(&self, game: &Game, status: &Status, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
         let active = self.detail.read(cx).selected() == Some(&game.dir);
         let dir = game.dir.clone();
-        let subtitle = format!("{} · {} · {}", platform_label(game), game.version, status_text(status));
         div()
             .id(SharedString::from(game.dir.to_string_lossy().into_owned()))
-            .h(px(52.))
+            .h(px(ROW))
+            .w_full()
             .flex()
             .items_center()
-            .gap_3()
+            .gap(px(10.))
             .px(px(14.))
+            .border_l(px(3.))
+            .border_color(gpui::transparent_black())
+            .text_size(px(12.5))
+            .text_color(rgb(theme::TEXT_PRIMARY))
             .cursor_pointer()
-            .when(active, |row| row.bg(rgb(theme::BG_PANEL)))
-            .when(!active, |row| row.hover(|row| row.bg(rgb(theme::BG_PANEL_2))))
+            .hover(|row| row.bg(rgb(theme::BG_PANEL_2)))
+            .when(active, |row| {
+                row.bg(rgb(theme::BG_PANEL_2))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .border_color(rgb(theme::ACCENT_BLUE))
+            })
             .on_click(move |_, _, cx| {
                 view.update(cx, |this, cx| {
                     this.detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
                 });
             })
-            .child(icon(game))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_color(rgb(if active {
-                                theme::TEXT_BRIGHT
-                            } else {
-                                theme::TEXT_PRIMARY
-                            }))
-                            .child(display_title(game)),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(11.))
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(subtitle),
-                    ),
-            )
+            .child(icon(game, ICON))
+            .child(div().flex_1().min_w_0().truncate().child(display_title(game)))
+            .when(status.playable(), |row| {
+                row.child(
+                    div()
+                        .id(SharedString::from(format!("ps-ready-{}", game.dir.display())))
+                        .size(px(6.))
+                        .flex_none()
+                        .rounded_full()
+                        .bg(rgb(theme::ACCENT_GREEN))
+                        .tooltip(tooltip("Listo para jugar")),
+                )
+            })
             .into_any_element()
     }
+}
+
+/// Like Biblioteca's shelf titles in its sidebar.
+fn header(platform: Platform, count: usize) -> AnyElement {
+    div()
+        .h(px(ROW))
+        .flex()
+        .items_end()
+        .px(px(14.))
+        .pb(px(6.))
+        .child(
+            theme::display(11.)
+                .text_color(rgb(theme::ACCENT_BLUE))
+                .child(format!("{} · {count}", platform_label(platform))),
+        )
+        .into_any_element()
 }
 
 impl Render for GamesView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let error = self.ps.read(cx).error().map(str::to_owned);
+        let pane = if self.detail.read(cx).selected().is_some() {
+            div()
+                .id("ps-detail-pane")
+                .size_full()
+                .overflow_y_scroll()
+                .child(div().pb(px(60.)).child(self.detail.clone()))
+                .into_any_element()
+        } else {
+            self.browser
+                .clone()
+                .cached(StyleRefinement::default().size_full())
+                .into_any_element()
+        };
         div().size_full().flex().child(self.sidebar(cx)).child(
             div()
                 .flex_1()
@@ -167,12 +230,12 @@ impl Render for GamesView {
                 .flex()
                 .flex_col()
                 .children(error.map(|err| div().p_4().child(theme::error(err))))
-                .child(div().flex_1().min_h_0().child(self.detail.clone())),
+                .child(div().flex_1().min_h_0().child(pane)),
         )
     }
 }
 
-/// The few words a list row has room for.
+/// The few words a status has room for.
 const fn status_text(status: &Status) -> &'static str {
     match status {
         Status::Ready => "Listo",
@@ -187,8 +250,8 @@ const fn status_text(status: &Status) -> &'static str {
     }
 }
 
-fn platform_label(game: &Game) -> &'static str {
-    match game.platform {
+const fn platform_label(platform: Platform) -> &'static str {
+    match platform {
         Platform::Ps4 => "PS4",
         Platform::Ps5 => "PS5",
     }
@@ -206,19 +269,23 @@ fn display_title(game: &Game) -> String {
     }
 }
 
+/// A file of the dump's `sce_sys`, as the art cache takes it.
+fn art_url(game: &Game, file: &str) -> String {
+    format!("file://{}", game.dir.join("sce_sys").join(file).display())
+}
+
 /// `sce_sys/icon0.png` is 512 px; it goes through the art cache to be
-/// stored and decoded at the size drawn here instead.
-fn icon(game: &Game) -> impl IntoElement + use<> {
-    let url = format!("file://{}", game.dir.join("sce_sys/icon0.png").display());
-    img(crate::art::source(&url, gpui::size(ICON, ICON)))
-        .size(px(ICON))
+/// stored and decoded at the size drawn instead.
+fn icon(game: &Game, size: f32) -> impl IntoElement + use<> {
+    img(crate::art::source(&art_url(game, "icon0.png"), gpui::size(size, size)))
+        .size(px(size))
         .flex_none()
         .rounded(px(theme::RADIUS_SM))
         .object_fit(ObjectFit::Cover)
         .bg(rgb(theme::BG_PANEL_LIGHT))
-        .with_fallback(|| {
+        .with_fallback(move || {
             div()
-                .size(px(ICON))
+                .size(px(size))
                 .rounded(px(theme::RADIUS_SM))
                 .bg(rgb(theme::BG_PANEL_LIGHT))
                 .into_any_element()

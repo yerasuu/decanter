@@ -8,17 +8,17 @@ use decanter_ps::bbport::Bbport;
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
-use gpui::{AnyElement, Context, Entity, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Entity, ObjectFit, Window, div, img, prelude::*, px, rgb};
 
 use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
 use super::keyboard::KeyboardView;
 use super::mods::ModsView;
-use super::{display_title, platform_label};
+use super::{art_url, display_title, platform_label, status_text};
 use crate::state::{JobKey, Ps};
 use crate::theme;
 use crate::views::ps::log::LogView;
-use crate::widgets::{ButtonKind, button};
+use crate::widgets::{ButtonKind, button, tooltip};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -87,6 +87,14 @@ impl DetailView {
 
     pub const fn selected(&self) -> Option<&PathBuf> {
         self.selected.as_ref()
+    }
+
+    /// Back to the covers.
+    pub fn clear(&mut self, cx: &mut Context<Self>) {
+        self.selected = None;
+        self.controls = None;
+        self.log = None;
+        cx.notify();
     }
 
     pub fn select(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
@@ -161,7 +169,81 @@ impl DetailView {
         }
     }
 
-    fn hero(&self, entry: &Entry, cx: &mut Context<Self>) -> AnyElement {
+    /// Biblioteca's hero: the dump's own wide art (`pic1.png`) under a
+    /// scrim, the platform badge and the title large, a couple of figures.
+    fn hero(entry: &Entry) -> AnyElement {
+        let game = &entry.game;
+        let fallback = || {
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .bg(gpui::linear_gradient(
+                    150.,
+                    gpui::linear_color_stop(rgb(theme::BG_PANEL_LIGHT), 0.),
+                    gpui::linear_color_stop(rgb(theme::BG_PANEL_3), 1.),
+                ))
+                .into_any_element()
+        };
+        div()
+            .relative()
+            .min_h(px(300.))
+            .overflow_hidden()
+            .flex()
+            .items_end()
+            .bg(rgb(theme::BG_PANEL_2))
+            .child(
+                img(crate::art::source(&art_url(game, "pic1.png"), gpui::size(1600., 400.)))
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .object_fit(ObjectFit::Cover)
+                    .with_fallback(fallback),
+            )
+            .child(div().absolute().top_0().left_0().size_full().bg(gpui::linear_gradient(
+                180.,
+                gpui::linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.35),
+                gpui::linear_color_stop(theme::alpha(theme::BG_DEEP, 0.95), 1.),
+            )))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(20.))
+                    .right(px(24.))
+                    .flex()
+                    .gap(px(10.))
+                    .child(hero_stat(game.version.clone(), "VERSIÓN"))
+                    .child(hero_stat(status_text(&entry.status).to_owned(), "ESTADO")),
+            )
+            .child(
+                div()
+                    .relative()
+                    .w_full()
+                    .p(px(32.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(theme::badge(platform_label(game.platform), true))
+                            .child(theme::badge(&game.title_id, false)),
+                    )
+                    .child(
+                        theme::display(34.)
+                            .min_w_0()
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(display_title(game).to_uppercase()),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// JUGAR or DETENER first, then what else there is to do with the game.
+    fn action_bar(&self, entry: &Entry, cx: &mut Context<Self>) -> AnyElement {
         let game = &entry.game;
         let key = JobKey::Game(game.dir.clone());
         let ps = self.ps.read(cx);
@@ -193,24 +275,21 @@ impl DetailView {
         };
         let folder = game.dir.clone();
         div()
+            .pt(px(24.))
+            .px(px(32.))
             .flex()
-            .flex_col()
-            .gap_3()
+            .items_center()
+            .gap(px(10.))
+            .child(action)
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(theme::h1(display_title(game)))
-                    .child(theme::badge(platform_label(game), false)),
+                button("ps-open-folder", ButtonKind::Icon, "Abrir carpeta", false)
+                    .tooltip(tooltip("Abrir la carpeta del volcado"))
+                    .on_click(move |_, _, _| {
+                        if let Err(err) = crate::desktop::open(&folder) {
+                            tracing::warn!(dir = %folder.display(), %err, "could not open the game folder");
+                        }
+                    }),
             )
-            .child(div().flex().items_center().gap_3().child(action).child(
-                button("ps-open-folder", ButtonKind::Secondary, "Abrir carpeta", false).on_click(move |_, _, _| {
-                    if let Err(err) = crate::desktop::open(&folder) {
-                        tracing::warn!(dir = %folder.display(), %err, "could not open the game folder");
-                    }
-                }),
-            ))
             .into_any_element()
     }
 
@@ -336,17 +415,46 @@ impl Render for DetailView {
             Tab::Overview => self.overview(&entry, cx),
         };
         div()
-            .id("ps-detail")
-            .size_full()
-            .overflow_y_scroll()
-            .p_8()
             .flex()
             .flex_col()
-            .gap_5()
-            .child(self.hero(&entry, cx))
-            .children(notice.map(|(text, error)| if error { theme::error(text) } else { theme::muted(text) }))
-            .child(tabs)
-            .child(body)
+            .child(Self::hero(&entry))
+            .child(self.action_bar(&entry, cx))
+            .children(notice.map(|(text, error)| {
+                div()
+                    .mx(px(32.))
+                    .mt(px(16.))
+                    .child(if error { theme::error(text) } else { theme::muted(text) })
+            }))
+            .child(div().mx(px(32.)).mt(px(24.)).child(tabs))
+            .child(div().px(px(32.)).pt(px(20.)).child(body))
             .into_any_element()
     }
+}
+
+/// `.hero-stat`, as Biblioteca draws it.
+fn hero_stat(value: String, label: &'static str) -> gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .bg(theme::alpha(theme::BG_DEEP, 0.85))
+        .px_4()
+        .py_2()
+        .rounded(px(theme::RADIUS))
+        .border_1()
+        .border_color(rgb(theme::LINE))
+        .child(
+            theme::mono()
+                .text_size(px(17.))
+                .font_weight(gpui::FontWeight::BOLD)
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child(value),
+        )
+        .child(
+            div()
+                .mt(px(2.))
+                .text_size(px(10.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .child(label),
+        )
 }

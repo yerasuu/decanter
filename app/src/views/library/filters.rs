@@ -147,10 +147,8 @@ pub(super) struct Filters {
     /// another would be a cycle waiting to happen.
     pub collection: Option<String>,
     /// Narrow to one or more storefronts — empty means every storefront
-    /// the profile has an account on. Only GOG is implemented today, so
-    /// in practice this either has one real option or none, but the
-    /// mechanics are ready for the next storefront without touching this
-    /// again.
+    /// the profile has an account on. `Unspecified` stands for games added
+    /// from outside any storefront.
     pub storefronts: HashSet<Storefront>,
     /// Narrow to one or more accounts by id — same "empty means no
     /// constraint, checked ones OR together" shape as `storefronts`, one

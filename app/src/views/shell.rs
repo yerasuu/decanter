@@ -106,6 +106,11 @@ impl Shell {
             }
             Page::Ps => {
                 self.ps.get_or_insert_with(|| cx.new(PsView::new));
+                let session = AppState::get(cx).session.clone();
+                session.update(cx, |session, cx| {
+                    session.ps_home = session.ps_home.wrapping_add(1);
+                    cx.notify();
+                });
             }
             Page::Settings => {
                 if self.settings.is_none() {
@@ -324,9 +329,9 @@ impl Render for Shell {
                     .flex_none()
                     .gap_1()
                     .child(self.nav_link("nav-library", "Biblioteca", Page::Library, cx))
+                    .child(self.nav_link("nav-ps", "PS", Page::Ps, cx))
                     .child(self.nav_link("nav-storage", "Almacenamiento", Page::Storage, cx))
-                    .child(downloads_link)
-                    .child(self.nav_link("nav-ps", "PS", Page::Ps, cx)),
+                    .child(downloads_link),
             )
             // Empty on purpose: the window's only plain move surface, never
             // covered by a link, the profile switcher or the window buttons.
