@@ -30,7 +30,7 @@ pub struct InstallRequest {
 }
 
 fn set_status(state: &AppState, key: &str, status: Option<InstallStatus>, cx: &mut AsyncApp) {
-    let _ = state.background.update(cx, |background, cx| {
+    state.background.update(cx, |background, cx| {
         match status {
             Some(status) => background.installing.insert(key.to_owned(), status),
             None => background.installing.remove(key),
@@ -40,7 +40,7 @@ fn set_status(state: &AppState, key: &str, status: Option<InstallStatus>, cx: &m
 }
 
 fn refresh_install_state(state: &AppState, account_id: &str, product_id: &str, cx: &mut AsyncApp) {
-    let _ = state.library.update(cx, |library, cx| {
+    state.library.update(cx, |library, cx| {
         library.refresh_install_state(account_id, product_id, cx);
     });
 }

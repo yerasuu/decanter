@@ -1,11 +1,43 @@
-//! Where decanter keeps what it generates for PS games: one directory of
-//! its own beside the PC library, never inside a `steamapps` root, so
-//! `decanter_core::Library` scans, moves and the Steam export never see it.
+//! Where decanter keeps everything PS: a `psport` folder of its own inside
+//! the active profile's library root, beside `common/` and `manifests/`.
+//! It lives on the same disk as the PC games and moves with the library;
+//! `decanter_core::Library` only ever reads the folders it knows by name,
+//! so its scans and the Steam export never see this one.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
+
+/// Set by [`use_library`] whenever the active profile is known; read on
+/// every path, written once per profile switch.
+static ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// Before a profile is active: the default library's folder, where a
+/// profile that never chose its own library keeps it too.
+fn default_root() -> PathBuf {
+    decanter_core::Library::default_path()
+        .unwrap_or_else(|| decanter_core::data_dir().join("steamapps"))
+        .join("psport")
+}
 
 pub fn root() -> PathBuf {
-    decanter_core::data_dir().join("psport")
+    match ROOT.read() {
+        Ok(root) => root.clone().unwrap_or_else(default_root),
+        Err(poisoned) => poisoned.into_inner().clone().unwrap_or_else(default_root),
+    }
+}
+
+/// Points every path at `library_root`'s `psport` folder.
+pub fn use_library(library_root: &Path) {
+    let root = library_root.join("psport");
+    match ROOT.write() {
+        Ok(mut current) => *current = Some(root),
+        Err(poisoned) => *poisoned.into_inner() = Some(root),
+    }
+}
+
+/// The only folder PS games are read from.
+pub fn games() -> PathBuf {
+    root().join("games")
 }
 
 /// nix-portable, its store, and the nix environments the ports run in.

@@ -106,10 +106,8 @@ impl GamesView {
         let body = if rows.is_empty() {
             let message = if ps.scanning() {
                 "Buscando juegos…"
-            } else if ps.dirs().is_empty() {
-                "Añadí una carpeta con tus volcados en Ajustes."
             } else if ps.entries().is_empty() {
-                "No hay volcados de PS4 o PS5 en tus carpetas."
+                "No hay volcados todavía: copialos a la carpeta de juegos (Ajustes)."
             } else {
                 "Nada coincide con la búsqueda."
             };

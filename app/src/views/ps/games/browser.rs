@@ -149,7 +149,7 @@ impl Render for BrowserView {
                 .gap(px(32.))
                 .when(empty, |page| {
                     page.child(theme::empty(
-                        "Todavía no hay juegos: añadí una carpeta con tus volcados en Ajustes.",
+                        "Todavía no hay juegos: copiá tus volcados a la carpeta de juegos (ver Ajustes).",
                     ))
                 })
                 .children(shelves),

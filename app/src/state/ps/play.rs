@@ -175,8 +175,10 @@ async fn anyps5_command(
     let laid_out = {
         let title_id = game.title_id.clone();
         let run_dir = run_dir.clone();
-        cx.background_spawn(async move { anyps5::prepare_run_dir(&title_id, &run_dir) })
-            .await
+        cx.background_spawn(async move {
+            anyps5::prepare_run_dir(&AnyPs5::new(Port::AnyPs5.checkout()), &title_id, &run_dir)
+        })
+        .await
     };
     if let Err(err) = laid_out {
         return Err(format!("No se pudo preparar {}: {err}", run_dir.display()));

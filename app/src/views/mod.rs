@@ -91,7 +91,7 @@ impl Render for Root {
 /// How the process ends: read once at startup from the database, since
 /// toggling it in Ajustes only takes effect on the next launch.
 pub struct Lifecycle {
-    pub close_to_tray: bool,
+    pub(crate) close_to_tray: bool,
     main: Option<WindowHandle<Root>>,
     /// Set while the close button is stopping games, so the window going
     /// away first doesn't quit before they're stopped.

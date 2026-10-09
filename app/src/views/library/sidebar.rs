@@ -913,7 +913,7 @@ impl SidebarView {
             // actually playable right now.
             .child(theme::mono().flex_none().child(format!("({installed}/{total})")))
             .on_click(cx.listener({
-                let shelf_id = shelf_id.clone();
+                let shelf_id = shelf_id;
                 move |this, _, _, cx| {
                     if !this.collapsed.insert(shelf_id.clone()) {
                         this.collapsed.remove(&shelf_id);
@@ -946,7 +946,7 @@ impl SidebarView {
         // Steam's own collection rows do — only real collections can be
         // picked up this way, dynamic or not: unlike a game drop, a
         // reorder never touches which games are members of anything.
-        if let Some(reorder_id) = reorder_id.clone() {
+        if let Some(reorder_id) = reorder_id {
             let entity = cx.entity().downgrade();
             let target_id = reorder_id.clone();
             let order = order.to_vec();
@@ -954,7 +954,7 @@ impl SidebarView {
                 .on_drag(
                     DraggedShelf {
                         id: reorder_id,
-                        title: title.clone(),
+                        title: title,
                     },
                     move |dragged: &DraggedShelf, _, _, cx| {
                         let id = dragged.id.clone();

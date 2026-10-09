@@ -109,15 +109,6 @@ impl Db {
                 return Err(err);
             }
         }
-        // Only the folder list: the saves under the profile's PS data
-        // directory stay on disk, the same as an account's installs do.
-        match self
-            .conn
-            .execute("DELETE FROM ps_scan_dirs WHERE profile_id = ?1", params![profile_id])
-        {
-            Ok(_) => {}
-            Err(err) => return Err(err.into()),
-        }
         match self
             .conn
             .execute("DELETE FROM profiles WHERE id = ?1", params![profile_id])
@@ -234,73 +225,5 @@ impl Db {
         }
         tracing::info!(profile_id, path, "set profile library path");
         Ok(())
-    }
-}
-
-impl Db {
-    /// A profile's PS game folders, in the order they were added.
-    #[inline]
-    pub fn ps_scan_dirs(&self, profile_id: &str) -> Result<Vec<String>> {
-        let mut statement = match self
-            .conn
-            .prepare("SELECT path FROM ps_scan_dirs WHERE profile_id = ?1 ORDER BY rowid")
-        {
-            Ok(statement) => statement,
-            Err(err) => return Err(err.into()),
-        };
-        let rows = match statement.query_map(params![profile_id], |row| row.get(0)) {
-            Ok(rows) => rows,
-            Err(err) => return Err(err.into()),
-        };
-        Ok(rows.flatten().collect())
-    }
-
-    /// Adding a folder that is already listed is a no-op.
-    #[inline]
-    pub fn add_ps_scan_dir(&self, profile_id: &str, path: &str) -> Result<()> {
-        match self.conn.execute(
-            "INSERT OR IGNORE INTO ps_scan_dirs (profile_id, path) VALUES (?1, ?2)",
-            params![profile_id, path],
-        ) {
-            Ok(_) => {}
-            Err(err) => return Err(err.into()),
-        }
-        tracing::info!(profile_id, path, "added PS game folder");
-        Ok(())
-    }
-
-    #[inline]
-    pub fn remove_ps_scan_dir(&self, profile_id: &str, path: &str) -> Result<()> {
-        match self.conn.execute(
-            "DELETE FROM ps_scan_dirs WHERE profile_id = ?1 AND path = ?2",
-            params![profile_id, path],
-        ) {
-            Ok(_) => {}
-            Err(err) => return Err(err.into()),
-        }
-        tracing::info!(profile_id, path, "removed PS game folder");
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scan_dirs_belong_to_their_profile_and_go_with_it() {
-        let db = Db::open(":memory:").unwrap();
-        db.upsert_profile("a", "Uno", 1).unwrap();
-        db.upsert_profile("b", "Otro", 2).unwrap();
-        db.add_ps_scan_dir("a", "/games/ps4").unwrap();
-        db.add_ps_scan_dir("a", "/games/ps5").unwrap();
-        db.add_ps_scan_dir("a", "/games/ps4").unwrap();
-        db.add_ps_scan_dir("b", "/other").unwrap();
-        assert_eq!(db.ps_scan_dirs("a").unwrap(), ["/games/ps4", "/games/ps5"]);
-        db.remove_ps_scan_dir("a", "/games/ps4").unwrap();
-        assert_eq!(db.ps_scan_dirs("a").unwrap(), ["/games/ps5"]);
-        db.delete_profile("a").unwrap();
-        assert!(db.ps_scan_dirs("a").unwrap().is_empty());
-        assert_eq!(db.ps_scan_dirs("b").unwrap(), ["/other"]);
     }
 }

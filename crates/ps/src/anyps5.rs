@@ -164,8 +164,12 @@ impl AnyPs5 {
 }
 
 /// `run_dir` gets `app0/` linked to the shared conversion; `_sd/` is left
-/// for AnyPS5 to create there. File I/O: off the UI thread.
-pub fn prepare_run_dir(title_id: &str, run_dir: &Path) -> io::Result<()> {
+/// for AnyPS5 to create there. The conversion's own `libs` link is pointed
+/// at this checkout's build again too: the PS folder moves with the
+/// library, and an absolute link from before a move points nowhere. File
+/// I/O: off the UI thread.
+pub fn prepare_run_dir(anyps5: &AnyPs5, title_id: &str, run_dir: &Path) -> io::Result<()> {
+    replace_symlink(&anyps5.libs_dir(), &AnyPs5::output_dir(title_id).join("libs"))?;
     fs::create_dir_all(run_dir)?;
     replace_symlink(&AnyPs5::output_dir(title_id).join("app0"), &run_dir.join("app0"))
 }

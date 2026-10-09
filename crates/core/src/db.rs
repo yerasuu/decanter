@@ -204,14 +204,7 @@ CREATE TABLE IF NOT EXISTS steam_shortcuts (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
--- A profile's PS game folders: its whole PS library, since a PS game is a
--- dump read where the user keeps it rather than an install decanter owns.
-CREATE TABLE IF NOT EXISTS ps_scan_dirs (
-    profile_id  TEXT NOT NULL,
-    path        TEXT NOT NULL,
-    PRIMARY KEY (profile_id, path)
-);
-
+DROP TABLE IF EXISTS ps_scan_dirs;
 DROP TABLE IF EXISTS game_links;
 ";
 

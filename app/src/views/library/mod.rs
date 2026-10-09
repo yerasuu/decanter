@@ -50,18 +50,18 @@ enum LibraryPopup {
 }
 
 struct LibraryModel {
-    pub selected: Option<String>,
-    pub popup: Option<LibraryPopup>,
+    pub(crate) selected: Option<String>,
+    pub(crate) popup: Option<LibraryPopup>,
     /// Owned here, not by the sidebar, so the browser sees the same "solo
     /// instalados" state: that one condition narrows the whole library
     /// view, unlike the rest of the filters, which stay sidebar-only.
-    pub filters: filters::Filters,
+    pub(crate) filters: filters::Filters,
     /// A collection whose name is being edited inline in the sidebar, as
     /// `(id, current name)` — started from the shelf menu's "Renombrar".
-    pub renaming: Option<(String, String)>,
-    pub poll_status: PollStatus,
+    pub(crate) renaming: Option<(String, String)>,
+    pub(crate) poll_status: PollStatus,
     /// The selected game's cached achievements, re-read after each poll.
-    pub achievements: Option<Result<Vec<CachedAchievement>, String>>,
+    pub(crate) achievements: Option<Result<Vec<CachedAchievement>, String>>,
     poll: Option<Task<()>>,
 }
 

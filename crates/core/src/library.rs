@@ -780,7 +780,13 @@ fn copy_dir_recursive(
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let dst_path = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            // Recreated as a link: following it copied what it points at —
+            // a Wine prefix's `dosdevices/z:` is `/` — or failed outright
+            // on a link to a directory, halfway through the move.
+            std::os::unix::fs::symlink(fs::read_link(entry.path())?, &dst_path)?;
+        } else if kind.is_dir() {
             copy_dir_recursive(&entry.path(), &dst_path, bytes_copied, total_bytes, on_progress)?;
         } else {
             fs::copy(entry.path(), &dst_path)?;
@@ -898,6 +904,32 @@ mod tests {
         assert_eq!(fs::read(dst.join("a.txt")).expect("copied file readable"), b"aaaa");
         assert_eq!(fs::read(dst.join("nested/b.txt")).expect("copied file readable"), b"bb");
         assert!(src.exists(), "copy_dir_recursive alone must never touch the source");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn copy_dir_recursive_keeps_links_as_links() {
+        let base = temp_dir("copy-links");
+        let (src, dst, elsewhere) = (base.join("src"), base.join("dst"), base.join("elsewhere"));
+        fs::create_dir_all(src.join("dosdevices")).expect("src dirs");
+        fs::create_dir_all(&elsewhere).expect("target dir");
+        fs::write(elsewhere.join("big.bin"), b"not to be copied").expect("target file");
+        std::os::unix::fs::symlink(&elsewhere, src.join("dosdevices/z:")).expect("dir link");
+        std::os::unix::fs::symlink(elsewhere.join("big.bin"), src.join("file-link")).expect("file link");
+
+        let mut bytes_copied = 0u64;
+        copy_dir_recursive(&src, &dst, &mut bytes_copied, 0, &mut |_| {}).expect("copy succeeds");
+
+        assert_eq!(
+            fs::read_link(dst.join("dosdevices/z:")).expect("still a link"),
+            elsewhere
+        );
+        assert_eq!(
+            fs::read_link(dst.join("file-link")).expect("still a link"),
+            elsewhere.join("big.bin")
+        );
+        assert_eq!(bytes_copied, 0, "nothing behind a link is copied");
 
         let _ = fs::remove_dir_all(&base);
     }

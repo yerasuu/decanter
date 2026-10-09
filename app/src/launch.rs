@@ -13,7 +13,7 @@ use gpui::{AsyncApp, Entity};
 use crate::state::Background;
 
 fn set_running(background: &Entity<Background>, game_id: &str, running: bool, cx: &mut AsyncApp) {
-    let _ = background.update(cx, |background, cx| {
+    background.update(cx, |background, cx| {
         if running {
             background.running.insert(game_id.to_owned());
         } else {

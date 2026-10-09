@@ -74,17 +74,17 @@ pub enum LibraryState {
 pub struct GogLibrary {
     /// Every account's games, merged and deduped — see [`merge`]. What the
     /// Biblioteca view reads.
-    pub games: Vec<LibraryEntry>,
+    pub(crate) games: Vec<LibraryEntry>,
     /// Bumped on every change to `games`, so views can cache what they
     /// derive from it instead of re-deriving on every render.
-    pub revision: u64,
-    pub state: LibraryState,
+    pub(crate) revision: u64,
+    pub(crate) state: LibraryState,
     /// "N of M enriched" while pass two runs, `None` otherwise — a rough
     /// progress hint for [`LibraryState::Loading`], not tracked per
     /// account. With more than one GOG account loading at once this just
     /// reflects whichever wrote most recently, the same simplification
     /// `state` itself already makes.
-    pub enrich_progress: Option<(usize, usize)>,
+    pub(crate) enrich_progress: Option<(usize, usize)>,
     profile: Option<String>,
     /// The active profile's GOG accounts, oldest first — the merge order.
     wanted: Vec<String>,

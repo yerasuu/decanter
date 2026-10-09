@@ -76,7 +76,7 @@ pub fn launch_game(account_id: String, game: InstalledGame, cx: &mut App) {
             "recording play session"
         );
         data::add_playtime(&account_id, &product_id, played.as_secs() as i64);
-        let _ = background.update(cx, |background, cx| {
+        background.update(cx, |background, cx| {
             background.playtime_generation = background.playtime_generation.wrapping_add(1);
             cx.notify();
         });

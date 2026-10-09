@@ -1,5 +1,5 @@
-//! The PS section's state: the active profile's PS folders and the games
-//! found in them.
+//! The PS section's state: the games in the active profile's library PS
+//! folder.
 //!
 //! Created the first time the section opens, not at startup, so a PC
 //! profile never pays for it; kept after that, so jobs started from the
@@ -27,7 +27,6 @@ use super::AppState;
 
 pub struct Ps {
     profile_id: Option<String>,
-    dirs: Vec<String>,
     entries: Vec<Entry>,
     scanning: bool,
     error: Option<String>,
@@ -61,7 +60,6 @@ impl Ps {
                 .detach();
             let mut this = Self {
                 profile_id: None,
-                dirs: Vec::new(),
                 entries: Vec::new(),
                 notice: None,
                 scanning: false,
@@ -78,10 +76,6 @@ impl Ps {
         });
         cx.set_global(PsGlobal(ps.clone()));
         ps
-    }
-
-    pub fn dirs(&self) -> &[String] {
-        &self.dirs
     }
 
     pub fn entries(&self) -> &[Entry] {
@@ -133,58 +127,28 @@ impl Ps {
         if profile_id == self.profile_id {
             return;
         }
-        self.profile_id = profile_id;
-        self.dirs.clear();
+        self.profile_id = profile_id.clone();
         self.entries.clear();
         self.notice = None;
-        self.rescan(cx);
-        self.import_psport(cx);
-    }
-
-    /// What the standalone psport left behind, brought into the first
-    /// profile that opens the section; once per database.
-    fn import_psport(&self, cx: &mut Context<Self>) {
-        const DONE: &str = "psport_import_v1";
-        let Some(profile_id) = self.profile_id.clone() else {
+        let Some(profile_id) = profile_id else {
+            self.rescan(cx);
             return;
         };
-        let task = cx.background_spawn(async move {
-            let db = match crate::core::db() {
-                Ok(db) => db,
-                Err(err) => return Err(err),
-            };
-            if db.setting(DONE).map_err(|err| err.to_string())?.is_some() {
-                return Ok(false);
-            }
-            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-            let sources = decanter_ps::import::Sources::from_home(&home);
-            let imported = decanter_ps::import::import(&sources, &profile_id).map_err(|err| err.to_string())?;
-            for dir in &imported.scan_dirs {
-                db.add_ps_scan_dir(&profile_id, &dir.to_string_lossy())
-                    .map_err(|err| err.to_string())?;
-            }
-            db.set_setting(DONE, "1").map_err(|err| err.to_string())?;
-            tracing::info!(
-                profile_id,
-                folders = imported.scan_dirs.len(),
-                copied = ?imported.copied,
-                "imported psport's data"
-            );
-            Ok(!imported.scan_dirs.is_empty() || !imported.copied.is_empty())
+        // Everything PS lives in the profile's library, so its root is
+        // settled before any scan, import or port reads a path.
+        let settle = cx.background_spawn(async move {
+            let library = crate::core::library_for_profile(&profile_id)?;
+            decanter_ps::paths::use_library(library.root());
+            Ok::<(), String>(())
         });
         cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| match result {
-                Ok(true) => {
-                    this.notice = Some(("Se importaron los datos de psport".to_owned(), false));
-                    this.rescan(cx);
+            let settled = settle.await;
+            let _ = this.update(cx, |this, cx| {
+                if let Err(err) = settled {
+                    tracing::warn!(%err, "could not place the PS data in the profile's library");
+                    this.error = Some(format!("No se pudo usar la carpeta de la biblioteca: {err}"));
                 }
-                Ok(false) => {}
-                Err(err) => {
-                    tracing::warn!(%err, "could not import psport's data");
-                    this.notice = Some((format!("No se pudieron importar los datos de psport: {err}"), true));
-                    cx.notify();
-                }
+                this.rescan(cx);
             });
         })
         .detach();
@@ -193,23 +157,22 @@ impl Ps {
     /// Reads the folder list and every dump in it again, off the UI thread.
     pub fn rescan(&mut self, cx: &mut Context<Self>) {
         self.scan = self.scan.wrapping_add(1);
-        let Some(profile_id) = self.profile_id.clone() else {
+        if self.profile_id.is_none() {
             self.scanning = false;
             cx.notify();
             return;
-        };
+        }
         let scan = self.scan;
         self.scanning = true;
         cx.notify();
+        // The library's own folder, made if missing so there is a place to
+        // drop dumps in.
         let task = cx.background_spawn(async move {
-            let dirs =
-                match crate::core::db().and_then(|db| db.ps_scan_dirs(&profile_id).map_err(|err| err.to_string())) {
-                    Ok(dirs) => dirs,
-                    Err(err) => return Err(err),
-                };
-            let roots: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
-            let entries = status::classify(&library::scan(&roots));
-            Ok((dirs, entries))
+            let games = decanter_ps::paths::games();
+            if let Err(err) = std::fs::create_dir_all(&games) {
+                return Err(format!("No se pudo crear {}: {err}", games.display()));
+            }
+            Ok(status::classify(&library::scan(std::slice::from_ref(&games))))
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -219,54 +182,17 @@ impl Ps {
                 }
                 this.scanning = false;
                 match result {
-                    Ok((dirs, entries)) => {
-                        tracing::debug!(folders = dirs.len(), games = entries.len(), "scanned PS folders");
-                        this.dirs = dirs;
+                    Ok(entries) => {
+                        tracing::debug!(games = entries.len(), "scanned the PS games folder");
                         this.entries = entries;
                         this.error = None;
                     }
                     Err(err) => {
-                        tracing::warn!(%err, "could not read the PS folders");
+                        tracing::warn!(%err, "could not read the PS games folder");
                         this.error = Some(err);
                     }
                 }
                 cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    pub fn add_dir(&mut self, path: String, cx: &mut Context<Self>) {
-        self.edit_dirs(path, true, cx);
-    }
-
-    pub fn remove_dir(&mut self, path: String, cx: &mut Context<Self>) {
-        self.edit_dirs(path, false, cx);
-    }
-
-    fn edit_dirs(&mut self, path: String, add: bool, cx: &mut Context<Self>) {
-        let Some(profile_id) = self.profile_id.clone() else {
-            return;
-        };
-        let task = cx.background_spawn(async move {
-            crate::core::db().and_then(|db| {
-                if add {
-                    db.add_ps_scan_dir(&profile_id, &path)
-                } else {
-                    db.remove_ps_scan_dir(&profile_id, &path)
-                }
-                .map_err(|err| err.to_string())
-            })
-        });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| match result {
-                Ok(()) => this.rescan(cx),
-                Err(err) => {
-                    tracing::warn!(%err, "could not change the PS folders");
-                    this.error = Some(err);
-                    cx.notify();
-                }
             });
         })
         .detach();

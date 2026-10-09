@@ -37,12 +37,12 @@ type Callback = Rc<dyn Fn(&str, &mut App)>;
 /// field ("Nueva coleccion…", the new-collection popup) and the focus that
 /// catches Escape.
 pub struct PopupState {
-    pub focus: FocusHandle,
-    pub naming: bool,
-    pub name: Entity<TextInput>,
+    pub(crate) focus: FocusHandle,
+    pub(crate) naming: bool,
+    pub(crate) name: Entity<TextInput>,
     /// Set on every render, since what Enter does depends on the popup's
     /// current target; Escape always just closes.
-    pub on_submit: Option<Callback>,
+    pub(crate) on_submit: Option<Callback>,
     on_cancel: Option<Rc<dyn Fn(&mut App)>>,
     data: Option<MenuData>,
 }
@@ -233,7 +233,7 @@ fn game_menu(
     let mut panel = menu::panel().child(menu::title(target.title.clone()));
     if let Some(entry) = single_entry.filter(|entry| entry.kind == GameKind::Game) {
         panel = panel
-            .children(game_action_item(&entry, launch_target, close, cx))
+            .child(game_action_item(&entry, launch_target, close, cx))
             .children(open_folder_item(install_path, close))
             .child(properties_item(&entry, close))
             .child(menu::separator());
@@ -392,7 +392,7 @@ fn game_action_item(
     launch_target: Option<decanter_core::InstalledGame>,
     close: &menu::Dismiss,
     cx: &App,
-) -> Option<AnyElement> {
+) -> AnyElement {
     let account_id = entry.game.account_id.clone();
     let background = AppState::get(cx).background.read(cx);
     let status = background.installing.get(&entry.game.id).cloned();
@@ -402,57 +402,51 @@ fn game_action_item(
     let product_id = entry.game.id.clone();
 
     if matches!(status, Some(InstallStatus::Queued | InstallStatus::Installing { .. })) {
-        return Some(
-            menu::item("menu-action", false)
-                .on_click(move |_, window, cx| {
-                    let account_id = account_id.clone();
-                    let product_id = product_id.clone();
-                    cx.spawn(async move |_| super::install::cancel(&account_id, &product_id).await)
-                        .detach();
-                    close(window, cx);
-                })
-                .child("Cancelar instalacion")
-                .into_any_element(),
-        );
+        return menu::item("menu-action", false)
+            .on_click(move |_, window, cx| {
+                let account_id = account_id.clone();
+                let product_id = product_id.clone();
+                cx.spawn(async move |_| super::install::cancel(&account_id, &product_id).await)
+                    .detach();
+                close(window, cx);
+            })
+            .child("Cancelar instalacion")
+            .into_any_element();
     }
 
     if !is_installed {
         // Failed sits here too: whatever partial state it left behaves the
         // same as never having started — retrying is just installing again.
         let title = entry.game.title.clone();
-        return Some(
-            menu::item("menu-action", false)
-                .on_click(move |_, window, cx| {
-                    start_install(
-                        InstallRequest {
-                            account_id: account_id.clone(),
-                            product_id: product_id.clone(),
-                            parent_id: None,
-                            title: title.clone(),
-                            branch: None,
-                            dlcs: Vec::new(),
-                        },
-                        cx,
-                    );
-                    close(window, cx);
-                })
-                .child("Instalar")
-                .into_any_element(),
-        );
+        return menu::item("menu-action", false)
+            .on_click(move |_, window, cx| {
+                start_install(
+                    InstallRequest {
+                        account_id: account_id.clone(),
+                        product_id: product_id.clone(),
+                        parent_id: None,
+                        title: title.clone(),
+                        branch: None,
+                        dlcs: Vec::new(),
+                    },
+                    cx,
+                );
+                close(window, cx);
+            })
+            .child("Instalar")
+            .into_any_element();
     }
 
     let Some(installed) = launch_target else {
-        return Some(
-            menu::item("menu-action", false)
-                .opacity(0.5)
-                .cursor_default()
-                .hover(|item| item)
-                .child("Instalado, pero sin ejecutable detectado")
-                .into_any_element(),
-        );
+        return menu::item("menu-action", false)
+            .opacity(0.5)
+            .cursor_default()
+            .hover(|item| item)
+            .child("Instalado, pero sin ejecutable detectado")
+            .into_any_element();
     };
 
-    Some(if running {
+    if running {
         menu::item("menu-action", false)
             .on_click(move |_, window, cx| {
                 stop_game(account_id.clone(), product_id.clone(), cx);
@@ -468,7 +462,7 @@ fn game_action_item(
             })
             .child("Jugar")
             .into_any_element()
-    })
+    }
 }
 
 /// Opens the install directory — needs only the files, not a resolved
