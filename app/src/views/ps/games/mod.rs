@@ -18,7 +18,7 @@ use gpui::{
 
 use crate::state::{AppState, Ps};
 use crate::theme;
-use crate::widgets::{InputEvent, TextInput, tooltip};
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button, tooltip};
 use browser::BrowserView;
 use detail::DetailView;
 
@@ -140,8 +140,33 @@ impl GamesView {
             .bg(rgb(theme::BG_PANEL_3))
             .border_r_1()
             .border_color(rgb(theme::LINE))
-            .child(div().p(px(14.)).pb(px(8.)).child(self.search.clone()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .p(px(14.))
+                    .pb(px(8.))
+                    .child(div().flex_1().min_w_0().child(self.search.clone()))
+                    .child(self.refresh_button(cx)),
+            )
             .child(body)
+    }
+
+    /// Reads the games folder again — for dumps copied in while the
+    /// section was open, which nothing watches the folder for.
+    fn refresh_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let scanning = self.ps.read(cx).scanning();
+        let ps = self.ps.clone();
+        button("ps-rescan", ButtonKind::Icon, "⟳", scanning)
+            .tooltip(tooltip(if scanning {
+                "Buscando juegos…"
+            } else {
+                "Actualizar biblioteca"
+            }))
+            .when(!scanning, |b| {
+                b.on_click(move |_, _, cx| ps.update(cx, |ps, cx| ps.rescan(cx)))
+            })
     }
 
     fn row(&self, game: &Game, status: &Status, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
@@ -241,10 +266,10 @@ const fn status_text(status: &Status) -> &'static str {
         Status::NeedsMerge(_) => "Falta fusionar 1.09",
         Status::HasPlayable(_) => "Usa la copia 1.09",
         Status::OtherEdition => "Otra edición",
+        Status::Experimental => "Experimental",
         Status::NeedsUpdate => "Necesita 1.09",
         Status::Encrypted => "eboot cifrado",
         Status::NoEboot => "Sin eboot.bin",
-        Status::Unsupported => "No soportado",
     }
 }
 

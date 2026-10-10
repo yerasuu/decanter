@@ -138,11 +138,12 @@ impl Bbport {
     /// in `launcher/bbport_launcher.py`), for the settings decanter knows,
     /// plus what keeps `run.sh` from building and from writing into the
     /// checkout. `user_dir` holds the profile's saves; `mods` comes from
-    /// [`mods::prepare`].
+    /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
+    /// Bloodborne.
     pub async fn launch_command(
         &self,
         toolchain: &Toolchain,
-        game_dir: &Path,
+        game: &Game,
         user_dir: &Path,
         settings: &LauncherSettings,
         mods: &mods::Mods,
@@ -158,7 +159,7 @@ impl Bbport {
             .env("BB_PROBE", self.probe())
             .env("BB_DATA_DIR", &data)
             .env("BB_USER_DIR", user_dir)
-            .env("BB_GAME_DIR", game_dir)
+            .env("BB_GAME_DIR", &game.dir)
             .env("BB_MODS_DIR", &mods.dir)
             .env("BB_MODS_CONFIG", &mods.config)
             .env("BB_MODS_ENABLED", if mods.enabled { "1" } else { "0" })
@@ -175,6 +176,11 @@ impl Bbport {
             .env("BB_MENU_LANGUAGE", "en")
             // Experimental memory model, AMD GPUs only upstream; off unless chosen.
             .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" });
+        // The fork's way past `game_check.py`, which accepts only Bloodborne 1.09, and past the
+        // first import the runtime lacks, so the log lists every one the title reaches.
+        if !is_bloodborne(game) {
+            command.env("BB_SKIP_GAME_CHECK", "1").env("BB_PERMISSIVE", "1");
+        }
         if settings.flag("hdr", false) {
             command.env("BB_HDR", "1");
         }

@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use decanter_ps::anyps5::AnyPs5;
-use decanter_ps::bbport::Bbport;
+use decanter_ps::bbport::{self, Bbport};
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
@@ -44,6 +44,15 @@ const BBPORT_TABS: [(Tab, &str); 6] = [
     (Tab::Gamepad, "Mando"),
     (Tab::Graphics, "Gráficos"),
     (Tab::Mods, "Mods"),
+    (Tab::Log, "Registro"),
+];
+
+/// Another PS4 title on bbport: its mods are Bloodborne's.
+const OTHER_PS4_TABS: [(Tab, &str); 5] = [
+    (Tab::Overview, "Resumen"),
+    (Tab::Keyboard, "Teclado"),
+    (Tab::Gamepad, "Mando"),
+    (Tab::Graphics, "Gráficos"),
     (Tab::Log, "Registro"),
 ];
 
@@ -323,9 +332,13 @@ impl DetailView {
             Status::NeedsUpdate => {
                 Some("bbport necesita la versión 1.09: añadí su actualización a una de tus carpetas.".to_owned())
             }
+            Status::Experimental => Some(
+                "bbport solo está hecho para Bloodborne. Este juego arranca con lo que le falte al port \
+                 sustituido, sin parches ni mods: mira hasta dónde llega en Registro."
+                    .to_owned(),
+            ),
             Status::Encrypted => Some("El eboot.bin sigue cifrado; hay que descifrarlo en la consola.".to_owned()),
             Status::NoEboot => Some("Este volcado no tiene eboot.bin.".to_owned()),
-            Status::Unsupported => Some("Ningún port ejecuta este juego todavía.".to_owned()),
         };
         let merge = match &entry.status {
             Status::NeedsMerge(update) => {
@@ -382,7 +395,8 @@ impl Render for DetailView {
         let entity = cx.entity();
         let port = entry.port.map(|port| (port, entry.game.title_id.clone()));
         let tabs: &[(Tab, &str)] = match entry.port {
-            Some(Port::Bbport) => &BBPORT_TABS,
+            Some(Port::Bbport) if bbport::is_bloodborne(&entry.game) => &BBPORT_TABS,
+            Some(Port::Bbport) => &OTHER_PS4_TABS,
             Some(Port::AnyPs5) => &TABS,
             None => &UNSUPPORTED_TABS,
         };

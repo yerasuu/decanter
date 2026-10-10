@@ -24,14 +24,16 @@ pub enum Status {
     /// Bloodborne, but not the edition bbport runs.
     OtherEdition,
     NeedsUpdate,
+    /// Another PS4 title: bbport starts it with the imports it lacks
+    /// stubbed, and the log shows how far it gets.
+    Experimental,
     Encrypted,
     NoEboot,
-    Unsupported,
 }
 
 impl Status {
     pub const fn playable(&self) -> bool {
-        matches!(self, Self::Ready | Self::NeedsConvert)
+        matches!(self, Self::Ready | Self::NeedsConvert | Self::Experimental)
     }
 }
 
@@ -53,8 +55,10 @@ pub fn classify(games: &[Game]) -> Vec<Entry> {
                 (Some(Port::Bbport), bloodborne_status(game, games))
             } else if game.platform == Platform::Ps5 {
                 (Some(Port::AnyPs5), ps5_status(game))
+            } else if game.dir.join("eboot.bin").is_file() {
+                (Some(Port::Bbport), Status::Experimental)
             } else {
-                (None, Status::Unsupported)
+                (Some(Port::Bbport), Status::NoEboot)
             };
             Entry {
                 game: game.clone(),
@@ -127,5 +131,26 @@ mod tests {
         assert_eq!(entries[1].status, Status::Ready);
 
         assert_eq!(classify(&[base])[0].status, Status::NeedsUpdate);
+    }
+
+    #[test]
+    fn another_ps4_title_goes_to_bbport_once_it_has_an_executable() {
+        let dir = std::env::temp_dir().join(format!("decanter-ps-ryza-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let ryza = Game {
+            dir: dir.clone(),
+            platform: Platform::Ps4,
+            title_id: "CUSA16458".into(),
+            title: "Atelier Ryza".into(),
+            version: "01.00".into(),
+            category: "gd".into(),
+            has_modules: true,
+        };
+        let entry = &classify(std::slice::from_ref(&ryza))[0];
+        assert_eq!((entry.port, &entry.status), (Some(Port::Bbport), &Status::NoEboot));
+        fs::write(dir.join("eboot.bin"), "").unwrap();
+        let entry = &classify(&[ryza])[0];
+        assert_eq!((entry.port, &entry.status), (Some(Port::Bbport), &Status::Experimental));
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

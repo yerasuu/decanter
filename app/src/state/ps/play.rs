@@ -109,33 +109,37 @@ async fn bbport_command(
 ) -> Result<Command, String> {
     let settings = cx.background_spawn(async { LauncherSettings::load() }).await;
     let bbport = Bbport::new(Port::Bbport.checkout());
-    // The automatic icon style follows the pad bbport will read: the one
-    // picked in Mando, else the first connected.
-    let detected = {
-        let pads = bbport.connected_gamepads(toolchain).await;
-        let chosen = settings.text("gamepad");
-        pads.iter()
-            .find(|(guid, _)| Some(guid.as_str()) == chosen)
-            .or_else(|| pads.first())
-            .map(|(guid, name)| IconStyle::for_gamepad(guid, name))
-    };
-    let game_dir = game.dir.clone();
-    let for_mods = settings.clone();
-    // The layout's button icons are built here when they need to be: a few
-    // hundred milliseconds of decoding and encoding, off the UI thread.
-    let mods = cx
-        .background_spawn(async move { bbport::mods::prepare(&game_dir, &for_mods, detected) })
-        .await;
-    let mods = match mods {
-        Ok(mods) => mods,
-        Err(err) => return Err(format!("No se pudieron preparar los mods y los iconos: {err}")),
+    let mods = if bbport::is_bloodborne(game) {
+        // The automatic icon style follows the pad bbport will read: the one
+        // picked in Mando, else the first connected.
+        let detected = {
+            let pads = bbport.connected_gamepads(toolchain).await;
+            let chosen = settings.text("gamepad");
+            pads.iter()
+                .find(|(guid, _)| Some(guid.as_str()) == chosen)
+                .or_else(|| pads.first())
+                .map(|(guid, name)| IconStyle::for_gamepad(guid, name))
+        };
+        let game_dir = game.dir.clone();
+        let for_mods = settings.clone();
+        // The layout's button icons are built here when they need to be: a few
+        // hundred milliseconds of decoding and encoding, off the UI thread.
+        let mods = cx
+            .background_spawn(async move { bbport::mods::prepare(&game_dir, &for_mods, detected) })
+            .await;
+        match mods {
+            Ok(mods) => mods,
+            Err(err) => return Err(format!("No se pudieron preparar los mods y los iconos: {err}")),
+        }
+    } else {
+        bbport::mods::Mods::off(&settings)
     };
     let user_dir = decanter_ps::paths::profile(profile_id).join("bbport/user");
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
         return Err(format!("No se pudo crear {}: {err}", user_dir.display()));
     }
     bbport
-        .launch_command(toolchain, &game.dir, &user_dir, &settings, &mods)
+        .launch_command(toolchain, game, &user_dir, &settings, &mods)
         .await
         .map_err(|err| format!("No se pudo preparar el entorno: {err}"))
 }

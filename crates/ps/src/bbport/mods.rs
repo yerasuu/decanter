@@ -28,6 +28,18 @@ pub struct Mods {
     pub enabled: bool,
 }
 
+impl Mods {
+    /// bbport's mods folder with mods switched off: the mods and the icons
+    /// mod are Bloodborne's files.
+    pub fn off(settings: &LauncherSettings) -> Self {
+        Self {
+            dir: user_dir(settings),
+            config: ModProfile::path(),
+            enabled: false,
+        }
+    }
+}
+
 fn user_dir(settings: &LauncherSettings) -> PathBuf {
     settings
         .text("mods_dir")

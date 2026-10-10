@@ -238,7 +238,7 @@ async fn check_and_update(this: &WeakEntity<Ps>, port: Port, cx: &mut AsyncApp) 
     if !tokio::fs::try_exists(&checkout).await.unwrap_or(false) {
         return;
     }
-    let check = updater::check(&checkout).await;
+    let check = updater::check(&checkout, port.upstream()).await;
     let fast_forward = matches!(&check, Ok(check) if check.plan == Plan::FastForward);
     let branch = check.as_ref().map(|check| check.branch.clone()).unwrap_or_default();
     // Never under a running game or build: they read the checkout.
@@ -258,7 +258,7 @@ async fn check_and_update(this: &WeakEntity<Ps>, port: Port, cx: &mut AsyncApp) 
         tracing::info!(port = port.name(), "port fast-forwarded to upstream");
         rebuild(this, port, cx).await;
     }
-    let check = updater::check(&checkout).await;
+    let check = updater::check(&checkout, port.upstream()).await;
     let _ = this.update(cx, |this, cx| {
         this.ports.entry(port).or_insert_with(PortState::new).check = Some(check);
         cx.notify();

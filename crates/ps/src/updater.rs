@@ -72,8 +72,19 @@ fn valid_branch(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
 }
 
-/// Fetches and compares with upstream.
-pub async fn check(repo: &Path) -> Result<Check, String> {
+/// Fetches and compares with `upstream`, pointing `origin` at it first: a
+/// checkout cloned before a port moved (bbport to decanter's fork) then
+/// fast-forwards onto it like any other update.
+pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
+    match git(repo, &["remote", "get-url", "origin"]).await {
+        Ok(current) if current == upstream => {}
+        Ok(_) => {
+            if let Err(err) = git(repo, &["remote", "set-url", "origin", upstream]).await {
+                return Err(err);
+            }
+        }
+        Err(err) => return Err(err),
+    }
     if let Err(err) = git(repo, &["fetch", "--quiet", "origin"]).await {
         return Err(err);
     }
@@ -256,19 +267,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_moved_upstream_becomes_origin_and_fast_forwards() {
+        let (root, _upstream, clone) = repos("moved");
+        let fork = root.join("fork");
+        run(&root, &["clone", "-q", "upstream", "fork"]);
+        std::fs::write(fork.join("b"), "2").unwrap();
+        run(&fork, &["add", "b"]);
+        run(&fork, &["commit", "-qm", "fork"]);
+        let found = check(&clone, fork.to_str().unwrap()).await.unwrap();
+        assert_eq!((found.plan, found.behind), (Plan::FastForward, 1));
+        assert_eq!(
+            git(&clone, &["remote", "get-url", "origin"]).await.unwrap(),
+            fork.to_str().unwrap()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
     async fn plans_fast_forward_then_up_to_date() {
         let (root, upstream, clone) = repos("ff");
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::UpToDate);
+        assert_eq!(
+            check(&clone, upstream.to_str().unwrap()).await.unwrap().plan,
+            Plan::UpToDate
+        );
         std::fs::write(upstream.join("b"), "2").unwrap();
         run(&upstream, &["add", "b"]);
         run(&upstream, &["commit", "-qm", "two"]);
-        let found = check(&clone).await.unwrap();
+        let found = check(&clone, upstream.to_str().unwrap()).await.unwrap();
         assert_eq!(
             (found.plan, found.behind, found.branch.as_str()),
             (Plan::FastForward, 1, "main")
         );
         assert!(fast_forward_command(&clone, "main").status().await.unwrap().success());
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::UpToDate);
+        assert_eq!(
+            check(&clone, upstream.to_str().unwrap()).await.unwrap().plan,
+            Plan::UpToDate
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -284,11 +318,17 @@ mod tests {
         std::fs::write(upstream.join("c"), "3").unwrap();
         run(&upstream, &["add", "c"]);
         run(&upstream, &["commit", "-qm", "three"]);
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::Rewritten);
+        assert_eq!(
+            check(&clone, upstream.to_str().unwrap()).await.unwrap().plan,
+            Plan::Rewritten
+        );
         std::fs::write(clone.join("mine"), "x").unwrap();
         run(&clone, &["add", "mine"]);
         run(&clone, &["commit", "-qm", "mine"]);
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::LocalCommits(1));
+        assert_eq!(
+            check(&clone, upstream.to_str().unwrap()).await.unwrap().plan,
+            Plan::LocalCommits(1)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
