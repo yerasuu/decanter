@@ -17,6 +17,13 @@ pub const VULKAN_ONLY_EGL_VENDORS: &str = "/nonexistent/decanter-vulkan-only.jso
 /// have broken Steam's own runtime before; `GLIBC_TUNABLES` is the malloc
 /// arena cap AppRun sets, sized for a launcher, not a game; and a browser
 /// started without EGL drivers loses GPU acceleration for its whole life.
+///
+/// The dev shell also points Vulkan at nix's own Mesa (`shell.nix`), which
+/// only decanter's own nix-built binary can load. A game inside Steam's
+/// runtime container gets no usable device from it — DXVK's `dxgi.dll`
+/// crashed creating one, Arknights: Endfield's launcher with it — so a
+/// driver list naming `/nix/store` is dropped and the game finds the
+/// host's drivers itself. One set by hand to anything else still reaches it.
 #[inline]
 pub fn strip_launcher_env(command: &mut Command) {
     command
@@ -26,6 +33,19 @@ pub fn strip_launcher_env(command: &mut Command) {
     if std::env::var_os("__EGL_VENDOR_LIBRARY_FILENAMES").as_deref() == Some(OsStr::new(VULKAN_ONLY_EGL_VENDORS)) {
         command.env_remove("__EGL_VENDOR_LIBRARY_FILENAMES");
     }
+    for var in ["VK_DRIVER_FILES", "VK_ICD_FILENAMES"] {
+        if std::env::var_os(var).is_some_and(|value| names_nix_store(&value)) {
+            command.env_remove(var);
+        }
+    }
+}
+
+/// Whether a `:`-separated path list has an entry under `/nix/store`.
+fn names_nix_store(value: &OsStr) -> bool {
+    value
+        .to_string_lossy()
+        .split(':')
+        .any(|path| path.starts_with("/nix/store/"))
 }
 
 #[cfg(test)]
@@ -47,5 +67,15 @@ mod tests {
         for var in ["LD_LIBRARY_PATH", "LD_PRELOAD", "GLIBC_TUNABLES"] {
             assert!(removed.contains(&OsStr::new(var)), "{var} not stripped");
         }
+    }
+
+    #[test]
+    fn only_nix_vulkan_drivers_count_as_the_dev_shells() {
+        assert!(super::names_nix_store(OsStr::new(
+            "/nix/store/z5wm-mesa-26.2.4/share/vulkan/icd.d/radeon_icd.x86_64.json:/nix/store/z5wm-mesa/intel_icd.json"
+        )));
+        assert!(!super::names_nix_store(OsStr::new(
+            "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+        )));
     }
 }
