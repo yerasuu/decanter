@@ -1511,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "decanter"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1540,7 +1540,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "dirs 7.0.0",
  "keyring",
@@ -1555,7 +1555,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-gog"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1578,7 +1578,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-ps"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "decanter-core",
  "flate2",
@@ -1596,7 +1596,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-runtime"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "decanter-core",
