@@ -11,6 +11,8 @@
 //! uuid, which no GOG product id ever looks like.
 
 pub mod art;
+pub mod import;
+mod transfer;
 
 use std::path::{Path, PathBuf};
 

@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::external::art::{Candidate, Candidates, Source};
+use crate::external::import::Mode as ImportMode;
 use crate::theme;
 use crate::widgets::{ButtonKind, TextInput, button, tooltip};
 
@@ -87,6 +88,15 @@ pub struct GameForm {
     executable: Entity<TextInput>,
     art: GameArt,
     installer: Installer,
+    /// Another tool's prefix to move in on save, picked by folder.
+    import_from: Option<std::path::PathBuf>,
+    import_mode: ImportMode,
+    /// Set while a save is bringing a prefix in.
+    importing: bool,
+    progress: std::sync::Arc<crate::external::import::Progress>,
+    /// Redraws the progress bar while `importing`: the copy runs on a
+    /// blocking thread that can't notify this view itself.
+    _ticker: Option<Task<()>>,
     search: Search,
     error: String,
     _work: Option<Task<()>>,
@@ -97,6 +107,17 @@ pub struct GameForm {
 }
 
 impl EventEmitter<FormEvent> for GameForm {}
+
+impl Drop for GameForm {
+    /// Leaving the form ends any chance of retrying a failed copy into its
+    /// staging directory, so that goes. One still running is left to
+    /// finish: it adds the game on its own.
+    fn drop(&mut self) {
+        if !self.importing && self.import_from.is_some() {
+            crate::external::import::abandon(&self.profile_id, &self.id);
+        }
+    }
+}
 
 impl GameForm {
     pub fn new(profile_id: String, editing: Option<InstalledGame>, cx: &mut Context<Self>) -> Self {
@@ -112,6 +133,11 @@ impl GameForm {
                 executable,
                 art: GameArt::default(),
                 installer: Installer::Idle,
+                import_from: None,
+                import_mode: ImportMode::Copy,
+                importing: false,
+                progress: Default::default(),
+                _ticker: None,
                 search: Search::Idle,
                 error: String::new(),
                 _work: None,
@@ -132,6 +158,11 @@ impl GameForm {
             executable,
             art: game.art,
             installer: Installer::Idle,
+            import_from: None,
+            import_mode: ImportMode::Copy,
+            importing: false,
+            progress: Default::default(),
+            _ticker: None,
             search: Search::Idle,
             error: String::new(),
             _work: None,
@@ -149,9 +180,11 @@ impl GameForm {
     /// nothing. After an installer ran it opens in the prefix's `C:`,
     /// where that installer put the game.
     fn pick_executable(&mut self, cx: &mut Context<Self>) {
-        let start = matches!(self.installer, Installer::Done)
-            .then(|| crate::external::drive_c(&self.profile_id, &self.id))
-            .flatten();
+        let start = match (&self.import_from, &self.installer) {
+            (Some(picked), _) => crate::external::import::wine_root(picked).map(|root| root.join("drive_c")),
+            (None, Installer::Done) => crate::external::drive_c(&self.profile_id, &self.id),
+            (None, _) => None,
+        };
         cx.spawn(async move |this, cx| {
             let mut dialog = rfd::AsyncFileDialog::new()
                 .set_title("Elegí el ejecutable del juego")
@@ -256,6 +289,34 @@ impl GameForm {
         .detach();
     }
 
+    /// Picks another tool's prefix to bring in, then the game inside it.
+    /// Nothing moves until the game is saved.
+    fn pick_prefix(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let Some(folder) = rfd::AsyncFileDialog::new()
+                .set_title("Elegí la carpeta del prefijo")
+                .pick_folder()
+                .await
+            else {
+                return;
+            };
+            let picked = folder.path().to_path_buf();
+            let _ = this.update(cx, |this, cx| {
+                if crate::external::import::wine_root(&picked).is_none() {
+                    this.error = "Esa carpeta no es un prefijo de Wine (no tiene drive_c).".to_owned();
+                    cx.notify();
+                    return;
+                }
+                tracing::debug!(prefix = %picked.display(), "prefix picked for import");
+                this.error.clear();
+                this.import_from = Some(picked);
+                this.pick_executable(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn save(&mut self, cx: &mut Context<Self>) {
         let name = self.name.read(cx).text().trim().to_owned();
         let executable = std::path::PathBuf::from(self.executable.read(cx).text().trim());
@@ -273,6 +334,42 @@ impl GameForm {
             executable,
             art: self.art.clone(),
         };
+        if let Some(picked) = self.import_from.clone() {
+            self.importing = true;
+            self.progress = std::sync::Arc::default();
+            let (profile_id, id, mode) = (self.profile_id.clone(), self.id.clone(), self.import_mode);
+            let progress = std::sync::Arc::clone(&self.progress);
+            self._ticker = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(250))
+                        .await;
+                    let still = this.update(cx, |this, cx| {
+                        cx.notify();
+                        this.importing
+                    });
+                    if !matches!(still, Ok(true)) {
+                        return;
+                    }
+                }
+            }));
+            self._work = Some(cx.spawn(async move |this, cx| {
+                let result = tokio::task::spawn_blocking(move || {
+                    crate::external::import::import(&profile_id, &id, &picked, mode, &progress, draft)
+                })
+                .await
+                .unwrap_or_else(|err| Err(err.to_string()));
+                let _ = this.update(cx, |this, cx| {
+                    this.importing = false;
+                    match result {
+                        Ok(()) => cx.emit(FormEvent::Saved),
+                        Err(err) => this.error = err,
+                    }
+                    cx.notify();
+                });
+            }));
+            return;
+        }
         match crate::external::save(&self.profile_id, &self.id, draft) {
             Ok(()) => cx.emit(FormEvent::Saved),
             Err(err) => self.error = err,
@@ -281,13 +378,26 @@ impl GameForm {
 
     fn installer_row(&self, cx: &Context<Self>) -> Div {
         let running = matches!(self.installer, Installer::Running);
-        let status = match &self.installer {
-            Installer::Idle => {
-                theme::muted("Si el juego trae un instalador, corrélo acá: queda instalado en el prefijo del juego.")
-            }
-            Installer::Running => theme::muted("Instalando... seguí los pasos del instalador."),
-            Installer::Done => theme::muted("Instalador terminado. Elegí el ejecutable que dejó instalado."),
-            Installer::Failed(err) => theme::error(err.clone()),
+        // One or the other: an imported prefix replaces the game's own,
+        // which an installer has already written into.
+        let installed = matches!(self.installer, Installer::Done);
+        let status = match (&self.import_from, &self.installer) {
+            (Some(picked), _) => theme::muted(match self.import_mode {
+                ImportMode::Copy => format!(
+                    "Al agregar, el prefijo {} se copia a decanter: la otra herramienta lo sigue teniendo, pero ocupa el doble y las partidas quedan separadas.",
+                    picked.display()
+                ),
+                ImportMode::Move => format!(
+                    "Al agregar, el prefijo {} se mueve a decanter: no ocupa más espacio, pero la otra herramienta se queda sin él.",
+                    picked.display()
+                ),
+            }),
+            (None, Installer::Idle) => theme::muted(
+                "¿Viene con instalador? Corrélo acá. ¿Ya está instalado en el prefijo de otra herramienta (Lutris, Bottles, Heroic, Steam)? Importalo.",
+            ),
+            (None, Installer::Running) => theme::muted("Instalando... seguí los pasos del instalador."),
+            (None, Installer::Done) => theme::muted("Instalador terminado. Elegí el ejecutable que dejó instalado."),
+            (None, Installer::Failed(err)) => theme::error(err.clone()),
         };
         div()
             .flex()
@@ -305,7 +415,72 @@ impl GameForm {
                     b.on_click(cx.listener(|this, _, _, cx| this.run_installer(cx)))
                 }),
             )
+            .child(match &self.import_from {
+                Some(_) => div()
+                    .flex()
+                    .gap(px(6.))
+                    .child(self.mode_button(ImportMode::Copy, "Copiar", cx))
+                    .child(self.mode_button(ImportMode::Move, "Mover", cx))
+                    .child(
+                        button("external-import-cancel", ButtonKind::Icon, "No importar", false).on_click(cx.listener(
+                            |this, _, _, cx| {
+                                this.import_from = None;
+                                cx.notify();
+                            },
+                        )),
+                    ),
+                None => div().child(
+                    button(
+                        "external-import-prefix",
+                        ButtonKind::Secondary,
+                        "Importar prefijo...",
+                        running || installed,
+                    )
+                    .when(!running && !installed, |b| {
+                        b.on_click(cx.listener(|this, _, _, cx| this.pick_prefix(cx)))
+                    }),
+                ),
+            })
             .child(div().flex_1().min_w_0().child(status))
+    }
+
+    fn import_progress(&self) -> Div {
+        let snapshot = self.progress.snapshot();
+        let text = match snapshot {
+            Some((copied, total)) => format!(
+                "{} de {} ({:.0}%)",
+                crate::format::bytes(copied),
+                crate::format::bytes(total),
+                copied as f64 * 100. / total as f64
+            ),
+            None => "Midiendo el prefijo...".to_owned(),
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .mt_4()
+            .max_w(px(520.))
+            .child(crate::widgets::progress_bar(
+                "external-import-progress",
+                snapshot.map(|(copied, total)| copied as f64 / total as f64),
+                6.,
+            ))
+            .child(theme::muted(text).text_size(px(12.)))
+    }
+
+    fn mode_button(&self, mode: ImportMode, label: &'static str, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let kind = if self.import_mode == mode {
+            ButtonKind::Primary
+        } else {
+            ButtonKind::Secondary
+        };
+        button(("external-import-mode", mode as usize), kind, label, false).on_click(cx.listener(
+            move |this, _, _, cx| {
+                this.import_mode = mode;
+                cx.notify();
+            },
+        ))
     }
 
     fn art_section(&self, cx: &Context<Self>) -> Div {
@@ -529,7 +704,20 @@ impl GameForm {
 
 impl Render for GameForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let busy = matches!(self.installer, Installer::Running);
+        let busy = matches!(self.installer, Installer::Running) || self.importing;
+        let save_label = match (
+            self.editing,
+            self.importing,
+            self.import_from.is_some(),
+            self.import_mode,
+        ) {
+            (true, ..) => "Guardar cambios",
+            (false, true, _, ImportMode::Copy) => "Copiando el prefijo...",
+            (false, true, _, ImportMode::Move) => "Moviendo el prefijo...",
+            (false, false, true, ImportMode::Copy) => "Copiar prefijo y agregar",
+            (false, false, true, ImportMode::Move) => "Mover prefijo y agregar",
+            (false, false, false, _) => "Agregar a la biblioteca",
+        };
         div()
             .flex()
             .flex_col()
@@ -548,22 +736,14 @@ impl Render for GameForm {
                     ),
             )
             .child(self.art_section(cx))
+            .when(self.importing, |form| form.child(self.import_progress()))
             .when(!self.error.is_empty(), |form| {
                 form.child(div().mt_3().child(theme::error(self.error.clone())))
             })
             .child(
                 div().flex().mt_4().child(
-                    button(
-                        "external-save",
-                        ButtonKind::Primary,
-                        if self.editing {
-                            "Guardar cambios"
-                        } else {
-                            "Agregar a la biblioteca"
-                        },
-                        busy,
-                    )
-                    .when(!busy, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
+                    button("external-save", ButtonKind::Primary, save_label, busy)
+                        .when(!busy, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
                 ),
             )
     }

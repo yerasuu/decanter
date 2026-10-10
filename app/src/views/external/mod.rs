@@ -43,6 +43,10 @@ pub struct ExternalView {
 
 impl ExternalView {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        // Nothing can resume a copy from a previous session's form.
+        if let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.as_deref() {
+            crate::external::import::abandon_all(profile_id);
+        }
         let state = AppState::get(cx).clone();
         // `running` locks a running game's Eliminar.
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();

@@ -21,7 +21,7 @@ pub use credentials::{KeyringError, delete as delete_session, load as load_sessi
 pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result, default_db_path};
 pub use disk::disk_usage;
 pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env};
-pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress};
+pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size, move_dir};
 pub use profiles::Profile;
 
 /// Where decanter keeps everything it writes: the cache database, the game
