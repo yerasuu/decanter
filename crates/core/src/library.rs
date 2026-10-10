@@ -129,6 +129,13 @@ pub struct InstalledGame {
     pub proton: Option<String>,
     pub size_on_disk: Option<u64>,
     pub storefront: Storefront,
+    /// umu's `GAMEID` for a game with no storefront id of its own, picked
+    /// from the UMU database so protonfixes applies that game's fixes.
+    /// `None` runs it as umu's generic `umu-default`.
+    pub umu_id: Option<String>,
+    /// The database row's store, which is where protonfixes looks for the
+    /// fix itself. `None` alongside `umu_id` means umu's own store.
+    pub umu_store: Option<String>,
 }
 
 /// Image URLs for a game added from outside any storefront, kept in its
@@ -234,6 +241,8 @@ impl InstalledGame {
                 .unwrap_or_default(),
             cloud_save_path: root.get("CloudSavePath").map(str::to_owned),
             cloud_save_last_sync: root.get("CloudSaveLastSync").and_then(|value| value.parse().ok()),
+            umu_id: root.get("UmuId").map(str::to_owned),
+            umu_store: root.get("UmuStore").map(str::to_owned),
             art: root
                 .get_block("Art")
                 .map(|art| GameArt {
@@ -306,6 +315,12 @@ impl InstalledGame {
         }
         if let Some(last_sync) = self.cloud_save_last_sync {
             root.insert("CloudSaveLastSync", last_sync);
+        }
+        if let Some(id) = self.umu_id.as_ref() {
+            root.insert("UmuId", id.clone());
+        }
+        if let Some(store) = self.umu_store.as_ref() {
+            root.insert("UmuStore", store.clone());
         }
         if self.art != GameArt::default() {
             let mut art = Value::block();
@@ -914,6 +929,8 @@ mod tests {
             proton: None,
             size_on_disk: None,
             storefront: Storefront::Unspecified,
+            umu_id: Some("umu-endfield".to_owned()),
+            umu_store: None,
         };
         library.write_manifest(&game).expect("manifest written");
         let read = library.read_manifest("profile", Storefront::Unspecified, &game.game_id);

@@ -49,15 +49,25 @@ pub async fn start(
 
     let cloud_save_checkpoint = sync_cloud_saves_before_launch(&account_id, &game).await;
 
-    // `umu-<product id>` is umu's convention, and what protonfixes keys
-    // its per-game workarounds off.
-    // umu's `STORE` picks which protonfixes database the id is looked up
-    // in; an external game's uuid is in none of them.
-    let store = match game.storefront {
-        decanter_core::Storefront::Gog => "gog",
-        _ => "none",
+    // `umu-<product id>` with `STORE=gog` is how protonfixes finds a GOG
+    // game's workarounds. An external game's uuid is in no database, so it
+    // goes in as `umu-default` with no store instead — the same as Heroic
+    // runs a sideloaded game — which some Proton builds (DW-Proton) map to
+    // the right id from the executable; a made-up id skipped that, and with
+    // it fixes a game like Arknights: Endfield can't start without.
+    // One picked from the UMU database by name goes in as that entry, store
+    // and all, which works with any Proton carrying protonfixes.
+    let mut launch = match (game.storefront, &game.umu_id) {
+        (decanter_core::Storefront::Gog, _) => Launch::new(executable, format!("umu-{}", game.game_id)).store("gog"),
+        (_, Some(id)) => {
+            let launch = Launch::new(executable, id.as_str());
+            match &game.umu_store {
+                Some(store) => launch.store(store.as_str()),
+                None => launch,
+            }
+        }
+        (_, None) => Launch::new(executable, crate::external::UMU_ID),
     };
-    let mut launch = Launch::new(executable, format!("umu-{}", game.game_id)).store(store);
     launch.proton = crate::core::proton_for(&game);
 
     // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL

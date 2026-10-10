@@ -13,11 +13,17 @@
 pub mod art;
 pub mod import;
 mod transfer;
+pub mod umu;
 
 use std::path::{Path, PathBuf};
 
 use decanter_core::{Game, GameArt, InstallState, InstalledGame, Storefront};
 use decanter_gog::{GameKind, LibraryEntry};
+
+/// The umu `GAMEID` every external game runs as: umu's own "unknown game"
+/// id, which lets protonfixes look the game up in the UMU database rather
+/// than under an id no database has.
+pub const UMU_ID: &str = "umu-default";
 
 /// Every external game in `profile_id`. An unreadable library reads as
 /// none, the same as [`crate::core::installed`].
@@ -73,6 +79,16 @@ pub struct Draft {
     pub name: String,
     pub executable: PathBuf,
     pub art: GameArt,
+    /// The UMU database entry it launches as; `None` is `umu-default`.
+    pub umu: Option<UmuEntry>,
+}
+
+/// One row of the UMU database, as far as launching cares.
+#[derive(Clone, PartialEq, Eq)]
+pub struct UmuEntry {
+    pub id: String,
+    /// `None` for umu's own store (the database's `none`).
+    pub store: Option<String>,
 }
 
 /// Writes `id`'s manifest — a new game, or an edit of one already there.
@@ -98,6 +114,8 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         dlcs: Default::default(),
         cloud_save_path: None,
         cloud_save_last_sync: None,
+        umu_id: draft.umu.as_ref().map(|umu| umu.id.clone()),
+        umu_store: draft.umu.and_then(|umu| umu.store),
         art: draft.art,
     };
     library
@@ -107,9 +125,10 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         .map_err(|err| format!("guardando el juego: {err}"))
 }
 
-/// Forgets an external game and deletes its prefix — which is also where
-/// anything its installer put under `C:\` lives. Files it was pointed at
-/// outside the prefix are left alone: decanter never put them there.
+/// Forgets an external game (manifest, favorites, playtime, collections)
+/// and deletes its prefix, which is also where anything its installer put
+/// under `C:\` lives. Files it was pointed at outside the prefix are left
+/// alone: decanter never put them there.
 pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
     let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
     crate::achv_try!(
@@ -129,6 +148,14 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
             }
         }
     }
+    // Same best-effort reasoning: rows for an id nothing will ever show
+    // again are only clutter.
+    if let Err(err) = crate::core::db().and_then(|db| {
+        db.forget_product(profile_id, Storefront::Unspecified, id)
+            .map_err(|err| err.to_string())
+    }) {
+        tracing::warn!(profile_id, id, %err, "could not forget external game's favorites, playtime and collections");
+    }
     tracing::info!(profile_id, id, "external game removed");
     Ok(())
 }
@@ -139,11 +166,9 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
 pub async fn run_installer(profile_id: &str, id: &str, installer: &Path, proton: Option<String>) -> Result<(), String> {
     let prefix =
         crate::achv_try!(crate::core::prefix_for(profile_id, id).ok_or("no se pudo resolver el prefijo del juego"));
-    // Same `umu-<id>` the game itself launches as, so protonfixes treats
-    // both as the same title.
-    let launch = decanter_runtime::Launch::new(installer, format!("umu-{id}"))
-        .store("none")
-        .proton(crate::core::proton_or_default(proton));
+    // The same id the game itself launches with, so protonfixes treats
+    // both alike.
+    let launch = decanter_runtime::Launch::new(installer, UMU_ID).proton(crate::core::proton_or_default(proton));
     tracing::info!(profile_id, id, installer = %installer.display(), "running external game installer");
     let session = crate::achv_try!(
         decanter_runtime::start(&prefix, launch)

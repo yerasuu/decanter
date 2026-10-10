@@ -901,6 +901,39 @@ impl Db {
         Ok(())
     }
 
+    /// Drops everything kept about one game — favorite, hidden, playtime,
+    /// collection membership, and the caches — for a game that no longer
+    /// exists at all, not just one uninstalled: an external game deleted
+    /// from the library has no catalog entry to come back from.
+    ///
+    /// Collection membership isn't keyed by account; `product_id` alone
+    /// identifies it within a storefront.
+    #[inline]
+    pub fn forget_product(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        for table in [
+            "favorites",
+            "hidden",
+            "playtime",
+            "games_cache",
+            "achievement_cache",
+            "hook_diagnostics",
+            "steam_shortcuts",
+        ] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3"),
+                params![account_id, storefront as i32, product_id],
+            )?;
+        }
+        tx.execute(
+            "DELETE FROM collection_members WHERE storefront = ?1 AND product_id = ?2",
+            params![storefront as i32, product_id],
+        )?;
+        tx.commit()?;
+        tracing::debug!(account_id, ?storefront, product_id, "forgot everything about a product");
+        Ok(())
+    }
+
     pub fn get_playtime(&self, account_id: &str, storefront: Storefront, product_id: &str) -> Result<Playtime> {
         let playtime = self
             .conn
@@ -1079,5 +1112,52 @@ impl Db {
         self.conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         tracing::debug!(key, "deleted setting");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forget_product_leaves_other_games_alone() {
+        let path = std::env::temp_dir().join(format!("decanter-db-test-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).expect("open");
+        let collection = db.create_collection("profile", "Favs").expect("collection");
+        for id in ["gone", "kept"] {
+            db.set_favorite("profile", Storefront::Unspecified, id, true)
+                .expect("favorite");
+            db.add_playtime("profile", Storefront::Unspecified, id, 60)
+                .expect("playtime");
+            db.set_collection_member(&collection.id, Storefront::Unspecified, id, true)
+                .expect("member");
+        }
+
+        db.forget_product("profile", Storefront::Unspecified, "gone")
+            .expect("forget");
+
+        let favorites = db
+            .list_favorite_ids("profile", Storefront::Unspecified)
+            .expect("favorites");
+        assert!(!favorites.contains("gone") && favorites.contains("kept"));
+        assert_eq!(
+            db.get_playtime("profile", Storefront::Unspecified, "gone")
+                .expect("playtime")
+                .seconds_total,
+            0
+        );
+        assert_eq!(
+            db.get_playtime("profile", Storefront::Unspecified, "kept")
+                .expect("playtime")
+                .seconds_total,
+            60
+        );
+        let members = db
+            .collection_members("profile", Storefront::Unspecified)
+            .expect("members");
+        let members = members.get(&collection.id).expect("collection still has a member");
+        assert!(!members.contains("gone") && members.contains("kept"));
+        let _ = std::fs::remove_file(&path);
     }
 }
