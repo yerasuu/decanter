@@ -84,7 +84,7 @@ pub fn launch(steam_root: &Path) -> io::Result<()> {
 /// guaranteed to be there in every environment this runs in.
 fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
     let mut command = Command::new("steam");
-    sanitize_env(&mut command);
+    crate::strip_launcher_env(&mut command);
     if !arg.is_empty() {
         command.arg(arg);
     }
@@ -97,23 +97,11 @@ fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
     }
 
     let mut fallback = Command::new(steam_root.join("steam.sh"));
-    sanitize_env(&mut fallback);
+    crate::strip_launcher_env(&mut fallback);
     if !arg.is_empty() {
         fallback.arg(arg);
     }
     fallback.spawn().map(|_child| ())
-}
-
-/// Strips library-injection variables this process might itself be
-/// running under (a dev shell, some other launcher) before starting
-/// Steam — confirmed the hard way: a `steam` spawned while this process
-/// had a `LD_LIBRARY_PATH` full of unrelated 64-bit libraries came up
-/// unable to find its own bundled 32-bit runtime and warned about missing
-/// libraries. Steam's own `steam.sh` sets up whatever linking it needs
-/// internally; inheriting this process's is never required and, as
-/// observed, can actively break it.
-fn sanitize_env(command: &mut Command) {
-    command.env_remove("LD_LIBRARY_PATH").env_remove("LD_PRELOAD");
 }
 
 /// Blocks until [`is_steam_running`] reports Steam gone, or

@@ -100,7 +100,12 @@ pub async fn process_log(db: &Db, account_id: &str, product_id: &str, path: &Pat
     let mut applied = 0;
     for line in contents.lines() {
         let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
-            tracing::debug!(account_id, product_id, line, "unreadable line in decanter-hook's log, skipping");
+            tracing::debug!(
+                account_id,
+                product_id,
+                line,
+                "unreadable line in decanter-hook's log, skipping"
+            );
             continue;
         };
         match entry.get("kind").and_then(serde_json::Value::as_str) {
@@ -133,7 +138,12 @@ fn apply_unlock(db: &Db, account_id: &str, product_id: &str, entry: &serde_json:
     let unlocked_at = format_unlocked_at(at);
     match db.mark_local_unlock(account_id, Storefront::Gog, product_id, achievement_key, &unlocked_at) {
         Ok(true) => {
-            tracing::info!(account_id, product_id, achievement_key, "applied a hook-reported achievement unlock");
+            tracing::info!(
+                account_id,
+                product_id,
+                achievement_key,
+                "applied a hook-reported achievement unlock"
+            );
             true
         }
         Ok(false) => {
@@ -177,7 +187,7 @@ fn record_diagnostic(db: &Db, account_id: &str, product_id: &str, entry: &serde_
 }
 
 /// RFC 3339, matching the shape GOG's own achievement API hands
-/// `unlocked_at` in -- the UI (see `ui/src/views/library/detail.rs`)
+/// `unlocked_at` in -- the UI (see `app/src/views/library/detail.rs`)
 /// prints this field verbatim, with no parsing of its own, so a
 /// hook-reported unlock has to already look like a GOG one.
 fn format_unlocked_at(unix_seconds: i64) -> String {
@@ -220,7 +230,10 @@ mod tests {
             std::fs::read(dir.join(REAL_DLL_BACKUP)).expect("backup written"),
             b"pretend real dll bytes"
         );
-        assert_eq!(std::fs::read(dir.join("Galaxy64.dll")).expect("proxy written"), GALAXY64_DLL);
+        assert_eq!(
+            std::fs::read(dir.join("Galaxy64.dll")).expect("proxy written"),
+            GALAXY64_DLL
+        );
 
         // A second pass (a repair, a reinstall) must not re-back-up the
         // proxy on top of the real dll's own backup.
@@ -275,7 +288,9 @@ mod tests {
         assert_eq!(applied, 1);
         assert!(!log_path.exists(), "the log is removed once read");
 
-        let achievements = db.list_achievements("acct", Storefront::Gog, "123").expect("list achievements");
+        let achievements = db
+            .list_achievements("acct", Storefront::Gog, "123")
+            .expect("list achievements");
         assert!(achievements[0].unlocked, "the hook-reported unlock was applied");
 
         let diagnostics = db

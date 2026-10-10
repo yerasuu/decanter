@@ -218,18 +218,14 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
 
     let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
     let mut command = Command::new(&umu_run_path);
+    // umu/Proton build whatever environment the container needs
+    // themselves; decanter's own (library path, allocator and EGL
+    // settings) has only ever caused breakage in there.
+    decanter_core::strip_launcher_env(command.as_std_mut());
     command
         .arg(&launch.executable)
         .args(&launch.args)
         .current_dir(&working_directory)
-        // A game never needs decanter's own library path (set for its
-        // GTK/WebKit dependencies, e.g. under Nix); umu/Proton build
-        // whatever environment the container needs internally, and
-        // leaking this one in has caused real, unrelated breakage before
-        // (see `decanter_core::steam::process::sanitize_env` for the same
-        // fix on the Steam-launch side).
-        .env_remove("LD_LIBRARY_PATH")
-        .env_remove("LD_PRELOAD")
         .env("WINEPREFIX", &prefix.path)
         .env("GAMEID", &launch.game_id)
         // Proton's default verb, set explicitly because it is what makes

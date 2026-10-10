@@ -225,7 +225,11 @@ fn verification_target(path: &Path) -> Cow<'_, Path> {
     let Some(backup) = path.parent().map(|parent| parent.join(HOOKED_GALAXY_DLL_BACKUP)) else {
         return Cow::Borrowed(path);
     };
-    if backup.is_file() { Cow::Owned(backup) } else { Cow::Borrowed(path) }
+    if backup.is_file() {
+        Cow::Owned(backup)
+    } else {
+        Cow::Borrowed(path)
+    }
 }
 
 /// Reads `path` in the manifest's own chunk boundaries and hashes each

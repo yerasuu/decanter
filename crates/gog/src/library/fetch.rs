@@ -163,7 +163,7 @@ pub async fn list_games(
     }
 
     // Already install-state-annotated above, per batch — not redone here:
-    // `absorb` (ui/src/gog_library/stream.rs) wholesale-replaces whatever
+    // `absorb` (app/src/state/gog_library.rs) wholesale-replaces whatever
     // it already had shown for an id with exactly what each `on_batch`
     // call carried, so an entry emitted above without this would have
     // clobbered a game's just-applied install/uninstall state until pass

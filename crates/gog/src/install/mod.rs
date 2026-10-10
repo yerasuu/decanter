@@ -14,7 +14,7 @@
 //! place, and [`rate`] smooths the transfer rate reported back.
 
 use anyhow::Context;
-use decanter_core::{InstalledDlc, InstalledGame, Library, Storefront};
+use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront};
 
 mod download;
 mod plan;
@@ -367,6 +367,9 @@ async fn install_into(
                 branch: branch.map(str::to_string),
                 cloud_save_path,
                 cloud_save_last_sync,
+                art: GameArt::default(),
+                umu_id: None,
+                umu_store: None,
             })
             .inspect_err(|err| tracing::error!(product_id, error = %err, "writing the appmanifest failed"))
             .context("writing the appmanifest")

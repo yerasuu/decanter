@@ -1,0 +1,429 @@
+//! Syncing a local save folder against GOG's Cloud Saves — see
+//! `decanter_gog::cloud_saves` for the sync protocol and
+//! `decanter_gog::save_location` for how the folder itself gets found:
+//! GOG's own remote-config for this game's build, when it reports one,
+//! with manual entry (and the folder picker) as the fallback for whatever
+//! it doesn't cover.
+
+use std::rc::Rc;
+
+use decanter_core::InstalledGame;
+use decanter_gog::cloud_saves::{ForceDirection, SyncAction, SyncOutcome};
+use decanter_gog::save_location::SaveLocation;
+use gpui::{Context, Entity, SharedString, Window, div, prelude::*};
+
+use super::{Target, error_line, field_row, not_installed, pane, row, rows};
+use crate::theme;
+use crate::views::library::fmt;
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
+
+pub(super) struct CloudSavesTab {
+    target: Rc<Target>,
+    installed: Option<InstalledGame>,
+    path_input: Entity<TextInput>,
+    syncing: bool,
+    last_outcome: Option<SyncAction>,
+    error: String,
+    detecting: bool,
+    detected: Option<Vec<SaveLocation>>,
+    auto_detect_attempted: bool,
+}
+
+impl CloudSavesTab {
+    pub(super) fn new(target: Rc<Target>, _: &mut Window, cx: &mut Context<Self>) -> Self {
+        let path_input = cx.new(|cx| TextInput::new("Carpeta de guardado", cx));
+        cx.subscribe(&path_input, |this, _, event, cx| {
+            if matches!(event, InputEvent::Changed) {
+                this.refill_path(cx);
+                cx.notify();
+            }
+        })
+        .detach();
+        let mut this = Self {
+            target,
+            installed: None,
+            path_input,
+            syncing: false,
+            last_outcome: None,
+            error: String::new(),
+            detecting: false,
+            detected: None,
+            auto_detect_attempted: false,
+        };
+        this.reload(cx);
+        this
+    }
+
+    /// The webview build's `generation` bump: re-reads the manifest, then
+    /// re-runs what its render and effect did on every such re-read.
+    fn reload(&mut self, cx: &mut Context<Self>) {
+        self.installed = crate::core::installed_game(&self.target.account_id, &self.target.product_id);
+        self.refill_path(cx);
+        self.maybe_auto_detect(cx);
+        cx.notify();
+    }
+
+    /// An empty field always falls back to the saved folder, so clearing it
+    /// shows what's actually in effect rather than a blank that saves nothing.
+    fn refill_path(&self, cx: &mut Context<Self>) {
+        let Some(saved) = self
+            .installed
+            .as_ref()
+            .and_then(|installed| installed.cloud_save_path.clone())
+        else {
+            return;
+        };
+        if self.path_input.read(cx).text().is_empty() {
+            self.path_input.update(cx, |input, cx| input.set_text(saved, cx));
+        }
+    }
+
+    /// Runs once, on first open of a game with no saved path yet — nothing
+    /// to override, so a single unambiguous location is saved right away
+    /// instead of waiting on a click. Checked on every reload so a manual
+    /// "Guardar carpeta" doesn't leave this stale, but
+    /// `auto_detect_attempted` keeps it from ever firing a second time.
+    fn maybe_auto_detect(&mut self, cx: &mut Context<Self>) {
+        if self.auto_detect_attempted {
+            return;
+        }
+        let Some(current) = &self.installed else {
+            return;
+        };
+        if current.cloud_save_path.is_some() {
+            return;
+        }
+        self.auto_detect_attempted = true;
+        // Silent: a game with no auto-detectable location is the ordinary
+        // case, not something worth an error banner the moment the tab opens.
+        self.run_detection(false, cx);
+    }
+
+    /// Asks GOG's remote-config for this game's save locations and, when it
+    /// names exactly one, saves it right away — no point making the user
+    /// retype what was just found. `report_errors` silences the "nothing
+    /// found" / request-failed messages for the automatic first-run attempt,
+    /// where a miss is the ordinary case rather than something to flag; the
+    /// explicit "Detectar automáticamente" button always reports them.
+    fn run_detection(&mut self, report_errors: bool, cx: &mut Context<Self>) {
+        let target = Rc::clone(&self.target);
+        self.detecting = true;
+        if report_errors {
+            self.error.clear();
+        }
+        tracing::debug!(
+            account_id = target.account_id,
+            product_id = target.product_id,
+            report_errors,
+            "detecting gog cloud save location"
+        );
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let account_id = target.account_id.as_str();
+            let game_id = target.product_id.as_str();
+            let Some(installed) = crate::core::installed_game(account_id, game_id) else {
+                let _ = this.update(cx, |this, cx| {
+                    this.detecting = false;
+                    cx.notify();
+                });
+                return;
+            };
+            let outcome = crate::core::detect_cloud_save_locations(account_id, &installed).await;
+            let _ = this.update(cx, |this, cx| this.finish_detection(outcome, report_errors, cx));
+        })
+        .detach();
+    }
+
+    fn finish_detection(
+        &mut self,
+        outcome: Result<Vec<SaveLocation>, String>,
+        report_errors: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let account_id = self.target.account_id.as_str();
+        let game_id = self.target.product_id.as_str();
+        match outcome {
+            Ok(locations) if locations.is_empty() => {
+                tracing::debug!(account_id, product_id = game_id, "gog reports no cloud save location");
+                if report_errors {
+                    self.error = "GOG no reporta una carpeta de guardado para este juego.".to_string();
+                }
+                self.detected = None;
+            }
+            Ok(locations) => {
+                if let [only] = locations.as_slice() {
+                    self.save_detected(only, report_errors, cx);
+                }
+                self.detected = Some(locations);
+            }
+            Err(err) if report_errors => {
+                tracing::error!(account_id, product_id = game_id, error = %err, "cloud save location detection failed");
+                self.error = err;
+            }
+            Err(err) => {
+                tracing::debug!(account_id, product_id = game_id, error = %err, "cloud save location detection failed, not reported to user");
+            }
+        }
+        self.detecting = false;
+        cx.notify();
+    }
+
+    fn save_detected(&mut self, only: &SaveLocation, report_errors: bool, cx: &mut Context<Self>) {
+        let target = Rc::clone(&self.target);
+        let account_id = target.account_id.as_str();
+        let game_id = target.product_id.as_str();
+        let resolved = only.path.to_string_lossy().into_owned();
+        self.path_input
+            .update(cx, |input, cx| input.set_text(resolved.clone(), cx));
+        match crate::core::set_cloud_save_path(account_id, game_id, Some(&resolved)) {
+            Ok(()) => {
+                tracing::info!(
+                    account_id,
+                    product_id = game_id,
+                    path = resolved,
+                    "cloud save path auto-detected and saved"
+                );
+                self.reload(cx);
+            }
+            Err(err) if report_errors => {
+                tracing::error!(account_id, product_id = game_id, error = %err, "failed to save auto-detected cloud save path");
+                self.error = err;
+            }
+            Err(err) => {
+                tracing::warn!(account_id, product_id = game_id, error = %err, "failed to save auto-detected cloud save path, not reported to user");
+            }
+        }
+    }
+
+    fn pick_folder(&self, cx: &Context<Self>) {
+        let starting = crate::core::prefix_for(&self.target.account_id, &self.target.product_id)
+            .as_ref()
+            .map(decanter_runtime::Prefix::drive_c);
+        cx.spawn(async move |this, cx| {
+            let mut dialog = rfd::AsyncFileDialog::new().set_title("Elegí la carpeta de guardado");
+            if let Some(starting) = starting {
+                dialog = dialog.set_directory(starting);
+            }
+            let Some(folder) = dialog.pick_folder().await else {
+                return;
+            };
+            let path = folder.path().to_string_lossy().into_owned();
+            tracing::debug!(path, "cloud save folder picked from file dialog");
+            let _ = this.update(cx, |this, cx| {
+                this.path_input.update(cx, |input, cx| input.set_text(path, cx));
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn save_path(&mut self, cx: &mut Context<Self>) {
+        let value = self.path_input.read(cx).text().trim().to_string();
+        let account_id = self.target.account_id.as_str();
+        let product_id = self.target.product_id.as_str();
+        match crate::core::set_cloud_save_path(account_id, product_id, Some(&value)) {
+            Ok(()) => {
+                tracing::info!(account_id, product_id, path = value, "cloud save path set");
+                self.error.clear();
+                self.reload(cx);
+            }
+            Err(err) => {
+                tracing::error!(account_id, product_id, path = value, error = %err, "failed to save cloud save path");
+                self.error = err;
+                cx.notify();
+            }
+        }
+    }
+
+    fn sync(&mut self, force: Option<ForceDirection>, cx: &mut Context<Self>) {
+        let Some(installed) = &self.installed else {
+            return;
+        };
+        let Some(local_root) = installed.cloud_save_path.clone() else {
+            return;
+        };
+        let last_sync = installed.cloud_save_last_sync;
+        let target = Rc::clone(&self.target);
+        self.syncing = true;
+        self.error.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let outcome = run_cloud_sync(
+                target.account_id.clone(),
+                target.product_id.clone(),
+                local_root,
+                last_sync,
+                force,
+            )
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                match outcome {
+                    Ok(outcome) => {
+                        this.last_outcome = Some(outcome.action);
+                        this.reload(cx);
+                    }
+                    Err(err) => this.error = err,
+                }
+                this.syncing = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+}
+
+impl Render for CloudSavesTab {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(installed) = &self.installed else {
+            return not_installed();
+        };
+
+        let detect_label = if self.detecting {
+            "Detectando..."
+        } else {
+            "Detectar automáticamente"
+        };
+        let detect_row = field_row().child(
+            button("detect-saves", ButtonKind::Secondary, detect_label, self.detecting).when(!self.detecting, |b| {
+                // A manual click always wants the folder saved too — the
+                // same one-click "just find it" the automatic first-run
+                // attempt does.
+                b.on_click(cx.listener(|this, _, _, cx| this.run_detection(true, cx)))
+            }),
+        );
+
+        let choices = self
+            .detected
+            .as_ref()
+            .filter(|locations| locations.len() > 1)
+            .map(|locations| {
+                field_row().children(locations.iter().enumerate().map(|(index, location)| {
+                    let path: SharedString = location.path.to_string_lossy().into_owned().into();
+                    button(
+                        ("save-location", index),
+                        ButtonKind::Secondary,
+                        location.name.clone(),
+                        false,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.path_input.update(cx, |input, cx| input.set_text(path.clone(), cx));
+                        cx.notify();
+                    }))
+                }))
+            });
+
+        let last_sync = installed
+            .cloud_save_last_sync
+            .map_or_else(|| "nunca".to_string(), |last| fmt::unix_date(last).unwrap_or_default());
+
+        let path_empty = self.path_input.read(cx).text().trim().is_empty();
+        let path_row = field_row()
+            .child(div().flex_1().min_w_0().child(self.path_input.clone()))
+            .child(
+                button("pick-saves", ButtonKind::Secondary, "Elegir carpeta...", false)
+                    .on_click(cx.listener(|this, _, _, cx| this.pick_folder(cx))),
+            )
+            .child(
+                button("save-saves-path", ButtonKind::Primary, "Guardar carpeta", path_empty).when(!path_empty, |b| {
+                    b.on_click(cx.listener(|this, _, _, cx| this.save_path(cx)))
+                }),
+            );
+
+        let sync_disabled = self.syncing || installed.cloud_save_path.is_none();
+        let sync_label = if self.syncing {
+            "Sincronizando..."
+        } else {
+            "Sincronizar ahora"
+        };
+        let sync_row = field_row()
+            .child(
+                button("sync-saves", ButtonKind::Primary, sync_label, sync_disabled).when(!sync_disabled, |b| {
+                    b.on_click(cx.listener(|this, _, _, cx| this.sync(None, cx)))
+                }),
+            )
+            .children(self.last_outcome.map(|outcome| match outcome {
+                SyncAction::Conflict => theme::error("Cambios en ambos lados desde la última sync."),
+                other @ (SyncAction::Upload | SyncAction::Download | SyncAction::None) => {
+                    theme::muted(sync_action_label(other))
+                }
+            }));
+
+        let conflict_row = (self.last_outcome == Some(SyncAction::Conflict)).then(|| {
+            let syncing = self.syncing;
+            field_row()
+                .child(
+                    button("force-upload", ButtonKind::Secondary, "Subir de todos modos", syncing)
+                        .when(!syncing, |b| {
+                            b.on_click(cx.listener(|this, _, _, cx| this.sync(Some(ForceDirection::Upload), cx)))
+                        }),
+                )
+                .child(
+                    button(
+                        "force-download",
+                        ButtonKind::Secondary,
+                        "Descargar de todos modos",
+                        syncing,
+                    )
+                    .when(!syncing, |b| {
+                        b.on_click(cx.listener(|this, _, _, cx| this.sync(Some(ForceDirection::Download), cx)))
+                    }),
+                )
+        });
+
+        pane()
+            .child(theme::muted(
+                "Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indicala a mano.",
+            ))
+            .child(detect_row)
+            .children(choices)
+            .child(rows().child(row("Última sincronización", last_sync)))
+            .child(path_row)
+            .child(sync_row)
+            .children(conflict_row)
+            .children(error_line(&self.error))
+    }
+}
+
+const fn sync_action_label(action: SyncAction) -> &'static str {
+    match action {
+        SyncAction::Upload => "Subido.",
+        SyncAction::Download => "Descargado.",
+        SyncAction::None => "Ya estaba al día.",
+        SyncAction::Conflict => "Conflicto sin resolver.",
+    }
+}
+
+/// Runs one sync cycle and, unless it ended in a conflict, records the new
+/// sync timestamp on the manifest — a conflict leaves both sides exactly
+/// as they were, so there's nothing to advance yet.
+async fn run_cloud_sync(
+    account_id: String,
+    product_id: String,
+    local_root: String,
+    last_sync: Option<i64>,
+    force: Option<ForceDirection>,
+) -> Result<SyncOutcome, String> {
+    tracing::info!(account_id, product_id, local_root, force = ?force, "cloud save sync started");
+    let outcome = crate::achv_try!(
+        decanter_gog::cloud_saves::sync(
+            &account_id,
+            &product_id,
+            std::path::Path::new(&local_root),
+            last_sync,
+            force
+        )
+        .await
+        .map_err(|err| err.to_string())
+        // Bubbles up to the properties tab's red error text.
+        .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "cloud save sync failed"))
+    );
+    tracing::info!(account_id, product_id, action = ?outcome.action, "cloud save sync finished");
+    if outcome.action != SyncAction::Conflict {
+        crate::achv_try!(
+            crate::core::record_cloud_save_sync(&account_id, &product_id, outcome.last_sync).inspect_err(
+                |err| tracing::warn!(account_id, product_id, error = %err, "failed to record cloud save sync timestamp")
+            )
+        );
+    }
+    Ok(outcome)
+}

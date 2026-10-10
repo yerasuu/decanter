@@ -84,6 +84,9 @@ const STOREFRONTS: [Storefront; 8] = [
 /// One installed game, as its manifest records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledGame {
+    /// Art picked for a game with no catalog entry behind it. A storefront
+    /// game leaves this empty: its catalog already names its art.
+    pub art: GameArt,
     /// The storefront branch this build came from — a beta opt-in, most
     /// often. `None` is mainline, and also what an install from before
     /// branches existed reads as, which is the same thing.
@@ -126,6 +129,24 @@ pub struct InstalledGame {
     pub proton: Option<String>,
     pub size_on_disk: Option<u64>,
     pub storefront: Storefront,
+    /// umu's `GAMEID` for a game with no storefront id of its own, picked
+    /// from the UMU database so protonfixes applies that game's fixes.
+    /// `None` runs it as umu's generic `umu-default`.
+    pub umu_id: Option<String>,
+    /// The database row's store, which is where protonfixes looks for the
+    /// fix itself. `None` alongside `umu_id` means umu's own store.
+    pub umu_store: Option<String>,
+}
+
+/// Image URLs for a game added from outside any storefront, kept in its
+/// manifest so copying the manifest elsewhere keeps the art too.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GameArt {
+    /// Portrait capsule, what the shelves and the sidebar's cover use.
+    pub cover: Option<String>,
+    /// Wide banner behind the detail page's title.
+    pub hero: Option<String>,
+    pub icon: Option<String>,
 }
 
 /// One DLC installed into a game.
@@ -220,6 +241,16 @@ impl InstalledGame {
                 .unwrap_or_default(),
             cloud_save_path: root.get("CloudSavePath").map(str::to_owned),
             cloud_save_last_sync: root.get("CloudSaveLastSync").and_then(|value| value.parse().ok()),
+            umu_id: root.get("UmuId").map(str::to_owned),
+            umu_store: root.get("UmuStore").map(str::to_owned),
+            art: root
+                .get_block("Art")
+                .map(|art| GameArt {
+                    cover: art.get("cover").map(str::to_owned),
+                    hero: art.get("hero").map(str::to_owned),
+                    icon: art.get("icon").map(str::to_owned),
+                })
+                .unwrap_or_default(),
         })
     }
 
@@ -284,6 +315,25 @@ impl InstalledGame {
         }
         if let Some(last_sync) = self.cloud_save_last_sync {
             root.insert("CloudSaveLastSync", last_sync);
+        }
+        if let Some(id) = self.umu_id.as_ref() {
+            root.insert("UmuId", id.clone());
+        }
+        if let Some(store) = self.umu_store.as_ref() {
+            root.insert("UmuStore", store.clone());
+        }
+        if self.art != GameArt::default() {
+            let mut art = Value::block();
+            for (key, url) in [
+                ("cover", &self.art.cover),
+                ("hero", &self.art.hero),
+                ("icon", &self.art.icon),
+            ] {
+                if let Some(url) = url {
+                    art.insert(key, url.clone());
+                }
+            }
+            root.insert("Art", art);
         }
         root
     }
@@ -359,7 +409,7 @@ impl Library {
     /// risking mixing this library in with whatever's already there), or
     /// any filesystem operation along the way fails.
     #[inline]
-    pub fn move_to(&self, new_root: &Path, mut on_progress: impl FnMut(MoveProgress)) -> io::Result<Self> {
+    pub fn move_to(&self, new_root: &Path, on_progress: impl FnMut(MoveProgress)) -> io::Result<Self> {
         if new_root.is_dir() && fs::read_dir(new_root)?.next().is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
@@ -367,23 +417,7 @@ impl Library {
             ));
         }
 
-        if fs::rename(&self.root, new_root).is_ok() {
-            tracing::info!(from = %self.root.display(), to = %new_root.display(), "moved library root (rename)");
-            return Ok(Self {
-                root: new_root.to_path_buf(),
-            });
-        }
-
-        tracing::debug!(
-            from = %self.root.display(),
-            to = %new_root.display(),
-            "rename failed (likely a different filesystem), falling back to copy"
-        );
-        let total_bytes = directory_size(&self.root)?;
-        let mut bytes_copied = 0u64;
-        copy_dir_recursive(&self.root, new_root, &mut bytes_copied, total_bytes, &mut on_progress)?;
-        fs::remove_dir_all(&self.root)?;
-        tracing::info!(from = %self.root.display(), to = %new_root.display(), total_bytes, "moved library root (copy)");
+        move_dir(&self.root, new_root, on_progress)?;
         Ok(Self {
             root: new_root.to_path_buf(),
         })
@@ -748,11 +782,56 @@ fn read_manifest_dir(directory: &Path) -> Vec<InstalledGame> {
         .collect()
 }
 
+/// Moves `src` to `dst`: a rename when both are on one filesystem, else a
+/// copy that keeps symlinks as links, with `src` removed only once every
+/// byte has landed — a failure partway leaves `src` whole. `on_progress`
+/// fires only during the copy.
+///
+/// # Errors
+/// Any filesystem operation along the way failing.
+#[inline]
+pub fn move_dir(src: &Path, dst: &Path, mut on_progress: impl FnMut(MoveProgress)) -> io::Result<()> {
+    if fs::rename(src, dst).is_ok() {
+        tracing::info!(from = %src.display(), to = %dst.display(), "moved directory (rename)");
+        return Ok(());
+    }
+    tracing::debug!(
+        from = %src.display(),
+        to = %dst.display(),
+        "rename failed (likely a different filesystem), falling back to copy"
+    );
+    let total_bytes = directory_size(src)?;
+    let mut bytes_copied = 0u64;
+    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, &mut on_progress)?;
+    fs::remove_dir_all(src)?;
+    tracing::info!(from = %src.display(), to = %dst.display(), total_bytes, "moved directory (copy)");
+    Ok(())
+}
+
+/// Copies `src` to `dst`, keeping symlinks as links, and leaves `src` as
+/// it was. A failure partway leaves a partial `dst` for the caller to
+/// clear.
+///
+/// # Errors
+/// Any filesystem operation along the way failing.
+#[inline]
+pub fn copy_dir(src: &Path, dst: &Path, mut on_progress: impl FnMut(MoveProgress)) -> io::Result<()> {
+    let total_bytes = directory_size(src)?;
+    let mut bytes_copied = 0u64;
+    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, &mut on_progress)?;
+    tracing::info!(from = %src.display(), to = %dst.display(), total_bytes, "copied directory");
+    Ok(())
+}
+
 /// Total bytes of every regular file under `dir`, recursively — the
-/// denominator [`Library::move_to`]'s copy fallback reports progress
+/// denominator [`move_dir`]'s copy fallback reports progress
 /// against, walked once before any copying starts so a mid-copy failure
 /// doesn't leave the total itself in question.
-fn directory_size(dir: &Path) -> io::Result<u64> {
+///
+/// # Errors
+/// Reading any directory or entry under `dir` failing.
+#[inline]
+pub fn directory_size(dir: &Path) -> io::Result<u64> {
     let mut total = 0u64;
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -767,7 +846,7 @@ fn directory_size(dir: &Path) -> io::Result<u64> {
 
 /// Copies every file under `src` into `dst` (creating directories as
 /// needed), reporting cumulative progress against `total_bytes` after
-/// each file. Leaves `src` alone either way — [`Library::move_to`] removes
+/// each file. Leaves `src` alone either way — [`move_dir`] removes
 /// it itself, only once this returns `Ok`.
 fn copy_dir_recursive(
     src: &Path,
@@ -780,7 +859,13 @@ fn copy_dir_recursive(
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let dst_path = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            // Recreated as a link: following it copied what it points at —
+            // a Wine prefix's `dosdevices/z:` is `/` — or failed outright
+            // on a link to a directory, halfway through the move.
+            std::os::unix::fs::symlink(fs::read_link(entry.path())?, &dst_path)?;
+        } else if kind.is_dir() {
             copy_dir_recursive(&entry.path(), &dst_path, bytes_copied, total_bytes, on_progress)?;
         } else {
             fs::copy(entry.path(), &dst_path)?;
@@ -819,6 +904,37 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn external_game_art_survives_a_manifest_round_trip() {
+        let library = Library::new(temp_dir("external-art"));
+        let game = InstalledGame {
+            art: GameArt {
+                cover: Some("https://cdn2.steamgriddb.com/grid/a.png".to_owned()),
+                hero: None,
+                icon: Some("https://cdn2.steamgriddb.com/icon/b.png".to_owned()),
+            },
+            branch: None,
+            build_id: String::new(),
+            cloud_save_last_sync: None,
+            cloud_save_path: None,
+            dlcs: BTreeMap::new(),
+            game_id: "0b8e7c52-5f0e-4a43-a7a4-0d6c0a4f5a10".to_owned(),
+            install_dir: "0b8e7c52-5f0e-4a43-a7a4-0d6c0a4f5a10".to_owned(),
+            last_played: None,
+            launch_executable: Some("/games/Some Game/game.exe".to_owned()),
+            name: "Some Game".to_owned(),
+            account_id: "profile".to_owned(),
+            proton: None,
+            size_on_disk: None,
+            storefront: Storefront::Unspecified,
+            umu_id: Some("umu-endfield".to_owned()),
+            umu_store: None,
+        };
+        library.write_manifest(&game).expect("manifest written");
+        let read = library.read_manifest("profile", Storefront::Unspecified, &game.game_id);
+        assert_eq!(read, Some(game));
     }
 
     #[test]
@@ -898,6 +1014,32 @@ mod tests {
         assert_eq!(fs::read(dst.join("a.txt")).expect("copied file readable"), b"aaaa");
         assert_eq!(fs::read(dst.join("nested/b.txt")).expect("copied file readable"), b"bb");
         assert!(src.exists(), "copy_dir_recursive alone must never touch the source");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn copy_dir_recursive_keeps_links_as_links() {
+        let base = temp_dir("copy-links");
+        let (src, dst, elsewhere) = (base.join("src"), base.join("dst"), base.join("elsewhere"));
+        fs::create_dir_all(src.join("dosdevices")).expect("src dirs");
+        fs::create_dir_all(&elsewhere).expect("target dir");
+        fs::write(elsewhere.join("big.bin"), b"not to be copied").expect("target file");
+        std::os::unix::fs::symlink(&elsewhere, src.join("dosdevices/z:")).expect("dir link");
+        std::os::unix::fs::symlink(elsewhere.join("big.bin"), src.join("file-link")).expect("file link");
+
+        let mut bytes_copied = 0u64;
+        copy_dir_recursive(&src, &dst, &mut bytes_copied, 0, &mut |_| {}).expect("copy succeeds");
+
+        assert_eq!(
+            fs::read_link(dst.join("dosdevices/z:")).expect("still a link"),
+            elsewhere
+        );
+        assert_eq!(
+            fs::read_link(dst.join("file-link")).expect("still a link"),
+            elsewhere.join("big.bin")
+        );
+        assert_eq!(bytes_copied, 0, "nothing behind a link is copied");
 
         let _ = fs::remove_dir_all(&base);
     }

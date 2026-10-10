@@ -1,0 +1,25 @@
+[package]
+name = "decanter-ps"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+decanter-core.workspace = true
+flate2.workspace = true
+image.workspace = true
+md5.workspace = true
+nix = { workspace = true, features = ["signal"] }
+reqwest.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "fs", "io-util", "rt", "sync"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

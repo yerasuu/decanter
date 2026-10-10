@@ -1,23 +1,24 @@
 [package]
 name = "decanter-core"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [lints]
 workspace = true
 
 [dependencies]
-rusqlite = { version = "0.40.2", features = ["bundled"] }
-serde = { version = "1.0.229", features = ["derive"] }
-thiserror = "2.0.20"
-dirs = "7.0.0"
-toml = "1.1.5+spec-1.1.0"
-uuid = { version = "1.26.1", features = ["v4"] }
+rusqlite = { workspace = true, features = ["bundled"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+dirs.workspace = true
+toml.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 # keyring has no default backend, and without one falls back to its `mock`
 # store, which isn't shared between calls (every `Entry::new()` is its own
 # throwaway instance) — a session save silently didn't survive past the
 # call that made it. `dbus-secret-service-keyring-store` is the blocking
 # D-Bus backend `credentials.rs`'s own doc comment describes.
-keyring = { version = "4.2.0", features = ["dbus-secret-service-keyring-store"] }
-nix = { version = "0.31.3", default-features = false, features = ["fs"] }
-tracing = "0.1.44"
+keyring = { workspace = true, features = ["dbus-secret-service-keyring-store"] }
+nix = { workspace = true, features = ["fs"] }
+tracing.workspace = true
