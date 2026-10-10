@@ -217,7 +217,13 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
     tracing::debug!(working_directory = %working_directory.display(), "resolved working directory for launch");
 
     let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
-    let mut command = Command::new(&umu_run_path);
+    let mut command = match own_scope(&launch.game_id) {
+        Some(mut scoped) => {
+            scoped.arg(&umu_run_path);
+            scoped
+        }
+        None => Command::new(&umu_run_path),
+    };
     // umu/Proton build whatever environment the container needs
     // themselves; decanter's own (library path, allocator and EGL
     // settings) has only ever caused breakage in there.
@@ -308,6 +314,53 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
     })
 }
 
+/// `systemd-run` set up to start what follows in a transient scope of its
+/// own, or `None` without a systemd user manager to ask.
+///
+/// Started as decanter's child, a game would sit in decanter's own scope
+/// (`app-decanter-….scope` when it was opened from the menu), and Plasma
+/// puts the icon of whatever app a window's scope belongs to on it: the
+/// game showed up in the task bar as decanter. In a scope of its own, not
+/// named after any app, the window keeps the icon Wine gives it from the
+/// game's executable. `--scope` runs the command in this very process, so
+/// the child handle still waits on umu-run itself.
+fn own_scope(game_id: &str) -> Option<Command> {
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+    if !Path::new(&runtime_dir).join("systemd/private").exists() {
+        return None;
+    }
+    let systemd_run = std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|dir| dir.join("systemd-run"))
+            .find(|candidate| candidate.is_file())
+    })?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_nanos());
+    let mut command = Command::new(systemd_run);
+    command
+        .args(["--user", "--scope", "--quiet", "--collect", "--unit"])
+        .arg(scope_unit(game_id, std::process::id(), nonce))
+        .arg("--");
+    Some(command)
+}
+
+/// A unit name systemd accepts, unique per launch: only `[A-Za-z0-9_-]`
+/// from the game id, which for an external game is a uuid already.
+fn scope_unit(game_id: &str, pid: u32, nonce: u128) -> String {
+    let id: String = game_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("decanter-game-{id}-{pid}-{nonce}.scope")
+}
+
 /// Builds the `WINEDLLOVERRIDES` value, or `None` when there is nothing to
 /// override — an empty value is not the same as an unset one to Wine.
 fn format_dll_overrides(overrides: &[(String, String)]) -> Option<String> {
@@ -323,4 +376,17 @@ fn format_dll_overrides(overrides: &[(String, String)]) -> Option<String> {
             .collect::<Vec<_>>()
             .join(";"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scope_unit;
+
+    #[test]
+    fn scope_units_only_carry_characters_systemd_takes() {
+        assert_eq!(
+            scope_unit("umu-37ae0435-f563.407e", 42, 7),
+            "decanter-game-umu-37ae0435-f563-407e-42-7.scope"
+        );
+    }
 }
