@@ -77,7 +77,8 @@ pub fn library() -> Result<Library, String> {
 }
 
 /// The `Library` `profile_id` actually uses — its own chosen location if
-/// it's ever set one, otherwise [`library`]'s shared default.
+/// it's ever set one, otherwise [`library`]'s shared default — together
+/// with every other library folder it keeps games in.
 pub fn library_for_profile(profile_id: &str) -> Result<Library, String> {
     let db = db()?;
     let chosen = crate::achv_try!(
@@ -85,10 +86,84 @@ pub fn library_for_profile(profile_id: &str) -> Result<Library, String> {
             .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to read profile library path, using default"))
             .map_err(|err| err.to_string())
     );
-    match chosen {
-        Some(path) => Ok(Library::new(path)),
-        None => library(),
+    let primary = match chosen {
+        Some(path) => Library::new(path),
+        None => crate::achv_try!(library()),
+    };
+    // Only folders that are there: a disk that's unplugged reads as one
+    // with nothing on it rather than failing the whole library.
+    let extra = db
+        .profile_extra_libraries(profile_id)
+        .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to read extra library folders, using main only"))
+        .unwrap_or_default()
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_dir());
+    Ok(primary.with_extra_roots(extra))
+}
+
+/// Makes `picked` (or the `steamapps` folder under it, the way Steam lays
+/// out a library folder) one more place `profile_id` keeps games, and
+/// returns that folder.
+pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let root = Library::root_under(picked);
+    let library = library_for_profile(profile_id)?;
+    // Nested folders would see each other's games twice, or miss them.
+    if let Some(clash) = library
+        .roots()
+        .into_iter()
+        .find(|existing| existing.starts_with(&root) || root.starts_with(existing))
+    {
+        return Err(format!(
+            "{} ya es parte de la biblioteca ({})",
+            root.display(),
+            clash.display()
+        ));
     }
+    crate::achv_try!(std::fs::create_dir_all(&root).map_err(|err| format!("creando {}: {err}", root.display())));
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs() as i64);
+    crate::achv_try!(
+        db()?
+            .add_profile_library(profile_id, &root.to_string_lossy(), now)
+            .map_err(|err| format!("guardando la carpeta: {err}"))
+    );
+    if let Err(err) = library_for_profile(profile_id)
+        .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
+    {
+        // Informational only: decanter reads its folders from the database.
+        tracing::warn!(profile_id, %err, "could not update libraryfolders.vdf");
+    }
+    Ok(root)
+}
+
+/// `profile_id`'s library folders whose disk isn't there — an unplugged
+/// drive or card. Their games' manifests are on that disk too, so nothing
+/// can say which games they are until it's back.
+pub fn offline_library_folders(profile_id: &str) -> Vec<std::path::PathBuf> {
+    db().ok()
+        .and_then(|db| db.profile_extra_libraries(profile_id).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .filter(|path| !path.is_dir())
+        .collect()
+}
+
+/// Stops keeping games in `root`. Whatever is on that disk stays there.
+pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result<(), String> {
+    crate::achv_try!(
+        db()?
+            .remove_profile_library(profile_id, &root.to_string_lossy())
+            .map_err(|err| format!("quitando la carpeta: {err}"))
+    );
+    if let Err(err) = library_for_profile(profile_id)
+        .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
+    {
+        tracing::warn!(profile_id, %err, "could not update libraryfolders.vdf");
+    }
+    Ok(())
 }
 
 /// Same as [`library_for_profile`], resolved from an account id instead —

@@ -314,6 +314,7 @@ pub async fn repair(
     }
 
     let staging = crate::achv_try!(super::staging::staging_root(
+        &install_root,
         account_id,
         &format!("{product_id}-repair")
     ));

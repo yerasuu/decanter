@@ -73,7 +73,7 @@ impl ExternalView {
         cx.spawn(async move |_, cx| {
             let key = tokio::task::spawn_blocking(art::api_key).await.ok().flatten();
             if let Some(key) = key {
-                let _ = field.update(cx, |input, cx| input.set_text(key, cx));
+                field.update(cx, |input, cx| input.set_text(key, cx));
             }
         })
         .detach();

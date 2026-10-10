@@ -13,7 +13,7 @@
 pub mod art;
 pub mod import;
 pub mod launchers;
-mod transfer;
+pub mod transfer;
 pub mod umu;
 
 use std::path::{Path, PathBuf};
@@ -85,6 +85,9 @@ pub struct Draft {
     /// The external game whose prefix this one shares — set for a game a
     /// launcher installed, which has to run where that launcher did.
     pub prefix_of: Option<String>,
+    /// The library folder a new game goes in; `None` is the main one. An
+    /// edit stays wherever the game already is.
+    pub library_root: Option<PathBuf>,
 }
 
 /// One row of the UMU database, as far as launching cares.
@@ -98,7 +101,7 @@ pub struct UmuEntry {
 /// Writes `id`'s manifest — a new game, or an edit of one already there.
 /// An edit keeps what the form doesn't show (Proton pin, last played).
 pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
-    let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
+    let library = crate::achv_try!(library_in(profile_id, draft.library_root.as_deref()));
     let previous = library.read_manifest(profile_id, Storefront::Unspecified, id);
     let game = InstalledGame {
         account_id: profile_id.to_owned(),
@@ -181,9 +184,15 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
 /// anything it left running there, to finish. The prefix is the one the
 /// game will then launch in, so whatever the installer writes under
 /// `C:\` — files, registry keys, runtimes — is there for the game.
-pub async fn run_installer(profile_id: &str, id: &str, installer: &Path, proton: Option<String>) -> Result<(), String> {
+pub async fn run_installer(
+    profile_id: &str,
+    id: &str,
+    installer: &Path,
+    proton: Option<String>,
+    library_root: Option<&Path>,
+) -> Result<(), String> {
     let prefix =
-        crate::achv_try!(crate::core::prefix_for(profile_id, id).ok_or("no se pudo resolver el prefijo del juego"));
+        crate::achv_try!(prefix_in(profile_id, id, library_root).ok_or("no se pudo resolver el prefijo del juego"));
     // The same id the game itself launches with, so protonfixes treats
     // both alike.
     let launch = decanter_runtime::Launch::new(installer, UMU_ID).proton(crate::core::proton_or_default(proton));
@@ -207,6 +216,24 @@ pub async fn run_installer(profile_id: &str, id: &str, installer: &Path, proton:
 
 /// Where an installer run through [`run_installer`] puts things, for the
 /// executable picker to start in.
-pub fn drive_c(profile_id: &str, id: &str) -> Option<PathBuf> {
-    crate::core::prefix_for(profile_id, id).map(|prefix| prefix.drive_c())
+pub fn drive_c(profile_id: &str, id: &str, library_root: Option<&Path>) -> Option<PathBuf> {
+    prefix_in(profile_id, id, library_root).map(|prefix| prefix.drive_c())
+}
+
+/// `profile_id`'s library with new games aimed at `root`, if one was
+/// picked.
+pub fn library_in(profile_id: &str, root: Option<&Path>) -> Result<decanter_core::Library, String> {
+    crate::core::library_for_profile(profile_id).map(|library| match root {
+        Some(root) => library.targeting(root),
+        None => library,
+    })
+}
+
+/// The prefix `id` has, or gets, in the folder it's being added to — before
+/// its manifest exists to say where it lives.
+fn prefix_in(profile_id: &str, id: &str, root: Option<&Path>) -> Option<decanter_runtime::Prefix> {
+    library_in(profile_id, root)
+        .ok()?
+        .compatdata(profile_id, id)
+        .map(decanter_runtime::Prefix::new)
 }

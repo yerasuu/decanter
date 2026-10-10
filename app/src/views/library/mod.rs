@@ -239,11 +239,48 @@ impl Render for LibraryView {
                     .clone()
                     .cached(StyleRefinement::default().w(px(292.)).h_full().flex_none()),
             )
-            .child(div().flex_1().min_w_0().h_full().child(pane))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .children(offline_notice(&state.library.read(cx).offline_folders))
+                    .child(div().flex_1().min_h_0().child(pane)),
+            )
             .children(filter_panel)
             .children(popup)
             .into_any_element()
     }
+}
+
+/// Says which library folders aren't plugged in: their games read as not
+/// installed until they are, and installing one again elsewhere would make
+/// a second copy.
+fn offline_notice(offline: &[std::path::PathBuf]) -> Option<gpui::Div> {
+    if offline.is_empty() {
+        return None;
+    }
+    let folders = offline
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(
+        div()
+            .flex_none()
+            .px_6()
+            .py_2()
+            .bg(rgb(theme::BG_PANEL_2))
+            .border_b_1()
+            .border_color(rgb(theme::LINE))
+            .text_size(px(12.5))
+            .text_color(rgb(theme::TEXT_MUTED))
+            .child(format!(
+                "Sin conectar: {folders}. Sus juegos no figuran como instalados hasta que conectes el disco."
+            )),
+    )
 }
 
 /// Steam's Propiedades for one game, in a window of its own.

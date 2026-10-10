@@ -7,7 +7,6 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::Mutex;
 
 use super::download::Cancel;
-use super::staging::staging_root;
 
 pub(super) type InstallKey = (String, String);
 
@@ -46,16 +45,8 @@ pub async fn cancel(account_id: &str, product_id: &str) {
     if let Some(in_flight) = in_flight {
         in_flight.cancel();
     }
+    // What was already transferred is cleared by the install itself: a
+    // cancelled download fails, and a failed install removes its staging
+    // directory (and the next attempt clears any it finds first).
     tracing::debug!(account_id, product_id, was_active, "install cancel requested");
-    // Whatever had been transferred is worthless on its own, and leaving
-    // it would be mistaken for progress by the next attempt.
-    if let Ok(staging) = staging_root(account_id, product_id) {
-        if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-            // A cancel that arrived before anything was ever written has no
-            // staging directory to remove — not a failure worth a warning.
-            if err.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!(path = %staging.display(), error = %err, "couldn't remove staging directory after cancel");
-            }
-        }
-    }
 }

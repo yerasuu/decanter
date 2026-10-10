@@ -219,7 +219,7 @@ async fn install_into(
 
     // Anything left from an earlier attempt would otherwise be treated as
     // already-downloaded and moved in as if it were complete.
-    let staging = crate::achv_try!(staging_root(account_id, product_id));
+    let staging = crate::achv_try!(staging_root(&destination_root, account_id, product_id));
     if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
         if err.kind() != std::io::ErrorKind::NotFound {
             tracing::warn!(path = %staging.display(), error = %err, "couldn't clear stale staging directory");

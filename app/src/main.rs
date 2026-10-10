@@ -106,6 +106,7 @@ mod desktop;
 mod external;
 mod format;
 mod launch;
+mod relocate;
 mod state;
 mod theme;
 #[cfg(target_os = "linux")]

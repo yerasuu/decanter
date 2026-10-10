@@ -4,8 +4,8 @@
 
 use decanter_core::{GameArt, InstalledGame};
 use gpui::{
-    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, MouseButton, ObjectFit, ScrollHandle, Task, Window,
-    div, img, linear_color_stop, linear_gradient, point, prelude::*, px, relative, rgb,
+    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, MouseButton, ObjectFit, ScrollHandle, SharedString,
+    Task, Window, div, img, linear_color_stop, linear_gradient, point, prelude::*, px, relative, rgb,
 };
 
 use crate::external::art::{Candidate, Candidates, Source};
@@ -89,6 +89,10 @@ pub struct GameForm {
     prefix_of: Option<String>,
     /// That game's name, to say so on the form.
     host_name: Option<String>,
+    /// The library folders a new game can go in, with their free space.
+    folders: Vec<(std::path::PathBuf, Option<u64>)>,
+    /// The folder picked for a new game; `None` is the main one.
+    library_root: Option<std::path::PathBuf>,
     name: Entity<TextInput>,
     executable: Entity<TextInput>,
     art: GameArt,
@@ -130,6 +134,7 @@ impl Drop for GameForm {
 
 impl GameForm {
     pub fn new(profile_id: String, editing: Option<InstalledGame>, cx: &mut Context<Self>) -> Self {
+        let folders = library_folders(&profile_id);
         let name = cx.new(|cx| TextInput::new("Nombre", cx));
         let executable = cx.new(|cx| TextInput::new("Ejecutable (.exe)", cx));
         let Some(game) = editing else {
@@ -141,6 +146,8 @@ impl GameForm {
                 umu: None,
                 prefix_of: None,
                 host_name: None,
+                folders,
+                library_root: None,
                 name,
                 executable,
                 art: GameArt::default(),
@@ -171,6 +178,8 @@ impl GameForm {
             proton: game.proton,
             prefix_of: game.prefix_of,
             host_name: None,
+            folders,
+            library_root: None,
             umu: game.umu_id.map(|id| crate::external::UmuEntry {
                 id,
                 store: game.umu_store,
@@ -206,6 +215,10 @@ impl GameForm {
     ) -> Self {
         let mut this = Self::new(profile_id, None, cx);
         this.prefix_of = Some(host.game_id.clone());
+        // Kept beside its launcher, so the two stay on one disk.
+        this.library_root = crate::core::library_for_profile(&this.profile_id)
+            .ok()
+            .and_then(|library| library.root_of(&this.profile_id, &host.game_id));
         this.host_name = Some(host.name.clone());
         this.proton.clone_from(&host.proton);
         this.name.update(cx, |input, cx| input.set_text(found.name.clone(), cx));
@@ -227,7 +240,9 @@ impl GameForm {
     fn pick_executable(&mut self, cx: &mut Context<Self>) {
         let start = match (&self.import_from, &self.installer) {
             (Some(picked), _) => crate::external::import::wine_root(picked).map(|root| root.join("drive_c")),
-            (None, Installer::Done) => crate::external::drive_c(&self.profile_id, &self.id),
+            (None, Installer::Done) => {
+                crate::external::drive_c(&self.profile_id, &self.id, self.library_root.as_deref())
+            }
             (None, _) => None,
         };
         cx.spawn(async move |this, cx| {
@@ -258,6 +273,7 @@ impl GameForm {
 
     fn run_installer(&mut self, cx: &mut Context<Self>) {
         let (profile_id, id, proton) = (self.profile_id.clone(), self.id.clone(), self.proton.clone());
+        let library_root = self.library_root.clone();
         self._work = Some(cx.spawn(async move |this, cx| {
             let Some(file) = rfd::AsyncFileDialog::new()
                 .set_title("Elegí el instalador")
@@ -273,7 +289,8 @@ impl GameForm {
                 this.error.clear();
                 cx.notify();
             });
-            let result = crate::external::run_installer(&profile_id, &id, &installer, proton).await;
+            let result =
+                crate::external::run_installer(&profile_id, &id, &installer, proton, library_root.as_deref()).await;
             let _ = this.update(cx, |this, cx| {
                 this.installer = match result {
                     Ok(()) => Installer::Done,
@@ -492,6 +509,7 @@ impl GameForm {
             art: self.art.clone(),
             umu: self.umu.clone(),
             prefix_of: self.prefix_of.clone(),
+            library_root: self.library_root.clone(),
         };
         if let Some(picked) = self.import_from.clone() {
             self.importing = true;
@@ -626,6 +644,62 @@ impl GameForm {
                 6.,
             ))
             .child(theme::muted(text).text_size(px(12.)))
+    }
+
+    /// Which library folder a new game goes in — only with more than one,
+    /// and only until an installer has written into the prefix there.
+    fn folder_row(&self, cx: &Context<Self>) -> Option<Div> {
+        if self.editing || self.prefix_of.is_some() || self.folders.len() < 2 {
+            return None;
+        }
+        let locked = !matches!(self.installer, Installer::Idle | Installer::Failed(_));
+        let options = self.folders.iter().map(|(root, free)| {
+            let label = match free {
+                Some(free) => format!("{} — {} libres", root.display(), crate::format::bytes(*free)),
+                None => root.display().to_string(),
+            };
+            (
+                SharedString::from(root.to_string_lossy().into_owned()),
+                SharedString::from(label),
+            )
+        });
+        let main = self.folders.first().map(|(root, _)| root.clone());
+        let current = self
+            .library_root
+            .clone()
+            .or_else(|| main.clone())
+            .map(|root| SharedString::from(root.to_string_lossy().into_owned()))
+            .unwrap_or_default();
+        let this = cx.entity().downgrade();
+        let picker: AnyElement = if locked {
+            theme::muted(current.to_string()).into_any_element()
+        } else {
+            crate::widgets::select::Select::new("external-folder", options, current)
+                .on_change(move |value, _, cx| {
+                    let picked = std::path::PathBuf::from(value.as_ref());
+                    let root = (Some(&picked) != main.as_ref()).then_some(picked);
+                    let _ = this.update(cx, |this, cx| {
+                        this.library_root = root;
+                        cx.notify();
+                    });
+                })
+                .into_any_element()
+        };
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .mb_3()
+                .max_w(px(640.))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child("Carpeta"),
+                )
+                .child(div().flex_1().min_w_0().child(picker)),
+        )
     }
 
     fn mode_button(&self, mode: ImportMode, label: &'static str, cx: &Context<Self>) -> impl IntoElement + use<> {
@@ -881,6 +955,7 @@ impl Render for GameForm {
             .flex()
             .flex_col()
             .child(div().mb_3().max_w(px(520.)).child(self.name.clone()))
+            .children(self.folder_row(cx))
             .when(!self.editing && self.prefix_of.is_none(), |form| {
                 form.child(self.installer_row(cx))
             })
@@ -968,4 +1043,17 @@ fn umu_label(title: Option<&str>, entry: &crate::external::UmuEntry) -> String {
         Some(title) => format!("{title} · {id}"),
         None => id,
     }
+}
+
+/// `profile_id`'s library folders, main first, with each one's free space.
+fn library_folders(profile_id: &str) -> Vec<(std::path::PathBuf, Option<u64>)> {
+    crate::core::library_for_profile(profile_id)
+        .map(|library| library.roots())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|root| {
+            let free = decanter_core::disk_usage(&root).map(|(free, _)| free);
+            (root, free)
+        })
+        .collect()
 }

@@ -135,7 +135,13 @@ struct Uninstall {
 }
 
 struct InstallDialog {
-    library_path: Option<PathBuf>,
+    /// Every library folder the install could go in, with its free space.
+    folders: Vec<(PathBuf, Option<u64>)>,
+    /// The folder picked; `None` is the main one.
+    folder: Option<PathBuf>,
+    /// Library folders whose disk isn't plugged in — the game may already
+    /// be installed on one of them.
+    offline: Vec<PathBuf>,
     branches: Option<Result<Vec<Branch>, String>>,
     chosen: Option<String>,
     /// Dropping the dialog drops this, so a branch list still in flight
@@ -187,12 +193,18 @@ impl DetailView {
     }
 
     fn open_install_dialog(&mut self, account_id: String, product_id: String, cx: &mut Context<Self>) {
-        let library_path = crate::core::library_for_account(&account_id)
+        let folders = crate::core::library_for_account(&account_id)
             .inspect_err(
                 |err| tracing::warn!(account_id, error = %err, "failed to resolve library root for install dialog"),
             )
-            .ok()
-            .map(|library| library.common());
+            .map(|library| library.roots())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|root| {
+                let free = decanter_core::disk_usage(&root).map(|(free, _)| free);
+                (root, free)
+            })
+            .collect();
         let fetch = cx.spawn(async move |this, cx| {
             tracing::debug!(account_id, product_id, "fetching gog branch list for install dialog");
             let result = decanter_gog::list_branches(&account_id, &product_id)
@@ -206,8 +218,11 @@ impl DetailView {
                 }
             });
         });
+        let offline = AppState::get(cx).library.read(cx).offline_folders.clone();
         self.local.dialog = Some(InstallDialog {
-            library_path,
+            folders,
+            folder: None,
+            offline,
             branches: None,
             chosen: None,
             _fetch: fetch,
@@ -632,6 +647,7 @@ impl DetailView {
                         title: game.title.clone(),
                         branch: None,
                         dlcs,
+                        library_root: None,
                     };
                     elements.push(install_dialog(dialog, request, window, cx));
                 }
@@ -764,10 +780,12 @@ fn install_dialog(
     let title = request.title.clone();
 
     let rows = install_rows(dialog, dlc_count);
+    let folders = folder_picker(dialog, this.clone());
     let branch = branch_picker(dialog, this);
     let field_row = || div().flex().gap(px(10.)).mb_3().max_w(px(520.));
 
     let chosen = dialog.chosen.clone();
+    let folder = dialog.folder.clone();
     // A click handler is `Fn`, but the request is spent once: the dialog
     // closes on the same click, so a second one never reaches it.
     let request = std::cell::Cell::new(Some(request));
@@ -776,6 +794,7 @@ fn install_dialog(
         cx.notify();
         if let Some(mut request) = request.take() {
             request.branch.clone_from(&chosen);
+            request.library_root.clone_from(&folder);
             actions::start_install(request, cx);
         }
     });
@@ -828,6 +847,7 @@ fn install_dialog(
                 .px_6()
                 .pb_6()
                 .child(rows)
+                .children(folders.map(|folders| field_row().child(div().child("Carpeta")).child(folders)))
                 .child(field_row().child(div().child("Rama")).child(branch))
                 .child(
                     field_row()
@@ -858,10 +878,11 @@ fn install_rows(dialog: &InstallDialog, dlc_count: usize) -> Div {
         .gap_2()
         .mb_4()
         .children(
-            dialog
-                .library_path
-                .as_ref()
-                .map(|path| row("Ubicación", path.display().to_string())),
+            // With one folder there's nothing to pick; it's just said.
+            (dialog.folders.len() == 1)
+                .then(|| dialog.folders.first())
+                .flatten()
+                .map(|(root, _)| row("Ubicación", root.join("common").display().to_string())),
         )
         .when(dlc_count > 0, |rows| {
             rows.child(row(
@@ -869,6 +890,56 @@ fn install_rows(dialog: &InstallDialog, dlc_count: usize) -> Div {
                 format!("{dlc_count} marcado(s), se instala junto con el juego"),
             ))
         })
+        .when(!dialog.offline.is_empty(), |rows| {
+            let folders = dialog
+                .offline
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            rows.child(theme::muted(format!(
+                "Sin conectar: {folders}. Si el juego ya está ahí, conectá el disco en vez de instalarlo otra vez."
+            )))
+        })
+}
+
+/// Which library folder a new install goes in, with each one's free space —
+/// only when the profile has more than one.
+fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option<AnyElement> {
+    if dialog.folders.len() < 2 {
+        return None;
+    }
+    let options = dialog.folders.iter().map(|(root, free)| {
+        let label = match free {
+            Some(free) => format!("{} — {} libres", root.display(), crate::format::bytes(*free)),
+            None => root.display().to_string(),
+        };
+        (
+            SharedString::from(root.to_string_lossy().into_owned()),
+            SharedString::from(label),
+        )
+    });
+    let current = dialog
+        .folder
+        .as_ref()
+        .or_else(|| dialog.folders.first().map(|(root, _)| root))
+        .map(|root| SharedString::from(root.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    let main = dialog.folders.first().map(|(root, _)| root.clone());
+    Some(
+        Select::new("install-folder", options, current)
+            .on_change(move |value, _, cx| {
+                let picked = PathBuf::from(value.as_ref());
+                let folder = (Some(&picked) != main.as_ref()).then_some(picked);
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(dialog) = &mut this.local.dialog {
+                        dialog.folder = folder;
+                        cx.notify();
+                    }
+                });
+            })
+            .into_any_element(),
+    )
 }
 
 fn branch_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> AnyElement {

@@ -166,11 +166,21 @@ pub struct InstalledDlc {
     pub title: String,
 }
 
-/// A `steamapps`-shaped directory.
+/// One or more `steamapps`-shaped directories, read as one library — a
+/// profile's games can sit on several disks, the way Steam's library
+/// folders do.
+///
+/// Every game lives whole in one root: its manifest, its files under
+/// `common/` and its prefix under `compatdata/`. Anything about a game
+/// that's already there is looked up in whichever root has it; anything
+/// new goes to the primary root, which is also where the rest of a
+/// profile's data (`psport/`, `libraryfolders.vdf`) lives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Library {
-    /// Filesystem root of this library.
+    /// Filesystem root of the primary library folder.
     root: PathBuf,
+    /// The other library folders, in the order they were added.
+    extra_roots: Vec<PathBuf>,
 }
 
 /// Progress through [`Library::move_to`]'s copy fallback.
@@ -348,14 +358,38 @@ impl InstalledGame {
 }
 
 impl Library {
+    /// The primary root's `common/`, where a new install goes.
     #[must_use]
     #[inline]
     pub fn common(&self) -> PathBuf {
         self.root.join("common")
     }
 
-    /// The Proton prefix for one account's copy of one game. Not created
-    /// here — umu creates it on first launch.
+    /// Every root, primary first.
+    fn all_roots(&self) -> impl Iterator<Item = &Path> {
+        iter::once(self.root.as_path()).chain(self.extra_roots.iter().map(PathBuf::as_path))
+    }
+
+    /// The root holding `game_id`'s manifest for `account_id`, under any
+    /// storefront — so a game's prefix and files are found beside it.
+    fn root_holding(&self, account_id: &str, game_id: &str) -> Option<&Path> {
+        self.all_roots().find(|root| {
+            STOREFRONTS.iter().any(|storefront| {
+                manifest_path_in(root, account_id, *storefront, game_id).is_some_and(|path| path.is_file())
+            })
+        })
+    }
+
+    /// The library folder holding `game_id`'s manifest for `account_id`.
+    #[must_use]
+    #[inline]
+    pub fn root_of(&self, account_id: &str, game_id: &str) -> Option<PathBuf> {
+        self.root_holding(account_id, game_id).map(Path::to_path_buf)
+    }
+
+    /// The Proton prefix for one account's copy of one game, in the root
+    /// that holds the game (or holds a prefix for it already), else the
+    /// primary one. Not created here — umu creates it on first launch.
     #[must_use]
     #[inline]
     pub fn compatdata(&self, account_id: &str, game_id: &str) -> Option<PathBuf> {
@@ -367,7 +401,12 @@ impl Library {
             Some(value) => value,
             None => return None,
         };
-        Some(self.root.join("compatdata").join(account).join(game))
+        let prefix_in = |root: &Path| root.join("compatdata").join(account).join(game);
+        let root = self
+            .root_holding(account_id, game_id)
+            .or_else(|| self.all_roots().find(|root| prefix_in(root).is_dir()))
+            .unwrap_or(&self.root);
+        Some(prefix_in(root))
     }
 
     /// Where the library lives unless someone points decanter elsewhere.
@@ -426,8 +465,10 @@ impl Library {
         }
 
         move_dir(&self.root, new_root, on_progress)?;
+        // Only the primary root moves; the other folders stay where they are.
         Ok(Self {
             root: new_root.to_path_buf(),
+            extra_roots: self.extra_roots.clone(),
         })
     }
 
@@ -441,41 +482,40 @@ impl Library {
             Some(value) => value,
             None => return None,
         };
-        Some(self.common().join(component))
+        let existing = self
+            .all_roots()
+            .map(|root| root.join("common").join(component))
+            .find(|dir| dir.is_dir());
+        Some(existing.unwrap_or_else(|| self.common().join(component)))
     }
 
     /// Whether anyone other than `(account_id, game_id)` still has files
     /// in `install_dir` — i.e. whether deleting it would take a game out
-    /// from under another account.
+    /// from under another account. Only a manifest in the same root counts:
+    /// a folder of that name on another disk is other files.
     #[must_use]
     #[inline]
     pub fn install_dir_is_shared(&self, install_dir: &str, account_id: &str, game_id: &str) -> bool {
-        self.scan_all().iter().any(|other| {
-            other.install_dir == install_dir && !(other.account_id == account_id && other.game_id == game_id)
-        })
-    }
-
-    /// Directory holding one account's manifests.
-    fn manifest_dir(&self, account_id: &str) -> Option<PathBuf> {
-        let account = match safe_component(account_id) {
-            Some(value) => value,
-            None => return None,
+        let Some(files) = self.install_dir(install_dir) else {
+            return false;
         };
-        Some(self.root.join("manifests").join(account))
+        self.all_roots()
+            .filter(|root| files.starts_with(root))
+            .flat_map(scan_root)
+            .any(|other| {
+                other.install_dir == install_dir && !(other.account_id == account_id && other.game_id == game_id)
+            })
     }
 
+    /// Where `game_id`'s manifest is, in whichever root has it, else where
+    /// a new one goes: the primary root.
     #[must_use]
     #[inline]
     pub fn manifest_path(&self, account_id: &str, storefront: Storefront, game_id: &str) -> Option<PathBuf> {
-        let dir = match self.manifest_dir(account_id) {
-            Some(value) => value,
-            None => return None,
-        };
-        let file_name = match InstalledGame::manifest_file_name(storefront, game_id) {
-            Some(value) => value,
-            None => return None,
-        };
-        Some(dir.join(file_name))
+        self.all_roots()
+            .filter_map(|root| manifest_path_in(root, account_id, storefront, game_id))
+            .find(|path| path.is_file())
+            .or_else(|| manifest_path_in(&self.root, account_id, storefront, game_id))
     }
 
     // clippy::impl_trait_in_params wants a named generic here, but that trips
@@ -484,7 +524,23 @@ impl Library {
     // constructors already use.
     #[inline]
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            extra_roots: Vec::new(),
+        }
+    }
+
+    /// Adds more library folders to read games from. The primary root, or
+    /// one listed twice, is left out.
+    #[must_use]
+    #[inline]
+    pub fn with_extra_roots(mut self, roots: impl IntoIterator<Item = PathBuf>) -> Self {
+        for root in roots {
+            if root != self.root && !self.extra_roots.contains(&root) {
+                self.extra_roots.push(root);
+            }
+        }
+        self
     }
 
     #[must_use]
@@ -545,70 +601,42 @@ impl Library {
         &self.root
     }
 
-    /// The roots `libraryfolders.vdf` lists, this one included. A missing
-    /// or unreadable file yields just this root, which is the state a
-    /// fresh install is in.
+    /// The same folders with `root` as the primary one, so what a new
+    /// install writes — files, manifest, prefix — lands there. A root that
+    /// isn't one of this library's folders changes nothing.
+    #[must_use]
+    #[inline]
+    pub fn targeting(mut self, root: &Path) -> Self {
+        if let Some(index) = self.extra_roots.iter().position(|extra| extra == root) {
+            let previous = std::mem::replace(&mut self.root, self.extra_roots.remove(index));
+            self.extra_roots.insert(0, previous);
+        }
+        self
+    }
+
+    /// Every library folder, primary first.
     #[must_use]
     #[inline]
     pub fn roots(&self) -> Vec<PathBuf> {
-        let path = self.root.join("libraryfolders.vdf");
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => Some(content),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                // trace, not debug, since every fresh install starts
-                // without this file and roots() runs on every scan
-                tracing::trace!(path = %path.display(), "no libraryfolders.vdf yet");
-                None
-            }
-            Err(err) => {
-                tracing::warn!(path = %path.display(), error = %err, "failed to read libraryfolders.vdf");
-                None
-            }
-        };
-        let listed = content
-            .and_then(|content| match vdf::from_str(&content) {
-                Ok(parsed) => Some(parsed),
-                Err(err) => {
-                    tracing::warn!(path = %path.display(), error = %err, "failed to parse libraryfolders.vdf");
-                    None
-                }
-            })
-            .and_then(|(_, root)| {
-                let block = match root.as_block() {
-                    Some(value) => value,
-                    None => return None,
-                };
-                Some(
-                    block
-                        .values()
-                        .filter_map(|entry| entry.get("path"))
-                        .map(PathBuf::from)
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .unwrap_or_default();
-
-        let roots = if listed.contains(&self.root) {
-            listed
-        } else {
-            iter::once(self.root.clone()).chain(listed).collect()
-        };
-        tracing::debug!(root_count = roots.len(), "resolved library roots");
-        roots
+        self.all_roots().map(Path::to_path_buf).collect()
     }
 
     /// Everything one account owns, by game id.
     #[must_use]
     #[inline]
     pub fn scan(&self, account_id: &str) -> BTreeMap<String, InstalledGame> {
-        let Some(directory) = self.manifest_dir(account_id) else {
+        let Some(account) = safe_component(account_id) else {
             tracing::warn!(account_id, "account id unusable as a manifest directory");
             return BTreeMap::new();
         };
-        let games: BTreeMap<_, _> = read_manifest_dir(&directory)
-            .into_iter()
-            .map(|game| (game.game_id.clone(), game))
-            .collect();
+        let mut games = BTreeMap::new();
+        for root in self.all_roots() {
+            for game in read_manifest_dir(&root.join("manifests").join(account)) {
+                // Primary first: a game recorded in two roots is read from
+                // the first.
+                games.entry(game.game_id.clone()).or_insert(game);
+            }
+        }
         tracing::debug!(account_id, game_count = games.len(), "scanned account manifests");
         games
     }
@@ -618,30 +646,46 @@ impl Library {
     #[must_use]
     #[inline]
     pub fn scan_all(&self) -> Vec<InstalledGame> {
-        let dir = self.root.join("manifests");
-        let entries = match fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                tracing::trace!(path = %dir.display(), "no manifests directory yet");
-                return Vec::new();
-            }
-            Err(err) => {
-                tracing::warn!(path = %dir.display(), error = %err, "failed to read manifests directory");
-                return Vec::new();
-            }
-        };
-        let games: Vec<_> = entries
-            .flatten()
-            .flat_map(|entry| read_manifest_dir(&entry.path()))
-            .collect();
+        let games: Vec<_> = self.all_roots().flat_map(scan_root).collect();
         tracing::debug!(game_count = games.len(), "scanned all accounts' manifests");
         games
     }
 
-    /// Announces this root in Steam's own format.
+    /// Writes `game`'s manifest into the folder `to` and drops the copy in
+    /// whichever folder had it, once its files and prefix have moved there.
+    /// `game` is written as given, so a path that moved with it can be
+    /// updated in the same step.
     ///
-    /// One entry today. The file exists from the start anyway so that
-    /// adding a second disk later is a new entry rather than a migration.
+    /// # Errors
+    ///
+    /// Fails if `game`'s ids can't form a path, or either file operation
+    /// fails; a failure writing leaves the old manifest where it was.
+    #[inline]
+    pub fn relocate_manifest(&self, game: &InstalledGame, to: &Path) -> io::Result<()> {
+        let Some(old) = self.manifest_path(&game.account_id, game.storefront, &game.game_id) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "unusable account or game id",
+            ));
+        };
+        let Some(new) = manifest_path_in(to, &game.account_id, game.storefront, &game.game_id) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "unusable account or game id",
+            ));
+        };
+        if let Some(parent) = new.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&new, vdf::to_string("AppState", &game.to_vdf()))?;
+        if old != new {
+            fs::remove_file(&old)?;
+        }
+        tracing::info!(game_id = %game.game_id, to = %to.display(), "manifest moved to another library folder");
+        Ok(())
+    }
+
+    /// Lists every root in Steam's own format, in the primary root.
     ///
     /// # Errors
     ///
@@ -655,11 +699,13 @@ impl Library {
                 return Err(err);
             }
         }
-        let mut entry = Value::block();
-        entry.insert("path", self.root.to_string_lossy().into_owned());
-        entry.insert("label", "");
         let mut root = Value::block();
-        root.insert("0", entry);
+        for (index, folder) in self.all_roots().enumerate() {
+            let mut entry = Value::block();
+            entry.insert("path", folder.to_string_lossy().into_owned());
+            entry.insert("label", "");
+            root.insert(index.to_string(), entry);
+        }
         let path = self.root.join("libraryfolders.vdf");
         match fs::write(&path, vdf::to_string("libraryfolders", &root)) {
             Ok(()) => {
@@ -723,6 +769,34 @@ impl Library {
         }
         self.write_libraryfolders()
     }
+}
+
+/// Where `game_id`'s manifest goes in `root`, or `None` if either id can't
+/// be used in a path.
+fn manifest_path_in(root: &Path, account_id: &str, storefront: Storefront, game_id: &str) -> Option<PathBuf> {
+    let account = safe_component(account_id)?;
+    let file_name = InstalledGame::manifest_file_name(storefront, game_id)?;
+    Some(root.join("manifests").join(account).join(file_name))
+}
+
+/// Every manifest in one root, across every account.
+fn scan_root(root: &Path) -> Vec<InstalledGame> {
+    let dir = root.join("manifests");
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            tracing::trace!(path = %dir.display(), "no manifests directory yet");
+            return Vec::new();
+        }
+        Err(err) => {
+            tracing::warn!(path = %dir.display(), error = %err, "failed to read manifests directory");
+            return Vec::new();
+        }
+    };
+    entries
+        .flatten()
+        .flat_map(|entry| read_manifest_dir(&entry.path()))
+        .collect()
 }
 
 /// Reads and parses one manifest file; `None` if it's missing, unreadable,
@@ -912,6 +986,94 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn a_game_in_another_root_is_found_whole_and_new_ones_go_to_the_primary() {
+        let base = temp_dir("multi-root");
+        let (primary, second) = (base.join("primary"), base.join("second"));
+        let on_second = InstalledGame {
+            art: GameArt::default(),
+            branch: None,
+            build_id: "1".to_owned(),
+            cloud_save_last_sync: None,
+            cloud_save_path: None,
+            dlcs: BTreeMap::new(),
+            game_id: "1207658924".to_owned(),
+            install_dir: "Unreal Gold".to_owned(),
+            last_played: None,
+            launch_executable: Some("UnrealGold.exe".to_owned()),
+            name: "Unreal Gold".to_owned(),
+            account_id: "account".to_owned(),
+            prefix_of: None,
+            proton: None,
+            size_on_disk: None,
+            storefront: Storefront::Gog,
+            umu_id: None,
+            umu_store: None,
+        };
+        Library::new(&second)
+            .write_manifest(&on_second)
+            .expect("manifest on the second disk");
+        fs::create_dir_all(second.join("common/Unreal Gold")).expect("files on the second disk");
+
+        let library = Library::new(&primary).with_extra_roots([second.clone(), primary.clone()]);
+
+        assert_eq!(library.roots(), [primary.clone(), second.clone()]);
+        assert_eq!(
+            library.read_manifest("account", Storefront::Gog, "1207658924"),
+            Some(on_second.clone())
+        );
+        assert!(library.scan("account").contains_key("1207658924"));
+        assert_eq!(
+            library.install_dir("Unreal Gold"),
+            Some(second.join("common/Unreal Gold"))
+        );
+        assert_eq!(
+            library.compatdata("account", "1207658924"),
+            Some(second.join("compatdata/account/1207658924"))
+        );
+
+        let new = InstalledGame {
+            game_id: "1".to_owned(),
+            install_dir: "New".to_owned(),
+            ..on_second
+        };
+        library.write_manifest(&new).expect("new manifest");
+        assert!(
+            primary
+                .join("manifests/account/appmanifest_storefront_gog_1.acf")
+                .is_file()
+        );
+        assert_eq!(
+            library.compatdata("account", "1"),
+            Some(primary.join("compatdata/account/1"))
+        );
+        assert_eq!(library.install_dir("New"), Some(primary.join("common/New")));
+
+        let moved = library
+            .read_manifest("account", Storefront::Gog, "1207658924")
+            .expect("on the second disk");
+        library.relocate_manifest(&moved, &primary).expect("relocated");
+        assert!(
+            primary
+                .join("manifests/account/appmanifest_storefront_gog_1207658924.acf")
+                .is_file()
+        );
+        assert!(
+            !second
+                .join("manifests/account/appmanifest_storefront_gog_1207658924.acf")
+                .exists()
+        );
+
+        let aimed = library.targeting(&second);
+        assert_eq!(aimed.install_dir("Elsewhere"), Some(second.join("common/Elsewhere")));
+        assert_eq!(
+            aimed
+                .read_manifest("account", Storefront::Gog, "1")
+                .map(|game| game.game_id),
+            Some("1".to_owned())
+        );
     }
 
     #[test]

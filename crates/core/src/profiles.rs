@@ -109,6 +109,12 @@ impl Db {
                 return Err(err);
             }
         }
+        if let Err(err) = self.conn.execute(
+            "DELETE FROM profile_libraries WHERE profile_id = ?1",
+            params![profile_id],
+        ) {
+            return Err(err.into());
+        }
         match self
             .conn
             .execute("DELETE FROM profiles WHERE id = ?1", params![profile_id])
@@ -211,6 +217,42 @@ impl Db {
             .flatten();
         tracing::debug!(profile_id, found = path.is_some(), "read profile library path");
         Ok(path)
+    }
+
+    /// The library folders `profile_id` keeps games in besides its main
+    /// one ([`Db::profile_library_path`]), in the order they were added.
+    #[inline]
+    pub fn profile_extra_libraries(&self, profile_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM profile_libraries WHERE profile_id = ?1 ORDER BY added_at, path")?;
+        let paths = stmt
+            .query_map(params![profile_id], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        tracing::debug!(profile_id, count = paths.len(), "read profile's extra library folders");
+        Ok(paths)
+    }
+
+    /// Adds a library folder to `profile_id`; adding one it has is a no-op.
+    #[inline]
+    pub fn add_profile_library(&self, profile_id: &str, path: &str, added_at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO profile_libraries (profile_id, path, added_at) VALUES (?1, ?2, ?3)",
+            params![profile_id, path, added_at],
+        )?;
+        tracing::info!(profile_id, path, "added library folder");
+        Ok(())
+    }
+
+    /// Drops a library folder from `profile_id`. What's on that disk stays.
+    #[inline]
+    pub fn remove_profile_library(&self, profile_id: &str, path: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM profile_libraries WHERE profile_id = ?1 AND path = ?2",
+            params![profile_id, path],
+        )?;
+        tracing::info!(profile_id, path, "removed library folder");
+        Ok(())
     }
 
     /// Sets (or clears, with `None`) the profile's chosen library location.

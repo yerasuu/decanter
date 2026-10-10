@@ -196,6 +196,13 @@ CREATE TABLE IF NOT EXISTS hidden (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS profile_libraries (
+    profile_id  TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    added_at    INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, path)
+);
+
 CREATE TABLE IF NOT EXISTS steam_shortcuts (
     account_id  TEXT NOT NULL,
     storefront  INTEGER NOT NULL,

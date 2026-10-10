@@ -16,7 +16,33 @@ use std::io::{BufRead as _, BufReader, Read as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use decanter_core::MoveProgress;
+
+/// How far a copy has got, written from the import's blocking thread and
+/// read by the UI on its own timer —
+/// an import's, or a game moving between library folders. Stays at zero for a same-disk move,
+/// which is a rename with nothing to count.
+#[derive(Default)]
+pub struct Progress {
+    copied: AtomicU64,
+    total: AtomicU64,
+}
+
+impl Progress {
+    /// `(copied, total)` bytes, or `None` before the total is known — the
+    /// size walk of a big prefix alone takes a while.
+    pub fn snapshot(&self) -> Option<(u64, u64)> {
+        let total = self.total.load(Ordering::Relaxed);
+        (total > 0).then(|| (self.copied.load(Ordering::Relaxed), total))
+    }
+
+    pub fn record(&self, progress: MoveProgress) {
+        self.total.store(progress.total_bytes, Ordering::Relaxed);
+        self.copied.store(progress.bytes_copied, Ordering::Relaxed);
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {

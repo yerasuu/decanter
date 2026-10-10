@@ -439,6 +439,7 @@ fn game_action_item(
                         title: title.clone(),
                         branch: None,
                         dlcs: Vec::new(),
+                        library_root: None,
                     },
                     cx,
                 );

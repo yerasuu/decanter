@@ -11,54 +11,28 @@
 //! saves that drift apart from then on.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
-pub use super::transfer::Mode;
-
-/// How far a copy has got, written from the import's blocking thread and
-/// read by the UI on its own timer. Stays at zero for a same-disk move,
-/// which is a rename with nothing to count.
-#[derive(Default)]
-pub struct Progress {
-    copied: AtomicU64,
-    total: AtomicU64,
-}
-
-impl Progress {
-    /// `(copied, total)` bytes, or `None` before the total is known — the
-    /// size walk of a big prefix alone takes a while.
-    pub fn snapshot(&self) -> Option<(u64, u64)> {
-        let total = self.total.load(Ordering::Relaxed);
-        (total > 0).then(|| (self.copied.load(Ordering::Relaxed), total))
-    }
-
-    fn record(&self, progress: decanter_core::MoveProgress) {
-        self.total.store(progress.total_bytes, Ordering::Relaxed);
-        self.copied.store(progress.bytes_copied, Ordering::Relaxed);
-    }
-}
+pub use super::transfer::{Mode, Progress};
 
 /// Drops what a failed copy for `id` left behind, once nothing will retry it.
 pub fn abandon(profile_id: &str, id: &str) {
-    if let Some(destination) = crate::core::library_for_profile(profile_id)
-        .ok()
-        .and_then(|library| library.compatdata(profile_id, id))
+    // In whichever folder the form was adding it to.
+    for root in crate::core::library_for_profile(profile_id)
+        .map(|library| library.roots())
+        .unwrap_or_default()
     {
-        super::transfer::discard_staging(&destination);
+        super::transfer::discard_staging(&root.join("compatdata").join(profile_id).join(id));
     }
 }
 
 /// Drops every failed copy in `profile_id`'s library — for when no form is
 /// open on any of them.
 pub fn abandon_all(profile_id: &str) {
-    if let Some(dir) = crate::core::library_for_profile(profile_id)
-        .ok()
-        // `compatdata` only resolves one game's prefix; its parent is the
-        // profile's own directory.
-        .and_then(|library| library.compatdata(profile_id, "_"))
-        .and_then(|probe| probe.parent().map(Path::to_path_buf))
+    for root in crate::core::library_for_profile(profile_id)
+        .map(|library| library.roots())
+        .unwrap_or_default()
     {
-        super::transfer::discard_all_staging(&dir);
+        super::transfer::discard_all_staging(&root.join("compatdata").join(profile_id));
     }
 }
 
@@ -90,7 +64,7 @@ pub fn import(
     if !decanter_runtime::Prefix::new(&root).processes().is_empty() {
         return Err("Hay algo corriendo en ese prefijo: cerralo primero.".to_owned());
     }
-    let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
+    let library = crate::achv_try!(super::library_in(profile_id, draft.library_root.as_deref()));
     let destination = crate::achv_try!(
         library
             .compatdata(profile_id, id)

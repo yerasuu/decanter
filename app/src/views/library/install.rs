@@ -27,6 +27,9 @@ pub struct InstallRequest {
     /// Steam does it: what you ticked before hitting install arrives with
     /// the game, not as a second thing to go and do.
     pub dlcs: Vec<(String, String)>,
+    /// The library folder a new install goes in; `None` is the profile's
+    /// main one. An update or DLC goes wherever the game already is.
+    pub library_root: Option<std::path::PathBuf>,
 }
 
 fn set_status(state: &AppState, key: &str, status: Option<InstallStatus>, cx: &mut AsyncApp) {
@@ -55,6 +58,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         title,
         branch,
         dlcs,
+        library_root,
     } = request;
     tracing::info!(
         account_id,
@@ -65,7 +69,10 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         "install started"
     );
 
-    let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+    let Ok(core_library) = crate::core::library_for_account(&account_id).map(|library| match &library_root {
+        Some(root) => library.targeting(root),
+        None => library,
+    }) else {
         tracing::error!(account_id, product_id, "could not resolve library, install aborted");
         set_status(
             &state,
