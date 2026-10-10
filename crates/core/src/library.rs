@@ -84,6 +84,9 @@ const STOREFRONTS: [Storefront; 8] = [
 /// One installed game, as its manifest records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledGame {
+    /// Art picked for a game with no catalog entry behind it. A storefront
+    /// game leaves this empty: its catalog already names its art.
+    pub art: GameArt,
     /// The storefront branch this build came from — a beta opt-in, most
     /// often. `None` is mainline, and also what an install from before
     /// branches existed reads as, which is the same thing.
@@ -126,6 +129,17 @@ pub struct InstalledGame {
     pub proton: Option<String>,
     pub size_on_disk: Option<u64>,
     pub storefront: Storefront,
+}
+
+/// Image URLs for a game added from outside any storefront, kept in its
+/// manifest so copying the manifest elsewhere keeps the art too.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GameArt {
+    /// Portrait capsule, what the shelves and the sidebar's cover use.
+    pub cover: Option<String>,
+    /// Wide banner behind the detail page's title.
+    pub hero: Option<String>,
+    pub icon: Option<String>,
 }
 
 /// One DLC installed into a game.
@@ -220,6 +234,14 @@ impl InstalledGame {
                 .unwrap_or_default(),
             cloud_save_path: root.get("CloudSavePath").map(str::to_owned),
             cloud_save_last_sync: root.get("CloudSaveLastSync").and_then(|value| value.parse().ok()),
+            art: root
+                .get_block("Art")
+                .map(|art| GameArt {
+                    cover: art.get("cover").map(str::to_owned),
+                    hero: art.get("hero").map(str::to_owned),
+                    icon: art.get("icon").map(str::to_owned),
+                })
+                .unwrap_or_default(),
         })
     }
 
@@ -284,6 +306,19 @@ impl InstalledGame {
         }
         if let Some(last_sync) = self.cloud_save_last_sync {
             root.insert("CloudSaveLastSync", last_sync);
+        }
+        if self.art != GameArt::default() {
+            let mut art = Value::block();
+            for (key, url) in [
+                ("cover", &self.art.cover),
+                ("hero", &self.art.hero),
+                ("icon", &self.art.icon),
+            ] {
+                if let Some(url) = url {
+                    art.insert(key, url.clone());
+                }
+            }
+            root.insert("Art", art);
         }
         root
     }
@@ -825,6 +860,35 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn external_game_art_survives_a_manifest_round_trip() {
+        let library = Library::new(temp_dir("external-art"));
+        let game = InstalledGame {
+            art: GameArt {
+                cover: Some("https://cdn2.steamgriddb.com/grid/a.png".to_owned()),
+                hero: None,
+                icon: Some("https://cdn2.steamgriddb.com/icon/b.png".to_owned()),
+            },
+            branch: None,
+            build_id: String::new(),
+            cloud_save_last_sync: None,
+            cloud_save_path: None,
+            dlcs: BTreeMap::new(),
+            game_id: "0b8e7c52-5f0e-4a43-a7a4-0d6c0a4f5a10".to_owned(),
+            install_dir: "0b8e7c52-5f0e-4a43-a7a4-0d6c0a4f5a10".to_owned(),
+            last_played: None,
+            launch_executable: Some("/games/Some Game/game.exe".to_owned()),
+            name: "Some Game".to_owned(),
+            account_id: "profile".to_owned(),
+            proton: None,
+            size_on_disk: None,
+            storefront: Storefront::Unspecified,
+        };
+        library.write_manifest(&game).expect("manifest written");
+        let read = library.read_manifest("profile", Storefront::Unspecified, &game.game_id);
+        assert_eq!(read, Some(game));
     }
 
     #[test]

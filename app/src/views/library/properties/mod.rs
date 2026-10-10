@@ -26,7 +26,7 @@ mod updates;
 
 use std::rc::Rc;
 
-use decanter_core::Game;
+use decanter_core::{Game, Storefront};
 use gpui::{AnyView, App, AppContext as _, Context, Div, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 
 use crate::theme;
@@ -36,6 +36,7 @@ use crate::views::chrome;
 struct Target {
     account_id: String,
     product_id: String,
+    storefront: Storefront,
     title: String,
 }
 
@@ -62,6 +63,10 @@ const TABS: [(Tab, &str); 8] = [
     (Tab::Compatibility, "Compatibilidad"),
 ];
 
+/// What an external game has to show: nothing GOG-side (builds, branches,
+/// DLC, cloud saves) applies to a file someone pointed at.
+const EXTERNAL_TABS: [(Tab, &str); 2] = [(Tab::General, "General"), (Tab::Compatibility, "Compatibilidad")];
+
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
 /// later — the window manages its own lifetime, closed the same way any
@@ -74,6 +79,7 @@ pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
     let target = Rc::new(Target {
         account_id,
         product_id: game.id,
+        storefront: game.storefront,
         title: game.title,
     });
     let options = chrome::window_options(&title, 640., 560., 480., 360., cx);
@@ -111,6 +117,14 @@ impl PropertiesWindow {
         cx.notify();
     }
 
+    fn tabs(&self) -> &'static [(Tab, &'static str)] {
+        if self.target.storefront == Storefront::Unspecified {
+            &EXTERNAL_TABS
+        } else {
+            &TABS
+        }
+    }
+
     fn nav(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
         div()
             .id("properties-nav")
@@ -124,7 +138,7 @@ impl PropertiesWindow {
             .border_color(rgb(theme::LINE))
             .overflow_y_scroll()
             .py_2()
-            .children(TABS.into_iter().map(|(tab, label)| {
+            .children(self.tabs().iter().map(|&(tab, label)| {
                 let active = tab == self.tab;
                 div()
                     .id(label)

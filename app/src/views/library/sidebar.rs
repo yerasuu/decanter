@@ -195,6 +195,7 @@ enum Row {
 #[derive(Clone)]
 struct DraggedGame {
     id: String,
+    storefront: decanter_core::Storefront,
     title: SharedString,
 }
 
@@ -1001,7 +1002,7 @@ impl SidebarView {
         }
         if let Some(collection_id) = drop_collection {
             head = head.on_drop(cx.listener(move |_, dragged: &DraggedGame, _, cx| {
-                data::set_collection_member(&collection_id, &dragged.id, true);
+                data::set_collection_member(&collection_id, dragged.storefront, &dragged.id, true);
                 super::actions::bump_organisation(cx);
             }));
         }
@@ -1074,6 +1075,7 @@ impl SidebarView {
             .on_drag(
                 DraggedGame {
                     id: game.id.clone(),
+                    storefront: game.storefront,
                     title: game.title.clone().into(),
                 },
                 |dragged: &DraggedGame, _, _, cx| cx.new(|_| DragGhost(dragged.title.clone())),
@@ -1647,5 +1649,28 @@ impl Render for SidebarView {
                     )
                     .children(self.scrollbar(cx)),
             )
+            .child(add_game_footer())
     }
+}
+
+/// Steam's "+ Add a Game", at the foot of the list the same way.
+fn add_game_footer() -> impl IntoElement {
+    div()
+        .id("add-external-game")
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(8.))
+        .px(px(14.))
+        .py(px(10.))
+        .border_t_1()
+        .border_color(rgb(theme::LINE))
+        .text_size(px(12.5))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(theme::TEXT_MUTED))
+        .cursor_pointer()
+        .hover(|row| row.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_BRIGHT)))
+        .on_click(|_, _, cx| crate::views::external::open(None, cx))
+        .child(div().text_size(px(16.)).child("+"))
+        .child("AGREGAR UN JUEGO")
 }

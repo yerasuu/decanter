@@ -51,7 +51,13 @@ pub async fn start(
 
     // `umu-<product id>` is umu's convention, and what protonfixes keys
     // its per-game workarounds off.
-    let mut launch = Launch::new(executable, format!("umu-{}", game.game_id)).store("gog");
+    // umu's `STORE` picks which protonfixes database the id is looked up
+    // in; an external game's uuid is in none of them.
+    let store = match game.storefront {
+        decanter_core::Storefront::Gog => "gog",
+        _ => "none",
+    };
+    let mut launch = Launch::new(executable, format!("umu-{}", game.game_id)).store(store);
     launch.proton = crate::core::proton_for(&game);
 
     // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL

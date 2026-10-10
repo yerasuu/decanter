@@ -27,6 +27,11 @@ pub struct Session {
     pub library_home: u32,
     /// The same for the PS section: back from a game to its covers.
     pub ps_home: u32,
+    /// Bumped to ask the shell for the "Juegos externos" page — from the
+    /// library's sidebar or a game's menu, neither of which owns the shell.
+    pub external_request: u32,
+    /// The external game that request is to edit, if any.
+    pub external_edit: Option<String>,
 }
 
 impl Session {
@@ -43,6 +48,8 @@ impl Session {
             active_profile,
             library_home: 0,
             ps_home: 0,
+            external_request: 0,
+            external_edit: None,
         }
     }
 }

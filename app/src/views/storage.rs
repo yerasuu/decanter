@@ -35,7 +35,7 @@ impl Usage {
             .into_iter()
             .flat_map(|account| crate::core::installed(&account.id).into_values())
             .collect();
-        games.extend(crate::core::shortcuts(profile_id));
+        games.extend(crate::external::list(profile_id));
         games.sort_by_key(|game| std::cmp::Reverse(game.size_on_disk.unwrap_or(0)));
         let total: u64 = games.iter().filter_map(|game| game.size_on_disk).sum();
         tracing::debug!(

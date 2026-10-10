@@ -20,7 +20,7 @@ impl GeneralTab {
         let account_id = target.account_id.as_str();
         let product_id = target.product_id.as_str();
         let installed = crate::core::installed_game(account_id, product_id);
-        let seconds_played = data::load_playtime(account_id, product_id).seconds_total;
+        let seconds_played = data::load_playtime(account_id, target.storefront, product_id).seconds_total;
         let path = actions::game_install_path(account_id, product_id);
         Self {
             target,
@@ -34,16 +34,21 @@ impl GeneralTab {
 impl Render for GeneralTab {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let target = &self.target;
+        let external = target.storefront == decanter_core::Storefront::Unspecified;
         let mut table = rows()
             .child(row("Título", target.title.clone()))
-            .child(row("Tienda", "GOG"))
-            .child(row("Product ID", target.product_id.clone()));
+            .child(row("Tienda", if external { "Externo" } else { "GOG" }))
+            .when(!external, |table| {
+                table.child(row("Product ID", target.product_id.clone()))
+            });
         if let Some(installed) = &self.installed {
-            table = table.child(row("Build", installed.build_id.clone())).children(
-                installed
-                    .size_on_disk
-                    .map(|size| row("Tamaño", crate::format::bytes(size))),
-            );
+            table = table
+                .when(!external, |table| table.child(row("Build", installed.build_id.clone())))
+                .children(
+                    installed
+                        .size_on_disk
+                        .map(|size| row("Tamaño", crate::format::bytes(size))),
+                );
         }
         table = table.child(row("Jugado", fmt::duration(self.seconds_played))).children(
             self.installed

@@ -2,6 +2,7 @@
 
 mod chrome;
 mod downloads;
+pub mod external;
 pub mod library;
 mod profile_form;
 mod ps;

@@ -37,9 +37,8 @@ impl InstallStatus {
 
 #[derive(Default)]
 pub struct Background {
-    /// Game ids currently running — shared between Library's Play/Stop
-    /// and the shortcuts tab's, so launching from either is reflected in
-    /// both. By game id, not prefix: a prefix belongs to exactly one
+    /// Game ids currently running — Library's Play/Stop reads it, and the
+    /// external games window locks a running game's Eliminar with it. By game id, not prefix: a prefix belongs to exactly one
     /// (profile, game).
     pub running: HashSet<String>,
     /// Installs in progress, keyed by GOG product id.

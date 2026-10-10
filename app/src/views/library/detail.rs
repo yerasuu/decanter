@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use decanter_core::{CachedAchievement, Game, InstallState, InstalledGame, Playtime};
+use decanter_core::{CachedAchievement, Game, InstallState, InstalledGame, Playtime, Storefront};
 use decanter_gog::{Branch, LibraryEntry};
 use gpui::{
     AnyElement, BoxShadow, Context, Div, Entity, FontWeight, ObjectFit, Pixels, SharedString, Task, WeakEntity, Window,
@@ -61,8 +61,8 @@ impl Loaded {
             organisation: background.organisation,
             playtime_generation: background.playtime_generation,
             install_state: game.install_state.clone(),
-            is_favorite: data::is_favorite(&game.account_id, &game.id),
-            playtime: data::load_playtime(&game.account_id, &game.id),
+            is_favorite: data::is_favorite(&game.account_id, game.storefront, &game.id),
+            playtime: data::load_playtime(&game.account_id, game.storefront, &game.id),
             collections: member_of(profile_id, &game.id),
             launch: launch_target(game),
         }
@@ -76,12 +76,12 @@ impl Loaded {
         if self.organisation != background.organisation || self.profile_id.as_deref() != profile_id {
             self.organisation = background.organisation;
             self.profile_id = profile_id.map(str::to_owned);
-            self.is_favorite = data::is_favorite(&game.account_id, &game.id);
+            self.is_favorite = data::is_favorite(&game.account_id, game.storefront, &game.id);
             self.collections = member_of(profile_id, &game.id);
         }
         if self.playtime_generation != background.playtime_generation {
             self.playtime_generation = background.playtime_generation;
-            self.playtime = data::load_playtime(&game.account_id, &game.id);
+            self.playtime = data::load_playtime(&game.account_id, game.storefront, &game.id);
         }
         if self.install_state != game.install_state {
             self.install_state.clone_from(&game.install_state);
@@ -218,6 +218,24 @@ impl DetailView {
     fn uninstall(&mut self, account_id: String, product_id: String, cx: &mut Context<Self>) {
         self.local.uninstall.busy = true;
         cx.notify();
+        let is_external = AppState::get(cx)
+            .library
+            .read(cx)
+            .games
+            .iter()
+            .any(|entry| entry.game.id == product_id && entry.game.storefront == Storefront::Unspecified);
+        if is_external {
+            let result = crate::external::remove(&account_id, &product_id);
+            AppState::get(cx)
+                .library
+                .clone()
+                .update(cx, |library, cx| library.refresh_external(cx));
+            let uninstall = &mut self.local.uninstall;
+            uninstall.error = result.err();
+            uninstall.busy = false;
+            uninstall.confirming = false;
+            return;
+        }
         let state = AppState::get(cx).clone();
         // Detached rather than held by the view: it deletes real files, so
         // selecting another game mid-way mustn't cancel it half done.
@@ -292,21 +310,22 @@ impl Render for DetailView {
         };
         let action_bar = self.action_bar(&game, bar, window, cx);
 
-        let active = self.local.tab;
-        let tab_row = tabs(
-            "detail-tabs",
-            &[(DetailTab::Summary, "Resumen"), (DetailTab::Achievements, "Logros")],
-            active,
-            {
-                let this = cx.entity().downgrade();
-                move |tab, _, cx| {
-                    let _ = this.update(cx, |this, cx| {
-                        this.local.tab = tab;
-                        cx.notify();
-                    });
-                }
-            },
-        );
+        let external = game.storefront == Storefront::Unspecified;
+        let active = if external { DetailTab::Summary } else { self.local.tab };
+        let detail_tabs: &[(DetailTab, &str)] = if external {
+            &[(DetailTab::Summary, "Resumen")]
+        } else {
+            &[(DetailTab::Summary, "Resumen"), (DetailTab::Achievements, "Logros")]
+        };
+        let tab_row = tabs("detail-tabs", detail_tabs, active, {
+            let this = cx.entity().downgrade();
+            move |tab, _, cx| {
+                let _ = this.update(cx, |this, cx| {
+                    this.local.tab = tab;
+                    cx.notify();
+                });
+            }
+        });
         let body = match active {
             DetailTab::Summary => summary_tab(&game, playtime).into_any_element(),
             DetailTab::Achievements => self.achievements_tab(achievements.as_ref(), &poll_status, cx),
@@ -379,6 +398,7 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
     };
 
     let account_id = game.account_id.clone();
+    let storefront = game.storefront;
     let product_id = game.id.clone();
     let favorite = button("favorite", ButtonKind::Icon, if is_fav { "★" } else { "☆" }, false)
         .text_size(px(26.))
@@ -392,7 +412,7 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
             "Agregar a favoritos"
         }))
         .on_click(cx.listener(move |_, _, _, cx| {
-            data::set_favorite(&account_id, &product_id, !is_fav);
+            data::set_favorite(&account_id, storefront, &product_id, !is_fav);
             // The sidebar and cover browser both have a FAVORITOS shelf;
             // without this they'd keep showing the pre-toggle grouping. It
             // also re-reads the star here, since this pane caches it.
@@ -406,7 +426,9 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
             .right(px(24.))
             .flex()
             .gap(px(10.))
-            .child(hero_stat(format!("{unlocked}/{total}"), "LOGROS"))
+            .when(storefront == Storefront::Gog, |stats| {
+                stats.child(hero_stat(format!("{unlocked}/{total}"), "LOGROS"))
+            })
             .child(hero_stat(fmt::duration(playtime.seconds_total), "JUGADO")),
     )
     .child(
@@ -419,7 +441,11 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
             .gap(px(6.))
             // In a row of its own: the column stretches its children, which
             // drew the badge as a bar across the whole hero.
-            .child(div().flex().child(theme::badge("GOG", true)))
+            .child(div().flex().child(if storefront == Storefront::Gog {
+                theme::badge("GOG", true)
+            } else {
+                theme::badge("Externo", false)
+            }))
             // Beside the title rather than at the end of the action bar: it
             // says something about the game, not something to do with it,
             // and buried after DESINSTALAR is the last place anyone looks
@@ -496,10 +522,17 @@ impl DetailView {
         if uninstall.busy {
             return vec![theme::muted("Desinstalando...").into_any_element()];
         }
+        // An external game's own files aren't decanter's to delete; only
+        // its entry and prefix go.
+        let (label, confirm) = if game.storefront == Storefront::Unspecified {
+            ("Eliminar", "Confirmar eliminacion")
+        } else {
+            ("Desinstalar", "Confirmar desinstalacion")
+        };
         if !uninstall.confirming {
             return vec![
-                button("uninstall", ButtonKind::Icon, "Desinstalar", false)
-                    .tooltip(tooltip("Desinstalar"))
+                button("uninstall", ButtonKind::Icon, label, false)
+                    .tooltip(tooltip(label))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.local.uninstall.confirming = true;
                         cx.notify();
@@ -510,7 +543,7 @@ impl DetailView {
         let account_id = game.account_id.clone();
         let product_id = game.id.clone();
         let mut elements = vec![
-            button("uninstall-confirm", ButtonKind::Icon, "Confirmar desinstalacion", false)
+            button("uninstall-confirm", ButtonKind::Icon, confirm, false)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.uninstall(account_id.clone(), product_id.clone(), cx);
                 }))

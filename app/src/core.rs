@@ -93,10 +93,12 @@ pub fn library_for_profile(profile_id: &str) -> Result<Library, String> {
 
 /// Same as [`library_for_profile`], resolved from an account id instead —
 /// every account-scoped call site in this module has one of these in
-/// scope, not a `profile_id`. Falls back to [`library`] for an account
-/// that resolves to no profile (shouldn't happen in practice, but an
-/// orphaned account is still better served by the shared default than a
-/// hard failure).
+/// scope, not a `profile_id`. An external game is filed under its profile's
+/// id in place of an account (see `crate::external`), so a profile id
+/// resolves to that profile's own library too. Falls back to [`library`]
+/// for an account that resolves to no profile (shouldn't happen in
+/// practice, but an orphaned account is still better served by the shared
+/// default than a hard failure).
 pub fn library_for_account(account_id: &str) -> Result<Library, String> {
     let db = db()?;
     let profile_id = crate::achv_try!(
@@ -104,9 +106,17 @@ pub fn library_for_account(account_id: &str) -> Result<Library, String> {
             .inspect_err(|err| tracing::warn!(account_id, %err, "failed to resolve profile for account, using default"))
             .map_err(|err| err.to_string())
     );
-    match profile_id {
-        Some(profile_id) => library_for_profile(&profile_id),
-        None => library(),
+    if let Some(profile_id) = profile_id {
+        return library_for_profile(&profile_id);
+    }
+    let is_profile = db
+        .list_profiles()
+        .inspect_err(|err| tracing::warn!(account_id, %err, "failed to list profiles, using default library"))
+        .is_ok_and(|profiles| profiles.iter().any(|profile| profile.id == account_id));
+    if is_profile {
+        library_for_profile(account_id)
+    } else {
+        library()
     }
 }
 
@@ -136,7 +146,11 @@ pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> 
         );
         return None;
     };
-    library.read_manifest(account_id, Storefront::Gog, game_id)
+    // An external game's id is a uuid, never a GOG product id, so trying
+    // both storefronts can't pick up the wrong game.
+    library
+        .read_manifest(account_id, Storefront::Gog, game_id)
+        .or_else(|| library.read_manifest(account_id, Storefront::Unspecified, game_id))
 }
 
 /// Sets (or clears) which local folder syncs against this game's Cloud
@@ -196,79 +210,6 @@ pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64
         .map_err(|err| format!("guardando el manifiesto: {err}"))
 }
 
-/// Games added by hand — an arbitrary executable, not something decanter
-/// installed. Kept apart from the GOG catalog entirely: a shortcut has no
-/// product to fetch metadata for, so it's just whatever the user typed.
-pub fn shortcuts(account_id: &str) -> Vec<InstalledGame> {
-    let shortcuts: Vec<InstalledGame> = library_for_account(account_id)
-        .map(|library| library.scan(account_id))
-        .unwrap_or_else(|_| {
-            tracing::debug!(account_id, "reporting no shortcuts, library unavailable");
-            Default::default()
-        })
-        .into_values()
-        .filter(|game| game.storefront == Storefront::Unspecified)
-        .collect();
-    tracing::debug!(account_id, count = shortcuts.len(), "listed shortcuts");
-    shortcuts
-}
-
-/// Adds an executable as a shortcut. `id` is a fresh id for it — the
-/// "product id" a real GOG game would have, standing in for one so a
-/// shortcut can reuse every path that's keyed by (account, `game_id)`:
-/// `compatdata`, playtime, the DLC-less manifest shape.
-pub fn add_shortcut(account_id: &str, id: &str, name: &str, executable: &std::path::Path) -> Result<(), String> {
-    let library = crate::achv_try!(library_for_account(account_id));
-    let result = library
-        .write_manifest(&InstalledGame {
-            account_id: account_id.to_string(),
-            storefront: Storefront::Unspecified,
-            game_id: id.to_string(),
-            name: name.to_string(),
-            // Never actually used as a directory — a shortcut owns no
-            // files under `common/` — but the manifest format needs some
-            // single path component here, and the id is already unique.
-            install_dir: id.to_string(),
-            build_id: String::new(),
-            size_on_disk: None,
-            launch_executable: Some(executable.to_string_lossy().into_owned()),
-            last_played: None,
-            proton: None,
-            branch: None,
-            dlcs: Default::default(),
-            cloud_save_path: None,
-            cloud_save_last_sync: None,
-        })
-        .map_err(|err| format!("guardando el atajo: {err}"));
-    match &result {
-        Ok(()) => tracing::info!(account_id, id, name, "shortcut added"),
-        Err(err) => tracing::error!(account_id, id, err, "failed to add shortcut"),
-    }
-    result
-}
-
-/// Removes a shortcut and its prefix. There are no `common/` files to
-/// decide about — a shortcut never had any.
-pub fn remove_shortcut(account_id: &str, id: &str) -> Result<(), String> {
-    let library = crate::achv_try!(library_for_account(account_id));
-    crate::achv_try!(
-        library
-            .remove_manifest(account_id, Storefront::Unspecified, id)
-            .inspect_err(|err| tracing::error!(account_id, id, %err, "failed to remove shortcut manifest"))
-            .map_err(|err| format!("borrando el atajo: {err}"))
-    );
-    if let Some(compatdata) = library.compatdata(account_id, id) {
-        if let Err(err) = std::fs::remove_dir_all(&compatdata) {
-            // Best-effort: the manifest is already gone, so the shortcut
-            // itself vanished either way — this just leaves an orphan
-            // prefix directory behind on disk.
-            tracing::warn!(account_id, id, path = %compatdata.display(), %err, "could not remove shortcut prefix directory");
-        }
-    }
-    tracing::info!(account_id, id, "shortcut removed");
-    Ok(())
-}
-
 /// Where a game runs: its own prefix, per account, created by umu on first
 /// launch.
 pub fn prefix_for(account_id: &str, game_id: &str) -> Option<decanter_runtime::Prefix> {
@@ -318,11 +259,17 @@ pub fn executable_for(game: &InstalledGame) -> Option<std::path::PathBuf> {
 /// Which Proton a game runs on: its own pin, else the app-wide default,
 /// else whatever umu resolves.
 pub fn proton_for(game: &InstalledGame) -> decanter_runtime::Proton {
-    let pinned = game.proton.clone().or_else(|| {
+    proton_or_default(game.proton.clone())
+}
+
+/// `pin` if there is one, else the app-wide default, else whatever umu
+/// resolves — [`proton_for`] without a manifest to read the pin from.
+pub fn proton_or_default(pin: Option<String>) -> decanter_runtime::Proton {
+    let pinned = pin.or_else(|| {
         // `db()` already warned about why, if it failed.
         let db = db().ok()?;
         db.default_proton()
-            .inspect_err(|err| tracing::warn!(game_id = %game.game_id, %err, "failed to read default proton"))
+            .inspect_err(|err| tracing::warn!(%err, "failed to read default proton"))
             .ok()
             .flatten()
     });

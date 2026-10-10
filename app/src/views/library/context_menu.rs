@@ -4,6 +4,7 @@
 
 use std::rc::Rc;
 
+use decanter_core::Storefront;
 use decanter_gog::{GameKind, LibraryEntry};
 use gpui::{
     AnyElement, App, Context, Entity, FocusHandle, Focusable as _, KeyDownEvent, Pixels, Point, SharedString, Window,
@@ -163,13 +164,24 @@ fn game_menu(
     // Each product id in the target carries its own account (two accounts
     // in this profile can each own a copy), so favorites/hidden go through
     // that account, not a single one for the whole menu.
-    let accounts: std::collections::HashMap<String, String> = AppState::get(cx)
+    let accounts: std::collections::HashMap<String, (String, Storefront)> = AppState::get(cx)
         .library
         .read(cx)
         .games
         .iter()
         .filter(|entry| target.product_ids.contains(&entry.game.id))
-        .map(|entry| (entry.game.id.clone(), entry.game.account_id.clone()))
+        .map(|entry| {
+            (
+                entry.game.id.clone(),
+                (entry.game.account_id.clone(), entry.game.storefront),
+            )
+        })
+        .collect();
+    // Collections are per profile, but membership is still keyed by
+    // storefront, so each id keeps the one it came from.
+    let members: Rc<[(String, Storefront)]> = accounts
+        .iter()
+        .map(|(id, (_, storefront))| (id.clone(), *storefront))
         .collect();
     let account_for = move |product_id: &str| accounts.get(product_id).cloned();
     // Read once per change to favourites/collections, not on every frame
@@ -196,14 +208,13 @@ fn game_menu(
         // so a mixed selection moves to the same state rather than
         // inverting each game independently.
         let data = MenuData {
-            is_fav: target
-                .product_ids
-                .iter()
-                .all(|id| account_for(id).is_some_and(|account_id| data::is_favorite(&account_id, id))),
-            is_hidden: target
-                .product_ids
-                .iter()
-                .all(|id| account_for(id).is_some_and(|account_id| data::hidden_ids(&account_id).contains(id))),
+            is_fav: target.product_ids.iter().all(|id| {
+                account_for(id).is_some_and(|(account_id, storefront)| data::is_favorite(&account_id, storefront, id))
+            }),
+            is_hidden: target.product_ids.iter().all(|id| {
+                account_for(id)
+                    .is_some_and(|(account_id, storefront)| data::hidden_ids(&account_id, storefront).contains(id))
+            }),
             collections: data::load_collections(profile_id),
             launch_target: single_entry
                 .as_ref()
@@ -235,6 +246,7 @@ fn game_menu(
         panel = panel
             .child(game_action_item(&entry, launch_target, close, cx))
             .children(open_folder_item(install_path, close))
+            .children(edit_external_item(&entry, close))
             .child(properties_item(&entry, close))
             .child(menu::separator());
     }
@@ -251,8 +263,8 @@ fn game_menu(
                     "bulk favorite toggle from context menu"
                 );
                 for product_id in &fav_ids {
-                    if let Some(account_id) = fav_accounts(product_id) {
-                        data::set_favorite(&account_id, product_id, !is_fav);
+                    if let Some((account_id, storefront)) = fav_accounts(product_id) {
+                        data::set_favorite(&account_id, storefront, product_id, !is_fav);
                     }
                 }
                 bump_organisation(cx);
@@ -276,8 +288,8 @@ fn game_menu(
                     "bulk hide toggle from context menu"
                 );
                 for product_id in &hide_ids {
-                    if let Some(account_id) = hide_accounts(product_id) {
-                        data::set_hidden(&account_id, product_id, !is_hidden);
+                    if let Some((account_id, storefront)) = hide_accounts(product_id) {
+                        data::set_hidden(&account_id, storefront, product_id, !is_hidden);
                     }
                 }
                 bump_organisation(cx);
@@ -302,7 +314,7 @@ fn game_menu(
             // A dynamic collection is defined by its filter; adding a game
             // by hand would be a change the next render throws away.
             let dynamic = collection.filter.is_some();
-            let product_ids = target.product_ids.clone();
+            let members = Rc::clone(&members);
             let collection_id = collection.id.clone();
             menu::item(("menu-collection", index), dynamic)
                 .when(dynamic, |item| {
@@ -310,8 +322,8 @@ fn game_menu(
                 })
                 .when(!dynamic, |item| {
                     item.on_click(move |_, _, cx| {
-                        for product_id in &product_ids {
-                            data::set_collection_member(&collection_id, product_id, !member);
+                        for (product_id, storefront) in members.iter() {
+                            data::set_collection_member(&collection_id, *storefront, product_id, !member);
                         }
                         bump_organisation(cx);
                     })
@@ -330,7 +342,6 @@ fn game_menu(
     }
 
     if state.read(cx).naming {
-        let product_ids = target.product_ids;
         let profile_id = profile_id.to_owned();
         let name = state.read(cx).name.clone();
         state.update(cx, |state, _| {
@@ -343,8 +354,8 @@ fn game_menu(
                     .into_iter()
                     .find(|collection| collection.name == text)
                 {
-                    for product_id in &product_ids {
-                        data::set_collection_member(&created.id, product_id, true);
+                    for (product_id, storefront) in members.iter() {
+                        data::set_collection_member(&created.id, *storefront, product_id, true);
                     }
                 }
                 name.update(cx, |input, cx| input.set_text("", cx));
@@ -486,6 +497,25 @@ fn open_folder_item(install_path: Option<std::path::PathBuf>, close: &menu::Dism
 
 /// Steam's right-click → Propiedades, the same window the detail pane's
 /// own button opens.
+/// An external game's name, executable and art are edited where it was
+/// added, not in Propiedades.
+fn edit_external_item(entry: &LibraryEntry, close: &menu::Dismiss) -> Option<AnyElement> {
+    if entry.game.storefront != Storefront::Unspecified {
+        return None;
+    }
+    let id = entry.game.id.clone();
+    let close = Rc::clone(close);
+    Some(
+        menu::item("menu-edit-external", false)
+            .on_click(move |_, window, cx| {
+                close(window, cx);
+                crate::views::external::open(Some(id.clone()), cx);
+            })
+            .child("Editar juego externo…")
+            .into_any_element(),
+    )
+}
+
 fn properties_item(entry: &LibraryEntry, close: &menu::Dismiss) -> AnyElement {
     let game = entry.game.clone();
     let close = Rc::clone(close);

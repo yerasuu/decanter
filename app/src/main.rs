@@ -103,6 +103,7 @@ mod art;
 mod cli;
 mod core;
 mod desktop;
+mod external;
 mod format;
 mod launch;
 mod state;

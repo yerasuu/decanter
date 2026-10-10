@@ -83,10 +83,22 @@ pub(super) fn load_collections(profile_id: &str) -> Collections {
             .list_collections(profile_id)
             .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list collections"))
             .unwrap_or_default(),
-        members: db
-            .collection_members(profile_id, Storefront::Gog)
-            .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to load collection membership"))
-            .unwrap_or_default(),
+        // GOG ids and external games' uuids never collide, so one map
+        // keyed by product id holds both.
+        members: [Storefront::Gog, Storefront::Unspecified]
+            .into_iter()
+            .flat_map(|storefront| {
+                db.collection_members(profile_id, storefront)
+                    .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to load collection membership"))
+                    .unwrap_or_default()
+            })
+            .fold(std::collections::HashMap::new(), |mut members, (collection_id, ids)| {
+                members
+                    .entry(collection_id)
+                    .or_insert_with(std::collections::HashSet::new)
+                    .extend(ids);
+                members
+            }),
     }
 }
 
@@ -136,16 +148,16 @@ pub(super) fn move_collection(profile_id: &str, collection_id: &str, delta: i64)
     }
 }
 
-pub(super) fn hidden_ids(account_id: &str) -> std::collections::HashSet<String> {
+pub(super) fn hidden_ids(account_id: &str, storefront: Storefront) -> std::collections::HashSet<String> {
     Db::open(decanter_core::default_db_path())
-        .and_then(|db| db.hidden_ids(account_id, Storefront::Gog))
+        .and_then(|db| db.hidden_ids(account_id, storefront))
         .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read hidden ids"))
         .unwrap_or_default()
 }
 
-pub(super) fn set_hidden(account_id: &str, product_id: &str, hidden: bool) {
+pub(super) fn set_hidden(account_id: &str, storefront: Storefront, product_id: &str, hidden: bool) {
     if let Ok(db) = Db::open(decanter_core::default_db_path()) {
-        match db.set_hidden(account_id, Storefront::Gog, product_id, hidden) {
+        match db.set_hidden(account_id, storefront, product_id, hidden) {
             Ok(()) => tracing::info!(account_id, product_id, hidden, "game hidden state changed"),
             Err(err) => tracing::warn!(account_id, product_id, hidden, error = %err, "failed to set hidden state"),
         }
@@ -235,9 +247,9 @@ pub(super) fn rename_collection(collection_id: &str, name: &str) {
     }
 }
 
-pub(super) fn set_collection_member(collection_id: &str, product_id: &str, member: bool) {
+pub(super) fn set_collection_member(collection_id: &str, storefront: Storefront, product_id: &str, member: bool) {
     if let Ok(db) = Db::open(decanter_core::default_db_path()) {
-        match db.set_collection_member(collection_id, Storefront::Gog, product_id, member) {
+        match db.set_collection_member(collection_id, storefront, product_id, member) {
             Ok(()) => tracing::info!(collection_id, product_id, member, "collection membership changed"),
             Err(err) => {
                 tracing::warn!(collection_id, product_id, member, error = %err, "failed to update collection membership");
@@ -253,18 +265,18 @@ pub(super) fn set_collection_member(collection_id: &str, product_id: &str, membe
     }
 }
 
-pub(super) fn is_favorite(account_id: &str, product_id: &str) -> bool {
+pub(super) fn is_favorite(account_id: &str, storefront: Storefront, product_id: &str) -> bool {
     Db::open(decanter_core::default_db_path())
-        .and_then(|db| db.is_favorite(account_id, Storefront::Gog, product_id))
+        .and_then(|db| db.is_favorite(account_id, storefront, product_id))
         .inspect_err(
             |err| tracing::warn!(account_id, product_id, error = %err, "failed to read favorite state, defaulting to not favorited"),
         )
         .unwrap_or(false)
 }
 
-pub(super) fn set_favorite(account_id: &str, product_id: &str, favorite: bool) {
+pub(super) fn set_favorite(account_id: &str, storefront: Storefront, product_id: &str, favorite: bool) {
     if let Ok(db) = Db::open(decanter_core::default_db_path()) {
-        match db.set_favorite(account_id, Storefront::Gog, product_id, favorite) {
+        match db.set_favorite(account_id, storefront, product_id, favorite) {
             Ok(()) => tracing::info!(account_id, product_id, favorite, "favorite toggled"),
             Err(err) => tracing::warn!(account_id, product_id, favorite, error = %err, "failed to toggle favorite"),
         }
@@ -281,11 +293,13 @@ pub(super) fn set_favorite(account_id: &str, product_id: &str, favorite: bool) {
 /// Every GOG account in `profile_id`, oldest first — the merge order every
 /// aggregate function below uses, so a product two accounts both own
 /// consistently prefers the same one's data everywhere in the UI, not just
-/// in which row `gog_library` happens to show.
-fn gog_accounts(profile_id: &str) -> Vec<String> {
+/// in which row `gog_library` happens to show — then the profile itself,
+/// which external games are filed under (see `crate::external`).
+fn owners(profile_id: &str) -> Vec<(String, Storefront)> {
     gog_accounts_with_names(profile_id)
         .into_iter()
-        .map(|(id, _name)| id)
+        .map(|(id, _name)| (id, Storefront::Gog))
+        .chain(std::iter::once((profile_id.to_owned(), Storefront::Unspecified)))
         .collect()
 }
 
@@ -312,10 +326,10 @@ pub(super) fn favorite_ids_in_profile(profile_id: &str) -> std::collections::Has
     else {
         return std::collections::HashSet::new();
     };
-    gog_accounts(profile_id)
+    owners(profile_id)
         .iter()
-        .flat_map(|account_id| {
-            db.list_favorite_ids(account_id, Storefront::Gog)
+        .flat_map(|(account_id, storefront)| {
+            db.list_favorite_ids(account_id, *storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list favorite ids"))
                 .unwrap_or_default()
         })
@@ -328,10 +342,10 @@ pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashS
     else {
         return std::collections::HashSet::new();
     };
-    gog_accounts(profile_id)
+    owners(profile_id)
         .iter()
-        .flat_map(|account_id| {
-            db.hidden_ids(account_id, Storefront::Gog)
+        .flat_map(|(account_id, storefront)| {
+            db.hidden_ids(account_id, *storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list hidden ids"))
                 .unwrap_or_default()
         })
@@ -343,7 +357,7 @@ pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashS
 /// below would mean hundreds of round trips on every keystroke.
 ///
 /// When two accounts own the same product, whichever is first in
-/// `gog_accounts`'s order wins that product's stats — the same account
+/// `owners`'s order wins that product's stats — the same account
 /// `gog_library`'s merge already picked to represent it on screen, so the
 /// numbers shown next to a game always describe the copy actually
 /// displayed rather than a blend of two.
@@ -354,27 +368,28 @@ pub(super) fn library_stats(profile_id: &str) -> LibraryStats {
         return LibraryStats::default();
     };
     let mut stats = LibraryStats::default();
-    for account_id in gog_accounts(profile_id).iter().rev() {
+    for (account_id, storefront) in owners(profile_id).iter().rev() {
+        let storefront = *storefront;
         // Reversed: later inserts overwrite earlier ones in a HashMap, so
         // running oldest-account-last makes the *first* account's entry
         // the one left standing for a product both have.
         stats.playtime.extend(
-            db.all_playtime(account_id, Storefront::Gog)
+            db.all_playtime(account_id, storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read playtime stats"))
                 .unwrap_or_default(),
         );
         stats.achievements.extend(
-            db.all_achievement_counts(account_id, Storefront::Gog)
+            db.all_achievement_counts(account_id, storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read achievement count stats"))
                 .unwrap_or_default(),
         );
         stats.added.extend(
-            db.all_first_seen(account_id, Storefront::Gog)
+            db.all_first_seen(account_id, storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read first-seen stats"))
                 .unwrap_or_default(),
         );
         stats.added_rank.extend(
-            db.all_library_ranks(account_id, Storefront::Gog)
+            db.all_library_ranks(account_id, storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to read library rank stats"))
                 .unwrap_or_default(),
         );
@@ -444,18 +459,18 @@ impl LibraryStats {
     }
 }
 
-pub(super) fn load_playtime(account_id: &str, product_id: &str) -> Playtime {
+pub(super) fn load_playtime(account_id: &str, storefront: Storefront, product_id: &str) -> Playtime {
     Db::open(decanter_core::default_db_path())
-        .and_then(|db| db.get_playtime(account_id, Storefront::Gog, product_id))
+        .and_then(|db| db.get_playtime(account_id, storefront, product_id))
         .inspect_err(
             |err| tracing::warn!(account_id, product_id, error = %err, "failed to read playtime, defaulting to zero"),
         )
         .unwrap_or_default()
 }
 
-pub(super) fn add_playtime(account_id: &str, product_id: &str, seconds: i64) {
+pub(super) fn add_playtime(account_id: &str, storefront: Storefront, product_id: &str, seconds: i64) {
     if let Ok(db) = Db::open(decanter_core::default_db_path()) {
-        if let Err(err) = db.add_playtime(account_id, Storefront::Gog, product_id, seconds) {
+        if let Err(err) = db.add_playtime(account_id, storefront, product_id, seconds) {
             tracing::warn!(account_id, product_id, seconds, error = %err, "failed to record playtime");
         }
     } else {

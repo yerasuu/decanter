@@ -93,6 +93,9 @@ pub struct GogLibrary {
     by_account: HashMap<String, Vec<LibraryEntry>>,
     /// One fetch loop per account. Dropping a task cancels it.
     tasks: HashMap<String, Task<()>>,
+    /// The profile's external games (see `crate::external`), read from
+    /// their manifests and appended after every account's GOG games.
+    external: Vec<LibraryEntry>,
 }
 
 impl GogLibrary {
@@ -114,6 +117,7 @@ impl GogLibrary {
             wanted: Vec::new(),
             by_account: HashMap::new(),
             tasks: HashMap::new(),
+            external: Vec::new(),
         };
         this.reconcile(cx);
         this
@@ -154,7 +158,16 @@ impl GogLibrary {
         if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
             entry.game.install_state = install_state;
         }
-        self.games = merge(&self.by_account, &self.wanted);
+        self.games = merge(&self.by_account, &self.wanted, &self.external);
+        self.revision = self.revision.wrapping_add(1);
+        cx.notify();
+    }
+
+    /// Re-reads the profile's external games after one was added, edited
+    /// or removed — nothing about them needs the network.
+    pub fn refresh_external(&mut self, cx: &mut Context<Self>) {
+        self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
+        self.games = merge(&self.by_account, &self.wanted, &self.external);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -174,7 +187,7 @@ impl GogLibrary {
         }
         self.by_account.remove(account_id);
         self.wanted.retain(|wanted| wanted != account_id);
-        self.games = merge(&self.by_account, &self.wanted);
+        self.games = merge(&self.by_account, &self.wanted, &self.external);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -212,9 +225,10 @@ impl GogLibrary {
         });
         self.by_account.retain(|account_id, _| wanted.contains(account_id));
         self.wanted = wanted;
+        self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
 
         if self.wanted.is_empty() {
-            self.games.clear();
+            self.games.clone_from(&self.external);
             self.revision = self.revision.wrapping_add(1);
             self.state = LibraryState::Idle;
             self.enrich_progress = None;
@@ -247,7 +261,7 @@ impl GogLibrary {
             });
             self.tasks.insert(account_id, task);
         }
-        self.games = merge(&self.by_account, &self.wanted);
+        self.games = merge(&self.by_account, &self.wanted, &self.external);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -259,19 +273,31 @@ impl GogLibrary {
             return false;
         };
         *account_games = shown;
-        self.games = merge(&self.by_account, &self.wanted);
+        self.games = merge(&self.by_account, &self.wanted, &self.external);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
         true
     }
 }
 
+fn external_entries(profile_id: &str) -> Vec<LibraryEntry> {
+    crate::external::list(profile_id)
+        .iter()
+        .map(crate::external::entry)
+        .collect()
+}
+
 /// Concatenates every account's games into one list, keeping the first
 /// copy of a product a given account owns — two accounts with the same
 /// game would otherwise show it twice. `order` decides which account's
 /// copy wins a duplicate (oldest account first, the order
-/// `decanter_core::Db::accounts_in_profile` returns).
-fn merge(by_account: &HashMap<String, Vec<LibraryEntry>>, order: &[String]) -> Vec<LibraryEntry> {
+/// `decanter_core::Db::accounts_in_profile` returns). External games go
+/// last; they never duplicate anything.
+fn merge(
+    by_account: &HashMap<String, Vec<LibraryEntry>>,
+    order: &[String],
+    external: &[LibraryEntry],
+) -> Vec<LibraryEntry> {
     let mut seen = std::collections::HashSet::new();
     let mut merged = Vec::new();
     for account_id in order {
@@ -284,6 +310,7 @@ fn merge(by_account: &HashMap<String, Vec<LibraryEntry>>, order: &[String]) -> V
             }
         }
     }
+    merged.extend_from_slice(external);
     merged
 }
 

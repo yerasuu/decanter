@@ -12,6 +12,7 @@ use gpui::{
 
 use super::chrome;
 use super::downloads::DownloadsView;
+use super::external::ExternalView;
 use super::library::LibraryView;
 use super::profile_form::{self, ProfileForm};
 use super::ps::PsView;
@@ -28,6 +29,7 @@ pub enum Page {
     Downloads,
     Ps,
     Settings,
+    External,
 }
 
 /// Sentinel select value: not a real profile id (those are uuids), so it
@@ -43,6 +45,7 @@ pub struct Shell {
     downloads: Option<Entity<DownloadsView>>,
     ps: Option<Entity<PsView>>,
     settings: Option<Entity<SettingsView>>,
+    external: Option<Entity<ExternalView>>,
     profiles: Vec<Profile>,
     new_profile: Option<(Entity<ProfileForm>, Subscription)>,
     on_close: Rc<dyn Fn(&mut Window, &mut App)>,
@@ -51,8 +54,20 @@ pub struct Shell {
 impl Shell {
     pub fn new(on_close: Rc<dyn Fn(&mut Window, &mut App)>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::get(cx).clone();
-        cx.observe(&state.session, |this, _, cx| {
+        let mut external_request = state.session.read(cx).external_request;
+        cx.observe_in(&state.session, window, move |this, session, window, cx| {
             this.reload_profiles();
+            let (request, editing) = {
+                let session = session.read(cx);
+                (session.external_request, session.external_edit.clone())
+            };
+            if request != external_request {
+                external_request = request;
+                this.navigate(Page::External, window, cx);
+                if let Some(view) = &this.external {
+                    view.update(cx, |view, cx| view.start(editing, cx));
+                }
+            }
             cx.notify();
         })
         .detach();
@@ -65,6 +80,7 @@ impl Shell {
             downloads: None,
             ps: None,
             settings: None,
+            external: None,
             profiles: Vec::new(),
             new_profile: None,
             on_close,
@@ -116,6 +132,9 @@ impl Shell {
                 if self.settings.is_none() {
                     self.settings = Some(cx.new(|cx| SettingsView::new(window, cx)));
                 }
+            }
+            Page::External => {
+                self.external.get_or_insert_with(|| cx.new(ExternalView::new));
             }
         }
         self.page = page;
@@ -375,6 +394,10 @@ impl Render for Shell {
                 |view| view.cached(page()).into_any_element(),
             ),
             Page::Settings => self.settings.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::External => self.external.clone().map_or_else(
                 || div().into_any_element(),
                 |view| view.cached(page()).into_any_element(),
             ),

@@ -115,13 +115,14 @@ impl LibraryModel {
     /// whichever account's copy is actually on screen.
     pub fn select(&mut self, product_id: Option<String>, cx: &mut Context<Self>) {
         self.selected = product_id;
+        // An external game has no achievements anywhere to poll.
         let account_id = self.selected.as_deref().and_then(|id| {
             AppState::get(cx)
                 .library
                 .read(cx)
                 .games
                 .iter()
-                .find(|entry| entry.game.id == id)
+                .find(|entry| entry.game.id == id && entry.game.storefront == decanter_core::Storefront::Gog)
                 .map(|entry| entry.game.account_id.clone())
         });
         match (account_id, self.selected.clone()) {

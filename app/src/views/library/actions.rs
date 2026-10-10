@@ -42,6 +42,11 @@ pub fn game_install_path(account_id: &str, product_id: &str) -> Option<std::path
         );
         return None;
     };
+    // Never installed under `common/`: its files are wherever the
+    // executable it was pointed at lives.
+    if installed.storefront == decanter_core::Storefront::Unspecified {
+        return crate::core::executable_for(&installed).and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
+    }
     let Some(library) = crate::core::library_for_account(account_id)
         .inspect_err(|err| tracing::warn!(account_id, product_id, error = %err, "failed to resolve library root"))
         .ok()
@@ -65,6 +70,7 @@ pub fn launch_game(account_id: String, game: InstalledGame, cx: &mut App) {
     let background = AppState::get(cx).background.clone();
     cx.spawn(async move |cx| {
         let product_id = game.game_id.clone();
+        let storefront = game.storefront;
         tracing::info!(account_id, product_id, "launching game");
         let Some(played) = crate::launch::start(account_id.clone(), game, background.clone(), cx).await else {
             return;
@@ -75,7 +81,7 @@ pub fn launch_game(account_id: String, game: InstalledGame, cx: &mut App) {
             seconds = played.as_secs(),
             "recording play session"
         );
-        data::add_playtime(&account_id, &product_id, played.as_secs() as i64);
+        data::add_playtime(&account_id, storefront, &product_id, played.as_secs() as i64);
         background.update(cx, |background, cx| {
             background.playtime_generation = background.playtime_generation.wrapping_add(1);
             cx.notify();

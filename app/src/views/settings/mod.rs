@@ -1,14 +1,14 @@
 //! decanter's own settings — off the library nav entirely, the way Steam
 //! keeps these behind the gear beside the account switcher rather than as
-//! a tab of its own. Four tabs: window behaviour, the profile's accounts
-//! (and where its library lives), the default Proton every game runs on
-//! unless it pins one of its own (global, not tied to any profile), and
-//! external shortcuts (per profile).
+//! a tab of its own. Three tabs: window behaviour, the profile's accounts
+//! (and where its library lives), and the default Proton every game runs
+//! on unless it pins one of its own (global, not tied to any profile).
+//! External games are added from Biblioteca instead (see
+//! `crate::views::external`).
 
 mod account;
 mod compatibility;
 mod general;
-mod shortcuts;
 
 use decanter_core::Storefront;
 use gpui::{Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
@@ -18,21 +18,18 @@ use crate::theme;
 use account::AccountTab;
 use compatibility::CompatibilityTab;
 use general::GeneralTab;
-use shortcuts::ShortcutsTab;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     General,
     Account,
     Compatibility,
-    Shortcuts,
 }
 
-const TABS: [(Tab, &str); 4] = [
+const TABS: [(Tab, &str); 3] = [
     (Tab::General, "General"),
     (Tab::Account, "Cuenta"),
     (Tab::Compatibility, "Compatibilidad"),
-    (Tab::Shortcuts, "Externos"),
 ];
 
 /// The open tab's own entity. Rebuilt on every tab switch or profile
@@ -42,7 +39,6 @@ enum Body {
     General(Entity<GeneralTab>),
     Account(Entity<AccountTab>),
     Compatibility(Entity<CompatibilityTab>),
-    Shortcuts(Entity<ShortcutsTab>),
 }
 
 pub struct SettingsView {
@@ -87,7 +83,6 @@ impl SettingsView {
             Tab::General => Body::General(cx.new(GeneralTab::new)),
             Tab::Account => Body::Account(cx.new(|cx| AccountTab::new(profile_id, cx))),
             Tab::Compatibility => Body::Compatibility(cx.new(CompatibilityTab::new)),
-            Tab::Shortcuts => Body::Shortcuts(cx.new(|cx| ShortcutsTab::new(profile_id, cx))),
         });
         cx.notify();
     }
@@ -107,7 +102,6 @@ impl Render for SettingsView {
             (Ok(()), Some(Body::General(tab))) => tab.clone().into_any_element(),
             (Ok(()), Some(Body::Account(tab))) => tab.clone().into_any_element(),
             (Ok(()), Some(Body::Compatibility(tab))) => tab.clone().into_any_element(),
-            (Ok(()), Some(Body::Shortcuts(tab))) => tab.clone().into_any_element(),
             // Shell's onboarding gate means this can't actually happen any
             // more — a profile always exists by the time any screen renders —
             // kept as a fallback rather than an `unreachable!` in case that
