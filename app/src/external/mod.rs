@@ -12,6 +12,7 @@
 
 pub mod art;
 pub mod import;
+pub mod launchers;
 mod transfer;
 pub mod umu;
 
@@ -81,6 +82,9 @@ pub struct Draft {
     pub art: GameArt,
     /// The UMU database entry it launches as; `None` is `umu-default`.
     pub umu: Option<UmuEntry>,
+    /// The external game whose prefix this one shares — set for a game a
+    /// launcher installed, which has to run where that launcher did.
+    pub prefix_of: Option<String>,
 }
 
 /// One row of the UMU database, as far as launching cares.
@@ -116,6 +120,7 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         cloud_save_last_sync: None,
         umu_id: draft.umu.as_ref().map(|umu| umu.id.clone()),
         umu_store: draft.umu.and_then(|umu| umu.store),
+        prefix_of: draft.prefix_of,
         art: draft.art,
     };
     library
@@ -127,17 +132,30 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
 
 /// Forgets an external game (manifest, favorites, playtime, collections)
 /// and deletes its prefix, which is also where anything its installer put
-/// under `C:\` lives. Files it was pointed at outside the prefix are left
-/// alone: decanter never put them there.
+/// under `C:\` lives — along with every game a launcher in that prefix
+/// installed. A game that only shares a launcher's prefix leaves it be.
+/// Files it was pointed at outside the prefix are left alone: decanter
+/// never put them there.
 pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
     let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
+    let removed = library.read_manifest(profile_id, Storefront::Unspecified, id);
+    // Games a launcher installed live in its prefix, which is about to go:
+    // they go with it rather than pointing at nothing.
+    for hosted in list(profile_id)
+        .into_iter()
+        .filter(|game| game.prefix_of.as_deref() == Some(id))
+    {
+        crate::achv_try!(remove(profile_id, &hosted.game_id));
+    }
     crate::achv_try!(
         library
             .remove_manifest(profile_id, Storefront::Unspecified, id)
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to remove external game manifest"))
             .map_err(|err| format!("borrando el juego: {err}"))
     );
-    if let Some(compatdata) = library.compatdata(profile_id, id) {
+    // A hosted game's prefix is its launcher's, still in use.
+    let owns_prefix = removed.is_none_or(|game| game.prefix_of.is_none());
+    if owns_prefix && let Some(compatdata) = library.compatdata(profile_id, id) {
         match std::fs::remove_dir_all(&compatdata) {
             Ok(()) => {}
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}

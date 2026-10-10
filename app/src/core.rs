@@ -217,7 +217,11 @@ pub fn prefix_for(account_id: &str, game_id: &str) -> Option<decanter_runtime::P
         tracing::debug!(account_id, game_id, "no prefix, library unavailable");
         return None;
     };
-    let Some(compatdata) = library.compatdata(account_id, game_id) else {
+    // A game a launcher installed runs in that launcher's prefix.
+    let owner = installed_game(account_id, game_id)
+        .and_then(|game| game.prefix_of)
+        .unwrap_or_else(|| game_id.to_owned());
+    let Some(compatdata) = library.compatdata(account_id, &owner) else {
         tracing::warn!(account_id, game_id, "could not resolve compatdata path for prefix");
         return None;
     };

@@ -85,6 +85,10 @@ pub struct GameForm {
     /// An edit keeps its Proton pin for the installer too.
     proton: Option<String>,
     umu: Option<crate::external::UmuEntry>,
+    /// Kept through an edit: whose prefix this game runs in.
+    prefix_of: Option<String>,
+    /// That game's name, to say so on the form.
+    host_name: Option<String>,
     name: Entity<TextInput>,
     executable: Entity<TextInput>,
     art: GameArt,
@@ -135,6 +139,8 @@ impl GameForm {
                 editing: false,
                 proton: None,
                 umu: None,
+                prefix_of: None,
+                host_name: None,
                 name,
                 executable,
                 art: GameArt::default(),
@@ -163,6 +169,8 @@ impl GameForm {
             id: game.game_id,
             editing: true,
             proton: game.proton,
+            prefix_of: game.prefix_of,
+            host_name: None,
             umu: game.umu_id.map(|id| crate::external::UmuEntry {
                 id,
                 store: game.umu_store,
@@ -185,6 +193,27 @@ impl GameForm {
             scrolls: Default::default(),
             paging: None,
         }
+    }
+
+    /// A new game a launcher installed in `host`'s prefix: filled in from
+    /// what was found, running in that prefix with `host`'s Proton, and its
+    /// art and UMU entry already being looked up by name.
+    pub fn hosted(
+        profile_id: String,
+        host: &InstalledGame,
+        found: &crate::external::launchers::Detected,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut this = Self::new(profile_id, None, cx);
+        this.prefix_of = Some(host.game_id.clone());
+        this.host_name = Some(host.name.clone());
+        this.proton.clone_from(&host.proton);
+        this.name.update(cx, |input, cx| input.set_text(found.name.clone(), cx));
+        this.executable.update(cx, |input, cx| {
+            input.set_text(found.executable.to_string_lossy().into_owned(), cx);
+        });
+        this.search_art(cx);
+        this
     }
 
     pub fn is_editing(&self, id: &str) -> bool {
@@ -462,6 +491,7 @@ impl GameForm {
             executable,
             art: self.art.clone(),
             umu: self.umu.clone(),
+            prefix_of: self.prefix_of.clone(),
         };
         if let Some(picked) = self.import_from.clone() {
             self.importing = true;
@@ -851,7 +881,15 @@ impl Render for GameForm {
             .flex()
             .flex_col()
             .child(div().mb_3().max_w(px(520.)).child(self.name.clone()))
-            .when(!self.editing, |form| form.child(self.installer_row(cx)))
+            .when(!self.editing && self.prefix_of.is_none(), |form| {
+                form.child(self.installer_row(cx))
+            })
+            .children(self.host_name.as_ref().map(|host| {
+                theme::muted(format!(
+                    "Lo instaló {host}: corre en su prefijo, con su Proton, su sesión y sus datos."
+                ))
+                .mb_3()
+            }))
             .child(
                 div()
                     .flex()

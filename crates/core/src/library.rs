@@ -136,6 +136,10 @@ pub struct InstalledGame {
     /// The database row's store, which is where protonfixes looks for the
     /// fix itself. `None` alongside `umu_id` means umu's own store.
     pub umu_store: Option<String>,
+    /// The game whose prefix this one runs in, when it was installed by a
+    /// launcher (HoYoPlay, say) that is itself the other game: its login,
+    /// anticheat and data live in that prefix, not one of its own.
+    pub prefix_of: Option<String>,
 }
 
 /// Image URLs for a game added from outside any storefront, kept in its
@@ -243,6 +247,7 @@ impl InstalledGame {
             cloud_save_last_sync: root.get("CloudSaveLastSync").and_then(|value| value.parse().ok()),
             umu_id: root.get("UmuId").map(str::to_owned),
             umu_store: root.get("UmuStore").map(str::to_owned),
+            prefix_of: root.get("PrefixOf").map(str::to_owned),
             art: root
                 .get_block("Art")
                 .map(|art| GameArt {
@@ -321,6 +326,9 @@ impl InstalledGame {
         }
         if let Some(store) = self.umu_store.as_ref() {
             root.insert("UmuStore", store.clone());
+        }
+        if let Some(host) = self.prefix_of.as_ref() {
+            root.insert("PrefixOf", host.clone());
         }
         if self.art != GameArt::default() {
             let mut art = Value::block();
@@ -931,6 +939,7 @@ mod tests {
             storefront: Storefront::Unspecified,
             umu_id: Some("umu-endfield".to_owned()),
             umu_store: None,
+            prefix_of: Some("8d1f6c0e-2b7a-4f8e-9c3d-5a6b7c8d9e0f".to_owned()),
         };
         library.write_manifest(&game).expect("manifest written");
         let read = library.read_manifest("profile", Storefront::Unspecified, &game.game_id);

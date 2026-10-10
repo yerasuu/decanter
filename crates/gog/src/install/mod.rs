@@ -370,6 +370,7 @@ async fn install_into(
                 art: GameArt::default(),
                 umu_id: None,
                 umu_store: None,
+                prefix_of: None,
             })
             .inspect_err(|err| tracing::error!(product_id, error = %err, "writing the appmanifest failed"))
             .context("writing the appmanifest")
