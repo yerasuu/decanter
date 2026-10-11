@@ -4,10 +4,11 @@
 use decanter_ps::library::Platform;
 use decanter_ps::status::Entry;
 use gpui::{
-    BoxShadow, Context, Entity, ObjectFit, SharedString, Window, div, img, linear_color_stop, linear_gradient, point,
-    prelude::*, px, rgb,
+    BoxShadow, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, SharedString, WeakEntity, Window, div, img,
+    linear_color_stop, linear_gradient, point, prelude::*, px, rgb,
 };
 
+use super::GamesView;
 use super::detail::DetailView;
 use super::{art_url, display_title, platform_label, status_text};
 use crate::state::Ps;
@@ -20,18 +21,26 @@ const GROUP: &str = "ps-cover";
 pub struct BrowserView {
     ps: Entity<Ps>,
     detail: Entity<DetailView>,
+    /// Holds the game menu a right-click on a cover opens.
+    games: WeakEntity<GamesView>,
 }
 
 impl BrowserView {
-    pub fn new(ps: Entity<Ps>, detail: Entity<DetailView>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        ps: Entity<Ps>,
+        detail: Entity<DetailView>,
+        games: WeakEntity<GamesView>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.observe(&ps, |_, _, cx| cx.notify()).detach();
-        Self { ps, detail }
+        Self { ps, detail, games }
     }
 
     fn card(&self, entry: &Entry) -> impl IntoElement + use<> {
         let game = &entry.game;
         let dir = game.dir.clone();
         let detail = self.detail.clone();
+        let (games, menu_dir) = (self.games.clone(), game.dir.clone());
         let ready = entry.status.playable();
         let art = div()
             .id("ps-cover-art")
@@ -103,6 +112,9 @@ impl BrowserView {
             .gap(px(8.))
             .cursor_pointer()
             .on_click(move |_, _, cx| detail.update(cx, |detail, cx| detail.select(dir.clone(), cx)))
+            .on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _, cx| {
+                let _ = games.update(cx, |games, cx| games.open_menu(menu_dir.clone(), event.position, cx));
+            })
             .child(art)
             .child(
                 div()

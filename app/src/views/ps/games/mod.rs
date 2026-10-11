@@ -2,6 +2,7 @@
 //! cover browser or the selected game — the same shape as Biblioteca.
 
 mod browser;
+mod context_menu;
 mod detail;
 mod extras;
 mod gamepad;
@@ -11,15 +12,19 @@ mod mods;
 
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::Status;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use gpui::{
-    AnyElement, Context, Entity, ObjectFit, SharedString, StyleRefinement, Window, div, img, prelude::*, px, rgb,
-    uniform_list,
+    AnyElement, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, Pixels, Point, SharedString, StyleRefinement,
+    Window, div, img, prelude::*, px, rgb, uniform_list,
 };
 
 use crate::state::{AppState, Ps};
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button, tooltip};
 use browser::BrowserView;
+use context_menu::GameMenu;
 use detail::DetailView;
 
 const SIDEBAR_WIDTH: f32 = 292.;
@@ -38,6 +43,7 @@ pub struct GamesView {
     search: Entity<TextInput>,
     detail: Entity<DetailView>,
     browser: Entity<BrowserView>,
+    menu: Option<GameMenu>,
 }
 
 impl GamesView {
@@ -45,7 +51,8 @@ impl GamesView {
         cx.observe(&ps, |_, _, cx| cx.notify()).detach();
         let detail = cx.new(|cx| DetailView::new(ps.clone(), cx));
         cx.observe(&detail, |_, _, cx| cx.notify()).detach();
-        let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), cx));
+        let games = cx.entity().downgrade();
+        let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), games, cx));
         let search = cx.new(|cx| TextInput::new("Buscar", cx));
         cx.subscribe(&search, |_, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
@@ -70,7 +77,14 @@ impl GamesView {
             search,
             detail,
             browser,
+            menu: None,
         }
+    }
+
+    /// The right-click menu of the game in `dir`, from its row or its cover.
+    pub fn open_menu(&mut self, dir: PathBuf, position: Point<Pixels>, cx: &mut Context<Self>) {
+        self.menu = Some(GameMenu { dir, position });
+        cx.notify();
     }
 
     /// Headers and games in list order: PS4 first, then PS5, each by title,
@@ -191,10 +205,16 @@ impl GamesView {
                     .text_color(rgb(theme::TEXT_BRIGHT))
                     .border_color(rgb(theme::ACCENT_BLUE))
             })
-            .on_click(move |_, _, cx| {
-                view.update(cx, |this, cx| {
-                    this.detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
-                });
+            .on_click({
+                let (view, dir) = (view.clone(), dir.clone());
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
+                    });
+                }
+            })
+            .on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _, cx| {
+                view.update(cx, |this, cx| this.open_menu(dir.clone(), event.position, cx));
             })
             .child(icon(game, ICON))
             .child(div().flex_1().min_w_0().truncate().child(display_title(game)))
@@ -230,7 +250,7 @@ fn header(platform: Platform, count: usize) -> AnyElement {
 }
 
 impl Render for GamesView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let error = self.ps.read(cx).error().map(str::to_owned);
         let pane = if self.detail.read(cx).selected().is_some() {
             div()
@@ -245,7 +265,17 @@ impl Render for GamesView {
                 .cached(StyleRefinement::default().size_full())
                 .into_any_element()
         };
-        div().size_full().flex().child(self.sidebar(cx)).child(
+        let menu = self.menu.as_ref().and_then(|target| {
+            let view = cx.entity().downgrade();
+            let dismiss: crate::widgets::menu::Dismiss = Rc::new(move |_, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    this.menu = None;
+                    cx.notify();
+                });
+            });
+            context_menu::render(target, &self.ps, &self.detail, window, dismiss, cx)
+        });
+        div().size_full().flex().children(menu).child(self.sidebar(cx)).child(
             div()
                 .flex_1()
                 .min_w_0()

@@ -25,7 +25,7 @@ const ANYPS5_NIX: &str = include_str!("anyps5.nix");
 /// What bbport's `build.sh` checks for before it gives up on the host,
 /// plus Python for `run.sh`'s helpers.
 const BBPORT_HOST_CHECK: &str = "command -v cc && command -v cmake && command -v ninja && command -v python3 \
-     && command -v pkg-config && pkg-config --exists vulkan sdl3";
+     && command -v pkg-config && pkg-config --exists vulkan sdl3 freetype2";
 
 /// AnyPS5 links its executables against a static glibc, which few hosts
 /// ship: `-print-file-name` echoes the bare name back when it has none.
