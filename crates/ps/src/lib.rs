@@ -13,7 +13,7 @@
 )]
 #![expect(
     clippy::large_stack_frames,
-    reason = "the binding defaults table and the SFO test fixture cost more than the 512-byte threshold"
+    reason = "the binding defaults table costs more than the 512-byte threshold"
 )]
 
 pub mod anyps5;

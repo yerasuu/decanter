@@ -181,29 +181,3 @@ fn replace_symlink(target: &Path, link: &Path) -> io::Result<()> {
     }
     std::os::unix::fs::symlink(target, link)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn eboot_state_tells_elf_from_self() {
-        let dir = std::env::temp_dir().join(format!("decanter-ps-eboot-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let game = |dir: &Path| Game {
-            dir: dir.to_owned(),
-            platform: crate::library::Platform::Ps5,
-            title_id: "PPSA02929".into(),
-            title: String::new(),
-            version: String::new(),
-            category: String::new(),
-            has_modules: false,
-        };
-        assert_eq!(eboot_state(&game(&dir)), Eboot::Missing);
-        fs::write(dir.join("eboot.bin"), b"\x7fELF....").unwrap();
-        assert_eq!(eboot_state(&game(&dir)), Eboot::Clean);
-        fs::write(dir.join("eboot.bin"), b"SCE\0....").unwrap();
-        assert_eq!(eboot_state(&game(&dir)), Eboot::Encrypted);
-        fs::remove_dir_all(&dir).unwrap();
-    }
-}

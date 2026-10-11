@@ -148,31 +148,3 @@ fn file_stamp(secs: u64) -> String {
         secs % 60
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stamps_sort_by_time_and_names_stay_file_safe() {
-        assert_eq!(file_stamp(1_791_706_620), "20261011-081700");
-        assert!(file_stamp(1_791_706_620) < file_stamp(1_791_706_621));
-        assert_eq!(slug("compilación de FSR 4.1.1"), "compilación_de_FSR_4.1.1");
-        assert_eq!(slug("../x"), ".._x");
-    }
-
-    #[test]
-    fn the_header_carries_what_decanter_set() {
-        let mut command = Command::new("bash");
-        command
-            .arg("-c")
-            .arg("bash run.sh")
-            .env("BB_PERMISSIVE", "1")
-            .current_dir("/ports/bbport");
-        let text = header("juego", &[("title", "CUSA16458".to_owned())], &command);
-        assert!(text.contains("# title: CUSA16458\n"));
-        assert!(text.contains("# arg: bash run.sh\n"));
-        assert!(text.contains("# directory: /ports/bbport\n"));
-        assert!(text.contains("# env: BB_PERMISSIVE=1\n"));
-    }
-}

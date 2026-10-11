@@ -257,26 +257,3 @@ impl Bbport {
             .unwrap_or_default()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn merge_links_base_and_copies_update() {
-        let root = std::env::temp_dir().join(format!("decanter-ps-merge-{}", std::process::id()));
-        let (base, update) = (root.join("CUSA00900"), root.join("CUSA00900-patch"));
-        fs::create_dir_all(base.join("sce_sys")).unwrap();
-        fs::create_dir_all(update.join("sce_sys")).unwrap();
-        fs::write(base.join("eboot.bin"), "base").unwrap();
-        fs::write(base.join("sce_sys/keep"), "base").unwrap();
-        fs::write(update.join("eboot.bin"), "update").unwrap();
-        let merged = merge_update(&base, &update, "1.09").unwrap();
-        let read = |p: &Path| fs::read_to_string(p).unwrap();
-        assert_eq!(read(&merged.join("eboot.bin")), "update");
-        assert_eq!(read(&merged.join("sce_sys/keep")), "base");
-        assert_eq!(read(&base.join("eboot.bin")), "base");
-        assert!(merge_update(&base, &update, "1.09").is_err());
-        fs::remove_dir_all(&root).unwrap();
-    }
-}

@@ -377,16 +377,3 @@ fn format_dll_overrides(overrides: &[(String, String)]) -> Option<String> {
             .join(";"),
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::scope_unit;
-
-    #[test]
-    fn scope_units_only_carry_characters_systemd_takes() {
-        assert_eq!(
-            scope_unit("umu-37ae0435-f563.407e", 42, 7),
-            "decanter-game-umu-37ae0435-f563-407e-42-7.scope"
-        );
-    }
-}

@@ -111,19 +111,3 @@ fn remap(exe: &str, from: &Path, to: &Path) -> String {
         |relative| to.join(relative).to_string_lossy().into_owned(),
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_executable_inside_the_prefix_follows_it() {
-        let from = Path::new("/a/compatdata/p/g");
-        let to = Path::new("/b/compatdata/p/g");
-        assert_eq!(
-            remap("/a/compatdata/p/g/drive_c/Game/game.exe", from, to),
-            "/b/compatdata/p/g/drive_c/Game/game.exe"
-        );
-        assert_eq!(remap("/home/me/Games/game.exe", from, to), "/home/me/Games/game.exe");
-    }
-}

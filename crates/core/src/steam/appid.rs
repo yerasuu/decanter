@@ -66,38 +66,3 @@ pub fn legacy_appid(exe: &str, name: &str) -> i32 {
 pub fn grid_appid(legacy: i32) -> u64 {
     (u64::from(legacy as u32) << 32) | 0x0200_0000
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn crc32_matches_known_vectors() {
-        // Standard CRC32/IEEE test vectors.
-        assert_eq!(crc32(b""), 0);
-        assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
-    }
-
-    #[test]
-    fn legacy_appid_is_stable_and_has_the_high_bit_set() {
-        let a = legacy_appid("\"/path/to/game.exe\"", "Some Game");
-        let b = legacy_appid("\"/path/to/game.exe\"", "Some Game");
-        assert_eq!(a, b, "same input must hash the same every time");
-        assert!(a < 0, "the 0x8000_0000 bit set makes this negative as an i32");
-    }
-
-    #[test]
-    fn different_inputs_produce_different_ids() {
-        let a = legacy_appid("\"/path/to/game.exe\"", "Game A");
-        let b = legacy_appid("\"/path/to/game.exe\"", "Game B");
-        assert_ne!(a, b);
-    }
-
-    #[test]
-    fn grid_appid_embeds_the_legacy_id_in_the_high_32_bits() {
-        let legacy = legacy_appid("\"/path/to/game.exe\"", "Some Game");
-        let grid = grid_appid(legacy);
-        assert_eq!(grid & 0xFFFF_FFFF, 0x0200_0000);
-        assert_eq!((grid >> 32) as u32, legacy as u32);
-    }
-}

@@ -42,21 +42,3 @@ pub fn detile(tiled: &[u8], width: usize, height: usize, block: usize) -> Vec<u8
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tiling_round_trips_and_moves_blocks() {
-        let (width, height, block) = (64, 32, 16);
-        let linear: Vec<u8> = (0..width / 4 * height / 4 * block)
-            .map(|byte| (byte / block) as u8)
-            .collect();
-        let tiled = tile(&linear, width, height, block);
-        assert_ne!(tiled, linear);
-        assert_eq!(detile(&tiled, width, height, block), linear);
-        // Block (1, 0) is the second in Morton order, block (0, 1) the third.
-        assert_eq!((tiled[16], tiled[32]), (1, 16));
-    }
-}

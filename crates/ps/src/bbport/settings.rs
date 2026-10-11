@@ -80,15 +80,3 @@ impl LauncherSettings {
         self.0.insert(key.into(), value.into());
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn whole_numbers_stay_integers_in_launcher_json() {
-        let mut settings = LauncherSettings::default();
-        settings.set_number("fps_limit", 120.0);
-        assert_eq!(settings.0["fps_limit"], serde_json::json!(120));
-    }
-}

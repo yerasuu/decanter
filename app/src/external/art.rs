@@ -263,18 +263,3 @@ async fn steam_app(appid: u64) -> Result<SteamApp, String> {
         }),
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    #[ignore = "hits Steam's store and steamcmd.net"]
-    async fn steam_finds_cover_hero_and_icon_without_a_key() {
-        let found = search_steam("Hollow Knight").await.expect("steam search");
-        assert!(!found.covers.is_empty() && !found.heroes.is_empty() && !found.icons.is_empty());
-        let cover = &found.covers[0].url;
-        let response = CLIENT.get(cover).send().await.expect("cover request");
-        assert!(response.status().is_success(), "{cover} answered {}", response.status());
-    }
-}

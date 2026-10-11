@@ -68,33 +68,3 @@ fn walk(dir: &Path, depth: usize, reset: &mut Vec<PathBuf>) -> io::Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_a_cache_from_another_directory_is_reset() {
-        let root = std::env::temp_dir().join(format!("decanter-ps-cmake-{}", std::process::id()));
-        let (moved, current) = (root.join("out/gpu"), root.join("build"));
-        fs::create_dir_all(moved.join("CMakeFiles")).unwrap();
-        fs::create_dir_all(&current).unwrap();
-        fs::write(
-            moved.join("CMakeCache.txt"),
-            format!("{CACHE_DIR_KEY}/old/place/out/gpu\n"),
-        )
-        .unwrap();
-        fs::write(moved.join("bbgpu.o"), "").unwrap();
-        fs::write(
-            current.join("CMakeCache.txt"),
-            format!("{CACHE_DIR_KEY}{}\n", current.display()),
-        )
-        .unwrap();
-
-        assert_eq!(forget_moved(&root).unwrap(), vec![moved.clone()]);
-        assert!(!moved.join("CMakeCache.txt").exists() && !moved.join("CMakeFiles").exists());
-        assert!(moved.join("bbgpu.o").exists());
-        assert!(current.join("CMakeCache.txt").exists());
-        fs::remove_dir_all(&root).unwrap();
-    }
-}

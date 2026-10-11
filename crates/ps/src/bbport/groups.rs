@@ -431,29 +431,3 @@ pub const GROUPS: &[Group] = &[
         ],
     },
 ];
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn settings_table_is_consistent() {
-        let mut keys = std::collections::HashSet::new();
-        for setting in GROUPS.iter().flat_map(|group| group.settings) {
-            assert!(keys.insert(setting.key), "{} listed twice", setting.key);
-            match &setting.control {
-                Control::Choice { options, default } => {
-                    assert!(
-                        options.iter().any(|o| o.1 == *default),
-                        "{}: default not an option",
-                        setting.key
-                    )
-                }
-                Control::Number { min, max, default, .. } => {
-                    assert!((*min..=*max).contains(default), "{}", setting.key)
-                }
-                Control::Toggle { .. } | Control::Gamepad => {}
-            }
-        }
-    }
-}

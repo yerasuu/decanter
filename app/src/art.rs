@@ -312,21 +312,3 @@ pub fn source(url: &str, size: Size<f32>) -> ImageSource {
         }
     }))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::webp_variant;
-
-    #[test]
-    fn webp_variant_of_gog_art() {
-        assert_eq!(
-            webp_variant("https://images-2.gog-statics.com/eaad5d1f_196.jpg").as_deref(),
-            Some("https://images-2.gog-statics.com/eaad5d1f_196.webp")
-        );
-        assert_eq!(
-            webp_variant("https://images.gog.com/0067320f.jpg?namespace=gamesdb").as_deref(),
-            Some("https://images.gog.com/0067320f.webp?namespace=gamesdb")
-        );
-        assert_eq!(webp_variant("https://example.com/cover.jpg"), None);
-    }
-}

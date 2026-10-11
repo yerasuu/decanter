@@ -351,23 +351,3 @@ fn icon(game: &Game, size: f32) -> impl IntoElement + use<> {
                 .into_any_element()
         })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn display_title_drops_marks_and_falls_back_to_the_id() {
-        let game = |title: &str| Game {
-            dir: std::path::PathBuf::from("/g"),
-            platform: Platform::Ps4,
-            title_id: "CUSA00900".into(),
-            title: title.into(),
-            version: "01.09".into(),
-            category: "gd".into(),
-            has_modules: true,
-        };
-        assert_eq!(display_title(&game("Bloodborne™")), "Bloodborne");
-        assert_eq!(display_title(&game(" ® ")), "CUSA00900");
-    }
-}

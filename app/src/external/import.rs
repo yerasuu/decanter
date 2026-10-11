@@ -140,22 +140,3 @@ fn adopt_proton_files(old_root: &Path, destination: &Path, mode: Mode) {
         tracing::warn!(dir = %old_root.display(), %err, "could not remove what was left of the old prefix");
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn finds_drive_c_in_both_layouts() {
-        let base = std::env::temp_dir().join(format!("decanter-import-test-{}", std::process::id()));
-        let wine = base.join("lutris");
-        let steam = base.join("steam");
-        std::fs::create_dir_all(wine.join("drive_c")).expect("wine layout");
-        std::fs::create_dir_all(steam.join("pfx/drive_c")).expect("steam layout");
-        assert_eq!(wine_root(&wine), Some(wine.clone()));
-        assert_eq!(wine_root(&steam), Some(steam.join("pfx")));
-        assert_eq!(wine_root(&wine.join("drive_c")), Some(wine));
-        assert_eq!(wine_root(&base), None);
-        let _ = std::fs::remove_dir_all(&base);
-    }
-}

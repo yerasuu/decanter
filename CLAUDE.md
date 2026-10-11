@@ -93,18 +93,6 @@ that an AI wrote it.
   module. Never `println!` or `log::info!("Processing started")`
   in production code. Caught by: `println-in-production`.
 
-## Tests
-
-- Unit tests live inline under the code as `#[cfg(test)] mod tests {}`
-  blocks, never in a separate `tests.rs` file unless the crate is very
-  large. Inline keeps the test close to the implementation. Only
-  integration tests (testing the public API) go in `tests/`.
-- Pragmatic tests: happy path, real cases that break in production,
-  `#[should_panic]`, `#[ignore]` for integration. No theoretical
-  tests covering variants nobody constructs.
-- No theoretically perfect mocks. Use fixtures, temp files, real
-  data when feasible.
-  
 ## Commits
 
 - One logical change each. Message is one line, imperative, no body.
