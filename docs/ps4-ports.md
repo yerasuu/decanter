@@ -1,10 +1,17 @@
 # PS4 games beyond Bloodborne
 
-Decision (2026-10-10): neither option below. `Port::Bbport` follows
-decanter's fork of bbport, [yerasuu/psport](https://github.com/yerasuu/psport),
-with `deadinside28/bloodborne_pc` as its upstream remote. Every PS4 dump
+Since 2026-10-10 `Port::Bbport` follows decanter's fork of bbport,
+[yerasuu/psport](https://github.com/yerasuu/psport), with
+`deadinside28/bloodborne_pc` as its upstream remote. Every PS4 dump
 that is not Bloodborne is `Status::Experimental` and runs through it with
 `BB_SKIP_GAME_CHECK=1` and `BB_PERMISSIVE=1`, without mods.
+
+The goal is a compatibility layer, as Wine is, not an emulator: the
+game's x86-64 code runs natively and the port provides its system
+libraries. The fork's own record of what it adds, what it ports from
+other projects (with source commit and license) and its diagnostic
+variables is `FORK.md` in the fork; this page is decanter's summary.
+Upstream releases are merged in as they come (0.51 at `701f0a7`).
 
 Why the fork instead of universal_ps4_native: that repo is a one-commit
 copy of bbport from 2026-10-05 with no shared history, already behind
@@ -12,99 +19,73 @@ bbport's GPU code, and its generalization is small enough to redo on top
 of upstream. Both lacked the same pieces (scope-independent import
 resolution, event flags), so they are fixed once, in the fork.
 
-What the fork adds over upstream 0.5 (`c7e3e55`):
+## What the fork adds (as of `618396d`)
 
-- `scripts/patches.py`: an empty `patches.bin` for titles other than
-  Bloodborne; every built-in patch is a Bloodborne 1.09 address.
-- `src/probe.c`: `BB_PERMISSIVE=1` returns 0 from imports the runtime
-  lacks, logging each once.
-- `src/runtime.c`: imports resolve by NID whatever their `#lib#mod`
-  scope, through Bloodborne's scoped names; `src/import_names_all.inc`
-  names every NID in shadPS4's aerolib (97623), binary searched.
-- `src/runtime_kernel.c`: newer-SDK libc hooks (`_sceKernelSetThreadDtors`,
-  `sceLibcHeapGetTraceInfo`, sanitizer replacements).
-- `src/runtime_eventflag.c`: kernel event flags.
+Runtime (`src/`):
 
-Atelier Ryza (CUSA16458) gets through libc start, system modules, 32
-event flags and its loading threads, then faults at guest offset
-`0x609df4` reading a null graphics descriptor.
+- Imports resolve by NID whatever their `#lib#mod` scope
+  (`runtime_same_nid`); `import_names_all.inc` names every NID in
+  shadPS4's aerolib (97623), binary searched.
+- `BB_PERMISSIVE=1` returns 0 from imports the runtime lacks, each
+  logged once. Before the game starts, every import without
+  implementation or answered by a stub (`runtime_stub`) is listed, with a
+  summary line.
+- Newer-SDK libc hooks, kernel event flags, `ulobjmgr`, display safe
+  area, `sceKernelGetdents`, thread stacks kept in their attributes
+  (`scePthreadAttrSetstack`/`Getstackaddr`, `pthread_getstack_np`).
+- TLS module ids only for modules with TLS, up to 31.
+- `BB_AUDIO_STATS=1` reports each audio port's peak and RMS (dBFS) every
+  5 s, so a test tells sound from silence without listening.
 
-The comparison that led here follows.
+Libraries ported in (`gpu/`, each first committed as it was at the
+source):
 
-## Before the fork
+- `gpu/ngs2/`: libSceNgs2 from AnyPS5, adapted to PS4 structure
+  layouts. Produces silence in Ryza for now (`BB_HLE=libSceNgs2` +
+  `BB_AUDIO_STATS` measures it); the user's module is used instead.
+- `gpu/fiber/`: libSceFiber from shadPS4, on the game's GS-based TCB.
+  Preferred over the user's module (`BB_LLE=libSceFiber` to compare).
 
-As of 2026-10-10 decanter ran exactly one PS4 game: Bloodborne, through
-bbport. `decanter_ps::status::classify` sent every other PS4 dump to
-`Status::Unsupported`. Only `Platform::Ps5` dumps went to AnyPS5.
+System modules: `BB_SYS_MODULES=<folder>` links the user's own dump of
+the console's `*.sprx` a title needs, ahead of the port's versions. They
+are never shipped and each is a stopgap until the port implements its
+library.
 
-## Why AnyPS5 can't take PS4 games
+Diagnostics and tools: `BB_NGS2_TRACE`, `BB_FIBER_TRACE`,
+`BB_DUMP_SKIPPED_GS=<dir>` (GS, copy and ES programs of skipped
+stream-out setups), `tools/gcn_dis` (a GCN disassembler on the
+recompiler's decoder; LLVM does not disassemble gfx7).
 
-AnyPS5 ships the PS5 graphics stack only (`libSceAgc`, `libSceAgcDriver`,
-`libSceAgcVsh`). A PS4 `eboot.bin` imports `libSceGnmDriver`, and no host
-library in the checkout exports its NIDs. The only PS4 code in AnyPS5 is
-`sceSaveDataTransferringMountPs4` and `sceSaveDataDirNameSearchPs4`. Both
-exist so a PS5 title can look for PS4 saves, and both report nothing found.
+## What decanter does with it
 
-## Option 1: Ryty
+- `Port::Bbport` clones the fork; a checkout cloned from upstream has its
+  `origin` moved onto the fork at the next update check.
+- A port is rebuilt when its checkout moved since its last build (the
+  build marker holds toolchain and commit), and CMake caches left from
+  before the PS folder moved are reset.
+- Ajustes of the PS section picks the system module folder
+  (`sys_modules_dir`, passed as `BB_SYS_MODULES` to experimental titles).
+- Each job's whole output goes to `psport/logs/<target>-<action>-<time>.log`,
+  headed by decanter's version, the game, the port commit, the command,
+  its directory and environment; the last 30 per target are kept.
+- Fallos records, once per run, a "Falta" entry listing what the port
+  left unimplemented, imports the game actually called first.
 
-[aarvsn/Ryty](https://github.com/aarvsn/Ryty) is a fork of AnyPS5 that
-claims PS4 support from v1.0.1 (2026-10-03). GPL-2.0-only. Read at
-`63639c1` (v1.0.4, 2026-10-07).
+## Atelier Ryza (CUSA16458)
 
-- CLI: `ryty [options] <input.elf> <output>`, with `--ps4`, `--ps5` and
-  `--console auto|ps4|ps5`. Other flags match AnyPS5's relinker plus
-  `--report <file>` (JSON, schema `ryty-port-report/1`) and `--macos`.
-- Runtime layout: same as AnyPS5 (`libs/`, `app0/` beside the executable).
-- Environment: `RTY_*` variables. The `ANYPS5_*` names still work.
-  The input ini is `ryty-input.ini`.
-- Build: `cmake --preset linux-release`, then
-  `cmake --build build/linux-release --parallel`.
+With the user's module dump (LLE libSceNgs2, Rtc, Ult): sound, the title
+menu, New Game, the prologue's scenes and dialogue, and the field with
+the player in control. Tested headless (inside a headless gamescope, with
+scripted pad input through `BB_PAD_FILE` and the game's own frame dumps
+through `BB_PRESENT_DUMP_TRIGGER`).
 
-What the PS4 support is, read from the tree:
-
-- `ElfReader::DetectConsoleTarget` sniffs the file for `libSceGnmDriver`,
-  `libkernel.sprx`, `libkernel.prx` or `libScePad.sprx`.
-- `RelinkerPipeline` renames `*.sprx` imports to `*.prx`. That is the whole
-  PS4 backend: 8 lines in commit `899b8df`.
-- `core/libs/prx` has no `libSceGnmDriver` and no other PS4-only library.
-  The graphics libraries are the same three Agc ones as AnyPS5.
-- `docs/user/COMPATIBILITY.md` lists one title, Dreaming Sarah
-  (PPSA02929), a PS5 game. No CUSA title is listed.
-
-Verdict: with Ryty a PS4 executable gets past the import rename and then
-has nothing to bind its Gnm calls to. Integrating Ryty would be cheap,
-because it maps onto `Port::AnyPs5` almost one to one. It would still not
-run a PS4 game until someone writes a Gnm library for it.
-
-## Option 2: universal_ps4_native
-
-[mashedpotato0/universal_ps4_native](https://github.com/mashedpotato0/universal_ps4_native)
-generalizes bbport: it forks `deadinside28/bloodborne_pc`, which is
-bbport's upstream, so it uses the same `Port::Bbport` lineage.
-GPL-2.0-or-later, 25 commits, no releases.
-
-- Graphics: Gnm/Gnmx command buffers translated to Vulkan 1.3, with a Gnm
-  driver shim and a shader recompiler under `gpu/`. This is the piece
-  Ryty lacks.
-- Pipeline: extracts `.pkg` files (a base game plus its update), links
-  `eboot.bin` and the bundled `.prx` files into host memory, and emits one
-  standalone Linux executable per game:
-  `bin/ps4-native compile ./extracted/CUSAXXXXX`.
-- System calls it does not implement return success with no effect, so
-  titles keep booting.
-- Audio through PipeWire/SDL3. Input: DualSense, DualShock 4, generic
-  gamepads.
-- Build: `git clone --recursive`, then `./setup.sh`, then `./build.sh`.
-- Tested titles: Bloodborne and Street Fighter 30th Anniversary
-  Collection only.
-
-Fit with decanter: needs its own `Port` variant, since the setup, build
-and per-game compile steps don't match either current port. Bloodborne
-dump handling in `bbport.rs` (base plus update merge) is a likely starting
-point.
-
-## Not pursued
-
-shadPS4 ([shadps4.net](https://www.shadps4.net/), v0.19.0 on 2026-10-01)
-is the most compatible option. It is an emulator, not a native port, so
-it falls outside the bbport/AnyPS5 model decanter follows.
+Open: about 60000 draws a session use a geometry shader with stream-out
+and are skipped (upstream shadPS4 skips them too). Measured: stream 0 to
+buffer 0 only, 24-byte records (`VTX_STRIDE` 6 dwords), the copy shader
+takes the buffer V# through user-data pointer `s[2:3]`, and every such
+draw is bracketed by `STRMOUT_BUFFER_UPDATE` 0x0 (start at offset 0) and
+0x19 (store the filled size to guest memory). The draws rasterize nothing
+themselves; the vertices they capture feed later draws. Being
+implemented with `VK_EXT_transform_feedback`: registers, copy shader
+parsing and Vulkan enablement are in the fork; SPIR-V outputs and the
+draw-side binding with the filled-size write-back are in progress.
