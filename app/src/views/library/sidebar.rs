@@ -30,7 +30,7 @@ use super::{LibraryModel, LibraryPopup};
 use crate::state::{AppState, LibraryState};
 use crate::theme;
 use crate::widgets::select::SelectStyle;
-use crate::widgets::{Emoji, InputEvent, Select, TextInput, checkbox, emoji, tooltip};
+use crate::widgets::{Emoji, InputEvent, Select, TextInput, checkbox, emoji, running_mark, sidebar_title, tooltip};
 
 const SIDEBAR_WIDTH: f32 = 292.;
 
@@ -1019,6 +1019,9 @@ impl SidebarView {
     ) -> Stateful<gpui::Div> {
         let is_active = selected == Some(game.id.as_str());
         let is_marked = self.marked.contains(&game.id);
+        // Read here rather than baked into the cached rows, so a game starting or stopping
+        // shows without rebuilding them.
+        let running = AppState::get(cx).background.read(cx).running.contains(&game.id);
         let icon = match game.icon_url.as_deref() {
             Some(url) => img(crate::art::source(url, gpui::size(26., 26.)))
                 .size(px(26.))
@@ -1059,8 +1062,11 @@ impl SidebarView {
                     .border_color(rgb(theme::ACCENT_BLUE))
             })
             .child(icon)
-            .child(div().flex_1().min_w_0().truncate().child(game.title.clone()))
-            .when(installed, |item| {
+            .child(sidebar_title(game.title.clone(), running))
+            .when(running, |item| {
+                item.child(running_mark(format!("running-mark-{}", game.id)).ml_auto())
+            })
+            .when(installed && !running, |item| {
                 item.child(
                     div()
                         .id(SharedString::from(format!("installed-dot-{}", game.id)))

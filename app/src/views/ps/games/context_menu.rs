@@ -36,7 +36,7 @@ pub fn render(
     let mut panel = menu::panel().child(menu::title(display_title(&entry.game)));
 
     if running {
-        let (ps, key, close) = (ps.clone(), key.clone(), Rc::clone(&dismiss));
+        let (ps, key, close) = (ps.clone(), key, Rc::clone(&dismiss));
         panel = panel.child(
             menu::item("ps-menu-stop", false)
                 .child("Detener")

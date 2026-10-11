@@ -119,6 +119,28 @@ pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) 
     move |_, cx| cx.new(|_| Tooltip(text.clone())).into()
 }
 
+/// A game's title in a sidebar row, green while the game runs, as Steam marks it. Shared by
+/// Biblioteca and the PS section so a running game reads the same in both.
+pub fn sidebar_title(title: impl Into<SharedString>, running: bool) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .when(running, |title| title.text_color(rgb(theme::ACCENT_GREEN)))
+        .child(title.into())
+}
+
+/// The mark at the end of a running game's sidebar row, in place of its installed/ready dot.
+pub fn running_mark(id: impl Into<ElementId>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .text_size(px(10.))
+        .text_color(rgb(theme::ACCENT_GREEN))
+        .tooltip(tooltip("En ejecución"))
+        .child("▶")
+}
+
 /// A checkbox the way `accent-color: var(--accent-blue)` draws one: a
 /// 13px box, blue and ticked when on.
 pub fn checkbox(checked: bool) -> Div {

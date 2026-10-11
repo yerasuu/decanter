@@ -20,9 +20,9 @@ use gpui::{
     Window, div, img, prelude::*, px, rgb, uniform_list,
 };
 
-use crate::state::{AppState, Ps};
+use crate::state::{AppState, JobKey, Ps};
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, TextInput, button, tooltip};
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, sidebar_title, tooltip};
 use browser::BrowserView;
 use context_menu::GameMenu;
 use detail::DetailView;
@@ -185,6 +185,7 @@ impl GamesView {
 
     fn row(&self, game: &Game, status: &Status, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
         let active = self.detail.read(cx).selected() == Some(&game.dir);
+        let running = self.ps.read(cx).is_running(&JobKey::Game(game.dir.clone()), cx);
         let dir = game.dir.clone();
         div()
             .id(SharedString::from(game.dir.to_string_lossy().into_owned()))
@@ -217,8 +218,11 @@ impl GamesView {
                 view.update(cx, |this, cx| this.open_menu(dir.clone(), event.position, cx));
             })
             .child(icon(game, ICON))
-            .child(div().flex_1().min_w_0().truncate().child(display_title(game)))
-            .when(status.playable(), |row| {
+            .child(sidebar_title(display_title(game), running))
+            .when(running, |row| {
+                row.child(running_mark(format!("ps-running-{}", game.dir.display())))
+            })
+            .when(!running && status.playable(), |row| {
                 row.child(
                     div()
                         .id(SharedString::from(format!("ps-ready-{}", game.dir.display())))
