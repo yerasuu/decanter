@@ -82,7 +82,7 @@ impl AnyPs5 {
 
     /// After a build that succeeded.
     pub async fn record_build(&self, toolchain: &Toolchain) -> io::Result<()> {
-        tokio::fs::write(self.build_marker(), toolchain.id()).await
+        tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
     }
 
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
@@ -90,7 +90,8 @@ impl AnyPs5 {
             .await
             .is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
-        relinker && marker.is_ok_and(|id| id == toolchain.id())
+        let stamp = toolchain.build_stamp(&self.checkout).await;
+        relinker && marker.is_ok_and(|built| built == stamp)
     }
 
     pub fn output_dir(title_id: &str) -> PathBuf {

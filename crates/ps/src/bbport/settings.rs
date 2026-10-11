@@ -49,6 +49,10 @@ impl LauncherSettings {
         self.0.insert(key.into(), value.into());
     }
 
+    pub fn remove(&mut self, key: &str) {
+        self.0.remove(key);
+    }
+
     pub fn number(&self, key: &str) -> Option<f64> {
         self.0.get(key).and_then(|v| v.as_f64())
     }

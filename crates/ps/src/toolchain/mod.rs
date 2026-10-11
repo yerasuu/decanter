@@ -101,6 +101,13 @@ impl Toolchain {
         }
     }
 
+    /// What a port's build marker holds: this toolchain and the checkout's
+    /// commit, so a checkout that moved (an update applied before the port
+    /// was prepared this session) is built again rather than run stale.
+    pub async fn build_stamp(&self, checkout: &Path) -> String {
+        format!("{} {}", self.id(), crate::failures::commit_of(checkout).await)
+    }
+
     /// For the UI's informative line; there is no choice to make.
     pub const fn label(&self) -> &'static str {
         match self {

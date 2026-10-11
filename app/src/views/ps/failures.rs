@@ -101,6 +101,7 @@ impl FailuresView {
             Kind::Crash | Kind::Stop => theme::ERROR_TEXT,
             Kind::Error => theme::ACCENT_GOLD,
             Kind::Exit => theme::TEXT_MUTED,
+            Kind::Missing => theme::ACCENT_BLUE,
         };
         let report = failure.report();
         let commit = if failure.commit.is_empty() {

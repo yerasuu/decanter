@@ -199,9 +199,21 @@ async fn record_failures(this: &WeakEntity<Ps>, profile_id: &str, found: Vec<Fai
     }
     let fatal = found
         .iter()
-        .find(|failure| failure.kind != failures::Kind::Error)
+        .find(|failure| {
+            matches!(
+                failure.kind,
+                failures::Kind::Crash | failures::Kind::Stop | failures::Kind::Exit
+            )
+        })
         .map(|failure| failure.message.clone());
-    let count = found.len();
+    let count = found
+        .iter()
+        .filter(|failure| failure.kind == failures::Kind::Error)
+        .count();
+    let missing = found
+        .iter()
+        .find(|failure| failure.kind == failures::Kind::Missing)
+        .map(|failure| failure.message.clone());
     let path = decanter_ps::paths::profile(profile_id).join("failures.jsonl");
     let saved = cx
         .background_spawn(async move {
@@ -212,7 +224,11 @@ async fn record_failures(this: &WeakEntity<Ps>, profile_id: &str, found: Vec<Fai
     let (text, error) = match (saved, fatal) {
         (Err(err), _) => (format!("No se pudo guardar el registro de fallos: {err}"), true),
         (Ok(()), Some(message)) => (format!("El juego falló: {message} (ver Fallos)"), true),
-        (Ok(()), None) => (format!("{count} errores registrados en Fallos"), false),
+        (Ok(()), None) => match missing {
+            Some(missing) if count == 0 => (format!("{missing} (ver Fallos)"), false),
+            Some(missing) => (format!("{count} errores y {missing} (ver Fallos)"), false),
+            None => (format!("{count} errores registrados en Fallos"), false),
+        },
     };
     let _ = this.update(cx, |this, cx| {
         this.notice = Some((text, error));

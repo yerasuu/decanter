@@ -70,6 +70,7 @@ impl Render for LogView {
             State::Exited(None) => format!("{}: interrumpido", job.label),
         };
         let count = job.lines.len();
+        let log_file = job.log_file.clone();
         let source = self.job.clone();
         div()
             .size_full()
@@ -100,7 +101,21 @@ impl Render for LogView {
                             .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
                             .on_click(cx.listener(move |this, _, _, cx| this.copy(&status, cx)))
                             .child(if self.copied { "Copiado" } else { "Copiar registro" }),
-                    ),
+                    )
+                    .children(log_file.map(|path| {
+                        div()
+                            .id("ps-log-file")
+                            .flex_none()
+                            .cursor_pointer()
+                            .text_color(rgb(theme::ACCENT_BLUE))
+                            .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
+                            .on_click(move |_, _, _| {
+                                if let Err(err) = crate::desktop::open(&path) {
+                                    tracing::warn!(path = %path.display(), %err, "could not open the log file");
+                                }
+                            })
+                            .child("Log completo")
+                    })),
             )
             .child(
                 uniform_list("ps-log", count, move |range, _, cx| {

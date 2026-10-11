@@ -26,6 +26,9 @@ pub enum Kind {
     Error,
     /// The process ended with a failure code without any line above explaining it.
     Exit,
+    /// What the port answers without doing it: imports with no implementation or a stub,
+    /// effects or modules it leaves out. One per run, listing them all.
+    Missing,
 }
 
 impl Kind {
@@ -35,6 +38,7 @@ impl Kind {
             Kind::Stop => "STOP",
             Kind::Error => "Error",
             Kind::Exit => "Salida",
+            Kind::Missing => "Falta",
         }
     }
 }
@@ -94,6 +98,25 @@ fn is_benign(line: &str) -> bool {
         .any(|(parts, _)| parts.iter().all(|part| line.contains(part)))
 }
 
+/// What the fork reports it leaves undone: called-unimplemented imports first (the game reached
+/// them), then the startup report (imports with no implementation or a stub), then features of
+/// its own libraries (Ngs2) and shadPS4's stubbed GPU calls. Lower is listed first.
+fn missing_rank(line: &str) -> Option<u8> {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("Runtime: unsupported import") {
+        return Some(0);
+    }
+    if trimmed.starts_with("Runtime: import ")
+        && (line.contains(" has no implementation") || line.contains(" is a stub"))
+    {
+        return Some(1);
+    }
+    if line.contains("not implemented") || line.contains("(STUBBED)") || line.contains("passes audio through") {
+        return Some(2);
+    }
+    None
+}
+
 /// Classifies one output line. Formats come from bbport (`src/probe.c` faults, `STOP:` and
 /// `ERROR:` in `src/runtime_*.c`, the GPU library's `<Error>`/`<Critical>` log levels,
 /// `prepare failed:` from the scripts) plus generic crash, compiler and Python failures.
@@ -142,6 +165,8 @@ pub struct Scanner {
     pending: Option<Failure>,
     /// This run's failures so far, finished ones included, for counting repeats.
     found: Vec<Failure>,
+    /// What [`missing_rank`] matched, with its rank, each line once.
+    missing: Vec<(u8, String)>,
 }
 
 impl Scanner {
@@ -154,7 +179,18 @@ impl Scanner {
             recent: VecDeque::with_capacity(CONTEXT_BEFORE),
             pending: None,
             found: Vec::new(),
+            missing: Vec::new(),
         }
+    }
+
+    /// What a run's log header records about the game.
+    pub fn facts(&self) -> [(&'static str, String); 4] {
+        [
+            ("game", self.game_dir.display().to_string()),
+            ("title", self.title_id.clone()),
+            ("version", self.version.clone()),
+            ("port commit", self.commit.clone()),
+        ]
     }
 
     fn finish_pending(&mut self) {
@@ -164,6 +200,13 @@ impl Scanner {
     }
 
     pub fn line(&mut self, line: &str) {
+        if let Some(rank) = missing_rank(line) {
+            let line = line.trim();
+            if !self.missing.iter().any(|(_, seen)| seen == line) {
+                self.missing.push((rank, line.to_owned()));
+            }
+            return;
+        }
         if let Some(pending) = &mut self.pending {
             if classify(line).is_none() && pending.after.len() < CONTEXT_AFTER {
                 pending.after.push(line.to_owned());
@@ -201,6 +244,25 @@ impl Scanner {
     /// an exit the user asked for is never one.
     pub fn exit(mut self, code: Option<i32>, stop_requested: bool) -> Vec<Failure> {
         self.finish_pending();
+        if !self.missing.is_empty() {
+            self.missing.sort_by_key(|(rank, _)| *rank);
+            let called = self.missing.iter().filter(|(rank, _)| *rank == 0).count();
+            self.found.push(Failure {
+                time: now(),
+                game_dir: self.game_dir.clone(),
+                title_id: self.title_id.clone(),
+                version: self.version.clone(),
+                commit: self.commit.clone(),
+                kind: Kind::Missing,
+                message: format!(
+                    "{} cosas sin implementar; el juego llamó a {called}",
+                    self.missing.len()
+                ),
+                count: 1,
+                before: Vec::new(),
+                after: self.missing.drain(..).map(|(_, line)| line).collect(),
+            });
+        }
         let fatal = self.found.iter().any(|f| matches!(f.kind, Kind::Crash | Kind::Stop));
         if !stop_requested && code != Some(0) && !fatal {
             self.found.push(Failure {
@@ -419,5 +481,25 @@ mod tests {
     fn formats_utc_time() {
         assert_eq!(format_time(0), "1970-01-01 00:00 UTC");
         assert_eq!(format_time(1_791_460_800), "2026-10-08 12:00 UTC");
+    }
+
+    #[test]
+    fn what_the_port_leaves_undone_is_one_record_called_first() {
+        let mut scanner = Scanner::new(Path::new("/g/ryza"), "CUSA16458", "01.00", "abc".into());
+        for line in [
+            "Runtime: import rNhWz#i#f (sceUltInitialize) has no implementation: returns 0 when called (BB_PERMISSIVE)",
+            "Runtime: import x#E#F (sceNpDeleteRequest) is a stub: it succeeds without doing anything",
+            "GPU [Lib.GnmDriver] <Error> gnmdriver.cpp:1744 sceGnmSetGsRingSizes: (STUBBED) called",
+            "Runtime: unsupported import WslcK1FQcGI#i#f (sceKernelIsNeoMode) returns 0; first argument: 0x0",
+            "Runtime: unsupported import WslcK1FQcGI#i#f (sceKernelIsNeoMode) returns 0; first argument: 0x0",
+        ] {
+            scanner.line(line);
+        }
+        let found = scanner.exit(Some(0), false);
+        assert_eq!(found.len(), 1, "a stubbed GPU call is not also an error");
+        let missing = &found[0];
+        assert_eq!(missing.kind, Kind::Missing);
+        assert_eq!(missing.message, "4 cosas sin implementar; el juego llamó a 1");
+        assert!(missing.after[0].contains("sceKernelIsNeoMode"));
     }
 }

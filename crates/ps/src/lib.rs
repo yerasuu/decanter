@@ -19,6 +19,7 @@
 pub mod anyps5;
 pub mod bbport;
 pub mod binds;
+pub mod cmake_cache;
 pub mod failures;
 mod files;
 pub mod keys;
@@ -28,6 +29,7 @@ pub mod mapping;
 pub mod paths;
 pub mod port;
 pub mod process;
+pub mod run_log;
 pub mod status;
 pub mod toolchain;
 pub mod updater;

@@ -108,8 +108,9 @@ impl Bbport {
         self.checkout.join("out/bb-probe")
     }
 
-    /// Which toolchain the current build came from, so a launch with
-    /// another one asks for a rebuild instead of failing to load drivers.
+    /// Which toolchain and commit the current build came from, so a launch
+    /// with another toolchain, or after the checkout moved, builds again
+    /// instead of failing to load drivers or running the old code.
     fn build_marker(&self) -> PathBuf {
         self.checkout.join("out/decanter-toolchain")
     }
@@ -124,14 +125,15 @@ impl Bbport {
 
     /// After a build that succeeded.
     pub async fn record_build(&self, toolchain: &Toolchain) -> io::Result<()> {
-        tokio::fs::write(self.build_marker(), toolchain.id()).await
+        tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
     }
 
     /// Whether `toolchain` can launch what is built, without building.
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
         let probe = tokio::fs::metadata(self.probe()).await.is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
-        probe && marker.is_ok_and(|id| id == toolchain.id())
+        let stamp = toolchain.build_stamp(&self.checkout).await;
+        probe && marker.is_ok_and(|built| built == stamp)
     }
 
     /// The same environment bbport's own launcher built (`game_environment`
@@ -180,6 +182,11 @@ impl Bbport {
         // first import the runtime lacks, so the log lists every one the title reaches.
         if !is_bloodborne(game) {
             command.env("BB_SKIP_GAME_CHECK", "1").env("BB_PERMISSIVE", "1");
+            // The user's own dump of the console's modules (Ajustes), which the fork links ahead of
+            // its own versions; Bloodborne keeps the path it is known to work on.
+            if let Some(dir) = settings.text("sys_modules_dir") {
+                command.env("BB_SYS_MODULES", dir);
+            }
         }
         if settings.flag("hdr", false) {
             command.env("BB_HDR", "1");

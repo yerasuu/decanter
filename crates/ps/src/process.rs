@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 use std::io;
+use std::path::PathBuf;
 use std::process::Stdio;
 
 use nix::sys::signal::{Signal, killpg};
@@ -36,6 +37,8 @@ pub struct Job {
     pub lines: VecDeque<String>,
     /// Set by [`Job::stop`], so the exit it causes is not taken for a failure.
     pub stop_requested: bool,
+    /// Where the whole output goes ([`crate::run_log`]); `lines` keeps only the end.
+    pub log_file: Option<PathBuf>,
 }
 
 impl Job {
@@ -47,6 +50,7 @@ impl Job {
             state: State::Exited(None),
             lines: VecDeque::from([reason]),
             stop_requested: false,
+            log_file: None,
         }
     }
 
@@ -140,6 +144,7 @@ pub fn spawn(label: impl Into<String>, mut command: Command) -> io::Result<(Job,
         state: State::Running(pid),
         lines: VecDeque::new(),
         stop_requested: false,
+        log_file: None,
     };
     Ok((job, receiver))
 }

@@ -11,7 +11,7 @@ use decanter_ps::toolchain::Toolchain;
 use decanter_ps::updater::{self, Check, Plan};
 use futures::FutureExt as _;
 use futures::future::Shared;
-use gpui::{AsyncApp, Context, Task, WeakEntity};
+use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
 
 use super::Ps;
 use super::jobs::{self, JobKey};
@@ -194,6 +194,18 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, cx: &mut AsyncApp) -> Prepar
 async fn build(this: &WeakEntity<Ps>, port: Port, toolchain: &Toolchain, cx: &mut AsyncApp) -> Result<(), String> {
     set_stage(this, port, Stage::Building, cx);
     let checkout = port.checkout();
+    let for_reset = checkout.clone();
+    match cx
+        .background_spawn(async move { decanter_ps::cmake_cache::forget_moved(&for_reset) })
+        .await
+    {
+        Ok(reset) => {
+            for dir in reset {
+                tracing::info!(port = port.name(), dir = %dir.display(), "CMake cache from before a move reset");
+            }
+        }
+        Err(err) => return Err(format!("No se pudo revisar la caché de CMake: {err}")),
+    }
     let command = match port {
         Port::Bbport => Bbport::new(checkout.clone()).build_command(toolchain).await,
         Port::AnyPs5 => AnyPs5::new(checkout.clone()).build_command(toolchain).await,

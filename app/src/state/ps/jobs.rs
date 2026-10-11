@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use decanter_ps::failures::{Failure, Scanner};
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job};
+use decanter_ps::run_log::RunLog;
 use gpui::{AppContext as _, AsyncApp, Entity, WeakEntity};
 use tokio::process::Command;
 
@@ -46,10 +47,32 @@ pub async fn run(
     mut scanner: Option<Scanner>,
     cx: &mut AsyncApp,
 ) -> Finished {
-    let (job, mut events) = match process::spawn(label, command) {
+    let target = match &key {
+        JobKey::Port(port) => port.name().to_lowercase(),
+        JobKey::Game(dir) => dir
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+        JobKey::Fsr411 => "fsr411".to_owned(),
+    };
+    let facts = scanner.as_ref().map(Scanner::facts).unwrap_or_default();
+    // A job runs without its file rather than not at all; the log view says so.
+    let (mut log, log_error) = match RunLog::start(&target, label, &facts, &command).await {
+        Ok(log) => (Some(log), None),
+        Err(err) => {
+            tracing::warn!(label, %err, "could not create the job's log file");
+            (None, Some(format!("No se pudo guardar el log completo: {err}")))
+        }
+    };
+    let (mut job, mut events) = match process::spawn(label, command) {
         Ok(spawned) => spawned,
         Err(err) => {
             tracing::warn!(label, %err, "could not start job");
+            if let Some(mut file) = log {
+                let written = file.line(&format!("could not start: {err}")).await;
+                if let Err(err) = written.and(file.finish(None).await) {
+                    tracing::warn!(label, %err, "could not finish the job's log file");
+                }
+            }
             let job = cx.new(|_| Job::failed(label, format!("No se pudo iniciar: {err}")));
             let _ = ps.update(cx, |ps, cx| {
                 ps.jobs.insert(key, job);
@@ -61,6 +84,10 @@ pub async fn run(
             };
         }
     };
+    job.log_file = log.as_ref().map(|log| log.path().to_owned());
+    if let Some(error) = log_error {
+        job.push(Event::Line(error));
+    }
     let job: Entity<Job> = cx.new(|_| job);
     if ps
         .update(cx, |ps, cx| {
@@ -77,6 +104,17 @@ pub async fn run(
     let mut batch = Vec::with_capacity(BATCH);
     let mut code = None;
     while events.recv_many(&mut batch, BATCH).await > 0 {
+        if let Some(file) = log.as_mut() {
+            for event in &batch {
+                if let Event::Line(line) = event
+                    && let Err(err) = file.line(line).await
+                {
+                    tracing::warn!(label, %err, "the job's log file stopped taking lines");
+                    log = None;
+                    break;
+                }
+            }
+        }
         job.update(cx, |job, cx| {
             for event in batch.drain(..) {
                 match (&event, scanner.as_mut()) {
@@ -88,6 +126,11 @@ pub async fn run(
             }
             cx.notify();
         });
+    }
+    if let Some(file) = log
+        && let Err(err) = file.finish(code).await
+    {
+        tracing::warn!(label, %err, "could not finish the job's log file");
     }
     let stopped = job.read_with(cx, |job, _| job.stop_requested);
     Finished {
