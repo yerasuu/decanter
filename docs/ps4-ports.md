@@ -19,7 +19,10 @@ bbport's GPU code, and its generalization is small enough to redo on top
 of upstream. Both lacked the same pieces (scope-independent import
 resolution, event flags), so they are fixed once, in the fork.
 
-## What the fork adds (as of `618396d`)
+What each title imports, what the port lacks and what to implement next:
+[ps4-import-matrix.md](ps4-import-matrix.md) (a dated snapshot).
+
+## What the fork adds (as of `1929daa`)
 
 Runtime (`src/`):
 
@@ -30,21 +33,45 @@ Runtime (`src/`):
   logged once. Before the game starts, every import without
   implementation or answered by a stub (`runtime_stub`) is listed, with a
   summary line.
+- Imports with output arguments (`import_outparams.inc`, generated from
+  shadPS4's prototypes by `tools/import_outparams.py`, 809 NIDs) are
+  logged naming the arguments a permissive 0 leaves unwritten;
+  `BB_PERMISSIVE_OUT=error` makes them return `0x80020016` instead.
+- Modules a game loads by path (Unity's `Media/Modules/*.prx` and
+  `Media/Plugins/*.prx`) are prelinked by `link_modules.py`, unstarted,
+  and started on `sceKernelLoadStartModule`; `sceKernelDlsym` hashes
+  names to NIDs; module info for unwinding (`src/runtime_module.c`).
 - Newer-SDK libc hooks, kernel event flags, `ulobjmgr`, display safe
-  area, `sceKernelGetdents`, thread stacks kept in their attributes
-  (`scePthreadAttrSetstack`/`Getstackaddr`, `pthread_getstack_np`).
+  area, `sceKernelGetdents`, thread stacks kept in their attributes,
+  `scePthreadSem*` on kernel semaphores, main direct memory, the guest's
+  `/dev/urandom` and `/dev/random`.
+- The libc heap settings are read from `SceProcParam` +0x38 (upstream
+  read +0x30, the main thread's stack size, and newer SDKs crashed there).
 - TLS module ids only for modules with TLS, up to 31.
 - `BB_AUDIO_STATS=1` reports each audio port's peak and RMS (dBFS) every
   5 s, so a test tells sound from silence without listening.
 
-Libraries ported in (`gpu/`, each first committed as it was at the
-source):
+GPU (`gpu/`):
+
+- Geometry shader stream-out through `VK_EXT_transform_feedback`
+  (copy shader parsing, SPIR-V `Xfb` outputs, draw-side binding with the
+  filled-size write-back).
+- Point-list geometry shaders declare `OutputPoints` (shadPS4 emitted a
+  bare `OutputVertices`, an invalid module).
+
+Libraries ported in (each first committed as it was at the source):
 
 - `gpu/ngs2/`: libSceNgs2 from AnyPS5, adapted to PS4 structure
   layouts. Produces silence in Ryza for now (`BB_HLE=libSceNgs2` +
   `BB_AUDIO_STATS` measures it); the user's module is used instead.
 - `gpu/fiber/`: libSceFiber from shadPS4, on the game's GS-based TCB.
   Preferred over the user's module (`BB_LLE=libSceFiber` to compare).
+- `gpu/font/`: libSceFont and libSceFontFt from shadPS4 over FreeType,
+  with `sceFontGlyphRenderImage` and `sceFontCloseFont` written for the
+  port. System fonts from `BB_SYS_FONTS`; otherwise the host's Noto fonts
+  (`BB_FALLBACK_FONTS` adds folders), else the embedded DejaVu (Latin).
+  FreeType is now a build dependency, so decanter's host check requires
+  `freetype2`.
 
 System modules: `BB_SYS_MODULES=<folder>` links the user's own dump of
 the console's `*.sprx` a title needs, ahead of the port's versions. They
@@ -52,9 +79,12 @@ are never shipped and each is a stopgap until the port implements its
 library.
 
 Diagnostics and tools: `BB_NGS2_TRACE`, `BB_FIBER_TRACE`,
-`BB_DUMP_SKIPPED_GS=<dir>` (GS, copy and ES programs of skipped
-stream-out setups), `tools/gcn_dis` (a GCN disassembler on the
-recompiler's decoder; LLVM does not disassemble gfx7).
+`BB_DUMP_SKIPPED_GS=<dir>`, `tools/gcn_dis` (a GCN disassembler on the
+recompiler's decoder; LLVM does not disassemble gfx7), and
+`tools/regress.sh`: runs every listed title inside a headless gamescope
+(no window, no sound) and reports how far each got (loaded, entered,
+initialized, first frame, drawn frames, audio) and its crash signature,
+flagging regressions against a previous run.
 
 ## What decanter does with it
 
@@ -70,22 +100,41 @@ recompiler's decoder; LLVM does not disassemble gfx7).
   its directory and environment; the last 30 per target are kept.
 - Fallos records, once per run, a "Falta" entry listing what the port
   left unimplemented, imports the game actually called first.
+- A game's row and cover have a right-click menu: play or stop, details,
+  merge the 1.09 update, the full log, the dump's folder, copy the title
+  ID.
 
-## Atelier Ryza (CUSA16458)
+## Titles
 
-With the user's module dump (LLE libSceNgs2, Rtc, Ult): sound, the title
-menu, New Game, the prologue's scenes and dialogue, and the field with
-the player in control. Tested headless (inside a headless gamescope, with
-scripted pad input through `BB_PAD_FILE` and the game's own frame dumps
-through `BB_PRESENT_DUMP_TRIGGER`).
+All tested headless (a headless gamescope, scripted pad input through
+`BB_PAD_FILE`, the game's own frame dumps through
+`BB_PRESENT_DUMP_TRIGGER`), with the user's module dump.
 
-Open: about 60000 draws a session use a geometry shader with stream-out
-and are skipped (upstream shadPS4 skips them too). Measured: stream 0 to
-buffer 0 only, 24-byte records (`VTX_STRIDE` 6 dwords), the copy shader
-takes the buffer V# through user-data pointer `s[2:3]`, and every such
-draw is bracketed by `STRMOUT_BUFFER_UPDATE` 0x0 (start at offset 0) and
-0x19 (store the filled size to guest memory). The draws rasterize nothing
-themselves; the vertices they capture feed later draws. Being
-implemented with `VK_EXT_transform_feedback`: registers, copy shader
-parsing and Vulkan enablement are in the fork; SPIR-V outputs and the
-draw-side binding with the filled-size write-back are in progress.
+### Atelier Ryza (CUSA16458, Gust)
+
+Sound, the title menu, New Game, the prologue's scenes and dialogue, and
+the field with the player in control. Its stream-out draws (about 60000
+a session: stream 0 to buffer 0, 24-byte records, bracketed by
+`STRMOUT_BUFFER_UPDATE` 0x0 and 0x19) are captured through transform
+feedback instead of skipped; the scenes tested look the same either way.
+
+### Atelier Ayesha DX (CUSA16921, PhyreEngine/KTGL)
+
+With the libSceFont port: intro movie, title menu, the opening scenes
+with their dialogue text, the field, the narration, the atelier's
+tutorials and free control inside the atelier, with sound. The narration
+loops a movie, and AvPlayer used to hang there: on looping it rewound the
+byte stream under FFmpeg's mp4 demuxer before seeking, after which every
+read returned end of file (upstream shadPS4 has the same code). It now
+seeks the streams only (`604f623`).
+
+### Unity IL2CPP: Tales of Symphonia Remastered (CUSA50989), Astrea (CUSA49515), SaGa Emerald Beyond (CUSA43027), ALTDEUS: Beyond Chronos (CUSA26563)
+
+The same engine build in all four, so they move together. They boot,
+load `Il2CppUserAssemblies.prx` and `PS4Util.prx` and register the IL2CPP
+API. Next blocker, shared: the garbage collector suspends threads with
+`sceKernelRaiseException(thread, 30)` to a handler installed through
+`sceKernelInstallExceptionHandler` (libkernel_unity, called from
+`PS4Util.prx`); nothing delivers it, so the main thread waits forever for
+the acknowledgement. Being implemented. Symphonia and Astrea also probe
+`/archive/mount/point/Media/...`, not yet mounted.
