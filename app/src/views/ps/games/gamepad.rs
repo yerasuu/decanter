@@ -209,7 +209,7 @@ impl GamepadView {
     /// labelled like the pad in hand (detected) or a fixed style; built at
     /// the next start.
     fn icons_select(&self, values: &Values, cx: &mut Context<Self>) -> AnyElement {
-        let current = values.launch().text("button_icons").unwrap_or("auto").to_owned();
+        let current = values.launch().text("button_icons").unwrap_or("pad").to_owned();
         let entity = cx.entity();
         Select::new(
             "ps-button-icons",

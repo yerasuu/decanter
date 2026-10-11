@@ -50,7 +50,7 @@ async fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
         Err(err) => return Err(format!("git: {err}")),
     };
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_owned())
     } else {
         Err(format!(
             "git {}: {}",

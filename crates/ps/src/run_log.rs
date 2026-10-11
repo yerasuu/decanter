@@ -32,8 +32,24 @@ impl RunLog {
         tokio::fs::create_dir_all(&dir).await?;
         let prefix = format!("{}-{}-", slug(target), slug(label));
         prune(&dir, &prefix).await?;
-        let path = dir.join(format!("{prefix}{}.log", file_stamp(now())));
-        let mut file = BufWriter::new(tokio::fs::File::create(&path).await?);
+        let stem = format!("{prefix}{}", file_stamp(now()));
+        let mut path = dir.join(format!("{stem}.log"));
+        let mut attempt: u32 = 1;
+        let mut file = loop {
+            match tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .await
+            {
+                Ok(created) => break BufWriter::new(created),
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+                    attempt = attempt.saturating_add(1);
+                    path = dir.join(format!("{stem}-{attempt}.log"));
+                }
+                Err(err) => return Err(err),
+            }
+        };
         file.write_all(header(label, facts, command).as_bytes()).await?;
         Ok(Self { path, file })
     }

@@ -279,6 +279,9 @@ impl Render for GamesView {
             });
             context_menu::render(target, &self.ps, &self.detail, window, dismiss, cx)
         });
+        if menu.is_none() {
+            self.menu = None;
+        }
         div().size_full().flex().children(menu).child(self.sidebar(cx)).child(
             div()
                 .flex_1()

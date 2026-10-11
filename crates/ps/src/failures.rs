@@ -200,7 +200,9 @@ impl Scanner {
     }
 
     pub fn line(&mut self, line: &str) {
-        if let Some(rank) = missing_rank(line) {
+        let classified = classify(line);
+        let fatal = matches!(classified, Some(Kind::Crash | Kind::Stop));
+        if !fatal && let Some(rank) = missing_rank(line) {
             let line = line.trim();
             if !self.missing.iter().any(|(_, seen)| seen == line) {
                 self.missing.push((rank, line.to_owned()));
@@ -208,13 +210,13 @@ impl Scanner {
             return;
         }
         if let Some(pending) = &mut self.pending {
-            if classify(line).is_none() && pending.after.len() < CONTEXT_AFTER {
+            if classified.is_none() && pending.after.len() < CONTEXT_AFTER {
                 pending.after.push(line.to_owned());
                 return;
             }
             self.finish_pending();
         }
-        if let Some(kind) = classify(line) {
+        if let Some(kind) = classified {
             let message = line.trim().to_owned();
             if let Some(seen) = self.found.iter_mut().find(|f| f.kind == kind && f.message == message) {
                 seen.count += 1;

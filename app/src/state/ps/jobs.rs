@@ -133,6 +133,7 @@ pub async fn run(
         tracing::warn!(label, %err, "could not finish the job's log file");
     }
     let stopped = job.read_with(cx, |job, _| job.stop_requested);
+    let _ = ps.update(cx, |_, cx| cx.notify());
     Finished {
         code,
         failures: scanner.map(|scanner| scanner.exit(code, stopped)).unwrap_or_default(),

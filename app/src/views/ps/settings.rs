@@ -12,7 +12,8 @@ use crate::widgets::{ButtonKind, button};
 const SYS_MODULES: &str = "sys_modules_dir";
 
 pub struct SettingsView {
-    /// Read off the UI thread when the view opens and after each change.
+    /// Read off the UI thread when the view opens, after each change and
+    /// whenever `Ps` changes.
     sys_modules: Option<String>,
     error: Option<String>,
 }
@@ -21,7 +22,7 @@ impl SettingsView {
     /// Watches `ps` since the games folder follows the active profile's
     /// library.
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        cx.observe(&ps, |_, _, cx| cx.notify()).detach();
+        cx.observe(&ps, |this, _, cx| this.refresh(cx)).detach();
         let this = Self {
             sys_modules: None,
             error: None,

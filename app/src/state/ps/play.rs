@@ -33,22 +33,28 @@ impl Ps {
         let (Some(port), Some(profile_id)) = (entry.port, self.profile_id.clone()) else {
             return;
         };
+        if !self.launching.insert(dir.to_owned()) {
+            return;
+        }
         let game = entry.game.clone();
+        let failures_path = decanter_ps::paths::profile(&profile_id).join("failures.jsonl");
         let prepared = self.prepare(port, cx);
         self.notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let toolchain = match prepared.await {
-                Ok(toolchain) => toolchain,
-                Err(err) => return notify(&this, format!("No se pudo preparar {}: {err}", port.name()), true, cx),
-            };
-            let command = match port {
-                Port::Bbport => bbport_command(&toolchain, &game, &profile_id, cx).await,
-                Port::AnyPs5 => anyps5_command(&this, &toolchain, &game, &profile_id, cx).await,
+            let command = match prepared.await {
+                Ok(toolchain) => match port {
+                    Port::Bbport => bbport_command(&toolchain, &game, &profile_id, cx).await,
+                    Port::AnyPs5 => anyps5_command(&this, &toolchain, &game, &profile_id, cx).await,
+                },
+                Err(err) => Err(format!("No se pudo preparar {}: {err}", port.name())),
             };
             let command = match command {
                 Ok(command) => command,
-                Err(err) => return notify(&this, err, true, cx),
+                Err(err) => {
+                    let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
+                    return notify(&this, err, true, cx);
+                }
             };
             let commit = failures::commit_of(&port.checkout()).await;
             let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit);
@@ -61,7 +67,8 @@ impl Ps {
                 cx,
             )
             .await;
-            record_failures(&this, &profile_id, finished.failures, cx).await;
+            let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
+            record_failures(&this, failures_path, finished.failures, cx).await;
         })
         .detach();
     }
@@ -193,7 +200,7 @@ async fn anyps5_command(
         .map_err(|err| format!("No se pudo preparar el entorno: {err}"))
 }
 
-async fn record_failures(this: &WeakEntity<Ps>, profile_id: &str, found: Vec<Failure>, cx: &mut AsyncApp) {
+async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failure>, cx: &mut AsyncApp) {
     if found.is_empty() {
         return;
     }
@@ -214,7 +221,6 @@ async fn record_failures(this: &WeakEntity<Ps>, profile_id: &str, found: Vec<Fai
         .iter()
         .find(|failure| failure.kind == failures::Kind::Missing)
         .map(|failure| failure.message.clone());
-    let path = decanter_ps::paths::profile(profile_id).join("failures.jsonl");
     let saved = cx
         .background_spawn(async move {
             let mut log = failures::Log::load(path);

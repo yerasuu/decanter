@@ -1,6 +1,7 @@
 //! What bbport is launched with, kept in its data directory.
 
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 
 fn path() -> PathBuf {
@@ -24,9 +25,17 @@ impl LauncherSettings {
     }
 
     /// One change against the file as it is now, for edits made outside
-    /// the settings table (folders, extra environment).
+    /// the settings table (folders, extra environment). Fails rather than
+    /// overwrite a file it can't read or parse.
     pub fn edit(change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
-        let mut settings = Self::load();
+        let mut settings = match fs::read(path()) {
+            Ok(data) => match serde_json::from_slice(&data) {
+                Ok(map) => Self(map),
+                Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidData, err)),
+            },
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Self::default(),
+            Err(err) => return Err(err),
+        };
         change(&mut settings);
         settings.save()
     }
