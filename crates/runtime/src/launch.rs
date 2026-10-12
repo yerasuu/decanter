@@ -31,6 +31,11 @@ pub struct Launch {
     /// umu's game identity, which is what protonfixes keys its per-game
     /// workarounds off. Convention is `umu-<storefront id>`.
     pub game_id: String,
+    /// `(game key, title)` the launch's scope is named and described by —
+    /// see [`decanter_core::own_scope`]. `None` names it after `game_id`
+    /// and the executable, for what isn't a game of its own (an
+    /// installer, `wineboot`).
+    pub identity: Option<(String, String)>,
     pub proton: Proton,
     /// umu's `STORE`, used alongside `game_id` to look up protonfixes.
     pub store: Option<String>,
@@ -84,6 +89,7 @@ impl Launch {
             args: Vec::new(),
             working_directory: None,
             game_id: game_id.into(),
+            identity: None,
             store: None,
             proton: Proton::default(),
             dll_overrides: Vec::new(),
@@ -217,10 +223,14 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
     tracing::debug!(working_directory = %working_directory.display(), "resolved working directory for launch");
 
     let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
-    let mut command = match own_scope(&launch.game_id) {
+    let (key, description) = launch.identity.take().unwrap_or_else(|| {
+        let name = launch.executable.file_name().unwrap_or_default();
+        (launch.game_id.clone(), name.to_string_lossy().into_owned())
+    });
+    let mut command = match decanter_core::own_scope(&key, &description) {
         Some(mut scoped) => {
             scoped.arg(&umu_run_path);
-            scoped
+            Command::from(scoped)
         }
         None => Command::new(&umu_run_path),
     };
@@ -312,53 +322,6 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
         prefix: prefix.clone(),
         started_at,
     })
-}
-
-/// `systemd-run` set up to start what follows in a transient scope of its
-/// own, or `None` without a systemd user manager to ask.
-///
-/// Started as decanter's child, a game would sit in decanter's own scope
-/// (`app-decanter-….scope` when it was opened from the menu), and Plasma
-/// puts the icon of whatever app a window's scope belongs to on it: the
-/// game showed up in the task bar as decanter. In a scope of its own, not
-/// named after any app, the window keeps the icon Wine gives it from the
-/// game's executable. `--scope` runs the command in this very process, so
-/// the child handle still waits on umu-run itself.
-fn own_scope(game_id: &str) -> Option<Command> {
-    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")?;
-    if !Path::new(&runtime_dir).join("systemd/private").exists() {
-        return None;
-    }
-    let systemd_run = std::env::var_os("PATH").and_then(|path| {
-        std::env::split_paths(&path)
-            .map(|dir| dir.join("systemd-run"))
-            .find(|candidate| candidate.is_file())
-    })?;
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_nanos());
-    let mut command = Command::new(systemd_run);
-    command
-        .args(["--user", "--scope", "--quiet", "--collect", "--unit"])
-        .arg(scope_unit(game_id, std::process::id(), nonce))
-        .arg("--");
-    Some(command)
-}
-
-/// A unit name systemd accepts, unique per launch: only `[A-Za-z0-9_-]`
-/// from the game id, which for an external game is a uuid already.
-fn scope_unit(game_id: &str, pid: u32, nonce: u128) -> String {
-    let id: String = game_id
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '_' {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    format!("decanter-game-{id}-{pid}-{nonce}.scope")
 }
 
 /// Builds the `WINEDLLOVERRIDES` value, or `None` when there is nothing to

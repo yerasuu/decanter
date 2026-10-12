@@ -109,6 +109,7 @@ mod i18n;
 mod launch;
 mod relocate;
 mod state;
+mod taskbar;
 mod theme;
 #[cfg(target_os = "linux")]
 mod tray_linux;

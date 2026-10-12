@@ -1,8 +1,9 @@
 # Decanter
 
-GOG game launcher and achievement tracker for Linux. Runs Windows GOG
-games through Proton/umu-run and shows their achievements, including
-unlocks earned under Wine that GOG's own Galaxy client never sees.
+Game launcher and achievement tracker for Linux. Runs Windows GOG games,
+and any other Windows game you add to it, through Proton/umu-run, and
+shows GOG achievements, including unlocks earned under Wine that GOG's
+own Galaxy client never sees.
 
 It also runs the user's own PS4 dumps natively on Linux, through
 decanter's fork of bbport ([psport](https://github.com/yerasuu/psport)):
@@ -88,17 +89,39 @@ decanter has no way to report them to GOG's own servers (no per-game
 Galaxy credentials, no write API). Syncing to an external platform is a
 possible future direction, not implemented yet.
 
-## PS4 games
+## PS4 and PS5 games
 
-The PS section lists the dumps in its games folder (set in its Ajustes)
-and runs each through psport, which decanter clones, keeps up to date
-and builds, with its own Nix toolchain when the host lacks the build
-dependencies. Bloodborne is supported as upstream bbport ships it; every
-other PS4 title is experimental, and titles that require PS VR
-are shown as unsupported. The user's own dump of the console's system
-modules can be pointed to, but no title needs it today: the port
-implements the libraries itself.
+The PS section lists the dumps in its games folder and runs PS4 titles
+through psport and PS5 titles through AnyPS5. Decanter clones each port,
+keeps it up to date and rebuilds it when its checkout moves. It builds
+with the host's tools when they're there and falls back to its own Nix
+toolchain (nix-portable if the system has no Nix) when the host can't
+configure the port; after the next update of that port it tries the host
+again. Each game runs in its own process group and
+can be stopped from its row, its cover or its context menu.
+
+Bloodborne is supported as upstream bbport ships it. Every other PS4
+title is experimental; six of the seven tested reach gameplay with
+sound. Titles that require PS VR (`require_ps_vr` in their `param.sfo`)
+are shown as unsupported and can't be started. The user's own dump of
+the console's system modules can be set in Ajustes, but no title needs
+it today: the port implements those libraries itself, and the dump is
+only for comparing with them.
+
+Every job's whole output goes to a log under the PS folder, headed by
+the game, the port commit, the command and its environment, keeping the
+last 30 per game. Fallos records, once per run, what the port left
+unimplemented, starting with the imports the game actually called.
 
 Where each title stands and what the fork adds: `docs/ps4-ports.md`.
 What the titles import and what the port still lacks:
 `docs/ps4-import-matrix.md`.
+
+## Where decanter keeps its data
+
+The aim is to keep everything inside the profile's library folder.
+Everything PS already lives there, in its `psport/` folder: the games,
+the ports' checkouts and builds, the toolchain, settings, mods and logs.
+The database (accounts, profiles, library metadata, achievements) and
+the art cache are still in decanter's data directory
+(`~/.local/share/decanter`).

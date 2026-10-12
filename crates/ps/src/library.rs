@@ -36,6 +36,11 @@ impl Game {
     pub fn is_update(&self) -> bool {
         self.platform == Platform::Ps4 && self.category.starts_with("gp") && !self.has_modules
     }
+
+    /// Its [`decanter_core::game_key`]: one per title, whichever dump of it runs.
+    pub fn key(&self) -> String {
+        decanter_core::game_key(&format!("ps_{}", self.title_id))
+    }
 }
 
 /// Values of a PS4 `param.sfo`, as `(key, value)` with integers rendered in decimal.

@@ -106,6 +106,29 @@ async fn forward(stream: impl AsyncRead + Unpin, sender: UnboundedSender<Event>)
     }
 }
 
+/// `command` inside a transient scope of its own, the way a PC game runs.
+///
+/// See [`decanter_core::own_scope`]; without a systemd user manager it is
+/// `command` as it was. For a game only: a build or a conversion is
+/// decanter's own work.
+pub fn in_own_scope(command: Command, key: &str, title: &str) -> Command {
+    let Some(mut scoped) = decanter_core::own_scope(key, title) else {
+        return command;
+    };
+    let original = command.as_std();
+    scoped.arg(original.get_program()).args(original.get_args());
+    for (name, value) in original.get_envs() {
+        match value {
+            Some(set) => scoped.env(name, set),
+            None => scoped.env_remove(name),
+        };
+    }
+    if let Some(dir) = original.get_current_dir() {
+        scoped.current_dir(dir);
+    }
+    Command::from(scoped)
+}
+
 /// Starts `command` in its own process group with stdout and stderr
 /// merged into events; the last event is always [`Event::Exited`].
 /// Must be called inside the tokio runtime.

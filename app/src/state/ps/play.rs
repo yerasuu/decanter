@@ -12,6 +12,7 @@ use decanter_ps::failures::{self, Failure, Scanner, Summary};
 use decanter_ps::library::Game;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
+use decanter_ps::process;
 use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 use rust_i18n::t;
@@ -54,7 +55,7 @@ impl Ps {
                 Err(err) => Err(t!("ps.play.prepare_error", name = port.name(), error = err).into_owned()),
             };
             let command = match command {
-                Ok(command) => command,
+                Ok(command) => process::in_own_scope(command, &game.key(), &game.title),
                 Err(err) => {
                     let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
                     return notify(&this, err, true, cx);

@@ -11,6 +11,7 @@ mod disk;
 mod launcher_env;
 mod library;
 mod profiles;
+mod scope;
 pub mod steam;
 mod vdf;
 
@@ -23,6 +24,7 @@ pub use disk::disk_usage;
 pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env};
 pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size, move_dir};
 pub use profiles::Profile;
+pub use scope::{application_id, game_key, own_scope};
 
 /// Where decanter keeps everything it writes: the cache database, the game
 /// library, and anything else that isn't a per-OS keyring entry.

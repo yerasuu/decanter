@@ -70,6 +70,7 @@ pub async fn start(
         (_, None) => Launch::new(executable, crate::external::UMU_ID),
     };
     launch.proton = crate::core::proton_for(&game);
+    launch.identity = Some((crate::taskbar::key(&game), game.name.clone()));
 
     // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL
     // to patch) reads both of these itself; setting them here is what
