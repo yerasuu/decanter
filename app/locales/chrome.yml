@@ -26,6 +26,15 @@ chrome.profiles.new:
 chrome.profiles.create:
   es: Crear perfil
   en: Create profile
+chrome.profiles.elsewhere:
+  es: "%{name} — %{path}"
+  en: "%{name} — %{path}"
+chrome.profiles.busy:
+  es: "%{name} — %{path} (cierra antes los juegos y las instalaciones)"
+  en: "%{name} — %{path} (close running games and installs first)"
+chrome.profiles.unavailable:
+  es: "%{path} (no disponible)"
+  en: "%{path} (unavailable)"
 chrome.profile_form.title:
   es: NUEVO PERFIL
   en: NEW PROFILE

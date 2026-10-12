@@ -217,6 +217,81 @@ pub fn remove(library_root: &Path, key: &str) -> bool {
         })
 }
 
+/// After the library at `from` moved to `to`: its entries still name paths
+/// under `from`, and the symlinks to them point there. Returns whether
+/// anything changed. A symlink to another library's entry for the same game
+/// is left alone, as in [`remove`].
+pub fn relocate(from: &Path, to: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(desktop_dir(to)) else {
+        return false;
+    };
+    entries.flatten().map(|entry| entry.path()).fold(false, |changed, desktop| {
+        let Some(key) = key_of(&desktop) else {
+            return changed;
+        };
+        let rewritten = rewrite(&desktop, from, to)
+            .inspect_err(|err| tracing::warn!(path = %desktop.display(), %err, "could not rewrite a moved game's desktop entry"))
+            .unwrap_or(false);
+        let relinked = relink(&desktop, &desktop_file(from, &key), &key)
+            .inspect_err(|err| tracing::warn!(key, %err, "could not re-point a moved game's task bar link"))
+            .unwrap_or(false);
+        changed | rewritten | relinked
+    })
+}
+
+fn rewrite(desktop: &Path, from: &Path, to: &Path) -> io::Result<bool> {
+    let text = std::fs::read_to_string(desktop)?;
+    let rebased = rebase(&text, from, to);
+    if rebased == text {
+        return Ok(false);
+    }
+    let partial = desktop.with_extension("part");
+    std::fs::write(&partial, rebased)?;
+    std::fs::rename(&partial, desktop)?;
+    Ok(true)
+}
+
+/// Points `key`'s symlink at `desktop` while it points at `old`.
+fn relink(desktop: &Path, old: &Path, key: &str) -> io::Result<bool> {
+    let Some(link) = links_dir().map(|dir| dir.join(format!("game.{key}.desktop"))) else {
+        return Ok(false);
+    };
+    if !std::fs::read_link(&link).is_ok_and(|target| target == old) {
+        return Ok(false);
+    }
+    std::fs::remove_file(&link)?;
+    std::os::unix::fs::symlink(desktop, &link)?;
+    Ok(true)
+}
+
+/// `text` with the paths under `from` in an entry's values, and the
+/// library named in its `Exec`, moved to `to`. Both escapings work a
+/// character at a time, so an escaped root is a prefix of an escaped path.
+fn rebase(text: &str, from: &Path, to: &Path) -> String {
+    let (from, to) = (from.to_string_lossy(), to.to_string_lossy());
+    let (from_value, to_value) = (value(&from), value(&to));
+    let (from_arg, to_arg) = (exec_arg(&from), exec_arg(&to));
+    text.lines()
+        .map(|line| {
+            if let Some(exec) = line.strip_prefix("Exec=") {
+                return format!("Exec={}\n", exec.replace(&from_arg, &to_arg));
+            }
+            let Some((key, path)) = line.split_once('=') else {
+                return format!("{line}\n");
+            };
+            let (scheme, path) = path
+                .strip_prefix("file://")
+                .map_or(("", path), |path| ("file://", path));
+            path.strip_prefix(from_value.as_str())
+                .filter(|rest| rest.starts_with('/'))
+                .map_or_else(
+                    || format!("{line}\n"),
+                    |rest| format!("{key}={scheme}{to_value}{rest}\n"),
+                )
+        })
+        .collect()
+}
+
 /// Has the desktop read the applications folders again. Best-effort: a
 /// desktop without `kbuildsycoca6` notices new entries on its own, later.
 pub async fn refresh() {
@@ -332,7 +407,8 @@ pub async fn remove_pc(account_id: &str, storefront: Storefront, game_id: &str) 
 }
 
 /// At startup: drops every symlink that points nowhere, or anywhere but a
-/// decanter library's entries, and every entry whose game is gone.
+/// decanter library's entries, and every entry whose game is gone. A known
+/// library whose disk is away keeps its symlinks for when it's back.
 pub async fn sweep() {
     match tokio::task::spawn_blocking(remove_stale).await {
         Ok(true) => refresh().await,
@@ -351,6 +427,7 @@ fn remove_stale() -> bool {
         .filter_map(|profile| crate::core::library_for_profile(&profile.id).ok())
         .map(|library| library.root().to_owned())
         .chain(decanter_core::bootstrap::active_root())
+        .chain(decanter_core::bootstrap::known_roots())
         .collect();
     roots.sort();
     roots.dedup();
@@ -373,12 +450,11 @@ fn remove_stale() -> bool {
     for entry in entries.flatten() {
         let path = entry.path();
         let kept = std::fs::read_link(&path).is_ok_and(|target| {
-            target.is_file()
-                && key_of(&target).is_some()
+            key_of(&target).is_some()
                 && path.file_name() == target.file_name()
-                && roots
-                    .iter()
-                    .any(|root| target.parent() == Some(desktop_dir(root).as_path()))
+                && roots.iter().any(|root| {
+                    target.parent() == Some(desktop_dir(root).as_path()) && (target.is_file() || !root.is_dir())
+                })
         });
         if !kept {
             match std::fs::remove_file(&path) {

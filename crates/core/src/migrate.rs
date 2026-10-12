@@ -19,7 +19,9 @@ use std::fs::{self, File};
 use std::io;
 use std::iter;
 use std::os::unix::ffi::OsStrExt as _;
+use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension as _, params};
 
@@ -108,7 +110,8 @@ fn migrate(legacy_db: &Path, umu_run_path: fn(&Path) -> PathBuf) -> Result<Outco
     };
     let active = active_profile(&source)?;
     let counts = row_counts(&source)?;
-    for (root, keep) in &groups {
+    let legacy_written = fs::metadata(legacy_db)?.modified()?;
+    for (root, keep) in groups.iter().filter(|&(root, _)| !written_since(root, legacy_written)) {
         copy_into(&source, &counts, root, keep, active.as_deref())?;
     }
     drop(source);
@@ -144,18 +147,27 @@ fn migrate(legacy_db: &Path, umu_run_path: fn(&Path) -> PathBuf) -> Result<Outco
 /// those roots isn't there. The old default library is made if missing:
 /// a profile that never installed anything never needed it.
 fn group_by_root(source: &Connection, default_root: &Path) -> Result<Option<Groups>, Error> {
-    let mut groups = Groups::new();
+    let mut by_path = Groups::new();
     for (id, library_path) in profiles(source)? {
         let root = library_path.map_or_else(|| default_root.to_path_buf(), PathBuf::from);
-        groups.entry(root).or_default().push(id);
+        by_path.entry(root).or_default().push(id);
     }
-    for root in groups.keys() {
+    // One folder reached by two paths (a symlink) would otherwise get two
+    // databases written to the same file, the second over the first.
+    let mut folders = HashMap::new();
+    let mut groups = Groups::new();
+    for (root, ids) in by_path {
         if root == default_root {
-            fs::create_dir_all(root)?;
+            fs::create_dir_all(&root)?;
         } else if !root.is_dir() {
             tracing::warn!(root = %root.display(), "a library's disk isn't there, migration postponed");
             return Ok(None);
         }
+        let folder = fs::metadata(&root)?;
+        let first = folders
+            .entry((folder.dev(), folder.ino()))
+            .or_insert_with(|| root.clone());
+        groups.entry(first.clone()).or_default().extend(ids);
     }
     Ok(Some(groups))
 }
@@ -173,6 +185,19 @@ fn active_profile(source: &Connection) -> Result<Option<String>, Error> {
         .optional()?)
 }
 
+/// Whether `root` has a database written after `legacy_written`: then
+/// `libraries.toml` went missing after a migration, and links.db only holds
+/// what came before it.
+fn written_since(root: &Path, legacy_written: SystemTime) -> bool {
+    let newer = fs::metadata(bootstrap::db_path(root))
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|written| written > legacy_written);
+    if newer {
+        tracing::info!(root = %root.display(), "the library's database is newer than links.db, kept");
+    }
+    newer
+}
+
 /// A cache, so a copy that fails only costs downloading it again.
 fn copy_art(legacy_dir: &Path, root: &Path) {
     let from = legacy_dir.join("art");
@@ -180,7 +205,10 @@ fn copy_art(legacy_dir: &Path, root: &Path) {
     if !from.is_dir() || to.exists() {
         return;
     }
-    if let Err(err) = crate::copy_dir(&from, &to, |_| {}) {
+    // Copied aside, like umu-run, so a copy cut short isn't taken for the
+    // whole cache by the next run's `exists` check.
+    let partial = to.with_added_extension("part");
+    if let Err(err) = crate::copy_dir(&from, &partial, |_| {}).and_then(|()| fs::rename(&partial, &to)) {
         tracing::warn!(root = %root.display(), %err, "cannot copy the art cache into the library");
     }
 }
@@ -191,10 +219,14 @@ fn copy_umu_run(legacy_dir: &Path, to: &Path) {
     if !from.is_file() || to.exists() {
         return;
     }
+    // A truncated copy under the final name would be run on every launch.
+    let partial = to.with_added_extension("part");
     let copied = to
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| fs::copy(&from, to));
+        .and_then(|()| fs::copy(&from, &partial))
+        .and_then(|_| File::open(&partial)?.sync_all())
+        .and_then(|()| fs::rename(&partial, to));
     if let Err(err) = copied {
         tracing::warn!(to = %to.display(), %err, "cannot copy umu-run into the library");
     }
@@ -283,7 +315,8 @@ fn copy_into(
     drop(db);
     File::open(&partial)?.sync_all()?;
 
-    // Left over from a migration that was rolled back: kept, not overwritten.
+    // From a migration rolled back to an older decanter that went on using
+    // links.db: kept, not overwritten.
     if target.exists() {
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

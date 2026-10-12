@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use crate::catalog::Storefront;
 
@@ -326,6 +326,14 @@ impl Db {
         db.reset_unbacked_first_seen()?;
         tracing::debug!(path = %path.display(), "db opened");
         Ok(db)
+    }
+
+    /// Another library's database, for reading only: its schema is never
+    /// touched, since a decanter that has it as its active library may be
+    /// using it.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        Ok(Self { conn })
     }
 
     /// One-time cleanup for `first_seen` values a version before

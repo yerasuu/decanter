@@ -2,6 +2,7 @@
 //! settings, window controls), the current section, and the download
 //! strip along the bottom.
 
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use decanter_core::Profile;
@@ -36,6 +37,8 @@ pub enum Page {
 /// Sentinel select value: not a real profile id (those are uuids), so it
 /// can never collide with one.
 const NEW_PROFILE_OPTION: &str = "__new__";
+/// Sentinel select value for a library whose disk isn't there.
+const UNAVAILABLE_OPTION: &str = "__unavailable__";
 
 pub struct Shell {
     page: Page,
@@ -47,7 +50,7 @@ pub struct Shell {
     ps: Option<Entity<PsView>>,
     settings: Option<Entity<SettingsView>>,
     external: Option<Entity<ExternalView>>,
-    profiles: Vec<Profile>,
+    profiles: Vec<(PathBuf, Option<Vec<Profile>>)>,
     new_profile: Option<(Entity<ProfileForm>, Subscription)>,
     on_close: Rc<dyn Fn(&mut Window, &mut App)>,
 }
@@ -91,15 +94,17 @@ impl Shell {
     }
 
     fn reload_profiles(&mut self) {
-        let Ok(db) = crate::core::db()
-            .inspect_err(|err| tracing::warn!(error = %err, "failed to open db, profile switcher shows nothing"))
-        else {
-            return;
-        };
-        self.profiles = db
-            .list_profiles()
-            .inspect_err(|err| tracing::warn!(error = %err, "failed to list profiles"))
-            .unwrap_or_default();
+        self.profiles = crate::core::profiles_by_library();
+    }
+
+    fn library_of(&self, profile_id: &str) -> Option<&Path> {
+        self.profiles.iter().find_map(|(root, profiles)| {
+            profiles
+                .iter()
+                .flatten()
+                .any(|profile| profile.id == profile_id)
+                .then_some(root.as_path())
+        })
     }
 
     fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
@@ -153,6 +158,16 @@ impl Shell {
             cx.notify();
             return;
         }
+        if chosen == UNAVAILABLE_OPTION {
+            return;
+        }
+        if let Some(root) = self
+            .library_of(chosen)
+            .filter(|root| decanter_core::bootstrap::active_root().as_deref() != Some(*root))
+        {
+            Self::switch_library(root, chosen, cx);
+            return;
+        }
         match crate::core::db().and_then(|db| db.set_active_profile(chosen).map_err(|err| err.to_string())) {
             Ok(()) => {
                 tracing::info!(profile_id = chosen, "active profile switched");
@@ -165,6 +180,28 @@ impl Shell {
                 });
             }
             Err(err) => tracing::warn!(profile_id = chosen, error = %err, "failed to switch active profile"),
+        }
+    }
+
+    fn switch_library(root: &Path, chosen: &str, cx: &mut Context<Self>) {
+        if Self::busy(cx) {
+            tracing::info!(
+                profile_id = chosen,
+                "not switching library while a game runs or installs"
+            );
+            cx.notify();
+            return;
+        }
+        match crate::core::switch_library(root, chosen) {
+            Ok(()) => {
+                tracing::info!(profile_id = chosen, root = %root.display(), "switched to a profile in another library");
+                let session = AppState::get(cx).session.clone();
+                session.update(cx, |session, cx| {
+                    session.reload();
+                    cx.notify();
+                });
+            }
+            Err(err) => tracing::warn!(profile_id = chosen, error = %err, "failed to switch library"),
         }
     }
 
@@ -199,23 +236,60 @@ impl Shell {
             .child(label.into())
     }
 
+    /// A game started from the active library writes its playtime and
+    /// achievements to the active database when it exits, and an install
+    /// its records when it ends: switching library first sends them to
+    /// another one.
+    fn busy(cx: &App) -> bool {
+        let background = AppState::get(cx).background.read(cx);
+        !background.running.is_empty()
+            || background
+                .installing
+                .values()
+                .any(|status| !matches!(status, crate::state::InstallStatus::Failed(_)))
+    }
+
     fn profile_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let active = AppState::get(cx).session.read(cx).active_profile.clone();
+        let active_root = decanter_core::bootstrap::active_root();
+        let busy = Self::busy(cx);
         // The active profile's initial, so which account is in play reads
         // at a glance instead of only from the select's current text.
         let initial = active
             .as_deref()
-            .and_then(|id| self.profiles.iter().find(|profile| profile.id == id))
+            .and_then(|id| {
+                self.profiles
+                    .iter()
+                    .flat_map(|(_, profiles)| profiles.iter().flatten())
+                    .find(|profile| profile.id == id)
+            })
             .and_then(|profile| profile.name.chars().next())
             .map_or_else(|| "?".to_owned(), |first| first.to_uppercase().to_string());
         let options = self
             .profiles
             .iter()
-            .map(|profile| {
-                (
-                    SharedString::from(profile.id.clone()),
-                    SharedString::from(profile.name.clone()),
-                )
+            .flat_map(|(root, profiles)| {
+                let elsewhere = active_root.as_ref() != Some(root);
+                let unavailable = profiles.is_none().then(|| {
+                    (
+                        SharedString::from(UNAVAILABLE_OPTION),
+                        SharedString::from(t!("chrome.profiles.unavailable", path = root.display())),
+                    )
+                });
+                profiles
+                    .iter()
+                    .flatten()
+                    .map(move |profile| {
+                        let label = if elsewhere && busy {
+                            t!("chrome.profiles.busy", name = profile.name, path = root.display()).into_owned()
+                        } else if elsewhere {
+                            t!("chrome.profiles.elsewhere", name = profile.name, path = root.display()).into_owned()
+                        } else {
+                            profile.name.clone()
+                        };
+                        (SharedString::from(profile.id.clone()), SharedString::from(label))
+                    })
+                    .chain(unavailable)
             })
             .chain([(NEW_PROFILE_OPTION.into(), t!("chrome.profiles.new").into())]);
         let entity = cx.entity();

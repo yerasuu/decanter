@@ -97,6 +97,57 @@ pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile,
     Ok(profile)
 }
 
+/// Every known library with its profiles, the active one first. The other
+/// libraries' databases are only read; one whose disk isn't there has
+/// `None`, since nothing can say which profiles it holds until it's back.
+pub fn profiles_by_library() -> Vec<(std::path::PathBuf, Option<Vec<Profile>>)> {
+    let active = decanter_core::bootstrap::active_root();
+    let own = db()
+        .and_then(|db| db.list_profiles().map_err(|err| err.to_string()))
+        .inspect_err(|err| tracing::warn!(%err, "failed to list profiles"))
+        .unwrap_or_default();
+    let others = decanter_core::bootstrap::known_roots()
+        .into_iter()
+        .filter(|root| active.as_ref() != Some(root))
+        .map(|root| {
+            let path = decanter_core::bootstrap::db_path(&root);
+            let profiles = root.is_dir().then(|| {
+                if !path.is_file() {
+                    return Vec::new();
+                }
+                Db::open_read_only(&path)
+                    .and_then(|db| db.list_profiles())
+                    .inspect_err(
+                        |err| tracing::warn!(path = %path.display(), %err, "cannot read another library's profiles"),
+                    )
+                    .unwrap_or_default()
+            });
+            (root, profiles)
+        });
+    active
+        .clone()
+        .map(|root| (root, Some(own)))
+        .into_iter()
+        .chain(others)
+        .collect()
+}
+
+/// Makes `profile_id`, which lives in the library at `root`, the active
+/// profile, and that library the active one.
+pub fn switch_library(root: &std::path::Path, profile_id: &str) -> Result<(), String> {
+    crate::achv_try!(
+        Db::open(decanter_core::bootstrap::db_path(root))
+            .and_then(|db| db.set_active_profile(profile_id))
+            .map_err(|err| t!("messages.errors.db_open", error = err).into_owned())
+    );
+    crate::achv_try!(
+        decanter_core::bootstrap::activate(root)
+            .map_err(|err| t!("messages.errors.save_libraries", error = err).into_owned())
+    );
+    decanter_core::bootstrap::remember_profile(profile_id);
+    Ok(())
+}
+
 /// The library the database lives in — what a profile that never chose a
 /// location of its own uses, and the fallback for an account that (for
 /// whatever reason) resolves to no profile at all.

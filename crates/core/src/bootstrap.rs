@@ -112,7 +112,12 @@ fn resolve() -> Location {
     match read_config() {
         Ok(Some(libraries)) => return libraries.active.map_or(Location::Unconfigured, Location::Library),
         Ok(None) => {}
-        Err(err) => tracing::error!(%err, "cannot read libraries.toml"),
+        Err(err) => {
+            // Not the old database either: after the migration it's a stale
+            // copy, and what got written to it would be lost.
+            tracing::error!(%err, "cannot read libraries.toml");
+            return Location::Unconfigured;
+        }
     }
     match (legacy_dir(), legacy_db_path()) {
         (Some(dir), Some(db)) if db.is_file() => Location::Legacy(dir),

@@ -3,7 +3,8 @@
 Design principle: everything decanter stores lives inside the profile's
 library root (`<root>`, e.g. `/home/deck/data/Decanter/steamapps`);
 outside it only the pointers that can't be avoided. This page records
-what is where as of 2026-10-12 and the plan to move the rest.
+what was where on 2026-10-12, the plan, and (at the end) what was
+implemented.
 
 ## Already inside the library
 
@@ -72,3 +73,17 @@ Trade-offs: an account in two libraries shares one keyring token (logging
 out in one signs out the other); SQLite locking is unreliable on network
 filesystems (warn when the root is on one); an older decanter started
 after the migration keeps using the old database.
+
+## Implemented (2026-10-12)
+
+All five phases are on `develop`: `bootstrap.rs` (`libraries.toml`,
+`--library`, `DECANTER_LIBRARY`, the runtime lock, the "library
+unavailable" screen), `migrate.rs` (grouping by the same folder on disk,
+`VACUUM INTO`, integrity and row checks, `.part` copies, a newer library
+database never replaced by an older copy), the art cache and `umu-run`
+under the root, `--library` in per-game desktop entries, the old-data
+button in Storage, the cross-library profile switcher (refused while a
+game runs or an install is queued) and library moves that carry the
+database, the pointer and the per-game symlinks. Not done: moving a single
+profile to another library. Verified on temporary copies only; the first
+real migration happens on the next start of a build that includes it.

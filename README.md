@@ -119,9 +119,27 @@ What the titles import and what the port still lacks:
 
 ## Where decanter keeps its data
 
-The aim is to keep everything inside the profile's library folder.
-Everything PS already lives there, in its `psport/` folder: the games,
-the ports' checkouts and builds, the toolchain, settings, mods and logs.
-The database (accounts, profiles, library metadata, achievements) and
-the art cache are still in decanter's data directory
-(`~/.local/share/decanter`).
+Everything decanter stores lives inside the profile's library root
+(`<root>`), so a library can be moved or copied with its profiles:
+
+- `<root>/decanter/decanter.db`: profiles, accounts, game cache,
+  achievements, playtime, collections and settings of the profiles whose
+  library this is.
+- `<root>/decanter/art/` (art cache), `<root>/decanter/bin/` (`umu-run`),
+  `<root>/decanter/{desktop,icons}/` (per-game desktop entries and icons).
+- `<root>/psport/`: everything PS (games, ports, toolchain, settings,
+  mods, logs).
+- Game files, manifests, prefixes and install staging, as before.
+
+Outside it only what can't move: `~/.config/decanter/libraries.toml`
+(the known libraries and the active one), one symlink per game in
+`~/.local/share/applications/decanter/` (Plasma only reads its own
+folders), the keyring (GOG tokens, SteamGridDB key), Steam's own files,
+umu's shared runtime and a lock in `$XDG_RUNTIME_DIR`. `--library <root>`
+or `DECANTER_LIBRARY` pick a library for one run. A missing library is
+reported, never created.
+
+On its first start this version moves the old `~/.local/share/decanter`
+data into the library (copying, checking and only then switching) and
+leaves the old folder untouched as a backup; Ajustes > Almacenamiento
+offers to remove it afterwards.

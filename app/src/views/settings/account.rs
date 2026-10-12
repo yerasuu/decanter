@@ -349,20 +349,22 @@ impl AccountTab {
             });
             tracing::info!(profile_id, to = %new_root.display(), "moving library");
 
+            let old_path = library.root().display().to_string();
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_core::MoveProgress>();
             let move_task = tokio::task::spawn_blocking(move || {
                 let old_root = library.root().to_path_buf();
-                // The database moves along with the active library's root.
-                let moved = decanter_core::bootstrap::exclusive(|| {
-                    library.move_to(&new_root, move |progress| {
+                // A library's database moves along with its root, whether or
+                // not it's the active one, and no other decanter may start in
+                // between and find it gone.
+                decanter_core::bootstrap::exclusive(|| {
+                    let moved = library.move_to(&new_root, move |progress| {
                         let _ = tx.send(progress);
-                    })
-                })
-                .ok_or_else(|| std::io::Error::other(t!("settings.account.errors.locked").into_owned()))??;
-                if matches!(decanter_core::bootstrap::location(), decanter_core::bootstrap::Location::Library(active) if active == old_root) {
+                    })?;
                     decanter_core::bootstrap::relocate(&old_root, moved.root())?;
-                }
-                Ok::<_, std::io::Error>(moved)
+                    let relinked = crate::taskbar::relocate(&old_root, moved.root());
+                    Ok::<_, std::io::Error>((moved, relinked))
+                })
+                .ok_or_else(|| std::io::Error::other(t!("settings.account.errors.locked").into_owned()))?
             });
 
             while let Some(progress) = rx.recv().await {
@@ -377,11 +379,23 @@ impl AccountTab {
             // files would sit at the new root with the profile still
             // pointing at the old one.
             let error = match move_task.await {
-                Ok(Ok(moved)) => {
+                Ok(Ok((moved, relinked))) => {
+                    if relinked {
+                        crate::taskbar::refresh().await;
+                    }
+                    let new_path = moved.root().display().to_string();
                     match crate::core::db().and_then(|moved_db| {
-                        moved_db
-                            .set_profile_library_path(&profile_id, Some(&moved.root().display().to_string()))
-                            .map_err(|err| err.to_string())
+                        let profiles = moved_db.list_profiles().map_err(|err| err.to_string())?;
+                        profiles
+                            .iter()
+                            .filter(|profile| {
+                                profile.id == profile_id || profile.library_path.as_ref() == Some(&old_path)
+                            })
+                            .try_for_each(|profile| {
+                                moved_db
+                                    .set_profile_library_path(&profile.id, Some(&new_path))
+                                    .map_err(|err| err.to_string())
+                            })
                     }) {
                         Ok(()) => {
                             tracing::info!(profile_id, "library moved");
