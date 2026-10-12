@@ -740,7 +740,7 @@ impl SidebarView {
         let cache = &self.cache;
         let mut rows = Vec::new();
         match &key.state {
-            LibraryState::Idle => rows.push(Row::Message(t!("library.pick_profile").into())),
+            LibraryState::Idle => rows.push(Row::Message(t!("common.pick_profile").into())),
             LibraryState::Failed(err) => rows.push(Row::Error(err.clone())),
             // `Loading` never reaches here — the library page shows its own
             // full-screen splash for that.

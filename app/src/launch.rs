@@ -9,6 +9,7 @@
 use decanter_core::InstalledGame;
 use decanter_runtime::Launch;
 use gpui::{AsyncApp, Entity};
+use rust_i18n::t;
 
 use crate::state::Background;
 
@@ -289,7 +290,7 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
 /// which is why this is never automatic.
 pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), String> {
     let Some(prefix) = crate::core::prefix_for(&account_id, &game_id) else {
-        return Err("no hay prefijo para este juego".to_string());
+        return Err(t!("messages.errors.no_prefix").into_owned());
     };
     // Nothing may be running in it: deleting a live prefix out from under
     // Wine corrupts whatever it was writing.
@@ -313,7 +314,7 @@ pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), Str
         }
         Err(err) => {
             tracing::error!(account_id, game_id, %err, "failed to remove prefix directory");
-            Err(format!("borrando el prefijo: {err}"))
+            Err(t!("messages.errors.delete_prefix", error = err).into_owned())
         }
     }
 }

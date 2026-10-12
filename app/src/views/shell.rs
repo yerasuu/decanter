@@ -9,6 +9,7 @@ use gpui::{
     AnyElement, App, Context, Entity, FontWeight, SharedString, StyleRefinement, Subscription, Window, div, point,
     prelude::*, px, rgb,
 };
+use rust_i18n::t;
 
 use super::chrome;
 use super::downloads::DownloadsView;
@@ -169,7 +170,7 @@ impl Shell {
     fn nav_link(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         page: Page,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
@@ -194,7 +195,7 @@ impl Shell {
                     .hover(|link| link.text_color(rgb(theme::TEXT_PRIMARY)).bg(rgb(theme::BG_PANEL_2)))
             })
             .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
-            .child(label)
+            .child(label.into())
     }
 
     fn profile_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -215,7 +216,7 @@ impl Shell {
                     SharedString::from(profile.name.clone()),
                 )
             })
-            .chain([(NEW_PROFILE_OPTION.into(), "+ Crear perfil".into())]);
+            .chain([(NEW_PROFILE_OPTION.into(), t!("chrome.profiles.new").into())]);
         let entity = cx.entity();
         div()
             .flex()
@@ -271,7 +272,7 @@ impl Shell {
                 .text_color(rgb(theme::TEXT_PRIMARY))
                 .font_weight(FontWeight::SEMIBOLD)
                 .whitespace_nowrap()
-                .child(format!("Descargando: {title}"));
+                .child(t!("chrome.downbar.downloading", title = title));
             let item = div().flex().flex_none().items_center().gap_2().child(label);
             match status {
                 InstallStatus::Installing { bytes_per_second, .. } => {
@@ -290,7 +291,7 @@ impl Shell {
                         None => crate::format::rate(*bytes_per_second),
                     })
                 }
-                InstallStatus::Queued | InstallStatus::Failed(_) => item.child("En cola…"),
+                InstallStatus::Queued | InstallStatus::Failed(_) => item.child(t!("common.queued")),
             }
         });
         Some(
@@ -316,21 +317,21 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let installing = AppState::get(cx).background.read(cx).installing.len();
-        let downloads_link =
-            self.nav_link("nav-downloads", "Descargas", Page::Downloads, cx)
-                .when(installing > 0, |link| {
-                    link.child(
-                        theme::mono()
-                            .flex_none()
-                            .px(px(5.))
-                            .rounded(px(8.))
-                            .bg(rgb(theme::ACCENT_BLUE))
-                            .text_color(rgb(theme::TEXT_ON_BLUE))
-                            .text_size(px(10.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(installing.to_string()),
-                    )
-                });
+        let downloads_link = self
+            .nav_link("nav-downloads", t!("chrome.nav.downloads"), Page::Downloads, cx)
+            .when(installing > 0, |link| {
+                link.child(
+                    theme::mono()
+                        .flex_none()
+                        .px(px(5.))
+                        .rounded(px(8.))
+                        .bg(rgb(theme::ACCENT_BLUE))
+                        .text_color(rgb(theme::TEXT_ON_BLUE))
+                        .text_size(px(10.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(installing.to_string()),
+                )
+            });
         let topbar = div()
             .flex()
             .flex_none()
@@ -347,9 +348,9 @@ impl Render for Shell {
                     .flex()
                     .flex_none()
                     .gap_1()
-                    .child(self.nav_link("nav-library", "Biblioteca", Page::Library, cx))
+                    .child(self.nav_link("nav-library", t!("chrome.nav.library"), Page::Library, cx))
                     .child(self.nav_link("nav-ps", "PS", Page::Ps, cx))
-                    .child(self.nav_link("nav-storage", "Almacenamiento", Page::Storage, cx))
+                    .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
                     .child(downloads_link),
             )
             // Empty on purpose: the window's only plain move surface, never
@@ -369,7 +370,7 @@ impl Render for Shell {
                             .id("nav-settings")
                             .cursor_pointer()
                             .text_color(rgb(theme::ACCENT_BLUE))
-                            .tooltip(tooltip("Ajustes"))
+                            .tooltip(tooltip(t!("settings.title")))
                             .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx)))
                             .child("⚙"),
                     )

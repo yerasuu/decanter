@@ -13,6 +13,7 @@ use decanter_core::InstalledGame;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, ObjectFit, Subscription, Task, Window, div, img, prelude::*, px, rgb,
 };
+use rust_i18n::t;
 
 use crate::external::art;
 use crate::external::launchers::Detected;
@@ -67,7 +68,7 @@ impl ExternalView {
             }
         })
         .detach();
-        let api_key = cx.new(|cx| TextInput::new("API key de SteamGridDB", cx));
+        let api_key = cx.new(|cx| TextInput::new(t!("external.sources.key_placeholder"), cx));
         // A keyring round trip: off the UI thread, filled in when it lands.
         let field = api_key.clone();
         cx.spawn(async move |_, cx| {
@@ -216,7 +217,7 @@ impl ExternalView {
 
     fn save_key(&mut self, cx: &mut Context<Self>) {
         let key = self.api_key.read(cx).text().trim().to_owned();
-        self.key_status = "Guardando...".to_owned();
+        self.key_status = t!("external.sources.saving").into_owned();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = tokio::task::spawn_blocking(move || art::set_api_key(&key))
@@ -224,7 +225,7 @@ impl ExternalView {
                 .unwrap_or_else(|err| Err(err.to_string()));
             let _ = this.update(cx, |this, cx| {
                 this.key_status = match result {
-                    Ok(()) => "Guardada.".to_owned(),
+                    Ok(()) => t!("external.sources.saved").into_owned(),
                     Err(err) => err,
                 };
                 cx.notify();
@@ -235,7 +236,7 @@ impl ExternalView {
 
     fn game_list(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
         if self.games.is_empty() {
-            return theme::empty("Todavía no agregaste ningún juego externo.").into_any_element();
+            return theme::empty(t!("external.games.empty")).into_any_element();
         }
         let running = AppState::get(cx).background.read(cx).running.clone();
         let name_of = |id: &str| {
@@ -244,6 +245,7 @@ impl ExternalView {
                 .find(|game| game.game_id == id)
                 .map_or_else(String::new, |game| game.name.clone())
         };
+        let (edit, remove) = (t!("external.games.edit"), t!("external.games.remove.button"));
         let mut rows: Vec<AnyElement> = Vec::with_capacity(self.games.len());
         for (index, game) in self.games.iter().enumerate() {
             let is_running = running.contains(&game.game_id);
@@ -253,14 +255,15 @@ impl ExternalView {
                 .filter(|other| other.prefix_of.as_deref() == Some(game.game_id.as_str()))
                 .count();
             let remove_hint = match (&game.prefix_of, hosted) {
-                (Some(host), _) => format!("Quita el juego; el prefijo sigue siendo de {}", name_of(host)),
-                (None, 0) => "Quita el juego y borra su prefijo".to_owned(),
-                (None, count) => format!("Quita el juego, su prefijo y los {count} juegos que instaló"),
+                (Some(host), _) => t!("external.games.remove.hosted", host = name_of(host)),
+                (None, 0) => t!("external.games.remove.alone"),
+                (None, 1) => t!("external.games.remove.launcher.one"),
+                (None, count) => t!("external.games.remove.launcher.other", count = count),
             };
             let detail = match &game.prefix_of {
                 Some(host) => format!(
-                    "En {} · {}",
-                    name_of(host),
+                    "{} · {}",
+                    t!("external.games.in_host", host = name_of(host)),
                     game.launch_executable.clone().unwrap_or_default()
                 ),
                 None => game.launch_executable.clone().unwrap_or_default(),
@@ -280,13 +283,13 @@ impl ExternalView {
                             .child(theme::muted(detail).text_size(px(12.))),
                     )
                     .child(
-                        button(("external-edit", index), ButtonKind::Secondary, "Editar", false)
+                        button(("external-edit", index), ButtonKind::Secondary, edit.clone(), false)
                             .on_click(cx.listener(move |this, _, _, cx| this.start(Some(edit_id.clone()), cx))),
                     )
                     .child(
-                        button(("external-remove", index), ButtonKind::Icon, "Eliminar", is_running)
+                        button(("external-remove", index), ButtonKind::Icon, remove.clone(), is_running)
                             .tooltip(tooltip(if is_running {
-                                "Detené el juego antes de eliminarlo".to_owned()
+                                t!("external.games.remove.running")
                             } else {
                                 remove_hint
                             }))
@@ -307,14 +310,14 @@ impl ExternalView {
                                 .flex_col()
                                 .flex_1()
                                 .min_w_0()
-                                .child(div().child(format!("Encontrado en {}: {}", game.name, found.name)))
+                                .child(div().child(t!("external.games.found", host = game.name, game = found.name)))
                                 .child(theme::muted(found.executable.display().to_string()).text_size(px(12.))),
                         )
                         .child(
                             button(
                                 ("external-add-found", index * 100 + found_index),
                                 ButtonKind::Primary,
-                                "Agregar",
+                                t!("external.games.add_found"),
                                 false,
                             )
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -332,9 +335,7 @@ impl ExternalView {
         div()
             .flex()
             .flex_col()
-            .child(theme::muted(
-                "Con una key de SteamGridDB la búsqueda trae sus portadas, fondos e iconos; sin ella solo busca en Steam.",
-            ))
+            .child(theme::muted(t!("external.sources.hint")))
             .child(
                 div()
                     .flex()
@@ -344,15 +345,17 @@ impl ExternalView {
                     .max_w(px(640.))
                     .child(div().flex_1().min_w_0().child(self.api_key.clone()))
                     .child(
-                        button("sgdb-save", ButtonKind::Secondary, "Guardar", false)
+                        button("sgdb-save", ButtonKind::Secondary, t!("external.sources.save"), false)
                             .on_click(cx.listener(|this, _, _, cx| this.save_key(cx))),
                     )
                     .child(
-                        button("sgdb-get-key", ButtonKind::Icon, "Conseguir una key", false).on_click(|_, _, _| {
-                            if let Err(err) = crate::desktop::open(art::SGDB_KEY_PAGE) {
-                                tracing::warn!(%err, "could not open the steamgriddb key page");
-                            }
-                        }),
+                        button("sgdb-get-key", ButtonKind::Icon, t!("external.sources.get_key"), false).on_click(
+                            |_, _, _| {
+                                if let Err(err) = crate::desktop::open(art::SGDB_KEY_PAGE) {
+                                    tracing::warn!(%err, "could not open the steamgriddb key page");
+                                }
+                            },
+                        ),
                     ),
             )
             .when(!self.key_status.is_empty(), |column| {
@@ -364,10 +367,15 @@ impl ExternalView {
 impl Render for ExternalView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let editing = self.editing(cx);
+        let form_label = if editing {
+            t!("external.tabs.edit")
+        } else {
+            t!("external.tabs.add")
+        };
         let items = [
-            (Tab::Form, if editing { "Editar juego" } else { "Agregar juego" }),
-            (Tab::Games, "Tus juegos"),
-            (Tab::Sources, "Fuentes de imágenes"),
+            (Tab::Form, form_label),
+            (Tab::Games, t!("external.tabs.games")),
+            (Tab::Sources, t!("external.tabs.sources")),
         ];
         let entity = cx.entity();
         let tabs = crate::widgets::tabs("external-tabs", &items, self.tab, move |tab, _, cx| {
@@ -384,14 +392,14 @@ impl Render for ExternalView {
         .mb_6();
 
         let body = match (self.tab, &self.form) {
-            (_, None) => theme::empty("Elegi un perfil arriba.").into_any_element(),
+            (_, None) => theme::empty(t!("common.pick_profile")).into_any_element(),
             (Tab::Form, Some((form, _))) => div()
                 .flex()
                 .flex_col()
                 .when(editing, |column| {
                     column.child(
                         div().flex().mb_3().child(
-                            button("external-new", ButtonKind::Secondary, "Agregar otro juego", false)
+                            button("external-new", ButtonKind::Secondary, t!("external.add_another"), false)
                                 .on_click(cx.listener(|this, _, _, cx| this.start(None, cx))),
                         ),
                     )
@@ -407,10 +415,8 @@ impl Render for ExternalView {
             div()
                 .flex()
                 .flex_col()
-                .child(theme::h1("Juegos externos"))
-                .child(theme::muted(
-                    "Juegos de fuera de GOG: cada uno corre en su propio prefijo, igual que un juego instalado, y sale en la Biblioteca con el resto.",
-                ))
+                .child(theme::h1(t!("external.title")))
+                .child(theme::muted(t!("external.intro")))
                 .child(tabs)
                 .child(body),
         )

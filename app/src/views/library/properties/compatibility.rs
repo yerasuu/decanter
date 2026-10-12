@@ -150,7 +150,7 @@ fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Resul
     // change made elsewhere since isn't clobbered.
     let mut current = crate::achv_try!(
         crate::core::installed_game(account_id, product_id)
-            .ok_or_else(|| t!("library.properties.compatibility.no_longer_installed").into_owned())
+            .ok_or_else(|| t!("messages.errors.not_installed").into_owned())
     );
     current.proton = proton.map(str::to_string);
     match library.write_manifest(&current) {
@@ -160,7 +160,7 @@ fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Resul
         }
         Err(err) => {
             tracing::error!(account_id, product_id, proton, error = %err, "failed to save proton pin");
-            Err(t!("library.properties.compatibility.manifest_error", error = err).into_owned())
+            Err(t!("messages.errors.save_manifest", error = err).into_owned())
         }
     }
 }

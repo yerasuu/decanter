@@ -512,6 +512,15 @@ ps.keyboard.actions.toggle_mouse:
 ps.keyboard.actions.toggle_fullscreen:
   es: Pantalla completa
   en: Fullscreen
+ps.keyboard.sources.mouse_left:
+  es: Ratón izquierdo
+  en: Left mouse button
+ps.keyboard.sources.mouse_middle:
+  es: Ratón central
+  en: Middle mouse button
+ps.keyboard.sources.mouse_right:
+  es: Ratón derecho
+  en: Right mouse button
 ps.keyboard.sources.mouse:
   es: Ratón %{button}
   en: Mouse %{button}
@@ -757,7 +766,7 @@ ps.gamepad.icons.note:
   en: In menus and prompts; they follow the chosen layout
 ps.gamepad.icons.pad:
   es: Del mando (A/B/X/Y)
-  en: Controller's (A/B/X/Y)
+  en: Controller (A/B/X/Y)
 ps.gamepad.icons.original:
   es: Originales del juego
   en: The game's originals
@@ -844,7 +853,7 @@ ps.graphics.live_resolution.options.off:
   en: Off (faster)
 ps.graphics.live_resolution.options.on:
   es: Activado
-  en: On
+  en: "On"
 ps.graphics.fullscreen.label:
   es: Pantalla completa
   en: Fullscreen
@@ -901,7 +910,7 @@ ps.graphics.upscaler.options.taa_note:
   en: Antialiasing at the output resolution, without an FSR model
 ps.graphics.upscaler.options.off:
   es: Desactivado
-  en: Off
+  en: "Off"
 ps.graphics.preset.label:
   es: Preset
   en: Preset
@@ -1033,10 +1042,10 @@ ps.graphics.draw_pipe.options.auto_note:
   en: On with 8 or more CPU threads
 ps.graphics.draw_pipe.options.on:
   es: Activado
-  en: On
+  en: "On"
 ps.graphics.draw_pipe.options.off:
   es: Desactivado
-  en: Off
+  en: "Off"
 ps.graphics.draw_pipe.options.off_note:
   es: Más estable, pero más lento
   en: More stable, but slower
@@ -1051,7 +1060,7 @@ ps.graphics.readbacks.options.relaxed_note:
   en: Default
 ps.graphics.readbacks.options.off:
   es: Desactivadas
-  en: Off
+  en: "Off"
 ps.graphics.readbacks.options.precise:
   es: Precise
   en: Precise
@@ -1075,7 +1084,7 @@ ps.graphics.preupload.options.full_note:
   en: About 3 GB more video memory
 ps.graphics.preupload.options.off:
   es: Desactivada
-  en: Off
+  en: "Off"
 ps.graphics.groups.development:
   es: Desarrollo
   en: Development

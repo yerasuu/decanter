@@ -224,7 +224,7 @@ impl Render for LibraryView {
                 .into_any_element(),
             (_, false) => div()
                 .m_8()
-                .child(theme::empty(t!("library.pick_profile")))
+                .child(theme::empty(t!("common.pick_profile")))
                 .into_any_element(),
         };
         let filter_panel = self.sidebar.update(cx, |sidebar, cx| sidebar.filter_panel(window, cx));

@@ -91,6 +91,9 @@ fn label(action: Action) -> Cow<'static, str> {
 fn source_label(source: &Source) -> String {
     match source {
         Source::Key(name) => name.clone(),
+        Source::Mouse(MouseButton::Left) => t!("ps.keyboard.sources.mouse_left").into_owned(),
+        Source::Mouse(MouseButton::Middle) => t!("ps.keyboard.sources.mouse_middle").into_owned(),
+        Source::Mouse(MouseButton::Right) => t!("ps.keyboard.sources.mouse_right").into_owned(),
         Source::Mouse(button) => t!("ps.keyboard.sources.mouse", button = format!("{button:?}")).into_owned(),
         Source::Wheel(Wheel::Up) => t!("ps.keyboard.sources.wheel_up").into_owned(),
         Source::Wheel(Wheel::Down) => t!("ps.keyboard.sources.wheel_down").into_owned(),

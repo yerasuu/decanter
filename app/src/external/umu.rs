@@ -8,6 +8,8 @@
 
 use std::path::PathBuf;
 
+use rust_i18n::t;
+
 use super::UmuEntry;
 
 const REMOTE: &str = "https://raw.githubusercontent.com/Open-Wine-Components/umu-database/main/umu-database.csv";
@@ -109,12 +111,12 @@ async fn database() -> Result<String, String> {
         reqwest::get(REMOTE)
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(|err| format!("descargando la base de datos de UMU: {err}"))
+            .map_err(|err| t!("external.umu.errors.download", error = err).into_owned())
     );
     response
         .text()
         .await
-        .map_err(|err| format!("leyendo la base de datos de UMU: {err}"))
+        .map_err(|err| t!("external.umu.errors.read", error = err).into_owned())
 }
 
 /// The most recently updated copy among the Proton builds Steam can see.

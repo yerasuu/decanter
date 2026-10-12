@@ -1,0 +1,313 @@
+_version: 2
+external.title:
+  es: Juegos externos
+  en: External games
+external.intro:
+  es: "Juegos de fuera de GOG: cada uno corre en su propio prefijo, igual que un juego instalado, y sale en la Biblioteca con el resto."
+  en: "Games from outside GOG: each runs in its own prefix, like an installed game, and shows up in the Library with the rest."
+external.add_another:
+  es: Agregar otro juego
+  en: Add another game
+external.tabs.add:
+  es: Agregar juego
+  en: Add game
+external.tabs.edit:
+  es: Editar juego
+  en: Edit game
+external.tabs.games:
+  es: Tus juegos
+  en: Your games
+external.tabs.sources:
+  es: Fuentes de imágenes
+  en: Image sources
+external.games.empty:
+  es: Todavía no agregaste ningún juego externo.
+  en: You haven't added any external games yet.
+external.games.edit:
+  es: Editar
+  en: Edit
+external.games.in_host:
+  es: En %{host}
+  en: In %{host}
+external.games.found:
+  es: "Encontrado en %{host}: %{game}"
+  en: "Found in %{host}: %{game}"
+external.games.add_found:
+  es: Agregar
+  en: Add
+external.games.remove.button:
+  es: Eliminar
+  en: Delete
+external.games.remove.running:
+  es: Detené el juego antes de eliminarlo
+  en: Stop the game before deleting it
+external.games.remove.hosted:
+  es: Quita el juego; el prefijo sigue siendo de %{host}
+  en: Removes the game; the prefix still belongs to %{host}
+external.games.remove.alone:
+  es: Quita el juego y borra su prefijo
+  en: Removes the game and deletes its prefix
+external.games.remove.launcher.one:
+  es: Quita el juego, su prefijo y el juego que instaló
+  en: Removes the game, its prefix and the game it installed
+external.games.remove.launcher.other:
+  es: Quita el juego, su prefijo y los %{count} juegos que instaló
+  en: Removes the game, its prefix and the %{count} games it installed
+external.sources.hint:
+  es: Con una key de SteamGridDB la búsqueda trae sus portadas, fondos e iconos; sin ella solo busca en Steam.
+  en: With a SteamGridDB key the search brings its covers, backgrounds and icons; without one it only searches Steam.
+external.sources.key_placeholder:
+  es: API key de SteamGridDB
+  en: SteamGridDB API key
+external.sources.save:
+  es: Guardar
+  en: Save
+external.sources.saving:
+  es: Guardando...
+  en: Saving...
+external.sources.saved:
+  es: Guardada.
+  en: Saved.
+external.sources.get_key:
+  es: Conseguir una key
+  en: Get a key
+external.sources.errors.keyring:
+  es: "guardando la key en el llavero: %{error}"
+  en: "saving the key to the keyring: %{error}"
+external.form.name:
+  es: Nombre
+  en: Name
+external.form.executable:
+  es: Ejecutable (.exe)
+  en: Executable (.exe)
+external.form.hosted:
+  es: "Lo instaló %{host}: corre en su prefijo, con su Proton, su sesión y sus datos."
+  en: "Installed by %{host}: it runs in its prefix, with its Proton, its session and its data."
+external.form.pick_exe.button:
+  es: Elegir archivo...
+  en: Choose file...
+external.form.pick_exe.title:
+  es: Elegí el ejecutable del juego
+  en: Choose the game's executable
+external.form.pick_exe.filter:
+  es: Ejecutables de Windows
+  en: Windows executables
+external.form.folder.title:
+  es: Carpeta
+  en: Folder
+external.form.folder.free:
+  es: "%{free} libres"
+  en: "%{free} free"
+external.form.installer.run:
+  es: Ejecutar instalador...
+  en: Run installer...
+external.form.installer.pick_title:
+  es: Elegí el instalador
+  en: Choose the installer
+external.form.installer.filter:
+  es: Instaladores de Windows
+  en: Windows installers
+external.form.installer.hint:
+  es: ¿Viene con instalador? Corrélo acá. ¿Ya está instalado en el prefijo de otra herramienta (Lutris, Bottles, Heroic, Steam)? Importalo.
+  en: Does it come with an installer? Run it here. Is it already installed in another tool's prefix (Lutris, Bottles, Heroic, Steam)? Import it.
+external.form.installer.running:
+  es: Instalando... seguí los pasos del instalador.
+  en: Installing... follow the installer's steps.
+external.form.installer.done:
+  es: Instalador terminado. Elegí el ejecutable que dejó instalado.
+  en: Installer finished. Choose the executable it installed.
+external.form.import.button:
+  es: Importar prefijo...
+  en: Import prefix...
+external.form.import.pick_title:
+  es: Elegí la carpeta del prefijo
+  en: Choose the prefix folder
+external.form.import.copy:
+  es: Copiar
+  en: Copy
+external.form.import.move:
+  es: Mover
+  en: Move
+external.form.import.cancel:
+  es: No importar
+  en: Don't import
+external.form.import.copy_hint:
+  es: "Al agregar, el prefijo %{prefix} se copia a decanter: la otra herramienta lo sigue teniendo, pero ocupa el doble y las partidas quedan separadas."
+  en: "When the game is added, the prefix %{prefix} is copied into decanter: the other tool keeps it, but it takes twice the space and the saves stay separate."
+external.form.import.move_hint:
+  es: "Al agregar, el prefijo %{prefix} se mueve a decanter: no ocupa más espacio, pero la otra herramienta se queda sin él."
+  en: "When the game is added, the prefix %{prefix} is moved into decanter: it takes no extra space, but the other tool loses it."
+external.form.import.measuring:
+  es: Midiendo el prefijo...
+  en: Measuring the prefix...
+external.form.import.progress:
+  es: "%{done} de %{total} (%{percent}%)"
+  en: "%{done} of %{total} (%{percent}%)"
+external.form.umu.title:
+  es: Arreglos de Proton
+  en: Proton fixes
+external.form.umu.search:
+  es: Buscar en UMU
+  en: Search UMU
+external.form.umu.hint:
+  es: "El juego en la base de datos de UMU: con él, protonfixes aplica sus arreglos con cualquier Proton."
+  en: "The game in the UMU database: with it, protonfixes applies its fixes on any Proton."
+external.form.umu.automatic:
+  es: Automático
+  en: Automatic
+external.form.umu.searching:
+  es: Buscando en la base de datos de UMU...
+  en: Searching the UMU database...
+external.form.umu.not_found:
+  es: Ese nombre no está en la base de datos de UMU.
+  en: That name isn't in the UMU database.
+external.form.art.cover:
+  es: Portada
+  en: Cover
+external.form.art.hero:
+  es: Fondo
+  en: Background
+external.form.art.icon:
+  es: Icono
+  en: Icon
+external.form.art.search:
+  es: Buscar imágenes
+  en: Search images
+external.form.art.searching:
+  es: Buscando...
+  en: Searching...
+external.form.art.hint:
+  es: Por nombre, en SteamGridDB y en Steam.
+  en: By name, on SteamGridDB and Steam.
+external.form.art.none:
+  es: No se encontraron imágenes con ese nombre.
+  en: No images were found with that name.
+external.form.art.found.one:
+  es: 1 encontrada
+  en: 1 found
+external.form.art.found.other:
+  es: "%{count} encontradas"
+  en: "%{count} found"
+external.form.art.file:
+  es: Archivo...
+  en: File...
+external.form.art.clear:
+  es: Quitar
+  en: Remove
+external.form.art.previous:
+  es: Ver anteriores
+  en: Show previous
+external.form.art.next:
+  es: Ver siguientes
+  en: Show next
+external.form.art.empty:
+  es: Sin imagen
+  en: No image
+external.form.art.pick_title:
+  es: Elegí una imagen
+  en: Choose an image
+external.form.art.filter:
+  es: Imágenes
+  en: Images
+external.form.save.edit:
+  es: Guardar cambios
+  en: Save changes
+external.form.save.add:
+  es: Agregar a la biblioteca
+  en: Add to library
+external.form.save.copy:
+  es: Copiar prefijo y agregar
+  en: Copy prefix and add
+external.form.save.move:
+  es: Mover prefijo y agregar
+  en: Move prefix and add
+external.form.save.copying:
+  es: Copiando el prefijo...
+  en: Copying the prefix...
+external.form.save.moving:
+  es: Moviendo el prefijo...
+  en: Moving the prefix...
+external.form.errors.name_for_art:
+  es: Poné un nombre para buscar sus imágenes.
+  en: Enter a name to search for its images.
+external.form.errors.name_for_umu:
+  es: Poné un nombre para buscarlo en UMU.
+  en: Enter a name to search for it on UMU.
+external.form.errors.missing:
+  es: Poné un nombre y un ejecutable.
+  en: Enter a name and an executable.
+external.form.errors.no_executable:
+  es: Ese ejecutable no existe.
+  en: That executable doesn't exist.
+external.art.no_key:
+  es: sin key, solo se buscó en Steam.
+  en: no key, only Steam was searched.
+external.art.errors.offline:
+  es: "sin conexión (%{error})"
+  en: "no connection (%{error})"
+external.art.errors.bad_key:
+  es: la key no es válida
+  en: the key isn't valid
+external.art.errors.status:
+  es: "respuesta %{status} (%{error})"
+  en: "response %{status} (%{error})"
+external.art.errors.truncated:
+  es: "respuesta cortada (%{error})"
+  en: "response cut off (%{error})"
+external.art.errors.unexpected:
+  es: "respuesta inesperada (%{error})"
+  en: "unexpected response (%{error})"
+external.art.errors.base_url:
+  es: URL base inválida
+  en: invalid base URL
+external.art.errors.unknown_game:
+  es: no conoce ningún juego llamado «%{name}»
+  en: it doesn't know any game called “%{name}”
+external.art.errors.no_game:
+  es: no tiene ningún juego llamado «%{name}»
+  en: it has no game called “%{name}”
+external.umu.errors.download:
+  es: "descargando la base de datos de UMU: %{error}"
+  en: "downloading the UMU database: %{error}"
+external.umu.errors.read:
+  es: "leyendo la base de datos de UMU: %{error}"
+  en: "reading the UMU database: %{error}"
+external.errors.save:
+  es: "guardando el juego: %{error}"
+  en: "saving the game: %{error}"
+external.errors.remove:
+  es: "borrando el juego: %{error}"
+  en: "deleting the game: %{error}"
+external.errors.installer:
+  es: "no se pudo iniciar el instalador: %{error}"
+  en: "could not start the installer: %{error}"
+external.errors.not_a_prefix:
+  es: Esa carpeta no es un prefijo de Wine (no tiene drive_c).
+  en: That folder isn't a Wine prefix (it has no drive_c).
+external.errors.prefix_busy:
+  es: "Hay algo corriendo en ese prefijo: cerralo primero."
+  en: "Something is running in that prefix: close it first."
+external.errors.new_prefix:
+  es: no se pudo resolver el prefijo nuevo
+  en: could not resolve the new prefix
+external.errors.has_prefix:
+  es: Este juego ya tiene un prefijo propio; empezá uno nuevo para importar.
+  en: This game already has its own prefix; start a new one to import.
+external.transfer.errors.not_empty:
+  es: "%{path} no está vacío: %{error}"
+  en: "%{path} isn't empty: %{error}"
+external.transfer.errors.place:
+  es: "dejando el prefijo en su sitio: %{error}"
+  en: "putting the prefix in place: %{error}"
+external.transfer.errors.measure:
+  es: "midiendo %{path}: %{error}"
+  en: "measuring %{path}: %{error}"
+external.transfer.errors.clean:
+  es: "limpiando %{path}: %{error}"
+  en: "cleaning up %{path}: %{error}"
+external.transfer.errors.copy:
+  es: "copiando el prefijo: %{error}"
+  en: "copying the prefix: %{error}"
+external.transfer.errors.rsync:
+  es: "copiando el prefijo con rsync: %{error}"
+  en: "copying the prefix with rsync: %{error}"

@@ -10,6 +10,8 @@ mod account;
 mod compatibility;
 mod general;
 
+use std::borrow::Cow;
+
 use decanter_core::Storefront;
 use gpui::{Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
 use rust_i18n::t;
@@ -106,7 +108,7 @@ impl Render for SettingsView {
             // more — a profile always exists by the time any screen renders —
             // kept as a fallback rather than an `unreachable!` in case that
             // gate is ever bypassed.
-            (Ok(()), None) => theme::empty(t!("settings.pick_profile")).into_any_element(),
+            (Ok(()), None) => theme::empty(t!("common.pick_profile")).into_any_element(),
         };
 
         theme::page(
@@ -123,16 +125,16 @@ impl Render for SettingsView {
 
 /// A UI-facing name for a storefront — [`Storefront::as_str_name`] is the
 /// machine-facing one (a directory/keyring segment), not fit to print.
-pub(crate) const fn storefront_label(storefront: Storefront) -> &'static str {
+pub(crate) fn storefront_label(storefront: Storefront) -> Cow<'static, str> {
     match storefront {
-        Storefront::Unspecified => "Sin tienda",
-        Storefront::Steam => "Steam",
-        Storefront::EpicGames => "Epic Games",
-        Storefront::Gog => "GOG",
-        Storefront::AmazonGames => "Amazon Games",
-        Storefront::EaApp => "EA App",
-        Storefront::UbisoftConnect => "Ubisoft Connect",
-        Storefront::BattleNet => "Battle.net",
+        Storefront::Unspecified => t!("settings.account.no_store"),
+        Storefront::Steam => "Steam".into(),
+        Storefront::EpicGames => "Epic Games".into(),
+        Storefront::Gog => "GOG".into(),
+        Storefront::AmazonGames => "Amazon Games".into(),
+        Storefront::EaApp => "EA App".into(),
+        Storefront::UbisoftConnect => "Ubisoft Connect".into(),
+        Storefront::BattleNet => "Battle.net".into(),
     }
 }
 

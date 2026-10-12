@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use decanter_core::{InstalledGame, Library, Storefront};
 use gpui::{AnyElement, Context, SharedString, Task, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use crate::external::transfer::Progress;
 use crate::state::AppState;
@@ -158,7 +159,7 @@ impl StorageView {
         };
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new()
-                .set_title("Elegí dónde guardar juegos")
+                .set_title(t!("storage.add_title"))
                 .pick_folder()
                 .await
             else {
@@ -236,14 +237,16 @@ impl StorageView {
         if let Some((moving, progress)) = &self.moving
             && *moving == game.game_id
         {
-            let text = match progress.snapshot() {
-                Some((done, total)) => format!(
-                    "Moviendo {} de {}",
-                    crate::format::bytes(done),
-                    crate::format::bytes(total)
-                ),
-                None => "Moviendo...".to_owned(),
-            };
+            let text = progress.snapshot().map_or_else(
+                || t!("storage.moving.started"),
+                |(done, total)| {
+                    t!(
+                        "storage.moving.progress",
+                        done = crate::format::bytes(done),
+                        total = crate::format::bytes(total)
+                    )
+                },
+            );
             return Some(theme::muted(text).text_size(px(12.)).into_any_element());
         }
         // A game a launcher installed moves with its launcher.
@@ -260,7 +263,7 @@ impl StorageView {
         if targets.is_empty() {
             return None;
         }
-        let options = std::iter::once((SharedString::default(), SharedString::from("Mover a…"))).chain(
+        let options = std::iter::once((SharedString::default(), t!("storage.move_to").into())).chain(
             targets.iter().map(|root| {
                 let path = SharedString::from(root.to_string_lossy().into_owned());
                 (path.clone(), path)
@@ -282,28 +285,35 @@ impl StorageView {
     }
 
     fn folder_card(&self, index: usize, folder: &Folder, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let label = if folder.primary { "Principal" } else { "Adicional" };
+        let label = if folder.primary {
+            t!("storage.folder.primary")
+        } else {
+            t!("storage.folder.extra")
+        };
+        let size = crate::format::bytes(folder.total);
+        let count = folder.games.len();
+        let used = if count == 1 {
+            t!("storage.folder.used.one", used = size)
+        } else {
+            t!("storage.folder.used.other", used = size, count = count)
+        };
         let status = match (folder.present, folder.disk) {
-            (false, _) => "Disco no conectado".to_owned(),
+            (false, _) => t!("storage.folder.offline").into_owned(),
             (true, Some((free, total))) => format!(
-                "{} usados por {} juego(s) · {} libres de {}",
-                crate::format::bytes(folder.total),
-                folder.games.len(),
-                crate::format::bytes(free),
-                crate::format::bytes(total)
+                "{used} · {}",
+                t!(
+                    "storage.folder.free",
+                    free = crate::format::bytes(free),
+                    total = crate::format::bytes(total)
+                )
             ),
-            (true, None) => format!(
-                "{} usados por {} juego(s)",
-                crate::format::bytes(folder.total),
-                folder.games.len()
-            ),
+            (true, None) => used.into_owned(),
         };
         // A folder with games still in it would take them out of the
         // library without moving them anywhere. An unplugged one can't be
         // checked, and is the folder most likely to be gone for good.
         let removable = !folder.primary && (folder.games.is_empty() || !folder.present);
         let root = folder.root.clone();
-        let count = folder.games.len();
         theme::card()
             .mb_4()
             .child(
@@ -327,15 +337,20 @@ impl StorageView {
                     )
                     .when(!folder.primary, |row| {
                         row.child(
-                            button(("storage-remove", index), ButtonKind::Icon, "Quitar", !removable)
-                                .tooltip(tooltip(if removable {
-                                    "Deja de usar esta carpeta; lo que haya en el disco se queda"
-                                } else {
-                                    "Tiene juegos: desinstalalos o movelos antes"
-                                }))
-                                .when(removable, |b| {
-                                    b.on_click(cx.listener(move |this, _, _, cx| this.remove_folder(&root, cx)))
-                                }),
+                            button(
+                                ("storage-remove", index),
+                                ButtonKind::Icon,
+                                t!("storage.folder.remove"),
+                                !removable,
+                            )
+                            .tooltip(tooltip(if removable {
+                                t!("storage.folder.remove_hint")
+                            } else {
+                                t!("storage.folder.remove_blocked")
+                            }))
+                            .when(removable, |b| {
+                                b.on_click(cx.listener(move |this, _, _, cx| this.remove_folder(&root, cx)))
+                            }),
                         )
                     }),
             )
@@ -355,9 +370,9 @@ impl StorageView {
 
 impl Render for StorageView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let column = div().flex().flex_col().child(theme::h1("Almacenamiento"));
+        let column = div().flex().flex_col().child(theme::h1(t!("storage.title")));
         if AppState::get(cx).session.read(cx).active_profile.is_none() {
-            return theme::page("storage", column.child(theme::empty("Elegi un perfil arriba.")));
+            return theme::page("storage", column.child(theme::empty(t!("common.pick_profile"))));
         }
         let Some(folders) = &self.folders else {
             return theme::page("storage", column);
@@ -374,9 +389,20 @@ impl Render for StorageView {
             .mb_6()
             .child(stat_card(
                 crate::format::bytes(used),
-                &format!("usado por {games} juego(s)"),
+                &if games == 1 {
+                    t!("storage.stats.used.one", count = games)
+                } else {
+                    t!("storage.stats.used.other", count = games)
+                },
             ))
-            .child(stat_card(folders.len().to_string(), "carpeta(s) de biblioteca"));
+            .child(stat_card(
+                folders.len().to_string(),
+                &if folders.len() == 1 {
+                    t!("storage.stats.folders.one")
+                } else {
+                    t!("storage.stats.folders.other")
+                },
+            ));
 
         theme::page(
             "storage",
@@ -390,13 +416,8 @@ impl Render for StorageView {
                 )
                 .child(
                     div().flex().child(
-                        button(
-                            "storage-add-folder",
-                            ButtonKind::Secondary,
-                            "Agregar carpeta de biblioteca",
-                            false,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
+                        button("storage-add-folder", ButtonKind::Secondary, t!("storage.add"), false)
+                            .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
                     ),
                 )
                 .when(!self.error.is_empty(), |column| {

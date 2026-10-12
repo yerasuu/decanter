@@ -1,7 +1,4 @@
 _version: 2
-library.pick_profile:
-  es: Elegí un perfil arriba.
-  en: Pick a profile above.
 library.offline_folders:
   es: "Sin conectar: %{folders}. Sus juegos no figuran como instalados hasta que conectes el disco."
   en: "Not connected: %{folders}. Their games show as not installed until you connect the drive."
@@ -614,9 +611,3 @@ library.properties.compatibility.prefix_created:
 library.properties.compatibility.prefix_missing:
   es: sin prefijo (se crea al jugar)
   en: no prefix (created on first launch)
-library.properties.compatibility.no_longer_installed:
-  es: el juego ya no figura como instalado
-  en: the game no longer shows as installed
-library.properties.compatibility.manifest_error:
-  es: "guardando el manifiesto: %{error}"
-  en: "saving the manifest: %{error}"

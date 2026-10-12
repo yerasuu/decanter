@@ -10,6 +10,7 @@
 use std::path::Path;
 
 use decanter_core::{InstalledGame, Storefront};
+use rust_i18n::t;
 
 use crate::external::transfer::{self, Mode, Progress};
 
@@ -22,7 +23,7 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
     let from = crate::achv_try!(
         library
             .root_of(account_id, game_id)
-            .ok_or("el juego ya no figura como instalado")
+            .ok_or_else(|| t!("messages.errors.not_installed").into_owned())
     );
     if from == to {
         return Ok(());
@@ -31,14 +32,14 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
         [Storefront::Gog, Storefront::Unspecified]
             .into_iter()
             .find_map(|storefront| library.read_manifest(account_id, storefront, game_id))
-            .ok_or("el juego ya no figura como instalado")
+            .ok_or_else(|| t!("messages.errors.not_installed").into_owned())
     );
     if game.prefix_of.is_some() {
-        return Err("Este juego vive en el prefijo de su launcher: mové el launcher y viene con él.".to_owned());
+        return Err(t!("storage.errors.hosted").into_owned());
     }
     let old_prefix = from.join("compatdata").join(account_id).join(game_id);
     if !decanter_runtime::Prefix::new(&old_prefix).processes().is_empty() {
-        return Err("El juego está abierto: cerralo antes de moverlo.".to_owned());
+        return Err(t!("storage.errors.running").into_owned());
     }
 
     // Storefront files under `common/`, which another account in the same
@@ -48,17 +49,22 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
         .flatten()
         .filter(|dir| dir.starts_with(&from) && dir.is_dir());
     if files.is_some() && library.install_dir_is_shared(&game.install_dir, account_id, game_id) {
-        return Err("Otra cuenta comparte estos archivos: no se pueden mover solos.".to_owned());
+        return Err(t!("storage.errors.shared").into_owned());
     }
     let new_files = files.as_ref().map(|_| to.join("common").join(&game.install_dir));
     let new_prefix = to.join("compatdata").join(account_id).join(game_id);
     for target in new_files.iter().chain(std::iter::once(&new_prefix)) {
         if target.exists() && std::fs::read_dir(target).is_ok_and(|mut entries| entries.next().is_some()) {
-            return Err(format!("{} ya existe en la carpeta de destino.", target.display()));
+            return Err(t!("storage.errors.exists", path = target.display()).into_owned());
         }
         if let Some(parent) = target.parent() {
             crate::achv_try!(
-                std::fs::create_dir_all(parent).map_err(|err| format!("creando {}: {err}", parent.display()))
+                std::fs::create_dir_all(parent).map_err(|err| t!(
+                    "messages.errors.create_dir",
+                    path = parent.display(),
+                    error = err
+                )
+                .into_owned())
             );
         }
     }
@@ -95,9 +101,12 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
             ..record
         };
         crate::achv_try!(
-            library
-                .relocate_manifest(&record, to)
-                .map_err(|err| format!("moviendo el registro de {}: {err}", record.name))
+            library.relocate_manifest(&record, to).map_err(|err| t!(
+                "storage.errors.manifest",
+                game = record.name,
+                error = err
+            )
+            .into_owned())
         );
     }
     tracing::info!(account_id, game_id, to = %to.display(), "game moved to another library folder");

@@ -3,6 +3,7 @@
 //! (Steam's own shape: that's a per-game concern, not this screen's).
 
 use gpui::{Context, IntoElement, SharedString, Window, prelude::*};
+use rust_i18n::t;
 
 use super::{column, field_row};
 use crate::theme;
@@ -65,11 +66,7 @@ impl Render for CompatibilityTab {
             .filter(|current| self.runners.iter().any(|runner| runner == current))
             .unwrap_or_default()
             .to_owned();
-        let options = std::iter::once((
-            SharedString::default(),
-            SharedString::from("Automatico (lo resuelve umu)"),
-        ))
-        .chain(
+        let options = std::iter::once((SharedString::default(), t!("settings.compatibility.automatic").into())).chain(
             self.runners
                 .iter()
                 .map(|runner| (SharedString::from(runner.clone()), SharedString::from(runner.clone()))),
@@ -77,11 +74,8 @@ impl Render for CompatibilityTab {
         let entity = cx.entity();
 
         column()
-            .child(theme::muted(
-                "Cada juego corre en su propio prefijo, creado la primera vez que lo abris. Para pinear un Proton \
-                 distinto o resetear el prefijo de un juego puntual, abri sus Propiedades desde la biblioteca.",
-            ))
-            .child(theme::h2("Proton por defecto"))
+            .child(theme::muted(t!("settings.compatibility.intro")))
+            .child(theme::h2(t!("settings.compatibility.default")))
             .child(
                 field_row().child(
                     Select::new("default-proton", options, selected).on_change(move |chosen, _, cx| {
@@ -90,9 +84,7 @@ impl Render for CompatibilityTab {
                 ),
             )
             .when(self.runners.is_empty(), |column| {
-                column.child(theme::muted(
-                    "No hay Proton instalado en Steam (compatibilitytools.d). umu va a descargar uno la primera vez.",
-                ))
+                column.child(theme::muted(t!("settings.compatibility.none_installed")))
             })
     }
 }

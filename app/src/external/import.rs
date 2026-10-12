@@ -12,6 +12,8 @@
 
 use std::path::{Path, PathBuf};
 
+use rust_i18n::t;
+
 pub use super::transfer::{Mode, Progress};
 
 /// Drops what a failed copy for `id` left behind, once nothing will retry it.
@@ -60,23 +62,30 @@ pub fn import(
     progress: &Progress,
     draft: super::Draft,
 ) -> Result<(), String> {
-    let root = crate::achv_try!(wine_root(picked).ok_or("esa carpeta no es un prefijo de Wine (no tiene drive_c)"));
+    let root = crate::achv_try!(wine_root(picked).ok_or_else(|| t!("external.errors.not_a_prefix").into_owned()));
     if !decanter_runtime::Prefix::new(&root).processes().is_empty() {
-        return Err("Hay algo corriendo en ese prefijo: cerralo primero.".to_owned());
+        return Err(t!("external.errors.prefix_busy").into_owned());
     }
     let library = crate::achv_try!(super::library_in(profile_id, draft.library_root.as_deref()));
     let destination = crate::achv_try!(
         library
             .compatdata(profile_id, id)
-            .ok_or("no se pudo resolver el prefijo nuevo")
+            .ok_or_else(|| t!("external.errors.new_prefix").into_owned())
     );
     // An installer may already have made one for this draft; the imported
     // prefix replaces it only if it's still empty.
     if destination.exists() && std::fs::read_dir(&destination).is_ok_and(|mut entries| entries.next().is_some()) {
-        return Err("Este juego ya tiene un prefijo propio; empezá uno nuevo para importar.".to_owned());
+        return Err(t!("external.errors.has_prefix").into_owned());
     }
     if let Some(parent) = destination.parent() {
-        crate::achv_try!(std::fs::create_dir_all(parent).map_err(|err| format!("creando {}: {err}", parent.display())));
+        crate::achv_try!(
+            std::fs::create_dir_all(parent).map_err(|err| t!(
+                "messages.errors.create_dir",
+                path = parent.display(),
+                error = err
+            )
+            .into_owned())
+        );
     }
     tracing::info!(profile_id, id, from = %root.display(), to = %destination.display(), copy = mode == Mode::Copy, "importing prefix");
     crate::achv_try!(

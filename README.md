@@ -66,6 +66,21 @@ system instead:
   x86_64-pc-windows-gnu`) plus a mingw-w64 cross gcc and its
   `libpthread.a`, only if rebuilding `crates/hook`'s `Galaxy64.dll`.
 
+## Languages
+
+The app is in Spanish and English. By default it follows the system
+locale: the first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set picks
+Spanish when it starts with `es`, and English otherwise. Ajustes >
+General > Idioma (Settings > General > Language) overrides it, and goes
+back to the system's with "El del sistema" (System default). The change
+applies right away, except for the tray menu and text field
+placeholders, which switch on the next start, and messages already
+shown, which keep the old language until they're shown again. The
+headless CLI and the logs aren't translated.
+
+The texts live in `app/locales/`, one YAML file per area, each key with
+its `es` and `en` value.
+
 ## Achievements
 
 Achievement unlocks tracked through the Galaxy64 hook are local-only:

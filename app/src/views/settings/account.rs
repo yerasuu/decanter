@@ -8,6 +8,7 @@
 
 use decanter_core::{Account, Storefront};
 use gpui::{AsyncApp, Context, Entity, FontWeight, IntoElement, WeakEntity, Window, div, prelude::*, px};
+use rust_i18n::t;
 
 use super::{column, field_row, inline, storefront_label};
 use crate::state::AppState;
@@ -75,7 +76,7 @@ impl AccountTab {
     fn reload_library_path(&mut self) {
         self.library_path = crate::core::library_for_profile(&self.profile_id)
             .map(|library| library.root().display().to_string())
-            .unwrap_or_else(|_| "desconocida".to_string());
+            .unwrap_or_else(|_| t!("settings.account.library.unknown").into_owned());
     }
 
     /// Re-lists the profile's accounts, keeping each surviving row's state
@@ -218,7 +219,7 @@ impl AccountTab {
     fn open_gog(&mut self, cx: &mut Context<Self>) {
         if let Err(err) = crate::desktop::open(decanter_gog::auth_url()) {
             tracing::error!(error = %err, "failed to open browser for gog login");
-            self.add_status = AccountStatus::Failed(format!("no se pudo abrir el navegador: {err}"));
+            self.add_status = AccountStatus::Failed(t!("settings.account.errors.browser", error = err).into_owned());
             cx.notify();
         }
     }
@@ -300,7 +301,7 @@ impl AccountTab {
         let background = AppState::get(cx).background.clone();
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new()
-                .set_title("Elegí la nueva ubicación de la biblioteca")
+                .set_title(t!("settings.account.library.pick_title"))
                 .pick_folder()
                 .await
             else {
@@ -312,15 +313,15 @@ impl AccountTab {
             let new_root = decanter_core::Library::root_under(folder.path());
 
             let Ok(db) = crate::core::db() else {
-                Self::set_move_error(&this, "no se pudo abrir la base de datos".to_string(), cx);
+                Self::set_move_error(&this, t!("settings.account.errors.db").into_owned(), cx);
                 return;
             };
             let Ok(accounts) = db.accounts_in_profile(&profile_id) else {
-                Self::set_move_error(&this, "no se pudieron leer las cuentas del perfil".to_string(), cx);
+                Self::set_move_error(&this, t!("settings.account.errors.accounts").into_owned(), cx);
                 return;
             };
             let Ok(library) = crate::core::library_for_profile(&profile_id) else {
-                Self::set_move_error(&this, "no se pudo resolver la biblioteca actual".to_string(), cx);
+                Self::set_move_error(&this, t!("settings.account.errors.library").into_owned(), cx);
                 return;
             };
 
@@ -336,12 +337,7 @@ impl AccountTab {
                 })
             });
             if busy {
-                Self::set_move_error(
-                    &this,
-                    "hay un juego de este perfil corriendo o instalándose — cerralo antes de mover la biblioteca"
-                        .to_string(),
-                    cx,
-                );
+                Self::set_move_error(&this, t!("settings.account.errors.busy").into_owned(), cx);
                 return;
             }
 
@@ -380,7 +376,7 @@ impl AccountTab {
                         }
                         Err(err) => {
                             tracing::error!(profile_id, %err, "library moved but failed to save new path");
-                            Some(format!("se movió, pero no se pudo guardar la nueva ruta: {err}"))
+                            Some(t!("settings.account.errors.save_path", error = err).into_owned())
                         }
                     }
                 }
@@ -390,7 +386,7 @@ impl AccountTab {
                 }
                 Err(err) => {
                     tracing::error!(profile_id, %err, "move task panicked");
-                    Some(format!("la tarea interna falló: {err}"))
+                    Some(t!("common.errors.internal_task", error = err).into_owned())
                 }
             };
             let _ = this.update(cx, |this, cx| {
@@ -409,13 +405,13 @@ impl AccountTab {
     fn library_location(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let moving = self.moving;
         column()
-            .child(theme::h3("Ubicación de la biblioteca"))
+            .child(theme::h3(t!("settings.account.library.title")))
             .child(theme::muted(self.library_path.clone()))
             .children(self.move_progress.map(|(copied, total)| {
-                theme::muted(format!(
-                    "Moviendo... {} de {}",
-                    crate::format::bytes(copied),
-                    crate::format::bytes(total)
+                theme::muted(t!(
+                    "settings.account.library.moving_progress",
+                    done = crate::format::bytes(copied),
+                    total = crate::format::bytes(total)
                 ))
             }))
             .children(self.move_error.clone().map(theme::error))
@@ -423,7 +419,11 @@ impl AccountTab {
                 button(
                     "move-library",
                     ButtonKind::Secondary,
-                    if moving { "Moviendo..." } else { "Cambiar ubicación" },
+                    if moving {
+                        t!("settings.account.library.moving")
+                    } else {
+                        t!("settings.account.library.change")
+                    },
                     moving,
                 )
                 .when(!moving, |b| {
@@ -440,10 +440,10 @@ impl AccountTab {
                 AccountStatus::Idle | AccountStatus::Working => None,
             };
             let label = match &row.session {
-                SessionCheck::Pending => theme::muted("Comprobando sesión…"),
+                SessionCheck::Pending => theme::muted(t!("settings.account.session.checking")),
                 SessionCheck::Valid(name) => div().font_weight(FontWeight::BOLD).child(name.clone()),
-                SessionCheck::Revoked => theme::error("la sesión se cerró en GOG"),
-                SessionCheck::Failed(err) => theme::error(format!("sesión inválida: {err}")),
+                SessionCheck::Revoked => theme::error(t!("settings.account.session.revoked")),
+                SessionCheck::Failed(err) => theme::error(t!("settings.account.session.invalid", error = err)),
             };
             let working = row.status == AccountStatus::Working;
             let account_id = row.account.id.clone();
@@ -455,7 +455,13 @@ impl AccountTab {
                 .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
                 .child(div().flex_1().min_w_0().child(label))
                 .child(
-                    button(("log-out", index), ButtonKind::Secondary, "Cerrar sesión", working).when(!working, |b| {
+                    button(
+                        ("log-out", index),
+                        ButtonKind::Secondary,
+                        t!("settings.account.log_out"),
+                        working,
+                    )
+                    .when(!working, |b| {
                         b.on_click(cx.listener(move |this, _, _, cx| {
                             this.log_out(account_id.clone(), storefront, cx);
                         }))
@@ -469,7 +475,7 @@ impl AccountTab {
     fn add_gog_account(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.adding {
             return inline(
-                button("add-gog", ButtonKind::Primary, "+ Agregar cuenta GOG", false).on_click(cx.listener(
+                button("add-gog", ButtonKind::Primary, t!("settings.account.add.button"), false).on_click(cx.listener(
                     |this, _, _, cx| {
                         this.adding = true;
                         cx.notify();
@@ -482,12 +488,9 @@ impl AccountTab {
         // width instead of stretching, as inline buttons did in a block.
         theme::card()
             .items_start()
+            .child(theme::muted(t!("settings.account.add.hint")).w_full())
             .child(
-                theme::muted("Abrí GOG, iniciá sesión, y pegá acá la dirección de la página a la que llegues.")
-                    .w_full(),
-            )
-            .child(
-                button("open-gog", ButtonKind::Primary, "Abrir GOG", false)
+                button("open-gog", ButtonKind::Primary, t!("settings.account.add.open"), false)
                     .on_click(cx.listener(|this, _, _, cx| this.open_gog(cx))),
             )
             .child(
@@ -495,7 +498,13 @@ impl AccountTab {
                     .w_full()
                     .child(div().flex_1().min_w_0().child(self.pasted.clone()))
                     .child(
-                        button("connect-gog", ButtonKind::Primary, "Conectar", disabled).when(!disabled, |b| {
+                        button(
+                            "connect-gog",
+                            ButtonKind::Primary,
+                            t!("settings.account.add.connect"),
+                            disabled,
+                        )
+                        .when(!disabled, |b| {
                             b.on_click(cx.listener(|this, _, _, cx| this.connect(cx)))
                         }),
                     ),
@@ -510,15 +519,13 @@ impl AccountTab {
 impl Render for AccountTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let accounts = if self.rows.is_empty() {
-            theme::empty("Todavia no hay ninguna cuenta en este perfil.").into_any_element()
+            theme::empty(t!("settings.account.empty")).into_any_element()
         } else {
             self.account_rows(cx).into_any_element()
         };
         column()
             .child(self.library_location(cx))
-            .child(theme::muted(
-                "Las cuentas de este perfil. Todas aportan a la Biblioteca a la vez — no hace falta elegir una activa.",
-            ))
+            .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
             .child(self.add_gog_account(cx))
     }

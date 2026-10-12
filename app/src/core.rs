@@ -23,7 +23,7 @@ pub fn db() -> Result<Db, String> {
             // swallows it into a default/empty state; this is the one place
             // that always sees it, so it's the one place that logs it.
             tracing::warn!(%err, "failed to open db");
-            Err(format!("abriendo la base de datos: {err}"))
+            Err(t!("messages.errors.db_open", error = err).into_owned())
         }
     }
 }
@@ -72,7 +72,7 @@ pub fn library() -> Result<Library, String> {
         Some(path) => Ok(Library::new(path)),
         None => {
             tracing::warn!("no data directory for this platform");
-            Err("no hay directorio de datos en esta plataforma".to_string())
+            Err(t!("messages.errors.no_data_dir").into_owned())
         }
     }
 }
@@ -115,20 +115,23 @@ pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<
         .into_iter()
         .find(|existing| existing.starts_with(&root) || root.starts_with(existing))
     {
-        return Err(format!(
-            "{} ya es parte de la biblioteca ({})",
-            root.display(),
-            clash.display()
-        ));
+        return Err(t!("storage.errors.nested", path = root.display(), folder = clash.display()).into_owned());
     }
-    crate::achv_try!(std::fs::create_dir_all(&root).map_err(|err| format!("creando {}: {err}", root.display())));
+    crate::achv_try!(
+        std::fs::create_dir_all(&root).map_err(|err| t!(
+            "messages.errors.create_dir",
+            path = root.display(),
+            error = err
+        )
+        .into_owned())
+    );
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
     crate::achv_try!(
         db()?
             .add_profile_library(profile_id, &root.to_string_lossy(), now)
-            .map_err(|err| format!("guardando la carpeta: {err}"))
+            .map_err(|err| t!("storage.errors.add", error = err).into_owned())
     );
     if let Err(err) = library_for_profile(profile_id)
         .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
@@ -157,7 +160,7 @@ pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result
     crate::achv_try!(
         db()?
             .remove_profile_library(profile_id, &root.to_string_lossy())
-            .map_err(|err| format!("quitando la carpeta: {err}"))
+            .map_err(|err| t!("storage.errors.remove", error = err).into_owned())
     );
     if let Err(err) = library_for_profile(profile_id)
         .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
@@ -234,14 +237,15 @@ pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> 
 /// but always overridable by hand.
 pub fn set_cloud_save_path(account_id: &str, product_id: &str, path: Option<&str>) -> Result<(), String> {
     let library = crate::achv_try!(library_for_account(account_id));
-    let mut current =
-        crate::achv_try!(installed_game(account_id, product_id).ok_or("el juego ya no figura como instalado"));
+    let mut current = crate::achv_try!(
+        installed_game(account_id, product_id).ok_or_else(|| t!("messages.errors.not_installed").into_owned())
+    );
     current.cloud_save_path = path.filter(|value| !value.is_empty()).map(str::to_string);
     library
         .write_manifest(&current)
         .inspect(|()| tracing::debug!(account_id, product_id, "cloud save path updated"))
         .inspect_err(|err| tracing::error!(account_id, product_id, %err, "failed to save cloud save path"))
-        .map_err(|err| format!("guardando el manifiesto: {err}"))
+        .map_err(|err| t!("messages.errors.save_manifest", error = err).into_owned())
 }
 
 /// Asks GOG's remote-config where this game keeps its saves. Empty means
@@ -256,10 +260,11 @@ pub async fn detect_cloud_save_locations(
     let install_dir = crate::achv_try!(
         library
             .install_dir(&game.install_dir)
-            .ok_or("directorio de instalación inválido")
+            .ok_or_else(|| t!("messages.errors.install_dir").into_owned())
     );
-    let prefix =
-        crate::achv_try!(prefix_for(account_id, &game.game_id).ok_or("no se pudo resolver el prefijo de este juego"));
+    let prefix = crate::achv_try!(
+        prefix_for(account_id, &game.game_id).ok_or_else(|| t!("messages.errors.prefix").into_owned())
+    );
     let prefix_drive_c = prefix.drive_c();
     tracing::debug!(account_id, game_id = %game.game_id, "detecting cloud save locations");
     decanter_gog::save_location::detect(account_id, &game.game_id, &install_dir, &prefix_drive_c)
@@ -276,14 +281,15 @@ pub async fn detect_cloud_save_locations(
 /// "changed since when" threshold the next sync classifies against.
 pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64) -> Result<(), String> {
     let library = crate::achv_try!(library_for_account(account_id));
-    let mut current =
-        crate::achv_try!(installed_game(account_id, product_id).ok_or("el juego ya no figura como instalado"));
+    let mut current = crate::achv_try!(
+        installed_game(account_id, product_id).ok_or_else(|| t!("messages.errors.not_installed").into_owned())
+    );
     current.cloud_save_last_sync = Some(last_sync);
     library
         .write_manifest(&current)
         // Failure is already warned about by every caller of this function; just note the outcome here.
         .inspect(|()| tracing::debug!(account_id, product_id, last_sync, "cloud save sync timestamp recorded"))
-        .map_err(|err| format!("guardando el manifiesto: {err}"))
+        .map_err(|err| t!("messages.errors.save_manifest", error = err).into_owned())
 }
 
 /// Where a game runs: its own prefix, per account, created by umu on first

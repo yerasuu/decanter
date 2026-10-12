@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use decanter_core::{Game, GameArt, InstallState, InstalledGame, Storefront};
 use decanter_gog::{GameKind, LibraryEntry};
+use rust_i18n::t;
 
 /// The umu `GAMEID` every external game runs as: umu's own "unknown game"
 /// id, which lets protonfixes look the game up in the UMU database rather
@@ -130,7 +131,7 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         .write_manifest(&game)
         .inspect(|()| tracing::info!(profile_id, id, name = %game.name, "external game saved"))
         .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
-        .map_err(|err| format!("guardando el juego: {err}"))
+        .map_err(|err| t!("external.errors.save", error = err).into_owned())
 }
 
 /// Forgets an external game (manifest, favorites, playtime, collections)
@@ -154,7 +155,7 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
         library
             .remove_manifest(profile_id, Storefront::Unspecified, id)
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to remove external game manifest"))
-            .map_err(|err| format!("borrando el juego: {err}"))
+            .map_err(|err| t!("external.errors.remove", error = err).into_owned())
     );
     // A hosted game's prefix is its launcher's, still in use.
     let owns_prefix = removed.is_none_or(|game| game.prefix_of.is_none());
@@ -191,8 +192,9 @@ pub async fn run_installer(
     proton: Option<String>,
     library_root: Option<&Path>,
 ) -> Result<(), String> {
-    let prefix =
-        crate::achv_try!(prefix_in(profile_id, id, library_root).ok_or("no se pudo resolver el prefijo del juego"));
+    let prefix = crate::achv_try!(
+        prefix_in(profile_id, id, library_root).ok_or_else(|| t!("messages.errors.prefix").into_owned())
+    );
     // The same id the game itself launches with, so protonfixes treats
     // both alike.
     let launch = decanter_runtime::Launch::new(installer, UMU_ID).proton(crate::core::proton_or_default(proton));
@@ -201,7 +203,7 @@ pub async fn run_installer(
         decanter_runtime::start(&prefix, launch)
             .await
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "installer failed to start"))
-            .map_err(|err| format!("no se pudo iniciar el instalador: {err}"))
+            .map_err(|err| t!("external.errors.installer", error = err).into_owned())
     );
     // Many installers exit non-zero on a perfectly good install (or when
     // the user closes a "finished" dialog), so a failure status is only

@@ -13,6 +13,7 @@ use gpui::{
     Animation, AnimationExt as _, AnyView, App, Context, Div, ElementId, FontWeight, IntoElement, ParentElement as _,
     Render, SharedString, Stateful, Styled as _, Window, div, prelude::*, px, relative, rgb,
 };
+use rust_i18n::t;
 
 pub use input::{InputEvent, TextInput};
 pub use select::Select;
@@ -137,7 +138,7 @@ pub fn running_mark(id: impl Into<ElementId>) -> Stateful<Div> {
         .flex_none()
         .text_size(px(10.))
         .text_color(rgb(theme::ACCENT_GREEN))
-        .tooltip(tooltip("En ejecución"))
+        .tooltip(tooltip(t!("common.running")))
         .child("▶")
 }
 

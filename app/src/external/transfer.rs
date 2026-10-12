@@ -19,6 +19,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use decanter_core::MoveProgress;
+use rust_i18n::t;
 
 /// How far a copy has got, written from the import's blocking thread and
 /// read by the UI on its own timer —
@@ -57,7 +58,14 @@ pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MovePro
     if dst.is_dir() {
         // Left by an installer run that wrote nothing; it would block the
         // rename below.
-        crate::achv_try!(std::fs::remove_dir(dst).map_err(|err| format!("{} no está vacío: {err}", dst.display())));
+        crate::achv_try!(
+            std::fs::remove_dir(dst).map_err(|err| t!(
+                "external.transfer.errors.not_empty",
+                path = dst.display(),
+                error = err
+            )
+            .into_owned())
+        );
     }
     if mode == Mode::Move && std::fs::rename(src, dst).is_ok() {
         tracing::info!(from = %src.display(), to = %dst.display(), "prefix moved (rename)");
@@ -65,7 +73,9 @@ pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MovePro
     }
     let staging = staging_for(dst);
     crate::achv_try!(copy(src, &staging, on_progress));
-    crate::achv_try!(std::fs::rename(&staging, dst).map_err(|err| format!("dejando el prefijo en su sitio: {err}")));
+    crate::achv_try!(
+        std::fs::rename(&staging, dst).map_err(|err| t!("external.transfer.errors.place", error = err).into_owned())
+    );
     if mode == Mode::Move
         && let Err(err) = std::fs::remove_dir_all(src)
     {
@@ -118,7 +128,12 @@ fn staging_for(dst: &Path) -> PathBuf {
 
 fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -> Result<(), String> {
     let total_bytes = crate::achv_try!(
-        decanter_core::directory_size(src).map_err(|err| format!("midiendo {}: {err}", src.display()))
+        decanter_core::directory_size(src).map_err(|err| t!(
+            "external.transfer.errors.measure",
+            path = src.display(),
+            error = err
+        )
+        .into_owned())
     );
     on_progress(MoveProgress {
         bytes_copied: 0,
@@ -130,13 +145,14 @@ fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -
             // The built-in copy can't resume: whatever an earlier attempt
             // left would only collide with it.
             if staging.exists() {
-                crate::achv_try!(
-                    std::fs::remove_dir_all(staging).map_err(|err| format!("limpiando {}: {err}", staging.display()))
-                );
+                crate::achv_try!(std::fs::remove_dir_all(staging).map_err(|err| {
+                    t!("external.transfer.errors.clean", path = staging.display(), error = err).into_owned()
+                }));
             }
-            decanter_core::copy_dir(src, staging, on_progress).map_err(|err| format!("copiando el prefijo: {err}"))
+            decanter_core::copy_dir(src, staging, on_progress)
+                .map_err(|err| t!("external.transfer.errors.copy", error = err).into_owned())
         }
-        Err(RsyncError::Failed(err)) => Err(format!("copiando el prefijo con rsync: {err}")),
+        Err(RsyncError::Failed(err)) => Err(t!("external.transfer.errors.rsync", error = err).into_owned()),
         Ok(()) => Ok(()),
     }
 }
