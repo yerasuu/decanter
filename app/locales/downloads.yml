@@ -1,0 +1,13 @@
+_version: 2
+downloads.title:
+  es: Descargas
+  en: Downloads
+downloads.empty:
+  es: No hay descargas en curso.
+  en: No downloads in progress.
+downloads.eta:
+  es: faltan %{left}
+  en: "%{left} left"
+downloads.dismiss:
+  es: Descartar
+  en: Dismiss

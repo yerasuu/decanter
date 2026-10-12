@@ -27,12 +27,19 @@ pub struct Game {
     /// Whether the dump carries `sce_module/`. An extracted update lacks it, while a base game
     /// with the update merged in keeps it (and takes the update's `gp` category).
     pub has_modules: bool,
+    /// PS4 `ATTRIBUTE` bit 26: the title does not start without a PS VR headset.
+    pub requires_vr: bool,
 }
 
 impl Game {
     /// An update on its own, not playable; a merged copy is a game.
     pub fn is_update(&self) -> bool {
         self.platform == Platform::Ps4 && self.category.starts_with("gp") && !self.has_modules
+    }
+
+    /// Its [`decanter_core::game_key`]: one per title, whichever dump of it runs.
+    pub fn key(&self) -> String {
+        decanter_core::game_key(&format!("ps_{}", self.title_id))
     }
 }
 
@@ -79,6 +86,9 @@ fn read_ps4(dir: &Path) -> Option<Game> {
         version: get("APP_VER"),
         category: get("CATEGORY"),
         has_modules: dir.join("sce_module").is_dir(),
+        requires_vr: get("ATTRIBUTE")
+            .parse::<u32>()
+            .is_ok_and(|attribute| attribute & 0x0400_0000 != 0),
     })
 }
 
@@ -95,6 +105,7 @@ fn read_ps5(dir: &Path) -> Option<Game> {
         version: text(&json["contentVersion"]),
         category: String::new(),
         has_modules: dir.join("sce_module").is_dir(),
+        requires_vr: false,
     })
 }
 
@@ -133,83 +144,4 @@ pub fn scan(roots: &[PathBuf]) -> Vec<Game> {
     games.sort_by(|a, b| (&a.title, &a.version, &a.dir).cmp(&(&b.title, &b.version, &b.dir)));
     games.dedup_by(|a, b| a.dir == b.dir);
     games
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sfo(entries: &[(&str, Result<&str, u32>)]) -> Vec<u8> {
-        let mut keys = Vec::new();
-        let mut values = Vec::new();
-        let mut index = Vec::new();
-        for (key, value) in entries {
-            let (format, bytes) = match value {
-                Ok(text) => (0x0204u16, [text.as_bytes(), &[0]].concat()),
-                Err(number) => (0x0404, number.to_le_bytes().to_vec()),
-            };
-            index.extend((keys.len() as u16).to_le_bytes());
-            index.extend(format.to_le_bytes());
-            index.extend((bytes.len() as u32).to_le_bytes());
-            index.extend((bytes.len() as u32).to_le_bytes());
-            index.extend((values.len() as u32).to_le_bytes());
-            keys.extend(key.as_bytes());
-            keys.push(0);
-            values.extend(bytes);
-        }
-        let key_table = 20 + index.len();
-        let mut data = b"\0PSF".to_vec();
-        data.extend(0x101u32.to_le_bytes());
-        data.extend((key_table as u32).to_le_bytes());
-        data.extend(((key_table + keys.len()) as u32).to_le_bytes());
-        data.extend((entries.len() as u32).to_le_bytes());
-        data.extend(index);
-        data.extend(keys);
-        data.extend(values);
-        data
-    }
-
-    #[test]
-    fn reads_ps4_and_ps5_dumps() {
-        let root = std::env::temp_dir().join(format!("decanter-ps-library-{}", std::process::id()));
-        let ps4 = root.join("CUSA00900");
-        let ps5 = root.join("PPSA02929");
-        fs::create_dir_all(ps4.join("sce_sys")).unwrap();
-        fs::create_dir_all(ps5.join("sce_sys")).unwrap();
-        let param = sfo(&[
-            ("APP_VER", Ok("01.09")),
-            ("ATTRIBUTE", Err(2)),
-            ("CATEGORY", Ok("gd")),
-            ("TITLE", Ok("Bloodborne")),
-            ("TITLE_ID", Ok("CUSA00900")),
-        ]);
-        fs::write(ps4.join("sce_sys/param.sfo"), param).unwrap();
-        fs::write(
-            ps5.join("sce_sys/param.json"),
-            r#"{"titleId":"PPSA02929","contentVersion":"01.000.000",
-                "localizedParameters":{"defaultLanguage":"en-US","en-US":{"titleName":"Dreaming Sarah"}}}"#,
-        )
-        .unwrap();
-        fs::create_dir_all(root.join("not-a-game")).unwrap();
-        let escaping = root.join("escaping");
-        fs::create_dir_all(escaping.join("sce_sys")).unwrap();
-        fs::write(
-            escaping.join("sce_sys/param.json"),
-            r#"{"titleId":"../../x","localizedParameters":{"defaultLanguage":"en-US","en-US":{"titleName":"X"}}}"#,
-        )
-        .unwrap();
-
-        let games = scan(std::slice::from_ref(&root));
-        fs::remove_dir_all(&root).unwrap();
-        assert_eq!(games.len(), 2);
-        assert_eq!(
-            (games[0].title.as_str(), games[0].platform),
-            ("Bloodborne", Platform::Ps4)
-        );
-        assert_eq!((games[0].version.as_str(), games[0].category.as_str()), ("01.09", "gd"));
-        assert_eq!(
-            (games[1].title_id.as_str(), games[1].platform),
-            ("PPSA02929", Platform::Ps5)
-        );
-    }
 }

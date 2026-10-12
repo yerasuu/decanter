@@ -31,6 +31,11 @@ pub struct Launch {
     /// umu's game identity, which is what protonfixes keys its per-game
     /// workarounds off. Convention is `umu-<storefront id>`.
     pub game_id: String,
+    /// `(game key, title)` the launch's scope is named and described by —
+    /// see [`decanter_core::own_scope`]. `None` names it after `game_id`
+    /// and the executable, for what isn't a game of its own (an
+    /// installer, `wineboot`).
+    pub identity: Option<(String, String)>,
     pub proton: Proton,
     /// umu's `STORE`, used alongside `game_id` to look up protonfixes.
     pub store: Option<String>,
@@ -84,6 +89,7 @@ impl Launch {
             args: Vec::new(),
             working_directory: None,
             game_id: game_id.into(),
+            identity: None,
             store: None,
             proton: Proton::default(),
             dll_overrides: Vec::new(),
@@ -217,7 +223,17 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
     tracing::debug!(working_directory = %working_directory.display(), "resolved working directory for launch");
 
     let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
-    let mut command = Command::new(&umu_run_path);
+    let (key, description) = launch.identity.take().unwrap_or_else(|| {
+        let name = launch.executable.file_name().unwrap_or_default();
+        (launch.game_id.clone(), name.to_string_lossy().into_owned())
+    });
+    let mut command = match decanter_core::own_scope(&key, &description) {
+        Some(mut scoped) => {
+            scoped.arg(&umu_run_path);
+            Command::from(scoped)
+        }
+        None => Command::new(&umu_run_path),
+    };
     // umu/Proton build whatever environment the container needs
     // themselves; decanter's own (library path, allocator and EGL
     // settings) has only ever caused breakage in there.

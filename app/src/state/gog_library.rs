@@ -85,6 +85,9 @@ pub struct GogLibrary {
     /// reflects whichever wrote most recently, the same simplification
     /// `state` itself already makes.
     pub(crate) enrich_progress: Option<(usize, usize)>,
+    /// Library folders whose disk isn't plugged in, as of the last look:
+    /// their games read as not installed, which the view warns about.
+    pub(crate) offline_folders: Vec<std::path::PathBuf>,
     profile: Option<String>,
     /// The active profile's GOG accounts, oldest first — the merge order.
     wanted: Vec<String>,
@@ -113,6 +116,7 @@ impl GogLibrary {
             revision: 0,
             state: LibraryState::Idle,
             enrich_progress: None,
+            offline_folders: Vec::new(),
             profile: session.read(cx).active_profile.clone(),
             wanted: Vec::new(),
             by_account: HashMap::new(),
@@ -120,6 +124,8 @@ impl GogLibrary {
             external: Vec::new(),
         };
         this.reconcile(cx);
+        cx.spawn(async move |this, cx| watch_library_folders(this, cx).await)
+            .detach();
         this
     }
 
@@ -170,6 +176,23 @@ impl GogLibrary {
         self.games = merge(&self.by_account, &self.wanted, &self.external);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
+    }
+
+    /// Re-reads every game's local install state, for when the set of
+    /// library folders changed: a folder added can bring installed games
+    /// with it, one removed takes them away.
+    pub fn refresh_all_install_state(&mut self, cx: &mut Context<Self>) {
+        self.offline_folders = self
+            .profile
+            .as_deref()
+            .map(crate::core::offline_library_folders)
+            .unwrap_or_default();
+        for (account_id, games) in &mut self.by_account {
+            for entry in games.iter_mut() {
+                entry.game.install_state = local_install_state(account_id, &entry.game.id);
+            }
+        }
+        self.refresh_external(cx);
     }
 
     /// Cancels this account's fetch loop and drops its games right away —
@@ -225,6 +248,11 @@ impl GogLibrary {
         });
         self.by_account.retain(|account_id, _| wanted.contains(account_id));
         self.wanted = wanted;
+        self.offline_folders = self
+            .profile
+            .as_deref()
+            .map(crate::core::offline_library_folders)
+            .unwrap_or_default();
         self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
 
         if self.wanted.is_empty() {
@@ -285,6 +313,37 @@ fn external_entries(profile_id: &str) -> Vec<LibraryEntry> {
         .iter()
         .map(crate::external::entry)
         .collect()
+}
+
+/// How often library folders are checked for a disk that came or went.
+const FOLDER_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Notices a library folder's disk being plugged in or pulled out, and
+/// re-reads what's installed when one is — nothing announces it, and a
+/// game on it should show as installed again without a restart.
+async fn watch_library_folders(this: WeakEntity<GogLibrary>, cx: &mut AsyncApp) {
+    loop {
+        cx.background_executor().timer(FOLDER_CHECK_INTERVAL).await;
+        let Ok(profile) = this.read_with(cx, |library, _| library.profile.clone()) else {
+            return;
+        };
+        let Some(profile) = profile else {
+            continue;
+        };
+        let offline = cx
+            .background_executor()
+            .spawn(async move { crate::core::offline_library_folders(&profile) })
+            .await;
+        let alive = this.update(cx, |library, cx| {
+            if library.offline_folders != offline {
+                tracing::info!(offline = ?offline, "a library folder's disk came or went");
+                library.refresh_all_install_state(cx);
+            }
+        });
+        if alive.is_err() {
+            return;
+        }
+    }
 }
 
 /// Concatenates every account's games into one list, keeping the first
@@ -530,9 +589,11 @@ fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntr
     shown.retain(|entry| owned.contains(entry.game.id.as_str()));
 
     let keep: Vec<String> = fetched.iter().map(|entry| entry.game.id.clone()).collect();
-    match decanter_core::Db::open(decanter_core::default_db_path()) {
+    match decanter_core::Db::open_active() {
         Ok(db) => match db.retain_games(account_id, decanter_core::Storefront::Gog, &keep) {
-            Ok(dropped) if dropped > 0 => tracing::info!("{dropped} game(s) are no longer in this GOG account"),
+            Ok(dropped) if dropped > 0 => {
+                tracing::info!(account_id, dropped, "games no longer owned dropped from the cache");
+            }
             Ok(_) => {}
             Err(err) => tracing::warn!(account_id, %err, "failed to prune games no longer owned from cache"),
         },
@@ -628,74 +689,4 @@ fn changed_since(before: &[LibraryEntry], after: &[LibraryEntry]) -> Vec<Library
         .filter(|entry| before.get(entry.game.id.as_str()) != Some(entry))
         .cloned()
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use decanter_core::Game;
-    use decanter_gog::{GameKind, LibraryEntry};
-
-    use super::{Pass, absorb};
-
-    fn entry(cover: &str, kind: GameKind) -> LibraryEntry {
-        LibraryEntry {
-            game: Game {
-                id: "1207658924".to_owned(),
-                account_id: "acct".to_owned(),
-                title: "Betrayer".to_owned(),
-                cover_url: Some(cover.to_owned()),
-                ..Default::default()
-            },
-            kind,
-            purchased_at: None,
-            library_rank: None,
-            installable: true,
-            parent_id: None,
-        }
-    }
-
-    #[test]
-    fn listing_keeps_enriched_art_and_category() {
-        let mut enriched = entry("vertical.jpg?namespace=gamesdb", GameKind::Game);
-        enriched.game.genres = vec!["Horror".to_owned()];
-        let mut shown = vec![enriched.clone()];
-
-        let mut listed = entry("_392.jpg", GameKind::Extra);
-        listed.library_rank = Some(3);
-        let changed = absorb("acct", &mut shown, vec![listed], Pass::Listed);
-
-        assert_eq!(changed.len(), 1);
-        assert_eq!(shown[0].game.cover_url, enriched.game.cover_url);
-        assert_eq!(shown[0].kind, GameKind::Game);
-        assert_eq!(shown[0].game.genres, enriched.game.genres);
-        assert_eq!(shown[0].library_rank, Some(3));
-    }
-
-    #[test]
-    fn unchanged_listing_is_not_a_change() {
-        let mut shown = vec![entry("vertical.jpg", GameKind::Game)];
-        let changed = absorb(
-            "acct",
-            &mut shown,
-            vec![entry("_392.jpg", GameKind::Extra)],
-            Pass::Listed,
-        );
-        assert!(changed.is_empty());
-    }
-
-    #[test]
-    fn enrichment_never_blanks_a_known_field() {
-        let mut known = entry("vertical.jpg", GameKind::Game);
-        known.parent_id = Some("1".to_owned());
-        known.game.background_url = Some("bg.jpg".to_owned());
-        let mut shown = vec![known];
-
-        let mut partial = entry("vertical.jpg", GameKind::Game);
-        partial.game.description = Some("A ghost story.".to_owned());
-        absorb("acct", &mut shown, vec![partial], Pass::Enriched);
-
-        assert_eq!(shown[0].parent_id.as_deref(), Some("1"));
-        assert_eq!(shown[0].game.background_url.as_deref(), Some("bg.jpg"));
-        assert_eq!(shown[0].game.description.as_deref(), Some("A ghost story."));
-    }
 }

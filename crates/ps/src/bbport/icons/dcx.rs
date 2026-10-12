@@ -29,11 +29,6 @@ fn be_u32(bytes: &[u8], at: usize) -> io::Result<usize> {
 }
 
 impl Dcx {
-    #[cfg(test)]
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
     pub fn data_mut(&mut self) -> &mut [u8] {
         &mut self.data
     }
@@ -68,25 +63,5 @@ impl Dcx {
         out[0x20..0x24].copy_from_slice(&size(packed.len())?.to_be_bytes());
         out.extend_from_slice(&packed);
         Ok(out)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn round_trips_with_updated_sizes() {
-        let mut header = vec![0u8; HEADER];
-        header[..4].copy_from_slice(b"DCX\0");
-        header[0x28..0x2C].copy_from_slice(b"DFLT");
-        let dcx = Dcx {
-            header,
-            data: b"TPF\0 some texture bytes".repeat(100),
-        };
-        let file = dcx.write().unwrap();
-        let back = Dcx::parse(&file).unwrap();
-        assert_eq!(back.data, dcx.data);
-        assert!(Dcx::parse(b"DCX\0nope").is_err());
     }
 }

@@ -105,7 +105,7 @@ pub async fn fetch_many(client: &reqwest::Client, ids: &[i64]) -> Vec<Product> {
     {
         Ok(response) => response,
         Err(err) => {
-            tracing::debug!("GOG product batch of {} failed: {err}", ids.len());
+            tracing::debug!(requested = ids.len(), %err, "GOG product batch failed");
             return Vec::new();
         }
     };
@@ -120,7 +120,7 @@ pub async fn fetch_many(client: &reqwest::Client, ids: &[i64]) -> Vec<Product> {
             products
         }
         Err(err) => {
-            tracing::debug!("GOG product batch had an unexpected shape: {err}");
+            tracing::debug!(requested = ids.len(), %err, "GOG product batch had an unexpected shape");
             Vec::new()
         }
     }

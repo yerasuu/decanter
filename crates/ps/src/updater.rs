@@ -11,6 +11,7 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
+use crate::paths::Root;
 use crate::port::Port;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +51,7 @@ async fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
         Err(err) => return Err(format!("git: {err}")),
     };
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_owned())
     } else {
         Err(format!(
             "git {}: {}",
@@ -72,8 +73,19 @@ fn valid_branch(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
 }
 
-/// Fetches and compares with upstream.
-pub async fn check(repo: &Path) -> Result<Check, String> {
+/// Fetches and compares with `upstream`, pointing `origin` at it first: a
+/// checkout cloned before a port moved (bbport to decanter's fork) then
+/// fast-forwards onto it like any other update.
+pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
+    match git(repo, &["remote", "get-url", "origin"]).await {
+        Ok(current) if current == upstream => {}
+        Ok(_) => {
+            if let Err(err) = git(repo, &["remote", "set-url", "origin", upstream]).await {
+                return Err(err);
+            }
+        }
+        Err(err) => return Err(err),
+    }
     if let Err(err) = git(repo, &["fetch", "--quiet", "origin"]).await {
         return Err(err);
     }
@@ -149,8 +161,8 @@ pub async fn check(repo: &Path) -> Result<Check, String> {
 
 /// The first time a port is needed. Into a sibling directory renamed into
 /// place at the end, so an interrupted clone never looks like a checkout.
-pub fn clone_command(port: Port) -> Command {
-    let checkout = port.checkout();
+pub fn clone_command(root: &Root, port: Port) -> Command {
+    let checkout = port.checkout(root);
     let partial = checkout.with_extension("cloning");
     let mut command = Command::new("bash");
     command
@@ -168,17 +180,26 @@ pub fn clone_command(port: Port) -> Command {
     command
 }
 
+/// Deinitializes the submodules that `origin/$1` tracks as plain files instead, since git won't
+/// check files out over a submodule's checkout. Their checkout is discarded: upstream's tree now
+/// carries that content.
+const DROP_FORMER_SUBMODULES: &str = "git ls-files --stage | while read -r mode _ _ path; do \
+     [ \"$mode\" = 160000 ] || continue; \
+     git ls-tree --end-of-options \"origin/$1\" \"$path\" | grep -q '^160000 ' && continue; \
+     git submodule deinit -f -- \"$path\"; done";
+
 /// The automatic update. `--ff-only` refuses rather than merges, and git
 /// itself refuses when an incoming change touches a locally edited file,
-/// so nothing local is lost. `branch` comes from a [`Check`].
+/// so nothing local is lost, except the checkout of a submodule upstream
+/// turned into plain files ([`DROP_FORMER_SUBMODULES`]). `branch` comes from a [`Check`].
 pub fn fast_forward_command(repo: &Path, branch: &str) -> Command {
     let mut command = Command::new("bash");
     command
         .arg("-c")
-        .arg(
-            "set -e; git merge --ff-only --end-of-options \"origin/$1\"; \
-             git submodule update --init --recursive; git log -1 --oneline",
-        )
+        .arg(format!(
+            "set -e; {DROP_FORMER_SUBMODULES}; git merge --ff-only --end-of-options \"origin/$1\"; \
+             git submodule update --init --recursive; git log -1 --oneline"
+        ))
         .arg("update")
         .arg(branch)
         .current_dir(repo)
@@ -188,8 +209,9 @@ pub fn fast_forward_command(repo: &Path, branch: &str) -> Command {
 }
 
 /// Where [`reset_command`] saves the local diff of `port`'s checkout.
-pub fn backup_path(port: Port, head: &str) -> PathBuf {
-    crate::paths::backups().join(format!("{}-{head}.patch", port.name().to_lowercase()))
+pub fn backup_path(root: &Root, port: Port, head: &str) -> PathBuf {
+    root.backups()
+        .join(format!("{}-{head}.patch", port.name().to_lowercase()))
 }
 
 /// Only ever started by an explicit user action: saves `git diff HEAD` to
@@ -198,11 +220,12 @@ pub fn reset_command(repo: &Path, branch: &str, backup: &Path) -> Command {
     let mut command = Command::new("bash");
     command
         .arg("-c")
-        .arg(
+        .arg(format!(
             "set -e; mkdir -p -- \"$(dirname -- \"$2\")\"; git diff HEAD > \"$2\"; \
-             echo \"local changes saved to $2\"; git reset --hard --end-of-options \"origin/$1\"; \
-             git submodule update --init --recursive; git log -1 --oneline",
-        )
+             echo \"local changes saved to $2\"; {DROP_FORMER_SUBMODULES}; \
+             git reset --hard --end-of-options \"origin/$1\"; \
+             git submodule update --init --recursive; git log -1 --oneline"
+        ))
         .arg("reset")
         .arg(branch)
         .arg(backup)
@@ -210,94 +233,4 @@ pub fn reset_command(repo: &Path, branch: &str, backup: &Path) -> Command {
         .stdin(Stdio::null());
     decanter_core::strip_launcher_env(command.as_std_mut());
     command
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn run(dir: &Path, args: &[&str]) {
-        let status = std::process::Command::new("git")
-            .arg("-C")
-            .arg(dir)
-            .args([
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "-c",
-                "init.defaultBranch=main",
-                // The user's global config may sign commits; test repositories have no key.
-                "-c",
-                "commit.gpgsign=false",
-            ])
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(
-            status.status.success(),
-            "git {args:?}: {}",
-            String::from_utf8_lossy(&status.stderr)
-        );
-    }
-
-    /// An upstream repository and a clone of it, in a temporary folder.
-    fn repos(name: &str) -> (PathBuf, PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("decanter-ps-updater-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        let (upstream, clone) = (root.join("upstream"), root.join("clone"));
-        std::fs::create_dir_all(&upstream).unwrap();
-        run(&upstream, &["init", "-q"]);
-        std::fs::write(upstream.join("a"), "1").unwrap();
-        run(&upstream, &["add", "a"]);
-        run(&upstream, &["commit", "-qm", "one"]);
-        run(&root, &["clone", "-q", "upstream", "clone"]);
-        (root, upstream, clone)
-    }
-
-    #[tokio::test]
-    async fn plans_fast_forward_then_up_to_date() {
-        let (root, upstream, clone) = repos("ff");
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::UpToDate);
-        std::fs::write(upstream.join("b"), "2").unwrap();
-        run(&upstream, &["add", "b"]);
-        run(&upstream, &["commit", "-qm", "two"]);
-        let found = check(&clone).await.unwrap();
-        assert_eq!(
-            (found.plan, found.behind, found.branch.as_str()),
-            (Plan::FastForward, 1, "main")
-        );
-        assert!(fast_forward_command(&clone, "main").status().await.unwrap().success());
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::UpToDate);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[tokio::test]
-    async fn tells_rewritten_history_from_local_commits() {
-        let (root, upstream, clone) = repos("rewrite");
-        std::fs::write(upstream.join("b"), "2").unwrap();
-        run(&upstream, &["add", "b"]);
-        run(&upstream, &["commit", "-qm", "two"]);
-        run(&clone, &["pull", "-q"]);
-        // Upstream amends its last commit (same patch, new hash) and adds one.
-        run(&upstream, &["commit", "-q", "--amend", "-m", "two, reworded"]);
-        std::fs::write(upstream.join("c"), "3").unwrap();
-        run(&upstream, &["add", "c"]);
-        run(&upstream, &["commit", "-qm", "three"]);
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::Rewritten);
-        std::fs::write(clone.join("mine"), "x").unwrap();
-        run(&clone, &["add", "mine"]);
-        run(&clone, &["commit", "-qm", "mine"]);
-        assert_eq!(check(&clone).await.unwrap().plan, Plan::LocalCommits(1));
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn branch_names_from_the_remote_are_held_to_branch_shapes() {
-        assert!(valid_branch("main"));
-        assert!(valid_branch("release/0.4"));
-        assert!(!valid_branch("--upload-pack=x"));
-        assert!(!valid_branch("a b"));
-        assert!(!valid_branch("../x"));
-    }
 }

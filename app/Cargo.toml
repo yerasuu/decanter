@@ -1,6 +1,7 @@
 [package]
 name = "decanter"
 version.workspace = true
+license.workspace = true
 authors.workspace = true
 edition.workspace = true
 
@@ -15,12 +16,13 @@ decanter-core.workspace = true
 decanter-gog.workspace = true
 decanter-ps.workspace = true
 decanter-runtime.workspace = true
+dirs.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap = { workspace = true, features = ["derive"] }
-tokio = { workspace = true, features = ["time", "fs", "signal", "sync", "rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["time", "fs", "process", "signal", "sync", "rt-multi-thread", "macros"] }
 open.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -31,6 +33,8 @@ md5.workspace = true
 unicode-segmentation.workspace = true
 reqwest.workspace = true
 image.workspace = true
+rust-i18n.workspace = true
+thiserror.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni.workspace = true

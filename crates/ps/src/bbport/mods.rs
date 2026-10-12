@@ -15,6 +15,7 @@ use super::LauncherSettings;
 use super::icons::{self, COMMON_TPF, IconStyle};
 use super::pad;
 use super::tools::ModProfile;
+use crate::paths::Root;
 
 /// decanter's own mod in the folder bbport sees; last alphabetically too,
 /// should anything ignore the order.
@@ -28,15 +29,27 @@ pub struct Mods {
     pub enabled: bool,
 }
 
-fn user_dir(settings: &LauncherSettings) -> PathBuf {
+impl Mods {
+    /// bbport's mods folder with mods switched off: the mods and the icons
+    /// mod are Bloodborne's files.
+    pub fn off(root: &Root, settings: &LauncherSettings) -> Self {
+        Self {
+            dir: user_dir(root, settings),
+            config: ModProfile::path(root),
+            enabled: false,
+        }
+    }
+}
+
+fn user_dir(root: &Root, settings: &LauncherSettings) -> PathBuf {
     settings
         .text("mods_dir")
-        .map_or_else(|| crate::paths::bbport_data().join("mods"), PathBuf::from)
+        .map_or_else(|| root.bbport_data().join("mods"), PathBuf::from)
 }
 
 /// The user's mods by folder name, in their load order.
-fn user_mods(settings: &LauncherSettings) -> (PathBuf, Vec<String>, ModProfile) {
-    let dir = user_dir(settings);
+fn user_mods(root: &Root, settings: &LauncherSettings) -> (PathBuf, Vec<String>, ModProfile) {
+    let dir = user_dir(root, settings);
     let mut available: Vec<String> = fs::read_dir(&dir)
         .into_iter()
         .flatten()
@@ -46,7 +59,7 @@ fn user_mods(settings: &LauncherSettings) -> (PathBuf, Vec<String>, ModProfile) 
         .filter(|name| name != ICONS_MOD)
         .collect();
     available.sort();
-    let profile = ModProfile::load(&ModProfile::path());
+    let profile = ModProfile::load(&ModProfile::path(root));
     let ordered = profile.ordered(&available);
     (dir, ordered, profile)
 }
@@ -63,8 +76,8 @@ pub fn icon_style(settings: &LauncherSettings, detected: Option<IconStyle>) -> O
 
 /// The file the icons are drawn over: the last enabled mod's
 /// `common.tpf.dcx` when one replaces it, else the game's.
-fn icon_base(game_dir: &Path, settings: &LauncherSettings) -> PathBuf {
-    let (dir, ordered, profile) = user_mods(settings);
+fn icon_base(root: &Root, game_dir: &Path, settings: &LauncherSettings) -> PathBuf {
+    let (dir, ordered, profile) = user_mods(root, settings);
     let enabled = settings.flag("mods_enabled", true);
     ordered
         .iter()
@@ -79,21 +92,26 @@ fn icon_base(game_dir: &Path, settings: &LauncherSettings) -> PathBuf {
 /// The folder and order bbport loads mods from. Without the icons, the
 /// user's own as they are. `detected` is the style of the pad in use, for
 /// the automatic setting. File I/O and the icons' build: off the UI thread.
-pub fn prepare(game_dir: &Path, settings: &LauncherSettings, detected: Option<IconStyle>) -> io::Result<Mods> {
+pub fn prepare(
+    root: &Root,
+    game_dir: &Path,
+    settings: &LauncherSettings,
+    detected: Option<IconStyle>,
+) -> io::Result<Mods> {
     let enabled = settings.flag("mods_enabled", true);
     let Some(style) = icon_style(settings, detected) else {
         return Ok(Mods {
-            dir: user_dir(settings),
-            config: ModProfile::path(),
+            dir: user_dir(root, settings),
+            config: ModProfile::path(root),
             enabled,
         });
     };
-    let icons = match icons::prepare(&pad::from_ini(), style, &icon_base(game_dir, settings)) {
+    let icons = match icons::prepare(root, &pad::from_ini(root), style, &icon_base(root, game_dir, settings)) {
         Ok(icons) => icons,
         Err(err) => return Err(err),
     };
-    let (dir, ordered, profile) = user_mods(settings);
-    let view = crate::paths::bbport_data().join("mods-effective");
+    let (dir, ordered, profile) = user_mods(root, settings);
+    let view = root.bbport_data().join("mods-effective");
     // Only links live here; removing it never touches what they point at.
     if let Err(err) = fs::remove_dir_all(&view)
         && err.kind() != io::ErrorKind::NotFound
@@ -108,7 +126,7 @@ pub fn prepare(game_dir: &Path, settings: &LauncherSettings, detected: Option<Ic
     let disabled = if enabled { profile.disabled } else { ordered.clone() };
     let mut order = ordered;
     order.push(ICONS_MOD.to_owned());
-    let config = crate::paths::bbport_data().join("mods-effective.json");
+    let config = root.bbport_data().join("mods-effective.json");
     ModProfile { order, disabled }.save(&config)?;
     Ok(Mods {
         dir: view,

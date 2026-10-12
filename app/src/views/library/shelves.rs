@@ -8,6 +8,7 @@
 use std::collections::HashSet;
 
 use decanter_gog::LibraryEntry;
+use rust_i18n::t;
 
 use super::data::{Collections, LibraryStats};
 use super::filters::{SavedFilter, is_installed};
@@ -64,7 +65,7 @@ pub(super) fn build(
         .collect();
     let favorites_shelf = (!favorite_entries.is_empty()).then(|| Shelf {
         id: "favorites".to_string(),
-        title: "Favoritos".to_string(),
+        title: t!("library.shelves.favorites").into_owned(),
         entries: favorite_entries,
         collection_id: None,
         dynamic: false,
@@ -80,14 +81,14 @@ pub(super) fn build(
             .chain([
                 Shelf {
                     id: "installed".to_string(),
-                    title: "Instalados".to_string(),
+                    title: t!("library.shelves.installed").into_owned(),
                     entries: installed,
                     collection_id: None,
                     dynamic: false,
                 },
                 Shelf {
                     id: "all".to_string(),
-                    title: "Biblioteca GOG".to_string(),
+                    title: t!("library.shelves.gog_library").into_owned(),
                     entries: rest,
                     collection_id: None,
                     dynamic: false,
@@ -134,7 +135,7 @@ pub(super) fn build(
     if !uncategorized.is_empty() {
         shelves.push(Shelf {
             id: "uncategorized".to_string(),
-            title: "Sin coleccion".to_string(),
+            title: t!("library.shelves.uncategorized").into_owned(),
             entries: uncategorized,
             collection_id: None,
             dynamic: false,

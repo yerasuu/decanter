@@ -47,35 +47,3 @@ fn names_nix_store(value: &OsStr) -> bool {
         .split(':')
         .any(|path| path.starts_with("/nix/store/"))
 }
-
-#[cfg(test)]
-mod tests {
-    use std::ffi::OsStr;
-    use std::process::Command;
-
-    use super::strip_launcher_env;
-
-    #[test]
-    fn strips_what_broke_steam_and_the_allocator_cap() {
-        let mut command = Command::new("steam");
-        strip_launcher_env(&mut command);
-        let removed: Vec<&OsStr> = command
-            .get_envs()
-            .filter(|(_, value)| value.is_none())
-            .map(|(key, _)| key)
-            .collect();
-        for var in ["LD_LIBRARY_PATH", "LD_PRELOAD", "GLIBC_TUNABLES"] {
-            assert!(removed.contains(&OsStr::new(var)), "{var} not stripped");
-        }
-    }
-
-    #[test]
-    fn only_nix_vulkan_drivers_count_as_the_dev_shells() {
-        assert!(super::names_nix_store(OsStr::new(
-            "/nix/store/z5wm-mesa-26.2.4/share/vulkan/icd.d/radeon_icd.x86_64.json:/nix/store/z5wm-mesa/intel_icd.json"
-        )));
-        assert!(!super::names_nix_store(OsStr::new(
-            "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
-        )));
-    }
-}

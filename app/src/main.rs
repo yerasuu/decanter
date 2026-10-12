@@ -105,21 +105,30 @@ mod core;
 mod desktop;
 mod external;
 mod format;
+mod i18n;
 mod launch;
+mod logs;
+mod relocate;
 mod state;
+mod taskbar;
 mod theme;
 #[cfg(target_os = "linux")]
 mod tray_linux;
 mod views;
 mod widgets;
 
+rust_i18n::i18n!("locales", fallback = "es");
+
 fn main() {
-    tracing_subscriber::fmt::init();
+    logs::init();
+    let cli = cli::Cli::parse();
+    open_library(cli.library);
+    logs::open();
 
     // A recognized subcommand runs headless and exits before any of the
     // GUI setup below ever runs — see `cli`. No subcommand (the ordinary
     // double-click launch) falls through to the GUI unchanged.
-    if let Some(cmd) = cli::Cli::parse().cmd {
+    if let Some(cmd) = cli.cmd {
         cli::run(cmd);
     }
 
@@ -143,8 +152,10 @@ fn main() {
     // register with this runtime's reactor, which its worker threads drive.
     let tokio_context = runtime.enter();
     art::init(runtime.handle().clone());
+    runtime.spawn(taskbar::sweep());
 
     let close_to_tray = close_to_tray();
+    i18n::init();
     gpui_platform::application()
         .with_quit_mode(gpui::QuitMode::Explicit)
         .run(move |cx| {
@@ -174,14 +185,28 @@ fn main() {
     drop(runtime);
 }
 
+/// Before anything reads the database, for the GUI and the CLI alike: the
+/// one-time move into the library, then the lock every running decanter
+/// holds.
+fn open_library(chosen: Option<std::path::PathBuf>) {
+    if let Some(root) = chosen {
+        decanter_core::bootstrap::set_override(root);
+    }
+    match decanter_core::migrate::run(decanter_runtime::umu_run_path) {
+        Ok(outcome) => tracing::debug!(?outcome, "checked for data to migrate"),
+        Err(err) => tracing::error!(%err, "cannot move decanter's data into the library, still using the old folder"),
+    }
+    decanter_core::bootstrap::hold_shared();
+}
+
 /// Whether closing the window should leave decanter in the tray instead of
 /// quitting — read once, before the window exists. Toggling the setting
 /// in Ajustes only takes effect on the next launch.
 fn close_to_tray() -> bool {
     let value = core::db()
-        .and_then(|db| db.close_to_tray().map_err(|err| err.to_string()))
+        .and_then(|db| db.close_to_tray().map_err(crate::core::StoreError::Query))
         .unwrap_or_else(|err| {
-            tracing::warn!("could not read close_to_tray setting: {err}");
+            tracing::warn!(%err, "could not read close_to_tray setting");
             false
         });
     tracing::debug!(close_to_tray = value, "resolved close-to-tray setting");

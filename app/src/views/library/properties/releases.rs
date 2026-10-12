@@ -7,6 +7,7 @@ use std::rc::Rc;
 use decanter_core::InstalledGame;
 use decanter_gog::{Branch, Build};
 use gpui::{Context, Window, div, prelude::*};
+use rust_i18n::t;
 
 use super::{Target, error_line, not_installed, pane};
 use crate::theme;
@@ -72,7 +73,7 @@ impl BetasTab {
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
                 tracing::error!(account_id, product_id, "could not resolve library, branch switch aborted");
                 let _ = this.update(cx, |this, cx| {
-                    this.error = "no se pudo resolver la biblioteca".to_string();
+                    this.error = t!("library.install.no_library").into_owned();
                     this.switching = None;
                     cx.notify();
                 });
@@ -115,7 +116,7 @@ impl Render for BetasTab {
             return not_installed();
         };
         let list = match &self.branches {
-            None => return pane().child(theme::muted("Cargando...")),
+            None => return pane().child(theme::muted(t!("common.loading"))),
             Some(Err(err)) => return pane().child(theme::error(err.clone())),
             Some(Ok(list)) => list,
         };
@@ -129,7 +130,7 @@ impl Render for BetasTab {
                 .child(div().flex_1().child(label))
                 .child(theme::muted(format!("build {}", branch.build_id)));
             if is_current {
-                row.child(theme::badge("ACTUAL", false))
+                row.child(theme::badge(t!("library.properties.releases.current"), false))
             } else {
                 let disabled = self.switching.is_some();
                 let branch_name = branch.name.clone();
@@ -137,7 +138,11 @@ impl Render for BetasTab {
                     button(
                         ("switch-branch", index),
                         ButtonKind::Secondary,
-                        if busy { "Cambiando..." } else { "Cambiar" },
+                        if busy {
+                            t!("library.properties.betas.switching")
+                        } else {
+                            t!("library.properties.betas.switch")
+                        },
                         disabled,
                     )
                     .when(!disabled, |b| {
@@ -149,9 +154,7 @@ impl Render for BetasTab {
 
         pane()
             .child(card)
-            .child(theme::muted(
-                "Cambiar de rama vuelve a descargar el juego entero desde esa build. El contenido adicional ya instalado no se toca.",
-            ))
+            .child(theme::muted(t!("library.properties.betas.note")))
             .children(error_line(&self.error))
     }
 }
@@ -223,7 +226,7 @@ impl VersionsTab {
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
                 tracing::error!(account_id, product_id, "could not resolve library, rollback aborted");
                 let _ = this.update(cx, |this, cx| {
-                    this.error = "no se pudo resolver la biblioteca".to_string();
+                    this.error = t!("library.install.no_library").into_owned();
                     this.installing = None;
                     cx.notify();
                 });
@@ -266,7 +269,7 @@ impl Render for VersionsTab {
             return not_installed();
         };
         let list = match &self.builds {
-            None => return pane().child(theme::muted("Cargando...")),
+            None => return pane().child(theme::muted(t!("common.loading"))),
             Some(Err(err)) => return pane().child(theme::error(err.clone())),
             Some(Ok(list)) => list,
         };
@@ -280,7 +283,7 @@ impl Render for VersionsTab {
                 .child(div().flex_1().child(label))
                 .children(build.date_published.clone().map(theme::muted));
             if is_current {
-                row.child(theme::badge("ACTUAL", false))
+                row.child(theme::badge(t!("library.properties.releases.current"), false))
             } else {
                 let disabled = self.installing.is_some();
                 let build_id = build.build_id.clone();
@@ -288,7 +291,11 @@ impl Render for VersionsTab {
                     button(
                         ("install-build", index),
                         ButtonKind::Secondary,
-                        if busy { "Instalando..." } else { "Instalar esta version" },
+                        if busy {
+                            t!("library.properties.versions.installing")
+                        } else {
+                            t!("library.properties.versions.install")
+                        },
                         disabled,
                     )
                     .when(!disabled, |b| {
@@ -300,9 +307,7 @@ impl Render for VersionsTab {
 
         pane()
             .child(card)
-            .child(theme::muted(
-                "Instalar una version anterior vuelve a descargar el juego entero desde esa build. Verificar archivos la va a tratar como la version instalada, no como una desactualizacion.",
-            ))
+            .child(theme::muted(t!("library.properties.versions.note")))
             .children(error_line(&self.error))
     }
 }

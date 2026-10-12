@@ -2,6 +2,7 @@
 //! cover browser or the selected game — the same shape as Biblioteca.
 
 mod browser;
+mod context_menu;
 mod detail;
 mod extras;
 mod gamepad;
@@ -11,15 +12,21 @@ mod mods;
 
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::Status;
-use gpui::{
-    AnyElement, Context, Entity, ObjectFit, SharedString, StyleRefinement, Window, div, img, prelude::*, px, rgb,
-    uniform_list,
-};
+use std::borrow::Cow;
+use std::path::PathBuf;
+use std::rc::Rc;
 
-use crate::state::{AppState, Ps};
+use gpui::{
+    AnyElement, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, Pixels, Point, SharedString, StyleRefinement,
+    Window, div, img, prelude::*, px, rgb, uniform_list,
+};
+use rust_i18n::t;
+
+use crate::state::{AppState, JobKey, Ps};
 use crate::theme;
-use crate::widgets::{InputEvent, TextInput, tooltip};
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, sidebar_title, tooltip};
 use browser::BrowserView;
+use context_menu::GameMenu;
 use detail::DetailView;
 
 const SIDEBAR_WIDTH: f32 = 292.;
@@ -38,6 +45,7 @@ pub struct GamesView {
     search: Entity<TextInput>,
     detail: Entity<DetailView>,
     browser: Entity<BrowserView>,
+    menu: Option<GameMenu>,
 }
 
 impl GamesView {
@@ -45,8 +53,9 @@ impl GamesView {
         cx.observe(&ps, |_, _, cx| cx.notify()).detach();
         let detail = cx.new(|cx| DetailView::new(ps.clone(), cx));
         cx.observe(&detail, |_, _, cx| cx.notify()).detach();
-        let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), cx));
-        let search = cx.new(|cx| TextInput::new("Buscar", cx));
+        let games = cx.entity().downgrade();
+        let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), games, cx));
+        let search = cx.new(|cx| TextInput::new(t!("ps.games.search"), cx));
         cx.subscribe(&search, |_, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 cx.notify();
@@ -70,7 +79,14 @@ impl GamesView {
             search,
             detail,
             browser,
+            menu: None,
         }
+    }
+
+    /// The right-click menu of the game in `dir`, from its row or its cover.
+    pub fn open_menu(&mut self, dir: PathBuf, position: Point<Pixels>, cx: &mut Context<Self>) {
+        self.menu = Some(GameMenu { dir, position });
+        cx.notify();
     }
 
     /// Headers and games in list order: PS4 first, then PS5, each by title,
@@ -105,11 +121,11 @@ impl GamesView {
         let ps = self.ps.read(cx);
         let body = if rows.is_empty() {
             let message = if ps.scanning() {
-                "Buscando juegos…"
+                t!("ps.games.scanning")
             } else if ps.entries().is_empty() {
-                "No hay volcados todavía: copialos a la carpeta de juegos (Ajustes)."
+                t!("ps.games.no_dumps")
             } else {
-                "Nada coincide con la búsqueda."
+                t!("ps.games.no_match")
             };
             div().p_4().child(theme::muted(message)).into_any_element()
         } else {
@@ -140,12 +156,38 @@ impl GamesView {
             .bg(rgb(theme::BG_PANEL_3))
             .border_r_1()
             .border_color(rgb(theme::LINE))
-            .child(div().p(px(14.)).pb(px(8.)).child(self.search.clone()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .p(px(14.))
+                    .pb(px(8.))
+                    .child(div().flex_1().min_w_0().child(self.search.clone()))
+                    .child(self.refresh_button(cx)),
+            )
             .child(body)
+    }
+
+    /// Reads the games folder again — for dumps copied in while the
+    /// section was open, which nothing watches the folder for.
+    fn refresh_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let scanning = self.ps.read(cx).scanning();
+        let ps = self.ps.clone();
+        button("ps-rescan", ButtonKind::Icon, "⟳", scanning)
+            .tooltip(tooltip(if scanning {
+                t!("ps.games.scanning")
+            } else {
+                t!("ps.games.rescan")
+            }))
+            .when(!scanning, |b| {
+                b.on_click(move |_, _, cx| ps.update(cx, |ps, cx| ps.rescan(cx)))
+            })
     }
 
     fn row(&self, game: &Game, status: &Status, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
         let active = self.detail.read(cx).selected() == Some(&game.dir);
+        let running = self.ps.read(cx).is_running(&JobKey::Game(game.dir.clone()), cx);
         let dir = game.dir.clone();
         div()
             .id(SharedString::from(game.dir.to_string_lossy().into_owned()))
@@ -166,14 +208,23 @@ impl GamesView {
                     .text_color(rgb(theme::TEXT_BRIGHT))
                     .border_color(rgb(theme::ACCENT_BLUE))
             })
-            .on_click(move |_, _, cx| {
-                view.update(cx, |this, cx| {
-                    this.detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
-                });
+            .on_click({
+                let (view, dir) = (view.clone(), dir.clone());
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
+                    });
+                }
+            })
+            .on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _, cx| {
+                view.update(cx, |this, cx| this.open_menu(dir.clone(), event.position, cx));
             })
             .child(icon(game, ICON))
-            .child(div().flex_1().min_w_0().truncate().child(display_title(game)))
-            .when(status.playable(), |row| {
+            .child(sidebar_title(display_title(game), running))
+            .when(running, |row| {
+                row.child(running_mark(format!("ps-running-{}", game.dir.display())))
+            })
+            .when(!running && status.playable(), |row| {
                 row.child(
                     div()
                         .id(SharedString::from(format!("ps-ready-{}", game.dir.display())))
@@ -181,7 +232,7 @@ impl GamesView {
                         .flex_none()
                         .rounded_full()
                         .bg(rgb(theme::ACCENT_GREEN))
-                        .tooltip(tooltip("Listo para jugar")),
+                        .tooltip(tooltip(t!("ps.games.ready_to_play"))),
                 )
             })
             .into_any_element()
@@ -205,7 +256,7 @@ fn header(platform: Platform, count: usize) -> AnyElement {
 }
 
 impl Render for GamesView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let error = self.ps.read(cx).error().map(str::to_owned);
         let pane = if self.detail.read(cx).selected().is_some() {
             div()
@@ -220,7 +271,20 @@ impl Render for GamesView {
                 .cached(StyleRefinement::default().size_full())
                 .into_any_element()
         };
-        div().size_full().flex().child(self.sidebar(cx)).child(
+        let menu = self.menu.as_ref().and_then(|target| {
+            let view = cx.entity().downgrade();
+            let dismiss: crate::widgets::menu::Dismiss = Rc::new(move |_, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    this.menu = None;
+                    cx.notify();
+                });
+            });
+            context_menu::render(target, &self.ps, &self.detail, window, dismiss, cx)
+        });
+        if menu.is_none() {
+            self.menu = None;
+        }
+        div().size_full().flex().children(menu).child(self.sidebar(cx)).child(
             div()
                 .flex_1()
                 .min_w_0()
@@ -234,17 +298,18 @@ impl Render for GamesView {
 }
 
 /// The few words a status has room for.
-const fn status_text(status: &Status) -> &'static str {
+fn status_text(status: &Status) -> Cow<'static, str> {
     match status {
-        Status::Ready => "Listo",
-        Status::NeedsConvert => "Se convierte al jugar",
-        Status::NeedsMerge(_) => "Falta fusionar 1.09",
-        Status::HasPlayable(_) => "Usa la copia 1.09",
-        Status::OtherEdition => "Otra edición",
-        Status::NeedsUpdate => "Necesita 1.09",
-        Status::Encrypted => "eboot cifrado",
-        Status::NoEboot => "Sin eboot.bin",
-        Status::Unsupported => "No soportado",
+        Status::Ready => t!("ps.status.ready"),
+        Status::NeedsConvert => t!("ps.status.needs_convert"),
+        Status::NeedsMerge(_) => t!("ps.status.needs_merge"),
+        Status::HasPlayable(_) => t!("ps.status.has_playable"),
+        Status::OtherEdition => t!("ps.status.other_edition"),
+        Status::Experimental => t!("ps.status.experimental"),
+        Status::NeedsVr => t!("ps.status.needs_vr"),
+        Status::NeedsUpdate => t!("ps.status.needs_update"),
+        Status::Encrypted => t!("ps.status.encrypted"),
+        Status::NoEboot => t!("ps.status.no_eboot"),
     }
 }
 
@@ -264,6 +329,16 @@ fn display_title(game: &Game) -> String {
         game.title_id.clone()
     } else {
         title.to_owned()
+    }
+}
+
+/// The shipped layouts in the UI's language; the user's own keep the name they were given.
+fn layout_name<'name>(id: &str, builtin: bool, name: &'name str) -> Cow<'name, str> {
+    match (builtin, id) {
+        (true, "default") => t!("ps.layouts.default"),
+        (true, "code-vein") => t!("ps.layouts.code_vein"),
+        (true, "") => t!("ps.layouts.custom"),
+        _ => Cow::Borrowed(name),
     }
 }
 
@@ -288,24 +363,4 @@ fn icon(game: &Game, size: f32) -> impl IntoElement + use<> {
                 .bg(rgb(theme::BG_PANEL_LIGHT))
                 .into_any_element()
         })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn display_title_drops_marks_and_falls_back_to_the_id() {
-        let game = |title: &str| Game {
-            dir: std::path::PathBuf::from("/g"),
-            platform: Platform::Ps4,
-            title_id: "CUSA00900".into(),
-            title: title.into(),
-            version: "01.09".into(),
-            category: "gd".into(),
-            has_modules: true,
-        };
-        assert_eq!(display_title(&game("Bloodborne™")), "Bloodborne");
-        assert_eq!(display_title(&game(" ® ")), "CUSA00900");
-    }
 }

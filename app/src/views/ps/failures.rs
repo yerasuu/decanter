@@ -2,10 +2,11 @@
 //! this profile, newest first, each with the output around it and a report
 //! ready to paste into an upstream issue.
 
-use decanter_ps::failures::{self, Failure, Kind, Log};
-use gpui::{ClipboardItem, Context, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use decanter_ps::failures::{self, Call, CallReport, Failure, Kind, Log};
+use gpui::{ClipboardItem, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
-use crate::state::Ps;
+use crate::state::{Ps, failure_message};
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
@@ -87,7 +88,9 @@ impl FailuresView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.error = result.err().map(|err| format!("No se pudo borrar el registro: {err}"));
+                this.error = result
+                    .err()
+                    .map(|err| t!("ps.failures.clear_error", error = err).into_owned());
                 this.ps.update(cx, Ps::failures_changed);
             });
         })
@@ -101,8 +104,11 @@ impl FailuresView {
             Kind::Crash | Kind::Stop => theme::ERROR_TEXT,
             Kind::Error => theme::ACCENT_GOLD,
             Kind::Exit => theme::TEXT_MUTED,
+            Kind::Missing => theme::ACCENT_BLUE,
         };
         let report = failure.report();
+        let calls = failure.calls.as_ref().map(calls_lists);
+        let log = failure.log.clone();
         let commit = if failure.commit.is_empty() {
             "?"
         } else {
@@ -114,13 +120,7 @@ impl FailuresView {
             failures::format_time(failure.time),
             commit
         );
-        let output: Vec<SharedString> = failure
-            .before
-            .iter()
-            .chain([&failure.message])
-            .chain(&failure.after)
-            .map(|line| SharedString::from(line.clone()))
-            .collect();
+        let output: Vec<SharedString> = failure.output().map(|line| SharedString::from(line.clone())).collect();
         div()
             .flex()
             .flex_col()
@@ -148,7 +148,7 @@ impl FailuresView {
                             .text_color(rgb(color))
                             .text_size(px(11.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(failure.kind.label()),
+                            .child(kind_label(failure.kind)),
                     )
                     .child(
                         theme::mono()
@@ -157,7 +157,7 @@ impl FailuresView {
                             .truncate()
                             .text_size(px(12.))
                             .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child(failure.message.clone()),
+                            .child(failure_message(failure).into_owned()),
                     )
                     .when(failure.count > 1, |row| {
                         row.child(theme::muted(format!("×{}", failure.count)))
@@ -180,6 +180,7 @@ impl FailuresView {
                         .gap_2()
                         .px_4()
                         .pb_3()
+                        .children(calls)
                         .child(
                             theme::mono()
                                 .p_3()
@@ -190,17 +191,33 @@ impl FailuresView {
                                 .children(output.into_iter().map(|line| div().child(line))),
                         )
                         .child(
-                            div().flex().child(
-                                button(
-                                    ("ps-failure-copy", index),
-                                    ButtonKind::Secondary,
-                                    "Copiar informe",
-                                    false,
+                            div()
+                                .flex()
+                                .gap_2()
+                                .child(
+                                    button(
+                                        ("ps-failure-copy", index),
+                                        ButtonKind::Secondary,
+                                        t!("ps.failures.copy_report"),
+                                        false,
+                                    )
+                                    .on_click(move |_, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
+                                    }),
                                 )
-                                .on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
-                                }),
-                            ),
+                                .children(log.map(|path| {
+                                    button(
+                                        ("ps-failure-log", index),
+                                        ButtonKind::Secondary,
+                                        t!("ps.log.full"),
+                                        false,
+                                    )
+                                    .on_click(move |_, _, _| {
+                                        if let Err(err) = crate::desktop::open(&path) {
+                                            tracing::warn!(path = %path.display(), %err, "could not open the log file");
+                                        }
+                                    })
+                                })),
                         ),
                 )
             })
@@ -217,9 +234,9 @@ impl Render for FailuresView {
             .map(|(index, failure)| self.row(index, failure, cx).into_any_element())
             .collect();
         let clear_label = if self.confirm_clear {
-            "Confirmar: borrar todo el registro"
+            t!("ps.failures.clear.confirm")
         } else {
-            "Borrar registro"
+            t!("ps.failures.clear.start")
         };
         theme::page(
             "ps-failures",
@@ -232,14 +249,18 @@ impl Render for FailuresView {
                         .flex()
                         .items_center()
                         .gap_3()
-                        .child(theme::h2("Fallos").flex_1())
+                        .child(theme::h2(t!("ps.failures.title")).flex_1())
                         .when(!empty, |header| {
                             header
                                 .child(
                                     button(
                                         "ps-failures-copy",
                                         ButtonKind::Secondary,
-                                        if self.copied { "Copiado" } else { "Copiar todo" },
+                                        if self.copied {
+                                            t!("ps.failures.copied")
+                                        } else {
+                                            t!("ps.failures.copy_all")
+                                        },
                                         false,
                                     )
                                     .on_click(cx.listener(|this, _, _, cx| this.copy_all(cx))),
@@ -259,16 +280,74 @@ impl Render for FailuresView {
                                 )
                         }),
                 )
-                .child(theme::muted(
-                    "Cierres, STOP, errores y salidas fallidas de cada partida de este perfil, con la salida de \
-                     alrededor y el commit del port. Se guardan entre sesiones.",
-                ))
+                .child(theme::muted(t!("ps.failures.description")))
                 .children(self.error.clone().map(theme::error))
                 .child(if empty {
-                    theme::empty("Sin fallos registrados.").into_any_element()
+                    theme::empty(t!("ps.failures.empty")).into_any_element()
                 } else {
                     theme::card().children(rows).into_any_element()
                 }),
         )
+    }
+}
+
+/// The port's three lists, each most calls first, empty ones left out.
+fn calls_lists(calls: &CallReport) -> Div {
+    let lists = [
+        (
+            t!("ps.failures.calls.unimplemented", count = calls.unimplemented.len()),
+            &calls.unimplemented,
+        ),
+        (t!("ps.failures.calls.stubs", count = calls.stubs.len()), &calls.stubs),
+        (
+            t!("ps.failures.calls.failed", count = calls.failed.len()),
+            &calls.failed,
+        ),
+    ];
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .children(
+            lists
+                .into_iter()
+                .filter(|(_, list)| !list.is_empty())
+                .map(|(title, list)| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(theme::h3(title).mb_1())
+                        .children(list.iter().map(call_row))
+                }),
+        )
+}
+
+fn call_row(call: &Call) -> Div {
+    theme::mono()
+        .flex()
+        .gap_3()
+        .text_size(px(11.))
+        .child(
+            theme::muted(format!("×{}", call.count))
+                .w(px(64.))
+                .flex_none()
+                .flex()
+                .justify_end(),
+        )
+        .child(div().text_color(rgb(theme::TEXT_BRIGHT)).child(call.name.clone()))
+        .children(
+            call.error
+                .map(|error| div().text_color(rgb(theme::ERROR_TEXT)).child(error.to_string())),
+        )
+        .children(call.nid.clone().map(theme::muted))
+}
+
+fn kind_label(kind: Kind) -> std::borrow::Cow<'static, str> {
+    match kind {
+        Kind::Crash => t!("ps.failures.kinds.crash"),
+        Kind::Stop => t!("ps.failures.kinds.stop"),
+        Kind::Error => t!("ps.failures.kinds.error"),
+        Kind::Exit => t!("ps.failures.kinds.exit"),
+        Kind::Missing => t!("ps.failures.kinds.missing"),
     }
 }

@@ -5,7 +5,7 @@
 //! The webview build pointed `<img src>` straight at GOG's CDN and let
 //! WebKit's HTTP cache deal with it. GPUI's own URI loader keeps nothing
 //! between launches, so a 700-game library would re-download every icon on
-//! every start; this keeps a copy under decanter's data directory instead
+//! every start; this keeps a copy in the library's `decanter/art` instead
 //! and hands GPUI a plain file path.
 //!
 //! What GPUI holds in memory is the decoded bitmap, so the copy on disk is
@@ -39,21 +39,11 @@ const DECODED_BUDGET: usize = 24 * 1024 * 1024;
 /// context `main` enters on the UI thread — so downloads are handed to the
 /// runtime explicitly.
 pub fn init(handle: tokio::runtime::Handle) {
-    // Full-size copies from before art was stored scaled; nothing reads
-    // them any more.
-    handle.spawn(async {
-        let legacy = decanter_core::data_dir().join("art-cache");
-        match tokio::fs::remove_dir_all(&legacy).await {
-            Ok(()) => tracing::info!(dir = %legacy.display(), "removed the full-size art cache"),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => tracing::warn!(dir = %legacy.display(), %err, "could not remove the full-size art cache"),
-        }
-    });
     let _ = TOKIO.set(handle);
 }
 
-fn cache_dir() -> PathBuf {
-    decanter_core::data_dir().join("art")
+fn cache_dir() -> Option<PathBuf> {
+    decanter_core::bootstrap::data_dir().map(|dir| dir.join("art"))
 }
 
 /// One URL at one on-screen size, in device pixels — the same art drawn
@@ -68,13 +58,15 @@ struct ArtKey {
 
 /// No extension: what's stored may be GOG's WebP as downloaded or a
 /// re-encoded JPEG/PNG, and GPUI sniffs the format from the bytes anyway.
-fn cache_path(key: &ArtKey) -> PathBuf {
-    cache_dir().join(format!(
-        "{:x}-{}x{}",
-        md5::compute(key.url.as_bytes()),
-        key.width,
-        key.height
-    ))
+fn cache_path(key: &ArtKey) -> Option<PathBuf> {
+    cache_dir().map(|dir| {
+        dir.join(format!(
+            "{:x}-{}x{}",
+            md5::compute(key.url.as_bytes()),
+            key.width,
+            key.height
+        ))
+    })
 }
 
 /// GOG's image CDNs (`images*.gog-statics.com`, and `images.gog.com` for
@@ -144,15 +136,53 @@ fn fit(bytes: Vec<u8>, width: u32, height: u32) -> anyhow::Result<Vec<u8>> {
 }
 
 async fn download(key: ArtKey, path: PathBuf) -> anyhow::Result<()> {
-    let bytes = if let Some(local) = key.url.strip_prefix("file://") {
-        match tokio::fs::read(local).await {
-            Ok(bytes) => bytes,
-            Err(err) => return Err(anyhow::anyhow!("reading {local}: {err}")),
-        }
-    } else {
-        crate::achv_try!(fetch(&key.url).await)
-    };
+    let bytes = crate::achv_try!(read(&key.url).await);
     crate::achv_try!(store(&key, &path, bytes).await);
+    Ok(())
+}
+
+async fn read(url: &str) -> anyhow::Result<Vec<u8>> {
+    match url.strip_prefix("file://") {
+        Some(local) => tokio::fs::read(local)
+            .await
+            .map_err(|err| anyhow::anyhow!("reading {local}: {err}")),
+        None => fetch(url).await,
+    }
+}
+
+/// Square side a game's task bar icon is stored at, at most: what a
+/// desktop draws icons at, with room for a large panel at double scale.
+const DESKTOP_ICON: u32 = 256;
+
+/// Writes `url`'s art to `dest` as a PNG, scaled down to
+/// [`DESKTOP_ICON`] when bigger: a desktop entry's icon has to be a format
+/// every desktop reads, which GOG's JPEG and WEBP art isn't.
+pub async fn save_png(url: &str, dest: &Path) -> anyhow::Result<()> {
+    let bytes = crate::achv_try!(read(url).await);
+    let png = tokio::task::spawn_blocking(move || {
+        let image = image::load_from_memory(&bytes).map_err(|err| anyhow::anyhow!("decoding: {err}"))?;
+        let image = if image.width() > DESKTOP_ICON || image.height() > DESKTOP_ICON {
+            image.thumbnail(DESKTOP_ICON, DESKTOP_ICON)
+        } else {
+            image
+        };
+        let mut encoded = Cursor::new(Vec::new());
+        image
+            .write_to(&mut encoded, ImageFormat::Png)
+            .map_err(|err| anyhow::anyhow!("encoding: {err}"))?;
+        anyhow::Ok(encoded.into_inner())
+    });
+    let png = match png.await {
+        Ok(Ok(png)) => png,
+        Ok(Err(err)) => return Err(anyhow::anyhow!("{url}: {err}")),
+        Err(err) => return Err(anyhow::anyhow!("converting {url}: {err}")),
+    };
+    if let Some(dir) = dest.parent() {
+        crate::achv_try!(tokio::fs::create_dir_all(dir).await);
+    }
+    let partial = dest.with_extension("part");
+    crate::achv_try!(tokio::fs::write(&partial, &png).await);
+    crate::achv_try!(tokio::fs::rename(&partial, dest).await);
     Ok(())
 }
 
@@ -179,7 +209,9 @@ async fn store(key: &ArtKey, path: &Path, bytes: Vec<u8>) -> anyhow::Result<()> 
         Ok(Err(err)) => return Err(anyhow::anyhow!("{}: {err}", key.url)),
         Err(err) => return Err(anyhow::anyhow!("scaling {}: {err}", key.url)),
     };
-    if let Err(err) = tokio::fs::create_dir_all(cache_dir()).await {
+    if let Some(dir) = path.parent()
+        && let Err(err) = tokio::fs::create_dir_all(dir).await
+    {
         return Err(anyhow::anyhow!("creating the art cache: {err}"));
     }
     // Written aside and renamed into place, so a half-written file never
@@ -202,7 +234,9 @@ impl Asset for CachedArt {
 
     fn load(key: Self::Source, _: &mut App) -> impl Future<Output = Self::Output> + Send + 'static {
         async move {
-            let path = cache_path(&key);
+            let Some(path) = cache_path(&key) else {
+                return Err(Arc::new(anyhow::anyhow!("no library to keep artwork in")));
+            };
             if path.is_file() {
                 return Ok(Arc::from(path));
             }
@@ -311,22 +345,4 @@ pub fn source(url: &str, size: Size<f32>) -> ImageSource {
             Err(err) => Some(Err(ImageCacheError::Other(err))),
         }
     }))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::webp_variant;
-
-    #[test]
-    fn webp_variant_of_gog_art() {
-        assert_eq!(
-            webp_variant("https://images-2.gog-statics.com/eaad5d1f_196.jpg").as_deref(),
-            Some("https://images-2.gog-statics.com/eaad5d1f_196.webp")
-        );
-        assert_eq!(
-            webp_variant("https://images.gog.com/0067320f.jpg?namespace=gamesdb").as_deref(),
-            Some("https://images.gog.com/0067320f.webp?namespace=gamesdb")
-        );
-        assert_eq!(webp_variant("https://example.com/cover.jpg"), None);
-    }
 }

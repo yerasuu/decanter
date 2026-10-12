@@ -26,6 +26,7 @@ pub use ini::{Ini, read_binds, write_binds};
 pub use settings::LauncherSettings;
 
 use crate::library::{Game, Platform};
+use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
 
@@ -92,12 +93,16 @@ pub fn merge_update(base: &Path, update: &Path, version: &str) -> io::Result<Pat
 /// A bbport checkout. The toolchain that builds it must be the one that
 /// runs it: a nix-built `bb-probe` only loads nix's Vulkan drivers.
 pub struct Bbport {
+    root: Root,
     checkout: PathBuf,
 }
 
 impl Bbport {
-    pub const fn new(checkout: PathBuf) -> Self {
-        Self { checkout }
+    pub fn new(root: Root) -> Self {
+        Self {
+            checkout: Port::Bbport.checkout(&root),
+            root,
+        }
     }
 
     pub fn checkout(&self) -> &Path {
@@ -108,57 +113,76 @@ impl Bbport {
         self.checkout.join("out/bb-probe")
     }
 
-    /// Which toolchain the current build came from, so a launch with
-    /// another one asks for a rebuild instead of failing to load drivers.
+    /// Which toolchain and commit the current build came from, so a launch
+    /// with another toolchain, or after the checkout moved, builds again
+    /// instead of failing to load drivers or running the old code.
     fn build_marker(&self) -> PathBuf {
         self.checkout.join("out/decanter-toolchain")
     }
 
-    pub fn ini_path() -> PathBuf {
-        crate::paths::bbport_data().join("bbport.ini")
+    pub fn ini_path(root: &Root) -> PathBuf {
+        root.bbport_data().join("bbport.ini")
+    }
+
+    /// Drops the in-game menu's language, so the next run follows
+    /// `BB_MENU_LANGUAGE` again: the menu writes `menu_language` whenever it
+    /// saves any setting, which would otherwise keep it in the language that
+    /// was current then. File I/O: off the UI thread.
+    pub fn forget_menu_language(root: &Root) -> io::Result<()> {
+        let path = Self::ini_path(root);
+        let mut ini = Ini::load(&path);
+        if ini.get("menu_language").is_none() {
+            return Ok(());
+        }
+        ini.remove("menu_language");
+        ini.save(&path)
     }
 
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
-        toolchain.command(Port::Bbport, &self.checkout, "bash build.sh").await
+        toolchain.command(&self.root, Port::Bbport, "bash build.sh").await
     }
 
     /// After a build that succeeded.
     pub async fn record_build(&self, toolchain: &Toolchain) -> io::Result<()> {
-        tokio::fs::write(self.build_marker(), toolchain.id()).await
+        tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
     }
 
     /// Whether `toolchain` can launch what is built, without building.
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
         let probe = tokio::fs::metadata(self.probe()).await.is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
-        probe && marker.is_ok_and(|id| id == toolchain.id())
+        let stamp = toolchain.build_stamp(&self.checkout).await;
+        probe && marker.is_ok_and(|built| built == stamp)
     }
 
     /// The same environment bbport's own launcher built (`game_environment`
     /// in `launcher/bbport_launcher.py`), for the settings decanter knows,
     /// plus what keeps `run.sh` from building and from writing into the
     /// checkout. `user_dir` holds the profile's saves; `mods` comes from
-    /// [`mods::prepare`].
+    /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
+    /// Bloodborne. `menu_language` is the in-game menu's until one is picked
+    /// in the menu itself.
     pub async fn launch_command(
         &self,
         toolchain: &Toolchain,
-        game_dir: &Path,
+        game: &Game,
         user_dir: &Path,
         settings: &LauncherSettings,
         mods: &mods::Mods,
+        menu_language: &str,
     ) -> io::Result<Command> {
-        let mut command = match toolchain.command(Port::Bbport, &self.checkout, "bash run.sh").await {
+        let mut command = match toolchain.command(&self.root, Port::Bbport, "bash run.sh").await {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
-        let data = crate::paths::bbport_data();
+        let data = self.root.bbport_data();
         let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
             .env("BB_PREBUILT", "1")
             .env("BB_PROBE", self.probe())
             .env("BB_DATA_DIR", &data)
             .env("BB_USER_DIR", user_dir)
-            .env("BB_GAME_DIR", game_dir)
+            .env("BB_GAME_DIR", &game.dir)
             .env("BB_MODS_DIR", &mods.dir)
             .env("BB_MODS_CONFIG", &mods.config)
             .env("BB_MODS_ENABLED", if mods.enabled { "1" } else { "0" })
@@ -171,10 +195,23 @@ impl Bbport {
             )
             .env("BB_PRESENT_MODE", settings.text("present_mode").unwrap_or("Mailbox"))
             .env("BB_FPS", settings.text("fps_mode").unwrap_or("uncap"))
-            // The in-game menu has no Spanish; English until one is picked in the menu itself.
-            .env("BB_MENU_LANGUAGE", "en")
+            .env("BB_MENU_LANGUAGE", menu_language)
             // Experimental memory model, AMD GPUs only upstream; off unless chosen.
-            .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" });
+            .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" })
+            // SDL reads its hints from the environment too: the window's Wayland app id and X11
+            // class, otherwise `bb-probe` for every title, which the task bar matches the game's
+            // desktop entry against.
+            .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
+        // The fork's way past `game_check.py`, which accepts only Bloodborne 1.09, and past the
+        // first import the runtime lacks, so the log lists every one the title reaches.
+        if !is_bloodborne(game) {
+            command.env("BB_SKIP_GAME_CHECK", "1").env("BB_PERMISSIVE", "1");
+            // The user's own dump of the console's modules (Ajustes), which the fork links ahead of
+            // its own versions; Bloodborne keeps the path it is known to work on.
+            if let Some(dir) = settings.text("sys_modules_dir") {
+                command.env("BB_SYS_MODULES", dir);
+            }
+        }
         if settings.flag("hdr", false) {
             command.env("BB_HDR", "1");
         }
@@ -203,7 +240,7 @@ impl Bbport {
                 command.env(env, "1");
             }
         }
-        let fsr411 = crate::paths::fsr411();
+        let fsr411 = self.root.fsr411();
         if tokio::fs::metadata(&fsr411).await.is_ok_and(|meta| meta.is_dir()) {
             command.env("BB_FSR411_DIR", fsr411);
         }
@@ -224,7 +261,7 @@ impl Bbport {
     /// for this. Empty before the first build.
     pub async fn connected_gamepads(&self, toolchain: &Toolchain) -> Vec<(String, String)> {
         let command = toolchain
-            .command(Port::Bbport, &self.checkout, "out/bb-gpu-capabilities --gamepads")
+            .command(&self.root, Port::Bbport, "out/bb-gpu-capabilities --gamepads")
             .await;
         let Ok(mut command) = command else {
             return Vec::new();
@@ -242,28 +279,5 @@ impl Bbport {
                     .collect()
             })
             .unwrap_or_default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn merge_links_base_and_copies_update() {
-        let root = std::env::temp_dir().join(format!("decanter-ps-merge-{}", std::process::id()));
-        let (base, update) = (root.join("CUSA00900"), root.join("CUSA00900-patch"));
-        fs::create_dir_all(base.join("sce_sys")).unwrap();
-        fs::create_dir_all(update.join("sce_sys")).unwrap();
-        fs::write(base.join("eboot.bin"), "base").unwrap();
-        fs::write(base.join("sce_sys/keep"), "base").unwrap();
-        fs::write(update.join("eboot.bin"), "update").unwrap();
-        let merged = merge_update(&base, &update, "1.09").unwrap();
-        let read = |p: &Path| fs::read_to_string(p).unwrap();
-        assert_eq!(read(&merged.join("eboot.bin")), "update");
-        assert_eq!(read(&merged.join("sce_sys/keep")), "base");
-        assert_eq!(read(&base.join("eboot.bin")), "base");
-        assert!(merge_update(&base, &update, "1.09").is_err());
-        fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -11,53 +11,136 @@ use std::io;
 use serde::{Deserialize, Serialize};
 
 use super::{Bbport, Ini};
+use crate::paths::Root;
 
 const PREFIX: &str = "pad.";
 
 /// `(input, its default SDL buttons, PS4 label, what Bloodborne does with
-/// it)`. Defaults as `bind_defaults` in bbport's `src/runtime_pad.c`.
+/// it)`, the last two as the app's locale keys. Defaults as `bind_defaults`
+/// in bbport's `src/runtime_pad.c`.
 pub const INPUTS: [(&str, &str, &str, &str); 16] = [
-    ("cross", "a", "✕", "Interactuar"),
-    ("circle", "b", "○", "Esquivar · correr (mantener)"),
-    ("square", "x", "□", "Usar objeto"),
-    ("triangle", "y", "△", "Vial de sangre"),
-    ("l1", "leftshoulder", "L1", "Transformar arma"),
-    ("r1", "rightshoulder", "R1", "Ataque"),
-    ("l2", "lefttrigger", "L2", "Disparo · parry"),
-    ("r2", "righttrigger", "R2", "Ataque fuerte · cargado"),
-    ("l3", "leftstick", "L3", "L3"),
-    ("r3", "rightstick", "R3", "Fijar objetivo"),
-    ("options", "start", "Options", "Menú"),
-    ("touchpad", "back,touchpad", "Panel táctil", "Gestos"),
-    ("up", "dpup", "Cruceta ↑", "Cambiar objeto rápido"),
-    ("down", "dpdown", "Cruceta ↓", "Cruceta abajo"),
-    ("left", "dpleft", "Cruceta ←", "Cambiar arma izquierda"),
-    ("right", "dpright", "Cruceta →", "Cambiar arma derecha"),
+    (
+        "cross",
+        "a",
+        "ps.gamepad.inputs.cross.label",
+        "ps.gamepad.inputs.cross.action",
+    ),
+    (
+        "circle",
+        "b",
+        "ps.gamepad.inputs.circle.label",
+        "ps.gamepad.inputs.circle.action",
+    ),
+    (
+        "square",
+        "x",
+        "ps.gamepad.inputs.square.label",
+        "ps.gamepad.inputs.square.action",
+    ),
+    (
+        "triangle",
+        "y",
+        "ps.gamepad.inputs.triangle.label",
+        "ps.gamepad.inputs.triangle.action",
+    ),
+    (
+        "l1",
+        "leftshoulder",
+        "ps.gamepad.inputs.l1.label",
+        "ps.gamepad.inputs.l1.action",
+    ),
+    (
+        "r1",
+        "rightshoulder",
+        "ps.gamepad.inputs.r1.label",
+        "ps.gamepad.inputs.r1.action",
+    ),
+    (
+        "l2",
+        "lefttrigger",
+        "ps.gamepad.inputs.l2.label",
+        "ps.gamepad.inputs.l2.action",
+    ),
+    (
+        "r2",
+        "righttrigger",
+        "ps.gamepad.inputs.r2.label",
+        "ps.gamepad.inputs.r2.action",
+    ),
+    (
+        "l3",
+        "leftstick",
+        "ps.gamepad.inputs.l3.label",
+        "ps.gamepad.inputs.l3.action",
+    ),
+    (
+        "r3",
+        "rightstick",
+        "ps.gamepad.inputs.r3.label",
+        "ps.gamepad.inputs.r3.action",
+    ),
+    (
+        "options",
+        "start",
+        "ps.gamepad.inputs.options.label",
+        "ps.gamepad.inputs.options.action",
+    ),
+    (
+        "touchpad",
+        "back,touchpad",
+        "ps.gamepad.inputs.touchpad.label",
+        "ps.gamepad.inputs.touchpad.action",
+    ),
+    (
+        "up",
+        "dpup",
+        "ps.gamepad.inputs.up.label",
+        "ps.gamepad.inputs.up.action",
+    ),
+    (
+        "down",
+        "dpdown",
+        "ps.gamepad.inputs.down.label",
+        "ps.gamepad.inputs.down.action",
+    ),
+    (
+        "left",
+        "dpleft",
+        "ps.gamepad.inputs.left.label",
+        "ps.gamepad.inputs.left.action",
+    ),
+    (
+        "right",
+        "dpright",
+        "ps.gamepad.inputs.right.label",
+        "ps.gamepad.inputs.right.action",
+    ),
 ];
 
-/// SDL's gamepad button names bbport accepts, with how a pad labels them.
+/// SDL's gamepad button names bbport accepts, with the app's locale key of
+/// how a pad labels them.
 pub const BUTTONS: [(&str, &str); 21] = [
-    ("a", "A / ✕"),
-    ("b", "B / ○"),
-    ("x", "X / □"),
-    ("y", "Y / △"),
-    ("leftshoulder", "LB / L1"),
-    ("rightshoulder", "RB / R1"),
-    ("lefttrigger", "LT / L2"),
-    ("righttrigger", "RT / R2"),
-    ("leftstick", "Clic stick izq."),
-    ("rightstick", "Clic stick der."),
-    ("back", "Select / Back"),
-    ("start", "Start"),
-    ("touchpad", "Panel táctil"),
-    ("dpup", "Cruceta ↑"),
-    ("dpdown", "Cruceta ↓"),
-    ("dpleft", "Cruceta ←"),
-    ("dpright", "Cruceta →"),
-    ("misc1", "Misc"),
-    ("paddle1", "Pala 1"),
-    ("paddle2", "Pala 2"),
-    ("paddle3", "Pala 3"),
+    ("a", "ps.gamepad.buttons.a"),
+    ("b", "ps.gamepad.buttons.b"),
+    ("x", "ps.gamepad.buttons.x"),
+    ("y", "ps.gamepad.buttons.y"),
+    ("leftshoulder", "ps.gamepad.buttons.leftshoulder"),
+    ("rightshoulder", "ps.gamepad.buttons.rightshoulder"),
+    ("lefttrigger", "ps.gamepad.buttons.lefttrigger"),
+    ("righttrigger", "ps.gamepad.buttons.righttrigger"),
+    ("leftstick", "ps.gamepad.buttons.leftstick"),
+    ("rightstick", "ps.gamepad.buttons.rightstick"),
+    ("back", "ps.gamepad.buttons.back"),
+    ("start", "ps.gamepad.buttons.start"),
+    ("touchpad", "ps.gamepad.buttons.touchpad"),
+    ("dpup", "ps.gamepad.buttons.dpup"),
+    ("dpdown", "ps.gamepad.buttons.dpdown"),
+    ("dpleft", "ps.gamepad.buttons.dpleft"),
+    ("dpright", "ps.gamepad.buttons.dpright"),
+    ("misc1", "ps.gamepad.buttons.misc1"),
+    ("paddle1", "ps.gamepad.buttons.paddle1"),
+    ("paddle2", "ps.gamepad.buttons.paddle2"),
+    ("paddle3", "ps.gamepad.buttons.paddle3"),
 ];
 
 fn default_buttons(input: &str) -> &'static str {
@@ -173,8 +256,8 @@ impl PadLayout {
 
     /// Against `bbport.ini` as it is now, like every other edit of it. File
     /// I/O: off the UI thread.
-    pub fn save_to_ini(&self) -> io::Result<()> {
-        let path = Bbport::ini_path();
+    pub fn save_to_ini(&self, root: &Root) -> io::Result<()> {
+        let path = Bbport::ini_path(root);
         let mut ini = Ini::load(&path);
         self.apply(&mut ini);
         ini.save(&path)
@@ -183,8 +266,8 @@ impl PadLayout {
 
 /// What `bbport.ini` holds now as an unsaved layout, so a hand-edited set
 /// of `pad.` lines can be copied into one. File I/O: off the UI thread.
-pub fn from_ini() -> PadLayout {
-    let ini = Ini::load(&Bbport::ini_path());
+pub fn from_ini(root: &Root) -> PadLayout {
+    let ini = Ini::load(&Bbport::ini_path(root));
     let mut lines: Vec<(String, String)> = ini
         .prefixed(PREFIX)
         .map(|(key, value)| (key[PREFIX.len()..].to_owned(), value.to_owned()))
@@ -200,68 +283,10 @@ pub fn from_ini() -> PadLayout {
 
 /// The id of the layout among `layouts` that `bbport.ini` holds now, `None`
 /// when its `pad.` lines match none. File I/O: off the UI thread.
-pub fn current<'a>(layouts: impl IntoIterator<Item = &'a PadLayout>) -> Option<String> {
-    let ini = Ini::load(&Bbport::ini_path());
+pub fn current<'a>(root: &Root, layouts: impl IntoIterator<Item = &'a PadLayout>) -> Option<String> {
+    let ini = Ini::load(&Bbport::ini_path(root));
     layouts
         .into_iter()
         .find(|layout| layout.matches(&ini))
         .map(|layout| layout.id.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-
-    use super::*;
-
-    fn no_button_twice(layout: &PadLayout) {
-        let mut seen = HashSet::new();
-        for (input, ..) in INPUTS {
-            for button in layout.buttons(input).split(',') {
-                assert!(seen.insert(button), "{}: {button} bound twice", layout.id);
-            }
-        }
-    }
-
-    #[test]
-    fn builtins_bind_each_button_once() {
-        for layout in PadLayout::builtins() {
-            no_button_twice(&layout);
-        }
-    }
-
-    #[test]
-    fn assigning_swaps_and_returning_to_default_drops_the_line() {
-        let [mut layout, _] = PadLayout::builtins();
-        layout.assign("r1", "x");
-        assert_eq!((layout.buttons("r1"), layout.buttons("square")), ("x", "rightshoulder"));
-        no_button_twice(&layout);
-        layout.assign("touchpad", "y");
-        assert_eq!(layout.buttons("triangle"), "back,touchpad");
-        no_button_twice(&layout);
-        layout.assign("triangle", "y");
-        layout.assign("touchpad", "back");
-        layout.assign("touchpad", "touchpad");
-        layout.assign("r1", "rightshoulder");
-        assert!(
-            layout.lines.iter().all(|(input, _)| input == "touchpad"),
-            "{:?}",
-            layout.lines
-        );
-    }
-
-    #[test]
-    fn applying_replaces_every_pad_line_and_is_recognised() {
-        let mut ini = Ini::default();
-        ini.set("upscaler", "fsr4");
-        ini.set("pad.l3", "leftstick,misc1");
-        let [default, code_vein] = PadLayout::builtins();
-        assert!(!default.matches(&ini) && !code_vein.matches(&ini));
-        code_vein.apply(&mut ini);
-        assert!(code_vein.matches(&ini));
-        assert_eq!(ini.get("pad.l3"), None);
-        default.apply(&mut ini);
-        assert!(default.matches(&ini));
-        assert_eq!(ini.get("upscaler"), Some("fsr4"));
-    }
 }

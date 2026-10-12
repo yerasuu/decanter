@@ -11,7 +11,7 @@ use gpui::{App, AppContext as _, Entity, Global};
 
 pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
-pub use ps::{DllOutcome, JobKey, Ps, Stage};
+pub use ps::{DllOutcome, JobKey, Ps, Stage, failure_message, job_label};
 
 /// Whether storage came up, and which profile is active.
 pub struct Session {
@@ -35,10 +35,18 @@ pub struct Session {
 }
 
 impl Session {
+    /// After the active library changed: everything here came from the
+    /// database of the one before.
+    pub fn reload(&mut self) {
+        let fresh = Self::load();
+        self.core = fresh.core;
+        self.active_profile = fresh.active_profile;
+    }
+
     fn load() -> Self {
-        let core = crate::core::db().map(|_| ());
+        let core = crate::core::db().map(|_| ()).map_err(String::from);
         let active_profile = crate::core::db()
-            .and_then(|db| db.active_profile().map_err(|err| err.to_string()))
+            .and_then(|db| db.active_profile().map_err(crate::core::StoreError::Query))
             .inspect_err(|err| tracing::warn!(%err, "could not read the active profile"))
             .ok()
             .flatten()

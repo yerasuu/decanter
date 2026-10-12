@@ -12,13 +12,15 @@
 
 pub mod art;
 pub mod import;
-mod transfer;
+pub mod launchers;
+pub mod transfer;
 pub mod umu;
 
 use std::path::{Path, PathBuf};
 
 use decanter_core::{Game, GameArt, InstallState, InstalledGame, Storefront};
 use decanter_gog::{GameKind, LibraryEntry};
+use rust_i18n::t;
 
 /// The umu `GAMEID` every external game runs as: umu's own "unknown game"
 /// id, which lets protonfixes look the game up in the UMU database rather
@@ -81,6 +83,12 @@ pub struct Draft {
     pub art: GameArt,
     /// The UMU database entry it launches as; `None` is `umu-default`.
     pub umu: Option<UmuEntry>,
+    /// The external game whose prefix this one shares — set for a game a
+    /// launcher installed, which has to run where that launcher did.
+    pub prefix_of: Option<String>,
+    /// The library folder a new game goes in; `None` is the main one. An
+    /// edit stays wherever the game already is.
+    pub library_root: Option<PathBuf>,
 }
 
 /// One row of the UMU database, as far as launching cares.
@@ -94,7 +102,7 @@ pub struct UmuEntry {
 /// Writes `id`'s manifest — a new game, or an edit of one already there.
 /// An edit keeps what the form doesn't show (Proton pin, last played).
 pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
-    let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
+    let library = crate::achv_try!(library_in(profile_id, draft.library_root.as_deref()));
     let previous = library.read_manifest(profile_id, Storefront::Unspecified, id);
     let game = InstalledGame {
         account_id: profile_id.to_owned(),
@@ -116,28 +124,67 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         cloud_save_last_sync: None,
         umu_id: draft.umu.as_ref().map(|umu| umu.id.clone()),
         umu_store: draft.umu.and_then(|umu| umu.store),
+        prefix_of: draft.prefix_of,
         art: draft.art,
     };
-    library
-        .write_manifest(&game)
-        .inspect(|()| tracing::info!(profile_id, id, name = %game.name, "external game saved"))
-        .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
-        .map_err(|err| format!("guardando el juego: {err}"))
+    crate::achv_try!(
+        library
+            .write_manifest(&game)
+            .inspect(|()| tracing::info!(profile_id, id, name = %game.name, "external game saved"))
+            .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
+            .map_err(|err| t!("external.errors.save", error = err).into_owned())
+    );
+    tokio::spawn(async move { crate::taskbar::sync_pc(&game).await });
+    Ok(())
 }
 
 /// Forgets an external game (manifest, favorites, playtime, collections)
 /// and deletes its prefix, which is also where anything its installer put
-/// under `C:\` lives. Files it was pointed at outside the prefix are left
-/// alone: decanter never put them there.
-pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
+/// under `C:\` lives — along with every game a launcher in that prefix
+/// installed. A game that only shares a launcher's prefix leaves it be.
+/// Files it was pointed at outside the prefix are left alone: decanter
+/// never put them there.
+/// Why [`remove`] stopped: logged as it is, worded for the UI by [`RemoveError::localized`].
+#[derive(Debug, thiserror::Error)]
+pub enum RemoveError {
+    #[error(transparent)]
+    Store(#[from] crate::core::StoreError),
+    #[error("manifest removal failed: {0}")]
+    Manifest(std::io::Error),
+}
+
+impl RemoveError {
+    pub fn localized(&self) -> String {
+        match self {
+            Self::Store(err) => err.localized(),
+            Self::Manifest(err) => t!("external.errors.remove", error = err).into_owned(),
+        }
+    }
+}
+
+pub fn remove(profile_id: &str, id: &str) -> Result<(), RemoveError> {
     let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
+    let removed = library.read_manifest(profile_id, Storefront::Unspecified, id);
+    // Games a launcher installed live in its prefix, which is about to go:
+    // they go with it rather than pointing at nothing.
+    for hosted in list(profile_id)
+        .into_iter()
+        .filter(|game| game.prefix_of.as_deref() == Some(id))
+    {
+        crate::achv_try!(remove(profile_id, &hosted.game_id));
+    }
     crate::achv_try!(
         library
             .remove_manifest(profile_id, Storefront::Unspecified, id)
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to remove external game manifest"))
-            .map_err(|err| format!("borrando el juego: {err}"))
+            .map_err(RemoveError::Manifest)
     );
-    if let Some(compatdata) = library.compatdata(profile_id, id) {
+    if crate::taskbar::remove(library.root(), &crate::taskbar::key(Storefront::Unspecified, id)) {
+        tokio::spawn(crate::taskbar::refresh());
+    }
+    // A hosted game's prefix is its launcher's, still in use.
+    let owns_prefix = removed.is_none_or(|game| game.prefix_of.is_none());
+    if owns_prefix && let Some(compatdata) = library.compatdata(profile_id, id) {
         match std::fs::remove_dir_all(&compatdata) {
             Ok(()) => {}
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
@@ -152,7 +199,7 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
     // again are only clutter.
     if let Err(err) = crate::core::db().and_then(|db| {
         db.forget_product(profile_id, Storefront::Unspecified, id)
-            .map_err(|err| err.to_string())
+            .map_err(crate::core::StoreError::Query)
     }) {
         tracing::warn!(profile_id, id, %err, "could not forget external game's favorites, playtime and collections");
     }
@@ -163,9 +210,16 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
 /// anything it left running there, to finish. The prefix is the one the
 /// game will then launch in, so whatever the installer writes under
 /// `C:\` — files, registry keys, runtimes — is there for the game.
-pub async fn run_installer(profile_id: &str, id: &str, installer: &Path, proton: Option<String>) -> Result<(), String> {
-    let prefix =
-        crate::achv_try!(crate::core::prefix_for(profile_id, id).ok_or("no se pudo resolver el prefijo del juego"));
+pub async fn run_installer(
+    profile_id: &str,
+    id: &str,
+    installer: &Path,
+    proton: Option<String>,
+    library_root: Option<&Path>,
+) -> Result<(), String> {
+    let prefix = crate::achv_try!(
+        prefix_in(profile_id, id, library_root).ok_or_else(|| t!("messages.errors.prefix").into_owned())
+    );
     // The same id the game itself launches with, so protonfixes treats
     // both alike.
     let launch = decanter_runtime::Launch::new(installer, UMU_ID).proton(crate::core::proton_or_default(proton));
@@ -174,7 +228,7 @@ pub async fn run_installer(profile_id: &str, id: &str, installer: &Path, proton:
         decanter_runtime::start(&prefix, launch)
             .await
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "installer failed to start"))
-            .map_err(|err| format!("no se pudo iniciar el instalador: {err}"))
+            .map_err(|err| t!("external.errors.installer", error = err).into_owned())
     );
     // Many installers exit non-zero on a perfectly good install (or when
     // the user closes a "finished" dialog), so a failure status is only
@@ -189,6 +243,24 @@ pub async fn run_installer(profile_id: &str, id: &str, installer: &Path, proton:
 
 /// Where an installer run through [`run_installer`] puts things, for the
 /// executable picker to start in.
-pub fn drive_c(profile_id: &str, id: &str) -> Option<PathBuf> {
-    crate::core::prefix_for(profile_id, id).map(|prefix| prefix.drive_c())
+pub fn drive_c(profile_id: &str, id: &str, library_root: Option<&Path>) -> Option<PathBuf> {
+    prefix_in(profile_id, id, library_root).map(|prefix| prefix.drive_c())
+}
+
+/// `profile_id`'s library with new games aimed at `root`, if one was
+/// picked.
+pub fn library_in(profile_id: &str, root: Option<&Path>) -> Result<decanter_core::Library, crate::core::StoreError> {
+    crate::core::library_for_profile(profile_id).map(|library| match root {
+        Some(root) => library.targeting(root),
+        None => library,
+    })
+}
+
+/// The prefix `id` has, or gets, in the folder it's being added to — before
+/// its manifest exists to say where it lives.
+fn prefix_in(profile_id: &str, id: &str, root: Option<&Path>) -> Option<decanter_runtime::Prefix> {
+    library_in(profile_id, root)
+        .ok()?
+        .compatdata(profile_id, id)
+        .map(decanter_runtime::Prefix::new)
 }

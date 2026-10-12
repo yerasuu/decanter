@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use decanter_core::InstalledGame;
 use gpui::{Context, Window, prelude::*};
+use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
 use crate::theme;
@@ -82,7 +83,7 @@ impl UpdatesTab {
                     "could not resolve library, update install aborted"
                 );
                 let _ = this.update(cx, |this, cx| {
-                    this.error = "no se pudo resolver la biblioteca".to_string();
+                    this.error = t!("library.install.no_library").into_owned();
                     this.updating = false;
                     cx.notify();
                 });
@@ -126,9 +127,9 @@ impl Render for UpdatesTab {
         };
 
         let check_label = if self.checking {
-            "Buscando..."
+            t!("library.properties.updates.checking")
         } else {
-            "Buscar actualización"
+            t!("library.properties.updates.check")
         };
         let mut actions = field_row().child(
             button("check-update", ButtonKind::Secondary, check_label, self.checking).when(!self.checking, |b| {
@@ -138,12 +139,15 @@ impl Render for UpdatesTab {
         match &self.result {
             Some(Some(build_id)) => {
                 let update_label = if self.updating {
-                    "Actualizando..."
+                    t!("library.properties.updates.updating")
                 } else {
-                    "Actualizar ahora"
+                    t!("library.properties.updates.update")
                 };
                 actions = actions
-                    .child(theme::muted(format!("Hay una nueva build: {build_id}")))
+                    .child(theme::muted(t!(
+                        "library.properties.updates.available",
+                        build = build_id
+                    )))
                     .child(
                         button("install-update", ButtonKind::Primary, update_label, self.updating)
                             .when(!self.updating, |b| {
@@ -151,16 +155,19 @@ impl Render for UpdatesTab {
                             }),
                     );
             }
-            Some(None) => actions = actions.child(theme::muted("Al día.")),
+            Some(None) => actions = actions.child(theme::muted(t!("library.properties.updates.up_to_date"))),
             None => {}
         }
 
         pane()
             .child(
                 rows()
-                    .child(row("Build instalado", installed.build_id.clone()))
                     .child(row(
-                        "Rama",
+                        t!("library.properties.updates.installed_build"),
+                        installed.build_id.clone(),
+                    ))
+                    .child(row(
+                        t!("library.detail.install.branch"),
                         installed.branch.clone().unwrap_or_else(|| "mainline".to_string()),
                     )),
             )

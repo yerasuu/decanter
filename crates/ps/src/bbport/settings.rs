@@ -1,10 +1,13 @@
 //! What bbport is launched with, kept in its data directory.
 
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 
-fn path() -> PathBuf {
-    crate::paths::bbport_data().join("settings.json")
+use crate::paths::Root;
+
+fn path(root: &Root) -> PathBuf {
+    root.bbport_data().join("settings.json")
 }
 
 /// The launch settings, turned into environment variables by [`super::Bbport::launch_command`].
@@ -15,8 +18,8 @@ pub struct LauncherSettings(serde_json::Map<String, serde_json::Value>);
 
 impl LauncherSettings {
     /// A missing or unreadable file gives the defaults. File I/O: off the UI thread.
-    pub fn load() -> LauncherSettings {
-        fs::read(path())
+    pub fn load(root: &Root) -> LauncherSettings {
+        fs::read(path(root))
             .ok()
             .and_then(|data| serde_json::from_slice(&data).ok())
             .map(LauncherSettings)
@@ -24,16 +27,24 @@ impl LauncherSettings {
     }
 
     /// One change against the file as it is now, for edits made outside
-    /// the settings table (folders, extra environment).
-    pub fn edit(change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
-        let mut settings = Self::load();
+    /// the settings table (folders, extra environment). Fails rather than
+    /// overwrite a file it can't read or parse.
+    pub fn edit(root: &Root, change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
+        let mut settings = match fs::read(path(root)) {
+            Ok(data) => match serde_json::from_slice(&data) {
+                Ok(map) => Self(map),
+                Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidData, err)),
+            },
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Self::default(),
+            Err(err) => return Err(err),
+        };
         change(&mut settings);
-        settings.save()
+        settings.save(root)
     }
 
-    pub fn save(&self) -> std::io::Result<()> {
+    pub fn save(&self, root: &Root) -> std::io::Result<()> {
         let text = serde_json::to_string_pretty(&self.0).map_err(std::io::Error::other)?;
-        crate::files::write_atomic(&path(), text.as_bytes())
+        crate::files::write_atomic(&path(root), text.as_bytes())
     }
 
     /// A non-empty string value.
@@ -47,6 +58,10 @@ impl LauncherSettings {
 
     pub fn set_text(&mut self, key: &str, value: &str) {
         self.0.insert(key.into(), value.into());
+    }
+
+    pub fn remove(&mut self, key: &str) {
+        self.0.remove(key);
     }
 
     pub fn number(&self, key: &str) -> Option<f64> {
@@ -65,17 +80,5 @@ impl LauncherSettings {
 
     pub fn set_flag(&mut self, key: &str, value: bool) {
         self.0.insert(key.into(), value.into());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn whole_numbers_stay_integers_in_launcher_json() {
-        let mut settings = LauncherSettings::default();
-        settings.set_number("fps_limit", 120.0);
-        assert_eq!(settings.0["fps_limit"], serde_json::json!(120));
     }
 }

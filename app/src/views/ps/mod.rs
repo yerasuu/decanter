@@ -9,6 +9,7 @@ mod ports;
 mod settings;
 
 use gpui::{AnyElement, Context, Entity, IntoElement, Window, div, prelude::*, px};
+use rust_i18n::t;
 
 use crate::state::Ps;
 use failures::FailuresView;
@@ -23,13 +24,6 @@ enum Tab {
     Failures,
     Settings,
 }
-
-const TABS: [(Tab, &str); 4] = [
-    (Tab::Games, "Juegos"),
-    (Tab::Ports, "Ports"),
-    (Tab::Failures, "Fallos"),
-    (Tab::Settings, "Ajustes"),
-];
 
 pub struct PsView {
     tab: Tab,
@@ -76,7 +70,13 @@ impl PsView {
 impl Render for PsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let tabs = crate::widgets::tabs("ps-tabs", &TABS, self.tab, move |tab, _, cx| {
+        let items = [
+            (Tab::Games, t!("ps.tabs.games")),
+            (Tab::Ports, t!("ps.tabs.ports")),
+            (Tab::Failures, t!("ps.tabs.failures")),
+            (Tab::Settings, t!("ps.tabs.settings")),
+        ];
+        let tabs = crate::widgets::tabs("ps-tabs", &items, self.tab, move |tab, _, cx| {
             entity.update(cx, |this, cx| this.select(tab, cx));
         })
         .pt_4()

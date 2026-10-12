@@ -109,7 +109,7 @@ pub async fn list_games(
             let owned_ids = crate::achv_try!(
                 client
                     .get_games()
-                    .map_err(|err| anyhow::anyhow!("gog owned-games request failed: {err}"))
+                    .map_err(|err| anyhow::anyhow!("gog owned-games request failed: {}", crate::without_secrets(err)))
             );
             tracing::debug!(owned_id_count = owned_ids.len(), "fetched GOG owned-games id list");
             Ok((owned_ids, client.token.borrow().access_token.clone()))
@@ -142,7 +142,7 @@ pub async fn list_games(
     // A failure here costs metadata and ordering, not the library — the
     // owned-id sweep below still covers everything.
     if let Err(err) = paged {
-        tracing::warn!("gog product listing failed: {err}");
+        tracing::warn!(account_id, error = %format_args!("{err:#}"), "GOG product listing failed");
     }
 
     // Owned but absent from the filtered view: that's what a non-game

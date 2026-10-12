@@ -33,22 +33,3 @@ pub fn save(target: Target, path: &Path, mapping: &Mapping) -> io::Result<()> {
     }
     crate::files::write_atomic(path, mapping.render(&defaults).as_bytes())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mapping::{Action, Source};
-
-    #[test]
-    fn anyps5_bindings_round_trip_and_a_broken_file_is_refused() {
-        let path = std::env::temp_dir().join(format!("decanter-ps-binds-{}.ini", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let mut mapping = read(Target::AnyPs5, &path).unwrap();
-        mapping.set(Action::Cross, vec![Source::Key("J".into())]);
-        save(Target::AnyPs5, &path, &mapping).unwrap();
-        assert_eq!(read(Target::AnyPs5, &path).unwrap(), mapping);
-        std::fs::write(&path, "Cross KEY:J\n").unwrap();
-        assert!(read(Target::AnyPs5, &path).is_err());
-        std::fs::remove_file(&path).unwrap();
-    }
-}

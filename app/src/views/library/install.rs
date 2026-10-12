@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use gpui::AsyncApp;
+use rust_i18n::t;
 
 use crate::state::{AppState, InstallStatus};
 
@@ -27,6 +28,9 @@ pub struct InstallRequest {
     /// Steam does it: what you ticked before hitting install arrives with
     /// the game, not as a second thing to go and do.
     pub dlcs: Vec<(String, String)>,
+    /// The library folder a new install goes in; `None` is the profile's
+    /// main one. An update or DLC goes wherever the game already is.
+    pub library_root: Option<std::path::PathBuf>,
 }
 
 fn set_status(state: &AppState, key: &str, status: Option<InstallStatus>, cx: &mut AsyncApp) {
@@ -55,6 +59,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         title,
         branch,
         dlcs,
+        library_root,
     } = request;
     tracing::info!(
         account_id,
@@ -65,12 +70,15 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         "install started"
     );
 
-    let Ok(core_library) = crate::core::library_for_account(&account_id) else {
+    let Ok(core_library) = crate::core::library_for_account(&account_id).map(|library| match &library_root {
+        Some(root) => library.targeting(root),
+        None => library,
+    }) else {
         tracing::error!(account_id, product_id, "could not resolve library, install aborted");
         set_status(
             &state,
             &product_id,
-            Some(InstallStatus::Failed("no se pudo resolver la biblioteca".to_owned())),
+            Some(InstallStatus::Failed(t!("library.install.no_library").into_owned())),
             cx,
         );
         return;
@@ -143,6 +151,9 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         })
         .unwrap_or_default();
     sync_steam_shortcut_for(&account_id, &product_id, cached_art).await;
+    if let Some(game) = crate::core::installed_game(&account_id, &product_id) {
+        crate::taskbar::sync_pc(&game).await;
+    }
 
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
@@ -195,7 +206,11 @@ pub async fn uninstall(
 ) -> Result<(), String> {
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
-        crate::core::library_for_account(&account_id).map_err(|err| format!("resolviendo la biblioteca: {err}"))
+        crate::core::library_for_account(&account_id).map_err(|err| t!(
+            "library.install.library_error",
+            error = err.localized()
+        )
+        .into_owned())
     );
     crate::achv_try!(
         decanter_gog::uninstall(&core_library, &account_id, &product_id)
@@ -208,6 +223,7 @@ pub async fn uninstall(
     tracing::info!(account_id, product_id, "uninstall finished");
     refresh_install_state(&state, &account_id, &product_id, cx);
     remove_steam_shortcut_for(&account_id, &product_id).await;
+    crate::taskbar::remove_pc(&account_id, decanter_core::Storefront::Gog, &product_id).await;
     Ok(())
 }
 

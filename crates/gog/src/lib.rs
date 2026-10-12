@@ -54,6 +54,17 @@ macro_rules! achv_try {
     };
 }
 
+/// `gog`'s own requests carry the refresh token or the login code in the URL, and reqwest puts
+/// the URL in its errors; every `gog` error goes through this before it is worded or logged.
+pub(crate) fn without_secrets(err: gog::Error) -> gog::Error {
+    match err {
+        gog::Error(gog::ErrorKind::Network(network), state) => {
+            gog::Error(gog::ErrorKind::Network(network.without_url()), state)
+        }
+        other => other,
+    }
+}
+
 /// The client every one-shot API call in this crate goes through.
 ///
 /// reqwest's own default has no timeout at all, so a response GOG's embed
@@ -70,7 +81,7 @@ pub(crate) fn http_client() -> reqwest::Client {
             // Was a silent fallback to a client with no timeout at all — the one
             // failure mode this function exists to avoid — so it's worth a warn
             // even though `Client::builder().build()` failing is rare in practice.
-            tracing::warn!("failed to build GOG HTTP client with a timeout, falling back to reqwest's default: {err}");
+            tracing::warn!(%err, "failed to build GOG HTTP client with a timeout, falling back to reqwest's default");
             reqwest::Client::default()
         })
 }
@@ -199,7 +210,7 @@ pub async fn poll_achievements(
         // cross the `?`-to-anyhow boundary directly.
         client
             .achievements(numeric_id, uid)
-            .map_err(|err| anyhow::anyhow!("gog achievements request failed: {err}"))
+            .map_err(|err| anyhow::anyhow!("gog achievements request failed: {}", crate::without_secrets(err)))
     })
     .await?;
     tracing::debug!(

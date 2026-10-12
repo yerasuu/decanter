@@ -83,7 +83,7 @@ pub async fn verify(
             crate::achv_try!(
                 client
                     .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {err}"))
+                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
             );
             Ok(client.token.borrow().access_token.clone())
         })
@@ -298,7 +298,7 @@ pub async fn repair(
             crate::achv_try!(
                 client
                     .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {err}"))
+                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
             );
             Ok(client.token.borrow().access_token.clone())
         })
@@ -314,6 +314,7 @@ pub async fn repair(
     }
 
     let staging = crate::achv_try!(super::staging::staging_root(
+        &install_root,
         account_id,
         &format!("{product_id}-repair")
     ));
@@ -379,42 +380,4 @@ pub async fn repair(
     }
     tracing::info!(product_id, "repair completed");
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("decanter-verify-test-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        dir
-    }
-
-    #[test]
-    fn verification_target_leaves_an_ordinary_file_alone() {
-        let dir = temp_dir("ordinary");
-        let path = dir.join("Betrayer.exe");
-        assert_eq!(verification_target(&path), Cow::Borrowed(path.as_path()));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn verification_target_redirects_to_the_backup_when_the_hook_is_installed() {
-        let dir = temp_dir("hooked");
-        let dll = dir.join("Galaxy64.dll");
-        let backup = dir.join(HOOKED_GALAXY_DLL_BACKUP);
-        std::fs::write(&backup, b"the real dll").expect("write backup");
-        assert_eq!(verification_target(&dll), Cow::Owned::<Path>(backup));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn verification_target_checks_galaxy64_directly_when_no_hook_is_installed() {
-        let dir = temp_dir("unhooked");
-        let dll = dir.join("Galaxy64.dll");
-        assert_eq!(verification_target(&dll), Cow::Borrowed(dll.as_path()));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

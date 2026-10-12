@@ -10,7 +10,7 @@ mod jobs;
 mod play;
 mod ports;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use decanter_ps::library;
@@ -18,9 +18,11 @@ use decanter_ps::port::Port;
 use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
+use rust_i18n::t;
 
 pub use fsr::DllOutcome;
-pub use jobs::JobKey;
+pub use jobs::{JobKey, label as job_label};
+pub use play::failure_message;
 pub use ports::{PortState, Stage};
 
 use super::AppState;
@@ -42,6 +44,9 @@ pub struct Ps {
     scan: u32,
     /// The latest job of each kind, finished ones included, for their logs.
     jobs: HashMap<JobKey, Entity<Job>>,
+    /// Games whose port is prepared or command built but whose job doesn't
+    /// exist yet, so a second JUGAR doesn't start them twice.
+    launching: HashSet<PathBuf>,
     ports: HashMap<Port, PortState>,
 }
 
@@ -68,6 +73,7 @@ impl Ps {
                 failures_revision: 0,
                 fsr_revision: 0,
                 jobs: HashMap::new(),
+                launching: HashSet::new(),
                 ports: HashMap::new(),
             };
             this.sync_profile(cx);
@@ -106,7 +112,7 @@ impl Ps {
     pub fn failures_path(&self) -> Option<PathBuf> {
         self.profile_id
             .as_deref()
-            .map(|profile_id| decanter_ps::paths::profile(profile_id).join("failures.jsonl"))
+            .map(|profile_id| decanter_ps::paths::active().profile(profile_id).join("failures.jsonl"))
     }
 
     pub fn failures_changed(&mut self, cx: &mut Context<Self>) {
@@ -130,25 +136,35 @@ impl Ps {
         self.profile_id = profile_id.clone();
         self.entries.clear();
         self.notice = None;
+        self.scan = self.scan.wrapping_add(1);
+        self.scanning = false;
         let Some(profile_id) = profile_id else {
             self.rescan(cx);
             return;
         };
         // Everything PS lives in the profile's library, so its root is
         // settled before any scan, import or port reads a path.
-        let settle = cx.background_spawn(async move {
-            let library = crate::core::library_for_profile(&profile_id)?;
-            decanter_ps::paths::use_library(library.root());
-            Ok::<(), String>(())
+        let lookup = cx.background_spawn({
+            let profile_id = profile_id.clone();
+            async move { crate::core::library_for_profile(&profile_id).map(|library| library.root().to_owned()) }
         });
         cx.spawn(async move |this, cx| {
-            let settled = settle.await;
+            let root = lookup.await;
             let _ = this.update(cx, |this, cx| {
-                if let Err(err) = settled {
-                    tracing::warn!(%err, "could not place the PS data in the profile's library");
-                    this.error = Some(format!("No se pudo usar la carpeta de la biblioteca: {err}"));
+                if this.profile_id.as_ref() != Some(&profile_id) {
+                    return;
                 }
-                this.rescan(cx);
+                match root {
+                    Ok(root) => {
+                        decanter_ps::paths::use_library(&root);
+                        this.rescan(cx);
+                    }
+                    Err(err) => {
+                        tracing::warn!(%err, "could not place the PS data in the profile's library");
+                        this.error = Some(t!("ps.games.library_error", error = err).into_owned());
+                        cx.notify();
+                    }
+                }
             });
         })
         .detach();
@@ -167,12 +183,13 @@ impl Ps {
         cx.notify();
         // The library's own folder, made if missing so there is a place to
         // drop dumps in.
+        let root = decanter_ps::paths::active();
         let task = cx.background_spawn(async move {
-            let games = decanter_ps::paths::games();
+            let games = root.games();
             if let Err(err) = std::fs::create_dir_all(&games) {
-                return Err(format!("No se pudo crear {}: {err}", games.display()));
+                return Err(t!("ps.errors.create_dir", dir = games.display(), error = err).into_owned());
             }
-            Ok(status::classify(&library::scan(std::slice::from_ref(&games))))
+            Ok(status::classify(&root, &library::scan(std::slice::from_ref(&games))))
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;

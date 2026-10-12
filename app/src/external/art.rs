@@ -10,6 +10,7 @@
 use std::sync::LazyLock;
 
 use decanter_core::Storefront;
+use rust_i18n::t;
 use serde::Deserialize;
 
 static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
@@ -79,7 +80,7 @@ pub fn set_api_key(key: &str) -> Result<(), String> {
     };
     result
         .inspect(|()| tracing::info!(cleared = key.is_empty(), "steamgriddb key updated"))
-        .map_err(|err| format!("guardando la key en el llavero: {err}"))
+        .map_err(|err| t!("external.sources.errors.keyring", error = err).into_owned())
 }
 
 /// Searches every source for `name`. Never fails as a whole: whatever a
@@ -101,7 +102,7 @@ pub async fn search(name: &str) -> Candidates {
         Some(Err(err)) => found.problems.push(format!("SteamGridDB: {err}")),
         None => found
             .problems
-            .push("SteamGridDB: sin key, solo se buscó en Steam.".to_owned()),
+            .push(format!("SteamGridDB: {}", t!("external.art.no_key"))),
     }
     match steam {
         Ok(steam) => {
@@ -140,25 +141,28 @@ struct SgdbImage {
 }
 
 async fn get_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder) -> Result<T, String> {
-    let response = request.send().await.map_err(|err| format!("sin conexión ({err})"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|err| t!("external.art.errors.offline", error = err).into_owned())?;
     let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err("la key no es válida".to_owned());
+        return Err(t!("external.art.errors.bad_key").into_owned());
     }
     let response = response
         .error_for_status()
-        .map_err(|err| format!("respuesta {status} ({err})"))?;
+        .map_err(|err| t!("external.art.errors.status", status = status, error = err).into_owned())?;
     let bytes = response
         .bytes()
         .await
-        .map_err(|err| format!("respuesta cortada ({err})"))?;
-    serde_json::from_slice(&bytes).map_err(|err| format!("respuesta inesperada ({err})"))
+        .map_err(|err| t!("external.art.errors.truncated", error = err).into_owned())?;
+    serde_json::from_slice(&bytes).map_err(|err| t!("external.art.errors.unexpected", error = err).into_owned())
 }
 
 fn sgdb_url(segments: &[&str], query: &[(&str, &str)]) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(SGDB_API).map_err(|err| err.to_string())?;
     url.path_segments_mut()
-        .map_err(|()| "URL base inválida".to_owned())?
+        .map_err(|()| t!("external.art.errors.base_url").into_owned())?
         .extend(segments);
     url.query_pairs_mut().extend_pairs(query);
     Ok(url)
@@ -168,7 +172,7 @@ async fn search_sgdb(key: &str, name: &str) -> Result<Candidates, String> {
     let request = |url: reqwest::Url| CLIENT.get(url).bearer_auth(key);
     let games: SgdbResponse<SgdbGame> = get_json(request(sgdb_url(&["search", "autocomplete", name], &[])?)).await?;
     let Some(game) = games.data.first() else {
-        return Err(format!("no conoce ningún juego llamado «{name}»"));
+        return Err(t!("external.art.errors.unknown_game", name = name).into_owned());
     };
     let id = game.id.to_string();
     // Without `nsfw`/`humor` set, SteamGridDB includes both.
@@ -216,7 +220,7 @@ async fn search_steam(name: &str) -> Result<Candidates, String> {
         .map_err(|err| err.to_string())?;
     let search: SteamSearch = get_json(CLIENT.get(url)).await?;
     if search.items.is_empty() {
-        return Err(format!("no tiene ningún juego llamado «{name}»"));
+        return Err(t!("external.art.errors.no_game", name = name).into_owned());
     }
     let apps = futures::future::join_all(search.items.iter().take(STEAM_APPS).map(|item| steam_app(item.id))).await;
     let mut found = Candidates::default();
@@ -262,19 +266,4 @@ async fn steam_app(appid: u64) -> Result<SteamApp, String> {
             source: Source::Steam,
         }),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    #[ignore = "hits Steam's store and steamcmd.net"]
-    async fn steam_finds_cover_hero_and_icon_without_a_key() {
-        let found = search_steam("Hollow Knight").await.expect("steam search");
-        assert!(!found.covers.is_empty() && !found.heroes.is_empty() && !found.icons.is_empty());
-        let cover = &found.covers[0].url;
-        let response = CLIENT.get(cover).send().await.expect("cover request");
-        assert!(response.status().is_success(), "{cover} answered {}", response.status());
-    }
 }

@@ -4,10 +4,12 @@
 use decanter_ps::library::Platform;
 use decanter_ps::status::Entry;
 use gpui::{
-    BoxShadow, Context, Entity, ObjectFit, SharedString, Window, div, img, linear_color_stop, linear_gradient, point,
-    prelude::*, px, rgb,
+    BoxShadow, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, SharedString, WeakEntity, Window, div, img,
+    linear_color_stop, linear_gradient, point, prelude::*, px, rgb,
 };
+use rust_i18n::t;
 
+use super::GamesView;
 use super::detail::DetailView;
 use super::{art_url, display_title, platform_label, status_text};
 use crate::state::Ps;
@@ -20,18 +22,26 @@ const GROUP: &str = "ps-cover";
 pub struct BrowserView {
     ps: Entity<Ps>,
     detail: Entity<DetailView>,
+    /// Holds the game menu a right-click on a cover opens.
+    games: WeakEntity<GamesView>,
 }
 
 impl BrowserView {
-    pub fn new(ps: Entity<Ps>, detail: Entity<DetailView>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        ps: Entity<Ps>,
+        detail: Entity<DetailView>,
+        games: WeakEntity<GamesView>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.observe(&ps, |_, _, cx| cx.notify()).detach();
-        Self { ps, detail }
+        Self { ps, detail, games }
     }
 
     fn card(&self, entry: &Entry) -> impl IntoElement + use<> {
         let game = &entry.game;
         let dir = game.dir.clone();
         let detail = self.detail.clone();
+        let (games, menu_dir) = (self.games.clone(), game.dir.clone());
         let ready = entry.status.playable();
         let art = div()
             .id("ps-cover-art")
@@ -92,7 +102,7 @@ impl BrowserView {
                     .bg(theme::alpha(theme::BG_DEEP, 0.85))
                     .text_size(px(10.))
                     .text_color(rgb(if ready { theme::ACCENT_GREEN } else { theme::TEXT_MUTED }))
-                    .child(status_text(&entry.status)),
+                    .child(SharedString::from(status_text(&entry.status))),
             );
         div()
             .id(SharedString::from(format!("ps-cover-{}", game.dir.display())))
@@ -103,6 +113,9 @@ impl BrowserView {
             .gap(px(8.))
             .cursor_pointer()
             .on_click(move |_, _, cx| detail.update(cx, |detail, cx| detail.select(dir.clone(), cx)))
+            .on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _, cx| {
+                let _ = games.update(cx, |games, cx| games.open_menu(menu_dir.clone(), event.position, cx));
+            })
             .child(art)
             .child(
                 div()
@@ -147,11 +160,7 @@ impl Render for BrowserView {
                 .flex()
                 .flex_col()
                 .gap(px(32.))
-                .when(empty, |page| {
-                    page.child(theme::empty(
-                        "Todavía no hay juegos: copiá tus volcados a la carpeta de juegos (ver Ajustes).",
-                    ))
-                })
+                .when(empty, |page| page.child(theme::empty(t!("ps.games.browser_empty"))))
                 .children(shelves),
         )
     }

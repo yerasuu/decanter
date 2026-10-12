@@ -5,6 +5,7 @@
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{Control, GROUPS, Setting};
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use super::extras::ExtrasView;
 use crate::state::Ps;
@@ -19,7 +20,7 @@ pub struct GraphicsView {
 
 impl GraphicsView {
     pub fn new(ps: &Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        let load = cx.background_spawn(async { Values::load() });
+        let load = cx.background_spawn(async { Values::load(&decanter_ps::paths::active()) });
         cx.spawn(async move |this, cx| {
             let values = load.await;
             let _ = this.update(cx, |this, cx| {
@@ -41,11 +42,14 @@ impl GraphicsView {
             return;
         };
         values.set(setting, &value);
-        let task = cx.background_spawn(async move { values::save(setting, &value, None) });
+        let task =
+            cx.background_spawn(async move { values::save(&decanter_ps::paths::active(), setting, &value, None) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.error = result.err().map(|err| format!("No se pudo guardar: {err}"));
+                this.error = result
+                    .err()
+                    .map(|err| t!("ps.graphics.save_error", error = err).into_owned());
                 cx.notify();
             });
         })
@@ -84,7 +88,7 @@ impl GraphicsView {
                     SharedString::from(setting.key),
                     options
                         .iter()
-                        .map(|option| (SharedString::from(option.1), SharedString::from(option.0))),
+                        .map(|option| (SharedString::from(option.1), SharedString::from(t!(option.0)))),
                     selected,
                 )
                 .style(SelectStyle::Compact)
@@ -97,7 +101,7 @@ impl GraphicsView {
             Control::Number { default, decimals, .. } => {
                 let now = current.and_then(|value| value.parse::<f64>().ok()).unwrap_or(*default);
                 let shown = if *decimals == 0 && now == 0.0 {
-                    "Sin límite".to_owned()
+                    t!("ps.graphics.no_limit").into_owned()
                 } else {
                     format!("{now:.decimals$}")
                 };
@@ -157,7 +161,7 @@ impl GraphicsView {
 impl Render for GraphicsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(values) = self.values.clone() else {
-            return theme::muted("Leyendo los ajustes…").into_any_element();
+            return theme::muted(t!("ps.graphics.reading")).into_any_element();
         };
         let groups: Vec<AnyElement> = GROUPS
             .iter()
@@ -190,8 +194,8 @@ impl Render for GraphicsView {
                                     .min_w_0()
                                     .flex()
                                     .flex_col()
-                                    .child(setting.label)
-                                    .children(note.map(|note| theme::muted(note).text_size(px(12.)))),
+                                    .child(t!(setting.label))
+                                    .children(note.map(|note| theme::muted(t!(note)).text_size(px(12.)))),
                             )
                             .child(control)
                             .into_any_element()
@@ -202,8 +206,8 @@ impl Render for GraphicsView {
                         .flex()
                         .flex_col()
                         .gap_2()
-                        .child(theme::h3(group.title))
-                        .children(group.note.map(|note| theme::muted(note).text_size(px(12.))))
+                        .child(theme::h3(t!(group.title)))
+                        .children(group.note.map(|note| theme::muted(t!(note)).text_size(px(12.))))
                         .child(theme::card().children(rows))
                         .into_any_element(),
                 )
@@ -213,9 +217,7 @@ impl Render for GraphicsView {
             .flex()
             .flex_col()
             .gap_5()
-            .child(theme::muted(
-                "Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque.",
-            ))
+            .child(theme::muted(t!("ps.graphics.description")))
             .children(self.error.clone().map(theme::error))
             .children(groups)
             .child(self.extras.clone())

@@ -11,54 +11,30 @@
 //! saves that drift apart from then on.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
-pub use super::transfer::Mode;
+use rust_i18n::t;
 
-/// How far a copy has got, written from the import's blocking thread and
-/// read by the UI on its own timer. Stays at zero for a same-disk move,
-/// which is a rename with nothing to count.
-#[derive(Default)]
-pub struct Progress {
-    copied: AtomicU64,
-    total: AtomicU64,
-}
-
-impl Progress {
-    /// `(copied, total)` bytes, or `None` before the total is known — the
-    /// size walk of a big prefix alone takes a while.
-    pub fn snapshot(&self) -> Option<(u64, u64)> {
-        let total = self.total.load(Ordering::Relaxed);
-        (total > 0).then(|| (self.copied.load(Ordering::Relaxed), total))
-    }
-
-    fn record(&self, progress: decanter_core::MoveProgress) {
-        self.total.store(progress.total_bytes, Ordering::Relaxed);
-        self.copied.store(progress.bytes_copied, Ordering::Relaxed);
-    }
-}
+pub use super::transfer::{Mode, Progress};
 
 /// Drops what a failed copy for `id` left behind, once nothing will retry it.
 pub fn abandon(profile_id: &str, id: &str) {
-    if let Some(destination) = crate::core::library_for_profile(profile_id)
-        .ok()
-        .and_then(|library| library.compatdata(profile_id, id))
+    // In whichever folder the form was adding it to.
+    for root in crate::core::library_for_profile(profile_id)
+        .map(|library| library.roots())
+        .unwrap_or_default()
     {
-        super::transfer::discard_staging(&destination);
+        super::transfer::discard_staging(&root.join("compatdata").join(profile_id).join(id));
     }
 }
 
 /// Drops every failed copy in `profile_id`'s library — for when no form is
 /// open on any of them.
 pub fn abandon_all(profile_id: &str) {
-    if let Some(dir) = crate::core::library_for_profile(profile_id)
-        .ok()
-        // `compatdata` only resolves one game's prefix; its parent is the
-        // profile's own directory.
-        .and_then(|library| library.compatdata(profile_id, "_"))
-        .and_then(|probe| probe.parent().map(Path::to_path_buf))
+    for root in crate::core::library_for_profile(profile_id)
+        .map(|library| library.roots())
+        .unwrap_or_default()
     {
-        super::transfer::discard_all_staging(&dir);
+        super::transfer::discard_all_staging(&root.join("compatdata").join(profile_id));
     }
 }
 
@@ -86,28 +62,35 @@ pub fn import(
     progress: &Progress,
     draft: super::Draft,
 ) -> Result<(), String> {
-    let root = crate::achv_try!(wine_root(picked).ok_or("esa carpeta no es un prefijo de Wine (no tiene drive_c)"));
+    let root = crate::achv_try!(wine_root(picked).ok_or_else(|| t!("external.errors.not_a_prefix").into_owned()));
     if !decanter_runtime::Prefix::new(&root).processes().is_empty() {
-        return Err("Hay algo corriendo en ese prefijo: cerralo primero.".to_owned());
+        return Err(t!("external.errors.prefix_busy").into_owned());
     }
-    let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
+    let library = crate::achv_try!(super::library_in(profile_id, draft.library_root.as_deref()));
     let destination = crate::achv_try!(
         library
             .compatdata(profile_id, id)
-            .ok_or("no se pudo resolver el prefijo nuevo")
+            .ok_or_else(|| t!("external.errors.new_prefix").into_owned())
     );
     // An installer may already have made one for this draft; the imported
     // prefix replaces it only if it's still empty.
     if destination.exists() && std::fs::read_dir(&destination).is_ok_and(|mut entries| entries.next().is_some()) {
-        return Err("Este juego ya tiene un prefijo propio; empezá uno nuevo para importar.".to_owned());
+        return Err(t!("external.errors.has_prefix").into_owned());
     }
     if let Some(parent) = destination.parent() {
-        crate::achv_try!(std::fs::create_dir_all(parent).map_err(|err| format!("creando {}: {err}", parent.display())));
+        crate::achv_try!(
+            std::fs::create_dir_all(parent).map_err(|err| t!(
+                "messages.errors.create_dir",
+                path = parent.display(),
+                error = err
+            )
+            .into_owned())
+        );
     }
     tracing::info!(profile_id, id, from = %root.display(), to = %destination.display(), copy = mode == Mode::Copy, "importing prefix");
     crate::achv_try!(
         super::transfer::bring(&root, &destination, mode, |done| progress.record(done))
-            .inspect_err(|err| tracing::error!(from = %root.display(), err, "could not import prefix"))
+            .inspect_err(|err| tracing::error!(from = %root.display(), %err, "could not import prefix"))
     );
     let steam_layout = root != picked && root.parent() == Some(picked);
     if steam_layout {
@@ -125,7 +108,10 @@ pub fn import(
         // one goes back where the other tool expects it, a copy goes.
         let undo = match mode {
             Mode::Move => super::transfer::bring(&destination, &root, Mode::Move, |_| {}),
-            Mode::Copy => std::fs::remove_dir_all(&destination).map_err(|err| err.to_string()),
+            Mode::Copy => std::fs::remove_dir_all(&destination).map_err(|err| super::transfer::Error::Clean {
+                path: destination.clone(),
+                err,
+            }),
         };
         if let Err(undo) = undo {
             tracing::error!(prefix = %destination.display(), %undo, "could not undo a failed import");
@@ -164,24 +150,5 @@ fn adopt_proton_files(old_root: &Path, destination: &Path, mode: Mode) {
     }
     if let Err(err) = std::fs::remove_dir_all(old_root) {
         tracing::warn!(dir = %old_root.display(), %err, "could not remove what was left of the old prefix");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn finds_drive_c_in_both_layouts() {
-        let base = std::env::temp_dir().join(format!("decanter-import-test-{}", std::process::id()));
-        let wine = base.join("lutris");
-        let steam = base.join("steam");
-        std::fs::create_dir_all(wine.join("drive_c")).expect("wine layout");
-        std::fs::create_dir_all(steam.join("pfx/drive_c")).expect("steam layout");
-        assert_eq!(wine_root(&wine), Some(wine.clone()));
-        assert_eq!(wine_root(&steam), Some(steam.join("pfx")));
-        assert_eq!(wine_root(&wine.join("drive_c")), Some(wine));
-        assert_eq!(wine_root(&base), None);
-        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -9,6 +9,9 @@ use gpui::{
     rgb, uniform_list,
 };
 
+use rust_i18n::t;
+
+use crate::state::job_label;
 use crate::theme;
 
 pub struct LogView {
@@ -62,14 +65,16 @@ impl LogView {
 impl Render for LogView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let job = self.job.read(cx);
-        let status = match job.state {
-            State::Running(_) => format!("{}: en curso", job.label),
-            State::Exited(Some(0)) => format!("{}: terminado", job.label),
-            State::Exited(Some(code)) => format!("{}: terminó con código {code}", job.label),
-            State::Exited(None) if job.stop_requested => format!("{}: detenido", job.label),
-            State::Exited(None) => format!("{}: interrumpido", job.label),
-        };
+        let label = job_label(job.kind);
+        let status = SharedString::from(match job.state {
+            State::Running(_) => t!("ps.log.running", label = label),
+            State::Exited(Some(0)) => t!("ps.log.finished", label = label),
+            State::Exited(Some(code)) => t!("ps.log.exited", label = label, code = code),
+            State::Exited(None) if job.stop_requested => t!("ps.log.stopped", label = label),
+            State::Exited(None) => t!("ps.log.interrupted", label = label),
+        });
         let count = job.lines.len();
+        let log_file = job.log_file.clone();
         let source = self.job.clone();
         div()
             .size_full()
@@ -99,8 +104,26 @@ impl Render for LogView {
                             .text_color(rgb(theme::ACCENT_BLUE))
                             .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
                             .on_click(cx.listener(move |this, _, _, cx| this.copy(&status, cx)))
-                            .child(if self.copied { "Copiado" } else { "Copiar registro" }),
-                    ),
+                            .child(if self.copied {
+                                t!("ps.log.copied")
+                            } else {
+                                t!("ps.log.copy")
+                            }),
+                    )
+                    .children(log_file.map(|path| {
+                        div()
+                            .id("ps-log-file")
+                            .flex_none()
+                            .cursor_pointer()
+                            .text_color(rgb(theme::ACCENT_BLUE))
+                            .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
+                            .on_click(move |_, _, _| {
+                                if let Err(err) = crate::desktop::open(&path) {
+                                    tracing::warn!(path = %path.display(), %err, "could not open the log file");
+                                }
+                            })
+                            .child(t!("ps.log.full"))
+                    })),
             )
             .child(
                 uniform_list("ps-log", count, move |range, _, cx| {

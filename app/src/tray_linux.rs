@@ -22,6 +22,7 @@
 
 use ksni::menu::StandardItem;
 use ksni::{Icon, MenuItem, Tray, TrayMethods as _};
+use rust_i18n::t;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -65,7 +66,7 @@ impl Tray for DecanterTray {
     fn menu(&self) -> Vec<MenuItem<Self>> {
         vec![
             StandardItem {
-                label: "Mostrar Decanter".to_string(),
+                label: t!("chrome.tray.show").into_owned(),
                 activate: Box::new(|tray: &mut Self| {
                     if tray.commands.send(TrayCommand::Show).is_err() {
                         tracing::warn!("tray command channel closed, could not forward show command");
@@ -76,7 +77,7 @@ impl Tray for DecanterTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "Salir".to_string(),
+                label: t!("chrome.tray.quit").into_owned(),
                 activate: Box::new(|tray: &mut Self| {
                     if tray.commands.send(TrayCommand::Quit).is_err() {
                         tracing::warn!("tray command channel closed, could not forward quit command");
@@ -125,7 +126,7 @@ pub fn spawn() -> UnboundedReceiver<TrayCommand> {
                 tracing::info!("linux tray icon started");
                 std::mem::forget(handle);
             }
-            Err(err) => tracing::warn!("could not start the Linux tray icon: {err}"),
+            Err(err) => tracing::warn!(%err, "could not start the Linux tray icon"),
         }
     });
     receiver

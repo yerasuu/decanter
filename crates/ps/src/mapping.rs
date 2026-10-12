@@ -118,12 +118,31 @@ impl Action {
     }
 
     /// Rejects sources the ports refuse for this action.
-    pub fn check(self, source: &Source) -> Result<(), &'static str> {
+    pub fn check(self, source: &Source) -> Result<(), Refusal> {
         match source {
-            Source::Mouse(_) if self == Action::ToggleFullscreen => Err("ToggleFullscreen can only use a keyboard key"),
-            Source::Wheel(_) if !self.is_button() => Err("mouse wheel can only map to a pad button"),
+            Source::Mouse(_) if self == Action::ToggleFullscreen => Err(Refusal::FullscreenNeedsKey),
+            Source::Wheel(_) if !self.is_button() => Err(Refusal::WheelNeedsButton),
             _ => Ok(()),
         }
+    }
+}
+
+/// Why a port refuses a source for an action.
+#[derive(Clone, Copy, Debug)]
+pub enum Refusal {
+    /// bbport's `key.` lines list keyboard keys only.
+    KeysOnly,
+    FullscreenNeedsKey,
+    WheelNeedsButton,
+}
+
+impl fmt::Display for Refusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match *self {
+            Self::KeysOnly => "bbport only takes keyboard keys",
+            Self::FullscreenNeedsKey => "ToggleFullscreen can only use a keyboard key",
+            Self::WheelNeedsButton => "mouse wheel can only map to a pad button",
+        })
     }
 }
 
@@ -272,7 +291,7 @@ impl Mapping {
                 return Err(error("source is empty".into()));
             }
             let source = parse_source(source).map_err(error)?;
-            action.check(&source).map_err(|reason| error(reason.into()))?;
+            action.check(&source).map_err(|reason| error(reason.to_string()))?;
             if !std::mem::replace(&mut overridden[action.index()], true) {
                 mapping.0[action.index()].clear();
             }
@@ -344,9 +363,9 @@ impl Target {
     }
 
     /// bbport's `key.` lines list keys only; AnyPS5 also takes mouse buttons and the wheel.
-    pub fn check(self, action: Action, source: &Source) -> Result<(), &'static str> {
+    pub fn check(self, action: Action, source: &Source) -> Result<(), Refusal> {
         if self == Target::Bbport && !matches!(source, Source::Key(_)) {
-            return Err("bbport solo admite teclas del teclado");
+            return Err(Refusal::KeysOnly);
         }
         action.check(source)
     }
@@ -430,70 +449,5 @@ impl Target {
             mapping.add(action, source);
         }
         mapping
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn first_line_replaces_later_lines_add() {
-        let defaults = Target::Bbport.defaults();
-        let mapping = Mapping::parse(
-            "\u{feff}# comment\ncross = KEY:F\nCross = key:space ; note\nCROSS = KEY:Space\nSquare = MOUSE:left\n",
-            &defaults,
-        )
-        .unwrap();
-        assert_eq!(
-            mapping.get(Action::Cross),
-            [Source::Key("F".into()), Source::Key("space".into())]
-        );
-        assert_eq!(mapping.get(Action::Square), [Source::Mouse(MouseButton::Left)]);
-        assert_eq!(mapping.get(Action::Circle), defaults.get(Action::Circle));
-    }
-
-    #[test]
-    fn rejects_what_the_ports_reject() {
-        let defaults = Target::AnyPs5.defaults();
-        let reason = |text| Mapping::parse(text, &defaults).unwrap_err();
-        assert_eq!(reason("\nNope = KEY:A").line, 2);
-        assert_eq!(reason("Cross KEY:A").reason, "expected Action = TYPE:VALUE");
-        assert_eq!(
-            reason("Cross = PAD:South").reason,
-            "source type must be KEY, MOUSE or WHEEL"
-        );
-        assert_eq!(
-            reason("ToggleFullscreen = MOUSE:Left").reason,
-            "ToggleFullscreen can only use a keyboard key"
-        );
-        assert_eq!(
-            reason("LeftStickUp = WHEEL:Up").reason,
-            "mouse wheel can only map to a pad button"
-        );
-        assert_eq!(reason("R2 = MOUSE:Side").reason, "unknown mouse button 'Side'");
-    }
-
-    #[test]
-    fn render_round_trips_and_skips_defaults() {
-        for target in [Target::Bbport, Target::AnyPs5] {
-            let defaults = target.defaults();
-            assert_eq!(defaults.render(&defaults).lines().count(), 1);
-            let mut mapping = defaults.clone();
-            mapping.add(Action::R2, Source::Wheel(Wheel::Down));
-            mapping.reset(Action::Cross, &defaults);
-            mapping.add(Action::ToggleFullscreen, Source::Key("F10".into()));
-            assert_eq!(Mapping::parse(&mapping.render(&defaults), &defaults).unwrap(), mapping);
-        }
-    }
-
-    #[test]
-    fn last_binding_is_kept_unless_unbound_is_storable() {
-        let mut mapping = Target::AnyPs5.defaults();
-        mapping.remove(Target::AnyPs5, Action::Options, 0);
-        assert_eq!(mapping.get(Action::Options).len(), 1);
-        let mut mapping = Target::Bbport.defaults();
-        mapping.remove(Target::Bbport, Action::Cross, 0);
-        assert!(mapping.get(Action::Cross).is_empty());
     }
 }

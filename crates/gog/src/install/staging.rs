@@ -6,11 +6,14 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use decanter_runtime::sanitize_relative_path;
 
-/// Where a game's files are downloaded before they're moved into the
-/// library. Kept outside it so a failed or cancelled install never leaves
-/// partial files where the game is supposed to live.
-pub(super) fn staging_root(account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
-    let base = decanter_core::data_dir();
+/// Where a game's files are downloaded before they're moved into
+/// `destination` (its folder under a library's `common/`): that library
+/// folder's own `downloading/`, the way Steam's `steamapps/downloading`
+/// works. Kept out of `common/` so a failed or cancelled install never
+/// leaves partial files where the game is supposed to live, and on the
+/// same disk as it so the finished download moves in with a rename rather
+/// than a second copy of every byte.
+pub(super) fn staging_root(destination: &Path, account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
     let profile = crate::achv_try!(
         sanitize_relative_path(account_id)
             .filter(|path| path.components().count() == 1)
@@ -21,7 +24,14 @@ pub(super) fn staging_root(account_id: &str, product_id: &str) -> anyhow::Result
             .filter(|path| path.components().count() == 1)
             .context("suspicious product_id")
     );
-    Ok(base.join("staging").join(profile).join(game))
+    let library_root = crate::achv_try!(
+        destination
+            .parent()
+            .filter(|common| common.file_name().is_some_and(|name| name == "common"))
+            .and_then(Path::parent)
+            .with_context(|| format!("{} is not under a library's common/", destination.display()))
+    );
+    Ok(library_root.join("downloading").join(profile).join(game))
 }
 
 /// Moves a finished download from staging into the library, merging into

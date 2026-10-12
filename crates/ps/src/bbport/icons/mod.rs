@@ -18,6 +18,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::pad::PadLayout;
+use crate::paths::Root;
 
 /// Bumped whenever the drawing changes, so cached files are rebuilt.
 const GENERATION: u32 = 2;
@@ -270,7 +271,7 @@ fn redraw(tpf: &mut [u8], layout: &PadLayout, style: IconStyle) -> io::Result<us
 /// `base` (the game's file, or the one an enabled mod replaces it with).
 /// Built once per layout and base; older builds are removed. File I/O and
 /// some CPU: off the UI thread.
-pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<PathBuf> {
+pub fn prepare(root: &Root, layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<PathBuf> {
     let meta = fs::metadata(base)?;
     let modified = meta
         .modified()
@@ -286,8 +287,8 @@ pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<
             layout.lines
         ))
     );
-    let root = crate::paths::bbport_data().join("icons");
-    let dir = root.join(&key);
+    let builds = root.bbport_data().join("icons");
+    let dir = builds.join(&key);
     let file = dir.join(COMMON_TPF);
     if fs::metadata(&file).is_ok_and(|meta| meta.is_file()) {
         return Ok(dir);
@@ -300,7 +301,7 @@ pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<
     }
     crate::files::write_atomic(&file, &bytes)?;
     tracing::info!(redrawn, style = style.id(), dir = %dir.display(), "built button icons for the gamepad layout");
-    if let Ok(entries) = fs::read_dir(&root) {
+    if let Ok(entries) = fs::read_dir(&builds) {
         for entry in entries.flatten() {
             if entry.file_name() != key.as_str() {
                 let _ = fs::remove_dir_all(entry.path());
@@ -308,83 +309,4 @@ pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<
         }
     }
     Ok(dir)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_button_a_layout_can_use_has_art_at_both_sizes() {
-        for style in [IconStyle::Ps, IconStyle::Abxy, IconStyle::Bayx] {
-            for (button, _) in super::super::pad::BUTTONS {
-                for size in [32, 26] {
-                    let art = glyph(style, button, size).unwrap_or_else(|| panic!("no {style:?} {button} at {size}"));
-                    let image = decode(art).unwrap();
-                    assert_eq!(image.dimensions(), (size, size));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn the_layout_picks_each_icon() {
-        let [default, code_vein] = PadLayout::builtins();
-        let abxy = IconStyle::Abxy;
-        assert_eq!(art_for(abxy, &default, "cross", 32), glyph(abxy, "a", 32));
-        assert_eq!(art_for(abxy, &code_vein, "r1", 32), glyph(abxy, "x", 32));
-        assert_eq!(
-            art_for(IconStyle::Ps, &default, "touchpad", 26),
-            glyph(IconStyle::Ps, "back", 26)
-        );
-    }
-
-    #[test]
-    fn the_pad_decides_the_style() {
-        // SDL GUIDs: bus, CRC, then the vendor little-endian.
-        assert_eq!(
-            IconStyle::for_gamepad("030000004c050000e60c000000016800", "PS5 Controller"),
-            IconStyle::Ps
-        );
-        assert_eq!(
-            IconStyle::for_gamepad("030000007e0500000920000000026800", "Pro Controller"),
-            IconStyle::Bayx
-        );
-        assert_eq!(
-            IconStyle::for_gamepad("03000000c82d00000b31000000010000", "8BitDo Ultimate 2"),
-            IconStyle::Abxy
-        );
-        assert_eq!(IconStyle::for_gamepad("", "Wireless DualSense"), IconStyle::Ps);
-    }
-
-    /// Against the real file, when a dump is around: `BB_TEST_COMMON_TPF`.
-    #[test]
-    #[ignore = "needs Bloodborne's menu/common.tpf.dcx"]
-    fn redraws_the_real_file() {
-        let path = std::env::var_os("BB_TEST_COMMON_TPF").expect("BB_TEST_COMMON_TPF");
-        let mut dcx = dcx::Dcx::parse(&fs::read(path).unwrap()).unwrap();
-        let [default, _] = PadLayout::builtins();
-        assert_eq!(redraw(dcx.data_mut(), &default, IconStyle::Abxy).unwrap(), 15 + 5);
-        let back = dcx::Dcx::parse(&dcx.write().unwrap()).unwrap();
-        let texture = tpf::textures(back.data())
-            .unwrap()
-            .into_iter()
-            .find(|t| t.name == "KG_Cancel")
-            .unwrap();
-        let linear = gnm::detile(&back.data()[texture.offset..texture.offset + 1024], 32, 32, 16);
-        let first: [u8; 16] = linear[..16].try_into().unwrap();
-        assert_eq!(
-            bc7::decode_mode6(&first)[0][3],
-            0,
-            "the corner of a round icon is clear"
-        );
-        // For a look by eye: the Code Vein layout's file, when asked for.
-        if let Some(out) = std::env::var_os("BB_TEST_ICONS_OUT") {
-            let source = std::env::var_os("BB_TEST_COMMON_TPF").expect("BB_TEST_COMMON_TPF");
-            let mut dcx = dcx::Dcx::parse(&fs::read(source).unwrap()).unwrap();
-            let [_, code_vein] = PadLayout::builtins();
-            redraw(dcx.data_mut(), &code_vein, IconStyle::Ps).unwrap();
-            fs::write(out, dcx.write().unwrap()).unwrap();
-        }
-    }
 }

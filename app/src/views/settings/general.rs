@@ -1,13 +1,19 @@
-//! Window behaviour that isn't tied to any profile or game, plus the
-//! Steam export toggle and its pending-restart callout.
+//! The UI language, window behaviour that isn't tied to any profile or
+//! game, plus the Steam export toggle and its pending-restart callout.
 
-use gpui::{Context, IntoElement, Window, div, prelude::*};
+use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
+use rust_i18n::t;
 
 use super::{column, field_row, inline};
+use crate::i18n::{self, Language};
 use crate::theme;
+use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, checkbox};
 
+const SYSTEM_LANGUAGE: &str = "system";
+
 pub struct GeneralTab {
+    language: Option<Language>,
     close_to_tray: bool,
     steam_export_enabled: bool,
     steam_pending: bool,
@@ -18,6 +24,7 @@ pub struct GeneralTab {
 impl GeneralTab {
     pub fn new(_: &mut Context<Self>) -> Self {
         let mut this = Self {
+            language: None,
             close_to_tray: false,
             steam_export_enabled: true,
             steam_pending: false,
@@ -29,19 +36,26 @@ impl GeneralTab {
     }
 
     fn reload(&mut self) {
+        self.language = i18n::saved();
         self.close_to_tray = crate::core::db()
-            .and_then(|db| db.close_to_tray().map_err(|err| err.to_string()))
+            .and_then(|db| db.close_to_tray().map_err(crate::core::StoreError::Query))
             .inspect_err(
                 |err| tracing::warn!(error = %err, "failed to read close_to_tray setting, defaulting to false"),
             )
             .unwrap_or(false);
         self.steam_export_enabled = crate::core::db()
-            .and_then(|db| db.steam_export_enabled().map_err(|err| err.to_string()))
+            .and_then(|db| db.steam_export_enabled().map_err(crate::core::StoreError::Query))
             .inspect_err(
                 |err| tracing::warn!(error = %err, "failed to read steam_export_enabled setting, defaulting to true"),
             )
             .unwrap_or(true);
         self.steam_pending = crate::core::steam_shortcuts_pending();
+    }
+
+    fn set_language(&mut self, language: Option<Language>, cx: &mut Context<Self>) {
+        i18n::set(language, cx);
+        self.reload();
+        cx.notify();
     }
 
     fn set_close_to_tray(&mut self, close_to_tray: bool, cx: &mut Context<Self>) {
@@ -105,7 +119,7 @@ impl GeneralTab {
     fn checkbox_row(
         id: &'static str,
         checked: bool,
-        text: &'static str,
+        text: impl Into<SharedString>,
         on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -115,7 +129,19 @@ impl GeneralTab {
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
             .child(checkbox(checked))
-            .child(div().min_w_0().child(text))
+            .child(div().min_w_0().child(text.into()))
+    }
+
+    fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
+        let options = std::iter::once((SYSTEM_LANGUAGE.into(), t!("settings.general.language.system").into()))
+            .chain(Language::ALL.map(|language| (language.code().into(), language.native_name().into())));
+        let selected = self.language.map_or(SYSTEM_LANGUAGE, Language::code);
+        let entity = cx.entity();
+        field_row().child(
+            Select::new("language", options, selected).on_change(move |value, _, cx| {
+                entity.update(cx, |this, cx| this.set_language(Language::from_code(value), cx));
+            }),
+        )
     }
 }
 
@@ -124,18 +150,15 @@ impl Render for GeneralTab {
         let restarting = self.restarting_steam;
         let callout = self.steam_pending.then(|| {
             column()
-                .child(div().child(
-                    "Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se \
-                     agregaron, asi que todavia no los pisa su propia copia en memoria.",
-                ))
+                .child(div().child(t!("settings.general.steam.pending")))
                 .child(inline(
                     button(
                         "restart-steam",
                         ButtonKind::Primary,
                         if restarting {
-                            "Reiniciando Steam..."
+                            t!("settings.general.steam.restarting")
                         } else {
-                            "Reiniciar Steam ahora"
+                            t!("settings.general.steam.restart_now")
                         },
                         restarting,
                     )
@@ -147,28 +170,26 @@ impl Render for GeneralTab {
         });
 
         column()
-            .child(theme::h2("Al cerrar la ventana"))
+            .child(theme::h2(t!("settings.general.language.title")))
+            .child(self.language_select(cx))
+            .child(theme::h2(t!("settings.general.close.title")))
             .child(Self::checkbox_row(
                 "close-to-tray",
                 self.close_to_tray,
-                "Dejar Decanter corriendo en la bandeja en vez de cerrarlo",
+                t!("settings.general.close.to_tray"),
                 Self::set_close_to_tray,
                 cx,
             ))
-            .child(theme::muted(
-                "Requiere reiniciar Decanter para que el cambio tenga efecto.",
-            ))
-            .child(theme::h2("Exportar a Steam"))
+            .child(theme::muted(t!("settings.general.close.restart_hint")))
+            .child(theme::h2(t!("settings.general.steam.title")))
             .child(Self::checkbox_row(
                 "steam-export",
                 self.steam_export_enabled,
-                "Agregar cada juego instalado a la biblioteca real de Steam, con su portada y banner",
+                t!("settings.general.steam.add"),
                 Self::set_steam_export,
                 cx,
             ))
-            .child(theme::muted(
-                "Hay que reiniciar Steam para ver los cambios — Steam solo lee sus shortcuts al arrancar.",
-            ))
+            .child(theme::muted(t!("settings.general.steam.restart_hint")))
             .children(callout)
     }
 }

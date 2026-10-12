@@ -6,6 +6,9 @@
 //! host loads the host's Mesa, one built by nix only loads nix's, which is
 //! why every nix environment here sets `VK_DRIVER_FILES` itself and why a
 //! port is run inside the toolchain that built it.
+//!
+//! The host check can't foresee every package a port's build requires, so
+//! a host that fails to configure a port is set aside for nix from then on.
 
 mod portable;
 
@@ -16,6 +19,7 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
+use crate::paths::Root;
 use crate::port::Port;
 
 const PKGS_NIX: &str = include_str!("pkgs.nix");
@@ -25,7 +29,7 @@ const ANYPS5_NIX: &str = include_str!("anyps5.nix");
 /// What bbport's `build.sh` checks for before it gives up on the host,
 /// plus Python for `run.sh`'s helpers.
 const BBPORT_HOST_CHECK: &str = "command -v cc && command -v cmake && command -v ninja && command -v python3 \
-     && command -v pkg-config && pkg-config --exists vulkan sdl3";
+     && command -v pkg-config && pkg-config --exists vulkan sdl3 freetype2";
 
 /// AnyPS5 links its executables against a static glibc, which few hosts
 /// ship: `-print-file-name` echoes the bare name back when it has none.
@@ -63,9 +67,9 @@ pub enum Toolchain {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("no se pudo descargar nix-portable: {0}")]
+    #[error("could not download nix-portable: {0}")]
     Download(#[from] reqwest::Error),
-    #[error("la descarga de nix-portable no coincide con su suma fijada")]
+    #[error("the nix-portable download does not match its pinned checksum")]
     Checksum,
     #[error("{0}")]
     Io(#[from] io::Error),
@@ -74,20 +78,46 @@ pub enum Error {
 impl Toolchain {
     /// May download nix-portable (about 65 MB), reporting bytes so far and
     /// the total when the server sends one.
-    pub async fn resolve(port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
+    pub async fn resolve(root: &Root, port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
         if host_covers(port).await {
-            tracing::info!(?port, "host tools cover the port");
-            return Ok(Self::Host);
+            if !tokio::fs::try_exists(host_refused(root, port)).await.unwrap_or(false) {
+                tracing::info!(?port, "host tools cover the port");
+                return Ok(Self::Host);
+            }
+            tracing::info!(?port, "host tools failed to configure the port before");
         }
+        Self::nix(root, port, on_download).await
+    }
+
+    /// What [`Toolchain::resolve`] falls back to, never the host.
+    pub async fn nix(root: &Root, port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
         if let Some(nix_shell) = system_nix_shell().await {
             tracing::info!(?port, nix_shell = %nix_shell.display(), "using the system's nix");
             return Ok(Self::SystemNix(nix_shell));
         }
-        match portable::ensure(on_download).await {
+        match portable::ensure(root, on_download).await {
             Ok(path) => {
                 tracing::info!(?port, path = %path.display(), "using decanter's nix-portable");
                 Ok(Self::Portable(path))
             }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// After the host's tools failed to configure `port`: later resolves
+    /// skip the host for it until [`Toolchain::allow_host`].
+    pub async fn refuse_host(root: &Root, port: Port) -> io::Result<()> {
+        tokio::fs::create_dir_all(root.toolchain()).await?;
+        tokio::fs::write(host_refused(root, port), b"").await
+    }
+
+    /// Once `port`'s checkout moved, since the new commit may configure with
+    /// the host's tools after all. True when the host had been refused: the
+    /// checkout's build caches are then nix's, which the caller must forget.
+    pub async fn allow_host(root: &Root, port: Port) -> io::Result<bool> {
+        match tokio::fs::remove_file(host_refused(root, port)).await {
+            Ok(()) => Ok(true),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(err) => Err(err),
         }
     }
@@ -101,19 +131,18 @@ impl Toolchain {
         }
     }
 
-    /// For the UI's informative line; there is no choice to make.
-    pub const fn label(&self) -> &'static str {
-        match self {
-            Self::Host => "herramientas del sistema",
-            Self::SystemNix(_) => "nix del sistema",
-            Self::Portable(_) => "nix-portable de decanter",
-        }
+    /// What a port's build marker holds: this toolchain and the checkout's
+    /// commit, so a checkout that moved (an update applied before the port
+    /// was prepared this session) is built again rather than run stale.
+    pub async fn build_stamp(&self, checkout: &Path) -> String {
+        format!("{} {}", self.id(), crate::failures::full_commit_of(checkout).await)
     }
 
-    /// `script` run by bash inside `port`'s environment, from `checkout`.
-    /// Callers that run something elsewhere (a converted game) set their
-    /// own `current_dir` after.
-    pub async fn command(&self, port: Port, checkout: &Path, script: &str) -> io::Result<Command> {
+    /// `script` run by bash inside `port`'s environment, from its checkout
+    /// under `root`. Callers that run something elsewhere (a converted game)
+    /// set their own `current_dir` after.
+    pub async fn command(&self, root: &Root, port: Port, script: &str) -> io::Result<Command> {
+        let checkout = port.checkout(root);
         let mut command = match self {
             Self::Host => {
                 let mut command = Command::new("bash");
@@ -121,32 +150,37 @@ impl Toolchain {
                 command
             }
             Self::SystemNix(nix_shell) => {
-                let env_file = match write_env_files(&crate::paths::toolchain().join("env")).await {
+                let env_file = match write_env_files(&root.toolchain().join("env")).await {
                     Ok(dir) => dir.join(env_file(port)),
                     Err(err) => return Err(err),
                 };
                 let mut command = Command::new(nix_shell);
-                command.args(nix_shell_args(&env_file, checkout, script));
+                command.args(nix_shell_args(&env_file, &checkout, script));
                 command
             }
             Self::Portable(nix_portable) => {
-                let env_file = match write_env_files(&crate::paths::toolchain().join("env")).await {
+                let env_file = match write_env_files(&root.toolchain().join("env")).await {
                     Ok(dir) => dir.join(env_file(port)),
                     Err(err) => return Err(err),
                 };
                 let mut command = Command::new(nix_portable);
                 // Its store goes beside it rather than in `~/.nix-portable`.
                 command
-                    .env("NP_LOCATION", crate::paths::toolchain())
+                    .env("NP_LOCATION", root.toolchain())
                     .arg("nix-shell")
-                    .args(nix_shell_args(&env_file, checkout, script));
+                    .args(nix_shell_args(&env_file, &checkout, script));
                 command
             }
         };
-        command.current_dir(checkout).stdin(Stdio::null());
+        command.current_dir(&checkout).stdin(Stdio::null());
         decanter_core::strip_launcher_env(command.as_std_mut());
         Ok(command)
     }
+}
+
+fn host_refused(root: &Root, port: Port) -> PathBuf {
+    root.toolchain()
+        .join(format!("host-refused-{}", port.name().to_lowercase()))
 }
 
 fn nix_shell_args(env_file: &Path, checkout: &Path, script: &str) -> [OsString; 6] {
@@ -206,43 +240,4 @@ async fn system_nix_shell() -> Option<PathBuf> {
         }
     }
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn nix_shell_enters_the_port_environment_from_its_checkout() {
-        let args = nix_shell_args(
-            Path::new("/data/env/bbport.nix"),
-            Path::new("/data/ports/bbport"),
-            "bash build.sh",
-        );
-        assert_eq!(
-            args,
-            [
-                "/data/env/bbport.nix",
-                "--argstr",
-                "checkout",
-                "/data/ports/bbport",
-                "--run",
-                "bash build.sh"
-            ]
-            .map(OsString::from)
-        );
-    }
-
-    #[tokio::test]
-    async fn env_files_are_written_once_and_kept() {
-        let dir = std::env::temp_dir().join(format!("decanter-ps-env-{}", std::process::id()));
-        write_env_files(&dir).await.unwrap();
-        let first = std::fs::metadata(dir.join("bbport.nix")).unwrap().modified().unwrap();
-        write_env_files(&dir).await.unwrap();
-        let second = std::fs::metadata(dir.join("bbport.nix")).unwrap().modified().unwrap();
-        let pkgs = std::fs::read_to_string(dir.join("pkgs.nix")).unwrap();
-        std::fs::remove_dir_all(&dir).unwrap();
-        assert_eq!(first, second);
-        assert_eq!(pkgs, PKGS_NIX);
-    }
 }

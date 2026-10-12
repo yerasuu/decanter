@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use crate::paths::Root;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Port {
     Bbport,
@@ -22,16 +24,17 @@ impl Port {
     /// runs whatever upstream ships.
     pub const fn upstream(self) -> &'static str {
         match self {
-            Self::Bbport => "https://github.com/deadinside28/bloodborne_pc.git",
+            // decanter's fork of deadinside28/bloodborne_pc: other PS4 titles on top of upstream.
+            Self::Bbport => "https://github.com/yerasuu/psport.git",
             Self::AnyPs5 => "https://github.com/boykopovar/AnyPS5.git",
         }
     }
 
-    pub fn checkout(self) -> PathBuf {
+    pub fn checkout(self, root: &Root) -> PathBuf {
         let dir = match self {
             Self::Bbport => "bbport",
             Self::AnyPs5 => "anyps5",
         };
-        crate::paths::root().join("ports").join(dir)
+        root.join("ports").join(dir)
     }
 }

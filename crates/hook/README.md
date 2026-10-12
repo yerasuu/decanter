@@ -34,12 +34,6 @@ cargo build --release --target x86_64-pc-windows-gnu
 
 Output: `target/x86_64-pc-windows-gnu/release/Galaxy64.dll`.
 
-Tests run under Wine (`.cargo/config.toml` sets the runner):
-
-```sh
-cargo test --release --target x86_64-pc-windows-gnu
-```
-
 ## Installing into a game
 
 In the game's install directory, beside its executable:

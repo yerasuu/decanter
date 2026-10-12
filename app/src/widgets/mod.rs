@@ -13,6 +13,7 @@ use gpui::{
     Animation, AnimationExt as _, AnyView, App, Context, Div, ElementId, FontWeight, IntoElement, ParentElement as _,
     Render, SharedString, Stateful, Styled as _, Window, div, prelude::*, px, relative, rgb,
 };
+use rust_i18n::t;
 
 pub use input::{InputEvent, TextInput};
 pub use select::Select;
@@ -119,6 +120,28 @@ pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) 
     move |_, cx| cx.new(|_| Tooltip(text.clone())).into()
 }
 
+/// A game's title in a sidebar row, green while the game runs, as Steam marks it. Shared by
+/// Biblioteca and the PS section so a running game reads the same in both.
+pub fn sidebar_title(title: impl Into<SharedString>, running: bool) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .when(running, |title| title.text_color(rgb(theme::ACCENT_GREEN)))
+        .child(title.into())
+}
+
+/// The mark at the end of a running game's sidebar row, in place of its installed/ready dot.
+pub fn running_mark(id: impl Into<ElementId>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .text_size(px(10.))
+        .text_color(rgb(theme::ACCENT_GREEN))
+        .tooltip(tooltip(t!("common.running")))
+        .child("▶")
+}
+
 /// A checkbox the way `accent-color: var(--accent-blue)` draws one: a
 /// 13px box, blue and ticked when on.
 pub fn checkbox(checked: bool) -> Div {
@@ -178,7 +201,7 @@ pub fn progress_bar(id: impl Into<ElementId>, fraction: Option<f64>, height: f32
 /// `.tabs`: a row of uppercase labels, the active one underlined in blue.
 pub fn tabs<T: Copy + PartialEq + 'static>(
     id: &'static str,
-    items: &[(T, &'static str)],
+    items: &[(T, impl AsRef<str>)],
     active: T,
     on_select: impl Fn(T, &mut Window, &mut App) + Clone + 'static,
 ) -> Div {
@@ -187,7 +210,8 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
         .gap_6()
         .border_b_1()
         .border_color(rgb(theme::LINE))
-        .children(items.iter().enumerate().map(|(index, &(tab, label))| {
+        .children(items.iter().enumerate().map(|(index, (item, label))| {
+            let tab = *item;
             let selected = tab == active;
             let on_select = on_select.clone();
             div()
@@ -210,7 +234,7 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
                 .cursor_pointer()
                 .hover(|tab| tab.text_color(rgb(theme::TEXT_BRIGHT)))
                 .on_click(move |_, window, cx| on_select(tab, window, cx))
-                .child(label.to_uppercase())
+                .child(label.as_ref().to_uppercase())
         }))
 }
 

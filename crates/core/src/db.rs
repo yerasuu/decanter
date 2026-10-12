@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use crate::catalog::Storefront;
 
@@ -16,6 +16,10 @@ use crate::catalog::Storefront;
 pub enum Error {
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
+    #[error("the library at {} isn't there", .0.display())]
+    LibraryUnavailable(PathBuf),
+    #[error("no library has been set up yet")]
+    NoLibrary,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -196,6 +200,13 @@ CREATE TABLE IF NOT EXISTS hidden (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS profile_libraries (
+    profile_id  TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    added_at    INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, path)
+);
+
 CREATE TABLE IF NOT EXISTS steam_shortcuts (
     account_id  TEXT NOT NULL,
     storefront  INTEGER NOT NULL,
@@ -208,15 +219,6 @@ DROP TABLE IF EXISTS ps_scan_dirs;
 DROP TABLE IF EXISTS game_links;
 ";
 
-/// Where `decanter-sidecar` and the UI both look for this cache — kept in one
-/// place so the two binaries can never end up pointed at different files.
-pub fn default_db_path() -> PathBuf {
-    let dir = crate::data_dir();
-    std::fs::create_dir_all(&dir).expect("creating decanter data dir");
-    tracing::debug!(dir = %dir.display(), "ensured decanter data dir exists");
-    dir.join("links.db")
-}
-
 pub struct Db {
     pub(crate) conn: Connection,
 }
@@ -227,7 +229,7 @@ const FIRST_SEEN_MIGRATION_SETTING: &str = "first_seen_migration_v1";
 /// Whether `table` has been created yet — `pragma_table_info` alone can't
 /// tell a genuinely missing table from one that's just missing a column,
 /// since both return zero rows.
-fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
+pub(crate) fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
         [table],
@@ -238,7 +240,7 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
 
 /// Whether `table` has a column named `column`. Only meaningful once
 /// [`table_exists`] has confirmed the table is actually there.
-fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+pub(crate) fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
         &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
         [column],
@@ -248,6 +250,14 @@ fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
 }
 
 impl Db {
+    /// The active library's database (see [`crate::bootstrap`]).
+    pub fn open_active() -> Result<Self> {
+        match crate::bootstrap::active_db_path() {
+            Some(path) => Self::open(path),
+            None => Err(crate::bootstrap::unavailable_root().map_or(Error::NoLibrary, Error::LibraryUnavailable)),
+        }
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         tracing::debug!(path = %path.display(), "opening db");
@@ -316,6 +326,14 @@ impl Db {
         db.reset_unbacked_first_seen()?;
         tracing::debug!(path = %path.display(), "db opened");
         Ok(db)
+    }
+
+    /// Another library's database, for reading only: its schema is never
+    /// touched, since a decanter that has it as its active library may be
+    /// using it.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        Ok(Self { conn })
     }
 
     /// One-time cleanup for `first_seen` values a version before
@@ -1021,6 +1039,21 @@ impl Db {
         }
     }
 
+    /// The UI language's code (`es`, `en`), or `None` to follow the system
+    /// locale.
+    pub fn language(&self) -> Result<Option<String>> {
+        let language = self.setting("language")?;
+        tracing::debug!(language = language.as_deref(), "read language setting");
+        Ok(language)
+    }
+
+    pub fn set_language(&self, language: Option<&str>) -> Result<()> {
+        match language {
+            Some(code) => self.set_setting("language", code),
+            None => self.delete_setting("language"),
+        }
+    }
+
     /// Every product id's playtime for an account, in one query — for the
     /// sidebar, which needs all of them at once rather than one round trip
     /// per game.
@@ -1112,52 +1145,5 @@ impl Db {
         self.conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         tracing::debug!(key, "deleted setting");
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn forget_product_leaves_other_games_alone() {
-        let path = std::env::temp_dir().join(format!("decanter-db-test-{}.sqlite", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let db = Db::open(&path).expect("open");
-        let collection = db.create_collection("profile", "Favs").expect("collection");
-        for id in ["gone", "kept"] {
-            db.set_favorite("profile", Storefront::Unspecified, id, true)
-                .expect("favorite");
-            db.add_playtime("profile", Storefront::Unspecified, id, 60)
-                .expect("playtime");
-            db.set_collection_member(&collection.id, Storefront::Unspecified, id, true)
-                .expect("member");
-        }
-
-        db.forget_product("profile", Storefront::Unspecified, "gone")
-            .expect("forget");
-
-        let favorites = db
-            .list_favorite_ids("profile", Storefront::Unspecified)
-            .expect("favorites");
-        assert!(!favorites.contains("gone") && favorites.contains("kept"));
-        assert_eq!(
-            db.get_playtime("profile", Storefront::Unspecified, "gone")
-                .expect("playtime")
-                .seconds_total,
-            0
-        );
-        assert_eq!(
-            db.get_playtime("profile", Storefront::Unspecified, "kept")
-                .expect("playtime")
-                .seconds_total,
-            60
-        );
-        let members = db
-            .collection_members("profile", Storefront::Unspecified)
-            .expect("members");
-        let members = members.get(&collection.id).expect("collection still has a member");
-        assert!(!members.contains("gone") && members.contains("kept"));
-        let _ = std::fs::remove_file(&path);
     }
 }

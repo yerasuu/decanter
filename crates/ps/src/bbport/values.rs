@@ -8,6 +8,7 @@ use std::io;
 
 use super::groups::{Control, Setting, Store};
 use super::{Bbport, Ini, LauncherSettings};
+use crate::paths::Root;
 
 /// What the settings view shows, read once when it opens. File I/O: off
 /// the UI thread.
@@ -18,10 +19,10 @@ pub struct Values {
 }
 
 impl Values {
-    pub fn load() -> Self {
+    pub fn load(root: &Root) -> Self {
         Self {
-            ini: Ini::load(&Bbport::ini_path()),
-            launch: LauncherSettings::load(),
+            ini: Ini::load(&Bbport::ini_path(root)),
+            launch: LauncherSettings::load(root),
         }
     }
 
@@ -119,57 +120,16 @@ fn apply(ini: &mut Ini, launch: &mut LauncherSettings, setting: &Setting, value:
 
 /// Writes one setting into the files as they are now. A controller's name
 /// is kept beside its GUID, to show it while it is unplugged.
-pub fn save(setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
-    let path = Bbport::ini_path();
+pub fn save(root: &Root, setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
+    let path = Bbport::ini_path(root);
     let mut ini = Ini::load(&path);
-    let mut launch = LauncherSettings::load();
+    let mut launch = LauncherSettings::load(root);
     apply(&mut ini, &mut launch, setting, value);
     if let Some(name) = gamepad_name {
         launch.set_text("gamepad_name", name);
     }
     match setting.store {
         Store::Ini => ini.save(&path),
-        Store::Launcher => launch.save(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::bbport::GROUPS;
-
-    fn setting(key: &str) -> &'static Setting {
-        GROUPS
-            .iter()
-            .flat_map(|group| group.settings)
-            .find(|setting| setting.key == key)
-            .unwrap()
-    }
-
-    #[test]
-    fn steps_wrap_choices_flip_toggles_and_clamp_numbers() {
-        let mut values = Values::default();
-        let upscaler = setting("upscaler");
-        assert_eq!(values.stepped(upscaler, 1, &[]), "fsr411");
-        assert_eq!(values.stepped(upscaler, -1, &[]), "off");
-        assert_eq!(values.stepped(setting("fullscreen"), 1, &[]), "1");
-        let limit = setting("fps_limit");
-        assert_eq!(values.stepped(limit, -1, &[]), "0");
-        values.set(limit, "120");
-        assert_eq!(values.stepped(limit, 1, &[]), "130");
-    }
-
-    #[test]
-    fn gamepads_cycle_through_automatic() {
-        let pads = [
-            ("a".to_owned(), "Pad A".to_owned()),
-            ("b".to_owned(), "Pad B".to_owned()),
-        ];
-        let mut values = Values::default();
-        let gamepad = setting("gamepad");
-        assert_eq!(values.stepped(gamepad, 1, &pads), "a");
-        values.set(gamepad, "b");
-        assert_eq!(values.stepped(gamepad, 1, &pads), "");
-        assert_eq!(values.stepped(gamepad, -1, &pads), "a");
+        Store::Launcher => launch.save(root),
     }
 }

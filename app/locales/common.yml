@@ -1,0 +1,19 @@
+_version: 2
+common.errors.internal_task:
+  es: "la tarea interna falló: %{error}"
+  en: "the internal task failed: %{error}"
+common.cancel:
+  es: Cancelar
+  en: Cancel
+common.loading:
+  es: Cargando...
+  en: Loading...
+common.queued:
+  es: En cola…
+  en: Queued…
+common.running:
+  es: En ejecución
+  en: Running
+common.pick_profile:
+  es: Elige un perfil arriba.
+  en: Pick a profile above.

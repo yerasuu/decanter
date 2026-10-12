@@ -114,7 +114,7 @@ pub async fn install(
             crate::achv_try!(
                 client
                     .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {err}"))
+                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
             );
             Ok(client.token.borrow().access_token.clone())
         })
@@ -219,7 +219,7 @@ async fn install_into(
 
     // Anything left from an earlier attempt would otherwise be treated as
     // already-downloaded and moved in as if it were complete.
-    let staging = crate::achv_try!(staging_root(account_id, product_id));
+    let staging = crate::achv_try!(staging_root(&destination_root, account_id, product_id));
     if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
         if err.kind() != std::io::ErrorKind::NotFound {
             tracing::warn!(path = %staging.display(), error = %err, "couldn't clear stale staging directory");
@@ -370,6 +370,7 @@ async fn install_into(
                 art: GameArt::default(),
                 umu_id: None,
                 umu_store: None,
+                prefix_of: None,
             })
             .inspect_err(|err| tracing::error!(product_id, error = %err, "writing the appmanifest failed"))
             .context("writing the appmanifest")
@@ -408,7 +409,7 @@ pub async fn uninstall(library: &Library, account_id: &str, product_id: &str) ->
     // Checked after the manifest is gone, so this profile's own record
     // doesn't count as another owner.
     if library.install_dir_is_shared(&game.install_dir, account_id, product_id) {
-        tracing::info!("keeping {} — another profile still has it installed", game.install_dir);
+        tracing::info!(account_id, product_id, install_dir = %game.install_dir, "files kept, another profile still has them installed");
         return Ok(());
     }
     if let Some(directory) = library.install_dir(&game.install_dir) {
@@ -454,7 +455,7 @@ pub async fn uninstall_dlc(
             crate::achv_try!(
                 client
                     .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {err}"))
+                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
             );
             Ok(client.token.borrow().access_token.clone())
         })

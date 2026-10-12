@@ -5,9 +5,10 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, CursorStyle, Div, MouseButton, ResizeEdge, Stateful, Window, WindowBounds, WindowDecorations, WindowOptions,
-    div, prelude::*, px, rgb, size,
+    App, CursorStyle, Div, MouseButton, ResizeEdge, SharedString, Stateful, Window, WindowBounds, WindowDecorations,
+    WindowOptions, div, prelude::*, px, rgb, size,
 };
+use rust_i18n::t;
 
 use crate::theme;
 use crate::widgets::tooltip;
@@ -96,7 +97,7 @@ pub fn resize_edges() -> impl Iterator<Item = Stateful<Div>> {
 /// has to stop every running game first, while a properties window is
 /// just a second window with nothing of its own to shut down.
 pub fn window_controls(on_close: Rc<dyn Fn(&mut Window, &mut App)>) -> Div {
-    let window_button = |id: &'static str, glyph: &'static str, title: &'static str| {
+    let window_button = |id: &'static str, glyph: &'static str, title: SharedString| {
         div()
             .id(id)
             .flex()
@@ -116,17 +117,17 @@ pub fn window_controls(on_close: Rc<dyn Fn(&mut Window, &mut App)>) -> Div {
         .items_center()
         .gap(px(2.))
         .child(
-            window_button("window-minimize", "─", "Minimizar")
+            window_button("window-minimize", "─", t!("chrome.window.minimize").into())
                 .hover(|b| b.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_PRIMARY)))
                 .on_click(|_, window, _| window.minimize_window()),
         )
         .child(
-            window_button("window-maximize", "☐", "Maximizar")
+            window_button("window-maximize", "☐", t!("chrome.window.maximize").into())
                 .hover(|b| b.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_PRIMARY)))
                 .on_click(|_, window, _| window.zoom_window()),
         )
         .child(
-            window_button("window-close", "✕", "Cerrar")
+            window_button("window-close", "✕", t!("chrome.window.close").into())
                 .hover(|b| b.bg(rgb(theme::CLOSE_HOVER_BG)).text_color(rgb(theme::TEXT_BRIGHT)))
                 .on_click(move |_, window, cx| on_close(window, cx)),
         )

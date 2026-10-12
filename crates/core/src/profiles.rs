@@ -40,9 +40,7 @@ pub struct Profile {
     pub id: String,
     pub name: String,
     /// Where this profile's games, prefixes and manifests live. `None`
-    /// means `decanter_core::Library::default_path()` — the shared path
-    /// every profile used before a per-profile location existed, and still
-    /// what a profile that's never chosen one of its own resolves to.
+    /// means the library this database lives in.
     pub library_path: Option<String>,
 }
 
@@ -108,6 +106,12 @@ impl Db {
             if let Err(err) = self.forget_account(&account.id, account.storefront) {
                 return Err(err);
             }
+        }
+        if let Err(err) = self.conn.execute(
+            "DELETE FROM profile_libraries WHERE profile_id = ?1",
+            params![profile_id],
+        ) {
+            return Err(err.into());
         }
         match self
             .conn
@@ -196,7 +200,7 @@ impl Db {
     }
 
     /// Where `profile_id`'s library lives, if it's ever chosen one of its
-    /// own — `None` means `decanter_core::Library::default_path()`.
+    /// own — `None` means the library this database lives in.
     #[inline]
     pub fn profile_library_path(&self, profile_id: &str) -> Result<Option<String>> {
         let path = self
@@ -211,6 +215,42 @@ impl Db {
             .flatten();
         tracing::debug!(profile_id, found = path.is_some(), "read profile library path");
         Ok(path)
+    }
+
+    /// The library folders `profile_id` keeps games in besides its main
+    /// one ([`Db::profile_library_path`]), in the order they were added.
+    #[inline]
+    pub fn profile_extra_libraries(&self, profile_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM profile_libraries WHERE profile_id = ?1 ORDER BY added_at, path")?;
+        let paths = stmt
+            .query_map(params![profile_id], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        tracing::debug!(profile_id, count = paths.len(), "read profile's extra library folders");
+        Ok(paths)
+    }
+
+    /// Adds a library folder to `profile_id`; adding one it has is a no-op.
+    #[inline]
+    pub fn add_profile_library(&self, profile_id: &str, path: &str, added_at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO profile_libraries (profile_id, path, added_at) VALUES (?1, ?2, ?3)",
+            params![profile_id, path, added_at],
+        )?;
+        tracing::info!(profile_id, path, "added library folder");
+        Ok(())
+    }
+
+    /// Drops a library folder from `profile_id`. What's on that disk stays.
+    #[inline]
+    pub fn remove_profile_library(&self, profile_id: &str, path: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM profile_libraries WHERE profile_id = ?1 AND path = ?2",
+            params![profile_id, path],
+        )?;
+        tracing::info!(profile_id, path, "removed library folder");
+        Ok(())
     }
 
     /// Sets (or clears, with `None`) the profile's chosen library location.

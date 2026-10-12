@@ -7,6 +7,7 @@
 //! never fires again with a profile already active.
 
 use gpui::{Context, Entity, EventEmitter, Focusable as _, FontWeight, Window, div, prelude::*, px, relative, rgb};
+use rust_i18n::t;
 
 use crate::state::AppState;
 use crate::theme;
@@ -38,11 +39,12 @@ impl EventEmitter<Done> for ProfileForm {}
 
 impl ProfileForm {
     pub fn new(layout: Layout, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let name = cx.new(|cx| TextInput::new("Nombre del perfil", cx));
-        // The pre-filled default — what `Library::default_path()` itself
-        // falls back to, rendered as text.
-        let default_path =
-            decanter_core::Library::default_path().map_or_else(String::new, |path| path.display().to_string());
+        let name = cx.new(|cx| TextInput::new(t!("chrome.profile_form.name"), cx));
+        // The pre-filled default: the library this profile lands in unless
+        // another folder is picked.
+        let default_path = decanter_core::bootstrap::active_root()
+            .or_else(decanter_core::Library::default_path)
+            .map_or_else(String::new, |path| path.display().to_string());
         let library_path = cx.new(|cx| {
             let mut input = TextInput::new("", cx).read_only();
             input.set_text(default_path, cx);
@@ -78,7 +80,7 @@ impl ProfileForm {
                 tracing::info!(profile_id = %profile.id, name, "profile created");
                 let session = AppState::get(cx).session.clone();
                 session.update(cx, |session, cx| {
-                    session.active_profile = Some(profile.id);
+                    session.reload();
                     cx.notify();
                 });
                 cx.emit(Done);
@@ -94,7 +96,7 @@ impl ProfileForm {
     fn pick_folder(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new()
-                .set_title("Elegí dónde vive la biblioteca de este perfil")
+                .set_title(t!("chrome.profile_form.pick_title"))
                 .pick_folder()
                 .await
             else {
@@ -120,8 +122,13 @@ impl ProfileForm {
             .gap(px(10.))
             .child(div().flex_1().child(self.library_path.clone()))
             .child(
-                button("pick-library", ButtonKind::Secondary, "Elegir carpeta", false)
-                    .on_click(cx.listener(|this, _, _, cx| this.pick_folder(cx))),
+                button(
+                    "pick-library",
+                    ButtonKind::Secondary,
+                    t!("chrome.profile_form.pick"),
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.pick_folder(cx))),
             )
     }
 
@@ -147,11 +154,8 @@ impl Render for ProfileForm {
                         .flex_col()
                         .items_center()
                         .text_center()
-                        .child(theme::h1("Bienvenido a Decanter"))
-                        .child(theme::muted(
-                            "Creá un perfil para empezar — después podés sumarle cuentas de GOG (y de otras \
-                             tiendas más adelante) desde Ajustes.",
-                        ))
+                        .child(theme::h1(t!("chrome.onboarding.title")))
+                        .child(theme::muted(t!("chrome.onboarding.intro")))
                         .child(
                             div()
                                 .flex()
@@ -161,13 +165,16 @@ impl Render for ProfileForm {
                                 .max_w(px(320.))
                                 .child(div().flex_1().child(self.name.clone()))
                                 .child(
-                                    button("create-profile", ButtonKind::Primary, "Crear perfil", empty)
-                                        .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
+                                    button(
+                                        "create-profile",
+                                        ButtonKind::Primary,
+                                        t!("chrome.profiles.create"),
+                                        empty,
+                                    )
+                                    .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
                                 ),
                         )
-                        .child(theme::muted(
-                            "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):",
-                        ))
+                        .child(theme::muted(t!("chrome.onboarding.library")))
                         .child(self.path_row(cx).mt(px(20.)).w_full().max_w(px(320.)))
                         .children(self.error_line()),
                 )
@@ -186,10 +193,10 @@ impl Render for ProfileForm {
                     theme::display(15.)
                         .text_color(rgb(theme::TEXT_MUTED))
                         .mb_3()
-                        .child("NUEVO PERFIL"),
+                        .child(t!("chrome.profile_form.title")),
                 )
                 .child(self.name.clone())
-                .child(theme::muted("Dónde vive la biblioteca de este perfil:"))
+                .child(theme::muted(t!("chrome.profile_form.library")))
                 .child(self.path_row(cx).mb_3())
                 .children(self.error_line())
                 .child(
@@ -199,13 +206,18 @@ impl Render for ProfileForm {
                         .gap_2()
                         .mt_3()
                         .child(
-                            button("cancel-profile", ButtonKind::Secondary, "Cancelar", false)
+                            button("cancel-profile", ButtonKind::Secondary, t!("common.cancel"), false)
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(Done))),
                         )
                         .child(
-                            button("create-profile", ButtonKind::Primary, "Crear", empty)
-                                .font_weight(FontWeight::BOLD)
-                                .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
+                            button(
+                                "create-profile",
+                                ButtonKind::Primary,
+                                t!("chrome.profile_form.create"),
+                                empty,
+                            )
+                            .font_weight(FontWeight::BOLD)
+                            .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
                         ),
                 )
                 .into_any_element(),

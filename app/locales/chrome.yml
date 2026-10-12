@@ -1,0 +1,85 @@
+_version: 2
+chrome.window.minimize:
+  es: Minimizar
+  en: Minimize
+chrome.window.maximize:
+  es: Maximizar
+  en: Maximize
+chrome.window.close:
+  es: Cerrar
+  en: Close
+chrome.nav.library:
+  es: Biblioteca
+  en: Library
+chrome.nav.storage:
+  es: Almacenamiento
+  en: Storage
+chrome.nav.downloads:
+  es: Descargas
+  en: Downloads
+chrome.downbar.downloading:
+  es: "Descargando: %{title}"
+  en: "Downloading: %{title}"
+chrome.profiles.new:
+  es: + Crear perfil
+  en: + New profile
+chrome.profiles.create:
+  es: Crear perfil
+  en: Create profile
+chrome.profiles.elsewhere:
+  es: "%{name} — %{path}"
+  en: "%{name} — %{path}"
+chrome.profiles.busy:
+  es: "%{name} — %{path} (cierra antes los juegos y las instalaciones)"
+  en: "%{name} — %{path} (close running games and installs first)"
+chrome.profiles.unavailable:
+  es: "%{path} (no disponible)"
+  en: "%{path} (unavailable)"
+chrome.profile_form.title:
+  es: NUEVO PERFIL
+  en: NEW PROFILE
+chrome.profile_form.name:
+  es: Nombre del perfil
+  en: Profile name
+chrome.profile_form.library:
+  es: "Dónde vive la biblioteca de este perfil:"
+  en: "Where this profile's library lives:"
+chrome.profile_form.pick:
+  es: Elegir carpeta
+  en: Choose folder
+chrome.profile_form.pick_title:
+  es: Elige dónde vive la biblioteca de este perfil
+  en: Choose where this profile's library lives
+chrome.profile_form.create:
+  es: Crear
+  en: Create
+chrome.onboarding.title:
+  es: Bienvenido a Decanter
+  en: Welcome to Decanter
+chrome.onboarding.intro:
+  es: Crea un perfil para empezar — después puedes añadirle cuentas de GOG (y de otras tiendas más adelante) desde Ajustes.
+  en: Create a profile to get started — you can add GOG accounts to it later (and other stores down the line) from Settings.
+chrome.onboarding.library:
+  es: "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):"
+  en: "Where this profile's library lives (installs, Proton prefixes):"
+chrome.tray.show:
+  es: Mostrar Decanter
+  en: Show Decanter
+chrome.tray.quit:
+  es: Salir
+  en: Quit
+chrome.unavailable.title:
+  es: Biblioteca no disponible
+  en: Library unavailable
+chrome.unavailable.body:
+  es: "No se encuentra la biblioteca de %{path}. Si está en un disco externo, conéctalo y vuelve a abrir Decanter, o elige otra."
+  en: "The library at %{path} can't be found. If it's on an external drive, plug it in and open Decanter again, or pick another one."
+chrome.unavailable.use:
+  es: "Usar %{path}"
+  en: "Use %{path}"
+chrome.unavailable.pick:
+  es: Elegir otra carpeta
+  en: Choose another folder
+chrome.unavailable.pick_title:
+  es: Elige la carpeta de la biblioteca
+  en: Choose the library folder

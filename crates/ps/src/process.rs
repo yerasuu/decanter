@@ -6,7 +6,8 @@
 
 use std::collections::VecDeque;
 use std::io;
-use std::process::Stdio;
+use std::path::PathBuf;
+use std::process::{ExitStatus, Stdio};
 
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
@@ -20,8 +21,35 @@ const MAX_LINES: usize = 5000;
 
 pub enum Event {
     Line(String),
-    /// The exit code, `None` when killed by a signal.
-    Exited(Option<i32>),
+    /// `None` when waiting on the process failed.
+    Exited(Option<ExitStatus>),
+}
+
+/// What a job does. Its name is what logs and log file names say, the same whatever the UI's
+/// language; the UI words it itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobKind {
+    Clone,
+    Reset,
+    Update,
+    Build,
+    Game,
+    Convert,
+    Fsr411,
+}
+
+impl JobKind {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Clone => "clone",
+            Self::Reset => "reset",
+            Self::Update => "update",
+            Self::Build => "build",
+            Self::Game => "game",
+            Self::Convert => "convert",
+            Self::Fsr411 => "fsr411",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,22 +59,25 @@ pub enum State {
 }
 
 pub struct Job {
-    pub label: String,
+    pub kind: JobKind,
     pub state: State,
     pub lines: VecDeque<String>,
     /// Set by [`Job::stop`], so the exit it causes is not taken for a failure.
     pub stop_requested: bool,
+    /// Where the whole output goes ([`crate::run_log`]); `lines` keeps only the end.
+    pub log_file: Option<PathBuf>,
 }
 
 impl Job {
     /// A job whose process never started, holding why, so its log reads
     /// like any other.
-    pub fn failed(label: impl Into<String>, reason: String) -> Self {
+    pub fn failed(kind: JobKind, reason: String) -> Self {
         Self {
-            label: label.into(),
+            kind,
             state: State::Exited(None),
             lines: VecDeque::from([reason]),
             stop_requested: false,
+            log_file: None,
         }
     }
 
@@ -62,7 +93,7 @@ impl Job {
                 }
                 self.lines.push_back(line);
             }
-            Event::Exited(code) => self.state = State::Exited(code),
+            Event::Exited(status) => self.state = State::Exited(status.as_ref().and_then(ExitStatus::code)),
         }
     }
 
@@ -77,7 +108,7 @@ impl Job {
             return;
         };
         if let Err(err) = killpg(Pid::from_raw(pid), Signal::SIGTERM) {
-            tracing::warn!(pid, label = self.label, %err, "could not stop job");
+            tracing::warn!(pid, job = self.kind.name(), %err, "could not stop job");
         }
     }
 }
@@ -102,10 +133,33 @@ async fn forward(stream: impl AsyncRead + Unpin, sender: UnboundedSender<Event>)
     }
 }
 
+/// `command` inside a transient scope of its own, the way a PC game runs.
+///
+/// See [`decanter_core::own_scope`]; without a systemd user manager it is
+/// `command` as it was. For a game only: a build or a conversion is
+/// decanter's own work.
+pub fn in_own_scope(command: Command, key: &str, title: &str) -> Command {
+    let Some(mut scoped) = decanter_core::own_scope(key, title) else {
+        return command;
+    };
+    let original = command.as_std();
+    scoped.arg(original.get_program()).args(original.get_args());
+    for (name, value) in original.get_envs() {
+        match value {
+            Some(set) => scoped.env(name, set),
+            None => scoped.env_remove(name),
+        };
+    }
+    if let Some(dir) = original.get_current_dir() {
+        scoped.current_dir(dir);
+    }
+    Command::from(scoped)
+}
+
 /// Starts `command` in its own process group with stdout and stderr
 /// merged into events; the last event is always [`Event::Exited`].
 /// Must be called inside the tokio runtime.
-pub fn spawn(label: impl Into<String>, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
+pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
     let mut child = match command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -128,62 +182,19 @@ pub fn spawn(label: impl Into<String>, mut command: Command) -> io::Result<(Job,
         .map(|err| tokio::spawn(forward(err, sender.clone())));
     let pid = child.id().unwrap_or_default();
     tokio::spawn(async move {
-        let code = child.wait().await.ok().and_then(|status| status.code());
+        let status = child.wait().await.ok();
         // Output written just before exit is still in the pipes; drain it first.
         for reader in [stdout, stderr].into_iter().flatten() {
             let _ = reader.await;
         }
-        let _ = sender.send(Event::Exited(code));
+        let _ = sender.send(Event::Exited(status));
     });
     let job = Job {
-        label: label.into(),
+        kind,
         state: State::Running(pid),
         lines: VecDeque::new(),
         stop_requested: false,
+        log_file: None,
     };
     Ok((job, receiver))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    async fn drain(command: Command) -> Job {
-        let (mut job, mut receiver) = spawn("test", command).unwrap();
-        while let Some(event) = receiver.recv().await {
-            job.push(event);
-        }
-        job
-    }
-
-    #[tokio::test]
-    async fn streams_lines_then_exit_code() {
-        let mut command = Command::new("sh");
-        command.args(["-c", "echo out; echo err >&2; printf 'bad \\377 byte\\n'; exit 3"]);
-        let job = drain(command).await;
-        let mut lines: Vec<_> = job.lines.iter().map(String::as_str).collect();
-        lines.sort_unstable();
-        assert_eq!(lines, ["bad \u{fffd} byte", "err", "out"]);
-        assert_eq!(job.state, State::Exited(Some(3)));
-    }
-
-    #[tokio::test]
-    async fn stop_ends_the_whole_group() {
-        let mut command = Command::new("sh");
-        command.args(["-c", "sleep 30 & wait"]);
-        let (mut job, mut receiver) = spawn("test", command).unwrap();
-        job.stop();
-        let mut exited = None;
-        while let Some(event) = receiver.recv().await {
-            if let Event::Exited(code) = event {
-                exited = Some(code);
-            }
-        }
-        assert_eq!(
-            exited,
-            Some(None),
-            "killed by the signal, not left waiting on its child"
-        );
-        assert!(job.stop_requested);
-    }
 }

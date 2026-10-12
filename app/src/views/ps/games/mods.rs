@@ -8,6 +8,7 @@ use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::tools::{self, ExternalPatch, ModProfile, PatchProfile};
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use crate::state::Ps;
 use crate::theme;
@@ -40,33 +41,38 @@ impl ModsView {
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        let prepared = self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, cx));
+        let root = decanter_ps::paths::active();
+        let prepared = self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, &root, cx));
         cx.spawn(async move |this, cx| {
             let toolchain = match prepared.await {
                 Ok(toolchain) => toolchain,
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
-                        this.found = Some(Err(format!("bbport no está listo: {err}")));
+                        this.found = Some(Err(t!("ps.errors.bbport_not_ready", error = err).into_owned()));
                         cx.notify();
                     });
                     return;
                 }
             };
-            let read = cx.background_spawn(async {
-                let settings = LauncherSettings::load();
-                let data = decanter_ps::paths::bbport_data();
-                let dir =
-                    |key: &str, fallback: &str| settings.text(key).map_or_else(|| data.join(fallback), PathBuf::from);
-                (
-                    dir("mods_dir", "mods"),
-                    dir("patches_dir", "patches"),
-                    ModProfile::load(&ModProfile::path()),
-                    PatchProfile::load(&PatchProfile::path()),
-                )
+            let read = cx.background_spawn({
+                let root = root.clone();
+                async move {
+                    let settings = LauncherSettings::load(&root);
+                    let data = root.bbport_data();
+                    let dir = |key: &str, fallback: &str| {
+                        settings.text(key).map_or_else(|| data.join(fallback), PathBuf::from)
+                    };
+                    (
+                        dir("mods_dir", "mods"),
+                        dir("patches_dir", "patches"),
+                        ModProfile::load(&ModProfile::path(&root)),
+                        PatchProfile::load(&PatchProfile::path(&root)),
+                    )
+                }
             });
             let (mods_dir, patches_dir, mod_profile, patch_profile) = read.await;
-            let mods = tools::discover_mods(&toolchain, &mods_dir).await;
-            let patches = tools::discover_patches(&toolchain, &patches_dir).await;
+            let mods = tools::discover_mods(&root, &toolchain, &mods_dir).await;
+            let patches = tools::discover_patches(&root, &toolchain, &patches_dir).await;
             let _ = this.update(cx, |this, cx| {
                 this.found = Some(Ok(Found {
                     mods_dir,
@@ -87,7 +93,7 @@ impl ModsView {
             return;
         };
         let profile = found.mod_profile.clone();
-        let task = cx.background_spawn(async move { profile.save(&ModProfile::path()) });
+        let task = cx.background_spawn(async move { profile.save(&ModProfile::path(&decanter_ps::paths::active())) });
         self.after_save(task, "mods.json", cx);
     }
 
@@ -96,7 +102,7 @@ impl ModsView {
             return;
         };
         let profile = found.patch_profile.clone();
-        let task = cx.background_spawn(async move { profile.save(&PatchProfile::path()) });
+        let task = cx.background_spawn(async move { profile.save(&PatchProfile::path(&decanter_ps::paths::active())) });
         self.after_save(task, "patches.json", cx);
     }
 
@@ -104,7 +110,9 @@ impl ModsView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.error = result.err().map(|err| format!("No se pudo guardar {file}: {err}"));
+                this.error = result
+                    .err()
+                    .map(|err| t!("ps.mods.save_error", file = file, error = err).into_owned());
                 cx.notify();
             });
         })
@@ -160,12 +168,14 @@ impl ModsView {
             };
             let path = folder.path().to_string_lossy().into_owned();
             let saved = cx
-                .background_spawn(async move { LauncherSettings::edit(|settings| settings.set_text(key, &path)) })
+                .background_spawn(async move {
+                    LauncherSettings::edit(&decanter_ps::paths::active(), |settings| settings.set_text(key, &path))
+                })
                 .await;
             let _ = this.update(cx, |this, cx| match saved {
                 Ok(()) => this.refresh(cx),
                 Err(err) => {
-                    this.error = Some(format!("No se pudo guardar la carpeta: {err}"));
+                    this.error = Some(t!("ps.mods.folder_error", error = err).into_owned());
                     cx.notify();
                 }
             });
@@ -173,7 +183,7 @@ impl ModsView {
         .detach();
     }
 
-    fn folder_row(&self, label: &'static str, dir: PathBuf, key: &'static str, cx: &mut Context<Self>) -> AnyElement {
+    fn folder_row(&self, label: SharedString, dir: PathBuf, key: &'static str, cx: &mut Context<Self>) -> AnyElement {
         let shown = dir.display().to_string();
         div()
             .flex()
@@ -197,7 +207,7 @@ impl ModsView {
                 button(
                     SharedString::from(format!("open-{key}")),
                     ButtonKind::Secondary,
-                    "Abrir",
+                    t!("ps.mods.open"),
                     false,
                 )
                 .on_click(move |_, _, _| {
@@ -211,7 +221,7 @@ impl ModsView {
                 button(
                     SharedString::from(format!("change-{key}")),
                     ButtonKind::Secondary,
-                    "Cambiar",
+                    t!("ps.mods.change"),
                     false,
                 )
                 .on_click(cx.listener(move |this, _, _, cx| this.pick_dir(key, cx))),
@@ -221,8 +231,8 @@ impl ModsView {
 
     fn mods_rows(&self, found: &Found, cx: &mut Context<Self>) -> Vec<AnyElement> {
         match &found.mods {
-            Err(err) => vec![row_text(format!("No se pudieron leer los mods: {err}"))],
-            Ok(available) if available.is_empty() => vec![row_text("No hay mods en la carpeta".to_owned())],
+            Err(err) => vec![row_text(t!("ps.mods.mods.read_error", error = err).into_owned())],
+            Ok(available) if available.is_empty() => vec![row_text(t!("ps.mods.mods.empty").into_owned())],
             Ok(available) => found
                 .mod_profile
                 .ordered(available)
@@ -264,8 +274,8 @@ impl ModsView {
 
     fn patch_rows(&self, found: &Found, cx: &mut Context<Self>) -> Vec<AnyElement> {
         match &found.patches {
-            Err(err) => vec![row_text(format!("No se pudieron leer los parches: {err}"))],
-            Ok(patches) if patches.is_empty() => vec![row_text("No hay parches en la carpeta".to_owned())],
+            Err(err) => vec![row_text(t!("ps.mods.patches.read_error", error = err).into_owned())],
+            Ok(patches) if patches.is_empty() => vec![row_text(t!("ps.mods.patches.empty").into_owned())],
             Ok(patches) => patches
                 .iter()
                 .enumerate()
@@ -330,14 +340,19 @@ fn row_text(text: String) -> AnyElement {
 impl Render for ModsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let found = match &self.found {
-            None => return theme::muted("Preparando bbport y buscando mods…").into_any_element(),
+            None => return theme::muted(t!("ps.mods.loading")).into_any_element(),
             Some(Err(err)) => return theme::error(err.clone()).into_any_element(),
             Some(Ok(found)) => found,
         };
         let mods = self.mods_rows(found, cx);
         let patches = self.patch_rows(found, cx);
-        let mods_folder = self.folder_row("Carpeta de mods", found.mods_dir.clone(), "mods_dir", cx);
-        let patches_folder = self.folder_row("Carpeta de parches", found.patches_dir.clone(), "patches_dir", cx);
+        let mods_folder = self.folder_row(t!("ps.mods.mods.folder").into(), found.mods_dir.clone(), "mods_dir", cx);
+        let patches_folder = self.folder_row(
+            t!("ps.mods.patches.folder").into(),
+            found.patches_dir.clone(),
+            "patches_dir",
+            cx,
+        );
         div()
             .flex()
             .flex_col()
@@ -347,11 +362,9 @@ impl Render for ModsView {
                     .flex()
                     .items_center()
                     .gap_3()
+                    .child(theme::muted(t!("ps.mods.description")).flex_1())
                     .child(
-                        theme::muted("Se aplican en el próximo arranque; \"Cargar mods\" está en Gráficos.").flex_1(),
-                    )
-                    .child(
-                        button("mods-refresh", ButtonKind::Secondary, "Actualizar", false)
+                        button("mods-refresh", ButtonKind::Secondary, t!("ps.mods.refresh"), false)
                             .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
                     ),
             )
@@ -361,14 +374,8 @@ impl Render for ModsView {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(theme::h3("Mods"))
-                    .child(
-                        theme::muted(
-                            "Carpetas con dvdroot_ps4/ o los archivos del juego; las de abajo se cargan después y \
-                         ganan en caso de conflicto.",
-                        )
-                        .text_size(px(12.)),
-                    )
+                    .child(theme::h3(t!("ps.mods.mods.title")))
+                    .child(theme::muted(t!("ps.mods.mods.note")).text_size(px(12.)))
                     .child(theme::card().child(mods_folder).children(mods)),
             )
             .child(
@@ -376,8 +383,8 @@ impl Render for ModsView {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(theme::h3("Parches externos"))
-                    .child(theme::muted("Parches XML en formato shadPS4 para la versión 01.09.").text_size(px(12.)))
+                    .child(theme::h3(t!("ps.mods.patches.title")))
+                    .child(theme::muted(t!("ps.mods.patches.note")).text_size(px(12.)))
                     .child(theme::card().child(patches_folder).children(patches)),
             )
             .into_any_element()

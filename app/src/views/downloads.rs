@@ -4,6 +4,7 @@
 //! the game that started it.
 
 use gpui::{Context, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use crate::format;
 use crate::state::{AppState, InstallStatus};
@@ -37,7 +38,7 @@ pub fn progress_lines(key: &str, status: &InstallStatus) -> Vec<gpui::AnyElement
     match status {
         InstallStatus::Queued => vec![
             progress_bar(SharedString::from(format!("bar-{key}")), None, 4.).into_any_element(),
-            label("En cola…".to_owned()),
+            label(t!("common.queued").into_owned()),
         ],
         InstallStatus::Installing {
             bytes_downloaded,
@@ -52,7 +53,7 @@ pub fn progress_lines(key: &str, status: &InstallStatus) -> Vec<gpui::AnyElement
             }
             text.push_str(&format!(" · {}", format::rate(*bytes_per_second)));
             if let Some(left) = format::eta(remaining, *bytes_per_second) {
-                text.push_str(&format!(" · faltan {left}"));
+                text.push_str(&format!(" · {}", t!("downloads.eta", left = left)));
             }
             vec![
                 progress_bar(SharedString::from(format!("bar-{key}")), status.fraction(), 4.).into_any_element(),
@@ -85,9 +86,9 @@ impl Render for DownloadsView {
             .collect();
         entries.sort_by(|left, right| left.1.cmp(&right.1));
 
-        let column = div().flex().flex_col().child(theme::h1("Descargas"));
+        let column = div().flex().flex_col().child(theme::h1(t!("downloads.title")));
         if entries.is_empty() {
-            return theme::page("downloads", column.child(theme::empty("No hay descargas en curso.")));
+            return theme::page("downloads", column.child(theme::empty(t!("downloads.empty"))));
         }
         let count = entries.len();
         let rows = entries
@@ -114,16 +115,19 @@ impl Render for DownloadsView {
                 let action = match status {
                     // A failure is already over; the row is just a notice the
                     // user hasn't read yet, so it's dismissed, not cancelled.
-                    InstallStatus::Failed(_) => button(("dismiss", index), ButtonKind::Icon, "Descartar", false)
-                        .on_click(cx.listener(move |_, _, _, cx| {
-                            tracing::debug!(product_id, "dismissing failed install notice");
-                            AppState::get(cx).background.clone().update(cx, |background, cx| {
-                                background.installing.remove(&product_id);
-                                cx.notify();
-                            });
-                        })),
+                    InstallStatus::Failed(_) => {
+                        button(("dismiss", index), ButtonKind::Icon, t!("downloads.dismiss"), false).on_click(
+                            cx.listener(move |_, _, _, cx| {
+                                tracing::debug!(product_id, "dismissing failed install notice");
+                                AppState::get(cx).background.clone().update(cx, |background, cx| {
+                                    background.installing.remove(&product_id);
+                                    cx.notify();
+                                });
+                            }),
+                        )
+                    }
                     InstallStatus::Queued | InstallStatus::Installing { .. } => {
-                        button(("cancel", index), ButtonKind::Icon, "Cancelar", false).on_click(cx.listener(
+                        button(("cancel", index), ButtonKind::Icon, t!("common.cancel"), false).on_click(cx.listener(
                             move |_, _, _, cx| {
                                 let state = AppState::get(cx).clone();
                                 let account_id = account_id.clone();

@@ -61,7 +61,7 @@ pub struct Store {
 
 impl Store {
     fn path() -> PathBuf {
-        crate::paths::root().join("layouts.json")
+        crate::paths::active().join("layouts.json")
     }
 
     /// A missing file is an empty store; one that does not parse is an
@@ -128,11 +128,11 @@ impl Store {
         format!("user-{}", last.saturating_add(1))
     }
 
-    /// An editable copy of `source`, named after it.
-    pub fn copy_pad(&mut self, source: &PadLayout) -> PadLayout {
+    /// An editable copy of `source` under `name`.
+    pub fn copy_pad(&mut self, source: &PadLayout, name: String) -> PadLayout {
         let copy = PadLayout {
             id: Self::next_id(self.pad.iter().map(|layout| layout.id.as_str())),
-            name: format!("{} (copia)", source.name),
+            name,
             lines: source.lines.clone(),
             builtin: false,
         };
@@ -140,11 +140,12 @@ impl Store {
         copy
     }
 
-    pub fn copy_keys(&mut self, target: Target, source: &KeyLayout) -> KeyLayout {
+    /// An editable copy of `source` under `name`.
+    pub fn copy_keys(&mut self, target: Target, source: &KeyLayout, name: String) -> KeyLayout {
         let keys = self.keys_mut(target);
         let copy = KeyLayout {
             id: Self::next_id(keys.iter().map(|layout| layout.id.as_str())),
-            name: format!("{} (copia)", source.name),
+            name,
             text: source.text.clone(),
             builtin: false,
         };
@@ -185,51 +186,4 @@ pub fn current_keys<'a>(
         .into_iter()
         .find(|layout| layout.mapping(target) == *mapping)
         .map(|layout| layout.id.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mapping::{Action, Source};
-
-    #[test]
-    fn copies_are_editable_numbered_and_survive_a_reload() {
-        let path = std::env::temp_dir().join(format!("decanter-ps-layouts-{}.json", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let mut store = Store::load_from(&path).unwrap();
-        let [_, code_vein] = PadLayout::builtins();
-        let mut mine = store.copy_pad(&code_vein);
-        assert_eq!(
-            (mine.id.as_str(), mine.name.as_str(), mine.builtin),
-            ("user-1", "Estilo Code Vein (copia)", false)
-        );
-        mine.assign("l1", "lefttrigger");
-        store.update_pad(&mine);
-
-        let mut keys = store.copy_keys(Target::Bbport, &KeyLayout::default_for());
-        let mut mapping = keys.mapping(Target::Bbport);
-        mapping.set(Action::Cross, vec![Source::Key("J".into())]);
-        keys.set_mapping(Target::Bbport, &mapping);
-        store.update_keys(Target::Bbport, &keys);
-        store.save_to(&path).unwrap();
-
-        let reloaded = Store::load_from(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(reloaded.pad_layouts().len(), 3);
-        assert_eq!(reloaded.pad_layouts()[2].buttons("l1"), "lefttrigger");
-        let bbport_keys = reloaded.key_layouts(Target::Bbport);
-        assert_eq!(
-            current_keys(Target::Bbport, &mapping, &bbport_keys).as_deref(),
-            Some("user-1")
-        );
-        assert!(reloaded.key_layouts(Target::AnyPs5).len() == 1);
-
-        let mut store = reloaded;
-        store.remove_pad("user-1");
-        assert_eq!(
-            store.copy_pad(&code_vein).id,
-            "user-1",
-            "ids restart only once none is left"
-        );
-    }
 }

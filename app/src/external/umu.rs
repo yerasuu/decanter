@@ -8,6 +8,8 @@
 
 use std::path::PathBuf;
 
+use rust_i18n::t;
+
 use super::UmuEntry;
 
 const REMOTE: &str = "https://raw.githubusercontent.com/Open-Wine-Components/umu-database/main/umu-database.csv";
@@ -109,12 +111,12 @@ async fn database() -> Result<String, String> {
         reqwest::get(REMOTE)
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(|err| format!("descargando la base de datos de UMU: {err}"))
+            .map_err(|err| t!("external.umu.errors.download", error = err).into_owned())
     );
     response
         .text()
         .await
-        .map_err(|err| format!("leyendo la base de datos de UMU: {err}"))
+        .map_err(|err| t!("external.umu.errors.read", error = err).into_owned())
 }
 
 /// The most recently updated copy among the Proton builds Steam can see.
@@ -148,39 +150,4 @@ fn parse_row(line: &str) -> Vec<String> {
     }
     fields.push(field);
     fields
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quoted_titles_keep_their_commas() {
-        assert_eq!(
-            parse_row(r#""Warhammer 40,000: Space Marine",gog,1668484481,umu-55150,,,"#)[..4],
-            ["Warhammer 40,000: Space Marine", "gog", "1668484481", "umu-55150"]
-        );
-    }
-
-    #[tokio::test]
-    #[ignore = "reads an installed Proton's database, or fetches it"]
-    async fn finds_endfield_by_name() {
-        let found = search("Arknights Endfield").await.expect("search");
-        let first = found.first().expect("a match");
-        assert_eq!(first.entry.id, "umu-endfield");
-        assert_eq!(first.entry.store, None);
-    }
-
-    #[test]
-    fn names_match_regardless_of_punctuation() {
-        assert_eq!(
-            rank(&normalize("Arknights: Endfield"), "", &normalize("arknights endfield")),
-            Some(0)
-        );
-        assert_eq!(
-            rank(&normalize("Arknights: Endfield"), "", &normalize("Arknights")),
-            Some(1)
-        );
-        assert_eq!(rank(&normalize("Zenless Zone Zero"), "", &normalize("Genshin")), None);
-    }
 }

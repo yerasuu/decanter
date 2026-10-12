@@ -4,9 +4,12 @@
 //! The toolchain line is information only: which one runs a port is
 //! decided by what the machine has.
 
+use decanter_ps::paths;
 use decanter_ps::port::Port;
+use decanter_ps::toolchain::Toolchain;
 use decanter_ps::updater::Plan;
-use gpui::{AnyElement, Context, Entity, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use super::log::LogView;
 use crate::state::{JobKey, Ps, Stage};
@@ -57,29 +60,42 @@ impl PortsView {
         let stage = state.map_or(&Stage::Idle, |state| state.stage());
         let busy = state.is_some_and(|state| state.is_busy());
         let (stage_text, progress) = match stage {
-            Stage::Idle => ("Se prepara la primera vez que haga falta".to_owned(), None),
-            Stage::Resolving => ("Buscando herramientas…".to_owned(), None),
+            Stage::Idle => (t!("ps.ports.stage.idle"), None),
+            Stage::Resolving => (t!("ps.ports.stage.resolving"), None),
             Stage::Downloading(received, total) => (
-                format!("Descargando nix-portable: {}", crate::format::bytes(*received)),
+                t!("ps.ports.stage.downloading", size = crate::format::bytes(*received)),
                 total.map(|total| *received as f64 / total.max(1) as f64),
             ),
-            Stage::Cloning => ("Clonando…".to_owned(), None),
-            Stage::Building => ("Compilando…".to_owned(), None),
-            Stage::Ready => ("Listo".to_owned(), None),
-            Stage::Failed(message) => (message.clone(), None),
+            Stage::Cloning => (t!("ps.ports.stage.cloning"), None),
+            Stage::Updating => (t!("ps.ports.stage.updating"), None),
+            Stage::Building => (t!("ps.ports.stage.building"), None),
+            Stage::Ready => (t!("ps.ports.stage.ready"), None),
+            Stage::Failed(message) => (message.clone().into(), None),
         };
         let toolchain = state
             .and_then(|state| state.toolchain())
-            .map(|toolchain| format!("Entorno: {}", toolchain.label()));
+            .map(|toolchain| t!("ps.ports.toolchain", name = toolchain_label(toolchain)));
         let check = state.and_then(|state| state.check());
         let upstream = check.map(|check| match check {
             Ok(check) => match &check.plan {
-                Plan::UpToDate => format!("{} · al día con {}", check.head, check.branch),
-                Plan::FastForward => format!("{} · {} commits nuevos en {}", check.head, check.behind, check.branch),
-                Plan::Rewritten => format!("{} · upstream reescribió su historia", check.head),
-                Plan::LocalCommits(count) => format!("{} · {count} commits locales que upstream no tiene", check.head),
+                Plan::UpToDate => t!("ps.ports.upstream.up_to_date", head = check.head, branch = check.branch),
+                Plan::FastForward if check.behind == 1 => t!(
+                    "ps.ports.upstream.behind.one",
+                    head = check.head,
+                    count = check.behind,
+                    branch = check.branch
+                ),
+                Plan::FastForward => t!(
+                    "ps.ports.upstream.behind.other",
+                    head = check.head,
+                    count = check.behind,
+                    branch = check.branch
+                ),
+                Plan::Rewritten => t!("ps.ports.upstream.rewritten", head = check.head),
+                Plan::LocalCommits(1) => t!("ps.ports.upstream.local.one", head = check.head, count = 1),
+                Plan::LocalCommits(count) => t!("ps.ports.upstream.local.other", head = check.head, count = count),
             },
-            Err(err) => format!("No se pudo consultar upstream: {err}"),
+            Err(err) => t!("ps.ports.upstream.error", error = err),
         });
         let needs_reset = check.is_some_and(
             |check| matches!(check, Ok(check) if matches!(check.plan, Plan::Rewritten | Plan::LocalCommits(_))),
@@ -106,7 +122,7 @@ impl PortsView {
             .child(
                 div()
                     .text_color(rgb(if failed { theme::ERROR_TEXT } else { theme::TEXT_PRIMARY }))
-                    .child(stage_text),
+                    .child(SharedString::from(stage_text)),
             )
             .children(progress.map(|fraction| progress_bar(("ps-port-progress", port as usize), Some(fraction), 4.)))
             .children(toolchain.map(theme::muted))
@@ -120,20 +136,21 @@ impl PortsView {
                         button(
                             ("ps-port-prepare", port as usize),
                             ButtonKind::Secondary,
-                            "Preparar",
+                            t!("ps.ports.prepare"),
                             busy,
                         )
                         .when(!busy, |b| {
                             b.on_click(cx.listener(move |this, _, _, cx| {
-                                this.ps.update(cx, |ps, cx| drop(ps.prepare(port, cx)));
+                                this.ps
+                                    .update(cx, |ps, cx| drop(ps.prepare(port, &paths::active(), cx)));
                             }))
                         }),
                     )
                     .when(needs_reset, |row| {
                         let label = if confirming {
-                            "Confirmar: guardar cambios locales y restablecer"
+                            t!("ps.ports.reset.confirm")
                         } else {
-                            "Respaldar y actualizar"
+                            t!("ps.ports.reset.start")
                         };
                         row.child(
                             button(("ps-port-reset", port as usize), ButtonKind::Secondary, label, busy).when(
@@ -167,12 +184,17 @@ impl Render for PortsView {
                 .flex()
                 .flex_col()
                 .gap_4()
-                .child(theme::h2("Ports"))
-                .child(theme::muted(
-                    "Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema \
-                     cuando alcanzan y con nix cuando no.",
-                ))
+                .child(theme::h2(t!("ps.ports.title")))
+                .child(theme::muted(t!("ps.ports.description")))
                 .children(cards),
         )
+    }
+}
+
+fn toolchain_label(toolchain: &Toolchain) -> std::borrow::Cow<'static, str> {
+    match toolchain {
+        Toolchain::Host => t!("ps.ports.toolchains.host"),
+        Toolchain::SystemNix(_) => t!("ps.ports.toolchains.system_nix"),
+        Toolchain::Portable(_) => t!("ps.ports.toolchains.portable"),
     }
 }

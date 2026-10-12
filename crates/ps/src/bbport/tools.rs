@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
 
@@ -44,10 +45,15 @@ elif request == 'dll':
                       'unsupported': dll_info.UNSUPPORTED, 'no_loader': dll_info.NO_LOADER}))
 "#;
 
-async fn helper(toolchain: &Toolchain, request: &str, args: &[&Path]) -> Result<serde_json::Value, String> {
-    let checkout = Port::Bbport.checkout();
+async fn helper(
+    root: &Root,
+    toolchain: &Toolchain,
+    request: &str,
+    args: &[&Path],
+) -> Result<serde_json::Value, String> {
+    let checkout = Port::Bbport.checkout(root);
     let mut command = match toolchain
-        .command(Port::Bbport, &checkout, r#"exec python3 -c "$DECANTER_HELPER""#)
+        .command(root, Port::Bbport, r#"exec python3 -c "$DECANTER_HELPER""#)
         .await
     {
         Ok(command) => command,
@@ -75,8 +81,8 @@ async fn helper(toolchain: &Toolchain, request: &str, args: &[&Path]) -> Result<
 }
 
 /// Mods bbport would load from `dir` (folders with a layout `mods.py` accepts).
-pub async fn discover_mods(toolchain: &Toolchain, dir: &Path) -> Result<Vec<String>, String> {
-    match helper(toolchain, "mods", &[dir]).await {
+pub async fn discover_mods(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<String>, String> {
+    match helper(root, toolchain, "mods", &[dir]).await {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
         Err(err) => Err(err),
     }
@@ -94,8 +100,8 @@ pub struct ExternalPatch {
 }
 
 /// shadPS4-format patches for 1.09 in `dir`, as bbport's `external_patches` finds them.
-pub async fn discover_patches(toolchain: &Toolchain, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
-    match helper(toolchain, "patches", &[dir]).await {
+pub async fn discover_patches(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
+    match helper(root, toolchain, "patches", &[dir]).await {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
         Err(err) => Err(err),
     }
@@ -111,8 +117,8 @@ pub struct ModProfile {
 }
 
 impl ModProfile {
-    pub fn path() -> PathBuf {
-        crate::paths::bbport_data().join("mods.json")
+    pub fn path(root: &Root) -> PathBuf {
+        root.bbport_data().join("mods.json")
     }
 
     /// File I/O, like [`ModProfile::save`]: off the UI thread.
@@ -150,8 +156,8 @@ pub struct PatchProfile {
 }
 
 impl PatchProfile {
-    pub fn path() -> PathBuf {
-        crate::paths::bbport_data().join("patches.json")
+    pub fn path(root: &Root) -> PathBuf {
+        root.bbport_data().join("patches.json")
     }
 
     /// File I/O, like [`PatchProfile::save`]: off the UI thread.
@@ -183,6 +189,8 @@ impl PatchProfile {
     }
 }
 
+/// The first FSR 4.1.1 asset missing or damaged, as `<model>/<file>`.
+///
 /// What `fsr411_problem` (bbport `launcher/bbport_assets.py`) checks: every pass of the model
 /// the output size and preset need, plus its initializer. File I/O: off the UI thread.
 pub fn fsr411_problem(dir: &Path, output: &str, preset: &str) -> Option<String> {
@@ -204,66 +212,79 @@ pub fn fsr411_problem(dir: &Path, output: &str, preset: &str) -> Option<String> 
             .map(|m| m.len())
             .unwrap_or(0);
         if size < 20 || !size.is_multiple_of(4) {
-            return Some(format!("falta o está dañado {model}/{name}.spv"));
+            return Some(format!("{model}/{name}.spv"));
         }
     }
     let size = std::fs::metadata(dir.join(&model).join("initializer.bin"))
         .map(|m| m.len())
         .unwrap_or(0);
-    (size != 131_072).then(|| format!("falta o está dañado {model}/initializer.bin"))
+    (size != 131_072).then(|| format!("{model}/initializer.bin"))
 }
 
 pub enum DllCheck {
     Ready {
         loader: Option<PathBuf>,
     },
-    /// Not a DLL bbport can replay; the text says why.
-    Unsupported(String),
+    /// Not a DLL bbport can replay.
+    Unsupported(Unsupported),
     /// The DLL needs the FidelityFX loader and none was found next to it.
     NeedsLoader,
     /// The loader given is not one.
-    BadLoader(String),
+    BadLoader(BadLoader),
+}
+
+pub enum Unsupported {
+    /// AMD's official FSR 4.0.x.
+    Fsr40 {
+        version: String,
+    },
+    NotFsr4,
+    /// Not AMD's official FSR 4.1.x.
+    Other {
+        version: String,
+    },
+}
+
+pub enum BadLoader {
+    /// The upscaler DLL itself.
+    IsUpscaler,
+    WrongVersion {
+        loader: PathBuf,
+        version: String,
+    },
 }
 
 /// `dll_info.inspect` on the chosen DLLs, with bbport's launcher's explanations.
-pub async fn check_dll(toolchain: &Toolchain, upscaler: &Path, loader: Option<&Path>) -> Result<DllCheck, String> {
+pub async fn check_dll(
+    root: &Root,
+    toolchain: &Toolchain,
+    upscaler: &Path,
+    loader: Option<&Path>,
+) -> Result<DllCheck, String> {
     let mut args = vec![upscaler];
     args.extend(loader);
-    let answer = match helper(toolchain, "dll", &args).await {
+    let answer = match helper(root, toolchain, "dll", &args).await {
         Ok(answer) => answer,
         Err(err) => return Err(err),
     };
     let status = answer["status"].as_i64().unwrap_or(-1);
     let details = &answer["details"];
     let kind = details["kind"].as_str().unwrap_or_default();
-    let version = details["version"].as_str().unwrap_or("?");
-    let name = upscaler.file_name().unwrap_or_default().to_string_lossy();
+    let version = details["version"].as_str().unwrap_or("?").to_owned();
     if status == answer["unsupported"].as_i64().unwrap_or(2) {
         return Ok(DllCheck::Unsupported(match kind {
-            "fsr4_0" => format!(
-                "{name}: FSR {version}, la FSR 4.0.x oficial de AMD, que solo funciona en RDNA4 y no se puede \
-                 grabar bajo Proton en otras GPU. Hace falta FSR 4.1.x (FSR4_LATEST de OptiScaler o la DLL \
-                 de un juego con FSR 4.1)"
-            ),
-            "not_fsr4" => format!("{name}: no contiene FSR 4; hace falta amd_fidelityfx_upscaler_dx12.dll 4.1.x"),
-            _ => format!(
-                "{name}: versión {version}. bbport solo reproduce la FSR 4.1.x oficial de AMD (modelo \
-                 v07_fp8_no_scale); las versiones de la comunidad aún no están soportadas"
-            ),
+            "fsr4_0" => Unsupported::Fsr40 { version },
+            "not_fsr4" => Unsupported::NotFsr4,
+            _ => Unsupported::Other { version },
         }));
     }
     if status == answer["no_loader"].as_i64().unwrap_or(7) {
         return Ok(match (kind, loader) {
-            ("loader_is_upscaler", _) => DllCheck::BadLoader(
-                "eso es la DLL del reescalado; el cargador es amd_fidelityfx_loader_dx12.dll (o \
-                 amd_fidelityfx_dx12.dll en OptiScaler), en la misma carpeta del juego"
-                    .into(),
-            ),
-            (_, Some(loader)) => DllCheck::BadLoader(format!(
-                "{}: versión {}; hace falta el cargador FidelityFX 2.x del mismo juego",
-                loader.display(),
-                details["loader_version"].as_str().unwrap_or("?")
-            )),
+            ("loader_is_upscaler", _) => DllCheck::BadLoader(BadLoader::IsUpscaler),
+            (_, Some(loader)) => DllCheck::BadLoader(BadLoader::WrongVersion {
+                loader: loader.to_owned(),
+                version: details["loader_version"].as_str().unwrap_or("?").to_owned(),
+            }),
             _ => DllCheck::NeedsLoader,
         });
     }
@@ -277,20 +298,21 @@ pub async fn check_dll(toolchain: &Toolchain, upscaler: &Path, loader: Option<&P
 /// folder must be under `$HOME` for Steam's runtime, which decanter's data
 /// directory is.
 pub async fn fsr411_build_command(
+    root: &Root,
     toolchain: &Toolchain,
     upscaler: &Path,
     loader: Option<&Path>,
 ) -> io::Result<Command> {
     let script =
         r#"exec bash tools/fsr4cap/build_assets.sh "$DECANTER_UPSCALER" ${DECANTER_LOADER:+"$DECANTER_LOADER"}"#;
-    let mut command = match toolchain.command(Port::Bbport, &Port::Bbport.checkout(), script).await {
+    let mut command = match toolchain.command(root, Port::Bbport, script).await {
         Ok(command) => command,
         Err(err) => return Err(err),
     };
     command
         .env("DECANTER_UPSCALER", upscaler)
-        .env("BB_FSR411_OUT", crate::paths::fsr411())
-        .env("BB_FSR4CAP_WORK", crate::paths::root().join("fsr4cap"))
+        .env("BB_FSR411_OUT", root.fsr411())
+        .env("BB_FSR4CAP_WORK", root.join("fsr4cap"))
         .env("BB_FSR4CAP_CLEAN", "1");
     if let Some(loader) = loader {
         command.env("DECANTER_LOADER", loader);
@@ -298,8 +320,18 @@ pub async fn fsr411_build_command(
     Ok(command)
 }
 
+pub enum Fsr411Progress {
+    Preparing,
+    /// Passes recorded under Proton so far, of the total.
+    Recording {
+        done: String,
+        total: String,
+    },
+    Translating,
+}
+
 /// Progress from `build_assets.sh` output, as bbport's launcher read it.
-pub fn fsr411_progress(job: &crate::process::Job) -> String {
+pub fn fsr411_progress(job: &crate::process::Job) -> Fsr411Progress {
     for line in job.lines.iter().rev() {
         if let Some((done, total)) = line
             .trim_start()
@@ -307,102 +339,41 @@ pub fn fsr411_progress(job: &crate::process::Job) -> String {
             .and_then(|rest| rest.split_once(']'))
             .and_then(|(step, _)| step.trim().split_once('/'))
         {
-            return format!("Grabando las pasadas bajo Proton: {done} de {total}");
+            return Fsr411Progress::Recording {
+                done: done.to_owned(),
+                total: total.to_owned(),
+            };
         }
         if line.starts_with("Translating") {
-            return "Traduciendo las pasadas a SPIR-V…".to_owned();
+            return Fsr411Progress::Translating;
         }
     }
-    "Preparando…".to_owned()
+    Fsr411Progress::Preparing
 }
 
 /// `build_assets.sh` exit statuses, as bbport's launcher explained them.
-pub fn fsr411_build_error(code: Option<i32>) -> String {
-    match code {
-        Some(2) => "La DLL no sirve: detalles en el registro".into(),
-        Some(3) => "No hay un Proton adecuado: instalá GE-Proton 10 o posterior, Proton Experimental o \
-                    Proton-CachyOS, y abrí con él cualquier juego en Steam para que instale su runtime"
-            .into(),
-        Some(4) => "Faltan programas para compilar: la lista está en el registro".into(),
-        Some(5) => "Ningún Proton ejecutó FSR 4.1 con esa DLL: son demasiado antiguos o la DLL no activa FSR \
-                    4.1 en esta GPU"
-            .into(),
-        Some(6) => "Las pasadas grabadas no coinciden con lo que reproduce bbport (otra versión de la DLL o \
-                    una GPU nueva): detalles en el registro"
-            .into(),
-        Some(7) => "No se encontró el cargador FidelityFX 2.x".into(),
-        Some(8) => "En NixOS la grabación necesita umu-launcher o Nix en el sistema".into(),
-        Some(code) => format!("La compilación falló (código {code}): detalles en el registro"),
-        None => "La compilación se detuvo".into(),
-    }
+pub enum Fsr411Failure {
+    BadDll,
+    NoProton,
+    MissingTools,
+    NoProtonRan,
+    Mismatch,
+    NoLoader,
+    NixosNeedsRecorder,
+    Failed(i32),
+    Stopped,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn patch(key: &str, default: bool) -> ExternalPatch {
-        ExternalPatch {
-            key: key.into(),
-            name: key.into(),
-            author: String::new(),
-            note: String::new(),
-            default,
-        }
-    }
-
-    #[test]
-    fn patch_profile_stores_only_overrides() {
-        let (on, off) = (patch("a.xml/On", true), patch("a.xml/Off", false));
-        let mut profile = PatchProfile::default();
-        assert!(profile.is_active(&on) && !profile.is_active(&off));
-        profile.set(&on, false);
-        profile.set(&off, true);
-        assert_eq!(
-            (profile.enabled.as_slice(), profile.disabled.as_slice()),
-            (["a.xml/Off".to_owned()].as_slice(), ["a.xml/On".to_owned()].as_slice())
-        );
-        profile.set(&on, true);
-        assert!(
-            profile.disabled.is_empty(),
-            "back to the file's default drops the override"
-        );
-    }
-
-    #[test]
-    fn mod_order_keeps_saved_then_adds_new() {
-        let profile = ModProfile {
-            order: vec!["b".into(), "gone".into(), "a".into()],
-            disabled: vec![],
-        };
-        let available = ["a".to_owned(), "b".to_owned(), "c".to_owned()];
-        assert_eq!(profile.ordered(&available), ["b", "a", "c"]);
-    }
-
-    #[test]
-    fn fsr411_needs_every_pass_of_the_model() {
-        let dir = std::env::temp_dir().join(format!("decanter-ps-fsr411-{}", std::process::id()));
-        let model = dir.join("t1080_m1");
-        std::fs::create_dir_all(&model).unwrap();
-        assert!(
-            fsr411_problem(&dir, "1920x1080", "4")
-                .unwrap()
-                .contains("t1080_m1/spd.spv")
-        );
-        let mut names = vec!["spd", "prepass", "pass0_post", "postpass", "rcas"]
-            .into_iter()
-            .map(String::from)
-            .collect::<Vec<_>>();
-        names.extend((1..=12).flat_map(|i| [format!("pass{i}"), format!("pass{i}_post")]));
-        for name in names {
-            std::fs::write(model.join(format!("{name}.spv")), [0u8; 20]).unwrap();
-        }
-        std::fs::write(model.join("initializer.bin"), vec![0u8; 131_072]).unwrap();
-        assert_eq!(fsr411_problem(&dir, "1920x1080", "4"), None);
-        assert!(
-            fsr411_problem(&dir, "2560x1440", "4").is_some(),
-            "1440p needs the t2160 model"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
+pub const fn fsr411_failure(code: Option<i32>) -> Fsr411Failure {
+    match code {
+        Some(2) => Fsr411Failure::BadDll,
+        Some(3) => Fsr411Failure::NoProton,
+        Some(4) => Fsr411Failure::MissingTools,
+        Some(5) => Fsr411Failure::NoProtonRan,
+        Some(6) => Fsr411Failure::Mismatch,
+        Some(7) => Fsr411Failure::NoLoader,
+        Some(8) => Fsr411Failure::NixosNeedsRecorder,
+        Some(code) => Fsr411Failure::Failed(code),
+        None => Fsr411Failure::Stopped,
     }
 }

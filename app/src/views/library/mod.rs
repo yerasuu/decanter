@@ -21,6 +21,7 @@ mod sidebar;
 
 use decanter_core::CachedAchievement;
 use gpui::{Context, Entity, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb};
+use rust_i18n::t;
 
 use browser::BrowserView;
 use context_menu::MenuTarget;
@@ -223,7 +224,7 @@ impl Render for LibraryView {
                 .into_any_element(),
             (_, false) => div()
                 .m_8()
-                .child(theme::empty("Elegi un perfil arriba."))
+                .child(theme::empty(t!("common.pick_profile")))
                 .into_any_element(),
         };
         let filter_panel = self.sidebar.update(cx, |sidebar, cx| sidebar.filter_panel(window, cx));
@@ -239,11 +240,46 @@ impl Render for LibraryView {
                     .clone()
                     .cached(StyleRefinement::default().w(px(292.)).h_full().flex_none()),
             )
-            .child(div().flex_1().min_w_0().h_full().child(pane))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .children(offline_notice(&state.library.read(cx).offline_folders))
+                    .child(div().flex_1().min_h_0().child(pane)),
+            )
             .children(filter_panel)
             .children(popup)
             .into_any_element()
     }
+}
+
+/// Says which library folders aren't plugged in: their games read as not
+/// installed until they are, and installing one again elsewhere would make
+/// a second copy.
+fn offline_notice(offline: &[std::path::PathBuf]) -> Option<gpui::Div> {
+    if offline.is_empty() {
+        return None;
+    }
+    let folders = offline
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(
+        div()
+            .flex_none()
+            .px_6()
+            .py_2()
+            .bg(rgb(theme::BG_PANEL_2))
+            .border_b_1()
+            .border_color(rgb(theme::LINE))
+            .text_size(px(12.5))
+            .text_color(rgb(theme::TEXT_MUTED))
+            .child(t!("library.offline_folders", folders = folders)),
+    )
 }
 
 /// Steam's Propiedades for one game, in a window of its own.
@@ -260,9 +296,10 @@ fn open_properties(game: &decanter_core::Game, cx: &mut gpui::App) {
 fn loading(count: usize, enriching: Option<(usize, usize)>) -> impl IntoElement {
     let fraction = enriching.map(|(done, total)| done as f64 / total.max(1) as f64);
     let text = match (count, enriching) {
-        (0, _) => "Buscando tus juegos en GOG...".to_owned(),
-        (count, Some((done, total))) => format!("Completando datos: {done} de {total} ({count} encontrados)"),
-        (count, None) => format!("{count} juego(s) encontrados, completando datos..."),
+        (0, _) => t!("library.loading.searching"),
+        (count, Some((done, total))) => t!("library.loading.enriching", done = done, total = total, count = count),
+        (1, None) => t!("library.loading.found.one", count = 1),
+        (count, None) => t!("library.loading.found.other", count = count),
     };
     div().size_full().flex().items_center().justify_center().child(
         div()
@@ -277,7 +314,7 @@ fn loading(count: usize, enriching: Option<(usize, usize)>) -> impl IntoElement 
                     .text_color(rgb(theme::TEXT_MUTED))
                     .mt_8()
                     .mb(px(20.))
-                    .child("CARGANDO TU BIBLIOTECA"),
+                    .child(t!("library.loading.title")),
             )
             .child(
                 div()

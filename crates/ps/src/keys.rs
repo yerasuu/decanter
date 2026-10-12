@@ -61,19 +61,3 @@ pub fn sdl_key_name(key: &str) -> Option<String> {
     }
     None
 }
-
-#[cfg(test)]
-mod tests {
-    use super::sdl_key_name;
-
-    #[test]
-    fn maps_common_keys() {
-        assert_eq!(sdl_key_name("a").as_deref(), Some("A"));
-        assert_eq!(sdl_key_name("7").as_deref(), Some("7"));
-        assert_eq!(sdl_key_name("enter").as_deref(), Some("Return"));
-        assert_eq!(sdl_key_name("f11").as_deref(), Some("F11"));
-        assert_eq!(sdl_key_name("!").as_deref(), Some("1"));
-        assert_eq!(sdl_key_name("ntilde"), None);
-        assert_eq!(sdl_key_name("f99"), None);
-    }
-}

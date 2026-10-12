@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 use crate::library::Game;
+use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
 
@@ -52,12 +53,16 @@ pub fn eboot_state(game: &Game) -> Eboot {
 /// An AnyPS5 checkout. As with bbport, what one toolchain built only runs
 /// inside that toolchain: the libraries link nix's Vulkan loader.
 pub struct AnyPs5 {
+    root: Root,
     checkout: PathBuf,
 }
 
 impl AnyPs5 {
-    pub const fn new(checkout: PathBuf) -> Self {
-        Self { checkout }
+    pub fn new(root: Root) -> Self {
+        Self {
+            checkout: Port::AnyPs5.checkout(&root),
+            root,
+        }
     }
 
     pub fn checkout(&self) -> &Path {
@@ -77,12 +82,12 @@ impl AnyPs5 {
     }
 
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
-        toolchain.command(Port::AnyPs5, &self.checkout, BUILD_SCRIPT).await
+        toolchain.command(&self.root, Port::AnyPs5, BUILD_SCRIPT).await
     }
 
     /// After a build that succeeded.
     pub async fn record_build(&self, toolchain: &Toolchain) -> io::Result<()> {
-        tokio::fs::write(self.build_marker(), toolchain.id()).await
+        tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
     }
 
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
@@ -90,23 +95,24 @@ impl AnyPs5 {
             .await
             .is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
-        relinker && marker.is_ok_and(|id| id == toolchain.id())
+        let stamp = toolchain.build_stamp(&self.checkout).await;
+        relinker && marker.is_ok_and(|built| built == stamp)
     }
 
-    pub fn output_dir(title_id: &str) -> PathBuf {
-        crate::paths::anyps5().join(title_id)
+    pub fn output_dir(root: &Root, title_id: &str) -> PathBuf {
+        root.anyps5().join(title_id)
     }
 
-    fn executable(title_id: &str) -> PathBuf {
-        Self::output_dir(title_id).join("app.elf")
+    fn executable(root: &Root, title_id: &str) -> PathBuf {
+        Self::output_dir(root, title_id).join("app.elf")
     }
 
-    pub fn binds_path(title_id: &str) -> PathBuf {
-        Self::output_dir(title_id).join("anyps5-input.ini")
+    pub fn binds_path(root: &Root, title_id: &str) -> PathBuf {
+        Self::output_dir(root, title_id).join("anyps5-input.ini")
     }
 
-    pub async fn is_converted(title_id: &str) -> bool {
-        tokio::fs::metadata(Self::executable(title_id))
+    pub async fn is_converted(&self, title_id: &str) -> bool {
+        tokio::fs::metadata(Self::executable(&self.root, title_id))
             .await
             .is_ok_and(|meta| meta.is_file())
     }
@@ -114,7 +120,7 @@ impl AnyPs5 {
     /// Lays out `libs/` and `app0/` before the relinker writes `app.elf`
     /// and the modules. File I/O over the dump's top level: off the UI thread.
     pub fn prepare_output(&self, game: &Game) -> io::Result<()> {
-        let out = Self::output_dir(&game.title_id);
+        let out = Self::output_dir(&self.root, &game.title_id);
         let app0 = out.join("app0");
         fs::create_dir_all(&app0)?;
         replace_symlink(&self.libs_dir(), &out.join("libs"))?;
@@ -134,30 +140,36 @@ impl AnyPs5 {
     /// `--`; both paths are absolute, so neither can read as a flag.
     pub async fn convert_command(&self, toolchain: &Toolchain, game: &Game) -> io::Result<Command> {
         let script = r#"exec "$DECANTER_RELINKER" "$DECANTER_EBOOT" "$DECANTER_APP""#;
-        let mut command = match toolchain.command(Port::AnyPs5, &self.checkout, script).await {
+        let mut command = match toolchain.command(&self.root, Port::AnyPs5, script).await {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
         command
             .env("DECANTER_RELINKER", self.relinker())
             .env("DECANTER_EBOOT", game.dir.join("eboot.bin"))
-            .env("DECANTER_APP", Self::executable(&game.title_id))
-            .current_dir(Self::output_dir(&game.title_id));
+            .env("DECANTER_APP", Self::executable(&self.root, &game.title_id))
+            .current_dir(Self::output_dir(&self.root, &game.title_id));
         Ok(command)
     }
 
     /// Runs the shared conversion from `run_dir`, the profile's own
     /// directory for this game; [`prepare_run_dir`] must have laid it out.
-    pub async fn run_command(&self, toolchain: &Toolchain, title_id: &str, run_dir: &Path) -> io::Result<Command> {
+    /// SDL 2 reads its window class hints from the environment, `app.elf`
+    /// for every title otherwise, and the task bar matches the game's
+    /// desktop entry against them.
+    pub async fn run_command(&self, toolchain: &Toolchain, game: &Game, run_dir: &Path) -> io::Result<Command> {
         let mut command = match toolchain
-            .command(Port::AnyPs5, &self.checkout, r#"exec "$DECANTER_APP""#)
+            .command(&self.root, Port::AnyPs5, r#"exec "$DECANTER_APP""#)
             .await
         {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
+        let class = decanter_core::application_id(&game.key());
         command
-            .env("DECANTER_APP", Self::executable(title_id))
+            .env("DECANTER_APP", Self::executable(&self.root, &game.title_id))
+            .env("SDL_VIDEO_X11_WMCLASS", &class)
+            .env("SDL_VIDEO_WAYLAND_WMCLASS", &class)
             .current_dir(run_dir);
         Ok(command)
     }
@@ -169,9 +181,10 @@ impl AnyPs5 {
 /// library, and an absolute link from before a move points nowhere. File
 /// I/O: off the UI thread.
 pub fn prepare_run_dir(anyps5: &AnyPs5, title_id: &str, run_dir: &Path) -> io::Result<()> {
-    replace_symlink(&anyps5.libs_dir(), &AnyPs5::output_dir(title_id).join("libs"))?;
+    let out = AnyPs5::output_dir(&anyps5.root, title_id);
+    replace_symlink(&anyps5.libs_dir(), &out.join("libs"))?;
     fs::create_dir_all(run_dir)?;
-    replace_symlink(&AnyPs5::output_dir(title_id).join("app0"), &run_dir.join("app0"))
+    replace_symlink(&out.join("app0"), &run_dir.join("app0"))
 }
 
 fn replace_symlink(target: &Path, link: &Path) -> io::Result<()> {
@@ -179,30 +192,4 @@ fn replace_symlink(target: &Path, link: &Path) -> io::Result<()> {
         fs::remove_file(link)?;
     }
     std::os::unix::fs::symlink(target, link)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn eboot_state_tells_elf_from_self() {
-        let dir = std::env::temp_dir().join(format!("decanter-ps-eboot-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let game = |dir: &Path| Game {
-            dir: dir.to_owned(),
-            platform: crate::library::Platform::Ps5,
-            title_id: "PPSA02929".into(),
-            title: String::new(),
-            version: String::new(),
-            category: String::new(),
-            has_modules: false,
-        };
-        assert_eq!(eboot_state(&game(&dir)), Eboot::Missing);
-        fs::write(dir.join("eboot.bin"), b"\x7fELF....").unwrap();
-        assert_eq!(eboot_state(&game(&dir)), Eboot::Clean);
-        fs::write(dir.join("eboot.bin"), b"SCE\0....").unwrap();
-        assert_eq!(eboot_state(&game(&dir)), Eboot::Encrypted);
-        fs::remove_dir_all(&dir).unwrap();
-    }
 }

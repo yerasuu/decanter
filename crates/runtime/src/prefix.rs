@@ -248,7 +248,7 @@ pub async fn stop_all() {
     if prefixes.is_empty() {
         return;
     }
-    tracing::info!("stopping {} running game(s)", prefixes.len());
+    tracing::info!(count = prefixes.len(), "stopping running games");
     let stopping = prefixes.iter().map(Prefix::stop);
     join_all(stopping).await;
 }

@@ -417,9 +417,11 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     let request = http.get(format!(
         "{AUTH}/token?client_id={client_id}&client_secret={client_secret}&grant_type=refresh_token&refresh_token={refresh_token}&without_new_session=1"
     ));
+    // The URL carries the client secret and the refresh token, and reqwest puts it in its errors.
     let response = match request.send().await {
         Ok(response) => response,
         Err(err) => {
+            let err = err.without_url();
             tracing::error!(game_id, error = %err, "gog cloud-saves token request failed, aborting sync");
             return Err(err.into());
         }
@@ -427,13 +429,14 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     let response = match response.error_for_status() {
         Ok(response) => response,
         Err(err) => {
+            let err = err.without_url();
             tracing::error!(game_id, error = %err, "gog refused a cloud-saves session, aborting sync");
             return Err(anyhow::Error::new(err).context("GOG refused a cloud-saves session for this game"));
         }
     };
     let response: TokenResponse = match response.json().await {
         Ok(response) => response,
-        Err(err) => return Err(err.into()),
+        Err(err) => return Err(err.without_url().into()),
     };
 
     tracing::debug!(game_id, "exchanged gog cloud-saves session");
