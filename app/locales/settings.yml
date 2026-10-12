@@ -12,7 +12,7 @@ settings.tabs.compatibility:
   es: Compatibilidad
   en: Compatibility
 settings.storage_error:
-  es: "Error abriendo el almacenamiento: %{error}"
+  es: "Error al abrir el almacenamiento: %{error}"
   en: "Error opening storage: %{error}"
 settings.general.language.title:
   es: Idioma
@@ -24,7 +24,7 @@ settings.general.close.title:
   es: Al cerrar la ventana
   en: When closing the window
 settings.general.close.to_tray:
-  es: Dejar Decanter corriendo en la bandeja en vez de cerrarlo
+  es: Mantener Decanter en ejecución en la bandeja en vez de cerrarlo
   en: Keep Decanter running in the tray instead of quitting
 settings.general.close.restart_hint:
   es: Requiere reiniciar Decanter para que el cambio tenga efecto.
@@ -33,13 +33,13 @@ settings.general.steam.title:
   es: Exportar a Steam
   en: Export to Steam
 settings.general.steam.add:
-  es: Agregar cada juego instalado a la biblioteca real de Steam, con su portada y banner
+  es: Añadir cada juego instalado a la biblioteca real de Steam, con su portada y su banner
   en: Add every installed game to Steam's own library, with its cover and banner
 settings.general.steam.restart_hint:
-  es: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus shortcuts al arrancar.
+  es: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.
   en: Steam has to be restarted to show the changes — it only reads its shortcuts at startup.
 settings.general.steam.pending:
-  es: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se agregaron, así que todavía no los pisa su propia copia en memoria.
+  es: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se añadieron, así que su propia copia en memoria todavía no los ha sobrescrito.
   en: Some games exported to Steam are waiting for it to restart — Steam was open when they were added, so they're held back until then to keep its in-memory copy from overwriting them.
 settings.general.steam.restarting:
   es: Reiniciando Steam...
@@ -75,10 +75,10 @@ settings.account.session.invalid:
   es: "sesión inválida: %{error}"
   en: "invalid session: %{error}"
 settings.account.add.button:
-  es: + Agregar cuenta GOG
+  es: + Añadir cuenta GOG
   en: + Add GOG account
 settings.account.add.hint:
-  es: Abrí GOG, iniciá sesión, y pegá acá la dirección de la página a la que llegues.
+  es: Abre GOG, inicia sesión y pega aquí la dirección de la página a la que llegues.
   en: Open GOG, log in, and paste the address of the page you land on here.
 settings.account.add.open:
   es: Abrir GOG
@@ -93,7 +93,7 @@ settings.account.library.unknown:
   es: desconocida
   en: unknown
 settings.account.library.pick_title:
-  es: Elegí la nueva ubicación de la biblioteca
+  es: Elige la nueva ubicación de la biblioteca
   en: Choose the library's new location
 settings.account.library.change:
   es: Cambiar ubicación
@@ -117,13 +117,13 @@ settings.account.errors.library:
   es: no se pudo resolver la biblioteca actual
   en: could not resolve the current library
 settings.account.errors.busy:
-  es: hay un juego de este perfil corriendo o instalándose — cerralo antes de mover la biblioteca
+  es: hay un juego de este perfil en ejecución o instalándose — ciérralo antes de mover la biblioteca
   en: a game from this profile is running or installing — close it before moving the library
 settings.account.errors.save_path:
   es: "se movió, pero no se pudo guardar la nueva ruta: %{error}"
   en: "it was moved, but the new path could not be saved: %{error}"
 settings.compatibility.intro:
-  es: Cada juego corre en su propio prefijo, creado la primera vez que lo abrís. Para pinear un Proton distinto o resetear el prefijo de un juego puntual, abrí sus Propiedades desde la biblioteca.
+  es: Cada juego se ejecuta en su propio prefijo, creado la primera vez que lo abres. Para fijar un Proton distinto o restablecer el prefijo de un juego concreto, abre sus Propiedades desde la biblioteca.
   en: Each game runs in its own prefix, created the first time you open it. To pin a different Proton or reset a particular game's prefix, open its Properties from the library.
 settings.compatibility.default:
   es: Proton por defecto
@@ -132,5 +132,5 @@ settings.compatibility.automatic:
   es: Automático (lo resuelve umu)
   en: Automatic (resolved by umu)
 settings.compatibility.none_installed:
-  es: No hay Proton instalado en Steam (compatibilitytools.d). umu va a descargar uno la primera vez.
+  es: No hay Proton instalado en Steam (compatibilitytools.d). umu descargará uno la primera vez.
   en: No Proton is installed in Steam (compatibilitytools.d). umu will download one the first time.

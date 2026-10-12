@@ -3,10 +3,10 @@ storage.title:
   es: Almacenamiento
   en: Storage
 storage.add:
-  es: Agregar carpeta de biblioteca
+  es: Añadir carpeta de biblioteca
   en: Add library folder
 storage.add_title:
-  es: Elegí dónde guardar juegos
+  es: Elige dónde guardar los juegos
   en: Choose where to keep games
 storage.stats.used.one:
   es: usado por 1 juego
@@ -45,7 +45,7 @@ storage.folder.remove_hint:
   es: Deja de usar esta carpeta; lo que haya en el disco se queda
   en: Stops using this folder; whatever is on the drive stays there
 storage.folder.remove_blocked:
-  es: "Tiene juegos: desinstalalos o movelos antes"
+  es: "Tiene juegos: desinstálalos o muévelos antes"
   en: "It has games: uninstall or move them first"
 storage.move_to:
   es: Mover a…
@@ -66,10 +66,10 @@ storage.errors.remove:
   es: "quitando la carpeta: %{error}"
   en: "removing the folder: %{error}"
 storage.errors.hosted:
-  es: "Este juego vive en el prefijo de su launcher: mové el launcher y viene con él."
+  es: "Este juego vive en el prefijo de su lanzador: mueve el lanzador y el juego irá con él."
   en: "This game lives in its launcher's prefix: move the launcher and it comes along."
 storage.errors.running:
-  es: "El juego está abierto: cerralo antes de moverlo."
+  es: "El juego está abierto: ciérralo antes de moverlo."
   en: "The game is running: close it before moving it."
 storage.errors.shared:
   es: "Otra cuenta comparte estos archivos: no se pueden mover solos."

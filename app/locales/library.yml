@@ -72,7 +72,7 @@ library.sidebar.installed:
   es: Instalado
   en: Installed
 library.sidebar.add_game:
-  es: AGREGAR UN JUEGO
+  es: AÑADIR UN JUEGO
   en: ADD A GAME
 library.menu.games:
   es: "%{count} juegos"
@@ -144,7 +144,7 @@ library.filters.achievements.title:
   es: Logros
   en: Achievements
 library.filters.achievements.note:
-  es: Según lo que Decanter tiene cacheado.
+  es: Según lo que Decanter tiene en caché.
   en: Based on what Decanter has cached.
 library.filters.achievements.complete:
   es: Completados
@@ -183,10 +183,10 @@ library.filters.sort.size:
   es: Tamaño en disco
   en: Size on disk
 library.filters.sort.rating:
-  es: Calificación
+  es: Valoración
   en: Rating
 library.filters.sort.added:
-  es: Fecha agregada
+  es: Fecha de adición
   en: Date added
 library.filters.collection.title:
   es: Colección
@@ -252,7 +252,7 @@ library.detail.tabs.achievements:
   es: Logros
   en: Achievements
 library.detail.favorite.add:
-  es: Agregar a favoritos
+  es: Añadir a favoritos
   en: Add to favorites
 library.detail.favorite.remove:
   es: Quitar de favoritos
@@ -324,7 +324,7 @@ library.detail.install.dlcs.other:
   es: "%{count} marcados, se instalan junto con el juego"
   en: "%{count} selected, installed along with the game"
 library.detail.install.offline:
-  es: "Sin conectar: %{folders}. Si el juego ya está ahí, conectá el disco en vez de instalarlo otra vez."
+  es: "Sin conectar: %{folders}. Si el juego ya está ahí, conecta el disco en vez de instalarlo otra vez."
   en: "Not connected: %{folders}. If the game is already there, connect the drive instead of installing it again."
 library.detail.install.folder_free:
   es: "%{folder} — %{free} libres"
@@ -333,7 +333,7 @@ library.detail.install.mainline:
   es: Mainline (por defecto)
   en: Mainline (default)
 library.detail.achievements.cache_error:
-  es: "Error leyendo caché de logros: %{error}"
+  es: "Error al leer la caché de logros: %{error}"
   en: "Error reading the achievement cache: %{error}"
 library.detail.achievements.polling:
   es: Buscando logros...
@@ -342,7 +342,7 @@ library.detail.achievements.none:
   es: Este juego no tiene logros en GOG.
   en: This game has no achievements on GOG.
 library.detail.achievements.poll_failed:
-  es: "No se pudo consultar logros: %{error}"
+  es: "No se pudieron consultar los logros: %{error}"
   en: "Couldn't fetch achievements: %{error}"
 library.detail.summary.playtime:
   es: Tiempo jugado
@@ -351,7 +351,7 @@ library.detail.summary.last_session:
   es: Última sesión
   en: Last session
 library.detail.summary.rating:
-  es: Calificación
+  es: Valoración
   en: Rating
 library.detail.summary.release:
   es: Lanzamiento
@@ -381,7 +381,7 @@ library.menu.collections:
   es: COLECCIONES
   en: COLLECTIONS
 library.menu.no_collections:
-  es: Todavía no creaste ninguna.
+  es: Todavía no has creado ninguna.
   en: You haven't made any yet.
 library.menu.dynamic_collection:
   es: "Colección dinámica: su contenido lo decide el filtro guardado"
@@ -474,7 +474,7 @@ library.properties.updates.up_to_date:
   es: Al día.
   en: Up to date.
 library.properties.updates.installed_build:
-  es: Build instalado
+  es: Build instalada
   en: Installed build
 library.properties.local_files.verify:
   es: Verificar archivos
@@ -498,13 +498,13 @@ library.properties.local_files.broken:
   es: "%{broken} de %{total} archivos no coinciden."
   en: "%{broken} of %{total} files don't match."
 library.properties.local_files.note:
-  es: Compara cada archivo instalado contra el manifiesto de GOG y vuelve a bajar lo que no coincida.
+  es: Compara cada archivo instalado con el manifiesto de GOG y vuelve a descargar lo que no coincida.
   en: Checks every installed file against GOG's manifest and downloads again whatever doesn't match.
 library.properties.saves.folder_placeholder:
   es: Carpeta de guardado
   en: Save folder
 library.properties.saves.note:
-  es: Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indicala a mano.
+  es: Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indícala a mano.
   en: Decanter tries to find the save folder from GOG's remote configuration. If it finds nothing, enter it by hand.
 library.properties.saves.detect:
   es: Detectar automáticamente
@@ -513,10 +513,10 @@ library.properties.saves.detecting:
   es: Detectando...
   en: Detecting...
 library.properties.saves.none_reported:
-  es: GOG no reporta una carpeta de guardado para este juego.
+  es: GOG no indica ninguna carpeta de guardado para este juego.
   en: GOG reports no save folder for this game.
 library.properties.saves.pick_title:
-  es: Elegí la carpeta de guardado
+  es: Elige la carpeta de guardado
   en: Choose the save folder
 library.properties.saves.pick:
   es: Elegir carpeta...
@@ -537,7 +537,7 @@ library.properties.saves.syncing:
   es: Sincronizando...
   en: Syncing...
 library.properties.saves.conflict:
-  es: Cambios en ambos lados desde la última sync.
+  es: Cambios en ambos lados desde la última sincronización.
   en: Changes on both sides since the last sync.
 library.properties.saves.force_upload:
   es: Subir de todos modos
@@ -588,16 +588,16 @@ library.properties.versions.installing:
   es: Instalando...
   en: Installing...
 library.properties.versions.note:
-  es: Instalar una versión anterior vuelve a descargar el juego entero desde esa build. Verificar archivos la va a tratar como la versión instalada, no como una desactualización.
+  es: Instalar una versión anterior vuelve a descargar el juego entero desde esa build. Verificar archivos la tratará como la versión instalada, no como una desactualización.
   en: Installing an older version downloads the whole game again from that build. Verify files will treat it as the installed version, not as out of date.
 library.properties.compatibility.default_proton:
-  es: Usar el de por defecto
+  es: Usar el predeterminado
   en: Use the default
 library.properties.compatibility.reset:
-  es: Resetear prefijo
+  es: Restablecer prefijo
   en: Reset prefix
 library.properties.compatibility.resetting:
-  es: Reseteando...
+  es: Restableciendo...
   en: Resetting...
 library.properties.compatibility.reset_tooltip:
   es: Borra el prefijo. Se regenera al abrir el juego. Las partidas guardadas dentro del prefijo se pierden.

@@ -33,7 +33,7 @@ ps.log.copied:
   es: Copiado
   en: Copied
 ps.log.full:
-  es: Log completo
+  es: Registro completo
   en: Full log
 ps.jobs.clone:
   es: clonar
@@ -54,7 +54,7 @@ ps.ports.title:
   es: Ports
   en: Ports
 ps.ports.description:
-  es: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando alcanzan y con nix cuando no.
+  es: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando bastan y con nix cuando no.
   en: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't.
 ps.ports.stage.idle:
   es: Se prepara la primera vez que haga falta
@@ -114,7 +114,7 @@ ps.ports.prepare:
   es: Preparar
   en: Prepare
 ps.ports.reset.start:
-  es: Respaldar y actualizar
+  es: Guardar copia y actualizar
   en: Back up and update
 ps.ports.reset.confirm:
   es: "Confirmar: guardar cambios locales y restablecer"
@@ -126,7 +126,7 @@ ps.ports.errors.cmake_cache:
   es: "No se pudo revisar la caché de CMake: %{error}"
   en: "Couldn't check the CMake cache: %{error}"
 ps.ports.errors.build:
-  es: La compilación de %{port} falló; mira su registro
+  es: La compilación de %{port} ha fallado; mira su registro
   en: Building %{port} failed; see its log
 ps.ports.errors.record_build:
   es: "No se pudo registrar la compilación: %{error}"
@@ -216,7 +216,7 @@ ps.settings.games.title:
   es: Carpeta de juegos
   en: Games folder
 ps.settings.games.description:
-  es: "Junto a la biblioteca del perfil, en el mismo disco. Copiá o mové ahí tus volcados y aparecen solos: cada carpeta y sus subcarpetas directas se leen tal cual."
+  es: "Junto a la biblioteca del perfil, en el mismo disco. Copia o mueve ahí tus volcados y aparecerán solos: cada carpeta y sus subcarpetas directas se leen tal cual."
   en: "Next to the profile's library, on the same disk. Copy or move your dumps there and they show up on their own: each folder and its direct subfolders are read as they are."
 ps.settings.sys_modules.title:
   es: Módulos del sistema (opcional)
@@ -246,7 +246,7 @@ ps.games.scanning:
   es: Buscando juegos…
   en: Looking for games…
 ps.games.no_dumps:
-  es: "No hay volcados todavía: copialos a la carpeta de juegos (Ajustes)."
+  es: "No hay volcados todavía: cópialos a la carpeta de juegos (Ajustes)."
   en: "No dumps yet: copy them to the games folder (Settings)."
 ps.games.no_match:
   es: Nada coincide con la búsqueda.
@@ -258,7 +258,7 @@ ps.games.ready_to_play:
   es: Listo para jugar
   en: Ready to play
 ps.games.browser_empty:
-  es: "Todavía no hay juegos: copiá tus volcados a la carpeta de juegos (ver Ajustes)."
+  es: "Todavía no hay juegos: copia tus volcados a la carpeta de juegos (ver Ajustes)."
   en: "No games yet: copy your dumps to the games folder (see Settings)."
 ps.status.ready:
   es: Listo
@@ -303,7 +303,7 @@ ps.menu.merge:
   es: Fusionar actualización 1.09
   en: Merge 1.09 update
 ps.menu.log:
-  es: Abrir log completo
+  es: Abrir registro completo
   en: Open full log
 ps.menu.folder:
   es: Abrir carpeta del volcado
@@ -318,7 +318,7 @@ ps.jobs.convert:
   es: conversión
   en: conversion
 ps.jobs.log_error:
-  es: "No se pudo guardar el log completo: %{error}"
+  es: "No se pudo guardar el registro completo: %{error}"
   en: "Couldn't save the full log: %{error}"
 ps.jobs.start_error:
   es: "No se pudo iniciar: %{error}"
@@ -330,7 +330,7 @@ ps.games.library_error:
   es: "No se pudo usar la carpeta de la biblioteca: %{error}"
   en: "Couldn't use the library folder: %{error}"
 ps.layouts.read_error:
-  es: "No se pudieron leer los layouts: %{error}"
+  es: "No se pudieron leer los esquemas: %{error}"
   en: "Couldn't read the layouts: %{error}"
 ps.play.prepare_error:
   es: "No se pudo preparar %{name}: %{error}"
@@ -342,7 +342,7 @@ ps.play.convert_prepare_error:
   es: "No se pudo preparar la conversión: %{error}"
   en: "Couldn't prepare the conversion: %{error}"
 ps.play.convert_failed:
-  es: La conversión falló; mira su registro
+  es: La conversión ha fallado; mira su registro
   en: The conversion failed; see its log
 ps.play.merging:
   es: Fusionando la actualización…
@@ -402,10 +402,10 @@ ps.detail.facts.folder:
   es: Carpeta
   en: Folder
 ps.detail.pick_game:
-  es: Elegí un juego de la lista.
+  es: Elige un juego de la lista.
   en: Pick a game from the list.
 ps.detail.no_runs:
-  es: Todavía no se ejecutó nada para este juego.
+  es: Todavía no se ha ejecutado nada para este juego.
   en: Nothing has run for this game yet.
 ps.detail.reading_keyboard:
   es: Leyendo el teclado…
@@ -417,13 +417,13 @@ ps.detail.explain.needs_merge:
   es: "Hay una actualización 1.09 junto a este volcado. Fusionarla crea una copia jugable al lado, con enlaces duros: no ocupa espacio extra y el volcado original no cambia."
   en: "There's a 1.09 update next to this dump. Merging it creates a playable copy alongside, with hard links: it takes no extra space and the original dump stays unchanged."
 ps.detail.explain.has_playable:
-  es: Ya tenés la copia 1.09 en %{dir}; jugá esa.
+  es: Ya tienes la copia 1.09 en %{dir}; juega con esa.
   en: You already have the 1.09 copy at %{dir}; play that one.
 ps.detail.explain.other_edition:
   es: bbport solo ejecuta la edición CUSA03173 de Bloodborne en su versión 1.09.
   en: bbport only runs the CUSA03173 edition of Bloodborne at version 1.09.
 ps.detail.explain.needs_update:
-  es: "bbport necesita la versión 1.09: añadí su actualización a una de tus carpetas."
+  es: "bbport necesita la versión 1.09: añade su actualización a una de tus carpetas."
   en: "bbport needs version 1.09: add its update to one of your folders."
 ps.detail.explain.experimental:
   es: "bbport solo está hecho para Bloodborne. Este juego arranca con lo que le falte al port sustituido, sin parches ni mods: mira hasta dónde llega en Registro."
@@ -447,19 +447,19 @@ ps.layouts.copy_name:
   es: "%{name} (copia)"
   en: "%{name} (copy)"
 ps.layouts.name_placeholder:
-  es: Nombre del layout
+  es: Nombre del esquema
   en: Layout name
 ps.layouts.layout:
-  es: Layout
+  es: Esquema
   en: Layout
 ps.layouts.copy:
   es: Copiar como nuevo
   en: Copy as new
 ps.layouts.remove:
-  es: Borrar layout
+  es: Borrar esquema
   en: Delete layout
 ps.layouts.hint_builtin:
-  es: "Los layouts de fábrica no se editan: copialo como nuevo para cambiarlo."
+  es: "Los esquemas de fábrica no se editan: cópialo como nuevo para cambiarlo."
   en: "Built-in layouts can't be edited: copy it as new to change it."
 ps.keyboard.groups.buttons:
   es: Botones
@@ -540,7 +540,7 @@ ps.keyboard.refusals.wheel_needs_button:
   es: La rueda del ratón solo se puede asignar a un botón del mando
   en: The mouse wheel can only map to a controller button
 ps.keyboard.unknown_key:
-  es: La tecla '%{key}' no tiene nombre SDL fiable; probá otra
+  es: La tecla '%{key}' no tiene nombre SDL fiable; prueba otra
   en: The key '%{key}' has no reliable SDL name; try another
 ps.keyboard.save_error:
   es: "No se pudo guardar %{path}: %{error}"
@@ -561,10 +561,10 @@ ps.keyboard.reset_all:
   es: Restaurar todo
   en: Reset all
 ps.keyboard.hint.own:
-  es: "Tu layout: + Asignar y pulsá la tecla; Guardar lo escribe. Enter guarda el nombre."
+  es: "Tu esquema: + Asignar y pulsa la tecla; Guardar lo escribe. Enter guarda el nombre."
   en: "Your layout: + Assign and press the key; Save writes it. Enter saves the name."
 ps.keyboard.hint.custom:
-  es: El archivo tiene teclas editadas a mano; copialas como nuevo para guardarlas como layout.
+  es: El archivo tiene teclas editadas a mano; cópialas como nuevo para guardarlas como esquema.
   en: The file has hand-edited keys; copy them as new to save them as a layout.
 ps.keyboard.description.bbport:
   es: Teclado para bbport (líneas key. de bbport.ini). Quitar todas las teclas de una acción la deja sin asignar.
@@ -573,7 +573,7 @@ ps.keyboard.description.anyps5:
   es: Teclado y ratón para AnyPS5. El mando funciona siempre sin configurar.
   en: Keyboard and mouse for AnyPS5. The controller always works without setup.
 ps.keyboard.capture:
-  es: Pulsá una tecla, un botón del ratón o mové la rueda
+  es: Pulsa una tecla, un botón del ratón o mueve la rueda
   en: Press a key or a mouse button, or move the wheel
 ps.gamepad.inputs.cross.label:
   es: ✕
@@ -738,7 +738,7 @@ ps.layouts.code_vein:
   es: Estilo Code Vein
   en: Code Vein style
 ps.gamepad.description:
-  es: Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier layout.
+  es: Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier esquema.
   en: bbport settings, shared by all your Bloodborne copies. They apply on the next start. The sticks move the character and the camera in any layout.
 ps.gamepad.reading:
   es: Leyendo la configuración del mando…
@@ -762,7 +762,7 @@ ps.gamepad.icons.title:
   es: Iconos de botones
   en: Button icons
 ps.gamepad.icons.note:
-  es: En menús y avisos; siguen al layout elegido
+  es: En menús y avisos; siguen al esquema elegido
   en: In menus and prompts; they follow the chosen layout
 ps.gamepad.icons.pad:
   es: Del mando (A/B/X/Y)
@@ -771,10 +771,10 @@ ps.gamepad.icons.original:
   es: Originales del juego
   en: The game's originals
 ps.gamepad.hint.own:
-  es: "Tu layout: elegí el botón de cada entrada; si ya lo usaba otra, se intercambian. Enter guarda el nombre."
+  es: "Tu esquema: elige el botón de cada entrada; si ya lo usaba otra, se intercambian. Enter guarda el nombre."
   en: "Your layout: pick each input's button; if another input already used it, they swap. Enter saves the name."
 ps.gamepad.hint.custom:
-  es: bbport.ini tiene líneas pad. editadas a mano; copialas como nuevo para guardarlas como layout.
+  es: bbport.ini tiene líneas pad. editadas a mano; cópialas como nuevo para guardarlas como esquema.
   en: bbport.ini has hand-edited pad. lines; copy them as new to save them as a layout.
 ps.graphics.groups.game:
   es: Juego
@@ -816,7 +816,7 @@ ps.graphics.pc_model.label:
   es: Nuevo modelo de memoria y traducción
   en: New memory and translation model
 ps.graphics.pc_model.note:
-  es: "Experimental, solo GPU AMD: la GPU usa la memoria del juego directamente y los comandos gráficos se traducen en vez de emularse. Apagado: el modelo de la 0.3 con sus arreglos"
+  es: "Experimental, solo GPU AMD: la GPU usa la memoria del juego directamente y los comandos gráficos se traducen en vez de emularse. Desactivado: el modelo de la 0.3 con sus arreglos"
   en: "Experimental, AMD GPUs only: the GPU uses the game's memory directly and graphics commands are translated instead of emulated. Off: the 0.3 model with its fixes"
 ps.graphics.groups.display:
   es: Pantalla
@@ -1167,7 +1167,7 @@ ps.fsr.unsupported.not_fsr4:
   es: "%{name}: no contiene FSR 4; hace falta amd_fidelityfx_upscaler_dx12.dll 4.1.x"
   en: "%{name}: has no FSR 4; amd_fidelityfx_upscaler_dx12.dll 4.1.x is needed"
 ps.fsr.unsupported.other:
-  es: "%{name}: versión %{version}. bbport solo reproduce la FSR 4.1.x oficial de AMD (modelo v07_fp8_no_scale); las versiones de la comunidad aún no están soportadas"
+  es: "%{name}: versión %{version}. bbport solo reproduce la FSR 4.1.x oficial de AMD (modelo v07_fp8_no_scale); las versiones de la comunidad aún no son compatibles"
   en: "%{name}: version %{version}. bbport only replays AMD's official FSR 4.1.x (model v07_fp8_no_scale); community builds aren't supported yet"
 ps.fsr.bad_loader.is_upscaler:
   es: eso es la DLL del reescalado; el cargador es amd_fidelityfx_loader_dx12.dll (o amd_fidelityfx_dx12.dll en OptiScaler), en la misma carpeta del juego
@@ -1179,7 +1179,7 @@ ps.fsr.failures.bad_dll:
   es: "La DLL no sirve: detalles en el registro"
   en: "The DLL won't work: details in the log"
 ps.fsr.failures.no_proton:
-  es: "No hay un Proton adecuado: instalá GE-Proton 10 o posterior, Proton Experimental o Proton-CachyOS, y abrí con él cualquier juego en Steam para que instale su runtime"
+  es: "No hay un Proton adecuado: instala GE-Proton 10 o posterior, Proton Experimental o Proton-CachyOS, y abre con él cualquier juego en Steam para que instale su runtime"
   en: "No suitable Proton: install GE-Proton 10 or later, Proton Experimental or Proton-CachyOS, and open any game with it in Steam so it installs its runtime"
 ps.fsr.failures.missing_tools:
   es: "Faltan programas para compilar: la lista está en el registro"
@@ -1233,7 +1233,7 @@ ps.extras.fsr.pick_loader:
   es: Cargador FidelityFX (amd_fidelityfx_loader_dx12.dll)
   en: FidelityFX loader (amd_fidelityfx_loader_dx12.dll)
 ps.extras.fsr.needs_loader:
-  es: "Junto a la DLL no hay cargador: elegí amd_fidelityfx_loader_dx12.dll de la carpeta del juego"
+  es: "Junto a la DLL no hay cargador: elige amd_fidelityfx_loader_dx12.dll de la carpeta del juego"
   en: "There's no loader next to the DLL: choose amd_fidelityfx_loader_dx12.dll from the game folder"
 ps.extras.fsr.checking:
   es: Comprobando…

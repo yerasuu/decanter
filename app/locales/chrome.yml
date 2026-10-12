@@ -39,7 +39,7 @@ chrome.profile_form.pick:
   es: Elegir carpeta
   en: Choose folder
 chrome.profile_form.pick_title:
-  es: Elegí dónde vive la biblioteca de este perfil
+  es: Elige dónde vive la biblioteca de este perfil
   en: Choose where this profile's library lives
 chrome.profile_form.create:
   es: Crear
@@ -48,7 +48,7 @@ chrome.onboarding.title:
   es: Bienvenido a Decanter
   en: Welcome to Decanter
 chrome.onboarding.intro:
-  es: Creá un perfil para empezar — después podés sumarle cuentas de GOG (y de otras tiendas más adelante) desde Ajustes.
+  es: Crea un perfil para empezar — después puedes añadirle cuentas de GOG (y de otras tiendas más adelante) desde Ajustes.
   en: Create a profile to get started — you can add GOG accounts to it later (and other stores down the line) from Settings.
 chrome.onboarding.library:
   es: "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):"
