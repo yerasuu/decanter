@@ -89,6 +89,30 @@ ps.ports.origin.local:
 ps.ports.origin.cache:
   es: Precompilado, descargado de la caché del port
   en: Prebuilt, downloaded from the port's cache
+ps.ports.channel.release:
+  es: "Canal: versión estable"
+  en: "Channel: stable release"
+ps.ports.channel.release_at:
+  es: "Canal: versión estable · %{tag}"
+  en: "Channel: stable release · %{tag}"
+ps.ports.channel.behind:
+  es: "Canal: versión estable · %{tag} publicada, el checkout aún no está en ella"
+  en: "Channel: stable release · %{tag} published, the checkout isn't on it yet"
+ps.ports.channel.no_release:
+  es: "Canal: versión estable · aún no hay ninguna publicada: se sigue master y se compila en este equipo"
+  en: "Channel: stable release · none published yet: following master and building on this machine"
+ps.ports.channel.unknown:
+  es: "Canal: versión estable · no se pudo consultar la última versión: %{error}"
+  en: "Channel: stable release · couldn't check the latest release: %{error}"
+ps.ports.channel.testing:
+  es: "Canal: pruebas"
+  en: "Channel: testing"
+ps.ports.channel.testing_at:
+  es: "Canal: pruebas · commit %{commit}"
+  en: "Channel: testing · commit %{commit}"
+ps.ports.channel.fell_back:
+  es: "La versión estable precompilada no estaba disponible: se ha compilado en este equipo"
+  en: "The prebuilt stable release wasn't available: it was built on this machine"
 ps.ports.toolchains.host:
   es: herramientas del sistema
   en: system tools
@@ -251,6 +275,24 @@ ps.settings.sys_modules.none:
 ps.settings.sys_modules.description:
   es: "Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (BB_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno."
   en: "Optional: no game needs it today. A folder with your own dump of the console's modules (*.sprx, like libSceNgs2.sprx), only to compare against the port's own libraries (BB_LLE) or for a game that still needs a console module. decanter neither ships nor copies any."
+ps.settings.channel.title:
+  es: Canal de psport
+  en: psport channel
+ps.settings.channel.release.title:
+  es: Versión estable
+  en: Stable release
+ps.settings.channel.release.description:
+  es: "La última versión publicada de psport, descargada ya compilada."
+  en: "psport's latest published release, downloaded prebuilt."
+ps.settings.channel.testing.title:
+  es: Pruebas
+  en: Testing
+ps.settings.channel.testing.description:
+  es: "Cada cambio nuevo de psport en cuanto llega, compilado en este equipo."
+  en: "Every new psport change as soon as it lands, built on this machine."
+ps.settings.channel.save_error:
+  es: "No se pudo guardar el canal: %{error}"
+  en: "Couldn't save the channel: %{error}"
 ps.settings.open:
   es: Abrir
   en: Open

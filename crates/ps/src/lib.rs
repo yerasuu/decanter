@@ -19,6 +19,7 @@
 pub mod anyps5;
 pub mod bbport;
 pub mod binds;
+pub mod channel;
 pub mod cmake_cache;
 pub mod failures;
 mod files;

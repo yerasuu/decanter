@@ -61,6 +61,19 @@ impl Db {
         }
     }
 
+    /// Whether this library's psport follows every master commit, built
+    /// locally, rather than the tagged releases its CI publishes prebuilt —
+    /// off by default, since a release is the build upstream vouches for.
+    pub fn psport_testing(&self) -> Result<bool> {
+        let testing = self.setting("psport_channel")?.as_deref() == Some("testing");
+        tracing::debug!(testing, "read psport_channel setting");
+        Ok(testing)
+    }
+
+    pub fn set_psport_testing(&self, testing: bool) -> Result<()> {
+        self.set_setting("psport_channel", if testing { "testing" } else { "release" })
+    }
+
     /// The UI language's code (`es`, `en`), or `None` to follow the system
     /// locale.
     pub fn language(&self) -> Result<Option<String>> {

@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use decanter_ps::channel::Channel;
 use decanter_ps::paths;
 use decanter_ps::port::Port;
 use decanter_ps::toolchain::Toolchain;
@@ -14,7 +15,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, p
 use rust_i18n::t;
 
 use super::log::LogView;
-use crate::state::{BuildOrigin, JobKey, PortState, Ps, Stage};
+use crate::state::{BuildOrigin, JobKey, PortState, Ps, Stage, Track};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
@@ -71,6 +72,13 @@ impl PortsView {
         });
         let check = state.and_then(|state| state.check());
         let upstream = check.map(upstream_text);
+        let channel = port
+            .binary_cache()
+            .and(state)
+            .and_then(|state| state.channel().map(|channel| channel_text(channel, state)));
+        let fell_back = state
+            .is_some_and(|state| state.fell_back() && state.channel() == Some(Channel::Release))
+            .then(|| t!("ps.ports.channel.fell_back"));
         let needs_reset = check.is_some_and(
             |check| matches!(check, Ok(check) if matches!(check.plan, Plan::Rewritten | Plan::LocalCommits(_))),
         );
@@ -100,7 +108,9 @@ impl PortsView {
             )
             .children(progress.map(|fraction| progress_bar(("ps-port-progress", port as usize), Some(fraction), 4.)))
             .children(toolchain.map(theme::muted))
+            .children(channel.map(theme::muted))
             .children(origin.map(theme::muted))
+            .children(fell_back.map(theme::muted))
             .children(upstream.map(theme::muted))
             .child(
                 div()
@@ -180,6 +190,23 @@ fn stage_status(stage: &Stage) -> (Cow<'static, str>, Option<f64>) {
         Stage::Building => (t!("ps.ports.stage.building"), None),
         Stage::Ready => (t!("ps.ports.stage.ready"), None),
         Stage::Failed(message) => (message.clone().into(), None),
+    }
+}
+
+fn channel_text(channel: Channel, state: &PortState) -> Cow<'static, str> {
+    match (channel, state.track()) {
+        (Channel::Testing, _) => {
+            if let Some(Ok(check)) = state.check() {
+                t!("ps.ports.channel.testing_at", commit = check.head)
+            } else {
+                t!("ps.ports.channel.testing")
+            }
+        }
+        (Channel::Release, Some(Track::OnRelease(release))) => t!("ps.ports.channel.release_at", tag = release.tag),
+        (Channel::Release, Some(Track::Behind(release))) => t!("ps.ports.channel.behind", tag = release.tag),
+        (Channel::Release, Some(Track::NoRelease)) => t!("ps.ports.channel.no_release"),
+        (Channel::Release, Some(Track::Unknown(error))) => t!("ps.ports.channel.unknown", error = error),
+        (Channel::Release, None) => t!("ps.ports.channel.release"),
     }
 }
 

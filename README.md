@@ -99,15 +99,20 @@ keeps it up to date and rebuilds it when its checkout moves. It builds
 with the host's tools when they're there and falls back to its own Nix
 toolchain (nix-portable if the system has no Nix) when the host can't
 configure the port; after the next update of that port it tries the host
-again. psport's CI publishes each master commit's build as a Nix binary
-cache (the `nix-cache` release of yerasuu/psport); when the checkout is
-clean and on a commit that cache holds, decanter copies that build into
-its Nix store (rooted under `psport/toolchain/prebuilt/`) and runs it
-from there instead of building, and builds as above otherwise. Ports
-shows which of the two the current build is.
-`DECANTER_PS_BINARY_CACHE=<url>` points at another copy of the cache,
-for trying one served locally. Each game runs in its own process group and
-can be stopped from its row, its cover or its context menu.
+again. Each game runs in its own process group and can be stopped from
+its row, its cover or its context menu.
+
+Which psport builds a library runs is its "psport channel", set in the PS
+section's Ajustes. Stable release, the default, keeps the checkout on the
+`vX.Y.Z` tag that `latest-release` in psport's Nix binary cache (the
+`nix-cache` release of yerasuu/psport) names, and copies that tag's build
+into its Nix store (rooted under `psport/toolchain/prebuilt/`) instead of
+building; before the first release, or when the fetch fails, it builds as
+above and says so in Ports and the build log. Testing follows master and
+always builds locally. Switching moves the checkout and prepares the port
+again; Ports shows the channel with the tag or commit.
+`DECANTER_PS_BINARY_CACHE=<url>` (`http://` or `file://`) points at
+another copy of the cache, for trying one locally.
 
 Bloodborne is supported as upstream bbport ships it. Every other PS4
 title is experimental; six of the seven tested reach gameplay with

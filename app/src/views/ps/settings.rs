@@ -1,21 +1,26 @@
-//! Ajustes of the PS section: where this profile's dumps are read from, and
-//! the folder of the user's own system module dump.
+//! Ajustes of the PS section: where this profile's dumps are read from, the
+//! folder of the user's own system module dump, and which psport builds the
+//! library runs.
 
 use decanter_ps::bbport::LauncherSettings;
-use gpui::{AppContext as _, Context, Entity, Window, div, prelude::*};
+use decanter_ps::channel::Channel;
+use decanter_ps::port::Port;
+use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{ButtonKind, button};
+use crate::widgets::{ButtonKind, button, checkbox};
 
 /// `LauncherSettings` key; passed to bbport as `BB_SYS_MODULES`.
 const SYS_MODULES: &str = "sys_modules_dir";
 
 pub struct SettingsView {
+    ps: Entity<Ps>,
     /// Read off the UI thread when the view opens, after each change and
     /// whenever `Ps` changes.
     sys_modules: Option<String>,
+    channel: Option<Channel>,
     error: Option<String>,
 }
 
@@ -25,7 +30,9 @@ impl SettingsView {
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
         cx.observe(&ps, |this, _, cx| this.refresh(cx)).detach();
         let this = Self {
+            ps,
             sys_modules: None,
+            channel: None,
             error: None,
         };
         this.refresh(cx);
@@ -34,15 +41,16 @@ impl SettingsView {
 
     fn refresh(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let dir = cx
+            let (dir, channel) = cx
                 .background_spawn(async {
-                    LauncherSettings::load(&decanter_ps::paths::active())
-                        .text(SYS_MODULES)
-                        .map(str::to_owned)
+                    let root = decanter_ps::paths::active();
+                    let dir = LauncherSettings::load(&root).text(SYS_MODULES).map(str::to_owned);
+                    (dir, Channel::of(&root, Port::Bbport))
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.sys_modules = dir;
+                this.channel = Some(channel);
                 cx.notify();
             });
         })
@@ -72,6 +80,59 @@ impl SettingsView {
             });
         })
         .detach();
+    }
+
+    fn set_channel(&self, channel: Channel, cx: &mut Context<Self>) {
+        if self.channel == Some(channel) {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let saved = cx
+                .background_spawn(async move { channel.save(&decanter_ps::paths::active()) })
+                .await;
+            let _ = this.update(cx, |this, cx| match saved {
+                Ok(()) => {
+                    tracing::info!(?channel, "psport channel changed");
+                    this.error = None;
+                    this.channel = Some(channel);
+                    this.ps.update(cx, |ps, cx| ps.switch_channel(Port::Bbport, cx));
+                    cx.notify();
+                }
+                Err(err) => {
+                    tracing::warn!(?channel, %err, "could not save the psport channel");
+                    this.error = Some(t!("ps.settings.channel.save_error", error = err).into_owned());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn channel_row(&self, channel: Channel, last: bool, cx: &Context<Self>) -> impl IntoElement {
+        let (id, title, description) = match channel {
+            Channel::Release => (
+                "ps-channel-release",
+                t!("ps.settings.channel.release.title"),
+                t!("ps.settings.channel.release.description"),
+            ),
+            Channel::Testing => (
+                "ps-channel-testing",
+                t!("ps.settings.channel.testing.title"),
+                t!("ps.settings.channel.testing.description"),
+            ),
+        };
+        theme::list_row(id, last)
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| this.set_channel(channel, cx)))
+            .child(checkbox(self.channel == Some(channel)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .min_w_0()
+                    .child(SharedString::from(title))
+                    .child(theme::muted(description)),
+            )
     }
 
     fn pick_sys_modules(&self, cx: &mut Context<Self>) {
@@ -153,6 +214,12 @@ impl Render for SettingsView {
                     ),
                 )
                 .child(theme::muted(t!("ps.settings.sys_modules.description")))
+                .child(theme::h2(t!("ps.settings.channel.title")))
+                .child(
+                    theme::card()
+                        .child(self.channel_row(Channel::Release, false, cx))
+                        .child(self.channel_row(Channel::Testing, true, cx)),
+                )
                 .children(self.error.clone().map(theme::error)),
         )
     }

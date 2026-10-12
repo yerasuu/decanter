@@ -5,6 +5,7 @@
 //! profile never pays for it; kept after that, so jobs started from the
 //! section outlive switching to another one.
 
+mod channel;
 mod fsr;
 mod jobs;
 mod play;
@@ -20,6 +21,7 @@ use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
 use rust_i18n::t;
 
+pub use channel::Track;
 pub use fsr::DllOutcome;
 pub use jobs::{JobKey, label as job_label};
 pub use play::failure_message;

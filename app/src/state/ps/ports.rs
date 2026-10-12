@@ -1,12 +1,14 @@
 //! Getting a port ready without asking: toolchain, checkout and build, in
 //! that order, whenever something needs the port and it isn't ready — and
-//! keeping its checkout on upstream while the section is in use.
+//! keeping its checkout on upstream, or on its latest release
+//! ([`super::channel`]), while the section is in use.
 
 use std::io;
 use std::time::Duration;
 
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::Bbport;
+use decanter_ps::channel::Channel;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
 use decanter_ps::prebuilt;
@@ -19,6 +21,7 @@ use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
 use rust_i18n::t;
 
 use super::Ps;
+use super::channel::{self, Track};
 use super::jobs::{self, JobKey};
 
 /// How often upstream is checked once the PS section has been opened.
@@ -55,10 +58,15 @@ pub struct PortState {
     origin: Option<BuildOrigin>,
     /// With the library it was resolved for, since nix-portable lives in each one.
     toolchain: Option<(Root, Toolchain)>,
-    check: Option<Result<Check, String>>,
+    pub(super) check: Option<Result<Check, String>>,
+    pub(super) channel: Option<Channel>,
+    pub(super) track: Option<Track>,
+    /// Release built locally because its prebuilt build was not there.
+    fell_back: bool,
     /// With the library it prepares in, since each library has its own checkout.
     preparing: Option<(Root, Shared<Task<Prepared>>)>,
-    updating: Option<Shared<Task<()>>>,
+    /// Whether the checkout moved.
+    updating: Option<Shared<Task<bool>>>,
 }
 
 impl PortState {
@@ -68,6 +76,9 @@ impl PortState {
             origin: None,
             toolchain: None,
             check: None,
+            channel: None,
+            track: None,
+            fell_back: false,
             preparing: None,
             updating: None,
         }
@@ -87,6 +98,18 @@ impl PortState {
 
     pub const fn check(&self) -> Option<&Result<Check, String>> {
         self.check.as_ref()
+    }
+
+    pub const fn channel(&self) -> Option<Channel> {
+        self.channel
+    }
+
+    pub const fn track(&self) -> Option<&Track> {
+        self.track.as_ref()
+    }
+
+    pub const fn fell_back(&self) -> bool {
+        self.fell_back
     }
 
     pub const fn is_busy(&self) -> bool {
@@ -163,6 +186,22 @@ impl Ps {
                     check_and_update(&this, port, &paths::active(), cx).await;
                 }
                 cx.background_executor().timer(UPDATE_INTERVAL).await;
+            }
+        })
+        .detach();
+    }
+
+    /// After Ajustes saved another channel: the checkout moves to it, then
+    /// the port is prepared on it.
+    pub fn switch_channel(&mut self, port: Port, cx: &mut Context<Self>) {
+        let root = paths::active();
+        cx.spawn(async move |this, cx| {
+            check_and_update(&this, port, &root, cx).await;
+            let Ok(prepared) = this.update(cx, |this, cx| this.prepare(port, &root, cx)) else {
+                return;
+            };
+            if let Err(err) = prepared.await {
+                tracing::warn!(port = port.name(), error = err, "port not ready on its new channel");
             }
         })
         .detach();
@@ -292,10 +331,18 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         if !finished.succeeded() {
             return Err(fail(this, port, &PortError::Clone, cx));
         }
+        if channel::load(this, port, root, cx).await == Channel::Release {
+            channel::settle_clone(this, port, root, cx).await;
+        }
     }
 
     let built = match port {
-        Port::Bbport => Bbport::new(root.clone()).is_built_with(&toolchain).await,
+        // Testing runs only what it built itself.
+        Port::Bbport => {
+            let bbport = Bbport::new(root.clone());
+            bbport.is_built_with(&toolchain).await
+                && (channel::load(this, port, root, cx).await == Channel::Release || bbport.prebuilt().await.is_none())
+        }
         Port::AnyPs5 => AnyPs5::new(root.clone()).is_built_with(&toolchain).await,
     };
     let toolchain = if built {
@@ -315,6 +362,42 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     Ok(toolchain)
 }
 
+/// Release's prebuilt build when it can be fetched, else why the port is
+/// built locally, for the build log.
+async fn prebuilt_or_reason(
+    this: &WeakEntity<Ps>,
+    port: Port,
+    root: &Root,
+    toolchain: &Toolchain,
+    cx: &mut AsyncApp,
+) -> Result<Toolchain, Option<&'static str>> {
+    let channel = channel::load(this, port, root, cx).await;
+    let fetched = match channel {
+        Channel::Release => fetch_prebuilt(this, port, root, toolchain, cx).await,
+        Channel::Testing => None,
+    };
+    let _ = this.update(cx, |this, cx| {
+        let state = this.ports.entry(port).or_insert_with(PortState::new);
+        state.fell_back = channel == Channel::Release && fetched.is_none();
+        if let Some(nix) = &fetched {
+            state.toolchain = Some((root.clone(), nix.clone()));
+            state.origin = Some(BuildOrigin::Cache);
+        }
+        cx.notify();
+    });
+    match (channel, fetched) {
+        (_, Some(nix)) => Ok(nix),
+        (Channel::Release, None) => {
+            tracing::warn!(
+                port = port.name(),
+                "release channel without a prebuilt build to fetch; building locally"
+            );
+            Err(Some("local: no prebuilt release build to fetch"))
+        }
+        (Channel::Testing, None) => Err(port.binary_cache().map(|_| "local: testing channel")),
+    }
+}
+
 /// Returns the toolchain that built it, nix's when the host's tools could
 /// not configure the port or when its build came from the binary cache.
 async fn build(
@@ -324,15 +407,10 @@ async fn build(
     mut toolchain: Toolchain,
     cx: &mut AsyncApp,
 ) -> Result<Toolchain, PortError> {
-    if let Some(nix) = fetch_prebuilt(this, port, root, &toolchain, cx).await {
-        let _ = this.update(cx, |this, cx| {
-            let state = this.ports.entry(port).or_insert_with(PortState::new);
-            state.toolchain = Some((root.clone(), nix.clone()));
-            state.origin = Some(BuildOrigin::Cache);
-            cx.notify();
-        });
-        return Ok(nix);
-    }
+    let local_reason = match prebuilt_or_reason(this, port, root, &toolchain, cx).await {
+        Ok(nix) => return Ok(nix),
+        Err(reason) => reason,
+    };
     set_stage(this, port, Stage::Building, cx);
     let for_reset = port.checkout(root);
     match cx
@@ -356,7 +434,8 @@ async fn build(
             Ok(command) => command,
             Err(err) => return Err(PortError::Environment(err)),
         };
-        let facts = jobs::port_facts(root, port, Some(&toolchain)).await;
+        let mut facts = jobs::port_facts(root, port, Some(&toolchain)).await;
+        facts.extend(local_reason.map(|reason| ("build", reason.to_owned())));
         let finished = jobs::run(this, root, JobKey::Port(port), JobKind::Build, facts, command, None, cx).await;
         if finished.succeeded() {
             break;
@@ -571,31 +650,21 @@ async fn check_and_update(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &m
     if !tokio::fs::try_exists(&checkout).await.unwrap_or(false) {
         return;
     }
+    if channel::load(this, port, root, cx).await == Channel::Release && channel::follow(this, port, root, cx).await {
+        return;
+    }
     let check = updater::check(&checkout, port.upstream()).await;
     let fast_forward = matches!(&check, Ok(check) if check.plan == Plan::FastForward);
     let branch = check.as_ref().map(|check| check.branch.clone()).unwrap_or_default();
-    let updating = this
-        .update(cx, |this, cx| {
-            // Never under a running game or build: they read the checkout.
-            let idle = !this.jobs.values().any(|job| job.read(cx).is_running())
-                && !this.ports.values().any(PortState::is_busy);
-            let state = this.ports.entry(port).or_insert_with(PortState::new);
-            state.check = Some(check);
-            cx.notify();
-            if !(fast_forward && idle) {
-                return None;
-            }
-            let previous = std::mem::replace(&mut state.stage, Stage::Updating);
-            let root = root.clone();
-            let task = cx
-                .spawn(async move |this, cx| apply_fast_forward(&this, port, &root, &branch, previous, cx).await)
-                .shared();
-            state.updating = Some(task.clone());
-            Some(task)
-        })
-        .ok()
-        .flatten();
-    let Some(updating) = updating else {
+    let _ = this.update(cx, |this, cx| {
+        this.ports.entry(port).or_insert_with(PortState::new).check = Some(check);
+        cx.notify();
+    });
+    if !fast_forward {
+        return;
+    }
+    let command = updater::fast_forward_command(&checkout, &branch);
+    let Some(updating) = start_update(this, port, root, command, cx) else {
         return;
     };
     updating.await;
@@ -606,17 +675,45 @@ async fn check_and_update(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &m
     });
 }
 
-/// Held as the port's `updating` task, so a prepare arriving meanwhile
-/// waits for it instead of building the checkout git is moving.
-async fn apply_fast_forward(
+/// Moves the checkout with `command` and builds it again, unless a game or a
+/// build is running: they read the checkout. Held as the port's `updating`
+/// task, so a prepare arriving meanwhile waits for it instead of building
+/// the checkout git is moving.
+pub(super) fn start_update(
     this: &WeakEntity<Ps>,
     port: Port,
     root: &Root,
-    branch: &str,
+    command: tokio::process::Command,
+    cx: &mut AsyncApp,
+) -> Option<Shared<Task<bool>>> {
+    this.update(cx, |this, cx| {
+        let idle =
+            !this.jobs.values().any(|job| job.read(cx).is_running()) && !this.ports.values().any(PortState::is_busy);
+        if !idle {
+            return None;
+        }
+        let state = this.ports.entry(port).or_insert_with(PortState::new);
+        let previous = std::mem::replace(&mut state.stage, Stage::Updating);
+        let root = root.clone();
+        let task = cx
+            .spawn(async move |this, cx| apply_update(&this, port, &root, command, previous, cx).await)
+            .shared();
+        state.updating = Some(task.clone());
+        cx.notify();
+        Some(task)
+    })
+    .ok()
+    .flatten()
+}
+
+async fn apply_update(
+    this: &WeakEntity<Ps>,
+    port: Port,
+    root: &Root,
+    command: tokio::process::Command,
     previous: Stage,
     cx: &mut AsyncApp,
-) {
-    let command = updater::fast_forward_command(&port.checkout(root), branch);
+) -> bool {
     let facts = jobs::port_facts(root, port, None).await;
     let finished = jobs::run(
         this,
@@ -629,8 +726,9 @@ async fn apply_fast_forward(
         cx,
     )
     .await;
-    if finished.succeeded() {
-        tracing::info!(port = port.name(), "port fast-forwarded to upstream");
+    let moved = finished.succeeded();
+    if moved {
+        tracing::info!(port = port.name(), "port checkout moved");
         rebuild(this, port, root, cx).await;
     }
     let _ = this.update(cx, |this, cx| {
@@ -641,4 +739,5 @@ async fn apply_fast_forward(
         state.updating = None;
         cx.notify();
     });
+    moved
 }
