@@ -18,6 +18,8 @@ use gpui::{
     Subscription, Window, div, img, list, point, prelude::*, px, rgb,
 };
 
+use rust_i18n::t;
+
 use super::context_menu::{MenuTarget, auto_tag};
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{
@@ -102,18 +104,18 @@ fn available_storefronts(entries: &[&LibraryEntry]) -> Vec<Storefront> {
     found
 }
 
-const fn storefront_label(storefront: Storefront) -> &'static str {
+fn storefront_label(storefront: Storefront) -> std::borrow::Cow<'static, str> {
     match storefront {
         // A library entry with no storefront is a game added from outside
         // one, which is what the filter calls it.
-        Storefront::Unspecified => "Externos",
-        Storefront::Steam => "Steam",
-        Storefront::EpicGames => "Epic Games",
-        Storefront::Gog => "GOG",
-        Storefront::AmazonGames => "Amazon Games",
-        Storefront::EaApp => "EA App",
-        Storefront::UbisoftConnect => "Ubisoft Connect",
-        Storefront::BattleNet => "Battle.net",
+        Storefront::Unspecified => t!("library.filters.store.external"),
+        Storefront::Steam => "Steam".into(),
+        Storefront::EpicGames => "Epic Games".into(),
+        Storefront::Gog => "GOG".into(),
+        Storefront::AmazonGames => "Amazon Games".into(),
+        Storefront::EaApp => "EA App".into(),
+        Storefront::UbisoftConnect => "Ubisoft Connect".into(),
+        Storefront::BattleNet => "Battle.net".into(),
     }
 }
 
@@ -159,6 +161,8 @@ struct RowsKey {
     collapsed: HashSet<String>,
     renaming: Option<String>,
     state: LibraryState,
+    /// The rows hold translated text (messages, shelf titles).
+    locale: String,
 }
 
 struct ShelfHead {
@@ -174,7 +178,7 @@ struct ShelfHead {
 /// One line of the virtual list: the shelves flattened, so only the rows
 /// on screen are laid out — and only their icons fetched.
 enum Row {
-    Message(&'static str),
+    Message(SharedString),
     Error(String),
     Rename,
     Head(ShelfHead),
@@ -276,14 +280,14 @@ impl SidebarView {
         cx.observe(&state.session, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
         cx.observe(&model, |_, _, cx| cx.notify()).detach();
-        let search = cx.new(|cx| TextInput::new("Buscar...", cx).text_size(12.));
+        let search = cx.new(|cx| TextInput::new(t!("library.sidebar.search"), cx).text_size(12.));
         cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Changed) {
                 cx.notify();
             }
         })
         .detach();
-        let save_name = cx.new(|cx| TextInput::new("Nombre de la coleccion", cx));
+        let save_name = cx.new(|cx| TextInput::new(t!("library.collections.name_placeholder"), cx));
         cx.subscribe(&save_name, |this, input, event: &InputEvent, cx| match event {
             InputEvent::Submit => this.save_dynamic_collection(&input, cx),
             InputEvent::Cancel => {
@@ -592,11 +596,11 @@ impl SidebarView {
         let installed_only = filters.states.contains(&PlayState::Installed);
         let entity = cx.entity();
         let kind_options = [
-            ("games", "Juegos"),
-            ("games_extras", "Juegos y extras"),
-            ("extras", "Extras"),
-            ("movies", "Peliculas"),
-            ("all", "Todo"),
+            ("games", t!("library.sidebar.kind.games")),
+            ("games_extras", t!("library.sidebar.kind.games_extras")),
+            ("extras", t!("library.sidebar.kind.extras")),
+            ("movies", t!("library.sidebar.kind.movies")),
+            ("all", t!("library.sidebar.kind.all")),
         ]
         .map(|(value, label)| (SharedString::from(value), SharedString::from(label)));
         let has_search = !self.search.read(cx).text().is_empty();
@@ -626,7 +630,7 @@ impl SidebarView {
             // the two never disagree.
             .child(
                 quick_toggle("quick-recent", emoji(Emoji::Fire, 13.), recent)
-                    .tooltip(tooltip("Ordenar por actividad reciente"))
+                    .tooltip(tooltip(t!("library.sidebar.sort_recent")))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.update_filters(cx, |filters| {
                             filters.sort = if filters.sort == Sort::RecentlyPlayed {
@@ -639,7 +643,7 @@ impl SidebarView {
             )
             .child(
                 quick_toggle("quick-installed", "▶", installed_only)
-                    .tooltip(tooltip("Mostrar solo instalados"))
+                    .tooltip(tooltip(t!("library.sidebar.installed_only")))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.update_filters(cx, |filters| {
                             if !filters.states.insert(PlayState::Installed) {
@@ -650,7 +654,7 @@ impl SidebarView {
             )
             .child(
                 quick_toggle("quick-new-collection", "+", false)
-                    .tooltip(tooltip("Nueva coleccion"))
+                    .tooltip(tooltip(t!("library.collections.new")))
                     .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
                         let position = event.position();
                         this.model.update(cx, |model, cx| {
@@ -667,7 +671,7 @@ impl SidebarView {
             .when(has_search, |row| {
                 row.child(
                     search_button("search-clear", false)
-                        .tooltip(tooltip("Limpiar busqueda"))
+                        .tooltip(tooltip(t!("library.sidebar.clear_search")))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.search.update(cx, |search, cx| search.set_text("", cx));
                             cx.notify();
@@ -677,7 +681,7 @@ impl SidebarView {
             })
             .child(
                 search_button("filter-toggle", filter_active)
-                    .tooltip(tooltip("Filtros"))
+                    .tooltip(tooltip(t!("library.sidebar.filters")))
                     .on_click(cx.listener(|this, _, window, cx| {
                         let open = this.panel_open;
                         this.set_panel(!open, window, cx);
@@ -728,6 +732,7 @@ impl SidebarView {
             collapsed: self.collapsed.clone(),
             renaming: self.rename.as_ref().map(|(id, ..)| id.clone()),
             state: library.state.clone(),
+            locale: rust_i18n::locale().to_string(),
         };
         if self.rows_key.as_ref() == Some(&key) {
             return;
@@ -735,7 +740,7 @@ impl SidebarView {
         let cache = &self.cache;
         let mut rows = Vec::new();
         match &key.state {
-            LibraryState::Idle => rows.push(Row::Message("Elegi un perfil arriba.")),
+            LibraryState::Idle => rows.push(Row::Message(t!("library.pick_profile").into())),
             LibraryState::Failed(err) => rows.push(Row::Error(err.clone())),
             // `Loading` never reaches here — the library page shows its own
             // full-screen splash for that.
@@ -758,7 +763,7 @@ impl SidebarView {
                     .cloned()
                     .collect();
                 if visible.is_empty() {
-                    rows.push(Row::Message("Sin resultados."));
+                    rows.push(Row::Message(t!("library.sidebar.no_results").into()));
                 } else {
                     sort_entries(&mut visible, key.filters.sort, &cache.stats);
                     let shelves = shelves::build(
@@ -828,7 +833,7 @@ impl SidebarView {
             Row::Message(text) => div()
                 .px(px(14.))
                 .text_color(rgb(theme::TEXT_MUTED))
-                .child(*text)
+                .child(text.clone())
                 .into_any_element(),
             Row::Error(err) => div().mx(px(14.)).child(theme::error(err.clone())).into_any_element(),
             Row::Rename => match &self.rename {
@@ -863,7 +868,7 @@ impl SidebarView {
                 .text_color(rgb(theme::TEXT_DIM))
                 .text_size(px(12.))
                 .when(dims(shelf), |empty| empty.opacity(0.45))
-                .child("Vacia")
+                .child(t!("library.sidebar.empty_shelf"))
                 .into_any_element(),
             Row::Spacer => div().h_2().into_any_element(),
         }
@@ -1075,7 +1080,7 @@ impl SidebarView {
                         .flex_none()
                         .rounded_full()
                         .bg(rgb(theme::ACCENT_GREEN))
-                        .tooltip(tooltip("Instalado")),
+                        .tooltip(tooltip(t!("library.sidebar.installed"))),
                 )
             })
             .on_drag(
@@ -1108,7 +1113,7 @@ impl SidebarView {
                     let (product_ids, title) = if this.marked.contains(&menu_id) && this.marked.len() > 1 {
                         (
                             this.marked.iter().cloned().collect(),
-                            format!("{} juegos", this.marked.len()),
+                            t!("library.menu.games", count = this.marked.len()).into_owned(),
                         )
                     } else {
                         (vec![menu_id.clone()], menu_title.clone())
@@ -1229,18 +1234,18 @@ impl SidebarView {
             )
         };
 
-        let states = group("Estado", "Propiedades del mismo juego: marcar dos acota.").children(
+        let states = group(&t!("library.filters.state.title"), &t!("library.filters.state.note")).children(
             [
-                (PlayState::Installed, "Instalados"),
-                (PlayState::Played, "Jugados"),
-                (PlayState::Unplayed, "Sin jugar"),
-                (PlayState::Favorite, "Favoritos"),
+                (PlayState::Installed, "installed", t!("library.filters.state.installed")),
+                (PlayState::Played, "played", t!("library.filters.state.played")),
+                (PlayState::Unplayed, "unplayed", t!("library.filters.state.unplayed")),
+                (PlayState::Favorite, "favorite", t!("library.filters.state.favorite")),
             ]
             .into_iter()
-            .map(|(state, label)| {
+            .map(|(state, id, label)| {
                 check_row(
-                    format!("check-state-{label}").into(),
-                    label.to_owned(),
+                    format!("check-state-{id}").into(),
+                    label.into_owned(),
                     tallies.states.get(&state).copied().unwrap_or(0),
                     current.states.contains(&state),
                     Box::new(move |filters| {
@@ -1251,18 +1256,38 @@ impl SidebarView {
                 )
             }),
         );
-        let achievements = group("Logros", "Segun lo que Decanter tiene cacheado.").children(
+        let achievements = group(
+            &t!("library.filters.achievements.title"),
+            &t!("library.filters.achievements.note"),
+        )
+        .children(
             [
-                (AchievementState::Complete, "Completados"),
-                (AchievementState::InProgress, "En progreso"),
-                (AchievementState::NotStarted, "Sin empezar"),
-                (AchievementState::Unmeasured, "Sin logros"),
+                (
+                    AchievementState::Complete,
+                    "complete",
+                    t!("library.filters.achievements.complete"),
+                ),
+                (
+                    AchievementState::InProgress,
+                    "in-progress",
+                    t!("library.filters.achievements.in_progress"),
+                ),
+                (
+                    AchievementState::NotStarted,
+                    "not-started",
+                    t!("library.filters.achievements.not_started"),
+                ),
+                (
+                    AchievementState::Unmeasured,
+                    "unmeasured",
+                    t!("library.filters.achievements.unmeasured"),
+                ),
             ]
             .into_iter()
-            .map(|(achievement, label)| {
+            .map(|(achievement, id, label)| {
                 check_row(
-                    format!("check-achievement-{label}").into(),
-                    label.to_owned(),
+                    format!("check-achievement-{id}").into(),
+                    label.into_owned(),
                     tallies.achievements.get(&achievement).copied().unwrap_or(0),
                     current.achievements.contains(&achievement),
                     Box::new(move |filters| {
@@ -1273,20 +1298,9 @@ impl SidebarView {
                 )
             }),
         );
-        let sort_options = [
-            ("title", "Nombre"),
-            ("played", "Mas jugado"),
-            ("recent", "Jugado recientemente"),
-            ("completion", "Logros"),
-            ("release", "Lanzamiento"),
-            ("size", "Tamano en disco"),
-            ("rating", "Calificacion"),
-            ("added", "Fecha agregada"),
-        ]
-        .map(|(value, label)| (SharedString::from(value), SharedString::from(label)));
         let sort_entity = entity.clone();
-        let mut order = group("Orden de la lista", "Cada estanteria de portadas lleva el suyo.").child(
-            Select::new("filter-sort", sort_options, current.sort.value())
+        let mut order = group(&t!("library.filters.sort.heading"), &t!("library.filters.sort.note")).child(
+            Select::new("filter-sort", Sort::options(), current.sort.value())
                 .style(SelectStyle::Group)
                 .full_width()
                 .on_change(move |value, _, cx| {
@@ -1295,31 +1309,37 @@ impl SidebarView {
                 }),
         );
         if !collections.is_empty() {
-            let options = std::iter::once((SharedString::default(), SharedString::from("Cualquier coleccion"))).chain(
-                collections.iter().map(|(id, name)| {
-                    let count = tallies.collections.get(id).copied().unwrap_or(0);
-                    (
-                        SharedString::from(id.clone()),
-                        SharedString::from(format!("{name} ({count})")),
-                    )
-                }),
-            );
-            let collection_entity = entity.clone();
-            order = order.child(div().mt_4().child(group_title("Coleccion"))).child(
-                Select::new(
-                    "filter-collection",
-                    options,
-                    current.collection.clone().unwrap_or_default(),
+            let options = std::iter::once((
+                SharedString::default(),
+                SharedString::from(t!("library.filters.collection.any")),
+            ))
+            .chain(collections.iter().map(|(id, name)| {
+                let count = tallies.collections.get(id).copied().unwrap_or(0);
+                (
+                    SharedString::from(id.clone()),
+                    SharedString::from(format!("{name} ({count})")),
                 )
-                .style(SelectStyle::Group)
-                .full_width()
-                .on_change(move |value, _, cx| {
-                    let value = value.to_string();
-                    collection_entity.update(cx, |this, cx| {
-                        this.update_filters(cx, |filters| filters.collection = (!value.is_empty()).then_some(value));
-                    });
-                }),
-            );
+            }));
+            let collection_entity = entity.clone();
+            order = order
+                .child(div().mt_4().child(group_title(&t!("library.filters.collection.title"))))
+                .child(
+                    Select::new(
+                        "filter-collection",
+                        options,
+                        current.collection.clone().unwrap_or_default(),
+                    )
+                    .style(SelectStyle::Group)
+                    .full_width()
+                    .on_change(move |value, _, cx| {
+                        let value = value.to_string();
+                        collection_entity.update(cx, |this, cx| {
+                            this.update_filters(cx, |filters| {
+                                filters.collection = (!value.is_empty()).then_some(value);
+                            });
+                        });
+                    }),
+                );
         }
 
         let mut grid = div()
@@ -1336,8 +1356,8 @@ impl SidebarView {
         if accounts.len() > 1 {
             grid = grid.child(
                 group(
-                    "Cuenta",
-                    "Este perfil tiene mas de una — marcar dos amplia el resultado.",
+                    &t!("library.filters.account.title"),
+                    &t!("library.filters.account.note"),
                 )
                 .children(accounts.into_iter().map(|(id, name)| {
                     let toggle_id = id.clone();
@@ -1359,21 +1379,23 @@ impl SidebarView {
         // where people look when a second one, or external games, arrive.
         if !storefronts.is_empty() {
             grid = grid.child(
-                group("Tienda", "Alternativas: marcar dos amplia el resultado.").children(storefronts.into_iter().map(
-                    |storefront| {
-                        check_row(
-                            format!("check-store-{}", storefront.as_str_name()).into(),
-                            storefront_label(storefront).to_owned(),
-                            tallies.storefronts.get(&storefront).copied().unwrap_or(0),
-                            current.storefronts.contains(&storefront),
-                            Box::new(move |filters| {
-                                if !filters.storefronts.insert(storefront) {
-                                    filters.storefronts.remove(&storefront);
-                                }
-                            }),
-                        )
-                    },
-                )),
+                group(
+                    &t!("library.filters.store.title"),
+                    &t!("library.filters.alternatives_note"),
+                )
+                .children(storefronts.into_iter().map(|storefront| {
+                    check_row(
+                        format!("check-store-{}", storefront.as_str_name()).into(),
+                        storefront_label(storefront).into_owned(),
+                        tallies.storefronts.get(&storefront).copied().unwrap_or(0),
+                        current.storefronts.contains(&storefront),
+                        Box::new(move |filters| {
+                            if !filters.storefronts.insert(storefront) {
+                                filters.storefronts.remove(&storefront);
+                            }
+                        }),
+                    )
+                })),
             );
         }
 
@@ -1382,7 +1404,7 @@ impl SidebarView {
         let panel_width = (window.viewport_size().width.as_f32() - SIDEBAR_WIDTH).min(720.);
         let genre_columns = (((panel_width - 48. + 26.) / (160. + 26.)).floor() as u16).max(1);
         let genre_body = if genres.is_empty() {
-            theme::muted("Sin generos todavia.").into_any_element()
+            theme::muted(t!("library.filters.genre.none")).into_any_element()
         } else {
             div()
                 .grid()
@@ -1405,9 +1427,12 @@ impl SidebarView {
                 .into_any_element()
         };
         grid = grid.child(
-            group("Genero", "Alternativas: marcar dos amplia el resultado.")
-                .col_span_full()
-                .child(genre_body),
+            group(
+                &t!("library.filters.genre.title"),
+                &t!("library.filters.alternatives_note"),
+            )
+            .col_span_full()
+            .child(genre_body),
         );
 
         let head = div()
@@ -1421,12 +1446,12 @@ impl SidebarView {
                 theme::display(22.)
                     .flex_1()
                     .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child("FILTROS DE BIBLIOTECA"),
+                    .child(t!("library.filters.heading")),
             )
             .when(!current.is_default(), |head| {
                 head.child(
                     link_button("filters-clear")
-                        .child("Limpiar filtros")
+                        .child(t!("library.filters.clear"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             // Sort survives a reset: it's a view preference, not
                             // a constraint the user is clearing.
@@ -1467,7 +1492,7 @@ impl SidebarView {
                     window.focus(&this.save_name.focus_handle(cx), cx);
                     cx.notify();
                 }))
-                .child("Guardar como coleccion dinamica")
+                .child(t!("library.filters.save_dynamic"))
                 .into_any_element()
         };
         let foot = div()
@@ -1484,10 +1509,16 @@ impl SidebarView {
                     .flex_1()
                     .text_size(px(12.))
                     .text_color(rgb(theme::TEXT_MUTED))
-                    .child(if active == 0 {
-                        format!("{total} productos")
-                    } else {
-                        format!("{matched} de {total} coinciden · {active} filtros")
+                    .child(match (active, total) {
+                        (0, 1) => t!("library.filters.products.one", count = total),
+                        (0, _) => t!("library.filters.products.other", count = total),
+                        (1, _) => t!("library.filters.matched.one", matched = matched, total = total),
+                        _ => t!(
+                            "library.filters.matched.other",
+                            matched = matched,
+                            total = total,
+                            active = active
+                        ),
                     }),
             )
             .child(save);
@@ -1678,5 +1709,5 @@ fn add_game_footer() -> impl IntoElement {
         .hover(|row| row.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_BRIGHT)))
         .on_click(|_, _, cx| crate::views::external::open(None, cx))
         .child(div().text_size(px(16.)).child("+"))
-        .child("AGREGAR UN JUEGO")
+        .child(t!("library.sidebar.add_game"))
 }

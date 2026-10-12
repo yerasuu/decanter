@@ -128,11 +128,11 @@ impl Store {
         format!("user-{}", last.saturating_add(1))
     }
 
-    /// An editable copy of `source`, named after it.
-    pub fn copy_pad(&mut self, source: &PadLayout) -> PadLayout {
+    /// An editable copy of `source` under `name`.
+    pub fn copy_pad(&mut self, source: &PadLayout, name: String) -> PadLayout {
         let copy = PadLayout {
             id: Self::next_id(self.pad.iter().map(|layout| layout.id.as_str())),
-            name: format!("{} (copia)", source.name),
+            name,
             lines: source.lines.clone(),
             builtin: false,
         };
@@ -140,11 +140,12 @@ impl Store {
         copy
     }
 
-    pub fn copy_keys(&mut self, target: Target, source: &KeyLayout) -> KeyLayout {
+    /// An editable copy of `source` under `name`.
+    pub fn copy_keys(&mut self, target: Target, source: &KeyLayout, name: String) -> KeyLayout {
         let keys = self.keys_mut(target);
         let copy = KeyLayout {
             id: Self::next_id(keys.iter().map(|layout| layout.id.as_str())),
-            name: format!("{} (copia)", source.name),
+            name,
             text: source.text.clone(),
             builtin: false,
         };

@@ -67,9 +67,9 @@ pub enum Toolchain {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("no se pudo descargar nix-portable: {0}")]
+    #[error("could not download nix-portable: {0}")]
     Download(#[from] reqwest::Error),
-    #[error("la descarga de nix-portable no coincide con su suma fijada")]
+    #[error("the nix-portable download does not match its pinned checksum")]
     Checksum,
     #[error("{0}")]
     Io(#[from] io::Error),
@@ -125,15 +125,6 @@ impl Toolchain {
     /// was prepared this session) is built again rather than run stale.
     pub async fn build_stamp(&self, checkout: &Path) -> String {
         format!("{} {}", self.id(), crate::failures::full_commit_of(checkout).await)
-    }
-
-    /// For the UI's informative line; there is no choice to make.
-    pub const fn label(&self) -> &'static str {
-        match self {
-            Self::Host => "herramientas del sistema",
-            Self::SystemNix(_) => "nix del sistema",
-            Self::Portable(_) => "nix-portable de decanter",
-        }
     }
 
     /// `script` run by bash inside `port`'s environment, from its checkout

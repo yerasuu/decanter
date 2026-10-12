@@ -200,7 +200,7 @@ pub fn progress_bar(id: impl Into<ElementId>, fraction: Option<f64>, height: f32
 /// `.tabs`: a row of uppercase labels, the active one underlined in blue.
 pub fn tabs<T: Copy + PartialEq + 'static>(
     id: &'static str,
-    items: &[(T, &'static str)],
+    items: &[(T, impl AsRef<str>)],
     active: T,
     on_select: impl Fn(T, &mut Window, &mut App) + Clone + 'static,
 ) -> Div {
@@ -209,7 +209,8 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
         .gap_6()
         .border_b_1()
         .border_color(rgb(theme::LINE))
-        .children(items.iter().enumerate().map(|(index, &(tab, label))| {
+        .children(items.iter().enumerate().map(|(index, (item, label))| {
+            let tab = *item;
             let selected = tab == active;
             let on_select = on_select.clone();
             div()
@@ -232,7 +233,7 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
                 .cursor_pointer()
                 .hover(|tab| tab.text_color(rgb(theme::TEXT_BRIGHT)))
                 .on_click(move |_, window, cx| on_select(tab, window, cx))
-                .child(label.to_uppercase())
+                .child(label.as_ref().to_uppercase())
         }))
 }
 

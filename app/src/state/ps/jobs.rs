@@ -9,6 +9,7 @@ use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job};
 use decanter_ps::run_log::RunLog;
 use gpui::{AppContext as _, AsyncApp, Entity, WeakEntity};
+use rust_i18n::t;
 use tokio::process::Command;
 
 use super::Ps;
@@ -66,7 +67,7 @@ pub async fn run(
         Ok(log) => (Some(log), None),
         Err(err) => {
             tracing::warn!(label, %err, "could not create the job's log file");
-            (None, Some(format!("No se pudo guardar el log completo: {err}")))
+            (None, Some(t!("ps.jobs.log_error", error = err).into_owned()))
         }
     };
     let (mut job, mut events) = match process::spawn(label, command) {
@@ -79,7 +80,7 @@ pub async fn run(
                     tracing::warn!(label, %err, "could not finish the job's log file");
                 }
             }
-            let job = cx.new(|_| Job::failed(label, format!("No se pudo iniciar: {err}")));
+            let job = cx.new(|_| Job::failed(label, t!("ps.jobs.start_error", error = err).into_owned()));
             let _ = ps.update(cx, |ps, cx| {
                 ps.jobs.insert(key, job);
                 cx.notify();

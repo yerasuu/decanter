@@ -9,7 +9,9 @@ use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
 use decanter_ps::layouts::Store;
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
+use super::layout_name;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
@@ -51,7 +53,7 @@ fn gamepad_setting() -> Option<&'static Setting> {
 
 impl GamepadView {
     pub fn new(ps: &Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        let name = cx.new(|cx| TextInput::new("Nombre del layout", cx));
+        let name = cx.new(|cx| TextInput::new(t!("ps.layouts.name_placeholder"), cx));
         cx.subscribe(&name, |this, name, event, cx| {
             if matches!(event, InputEvent::Submit) {
                 let text = name.read(cx).text().trim().to_owned();
@@ -62,7 +64,7 @@ impl GamepadView {
         let load = cx.background_spawn(async {
             let store = match Store::load() {
                 Ok(store) => store,
-                Err(err) => return Err(format!("No se pudieron leer los layouts: {err}")),
+                Err(err) => return Err(t!("ps.layouts.read_error", error = err).into_owned()),
             };
             Ok(Loaded {
                 current: pad::current(&decanter_ps::paths::active(), &store.pad_layouts()),
@@ -140,7 +142,9 @@ impl GamepadView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.error = result.err().map(|err| format!("No se pudo guardar: {err}"));
+                this.error = result
+                    .err()
+                    .map(|err| t!("ps.gamepad.save_error", error = err).into_owned());
                 cx.notify();
             });
         })
@@ -165,7 +169,11 @@ impl GamepadView {
             return;
         };
         let source = loaded.layout().unwrap_or_else(|| loaded.custom.clone());
-        let copy = loaded.store.copy_pad(&source);
+        let name = t!(
+            "ps.layouts.copy_name",
+            name = layout_name(&source.id, source.builtin, &source.name)
+        );
+        let copy = loaded.store.copy_pad(&source, name.into_owned());
         self.apply(copy, true, cx);
     }
 
@@ -214,10 +222,13 @@ impl GamepadView {
         Select::new(
             "ps-button-icons",
             [
-                (SharedString::from("pad"), SharedString::from("Del mando (A/B/X/Y)")),
+                (
+                    SharedString::from("pad"),
+                    SharedString::from(t!("ps.gamepad.icons.pad")),
+                ),
                 (
                     SharedString::from("original"),
-                    SharedString::from("Originales del juego"),
+                    SharedString::from(t!("ps.gamepad.icons.original")),
                 ),
             ],
             current,
@@ -243,7 +254,9 @@ impl GamepadView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.error = result.err().map(|err| format!("No se pudo guardar: {err}"));
+                this.error = result
+                    .err()
+                    .map(|err| t!("ps.gamepad.save_error", error = err).into_owned());
                 cx.notify();
             });
         })
@@ -269,7 +282,9 @@ impl GamepadView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.error = result.err().map(|err| format!("No se pudo guardar: {err}"));
+                this.error = result
+                    .err()
+                    .map(|err| t!("ps.gamepad.save_error", error = err).into_owned());
                 cx.notify();
             });
         })
@@ -286,10 +301,10 @@ impl GamepadView {
             let name = values.launch().text("gamepad_name").unwrap_or(&guid);
             (
                 SharedString::from(guid.clone()),
-                SharedString::from(format!("{name} (desconectado)")),
+                SharedString::from(t!("ps.gamepad.unplugged", name = name)),
             )
         });
-        let options = std::iter::once((SharedString::default(), SharedString::from("Automático (el primero)")))
+        let options = std::iter::once((SharedString::default(), SharedString::from(t!("ps.gamepad.automatic"))))
             .chain(
                 self.gamepads
                     .iter()
@@ -322,7 +337,7 @@ impl GamepadView {
                         SharedString::from(format!("ps-pad-{input}")),
                         BUTTONS
                             .iter()
-                            .map(|(name, label)| (SharedString::from(*name), SharedString::from(*label)))
+                            .map(|(name, label)| (SharedString::from(*name), SharedString::from(t!(*label))))
                             .chain(buttons.contains(',').then(|| {
                                 (
                                     SharedString::from(buttons.to_owned()),
@@ -345,15 +360,15 @@ impl GamepadView {
                     .px_4()
                     .py(px(6.))
                     .when(index + 1 < count, |row| row.border_b_1().border_color(rgb(theme::LINE)))
-                    .child(theme::mono().w(px(100.)).flex_none().child(label))
-                    .child(div().flex_1().min_w_0().truncate().child(action))
+                    .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
+                    .child(div().flex_1().min_w_0().truncate().child(t!(action)))
                     .child(control)
             }))
             .into_any_element()
     }
 }
 
-/// `back,touchpad` as `Select / Back + Panel táctil`.
+/// `back,touchpad` as `Select / Back + Touchpad`.
 fn button_label(buttons: &str) -> String {
     buttons
         .split(',')
@@ -361,7 +376,7 @@ fn button_label(buttons: &str) -> String {
             BUTTONS
                 .iter()
                 .find(|(known, _)| *known == name)
-                .map_or(name, |(_, label)| label)
+                .map_or_else(|| name.into(), |(_, label)| t!(*label))
         })
         .collect::<Vec<_>>()
         .join(" + ")
@@ -370,7 +385,7 @@ fn button_label(buttons: &str) -> String {
 impl Render for GamepadView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let loaded = match &self.loaded {
-            None => return theme::muted("Leyendo la configuración del mando…").into_any_element(),
+            None => return theme::muted(t!("ps.gamepad.reading")).into_any_element(),
             Some(Err(err)) => return theme::error(err.clone()).into_any_element(),
             Some(Ok(loaded)) => loaded,
         };
@@ -386,13 +401,13 @@ impl Render for GamepadView {
             .map(|layout| {
                 (
                     SharedString::from(layout.id.clone()),
-                    SharedString::from(layout.name.clone()),
+                    SharedString::from(layout_name(&layout.id, layout.builtin, &layout.name).into_owned()),
                 )
             })
             .chain(
                 current
                     .is_none()
-                    .then(|| (SharedString::from(CUSTOM), SharedString::from("Personalizado"))),
+                    .then(|| (SharedString::from(CUSTOM), SharedString::from(t!("ps.layouts.custom")))),
             )
             .collect::<Vec<_>>();
         let layout_select = Select::new("ps-pad-layout", options, selected)
@@ -417,31 +432,28 @@ impl Render for GamepadView {
             .flex_wrap()
             .gap_2()
             .child(
-                button("ps-pad-copy", ButtonKind::Secondary, "Copiar como nuevo", false)
+                button("ps-pad-copy", ButtonKind::Secondary, t!("ps.layouts.copy"), false)
                     .on_click(cx.listener(|this, _, _, cx| this.copy(cx))),
             )
             .when(own, |actions| {
                 actions.child(div().w(px(220.)).child(self.name.clone())).child(
-                    button("ps-pad-remove", ButtonKind::Secondary, "Borrar layout", false)
+                    button("ps-pad-remove", ButtonKind::Secondary, t!("ps.layouts.remove"), false)
                         .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
                 )
             });
         let hint = if own {
-            "Tu layout: elegí el botón de cada entrada; si ya lo usaba otra, se intercambian. Enter guarda el nombre."
+            t!("ps.gamepad.hint.own")
         } else if current.is_some() {
-            "Los layouts de fábrica no se editan: copialo como nuevo para cambiarlo."
+            t!("ps.layouts.hint_builtin")
         } else {
-            "bbport.ini tiene líneas pad. editadas a mano; copialas como nuevo para guardarlas como layout."
+            t!("ps.gamepad.hint.custom")
         };
         let table = self.table(&shown, cx);
         div()
             .flex()
             .flex_col()
             .gap_4()
-            .child(theme::muted(
-                "Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque. \
-                 Los sticks mueven al personaje y la cámara en cualquier layout.",
-            ))
+            .child(theme::muted(t!("ps.gamepad.description")))
             .children(self.error.clone().map(theme::error))
             .child(
                 theme::card()
@@ -450,8 +462,8 @@ impl Render for GamepadView {
                             div()
                                 .flex()
                                 .flex_col()
-                                .child("Mando")
-                                .child(theme::muted("Con varios conectados, cuál usa el juego").text_size(px(12.)))
+                                .child(t!("ps.gamepad.controller.title"))
+                                .child(theme::muted(t!("ps.gamepad.controller.note")).text_size(px(12.)))
                                 .into_any_element(),
                             self.gamepad_select(&values, cx),
                         )
@@ -460,7 +472,7 @@ impl Render for GamepadView {
                     )
                     .child(
                         row(
-                            div().child("Layout").into_any_element(),
+                            div().child(t!("ps.layouts.layout")).into_any_element(),
                             layout_select.into_any_element(),
                         )
                         .border_b_1()
@@ -470,8 +482,8 @@ impl Render for GamepadView {
                         div()
                             .flex()
                             .flex_col()
-                            .child("Iconos de botones")
-                            .child(theme::muted("En menús y avisos; siguen al layout elegido").text_size(px(12.)))
+                            .child(t!("ps.gamepad.icons.title"))
+                            .child(theme::muted(t!("ps.gamepad.icons.note")).text_size(px(12.)))
                             .into_any_element(),
                         self.icons_select(&values, cx),
                     )),

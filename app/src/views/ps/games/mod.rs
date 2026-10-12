@@ -12,6 +12,7 @@ mod mods;
 
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::Status;
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -19,6 +20,7 @@ use gpui::{
     AnyElement, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, Pixels, Point, SharedString, StyleRefinement,
     Window, div, img, prelude::*, px, rgb, uniform_list,
 };
+use rust_i18n::t;
 
 use crate::state::{AppState, JobKey, Ps};
 use crate::theme;
@@ -53,7 +55,7 @@ impl GamesView {
         cx.observe(&detail, |_, _, cx| cx.notify()).detach();
         let games = cx.entity().downgrade();
         let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), games, cx));
-        let search = cx.new(|cx| TextInput::new("Buscar", cx));
+        let search = cx.new(|cx| TextInput::new(t!("ps.games.search"), cx));
         cx.subscribe(&search, |_, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 cx.notify();
@@ -119,11 +121,11 @@ impl GamesView {
         let ps = self.ps.read(cx);
         let body = if rows.is_empty() {
             let message = if ps.scanning() {
-                "Buscando juegos…"
+                t!("ps.games.scanning")
             } else if ps.entries().is_empty() {
-                "No hay volcados todavía: copialos a la carpeta de juegos (Ajustes)."
+                t!("ps.games.no_dumps")
             } else {
-                "Nada coincide con la búsqueda."
+                t!("ps.games.no_match")
             };
             div().p_4().child(theme::muted(message)).into_any_element()
         } else {
@@ -174,9 +176,9 @@ impl GamesView {
         let ps = self.ps.clone();
         button("ps-rescan", ButtonKind::Icon, "⟳", scanning)
             .tooltip(tooltip(if scanning {
-                "Buscando juegos…"
+                t!("ps.games.scanning")
             } else {
-                "Actualizar biblioteca"
+                t!("ps.games.rescan")
             }))
             .when(!scanning, |b| {
                 b.on_click(move |_, _, cx| ps.update(cx, |ps, cx| ps.rescan(cx)))
@@ -230,7 +232,7 @@ impl GamesView {
                         .flex_none()
                         .rounded_full()
                         .bg(rgb(theme::ACCENT_GREEN))
-                        .tooltip(tooltip("Listo para jugar")),
+                        .tooltip(tooltip(t!("ps.games.ready_to_play"))),
                 )
             })
             .into_any_element()
@@ -296,18 +298,18 @@ impl Render for GamesView {
 }
 
 /// The few words a status has room for.
-const fn status_text(status: &Status) -> &'static str {
+fn status_text(status: &Status) -> Cow<'static, str> {
     match status {
-        Status::Ready => "Listo",
-        Status::NeedsConvert => "Se convierte al jugar",
-        Status::NeedsMerge(_) => "Falta fusionar 1.09",
-        Status::HasPlayable(_) => "Usa la copia 1.09",
-        Status::OtherEdition => "Otra edición",
-        Status::Experimental => "Experimental",
-        Status::NeedsVr => "Necesita PS VR",
-        Status::NeedsUpdate => "Necesita 1.09",
-        Status::Encrypted => "eboot cifrado",
-        Status::NoEboot => "Sin eboot.bin",
+        Status::Ready => t!("ps.status.ready"),
+        Status::NeedsConvert => t!("ps.status.needs_convert"),
+        Status::NeedsMerge(_) => t!("ps.status.needs_merge"),
+        Status::HasPlayable(_) => t!("ps.status.has_playable"),
+        Status::OtherEdition => t!("ps.status.other_edition"),
+        Status::Experimental => t!("ps.status.experimental"),
+        Status::NeedsVr => t!("ps.status.needs_vr"),
+        Status::NeedsUpdate => t!("ps.status.needs_update"),
+        Status::Encrypted => t!("ps.status.encrypted"),
+        Status::NoEboot => t!("ps.status.no_eboot"),
     }
 }
 
@@ -327,6 +329,16 @@ fn display_title(game: &Game) -> String {
         game.title_id.clone()
     } else {
         title.to_owned()
+    }
+}
+
+/// The shipped layouts in the UI's language; the user's own keep the name they were given.
+fn layout_name<'name>(id: &str, builtin: bool, name: &'name str) -> Cow<'name, str> {
+    match (builtin, id) {
+        (true, "default") => t!("ps.layouts.default"),
+        (true, "code-vein") => t!("ps.layouts.code_vein"),
+        (true, "") => t!("ps.layouts.custom"),
+        _ => Cow::Borrowed(name),
     }
 }
 

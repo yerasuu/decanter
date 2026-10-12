@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use decanter_ps::status::Status;
 use gpui::{AnyElement, App, ClipboardItem, Entity, Pixels, Point, Window, prelude::*};
+use rust_i18n::t;
 
 use super::detail::DetailView;
 use super::display_title;
@@ -37,20 +38,18 @@ pub fn render(
 
     if running {
         let (ps, key, close) = (ps.clone(), key, Rc::clone(&dismiss));
-        panel = panel.child(
-            menu::item("ps-menu-stop", false)
-                .child("Detener")
-                .on_click(move |_, window, cx| {
-                    ps.update(cx, |ps, cx| ps.stop(&key, cx));
-                    close(window, cx);
-                }),
-        );
+        panel = panel.child(menu::item("ps-menu-stop", false).child(t!("ps.menu.stop")).on_click(
+            move |_, window, cx| {
+                ps.update(cx, |ps, cx| ps.stop(&key, cx));
+                close(window, cx);
+            },
+        ));
     } else {
         let playable = entry.status.playable();
         let (ps, dir, close) = (ps.clone(), target.dir.clone(), Rc::clone(&dismiss));
         panel = panel.child(
             menu::item("ps-menu-play", !playable)
-                .child("Jugar")
+                .child(t!("ps.menu.play"))
                 .when(playable, |item| {
                     item.on_click(move |_, window, cx| {
                         ps.update(cx, |ps, cx| ps.play(&dir, cx));
@@ -62,24 +61,24 @@ pub fn render(
 
     {
         let (detail, dir, close) = (detail.clone(), target.dir.clone(), Rc::clone(&dismiss));
-        panel = panel.child(menu::item("ps-menu-details", false).child("Ver detalles").on_click(
-            move |_, window, cx| {
-                detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
-                close(window, cx);
-            },
-        ));
+        panel = panel.child(
+            menu::item("ps-menu-details", false)
+                .child(t!("ps.menu.details"))
+                .on_click(move |_, window, cx| {
+                    detail.update(cx, |detail, cx| detail.select(dir.clone(), cx));
+                    close(window, cx);
+                }),
+        );
     }
 
     if let Status::NeedsMerge(update) = &entry.status {
         let (ps, base, update, close) = (ps.clone(), target.dir.clone(), update.clone(), Rc::clone(&dismiss));
-        panel = panel.child(
-            menu::item("ps-menu-merge", false)
-                .child("Fusionar actualización 1.09")
-                .on_click(move |_, window, cx| {
-                    ps.update(cx, |ps, cx| ps.merge(base.clone(), update.clone(), cx));
-                    close(window, cx);
-                }),
-        );
+        panel = panel.child(menu::item("ps-menu-merge", false).child(t!("ps.menu.merge")).on_click(
+            move |_, window, cx| {
+                ps.update(cx, |ps, cx| ps.merge(base.clone(), update.clone(), cx));
+                close(window, cx);
+            },
+        ));
     }
 
     panel = panel.child(menu::separator());
@@ -88,7 +87,7 @@ pub fn render(
         let close = Rc::clone(&dismiss);
         panel = panel.child(
             menu::item("ps-menu-log", log_file.is_none())
-                .child("Abrir log completo")
+                .child(t!("ps.menu.log"))
                 .when_some(log_file, |item, path| {
                     item.on_click(move |_, window, cx| {
                         if let Err(err) = crate::desktop::open(&path) {
@@ -104,7 +103,7 @@ pub fn render(
         let (dir, close) = (target.dir.clone(), Rc::clone(&dismiss));
         panel = panel.child(
             menu::item("ps-menu-folder", false)
-                .child("Abrir carpeta del volcado")
+                .child(t!("ps.menu.folder"))
                 .on_click(move |_, window, cx| {
                     if let Err(err) = crate::desktop::open(&dir) {
                         tracing::warn!(dir = %dir.display(), %err, "could not open the folder");
@@ -116,12 +115,14 @@ pub fn render(
 
     {
         let (title_id, close) = (entry.game.title_id.clone(), Rc::clone(&dismiss));
-        panel = panel.child(menu::item("ps-menu-title-id", false).child("Copiar Title ID").on_click(
-            move |_, window, cx| {
-                cx.write_to_clipboard(ClipboardItem::new_string(title_id.clone()));
-                close(window, cx);
-            },
-        ));
+        panel = panel.child(
+            menu::item("ps-menu-title-id", false)
+                .child(t!("ps.menu.title_id"))
+                .on_click(move |_, window, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(title_id.clone()));
+                    close(window, cx);
+                }),
+        );
     }
 
     Some(menu::popup(target.position, panel, window, dismiss))

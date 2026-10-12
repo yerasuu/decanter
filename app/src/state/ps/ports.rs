@@ -8,11 +8,12 @@ use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::Bbport;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
-use decanter_ps::toolchain::Toolchain;
+use decanter_ps::toolchain::{self, Toolchain};
 use decanter_ps::updater::{self, Check, Plan};
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
+use rust_i18n::t;
 
 use super::Ps;
 use super::jobs::{self, JobKey};
@@ -154,13 +155,30 @@ impl Ps {
         cx.spawn(async move |this, cx| {
             let backup = updater::backup_path(&root, port, &check.head);
             let command = updater::reset_command(&port.checkout(&root), &check.branch, &backup);
-            let finished = jobs::run(&this, &root, JobKey::Port(port), "restablecer", command, None, cx).await;
+            let finished = jobs::run(
+                &this,
+                &root,
+                JobKey::Port(port),
+                &t!("ps.jobs.reset"),
+                command,
+                None,
+                cx,
+            )
+            .await;
             if finished.succeeded() {
                 rebuild(&this, port, &root, cx).await;
             }
             check_and_update(&this, port, &root, cx).await;
         })
         .detach();
+    }
+}
+
+fn toolchain_error(err: &toolchain::Error) -> String {
+    match err {
+        toolchain::Error::Download(err) => t!("ps.ports.errors.download", error = err).into_owned(),
+        toolchain::Error::Checksum => t!("ps.ports.errors.checksum").into_owned(),
+        toolchain::Error::Io(err) => err.to_string(),
     }
 }
 
@@ -187,7 +205,7 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     .await;
     let toolchain = match resolved {
         Ok(toolchain) => toolchain,
-        Err(err) => return fail(this, port, err.to_string(), cx),
+        Err(err) => return fail(this, port, toolchain_error(&err), cx),
     };
     let _ = this.update(cx, |this, _| {
         this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
@@ -200,14 +218,19 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
             this,
             root,
             JobKey::Port(port),
-            "clonar",
+            &t!("ps.jobs.clone"),
             updater::clone_command(root, port),
             None,
             cx,
         )
         .await;
         if !finished.succeeded() {
-            return fail(this, port, format!("No se pudo clonar {}", port.name()), cx);
+            return fail(
+                this,
+                port,
+                t!("ps.ports.errors.clone", port = port.name()).into_owned(),
+                cx,
+            );
         }
     }
 
@@ -247,7 +270,7 @@ async fn build(
                 tracing::info!(port = port.name(), dir = %dir.display(), "CMake cache from before a move reset");
             }
         }
-        Err(err) => return Err(format!("No se pudo revisar la caché de CMake: {err}")),
+        Err(err) => return Err(t!("ps.ports.errors.cmake_cache", error = err).into_owned()),
     }
     let mut fell_back = false;
     loop {
@@ -257,14 +280,14 @@ async fn build(
         };
         let command = match command {
             Ok(command) => command,
-            Err(err) => return Err(format!("No se pudo preparar el entorno: {err}")),
+            Err(err) => return Err(t!("ps.errors.environment", error = err).into_owned()),
         };
-        let finished = jobs::run(this, root, JobKey::Port(port), "compilar", command, None, cx).await;
+        let finished = jobs::run(this, root, JobKey::Port(port), &t!("ps.jobs.build"), command, None, cx).await;
         if finished.succeeded() {
             break;
         }
         if toolchain != Toolchain::Host || !failed_to_configure(this, port, cx) {
-            return Err(format!("La compilación de {} falló; mira su registro", port.name()));
+            return Err(t!("ps.ports.errors.build", port = port.name()).into_owned());
         }
         tracing::warn!(
             port = port.name(),
@@ -275,7 +298,7 @@ async fn build(
             .background_spawn(async move { decanter_ps::cmake_cache::forget_all(&checkout) })
             .await
         {
-            return Err(format!("No se pudo revisar la caché de CMake: {err}"));
+            return Err(t!("ps.ports.errors.cmake_cache", error = err).into_owned());
         }
         fell_back = true;
         let progress = this.clone();
@@ -286,7 +309,7 @@ async fn build(
         .await;
         toolchain = match resolved {
             Ok(nix) => nix,
-            Err(err) => return Err(err.to_string()),
+            Err(err) => return Err(toolchain_error(&err)),
         };
         set_stage(this, port, Stage::Building, cx);
         let _ = this.update(cx, |this, _| {
@@ -303,7 +326,7 @@ async fn build(
     };
     match recorded {
         Ok(()) => Ok(toolchain),
-        Err(err) => Err(format!("No se pudo registrar la compilación: {err}")),
+        Err(err) => Err(t!("ps.ports.errors.record_build", error = err).into_owned()),
     }
 }
 
@@ -389,7 +412,7 @@ async fn apply_fast_forward(
     cx: &mut AsyncApp,
 ) {
     let command = updater::fast_forward_command(&port.checkout(root), branch);
-    let finished = jobs::run(this, root, JobKey::Port(port), "actualizar", command, None, cx).await;
+    let finished = jobs::run(this, root, JobKey::Port(port), &t!("ps.jobs.update"), command, None, cx).await;
     if finished.succeeded() {
         tracing::info!(port = port.name(), "port fast-forwarded to upstream");
         rebuild(this, port, root, cx).await;

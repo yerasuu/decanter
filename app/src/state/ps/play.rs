@@ -2,17 +2,19 @@
 //! then the game run with its output scanned for failures, which go to the
 //! profile's own record.
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::{self, Bbport, LauncherSettings};
-use decanter_ps::failures::{self, Failure, Scanner};
+use decanter_ps::failures::{self, Failure, Scanner, Summary};
 use decanter_ps::library::Game;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
+use rust_i18n::t;
 use tokio::process::Command;
 
 use super::Ps;
@@ -49,7 +51,7 @@ impl Ps {
                     Port::Bbport => bbport_command(&root, &toolchain, &game, &profile_id, cx).await,
                     Port::AnyPs5 => anyps5_command(&this, &root, &toolchain, &game, &profile_id, cx).await,
                 },
-                Err(err) => Err(format!("No se pudo preparar {}: {err}", port.name())),
+                Err(err) => Err(t!("ps.play.prepare_error", name = port.name(), error = err).into_owned()),
             };
             let command = match command {
                 Ok(command) => command,
@@ -64,7 +66,7 @@ impl Ps {
                 &this,
                 &root,
                 JobKey::Game(game.dir.clone()),
-                "juego",
+                &t!("ps.jobs.game"),
                 command,
                 Some(scanner),
                 cx,
@@ -87,15 +89,15 @@ impl Ps {
 
     /// Builds `<base>-01.09` beside the base dump, then shows it.
     pub fn merge(&mut self, base: PathBuf, update: PathBuf, cx: &mut Context<Self>) {
-        self.notice = Some(("Fusionando la actualización…".to_owned(), false));
+        self.notice = Some((t!("ps.play.merging").into_owned(), false));
         cx.notify();
         let task = cx.background_spawn(async move { bbport::merge_update(&base, &update, bbport::SUPPORTED_VERSION) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.notice = Some(match result {
-                    Ok(merged) => (format!("Creado {}", merged.display()), false),
-                    Err(err) => (format!("No se pudo fusionar: {err}"), true),
+                    Ok(merged) => (t!("ps.play.merged", dir = merged.display()).into_owned(), false),
+                    Err(err) => (t!("ps.play.merge_error", error = err).into_owned(), true),
                 });
                 this.rescan(cx);
             });
@@ -144,19 +146,19 @@ async fn bbport_command(
             .await;
         match mods {
             Ok(mods) => mods,
-            Err(err) => return Err(format!("No se pudieron preparar los mods y los iconos: {err}")),
+            Err(err) => return Err(t!("ps.play.mods_error", error = err).into_owned()),
         }
     } else {
         bbport::mods::Mods::off(root, &settings)
     };
     let user_dir = root.profile(profile_id).join("bbport/user");
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
-        return Err(format!("No se pudo crear {}: {err}", user_dir.display()));
+        return Err(t!("ps.errors.create_dir", dir = user_dir.display(), error = err).into_owned());
     }
     bbport
         .launch_command(toolchain, game, &user_dir, &settings, &mods)
         .await
-        .map_err(|err| format!("No se pudo preparar el entorno: {err}"))
+        .map_err(|err| t!("ps.errors.environment", error = err).into_owned())
 }
 
 /// Converts first when the game has no conversion yet; the conversion is
@@ -178,24 +180,24 @@ async fn anyps5_command(
                 .await
         };
         if let Err(err) = prepared {
-            return Err(format!("No se pudo preparar la conversión: {err}"));
+            return Err(t!("ps.play.convert_prepare_error", error = err).into_owned());
         }
         let command = match anyps5.convert_command(toolchain, game).await {
             Ok(command) => command,
-            Err(err) => return Err(format!("No se pudo preparar el entorno: {err}")),
+            Err(err) => return Err(t!("ps.errors.environment", error = err).into_owned()),
         };
         let finished = jobs::run(
             this,
             root,
             JobKey::Game(game.dir.clone()),
-            "conversión",
+            &t!("ps.jobs.convert"),
             command,
             None,
             cx,
         )
         .await;
         if !finished.succeeded() {
-            return Err("La conversión falló; mira su registro".to_owned());
+            return Err(t!("ps.play.convert_failed").into_owned());
         }
     }
     let run_dir = root.profile(profile_id).join("anyps5").join(&game.title_id);
@@ -207,12 +209,12 @@ async fn anyps5_command(
             .await
     };
     if let Err(err) = laid_out {
-        return Err(format!("No se pudo preparar {}: {err}", run_dir.display()));
+        return Err(t!("ps.play.prepare_error", name = run_dir.display(), error = err).into_owned());
     }
     anyps5
         .run_command(toolchain, &game.title_id, &run_dir)
         .await
-        .map_err(|err| format!("No se pudo preparar el entorno: {err}"))
+        .map_err(|err| t!("ps.errors.environment", error = err).into_owned())
 }
 
 async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failure>, cx: &mut AsyncApp) {
@@ -227,7 +229,7 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
                 failures::Kind::Crash | failures::Kind::Stop | failures::Kind::Exit
             )
         })
-        .map(|failure| failure.message.clone());
+        .map(|failure| failure_message(failure).into_owned());
     let count = found
         .iter()
         .filter(|failure| failure.kind == failures::Kind::Error)
@@ -235,7 +237,7 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
     let missing = found
         .iter()
         .find(|failure| failure.kind == failures::Kind::Missing)
-        .map(|failure| failure.message.clone());
+        .map(|failure| failure_message(failure).into_owned());
     let saved = cx
         .background_spawn(async move {
             let mut log = failures::Log::load(path);
@@ -243,16 +245,45 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
         })
         .await;
     let (text, error) = match (saved, fatal) {
-        (Err(err), _) => (format!("No se pudo guardar el registro de fallos: {err}"), true),
-        (Ok(()), Some(message)) => (format!("El juego falló: {message} (ver Fallos)"), true),
+        (Err(err), _) => (t!("ps.failures.notice.save_error", error = err), true),
+        (Ok(()), Some(message)) => (t!("ps.failures.notice.crashed", message = message), true),
         (Ok(()), None) => match missing {
-            Some(missing) if count == 0 => (format!("{missing} (ver Fallos)"), false),
-            Some(missing) => (format!("{count} errores y {missing} (ver Fallos)"), false),
-            None => (format!("{count} errores registrados en Fallos"), false),
+            Some(missing) if count == 0 => (t!("ps.failures.notice.missing", missing = missing), false),
+            Some(missing) if count == 1 => (
+                t!(
+                    "ps.failures.notice.errors_and_missing.one",
+                    count = count,
+                    missing = missing
+                ),
+                false,
+            ),
+            Some(missing) => (
+                t!(
+                    "ps.failures.notice.errors_and_missing.other",
+                    count = count,
+                    missing = missing
+                ),
+                false,
+            ),
+            None if count == 1 => (t!("ps.failures.notice.errors.one", count = count), false),
+            None => (t!("ps.failures.notice.errors.other", count = count), false),
         },
     };
+    let text = text.into_owned();
     let _ = this.update(cx, |this, cx| {
         this.notice = Some((text, error));
         this.failures_changed(cx);
     });
+}
+
+/// A failure's message in the UI's language when decanter worded it, as the port printed it
+/// otherwise.
+pub fn failure_message(failure: &Failure) -> Cow<'_, str> {
+    match failure.summary {
+        Some(Summary::Missing { total: 1, called }) => t!("ps.failures.missing.one", total = 1, called = called),
+        Some(Summary::Missing { total, called }) => t!("ps.failures.missing.other", total = total, called = called),
+        Some(Summary::Exit(Some(code))) => t!("ps.failures.exit_code", code = code),
+        Some(Summary::Exit(None)) => t!("ps.failures.exit_signal"),
+        None => Cow::Borrowed(&failure.message),
+    }
 }

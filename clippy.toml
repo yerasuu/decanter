@@ -17,8 +17,8 @@ stack-size-threshold = 512
 
 # Single-letter names that read fine in their usual spots: sort/cmp closure
 # params (a, b), a char in a parser loop (c), a short-lived key/result/error
-# (k, r, e), a string being built up (s).
-allowed-idents-below-min-chars = ["a", "b", "c", "e", "k", "r", "s"]
+# (k, r, e), a string being built up (s), and rust-i18n's `t!` macro (t).
+allowed-idents-below-min-chars = ["a", "b", "c", "e", "k", "r", "s", "t"]
 
 # Proper nouns doc_markdown would otherwise ask to wrap in backticks.
 doc-valid-idents = [

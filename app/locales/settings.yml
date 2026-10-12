@@ -1,0 +1,58 @@
+_version: 2
+settings.title:
+  es: Ajustes
+  en: Settings
+settings.tabs.general:
+  es: General
+  en: General
+settings.tabs.account:
+  es: Cuenta
+  en: Account
+settings.tabs.compatibility:
+  es: Compatibilidad
+  en: Compatibility
+settings.storage_error:
+  es: "Error abriendo el almacenamiento: %{error}"
+  en: "Error opening storage: %{error}"
+settings.pick_profile:
+  es: Elegí un perfil arriba.
+  en: Pick a profile above.
+settings.general.language.title:
+  es: Idioma
+  en: Language
+settings.general.language.system:
+  es: El del sistema
+  en: System default
+settings.general.close.title:
+  es: Al cerrar la ventana
+  en: When closing the window
+settings.general.close.to_tray:
+  es: Dejar Decanter corriendo en la bandeja en vez de cerrarlo
+  en: Keep Decanter running in the tray instead of quitting
+settings.general.close.restart_hint:
+  es: Requiere reiniciar Decanter para que el cambio tenga efecto.
+  en: Decanter has to be restarted for the change to take effect.
+settings.general.steam.title:
+  es: Exportar a Steam
+  en: Export to Steam
+settings.general.steam.add:
+  es: Agregar cada juego instalado a la biblioteca real de Steam, con su portada y banner
+  en: Add every installed game to Steam's own library, with its cover and banner
+settings.general.steam.restart_hint:
+  es: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus shortcuts al arrancar.
+  en: Steam has to be restarted to show the changes — it only reads its shortcuts at startup.
+settings.general.steam.pending:
+  es: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se agregaron, así que todavía no los pisa su propia copia en memoria.
+  en: Some games exported to Steam are waiting for it to restart — Steam was open when they were added, so they're held back where its in-memory copy can't overwrite them.
+settings.general.steam.restarting:
+  es: Reiniciando Steam...
+  en: Restarting Steam...
+settings.general.steam.restart_now:
+  es: Reiniciar Steam ahora
+  en: Restart Steam now
+settings.general.steam.no_install:
+  es: no se encontró una instalación de Steam
+  en: no Steam installation was found
+settings.general.steam.no_user:
+  es: no se pudo resolver el usuario local de Steam
+  en: could not resolve Steam's local user

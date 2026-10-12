@@ -18,9 +18,11 @@ use decanter_ps::port::Port;
 use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
+use rust_i18n::t;
 
 pub use fsr::DllOutcome;
 pub use jobs::JobKey;
+pub use play::failure_message;
 pub use ports::{PortState, Stage};
 
 use super::AppState;
@@ -159,7 +161,7 @@ impl Ps {
                     }
                     Err(err) => {
                         tracing::warn!(%err, "could not place the PS data in the profile's library");
-                        this.error = Some(format!("No se pudo usar la carpeta de la biblioteca: {err}"));
+                        this.error = Some(t!("ps.games.library_error", error = err).into_owned());
                         cx.notify();
                     }
                 }
@@ -185,7 +187,7 @@ impl Ps {
         let task = cx.background_spawn(async move {
             let games = root.games();
             if let Err(err) = std::fs::create_dir_all(&games) {
-                return Err(format!("No se pudo crear {}: {err}", games.display()));
+                return Err(t!("ps.errors.create_dir", dir = games.display(), error = err).into_owned());
             }
             Ok(status::classify(&root, &library::scan(std::slice::from_ref(&games))))
         });

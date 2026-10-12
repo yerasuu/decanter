@@ -10,6 +10,7 @@ use gpui::{
     AnyElement, App, Context, Entity, FocusHandle, Focusable as _, KeyDownEvent, Pixels, Point, SharedString, Window,
     div, prelude::*, px,
 };
+use rust_i18n::t;
 
 use super::actions::{
     bump_organisation, game_install_path, launch_game, open_in_file_manager, resolve_launch_target, start_install,
@@ -68,7 +69,7 @@ impl PopupState {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        let name = cx.new(|cx| TextInput::new("Nombre", cx).text_size(12.));
+        let name = cx.new(|cx| TextInput::new(t!("library.menu.name_placeholder"), cx).text_size(12.));
         cx.subscribe(&name, |this, input, event: &InputEvent, cx| match event {
             InputEvent::Submit => {
                 let text = input.read(cx).text().trim().to_owned();
@@ -271,9 +272,9 @@ fn game_menu(
                 fav_close(window, cx);
             })
             .child(if is_fav {
-                "Quitar de favoritos"
+                t!("library.detail.favorite.remove")
             } else {
-                "Agregar a favoritos"
+                t!("library.detail.favorite.add")
             }),
     );
     let hide_ids = target.product_ids.clone();
@@ -296,15 +297,17 @@ fn game_menu(
                 hide_close(window, cx);
             })
             .child(if is_hidden {
-                "Mostrar en la biblioteca"
+                t!("library.menu.unhide")
             } else {
-                "Ocultar de la biblioteca"
+                t!("library.menu.hide")
             }),
     );
 
-    panel = panel.child(menu::separator()).child(menu::label("COLECCIONES"));
+    panel = panel
+        .child(menu::separator())
+        .child(menu::label(&t!("library.menu.collections")));
     if collections.list.is_empty() {
-        panel = panel.child(menu::empty("Todavia no creaste ninguna."));
+        panel = panel.child(menu::empty(t!("library.menu.no_collections")));
     } else {
         let items = collections.list.iter().enumerate().map(|(index, collection)| {
             let member = target
@@ -318,7 +321,7 @@ fn game_menu(
             let collection_id = collection.id.clone();
             menu::item(("menu-collection", index), dynamic)
                 .when(dynamic, |item| {
-                    item.tooltip(tooltip("Coleccion dinamica: su contenido lo decide el filtro guardado"))
+                    item.tooltip(tooltip(t!("library.menu.dynamic_collection")))
                 })
                 .when(!dynamic, |item| {
                     item.on_click(move |_, _, cx| {
@@ -374,7 +377,7 @@ fn game_menu(
                         cx.notify();
                     });
                 })
-                .child("Nueva coleccion…"),
+                .child(t!("library.menu.new_collection")),
         );
     }
     panel.into_any_element()
@@ -421,7 +424,7 @@ fn game_action_item(
                     .detach();
                 close(window, cx);
             })
-            .child("Cancelar instalacion")
+            .child(t!("library.menu.cancel_install"))
             .into_any_element();
     }
 
@@ -445,7 +448,7 @@ fn game_action_item(
                 );
                 close(window, cx);
             })
-            .child("Instalar")
+            .child(t!("library.menu.install"))
             .into_any_element();
     }
 
@@ -454,7 +457,7 @@ fn game_action_item(
             .opacity(0.5)
             .cursor_default()
             .hover(|item| item)
-            .child("Instalado, pero sin ejecutable detectado")
+            .child(t!("library.detail.no_executable"))
             .into_any_element();
     };
 
@@ -464,7 +467,7 @@ fn game_action_item(
                 stop_game(account_id.clone(), product_id.clone(), cx);
                 close(window, cx);
             })
-            .child("Detener")
+            .child(t!("library.menu.stop"))
             .into_any_element()
     } else {
         menu::item("menu-action", false)
@@ -472,7 +475,7 @@ fn game_action_item(
                 launch_game(account_id.clone(), installed.clone(), cx);
                 close(window, cx);
             })
-            .child("Jugar")
+            .child(t!("library.menu.play"))
             .into_any_element()
     }
 }
@@ -491,7 +494,7 @@ fn open_folder_item(install_path: Option<std::path::PathBuf>, close: &menu::Dism
                 open_in_file_manager(&path);
                 close(window, cx);
             })
-            .child("Abrir carpeta del juego")
+            .child(t!("library.menu.open_folder"))
             .into_any_element(),
     )
 }
@@ -512,7 +515,7 @@ fn edit_external_item(entry: &LibraryEntry, close: &menu::Dismiss) -> Option<Any
                 close(window, cx);
                 crate::views::external::open(Some(id.clone()), cx);
             })
-            .child("Editar juego externo…")
+            .child(t!("library.menu.edit_external"))
             .into_any_element(),
     )
 }
@@ -525,6 +528,6 @@ fn properties_item(entry: &LibraryEntry, close: &menu::Dismiss) -> AnyElement {
             close(window, cx);
             super::open_properties(&game, cx);
         })
-        .child("Propiedades")
+        .child(t!("library.properties.title"))
         .into_any_element()
 }

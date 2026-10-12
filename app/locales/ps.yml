@@ -1,0 +1,1300 @@
+_version: 2
+ps.tabs.games:
+  es: Juegos
+  en: Games
+ps.tabs.ports:
+  es: Ports
+  en: Ports
+ps.tabs.failures:
+  es: Fallos
+  en: Failures
+ps.tabs.settings:
+  es: Ajustes
+  en: Settings
+ps.log.running:
+  es: "%{label}: en curso"
+  en: "%{label}: running"
+ps.log.finished:
+  es: "%{label}: terminado"
+  en: "%{label}: finished"
+ps.log.exited:
+  es: "%{label}: terminó con código %{code}"
+  en: "%{label}: exited with code %{code}"
+ps.log.stopped:
+  es: "%{label}: detenido"
+  en: "%{label}: stopped"
+ps.log.interrupted:
+  es: "%{label}: interrumpido"
+  en: "%{label}: interrupted"
+ps.log.copy:
+  es: Copiar registro
+  en: Copy log
+ps.log.copied:
+  es: Copiado
+  en: Copied
+ps.log.full:
+  es: Log completo
+  en: Full log
+ps.jobs.clone:
+  es: clonar
+  en: clone
+ps.jobs.build:
+  es: compilar
+  en: build
+ps.jobs.update:
+  es: actualizar
+  en: update
+ps.jobs.reset:
+  es: restablecer
+  en: reset
+ps.errors.environment:
+  es: "No se pudo preparar el entorno: %{error}"
+  en: "Couldn't set up the environment: %{error}"
+ps.ports.title:
+  es: Ports
+  en: Ports
+ps.ports.description:
+  es: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando alcanzan y con nix cuando no.
+  en: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't.
+ps.ports.stage.idle:
+  es: Se prepara la primera vez que haga falta
+  en: Set up the first time it's needed
+ps.ports.stage.resolving:
+  es: Buscando herramientas…
+  en: Looking for tools…
+ps.ports.stage.downloading:
+  es: "Descargando nix-portable: %{size}"
+  en: "Downloading nix-portable: %{size}"
+ps.ports.stage.cloning:
+  es: Clonando…
+  en: Cloning…
+ps.ports.stage.updating:
+  es: Actualizando…
+  en: Updating…
+ps.ports.stage.building:
+  es: Compilando…
+  en: Building…
+ps.ports.stage.ready:
+  es: Listo
+  en: Ready
+ps.ports.toolchain:
+  es: "Entorno: %{name}"
+  en: "Environment: %{name}"
+ps.ports.toolchains.host:
+  es: herramientas del sistema
+  en: system tools
+ps.ports.toolchains.system_nix:
+  es: nix del sistema
+  en: system nix
+ps.ports.toolchains.portable:
+  es: nix-portable de decanter
+  en: decanter's nix-portable
+ps.ports.upstream.up_to_date:
+  es: "%{head} · al día con %{branch}"
+  en: "%{head} · up to date with %{branch}"
+ps.ports.upstream.behind.one:
+  es: "%{head} · %{count} commit nuevo en %{branch}"
+  en: "%{head} · %{count} new commit on %{branch}"
+ps.ports.upstream.behind.other:
+  es: "%{head} · %{count} commits nuevos en %{branch}"
+  en: "%{head} · %{count} new commits on %{branch}"
+ps.ports.upstream.rewritten:
+  es: "%{head} · upstream reescribió su historia"
+  en: "%{head} · upstream rewrote its history"
+ps.ports.upstream.local.one:
+  es: "%{head} · %{count} commit local que upstream no tiene"
+  en: "%{head} · %{count} local commit upstream doesn't have"
+ps.ports.upstream.local.other:
+  es: "%{head} · %{count} commits locales que upstream no tiene"
+  en: "%{head} · %{count} local commits upstream doesn't have"
+ps.ports.upstream.error:
+  es: "No se pudo consultar upstream: %{error}"
+  en: "Couldn't check upstream: %{error}"
+ps.ports.prepare:
+  es: Preparar
+  en: Prepare
+ps.ports.reset.start:
+  es: Respaldar y actualizar
+  en: Back up and update
+ps.ports.reset.confirm:
+  es: "Confirmar: guardar cambios locales y restablecer"
+  en: "Confirm: save local changes and reset"
+ps.ports.errors.clone:
+  es: No se pudo clonar %{port}
+  en: Couldn't clone %{port}
+ps.ports.errors.cmake_cache:
+  es: "No se pudo revisar la caché de CMake: %{error}"
+  en: "Couldn't check the CMake cache: %{error}"
+ps.ports.errors.build:
+  es: La compilación de %{port} falló; mira su registro
+  en: Building %{port} failed; see its log
+ps.ports.errors.record_build:
+  es: "No se pudo registrar la compilación: %{error}"
+  en: "Couldn't record the build: %{error}"
+ps.ports.errors.download:
+  es: "No se pudo descargar nix-portable: %{error}"
+  en: "Couldn't download nix-portable: %{error}"
+ps.ports.errors.checksum:
+  es: La descarga de nix-portable no coincide con su suma fijada
+  en: The nix-portable download doesn't match its pinned checksum
+ps.failures.title:
+  es: Fallos
+  en: Failures
+ps.failures.description:
+  es: Cierres, STOP, errores y salidas fallidas de cada partida de este perfil, con la salida de alrededor y el commit del port. Se guardan entre sesiones.
+  en: Crashes, STOPs, errors and failed exits from every run in this profile, with the output around them and the port's commit. Kept across sessions.
+ps.failures.empty:
+  es: Sin fallos registrados.
+  en: No failures recorded.
+ps.failures.copy_all:
+  es: Copiar todo
+  en: Copy all
+ps.failures.copied:
+  es: Copiado
+  en: Copied
+ps.failures.copy_report:
+  es: Copiar informe
+  en: Copy report
+ps.failures.clear.start:
+  es: Borrar registro
+  en: Clear record
+ps.failures.clear.confirm:
+  es: "Confirmar: borrar todo el registro"
+  en: "Confirm: clear the whole record"
+ps.failures.clear_error:
+  es: "No se pudo borrar el registro: %{error}"
+  en: "Couldn't clear the record: %{error}"
+ps.failures.kinds.crash:
+  es: Cierre
+  en: Crash
+ps.failures.kinds.stop:
+  es: STOP
+  en: STOP
+ps.failures.kinds.error:
+  es: Error
+  en: Error
+ps.failures.kinds.exit:
+  es: Salida
+  en: Exit
+ps.failures.kinds.missing:
+  es: Falta
+  en: Missing
+ps.failures.missing.one:
+  es: "%{total} cosa sin implementar; el juego llamó a %{called}"
+  en: "%{total} thing unimplemented; the game called %{called}"
+ps.failures.missing.other:
+  es: "%{total} cosas sin implementar; el juego llamó a %{called}"
+  en: "%{total} things unimplemented; the game called %{called}"
+ps.failures.exit_code:
+  es: terminó con código %{code}
+  en: exited with code %{code}
+ps.failures.exit_signal:
+  es: terminado por una señal
+  en: killed by a signal
+ps.failures.notice.save_error:
+  es: "No se pudo guardar el registro de fallos: %{error}"
+  en: "Couldn't save the failure record: %{error}"
+ps.failures.notice.crashed:
+  es: "El juego falló: %{message} (ver Fallos)"
+  en: "The game failed: %{message} (see Failures)"
+ps.failures.notice.missing:
+  es: "%{missing} (ver Fallos)"
+  en: "%{missing} (see Failures)"
+ps.failures.notice.errors_and_missing.one:
+  es: "%{count} error y %{missing} (ver Fallos)"
+  en: "%{count} error and %{missing} (see Failures)"
+ps.failures.notice.errors_and_missing.other:
+  es: "%{count} errores y %{missing} (ver Fallos)"
+  en: "%{count} errors and %{missing} (see Failures)"
+ps.failures.notice.errors.one:
+  es: "%{count} error registrado en Fallos"
+  en: "%{count} error recorded in Failures"
+ps.failures.notice.errors.other:
+  es: "%{count} errores registrados en Fallos"
+  en: "%{count} errors recorded in Failures"
+ps.settings.games.title:
+  es: Carpeta de juegos
+  en: Games folder
+ps.settings.games.description:
+  es: "Junto a la biblioteca del perfil, en el mismo disco. Copiá o mové ahí tus volcados y aparecen solos: cada carpeta y sus subcarpetas directas se leen tal cual."
+  en: "Next to the profile's library, on the same disk. Copy or move your dumps there and they show up on their own: each folder and its direct subfolders are read as they are."
+ps.settings.sys_modules.title:
+  es: Módulos del sistema (opcional)
+  en: System modules (optional)
+ps.settings.sys_modules.none:
+  es: Sin carpeta
+  en: No folder
+ps.settings.sys_modules.description:
+  es: "Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (BB_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno."
+  en: "Optional: no game needs it today. A folder with your own dump of the console's modules (*.sprx, like libSceNgs2.sprx), only to compare against the port's own libraries (BB_LLE) or for a game that still needs a console module. decanter neither ships nor copies any."
+ps.settings.open:
+  es: Abrir
+  en: Open
+ps.settings.pick:
+  es: Elegir
+  en: Choose
+ps.settings.forget:
+  es: Quitar
+  en: Remove
+ps.settings.save_error:
+  es: "No se pudo guardar la carpeta: %{error}"
+  en: "Couldn't save the folder: %{error}"
+ps.games.search:
+  es: Buscar
+  en: Search
+ps.games.scanning:
+  es: Buscando juegos…
+  en: Looking for games…
+ps.games.no_dumps:
+  es: "No hay volcados todavía: copialos a la carpeta de juegos (Ajustes)."
+  en: "No dumps yet: copy them to the games folder (Settings)."
+ps.games.no_match:
+  es: Nada coincide con la búsqueda.
+  en: Nothing matches the search.
+ps.games.rescan:
+  es: Actualizar biblioteca
+  en: Refresh library
+ps.games.ready_to_play:
+  es: Listo para jugar
+  en: Ready to play
+ps.games.browser_empty:
+  es: "Todavía no hay juegos: copiá tus volcados a la carpeta de juegos (ver Ajustes)."
+  en: "No games yet: copy your dumps to the games folder (see Settings)."
+ps.status.ready:
+  es: Listo
+  en: Ready
+ps.status.needs_convert:
+  es: Se convierte al jugar
+  en: Converted on play
+ps.status.needs_merge:
+  es: Falta fusionar 1.09
+  en: 1.09 not merged yet
+ps.status.has_playable:
+  es: Usa la copia 1.09
+  en: Use the 1.09 copy
+ps.status.other_edition:
+  es: Otra edición
+  en: Other edition
+ps.status.experimental:
+  es: Experimental
+  en: Experimental
+ps.status.needs_vr:
+  es: Necesita PS VR
+  en: Needs PS VR
+ps.status.needs_update:
+  es: Necesita 1.09
+  en: Needs 1.09
+ps.status.encrypted:
+  es: eboot cifrado
+  en: Encrypted eboot
+ps.status.no_eboot:
+  es: Sin eboot.bin
+  en: No eboot.bin
+ps.menu.stop:
+  es: Detener
+  en: Stop
+ps.menu.play:
+  es: Jugar
+  en: Play
+ps.menu.details:
+  es: Ver detalles
+  en: View details
+ps.menu.merge:
+  es: Fusionar actualización 1.09
+  en: Merge 1.09 update
+ps.menu.log:
+  es: Abrir log completo
+  en: Open full log
+ps.menu.folder:
+  es: Abrir carpeta del volcado
+  en: Open dump folder
+ps.menu.title_id:
+  es: Copiar Title ID
+  en: Copy Title ID
+ps.jobs.game:
+  es: juego
+  en: game
+ps.jobs.convert:
+  es: conversión
+  en: conversion
+ps.jobs.log_error:
+  es: "No se pudo guardar el log completo: %{error}"
+  en: "Couldn't save the full log: %{error}"
+ps.jobs.start_error:
+  es: "No se pudo iniciar: %{error}"
+  en: "Couldn't start: %{error}"
+ps.errors.create_dir:
+  es: "No se pudo crear %{dir}: %{error}"
+  en: "Couldn't create %{dir}: %{error}"
+ps.games.library_error:
+  es: "No se pudo usar la carpeta de la biblioteca: %{error}"
+  en: "Couldn't use the library folder: %{error}"
+ps.layouts.read_error:
+  es: "No se pudieron leer los layouts: %{error}"
+  en: "Couldn't read the layouts: %{error}"
+ps.play.prepare_error:
+  es: "No se pudo preparar %{name}: %{error}"
+  en: "Couldn't prepare %{name}: %{error}"
+ps.play.mods_error:
+  es: "No se pudieron preparar los mods y los iconos: %{error}"
+  en: "Couldn't prepare the mods and icons: %{error}"
+ps.play.convert_prepare_error:
+  es: "No se pudo preparar la conversión: %{error}"
+  en: "Couldn't prepare the conversion: %{error}"
+ps.play.convert_failed:
+  es: La conversión falló; mira su registro
+  en: The conversion failed; see its log
+ps.play.merging:
+  es: Fusionando la actualización…
+  en: Merging the update…
+ps.play.merged:
+  es: Creado %{dir}
+  en: Created %{dir}
+ps.play.merge_error:
+  es: "No se pudo fusionar: %{error}"
+  en: "Couldn't merge: %{error}"
+ps.detail.tabs.overview:
+  es: Resumen
+  en: Overview
+ps.detail.tabs.keyboard:
+  es: Teclado
+  en: Keyboard
+ps.detail.tabs.gamepad:
+  es: Mando
+  en: Controller
+ps.detail.tabs.graphics:
+  es: Gráficos
+  en: Graphics
+ps.detail.tabs.mods:
+  es: Mods
+  en: Mods
+ps.detail.tabs.log:
+  es: Registro
+  en: Log
+ps.detail.hero.version:
+  es: VERSIÓN
+  en: VERSION
+ps.detail.hero.status:
+  es: ESTADO
+  en: STATUS
+ps.detail.stop:
+  es: DETENER
+  en: STOP
+ps.detail.play:
+  es: JUGAR
+  en: PLAY
+ps.detail.preparing:
+  es: PREPARANDO…
+  en: PREPARING…
+ps.detail.open_folder:
+  es: Abrir carpeta
+  en: Open folder
+ps.detail.open_folder_tooltip:
+  es: Abrir la carpeta del volcado
+  en: Open the dump folder
+ps.detail.merge:
+  es: Fusionar 1.09
+  en: Merge 1.09
+ps.detail.facts.version:
+  es: Versión
+  en: Version
+ps.detail.facts.folder:
+  es: Carpeta
+  en: Folder
+ps.detail.pick_game:
+  es: Elegí un juego de la lista.
+  en: Pick a game from the list.
+ps.detail.no_runs:
+  es: Todavía no se ejecutó nada para este juego.
+  en: Nothing has run for this game yet.
+ps.detail.reading_keyboard:
+  es: Leyendo el teclado…
+  en: Reading the keyboard…
+ps.detail.explain.needs_convert:
+  es: La primera vez se convierte con AnyPS5 antes de arrancar.
+  en: The first time, it's converted with AnyPS5 before starting.
+ps.detail.explain.needs_merge:
+  es: "Hay una actualización 1.09 junto a este volcado. Fusionarla crea una copia jugable al lado, con enlaces duros: no ocupa espacio extra y el volcado original no cambia."
+  en: "There's a 1.09 update next to this dump. Merging it creates a playable copy alongside, with hard links: it takes no extra space and the original dump stays unchanged."
+ps.detail.explain.has_playable:
+  es: Ya tenés la copia 1.09 en %{dir}; jugá esa.
+  en: You already have the 1.09 copy at %{dir}; play that one.
+ps.detail.explain.other_edition:
+  es: bbport solo ejecuta la edición CUSA03173 de Bloodborne en su versión 1.09.
+  en: bbport only runs the CUSA03173 edition of Bloodborne at version 1.09.
+ps.detail.explain.needs_update:
+  es: "bbport necesita la versión 1.09: añadí su actualización a una de tus carpetas."
+  en: "bbport needs version 1.09: add its update to one of your folders."
+ps.detail.explain.experimental:
+  es: "bbport solo está hecho para Bloodborne. Este juego arranca con lo que le falte al port sustituido, sin parches ni mods: mira hasta dónde llega en Registro."
+  en: "bbport is only made for Bloodborne. This game starts with whatever the port lacks stubbed out, without patches or mods: see how far it gets in Log."
+ps.detail.explain.needs_vr:
+  es: Este juego solo arranca con un casco PS VR, y el port no tiene uno.
+  en: This game only starts with a PS VR headset, and the port has none.
+ps.detail.explain.encrypted:
+  es: El eboot.bin sigue cifrado; hay que descifrarlo en la consola.
+  en: The eboot.bin is still encrypted; it has to be decrypted on the console.
+ps.detail.explain.no_eboot:
+  es: Este volcado no tiene eboot.bin.
+  en: This dump has no eboot.bin.
+ps.layouts.default:
+  es: Predeterminado
+  en: Default
+ps.layouts.custom:
+  es: Personalizado
+  en: Custom
+ps.layouts.copy_name:
+  es: "%{name} (copia)"
+  en: "%{name} (copy)"
+ps.layouts.name_placeholder:
+  es: Nombre del layout
+  en: Layout name
+ps.layouts.layout:
+  es: Layout
+  en: Layout
+ps.layouts.copy:
+  es: Copiar como nuevo
+  en: Copy as new
+ps.layouts.remove:
+  es: Borrar layout
+  en: Delete layout
+ps.layouts.hint_builtin:
+  es: "Los layouts de fábrica no se editan: copialo como nuevo para cambiarlo."
+  en: "Built-in layouts can't be edited: copy it as new to change it."
+ps.keyboard.groups.buttons:
+  es: Botones
+  en: Buttons
+ps.keyboard.groups.dpad:
+  es: Cruceta
+  en: D-pad
+ps.keyboard.groups.left_stick:
+  es: Stick izquierdo
+  en: Left stick
+ps.keyboard.groups.right_stick:
+  es: Stick derecho
+  en: Right stick
+ps.keyboard.groups.touch_window:
+  es: Táctil y ventana
+  en: Touchpad and window
+ps.keyboard.actions.cross:
+  es: ✕  Cruz
+  en: ✕  Cross
+ps.keyboard.actions.circle:
+  es: ○  Círculo
+  en: ○  Circle
+ps.keyboard.actions.square:
+  es: □  Cuadrado
+  en: □  Square
+ps.keyboard.actions.triangle:
+  es: △  Triángulo
+  en: △  Triangle
+ps.keyboard.actions.up:
+  es: Arriba
+  en: Up
+ps.keyboard.actions.down:
+  es: Abajo
+  en: Down
+ps.keyboard.actions.left:
+  es: Izquierda
+  en: Left
+ps.keyboard.actions.right:
+  es: Derecha
+  en: Right
+ps.keyboard.actions.touch_left:
+  es: Táctil izquierdo
+  en: Touchpad left
+ps.keyboard.actions.touch_right:
+  es: Táctil derecho
+  en: Touchpad right
+ps.keyboard.actions.toggle_mouse:
+  es: Capturar ratón
+  en: Capture mouse
+ps.keyboard.actions.toggle_fullscreen:
+  es: Pantalla completa
+  en: Fullscreen
+ps.keyboard.sources.mouse:
+  es: Ratón %{button}
+  en: Mouse %{button}
+ps.keyboard.sources.wheel_up:
+  es: Rueda ↑
+  en: Wheel ↑
+ps.keyboard.sources.wheel_down:
+  es: Rueda ↓
+  en: Wheel ↓
+ps.keyboard.refusals.keys_only:
+  es: bbport solo admite teclas del teclado
+  en: bbport only takes keyboard keys
+ps.keyboard.refusals.fullscreen_needs_key:
+  es: Pantalla completa solo admite una tecla del teclado
+  en: Fullscreen can only use a keyboard key
+ps.keyboard.refusals.wheel_needs_button:
+  es: La rueda del ratón solo se puede asignar a un botón del mando
+  en: The mouse wheel can only map to a controller button
+ps.keyboard.unknown_key:
+  es: La tecla '%{key}' no tiene nombre SDL fiable; probá otra
+  en: The key '%{key}' has no reliable SDL name; try another
+ps.keyboard.save_error:
+  es: "No se pudo guardar %{path}: %{error}"
+  en: "Couldn't save %{path}: %{error}"
+ps.keyboard.save:
+  es: Guardar
+  en: Save
+ps.keyboard.saved:
+  es: Guardado
+  en: Saved
+ps.keyboard.unbound:
+  es: Sin asignar
+  en: Unbound
+ps.keyboard.assign:
+  es: + Asignar
+  en: + Assign
+ps.keyboard.reset_all:
+  es: Restaurar todo
+  en: Reset all
+ps.keyboard.hint.own:
+  es: "Tu layout: + Asignar y pulsá la tecla; Guardar lo escribe. Enter guarda el nombre."
+  en: "Your layout: + Assign and press the key; Save writes it. Enter saves the name."
+ps.keyboard.hint.custom:
+  es: El archivo tiene teclas editadas a mano; copialas como nuevo para guardarlas como layout.
+  en: The file has hand-edited keys; copy them as new to save them as a layout.
+ps.keyboard.description.bbport:
+  es: Teclado para bbport (líneas key. de bbport.ini). Quitar todas las teclas de una acción la deja sin asignar.
+  en: Keyboard for bbport (key. lines in bbport.ini). Removing every key from an action leaves it unbound.
+ps.keyboard.description.anyps5:
+  es: Teclado y ratón para AnyPS5. El mando funciona siempre sin configurar.
+  en: Keyboard and mouse for AnyPS5. The controller always works without setup.
+ps.keyboard.capture:
+  es: Pulsá una tecla, un botón del ratón o mové la rueda
+  en: Press a key or a mouse button, or move the wheel
+ps.gamepad.inputs.cross.label:
+  es: ✕
+  en: ✕
+ps.gamepad.inputs.cross.action:
+  es: Interactuar
+  en: Interact
+ps.gamepad.inputs.circle.label:
+  es: ○
+  en: ○
+ps.gamepad.inputs.circle.action:
+  es: Esquivar · correr (mantener)
+  en: Dodge · run (hold)
+ps.gamepad.inputs.square.label:
+  es: □
+  en: □
+ps.gamepad.inputs.square.action:
+  es: Usar objeto
+  en: Use item
+ps.gamepad.inputs.triangle.label:
+  es: △
+  en: △
+ps.gamepad.inputs.triangle.action:
+  es: Vial de sangre
+  en: Blood vial
+ps.gamepad.inputs.l1.label:
+  es: L1
+  en: L1
+ps.gamepad.inputs.l1.action:
+  es: Transformar arma
+  en: Transform weapon
+ps.gamepad.inputs.r1.label:
+  es: R1
+  en: R1
+ps.gamepad.inputs.r1.action:
+  es: Ataque
+  en: Attack
+ps.gamepad.inputs.l2.label:
+  es: L2
+  en: L2
+ps.gamepad.inputs.l2.action:
+  es: Disparo · parry
+  en: Shoot · parry
+ps.gamepad.inputs.r2.label:
+  es: R2
+  en: R2
+ps.gamepad.inputs.r2.action:
+  es: Ataque fuerte · cargado
+  en: Strong · charged attack
+ps.gamepad.inputs.l3.label:
+  es: L3
+  en: L3
+ps.gamepad.inputs.l3.action:
+  es: L3
+  en: L3
+ps.gamepad.inputs.r3.label:
+  es: R3
+  en: R3
+ps.gamepad.inputs.r3.action:
+  es: Fijar objetivo
+  en: Lock on
+ps.gamepad.inputs.options.label:
+  es: Options
+  en: Options
+ps.gamepad.inputs.options.action:
+  es: Menú
+  en: Menu
+ps.gamepad.inputs.touchpad.label:
+  es: Panel táctil
+  en: Touchpad
+ps.gamepad.inputs.touchpad.action:
+  es: Gestos
+  en: Gestures
+ps.gamepad.inputs.up.label:
+  es: Cruceta ↑
+  en: D-pad ↑
+ps.gamepad.inputs.up.action:
+  es: Cambiar objeto rápido
+  en: Switch quick item
+ps.gamepad.inputs.down.label:
+  es: Cruceta ↓
+  en: D-pad ↓
+ps.gamepad.inputs.down.action:
+  es: Cruceta abajo
+  en: D-pad down
+ps.gamepad.inputs.left.label:
+  es: Cruceta ←
+  en: D-pad ←
+ps.gamepad.inputs.left.action:
+  es: Cambiar arma izquierda
+  en: Switch left weapon
+ps.gamepad.inputs.right.label:
+  es: Cruceta →
+  en: D-pad →
+ps.gamepad.inputs.right.action:
+  es: Cambiar arma derecha
+  en: Switch right weapon
+ps.gamepad.buttons.a:
+  es: A / ✕
+  en: A / ✕
+ps.gamepad.buttons.b:
+  es: B / ○
+  en: B / ○
+ps.gamepad.buttons.x:
+  es: X / □
+  en: X / □
+ps.gamepad.buttons.y:
+  es: Y / △
+  en: Y / △
+ps.gamepad.buttons.leftshoulder:
+  es: LB / L1
+  en: LB / L1
+ps.gamepad.buttons.rightshoulder:
+  es: RB / R1
+  en: RB / R1
+ps.gamepad.buttons.lefttrigger:
+  es: LT / L2
+  en: LT / L2
+ps.gamepad.buttons.righttrigger:
+  es: RT / R2
+  en: RT / R2
+ps.gamepad.buttons.leftstick:
+  es: Clic stick izq.
+  en: Left stick click
+ps.gamepad.buttons.rightstick:
+  es: Clic stick der.
+  en: Right stick click
+ps.gamepad.buttons.back:
+  es: Select / Back
+  en: Select / Back
+ps.gamepad.buttons.start:
+  es: Start
+  en: Start
+ps.gamepad.buttons.touchpad:
+  es: Panel táctil
+  en: Touchpad
+ps.gamepad.buttons.dpup:
+  es: Cruceta ↑
+  en: D-pad ↑
+ps.gamepad.buttons.dpdown:
+  es: Cruceta ↓
+  en: D-pad ↓
+ps.gamepad.buttons.dpleft:
+  es: Cruceta ←
+  en: D-pad ←
+ps.gamepad.buttons.dpright:
+  es: Cruceta →
+  en: D-pad →
+ps.gamepad.buttons.misc1:
+  es: Misc
+  en: Misc
+ps.gamepad.buttons.paddle1:
+  es: Pala 1
+  en: Paddle 1
+ps.gamepad.buttons.paddle2:
+  es: Pala 2
+  en: Paddle 2
+ps.gamepad.buttons.paddle3:
+  es: Pala 3
+  en: Paddle 3
+ps.layouts.code_vein:
+  es: Estilo Code Vein
+  en: Code Vein style
+ps.gamepad.description:
+  es: Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier layout.
+  en: bbport settings, shared by all your Bloodborne copies. They apply on the next start. The sticks move the character and the camera in any layout.
+ps.gamepad.reading:
+  es: Leyendo la configuración del mando…
+  en: Reading the controller setup…
+ps.gamepad.save_error:
+  es: "No se pudo guardar: %{error}"
+  en: "Couldn't save: %{error}"
+ps.gamepad.controller.title:
+  es: Mando
+  en: Controller
+ps.gamepad.controller.note:
+  es: Con varios conectados, cuál usa el juego
+  en: With several connected, which one the game uses
+ps.gamepad.automatic:
+  es: Automático (el primero)
+  en: Automatic (the first one)
+ps.gamepad.unplugged:
+  es: "%{name} (desconectado)"
+  en: "%{name} (disconnected)"
+ps.gamepad.icons.title:
+  es: Iconos de botones
+  en: Button icons
+ps.gamepad.icons.note:
+  es: En menús y avisos; siguen al layout elegido
+  en: In menus and prompts; they follow the chosen layout
+ps.gamepad.icons.pad:
+  es: Del mando (A/B/X/Y)
+  en: Controller's (A/B/X/Y)
+ps.gamepad.icons.original:
+  es: Originales del juego
+  en: The game's originals
+ps.gamepad.hint.own:
+  es: "Tu layout: elegí el botón de cada entrada; si ya lo usaba otra, se intercambian. Enter guarda el nombre."
+  en: "Your layout: pick each input's button; if another input already used it, they swap. Enter saves the name."
+ps.gamepad.hint.custom:
+  es: bbport.ini tiene líneas pad. editadas a mano; copialas como nuevo para guardarlas como layout.
+  en: bbport.ini has hand-edited pad. lines; copy them as new to save them as a layout.
+ps.graphics.groups.game:
+  es: Juego
+  en: Game
+ps.graphics.language.label:
+  es: Idioma del juego
+  en: Game language
+ps.graphics.language.options.english:
+  es: Inglés
+  en: English
+ps.graphics.language.options.spanish:
+  es: Español
+  en: Spanish
+ps.graphics.language.options.french:
+  es: Francés
+  en: French
+ps.graphics.language.options.german:
+  es: Alemán
+  en: German
+ps.graphics.language.options.italian:
+  es: Italiano
+  en: Italian
+ps.graphics.language.options.russian:
+  es: Ruso
+  en: Russian
+ps.graphics.language.options.japanese:
+  es: Japonés
+  en: Japanese
+ps.graphics.mods_enabled.label:
+  es: Cargar mods
+  en: Load mods
+ps.graphics.mods_enabled.note:
+  es: La lista y el orden de los mods se gestionan en la pestaña Mods
+  en: The mod list and order are managed in the Mods tab
+ps.graphics.groups.mode:
+  es: Modo de funcionamiento
+  en: Operating mode
+ps.graphics.pc_model.label:
+  es: Nuevo modelo de memoria y traducción
+  en: New memory and translation model
+ps.graphics.pc_model.note:
+  es: "Experimental, solo GPU AMD: la GPU usa la memoria del juego directamente y los comandos gráficos se traducen en vez de emularse. Apagado: el modelo de la 0.3 con sus arreglos"
+  en: "Experimental, AMD GPUs only: the GPU uses the game's memory directly and graphics commands are translated instead of emulated. Off: the 0.3 model with its fixes"
+ps.graphics.groups.display:
+  es: Pantalla
+  en: Display
+ps.graphics.output_res.label:
+  es: Resolución de salida
+  en: Output resolution
+ps.graphics.output_res.note:
+  es: El reescalado completa el fotograma; en Steam Deck, 720p
+  en: Upscaling fills in the frame; on Steam Deck, 720p
+ps.graphics.output_res.options.r720:
+  es: "1280×720 (Steam Deck)"
+  en: "1280×720 (Steam Deck)"
+ps.graphics.output_res.options.r1080:
+  es: "1920×1080"
+  en: "1920×1080"
+ps.graphics.output_res.options.r1440:
+  es: "2560×1440"
+  en: "2560×1440"
+ps.graphics.output_res.options.r2160:
+  es: "3840×2160"
+  en: "3840×2160"
+ps.graphics.live_resolution.label:
+  es: Cambio de resolución en caliente
+  en: Live resolution change
+ps.graphics.live_resolution.note:
+  es: Sin reiniciar, pero más lento en Steam Deck y GPU antiguas
+  en: No restart, but slower on Steam Deck and older GPUs
+ps.graphics.live_resolution.options.auto:
+  es: Automático (según la GPU)
+  en: Automatic (by GPU)
+ps.graphics.live_resolution.options.off:
+  es: Desactivado (más rápido)
+  en: Off (faster)
+ps.graphics.live_resolution.options.on:
+  es: Activado
+  en: On
+ps.graphics.fullscreen.label:
+  es: Pantalla completa
+  en: Fullscreen
+ps.graphics.present_mode.label:
+  es: Modo de presentación
+  en: Presentation mode
+ps.graphics.present_mode.options.mailbox:
+  es: Mailbox
+  en: Mailbox
+ps.graphics.present_mode.options.fifo:
+  es: FIFO (VSync)
+  en: FIFO (VSync)
+ps.graphics.present_mode.options.fifo_relaxed:
+  es: FIFO Relaxed
+  en: FIFO Relaxed
+ps.graphics.present_mode.options.immediate:
+  es: Immediate
+  en: Immediate
+ps.graphics.hdr.label:
+  es: Permitir HDR
+  en: Allow HDR
+ps.graphics.groups.gamepad:
+  es: Mando
+  en: Controller
+ps.graphics.gamepad.label:
+  es: Mando
+  en: Controller
+ps.graphics.gamepad.note:
+  es: Con varios conectados, cuál usa el juego; la lista se actualiza al abrir esta pestaña
+  en: With several connected, which one the game uses; the list refreshes when this tab opens
+ps.graphics.groups.upscaling:
+  es: Reescalado
+  en: Upscaling
+ps.graphics.groups.upscaling_note:
+  es: Se guarda en bbport.ini; en el juego se cambia desde el menú (Insert o L3+R3)
+  en: Saved in bbport.ini; in game it's changed from the menu (Insert or L3+R3)
+ps.graphics.upscaler.label:
+  es: Reescalado
+  en: Upscaler
+ps.graphics.upscaler.options.fsr4:
+  es: FSR 4
+  en: FSR 4
+ps.graphics.upscaler.options.fsr411:
+  es: FSR 4.1.1
+  en: FSR 4.1.1
+ps.graphics.upscaler.options.fsr3:
+  es: FSR 3
+  en: FSR 3
+ps.graphics.upscaler.options.taa:
+  es: TAA
+  en: TAA
+ps.graphics.upscaler.options.taa_note:
+  es: Antialiasing a la resolución de salida, sin modelo FSR
+  en: Antialiasing at the output resolution, without an FSR model
+ps.graphics.upscaler.options.off:
+  es: Desactivado
+  en: Off
+ps.graphics.preset.label:
+  es: Preset
+  en: Preset
+ps.graphics.preset.options.native:
+  es: Native AA
+  en: Native AA
+ps.graphics.preset.options.quality:
+  es: Quality (x1.5)
+  en: Quality (x1.5)
+ps.graphics.preset.options.balanced:
+  es: Balanced (x1.7)
+  en: Balanced (x1.7)
+ps.graphics.preset.options.performance:
+  es: Performance (x2)
+  en: Performance (x2)
+ps.graphics.preset.options.ultra_performance:
+  es: Ultra Performance (x3)
+  en: Ultra Performance (x3)
+ps.graphics.sharpen.label:
+  es: Nitidez (RCAS)
+  en: Sharpening (RCAS)
+ps.graphics.sharpness.label:
+  es: Intensidad de la nitidez
+  en: Sharpening strength
+ps.graphics.object_motion.label:
+  es: Vectores de movimiento de objetos
+  en: Object motion vectors
+ps.graphics.object_motion.note:
+  es: Menos estelas en los personajes; cuesta un 10% de FPS
+  en: Less ghosting on characters; costs about 10% FPS
+ps.graphics.show_fps.label:
+  es: Mostrar FPS
+  en: Show FPS
+ps.graphics.groups.effects:
+  es: Efectos del juego
+  en: Game effects
+ps.graphics.groups.effects_note:
+  es: Parches del juego, se aplican al arrancar
+  en: Game patches, applied at start
+ps.graphics.model_lod.label:
+  es: Detalle de modelos
+  en: Model detail
+ps.graphics.model_lod.options.game:
+  es: Como en el juego
+  en: As in the game
+ps.graphics.model_lod.options.max:
+  es: Máximo (-2)
+  en: Maximum (-2)
+ps.graphics.model_lod.options.lower:
+  es: Menor (1)
+  en: Lower (1)
+ps.graphics.model_lod.options.min:
+  es: Mínimo (2)
+  en: Minimum (2)
+ps.graphics.effect_chromatic_aberration.label:
+  es: Aberración cromática
+  en: Chromatic aberration
+ps.graphics.effect_dof.label:
+  es: Profundidad de campo
+  en: Depth of field
+ps.graphics.effect_motion_blur.label:
+  es: Desenfoque de movimiento
+  en: Motion blur
+ps.graphics.effect_ssao.label:
+  es: SSAO
+  en: SSAO
+ps.graphics.effect_game_aa.label:
+  es: Antialiasing del juego
+  en: The game's antialiasing
+ps.graphics.effect_dynamic_shadows.label:
+  es: Sombras de luces dinámicas
+  en: Dynamic light shadows
+ps.graphics.effect_ssr.label:
+  es: Reflejos SSR (no estaban en el juego)
+  en: SSR reflections (not in the original game)
+ps.graphics.skip_intro.label:
+  es: Saltar vídeos de inicio
+  en: Skip intro videos
+ps.graphics.debug_camera.label:
+  es: Cámara libre (Cruz + L3 / Space + Z)
+  en: Free camera (Cross + L3 / Space + Z)
+ps.graphics.debug_menu.label:
+  es: Menú de depuración (táctil izquierdo / Tab)
+  en: Debug menu (touchpad left / Tab)
+ps.graphics.debug_menu.note:
+  es: Necesita DbgFont14h.ccm y DbgFont14h.tpf en dvdroot_ps4/font del juego
+  en: Needs DbgFont14h.ccm and DbgFont14h.tpf in the game's dvdroot_ps4/font
+ps.graphics.groups.frames:
+  es: Fotogramas
+  en: Frame rate
+ps.graphics.fps_mode.label:
+  es: Modo
+  en: Mode
+ps.graphics.fps_mode.note:
+  es: Qué parche de fotogramas se aplica al juego
+  en: Which frame rate patch the game gets
+ps.graphics.fps_mode.options.uncap:
+  es: Sin límite (parche)
+  en: Uncapped (patch)
+ps.graphics.fps_mode.options.fps60:
+  es: "60"
+  en: "60"
+ps.graphics.fps_mode.options.fps90:
+  es: "90"
+  en: "90"
+ps.graphics.fps_mode.options.fps30:
+  es: "30 (como en PS4)"
+  en: "30 (as on PS4)"
+ps.graphics.fps_limit.label:
+  es: Límite de FPS
+  en: FPS limit
+ps.graphics.fps_limit.note:
+  es: "0: sin límite"
+  en: "0: no limit"
+ps.graphics.groups.performance:
+  es: Rendimiento
+  en: Performance
+ps.graphics.draw_pipe.label:
+  es: Pipeline de GPU en dos fases
+  en: Two-stage GPU pipeline
+ps.graphics.draw_pipe.note:
+  es: Un 20–30% más rápido; desactívalo si hay inestabilidad
+  en: "20–30% faster; turn it off if things get unstable"
+ps.graphics.draw_pipe.options.auto:
+  es: Automático
+  en: Automatic
+ps.graphics.draw_pipe.options.auto_note:
+  es: Activado con 8 o más hilos de CPU
+  en: On with 8 or more CPU threads
+ps.graphics.draw_pipe.options.on:
+  es: Activado
+  en: On
+ps.graphics.draw_pipe.options.off:
+  es: Desactivado
+  en: Off
+ps.graphics.draw_pipe.options.off_note:
+  es: Más estable, pero más lento
+  en: More stable, but slower
+ps.graphics.readbacks.label:
+  es: Lecturas de datos de la GPU
+  en: GPU data readbacks
+ps.graphics.readbacks.options.relaxed:
+  es: Relaxed
+  en: Relaxed
+ps.graphics.readbacks.options.relaxed_note:
+  es: Por defecto
+  en: Default
+ps.graphics.readbacks.options.off:
+  es: Desactivadas
+  en: Off
+ps.graphics.readbacks.options.precise:
+  es: Precise
+  en: Precise
+ps.graphics.preupload.label:
+  es: Carga previa a la memoria de vídeo
+  en: Video memory preloading
+ps.graphics.preupload.note:
+  es: Menos tirones al cargar zonas
+  en: Less stutter when loading areas
+ps.graphics.preupload.options.normal:
+  es: Normal
+  en: Normal
+ps.graphics.preupload.options.normal_note:
+  es: Sin memoria de vídeo extra
+  en: No extra video memory
+ps.graphics.preupload.options.full:
+  es: Completa
+  en: Full
+ps.graphics.preupload.options.full_note:
+  es: Unos 3 GB más de memoria de vídeo
+  en: About 3 GB more video memory
+ps.graphics.preupload.options.off:
+  es: Desactivada
+  en: Off
+ps.graphics.groups.development:
+  es: Desarrollo
+  en: Development
+ps.graphics.mangohud.label:
+  es: MangoHud
+  en: MangoHud
+ps.graphics.save_log.label:
+  es: Guardar registro y estadísticas en archivo
+  en: Save log and stats to a file
+ps.graphics.save_log.note:
+  es: "En la carpeta logs de bbport: para analizar tirones y cierres"
+  en: "In bbport's logs folder: for looking into stutter and crashes"
+ps.graphics.crash_diag.label:
+  es: Diagnóstico de cierres
+  en: Crash diagnostics
+ps.graphics.crash_diag.note:
+  es: Comprueba el heap del juego y registra escrituras en su memoria; algo más lento
+  en: Checks the game's heap and logs writes to its memory; somewhat slower
+ps.graphics.as_0_3.label:
+  es: Sincronización como en la 0.3
+  en: Synchronization as in 0.3
+ps.graphics.as_0_3.note:
+  es: "Para buscar regresiones: modelo de memoria y esperas de copia como en la 0.3"
+  en: "For hunting regressions: memory model and copy waits as in 0.3"
+ps.graphics.frame_stats.label:
+  es: Estadísticas de fotogramas en el registro
+  en: Frame stats in the log
+ps.graphics.frame_stats.note:
+  es: BB_FRAME_STATS
+  en: BB_FRAME_STATS
+ps.graphics.gpu_profile.label:
+  es: Perfil de GPU en el registro
+  en: GPU profile in the log
+ps.graphics.gpu_profile.note:
+  es: BB_GPU_PROFILE
+  en: BB_GPU_PROFILE
+ps.graphics.vk_validation.label:
+  es: Capas de validación de Vulkan
+  en: Vulkan validation layers
+ps.graphics.vk_validation.note:
+  es: Ralentiza mucho
+  en: Slows things down a lot
+ps.graphics.description:
+  es: Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque.
+  en: bbport settings, shared by all your Bloodborne copies. They apply on the next start.
+ps.graphics.reading:
+  es: Leyendo los ajustes…
+  en: Reading the settings…
+ps.graphics.no_limit:
+  es: Sin límite
+  en: No limit
+ps.graphics.save_error:
+  es: "No se pudo guardar: %{error}"
+  en: "Couldn't save: %{error}"
+ps.errors.bbport_not_ready:
+  es: "bbport no está listo: %{error}"
+  en: "bbport isn't ready: %{error}"
+ps.jobs.fsr411:
+  es: compilación de FSR 4.1.1
+  en: FSR 4.1.1 build
+ps.fsr.checking:
+  es: Comprobando la DLL…
+  en: Checking the DLL…
+ps.fsr.check_error:
+  es: "No se pudo comprobar la DLL: %{error}"
+  en: "Couldn't check the DLL: %{error}"
+ps.fsr.built:
+  es: FSR 4.1.1 compilado y elegido como reescalado
+  en: FSR 4.1.1 built and chosen as the upscaler
+ps.fsr.built_not_chosen:
+  es: "FSR 4.1.1 compilado, pero no se pudo elegir: %{error}"
+  en: "FSR 4.1.1 built, but couldn't be chosen: %{error}"
+ps.fsr.cancelled:
+  es: Compilación de FSR 4.1.1 cancelada
+  en: FSR 4.1.1 build cancelled
+ps.fsr.unsupported.fsr40:
+  es: "%{name}: FSR %{version}, la FSR 4.0.x oficial de AMD, que solo funciona en RDNA4 y no se puede grabar bajo Proton en otras GPU. Hace falta FSR 4.1.x (FSR4_LATEST de OptiScaler o la DLL de un juego con FSR 4.1)"
+  en: "%{name}: FSR %{version}, AMD's official FSR 4.0.x, which only works on RDNA4 and can't be recorded under Proton on other GPUs. FSR 4.1.x is needed (OptiScaler's FSR4_LATEST or the DLL from a game with FSR 4.1)"
+ps.fsr.unsupported.not_fsr4:
+  es: "%{name}: no contiene FSR 4; hace falta amd_fidelityfx_upscaler_dx12.dll 4.1.x"
+  en: "%{name}: has no FSR 4; amd_fidelityfx_upscaler_dx12.dll 4.1.x is needed"
+ps.fsr.unsupported.other:
+  es: "%{name}: versión %{version}. bbport solo reproduce la FSR 4.1.x oficial de AMD (modelo v07_fp8_no_scale); las versiones de la comunidad aún no están soportadas"
+  en: "%{name}: version %{version}. bbport only replays AMD's official FSR 4.1.x (model v07_fp8_no_scale); community builds aren't supported yet"
+ps.fsr.bad_loader.is_upscaler:
+  es: eso es la DLL del reescalado; el cargador es amd_fidelityfx_loader_dx12.dll (o amd_fidelityfx_dx12.dll en OptiScaler), en la misma carpeta del juego
+  en: that's the upscaler DLL; the loader is amd_fidelityfx_loader_dx12.dll (or amd_fidelityfx_dx12.dll with OptiScaler), in the same game folder
+ps.fsr.bad_loader.wrong_version:
+  es: "%{loader}: versión %{version}; hace falta el cargador FidelityFX 2.x del mismo juego"
+  en: "%{loader}: version %{version}; the FidelityFX 2.x loader from the same game is needed"
+ps.fsr.failures.bad_dll:
+  es: "La DLL no sirve: detalles en el registro"
+  en: "The DLL won't work: details in the log"
+ps.fsr.failures.no_proton:
+  es: "No hay un Proton adecuado: instalá GE-Proton 10 o posterior, Proton Experimental o Proton-CachyOS, y abrí con él cualquier juego en Steam para que instale su runtime"
+  en: "No suitable Proton: install GE-Proton 10 or later, Proton Experimental or Proton-CachyOS, and open any game with it in Steam so it installs its runtime"
+ps.fsr.failures.missing_tools:
+  es: "Faltan programas para compilar: la lista está en el registro"
+  en: "Build tools are missing: the list is in the log"
+ps.fsr.failures.no_proton_ran:
+  es: "Ningún Proton ejecutó FSR 4.1 con esa DLL: son demasiado antiguos o la DLL no activa FSR 4.1 en esta GPU"
+  en: "No Proton ran FSR 4.1 with that DLL: they're too old or the DLL doesn't enable FSR 4.1 on this GPU"
+ps.fsr.failures.mismatch:
+  es: "Las pasadas grabadas no coinciden con lo que reproduce bbport (otra versión de la DLL o una GPU nueva): detalles en el registro"
+  en: "The recorded passes don't match what bbport replays (another DLL version or a new GPU): details in the log"
+ps.fsr.failures.no_loader:
+  es: No se encontró el cargador FidelityFX 2.x
+  en: The FidelityFX 2.x loader wasn't found
+ps.fsr.failures.nixos:
+  es: En NixOS la grabación necesita umu-launcher o Nix en el sistema
+  en: On NixOS, recording needs umu-launcher or Nix on the system
+ps.fsr.failures.failed:
+  es: "La compilación falló (código %{code}): detalles en el registro"
+  en: "The build failed (code %{code}): details in the log"
+ps.fsr.failures.stopped:
+  es: La compilación se detuvo
+  en: The build stopped
+ps.extras.title:
+  es: Extras
+  en: Extras
+ps.extras.env.title:
+  es: Variables extra
+  en: Extra variables
+ps.extras.env.hint:
+  es: Enter guarda
+  en: Enter saves
+ps.extras.env.placeholder:
+  es: NOMBRE=valor separadas por espacios
+  en: NAME=value separated by spaces
+ps.extras.env.saved:
+  es: Variables guardadas; se aplican en el próximo arranque
+  en: Variables saved; they apply on the next start
+ps.extras.env.save_error:
+  es: "No se pudieron guardar las variables: %{error}"
+  en: "Couldn't save the variables: %{error}"
+ps.extras.fsr.title:
+  es: FSR 4.1.1 desde tu DLL de AMD
+  en: FSR 4.1.1 from your AMD DLL
+ps.extras.fsr.pick:
+  es: Elegir DLL…
+  en: Choose DLL…
+ps.extras.fsr.pick_upscaler:
+  es: DLL del reescalado de AMD (amd_fidelityfx_upscaler_dx12.dll)
+  en: AMD upscaler DLL (amd_fidelityfx_upscaler_dx12.dll)
+ps.extras.fsr.pick_loader:
+  es: Cargador FidelityFX (amd_fidelityfx_loader_dx12.dll)
+  en: FidelityFX loader (amd_fidelityfx_loader_dx12.dll)
+ps.extras.fsr.needs_loader:
+  es: "Junto a la DLL no hay cargador: elegí amd_fidelityfx_loader_dx12.dll de la carpeta del juego"
+  en: "There's no loader next to the DLL: choose amd_fidelityfx_loader_dx12.dll from the game folder"
+ps.extras.fsr.checking:
+  es: Comprobando…
+  en: Checking…
+ps.extras.fsr.ready:
+  es: Recursos listos para esta resolución y preset
+  en: Assets ready for this resolution and preset
+ps.extras.fsr.missing_file:
+  es: falta o está dañado %{file}
+  en: "%{file} is missing or damaged"
+ps.extras.fsr.missing:
+  es: Sin recursos (%{problem}). Se compilan desde amd_fidelityfx_upscaler_dx12.dll 4.1.x (FSR4_LATEST de OptiScaler o de un juego con FSR 4.1); necesita GE-Proton 10+, Proton Experimental o Proton-CachyOS y tarda 2–5 minutos
+  en: No assets (%{problem}). They're built from amd_fidelityfx_upscaler_dx12.dll 4.1.x (OptiScaler's FSR4_LATEST or from a game with FSR 4.1); needs GE-Proton 10+, Proton Experimental or Proton-CachyOS and takes 2–5 minutes
+ps.extras.fsr.progress.preparing:
+  es: Preparando…
+  en: Preparing…
+ps.extras.fsr.progress.recording:
+  es: "Grabando las pasadas bajo Proton: %{done} de %{total}"
+  en: "Recording the passes under Proton: %{done} of %{total}"
+ps.extras.fsr.progress.translating:
+  es: Traduciendo las pasadas a SPIR-V…
+  en: Translating the passes to SPIR-V…
+ps.mods.description:
+  es: Se aplican en el próximo arranque; "Cargar mods" está en Gráficos.
+  en: They apply on the next start; "Load mods" is in Graphics.
+ps.mods.loading:
+  es: Preparando bbport y buscando mods…
+  en: Preparing bbport and looking for mods…
+ps.mods.refresh:
+  es: Actualizar
+  en: Refresh
+ps.mods.open:
+  es: Abrir
+  en: Open
+ps.mods.change:
+  es: Cambiar
+  en: Change
+ps.mods.save_error:
+  es: "No se pudo guardar %{file}: %{error}"
+  en: "Couldn't save %{file}: %{error}"
+ps.mods.folder_error:
+  es: "No se pudo guardar la carpeta: %{error}"
+  en: "Couldn't save the folder: %{error}"
+ps.mods.mods.title:
+  es: Mods
+  en: Mods
+ps.mods.mods.note:
+  es: Carpetas con dvdroot_ps4/ o los archivos del juego; las de abajo se cargan después y ganan en caso de conflicto.
+  en: Folders with dvdroot_ps4/ or the game's files; the ones below load later and win on conflict.
+ps.mods.mods.folder:
+  es: Carpeta de mods
+  en: Mods folder
+ps.mods.mods.read_error:
+  es: "No se pudieron leer los mods: %{error}"
+  en: "Couldn't read the mods: %{error}"
+ps.mods.mods.empty:
+  es: No hay mods en la carpeta
+  en: No mods in the folder
+ps.mods.patches.title:
+  es: Parches externos
+  en: External patches
+ps.mods.patches.note:
+  es: Parches XML en formato shadPS4 para la versión 01.09.
+  en: XML patches in shadPS4 format for version 01.09.
+ps.mods.patches.folder:
+  es: Carpeta de parches
+  en: Patches folder
+ps.mods.patches.read_error:
+  es: "No se pudieron leer los parches: %{error}"
+  en: "Couldn't read the patches: %{error}"
+ps.mods.patches.empty:
+  es: No hay parches en la carpeta
+  en: No patches in the folder

@@ -118,12 +118,31 @@ impl Action {
     }
 
     /// Rejects sources the ports refuse for this action.
-    pub fn check(self, source: &Source) -> Result<(), &'static str> {
+    pub fn check(self, source: &Source) -> Result<(), Refusal> {
         match source {
-            Source::Mouse(_) if self == Action::ToggleFullscreen => Err("ToggleFullscreen can only use a keyboard key"),
-            Source::Wheel(_) if !self.is_button() => Err("mouse wheel can only map to a pad button"),
+            Source::Mouse(_) if self == Action::ToggleFullscreen => Err(Refusal::FullscreenNeedsKey),
+            Source::Wheel(_) if !self.is_button() => Err(Refusal::WheelNeedsButton),
             _ => Ok(()),
         }
+    }
+}
+
+/// Why a port refuses a source for an action.
+#[derive(Clone, Copy, Debug)]
+pub enum Refusal {
+    /// bbport's `key.` lines list keyboard keys only.
+    KeysOnly,
+    FullscreenNeedsKey,
+    WheelNeedsButton,
+}
+
+impl fmt::Display for Refusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match *self {
+            Self::KeysOnly => "bbport only takes keyboard keys",
+            Self::FullscreenNeedsKey => "ToggleFullscreen can only use a keyboard key",
+            Self::WheelNeedsButton => "mouse wheel can only map to a pad button",
+        })
     }
 }
 
@@ -272,7 +291,7 @@ impl Mapping {
                 return Err(error("source is empty".into()));
             }
             let source = parse_source(source).map_err(error)?;
-            action.check(&source).map_err(|reason| error(reason.into()))?;
+            action.check(&source).map_err(|reason| error(reason.to_string()))?;
             if !std::mem::replace(&mut overridden[action.index()], true) {
                 mapping.0[action.index()].clear();
             }
@@ -344,9 +363,9 @@ impl Target {
     }
 
     /// bbport's `key.` lines list keys only; AnyPS5 also takes mouse buttons and the wheel.
-    pub fn check(self, action: Action, source: &Source) -> Result<(), &'static str> {
+    pub fn check(self, action: Action, source: &Source) -> Result<(), Refusal> {
         if self == Target::Bbport && !matches!(source, Source::Key(_)) {
-            return Err("bbport solo admite teclas del teclado");
+            return Err(Refusal::KeysOnly);
         }
         action.check(source)
     }

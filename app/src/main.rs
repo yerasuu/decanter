@@ -105,6 +105,7 @@ mod core;
 mod desktop;
 mod external;
 mod format;
+mod i18n;
 mod launch;
 mod relocate;
 mod state;
@@ -113,6 +114,8 @@ mod theme;
 mod tray_linux;
 mod views;
 mod widgets;
+
+rust_i18n::i18n!("locales", fallback = "es");
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -146,6 +149,7 @@ fn main() {
     art::init(runtime.handle().clone());
 
     let close_to_tray = close_to_tray();
+    i18n::init();
     gpui_platform::application()
         .with_quit_mode(gpui::QuitMode::Explicit)
         .run(move |cx| {

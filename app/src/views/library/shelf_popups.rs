@@ -6,7 +6,8 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, Entity, Focusable as _, Pixels, Point, Window, div, prelude::*};
+use gpui::{AnyElement, App, Context, Entity, Focusable as _, Pixels, Point, SharedString, Window, div, prelude::*};
+use rust_i18n::t;
 
 use super::actions::bump_organisation;
 use super::context_menu::PopupState;
@@ -38,7 +39,7 @@ pub fn shelf_menu(
     let can_move_up = index.is_some_and(|index| index > 0);
     let can_move_down = index.is_some_and(|index| index + 1 < order.len());
 
-    let move_item = |id: &'static str, label: &'static str, delta: i64, enabled: bool| {
+    let move_item = |id: &'static str, label: SharedString, delta: i64, enabled: bool| {
         let profile_id = profile_id.to_owned();
         let collection_id = target.collection_id.clone();
         let close = Rc::clone(close);
@@ -70,10 +71,20 @@ pub fn shelf_menu(
                         cx.notify();
                     });
                 })
-                .child("Renombrar"),
+                .child(t!("library.collections.rename")),
         )
-        .child(move_item("shelf-up", "Subir", -1, can_move_up))
-        .child(move_item("shelf-down", "Bajar", 1, can_move_down))
+        .child(move_item(
+            "shelf-up",
+            t!("library.collections.move_up").into(),
+            -1,
+            can_move_up,
+        ))
+        .child(move_item(
+            "shelf-down",
+            t!("library.collections.move_down").into(),
+            1,
+            can_move_down,
+        ))
         .child(menu::separator())
         .child(
             menu::danger_item("shelf-delete")
@@ -82,7 +93,7 @@ pub fn shelf_menu(
                     bump_organisation(cx);
                     delete_close(window, cx);
                 })
-                .child("Eliminar coleccion"),
+                .child(t!("library.collections.delete")),
         )
         .into_any_element()
 }
@@ -119,7 +130,7 @@ pub fn new_collection(
     state.update(cx, |state, _| state.on_submit = Some(submit));
     let click_name = name.clone();
     menu::panel()
-        .child(menu::title("Nueva coleccion"))
+        .child(menu::title(t!("library.collections.new")))
         .child(div().pb_1().child(name))
         .child(
             menu::item("new-collection-create", false)
@@ -129,7 +140,7 @@ pub fn new_collection(
                         create(&text, cx);
                     }
                 })
-                .child("Crear"),
+                .child(t!("library.collections.create")),
         )
         .into_any_element()
 }

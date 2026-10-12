@@ -21,6 +21,7 @@ mod sidebar;
 
 use decanter_core::CachedAchievement;
 use gpui::{Context, Entity, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb};
+use rust_i18n::t;
 
 use browser::BrowserView;
 use context_menu::MenuTarget;
@@ -223,7 +224,7 @@ impl Render for LibraryView {
                 .into_any_element(),
             (_, false) => div()
                 .m_8()
-                .child(theme::empty("Elegi un perfil arriba."))
+                .child(theme::empty(t!("library.pick_profile")))
                 .into_any_element(),
         };
         let filter_panel = self.sidebar.update(cx, |sidebar, cx| sidebar.filter_panel(window, cx));
@@ -277,9 +278,7 @@ fn offline_notice(offline: &[std::path::PathBuf]) -> Option<gpui::Div> {
             .border_color(rgb(theme::LINE))
             .text_size(px(12.5))
             .text_color(rgb(theme::TEXT_MUTED))
-            .child(format!(
-                "Sin conectar: {folders}. Sus juegos no figuran como instalados hasta que conectes el disco."
-            )),
+            .child(t!("library.offline_folders", folders = folders)),
     )
 }
 
@@ -297,9 +296,10 @@ fn open_properties(game: &decanter_core::Game, cx: &mut gpui::App) {
 fn loading(count: usize, enriching: Option<(usize, usize)>) -> impl IntoElement {
     let fraction = enriching.map(|(done, total)| done as f64 / total.max(1) as f64);
     let text = match (count, enriching) {
-        (0, _) => "Buscando tus juegos en GOG...".to_owned(),
-        (count, Some((done, total))) => format!("Completando datos: {done} de {total} ({count} encontrados)"),
-        (count, None) => format!("{count} juego(s) encontrados, completando datos..."),
+        (0, _) => t!("library.loading.searching"),
+        (count, Some((done, total))) => t!("library.loading.enriching", done = done, total = total, count = count),
+        (1, None) => t!("library.loading.found.one", count = 1),
+        (count, None) => t!("library.loading.found.other", count = count),
     };
     div().size_full().flex().items_center().justify_center().child(
         div()
@@ -314,7 +314,7 @@ fn loading(count: usize, enriching: Option<(usize, usize)>) -> impl IntoElement 
                     .text_color(rgb(theme::TEXT_MUTED))
                     .mt_8()
                     .mb(px(20.))
-                    .child("CARGANDO TU BIBLIOTECA"),
+                    .child(t!("library.loading.title")),
             )
             .child(
                 div()

@@ -11,6 +11,7 @@ use decanter_core::InstalledGame;
 use decanter_gog::cloud_saves::{ForceDirection, SyncAction, SyncOutcome};
 use decanter_gog::save_location::SaveLocation;
 use gpui::{Context, Entity, SharedString, Window, div, prelude::*};
+use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
 use crate::theme;
@@ -31,7 +32,7 @@ pub(super) struct CloudSavesTab {
 
 impl CloudSavesTab {
     pub(super) fn new(target: Rc<Target>, _: &mut Window, cx: &mut Context<Self>) -> Self {
-        let path_input = cx.new(|cx| TextInput::new("Carpeta de guardado", cx));
+        let path_input = cx.new(|cx| TextInput::new(t!("library.properties.saves.folder_placeholder"), cx));
         cx.subscribe(&path_input, |this, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 this.refill_path(cx);
@@ -146,7 +147,7 @@ impl CloudSavesTab {
             Ok(locations) if locations.is_empty() => {
                 tracing::debug!(account_id, product_id = game_id, "gog reports no cloud save location");
                 if report_errors {
-                    self.error = "GOG no reporta una carpeta de guardado para este juego.".to_string();
+                    self.error = t!("library.properties.saves.none_reported").into_owned();
                 }
                 self.detected = None;
             }
@@ -200,7 +201,7 @@ impl CloudSavesTab {
             .as_ref()
             .map(decanter_runtime::Prefix::drive_c);
         cx.spawn(async move |this, cx| {
-            let mut dialog = rfd::AsyncFileDialog::new().set_title("Elegí la carpeta de guardado");
+            let mut dialog = rfd::AsyncFileDialog::new().set_title(t!("library.properties.saves.pick_title"));
             if let Some(starting) = starting {
                 dialog = dialog.set_directory(starting);
             }
@@ -279,9 +280,9 @@ impl Render for CloudSavesTab {
         };
 
         let detect_label = if self.detecting {
-            "Detectando..."
+            t!("library.properties.saves.detecting")
         } else {
-            "Detectar automáticamente"
+            t!("library.properties.saves.detect")
         };
         let detect_row = field_row().child(
             button("detect-saves", ButtonKind::Secondary, detect_label, self.detecting).when(!self.detecting, |b| {
@@ -312,28 +313,30 @@ impl Render for CloudSavesTab {
                 }))
             });
 
-        let last_sync = installed
-            .cloud_save_last_sync
-            .map_or_else(|| "nunca".to_string(), |last| fmt::unix_date(last).unwrap_or_default());
+        let last_sync = installed.cloud_save_last_sync.map_or_else(
+            || t!("library.properties.saves.never").into_owned(),
+            |last| fmt::unix_date(last).unwrap_or_default(),
+        );
 
         let path_empty = self.path_input.read(cx).text().trim().is_empty();
+        let (pick_label, save_label) = (t!("library.properties.saves.pick"), t!("library.properties.saves.save"));
         let path_row = field_row()
             .child(div().flex_1().min_w_0().child(self.path_input.clone()))
             .child(
-                button("pick-saves", ButtonKind::Secondary, "Elegir carpeta...", false)
+                button("pick-saves", ButtonKind::Secondary, pick_label, false)
                     .on_click(cx.listener(|this, _, _, cx| this.pick_folder(cx))),
             )
             .child(
-                button("save-saves-path", ButtonKind::Primary, "Guardar carpeta", path_empty).when(!path_empty, |b| {
+                button("save-saves-path", ButtonKind::Primary, save_label, path_empty).when(!path_empty, |b| {
                     b.on_click(cx.listener(|this, _, _, cx| this.save_path(cx)))
                 }),
             );
 
         let sync_disabled = self.syncing || installed.cloud_save_path.is_none();
         let sync_label = if self.syncing {
-            "Sincronizando..."
+            t!("library.properties.saves.syncing")
         } else {
-            "Sincronizar ahora"
+            t!("library.properties.saves.sync")
         };
         let sync_row = field_row()
             .child(
@@ -342,7 +345,7 @@ impl Render for CloudSavesTab {
                 }),
             )
             .children(self.last_outcome.map(|outcome| match outcome {
-                SyncAction::Conflict => theme::error("Cambios en ambos lados desde la última sync."),
+                SyncAction::Conflict => theme::error(t!("library.properties.saves.conflict")),
                 other @ (SyncAction::Upload | SyncAction::Download | SyncAction::None) => {
                     theme::muted(sync_action_label(other))
                 }
@@ -350,33 +353,26 @@ impl Render for CloudSavesTab {
 
         let conflict_row = (self.last_outcome == Some(SyncAction::Conflict)).then(|| {
             let syncing = self.syncing;
+            let upload = t!("library.properties.saves.force_upload");
+            let download = t!("library.properties.saves.force_download");
             field_row()
                 .child(
-                    button("force-upload", ButtonKind::Secondary, "Subir de todos modos", syncing)
-                        .when(!syncing, |b| {
-                            b.on_click(cx.listener(|this, _, _, cx| this.sync(Some(ForceDirection::Upload), cx)))
-                        }),
+                    button("force-upload", ButtonKind::Secondary, upload, syncing).when(!syncing, |b| {
+                        b.on_click(cx.listener(|this, _, _, cx| this.sync(Some(ForceDirection::Upload), cx)))
+                    }),
                 )
                 .child(
-                    button(
-                        "force-download",
-                        ButtonKind::Secondary,
-                        "Descargar de todos modos",
-                        syncing,
-                    )
-                    .when(!syncing, |b| {
+                    button("force-download", ButtonKind::Secondary, download, syncing).when(!syncing, |b| {
                         b.on_click(cx.listener(|this, _, _, cx| this.sync(Some(ForceDirection::Download), cx)))
                     }),
                 )
         });
 
         pane()
-            .child(theme::muted(
-                "Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indicala a mano.",
-            ))
+            .child(theme::muted(t!("library.properties.saves.note")))
             .child(detect_row)
             .children(choices)
-            .child(rows().child(row("Última sincronización", last_sync)))
+            .child(rows().child(row(t!("library.properties.saves.last_sync"), last_sync)))
             .child(path_row)
             .child(sync_row)
             .children(conflict_row)
@@ -384,12 +380,12 @@ impl Render for CloudSavesTab {
     }
 }
 
-const fn sync_action_label(action: SyncAction) -> &'static str {
+fn sync_action_label(action: SyncAction) -> std::borrow::Cow<'static, str> {
     match action {
-        SyncAction::Upload => "Subido.",
-        SyncAction::Download => "Descargado.",
-        SyncAction::None => "Ya estaba al día.",
-        SyncAction::Conflict => "Conflicto sin resolver.",
+        SyncAction::Upload => t!("library.properties.saves.uploaded"),
+        SyncAction::Download => t!("library.properties.saves.downloaded"),
+        SyncAction::None => t!("library.properties.saves.already_synced"),
+        SyncAction::Conflict => t!("library.properties.saves.unresolved"),
     }
 }
 

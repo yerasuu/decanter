@@ -28,6 +28,7 @@ use std::rc::Rc;
 
 use decanter_core::{Game, Storefront};
 use gpui::{AnyView, App, AppContext as _, Context, Div, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use crate::theme;
 use crate::views::chrome;
@@ -52,20 +53,35 @@ enum Tab {
     Compatibility,
 }
 
-const TABS: [(Tab, &str); 8] = [
-    (Tab::General, "General"),
-    (Tab::Updates, "Actualizaciones"),
-    (Tab::LocalFiles, "Archivos locales"),
-    (Tab::CloudSaves, "Guardado en la nube"),
-    (Tab::Dlc, "DLC"),
-    (Tab::Betas, "Betas"),
-    (Tab::Versions, "Versiones"),
-    (Tab::Compatibility, "Compatibilidad"),
+impl Tab {
+    fn label(self) -> std::borrow::Cow<'static, str> {
+        match self {
+            Self::General => t!("library.properties.tabs.general"),
+            Self::Updates => t!("library.properties.tabs.updates"),
+            Self::LocalFiles => t!("library.properties.tabs.local_files"),
+            Self::CloudSaves => t!("library.properties.tabs.cloud_saves"),
+            Self::Dlc => t!("library.properties.tabs.dlc"),
+            Self::Betas => t!("library.properties.tabs.betas"),
+            Self::Versions => t!("library.properties.tabs.versions"),
+            Self::Compatibility => t!("library.properties.tabs.compatibility"),
+        }
+    }
+}
+
+const TABS: [Tab; 8] = [
+    Tab::General,
+    Tab::Updates,
+    Tab::LocalFiles,
+    Tab::CloudSaves,
+    Tab::Dlc,
+    Tab::Betas,
+    Tab::Versions,
+    Tab::Compatibility,
 ];
 
 /// What an external game has to show: nothing GOG-side (builds, branches,
 /// DLC, cloud saves) applies to a file someone pointed at.
-const EXTERNAL_TABS: [(Tab, &str); 2] = [(Tab::General, "General"), (Tab::Compatibility, "Compatibilidad")];
+const EXTERNAL_TABS: [Tab; 2] = [Tab::General, Tab::Compatibility];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
@@ -75,7 +91,7 @@ const EXTERNAL_TABS: [(Tab, &str); 2] = [(Tab::General, "General"), (Tab::Compat
 /// Nothing stops a second click from opening a second window on the same
 /// game; Steam's own dialog doesn't either.
 pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
-    let title = format!("Propiedades — {}", game.title);
+    let title = t!("library.properties.window_title", title = game.title);
     let target = Rc::new(Target {
         account_id,
         product_id: game.id,
@@ -117,7 +133,7 @@ impl PropertiesWindow {
         cx.notify();
     }
 
-    fn tabs(&self) -> &'static [(Tab, &'static str)] {
+    fn tabs(&self) -> &'static [Tab] {
         if self.target.storefront == Storefront::Unspecified {
             &EXTERNAL_TABS
         } else {
@@ -138,10 +154,10 @@ impl PropertiesWindow {
             .border_color(rgb(theme::LINE))
             .overflow_y_scroll()
             .py_2()
-            .children(self.tabs().iter().map(|&(tab, label)| {
+            .children(self.tabs().iter().enumerate().map(|(index, &tab)| {
                 let active = tab == self.tab;
                 div()
-                    .id(label)
+                    .id(("properties-tab", index))
                     .flex()
                     .flex_none()
                     .items_center()
@@ -163,7 +179,7 @@ impl PropertiesWindow {
                             .hover(|item| item.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_PRIMARY)))
                     })
                     .on_click(cx.listener(move |this, _, window, cx| this.select(tab, window, cx)))
-                    .child(label)
+                    .child(tab.label())
             }))
     }
 }
@@ -195,7 +211,7 @@ impl Render for PropertiesWindow {
             .bg(rgb(theme::BG_PANEL_3))
             .border_b_1()
             .border_color(rgb(theme::LINE))
-            .child(chrome::logo("PROPIEDADES"))
+            .child(chrome::logo(&t!("library.properties.title").to_uppercase()))
             .child(chrome::drag_handle(div().flex_1().h_full()))
             .child(
                 div()
@@ -249,13 +265,13 @@ fn rows() -> Div {
 }
 
 /// `.properties-row`: a muted label left, its value right.
-fn row(label: &'static str, value: impl Into<SharedString>) -> Div {
+fn row(label: impl Into<SharedString>, value: impl Into<SharedString>) -> Div {
     div()
         .flex()
         .justify_between()
         .gap_4()
         .text_size(px(13.))
-        .child(div().text_color(rgb(theme::TEXT_MUTED)).child(label))
+        .child(div().text_color(rgb(theme::TEXT_MUTED)).child(label.into()))
         .child(div().child(value.into()))
 }
 
@@ -277,7 +293,7 @@ fn inline(element: impl IntoElement) -> Div {
 }
 
 fn not_installed() -> Div {
-    pane().child(theme::muted("El juego no está instalado."))
+    pane().child(theme::muted(t!("library.properties.not_installed")))
 }
 
 fn error_line(error: &str) -> Option<Div> {

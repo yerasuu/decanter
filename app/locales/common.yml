@@ -1,0 +1,10 @@
+_version: 2
+common.errors.internal_task:
+  es: "la tarea interna falló: %{error}"
+  en: "the internal task failed: %{error}"
+common.cancel:
+  es: Cancelar
+  en: Cancel
+common.loading:
+  es: Cargando...
+  en: Loading...

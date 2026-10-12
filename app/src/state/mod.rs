@@ -11,7 +11,7 @@ use gpui::{App, AppContext as _, Entity, Global};
 
 pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
-pub use ps::{DllOutcome, JobKey, Ps, Stage};
+pub use ps::{DllOutcome, JobKey, Ps, Stage, failure_message};
 
 /// Whether storage came up, and which profile is active.
 pub struct Session {

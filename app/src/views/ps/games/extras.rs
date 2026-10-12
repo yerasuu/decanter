@@ -2,10 +2,11 @@
 //! DLL, and free-form environment for the game.
 
 use decanter_ps::bbport::LauncherSettings;
-use decanter_ps::bbport::tools;
+use decanter_ps::bbport::tools::{self, Fsr411Progress};
 use decanter_ps::bbport::values::Values;
 use decanter_ps::process::Job;
 use gpui::{AnyElement, Context, Entity, Subscription, Window, div, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use crate::state::{DllOutcome, JobKey, Ps};
 use crate::theme;
@@ -13,8 +14,8 @@ use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
 
 pub struct ExtrasView {
     ps: Entity<Ps>,
-    /// Why the FSR 4.1.1 assets can't be used yet, `None` when they can;
-    /// outer `None` while it's being checked.
+    /// The first FSR 4.1.1 asset missing or damaged, `None` when all are
+    /// there; outer `None` while it's being checked.
     fsr_problem: Option<Option<String>>,
     checked_at: Option<u32>,
     message: Option<(String, bool)>,
@@ -30,7 +31,7 @@ impl ExtrasView {
             this.watch_fsr_job(cx);
         })
         .detach();
-        let env = cx.new(|cx| TextInput::new("NOMBRE=valor separadas por espacios", cx));
+        let env = cx.new(|cx| TextInput::new(t!("ps.extras.env.placeholder"), cx));
         cx.subscribe(&env, |this, env, event, cx| {
             if matches!(event, InputEvent::Submit) {
                 let value = env.read(cx).text().trim().to_owned();
@@ -115,11 +116,8 @@ impl ExtrasView {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.message = Some(match result {
-                    Ok(()) => (
-                        "Variables guardadas; se aplican en el próximo arranque".to_owned(),
-                        false,
-                    ),
-                    Err(err) => (format!("No se pudieron guardar las variables: {err}"), true),
+                    Ok(()) => (t!("ps.extras.env.saved").into_owned(), false),
+                    Err(err) => (t!("ps.extras.env.save_error", error = err).into_owned(), true),
                 });
                 cx.notify();
             });
@@ -130,13 +128,13 @@ impl ExtrasView {
     /// Asks for the DLL, or for its loader when the DLL needs one.
     fn pick_dll(&mut self, upscaler: Option<std::path::PathBuf>, cx: &mut Context<Self>) {
         let title = if upscaler.is_none() {
-            "DLL del reescalado de AMD (amd_fidelityfx_upscaler_dx12.dll)"
+            t!("ps.extras.fsr.pick_upscaler")
         } else {
-            "Cargador FidelityFX (amd_fidelityfx_loader_dx12.dll)"
+            t!("ps.extras.fsr.pick_loader")
         };
         cx.spawn(async move |this, cx| {
             let Some(file) = rfd::AsyncFileDialog::new()
-                .set_title(title)
+                .set_title(title.as_ref())
                 .add_filter("DLL", &["dll"])
                 .pick_file()
                 .await
@@ -149,7 +147,7 @@ impl ExtrasView {
                     Some(upscaler) => (upscaler, Some(chosen)),
                     None => (chosen, None),
                 };
-                this.message = Some(("Comprobando la DLL…".to_owned(), false));
+                this.message = Some((t!("ps.fsr.checking").into_owned(), false));
                 let view = cx.entity().downgrade();
                 this.ps.update(cx, |ps, cx| {
                     ps.build_fsr411(upscaler, loader, cx, move |outcome, cx| {
@@ -157,12 +155,7 @@ impl ExtrasView {
                             match outcome {
                                 DllOutcome::Building => this.message = None,
                                 DllOutcome::NeedsLoader(upscaler) => {
-                                    this.message = Some((
-                                        "Junto a la DLL no hay cargador: elegí amd_fidelityfx_loader_dx12.dll de la \
-                                         carpeta del juego"
-                                            .to_owned(),
-                                        false,
-                                    ));
+                                    this.message = Some((t!("ps.extras.fsr.needs_loader").into_owned(), false));
                                     this.pick_dll(Some(upscaler), cx);
                                 }
                                 DllOutcome::Refused(why) => this.message = Some((why, true)),
@@ -185,20 +178,25 @@ impl ExtrasView {
             .filter(|job| job.read(cx).is_running())
             .cloned();
         let status = match (&job, &self.fsr_problem) {
-            (Some(job), _) => tools::fsr411_progress(job.read(cx)),
-            (None, None) => "Comprobando…".to_owned(),
-            (None, Some(None)) => "Recursos listos para esta resolución y preset".to_owned(),
-            (None, Some(Some(problem))) => format!(
-                "Sin recursos ({problem}). Se compilan desde amd_fidelityfx_upscaler_dx12.dll 4.1.x (FSR4_LATEST \
-                 de OptiScaler o de un juego con FSR 4.1); necesita GE-Proton 10+, Proton Experimental o \
-                 Proton-CachyOS y tarda 2–5 minutos"
+            (Some(job), _) => match tools::fsr411_progress(job.read(cx)) {
+                Fsr411Progress::Preparing => t!("ps.extras.fsr.progress.preparing"),
+                Fsr411Progress::Recording { done, total } => {
+                    t!("ps.extras.fsr.progress.recording", done = done, total = total)
+                }
+                Fsr411Progress::Translating => t!("ps.extras.fsr.progress.translating"),
+            },
+            (None, None) => t!("ps.extras.fsr.checking"),
+            (None, Some(None)) => t!("ps.extras.fsr.ready"),
+            (None, Some(Some(file))) => t!(
+                "ps.extras.fsr.missing",
+                problem = t!("ps.extras.fsr.missing_file", file = file)
             ),
         };
         let action = if job.is_some() {
-            button("fsr411", ButtonKind::Secondary, "Cancelar", false)
+            button("fsr411", ButtonKind::Secondary, t!("common.cancel"), false)
                 .on_click(cx.listener(|this, _, _, cx| this.ps.update(cx, |ps, cx| ps.stop(&JobKey::Fsr411, cx))))
         } else {
-            button("fsr411", ButtonKind::Secondary, "Elegir DLL…", false)
+            button("fsr411", ButtonKind::Secondary, t!("ps.extras.fsr.pick"), false)
                 .on_click(cx.listener(|this, _, _, cx| this.pick_dll(None, cx)))
         };
         div()
@@ -215,7 +213,7 @@ impl ExtrasView {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child("FSR 4.1.1 desde tu DLL de AMD")
+                    .child(t!("ps.extras.fsr.title"))
                     .child(theme::muted(status).text_size(px(12.))),
             )
             .child(action)
@@ -229,7 +227,7 @@ impl Render for ExtrasView {
             .flex()
             .flex_col()
             .gap_2()
-            .child(theme::h3("Extras"))
+            .child(theme::h3(t!("ps.extras.title")))
             .children(
                 self.message
                     .clone()
@@ -248,8 +246,8 @@ impl Render for ExtrasView {
                                 .flex_none()
                                 .flex()
                                 .flex_col()
-                                .child("Variables extra")
-                                .child(theme::muted("Enter guarda").text_size(px(12.))),
+                                .child(t!("ps.extras.env.title"))
+                                .child(theme::muted(t!("ps.extras.env.hint")).text_size(px(12.))),
                         )
                         .child(div().flex_1().min_w_0().child(self.env.clone())),
                 ),

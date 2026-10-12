@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use decanter_core::{CachedGame, InstalledGame};
 use gpui::{Context, Window, div, prelude::*};
+use rust_i18n::t;
 
 use super::{Target, error_line, not_installed, pane};
 use crate::theme;
@@ -88,7 +89,7 @@ impl DlcTab {
                     "could not resolve library, dlc toggle aborted"
                 );
                 let _ = this.update(cx, |this, cx| {
-                    this.error = "no se pudo resolver la biblioteca".to_string();
+                    this.error = t!("library.install.no_library").into_owned();
                     this.busy = None;
                     cx.notify();
                 });
@@ -131,7 +132,7 @@ impl Render for DlcTab {
             return not_installed();
         };
         if self.dlcs.is_empty() && self.goodies.is_empty() {
-            return pane().child(theme::muted("Este juego no tiene contenido adicional."));
+            return pane().child(theme::muted(t!("library.properties.dlc.none")));
         }
 
         let dlc_count = self.dlcs.len();
@@ -148,7 +149,7 @@ impl Render for DlcTab {
                     })
                     .child(checkbox(checked).when(is_busy, |b| b.opacity(0.4)))
                     .child(div().flex_1().child(dlc.title.clone()))
-                    .children(is_busy.then(|| theme::muted("aplicando…")))
+                    .children(is_busy.then(|| theme::muted(t!("library.properties.dlc.applying"))))
             }))
         });
 
@@ -157,15 +158,15 @@ impl Render for DlcTab {
             div()
                 .flex()
                 .flex_col()
-                .child(theme::h3("Extras"))
-                .child(theme::muted(
-                    "Artbooks, bandas sonoras y similares. Son tuyos, pero GOG no los entrega como contenido instalable — se descargan aparte, y Decanter todavia no lo hace.",
-                ))
-                .child(theme::card().children(self.goodies.iter().enumerate().map(|(index, goodie)| {
-                    theme::list_row(("goodie", index), index + 1 == goodie_count)
-                        .child(div().flex_1().child(goodie.title.clone()))
-                        .child(theme::muted("no instalable"))
-                })))
+                .child(theme::h3(t!("library.sidebar.kind.extras")))
+                .child(theme::muted(t!("library.properties.dlc.goodies_note")))
+                .child(
+                    theme::card().children(self.goodies.iter().enumerate().map(|(index, goodie)| {
+                        theme::list_row(("goodie", index), index + 1 == goodie_count)
+                            .child(div().flex_1().child(goodie.title.clone()))
+                            .child(theme::muted(t!("library.properties.dlc.not_installable")))
+                    })),
+                )
         });
 
         pane()

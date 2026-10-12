@@ -1,6 +1,7 @@
 //! The selected game: what it is, the play button with what stands in its
 //! way, and its tabs.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use decanter_ps::anyps5::AnyPs5;
@@ -8,7 +9,8 @@ use decanter_ps::bbport::{self, Bbport};
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
-use gpui::{AnyElement, Context, Entity, ObjectFit, Window, div, img, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Entity, ObjectFit, SharedString, Window, div, img, prelude::*, px, rgb};
+use rust_i18n::t;
 
 use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
@@ -30,34 +32,37 @@ enum Tab {
     Log,
 }
 
-const TABS: [(Tab, &str); 3] = [
-    (Tab::Overview, "Resumen"),
-    (Tab::Keyboard, "Teclado"),
-    (Tab::Log, "Registro"),
-];
+impl Tab {
+    fn label(self) -> Cow<'static, str> {
+        match self {
+            Self::Overview => t!("ps.detail.tabs.overview"),
+            Self::Keyboard => t!("ps.detail.tabs.keyboard"),
+            Self::Gamepad => t!("ps.detail.tabs.gamepad"),
+            Self::Graphics => t!("ps.detail.tabs.graphics"),
+            Self::Mods => t!("ps.detail.tabs.mods"),
+            Self::Log => t!("ps.detail.tabs.log"),
+        }
+    }
+}
+
+const TABS: [Tab; 3] = [Tab::Overview, Tab::Keyboard, Tab::Log];
 
 /// bbport has settings and gamepad layouts of its own; AnyPS5 reads the
 /// controller as it is and takes no settings.
-const BBPORT_TABS: [(Tab, &str); 6] = [
-    (Tab::Overview, "Resumen"),
-    (Tab::Keyboard, "Teclado"),
-    (Tab::Gamepad, "Mando"),
-    (Tab::Graphics, "Gráficos"),
-    (Tab::Mods, "Mods"),
-    (Tab::Log, "Registro"),
+const BBPORT_TABS: [Tab; 6] = [
+    Tab::Overview,
+    Tab::Keyboard,
+    Tab::Gamepad,
+    Tab::Graphics,
+    Tab::Mods,
+    Tab::Log,
 ];
 
 /// Another PS4 title on bbport: its mods are Bloodborne's.
-const OTHER_PS4_TABS: [(Tab, &str); 5] = [
-    (Tab::Overview, "Resumen"),
-    (Tab::Keyboard, "Teclado"),
-    (Tab::Gamepad, "Mando"),
-    (Tab::Graphics, "Gráficos"),
-    (Tab::Log, "Registro"),
-];
+const OTHER_PS4_TABS: [Tab; 5] = [Tab::Overview, Tab::Keyboard, Tab::Gamepad, Tab::Graphics, Tab::Log];
 
 /// A game no port runs has nothing to bind.
-const UNSUPPORTED_TABS: [(Tab, &str); 1] = [(Tab::Overview, "Resumen")];
+const UNSUPPORTED_TABS: [Tab; 1] = [Tab::Overview];
 
 pub struct DetailView {
     ps: Entity<Ps>,
@@ -148,8 +153,8 @@ impl DetailView {
         let selected = self.selected.clone();
         let read_path = path.clone();
         let task = cx.background_spawn(async move {
-            let store =
-                decanter_ps::layouts::Store::load().map_err(|err| format!("No se pudieron leer los layouts: {err}"));
+            let store = decanter_ps::layouts::Store::load()
+                .map_err(|err| t!("ps.layouts.read_error", error = err).into_owned());
             decanter_ps::binds::read(target, &read_path).and_then(|mapping| store.map(|store| (mapping, store)))
         });
         cx.spawn(async move |this, cx| {
@@ -226,8 +231,11 @@ impl DetailView {
                     .right(px(24.))
                     .flex()
                     .gap(px(10.))
-                    .child(hero_stat(game.version.clone(), "VERSIÓN"))
-                    .child(hero_stat(status_text(&entry.status).to_owned(), "ESTADO")),
+                    .child(hero_stat(game.version.clone(), t!("ps.detail.hero.version")))
+                    .child(hero_stat(
+                        status_text(&entry.status).into_owned(),
+                        t!("ps.detail.hero.status"),
+                    )),
             )
             .child(
                 div()
@@ -266,14 +274,18 @@ impl DetailView {
             .is_some_and(|state| state.is_busy());
         let playable = entry.status.playable();
         let action = if running {
-            button("ps-stop", ButtonKind::PlaySecondary, "DETENER", false)
+            button("ps-stop", ButtonKind::PlaySecondary, t!("ps.detail.stop"), false)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let key = key.clone();
                     this.ps.update(cx, |ps, cx| ps.stop(&key, cx));
                 }))
                 .into_any_element()
         } else {
-            let label = if preparing { "PREPARANDO…" } else { "JUGAR" };
+            let label = if preparing {
+                t!("ps.detail.preparing")
+            } else {
+                t!("ps.detail.play")
+            };
             let disabled = !playable || preparing;
             let dir = game.dir.clone();
             button("ps-play", ButtonKind::Play, label, disabled)
@@ -294,8 +306,8 @@ impl DetailView {
             .gap(px(10.))
             .child(action)
             .child(
-                button("ps-open-folder", ButtonKind::Icon, "Abrir carpeta", false)
-                    .tooltip(tooltip("Abrir la carpeta del volcado"))
+                button("ps-open-folder", ButtonKind::Icon, t!("ps.detail.open_folder"), false)
+                    .tooltip(tooltip(t!("ps.detail.open_folder_tooltip")))
                     .on_click(move |_, _, _| {
                         if let Err(err) = crate::desktop::open(&folder) {
                             tracing::warn!(dir = %folder.display(), %err, "could not open the game folder");
@@ -307,7 +319,7 @@ impl DetailView {
 
     fn overview(&self, entry: &Entry, cx: &mut Context<Self>) -> AnyElement {
         let game = &entry.game;
-        let fact = |label: &'static str, value: String| {
+        let fact = |label: Cow<'static, str>, value: String| {
             div()
                 .flex()
                 .gap_4()
@@ -316,39 +328,27 @@ impl DetailView {
                         .w(px(110.))
                         .flex_none()
                         .text_color(rgb(theme::TEXT_MUTED))
-                        .child(label),
+                        .child(SharedString::from(label)),
                 )
                 .child(theme::mono().min_w_0().truncate().child(value))
         };
         let explanation = match &entry.status {
             Status::Ready => None,
-            Status::NeedsConvert => Some("La primera vez se convierte con AnyPS5 antes de arrancar.".to_owned()),
-            Status::NeedsMerge(_) => Some(
-                "Hay una actualización 1.09 junto a este volcado. Fusionarla crea una copia jugable al lado, \
-                 con enlaces duros: no ocupa espacio extra y el volcado original no cambia."
-                    .to_owned(),
-            ),
-            Status::HasPlayable(dir) => Some(format!("Ya tenés la copia 1.09 en {}; jugá esa.", dir.display())),
-            Status::OtherEdition => {
-                Some("bbport solo ejecuta la edición CUSA03173 de Bloodborne en su versión 1.09.".to_owned())
-            }
-            Status::NeedsUpdate => {
-                Some("bbport necesita la versión 1.09: añadí su actualización a una de tus carpetas.".to_owned())
-            }
-            Status::Experimental => Some(
-                "bbport solo está hecho para Bloodborne. Este juego arranca con lo que le falte al port \
-                 sustituido, sin parches ni mods: mira hasta dónde llega en Registro."
-                    .to_owned(),
-            ),
-            Status::NeedsVr => Some("Este juego solo arranca con un casco PS VR, y el port no tiene uno.".to_owned()),
-            Status::Encrypted => Some("El eboot.bin sigue cifrado; hay que descifrarlo en la consola.".to_owned()),
-            Status::NoEboot => Some("Este volcado no tiene eboot.bin.".to_owned()),
+            Status::NeedsConvert => Some(t!("ps.detail.explain.needs_convert")),
+            Status::NeedsMerge(_) => Some(t!("ps.detail.explain.needs_merge")),
+            Status::HasPlayable(dir) => Some(t!("ps.detail.explain.has_playable", dir = dir.display())),
+            Status::OtherEdition => Some(t!("ps.detail.explain.other_edition")),
+            Status::NeedsUpdate => Some(t!("ps.detail.explain.needs_update")),
+            Status::Experimental => Some(t!("ps.detail.explain.experimental")),
+            Status::NeedsVr => Some(t!("ps.detail.explain.needs_vr")),
+            Status::Encrypted => Some(t!("ps.detail.explain.encrypted")),
+            Status::NoEboot => Some(t!("ps.detail.explain.no_eboot")),
         };
         let merge = match &entry.status {
             Status::NeedsMerge(update) => {
                 let (base, update) = (game.dir.clone(), update.clone());
                 Some(
-                    button("ps-merge", ButtonKind::Primary, "Fusionar 1.09", false).on_click(cx.listener(
+                    button("ps-merge", ButtonKind::Primary, t!("ps.detail.merge"), false).on_click(cx.listener(
                         move |this, _, _, cx| {
                             let (base, update) = (base.clone(), update.clone());
                             this.ps.update(cx, |ps, cx| ps.merge(base, update, cx));
@@ -369,9 +369,9 @@ impl DetailView {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(fact("Title ID", game.title_id.clone()))
-                    .child(fact("Versión", game.version.clone()))
-                    .child(fact("Carpeta", game.dir.display().to_string())),
+                    .child(fact("Title ID".into(), game.title_id.clone()))
+                    .child(fact(t!("ps.detail.facts.version"), game.version.clone()))
+                    .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string())),
             )
             .into_any_element()
     }
@@ -393,25 +393,26 @@ impl Render for DetailView {
         let Some(entry) = entry else {
             return div()
                 .p_8()
-                .child(theme::muted("Elegí un juego de la lista."))
+                .child(theme::muted(t!("ps.detail.pick_game")))
                 .into_any_element();
         };
         let entity = cx.entity();
         let port = entry.port.map(|port| (port, entry.game.title_id.clone()));
-        let tabs: &[(Tab, &str)] = match entry.port {
+        let shown: &[Tab] = match entry.port {
             Some(Port::Bbport) if bbport::is_bloodborne(&entry.game) => &BBPORT_TABS,
             Some(Port::Bbport) => &OTHER_PS4_TABS,
             Some(Port::AnyPs5) => &TABS,
             None => &UNSUPPORTED_TABS,
         };
-        let tabs = crate::widgets::tabs("ps-detail-tabs", tabs, self.tab, move |tab, _, cx| {
+        let items: Vec<_> = shown.iter().map(|&tab| (tab, tab.label())).collect();
+        let tabs = crate::widgets::tabs("ps-detail-tabs", &items, self.tab, move |tab, _, cx| {
             let port = port.clone();
             entity.update(cx, |this, cx| this.select_tab(tab, port, cx));
         });
         let body = match self.tab {
             Tab::Log => match &self.log {
                 Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
-                None => theme::muted("Todavía no se ejecutó nada para este juego.").into_any_element(),
+                None => theme::muted(t!("ps.detail.no_runs")).into_any_element(),
             },
             Tab::Gamepad => self
                 .gamepad
@@ -420,7 +421,7 @@ impl Render for DetailView {
             Tab::Keyboard => match &self.controls {
                 Some(Ok(controls)) => controls.clone().into_any_element(),
                 Some(Err(err)) => theme::error(err.clone()).into_any_element(),
-                None => theme::muted("Leyendo el teclado…").into_any_element(),
+                None => theme::muted(t!("ps.detail.reading_keyboard")).into_any_element(),
             },
             Tab::Graphics => self
                 .graphics
@@ -450,7 +451,7 @@ impl Render for DetailView {
 }
 
 /// `.hero-stat`, as Biblioteca draws it.
-fn hero_stat(value: String, label: &'static str) -> gpui::Div {
+fn hero_stat(value: String, label: Cow<'static, str>) -> gpui::Div {
     div()
         .flex()
         .flex_col()
@@ -473,6 +474,6 @@ fn hero_stat(value: String, label: &'static str) -> gpui::Div {
                 .mt(px(2.))
                 .text_size(px(10.))
                 .text_color(rgb(theme::TEXT_MUTED))
-                .child(label),
+                .child(SharedString::from(label)),
         )
 }

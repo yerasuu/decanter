@@ -34,13 +34,23 @@ pub enum Kind {
 impl Kind {
     pub fn label(self) -> &'static str {
         match self {
-            Kind::Crash => "Cierre",
+            Kind::Crash => "Crash",
             Kind::Stop => "STOP",
             Kind::Error => "Error",
-            Kind::Exit => "Salida",
-            Kind::Missing => "Falta",
+            Kind::Exit => "Exit",
+            Kind::Missing => "Missing",
         }
     }
+}
+
+/// The facts behind a failure decanter words itself instead of quoting a line, so the UI can word
+/// it in its own language.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum Summary {
+    /// `total` things left undone, `called` of them reached by the game.
+    Missing { total: usize, called: usize },
+    /// `None` when a signal ended the process.
+    Exit(Option<i32>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,6 +64,9 @@ pub struct Failure {
     pub commit: String,
     pub kind: Kind,
     pub message: String,
+    /// `None` for a line quoted from the output, and for records written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<Summary>,
     /// Times the same message repeated in that run.
     pub count: u32,
     pub before: Vec<String>,
@@ -229,6 +242,7 @@ impl Scanner {
                     commit: self.commit.clone(),
                     kind,
                     message,
+                    summary: None,
                     count: 1,
                     before: self.recent.iter().cloned().collect(),
                     after: Vec::new(),
@@ -249,6 +263,7 @@ impl Scanner {
         if !self.missing.is_empty() {
             self.missing.sort_by_key(|(rank, _)| *rank);
             let called = self.missing.iter().filter(|(rank, _)| *rank == 0).count();
+            let total = self.missing.len();
             self.found.push(Failure {
                 time: now(),
                 game_dir: self.game_dir.clone(),
@@ -256,10 +271,8 @@ impl Scanner {
                 version: self.version.clone(),
                 commit: self.commit.clone(),
                 kind: Kind::Missing,
-                message: format!(
-                    "{} cosas sin implementar; el juego llamó a {called}",
-                    self.missing.len()
-                ),
+                message: format!("{total} unimplemented, {called} called by the game"),
+                summary: Some(Summary::Missing { total, called }),
                 count: 1,
                 before: Vec::new(),
                 after: self.missing.drain(..).map(|(_, line)| line).collect(),
@@ -275,9 +288,10 @@ impl Scanner {
                 commit: self.commit.clone(),
                 kind: Kind::Exit,
                 message: match code {
-                    Some(code) => format!("terminó con código {code}"),
-                    None => "terminado por una señal".to_owned(),
+                    Some(code) => format!("exited with code {code}"),
+                    None => "killed by a signal".to_owned(),
                 },
+                summary: Some(Summary::Exit(code)),
                 count: 1,
                 before: self.recent.iter().cloned().collect(),
                 after: Vec::new(),

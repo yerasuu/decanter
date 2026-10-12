@@ -1028,6 +1028,21 @@ impl Db {
         }
     }
 
+    /// The UI language's code (`es`, `en`), or `None` to follow the system
+    /// locale.
+    pub fn language(&self) -> Result<Option<String>> {
+        let language = self.setting("language")?;
+        tracing::debug!(language = language.as_deref(), "read language setting");
+        Ok(language)
+    }
+
+    pub fn set_language(&self, language: Option<&str>) -> Result<()> {
+        match language {
+            Some(code) => self.set_setting("language", code),
+            None => self.delete_setting("language"),
+        }
+    }
+
     /// Every product id's playtime for an account, in one query — for the
     /// sidebar, which needs all of them at once rather than one round trip
     /// per game.

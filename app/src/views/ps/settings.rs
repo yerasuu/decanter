@@ -3,6 +3,7 @@
 
 use decanter_ps::bbport::LauncherSettings;
 use gpui::{AppContext as _, Context, Entity, Window, div, prelude::*};
+use rust_i18n::t;
 
 use crate::state::Ps;
 use crate::theme;
@@ -65,7 +66,7 @@ impl SettingsView {
                     this.refresh(cx);
                 }
                 Err(err) => {
-                    this.error = Some(format!("No se pudo guardar la carpeta: {err}"));
+                    this.error = Some(t!("ps.settings.save_error", error = err).into_owned());
                     cx.notify();
                 }
             });
@@ -96,7 +97,7 @@ impl Render for SettingsView {
                 .flex()
                 .flex_col()
                 .gap_4()
-                .child(theme::h2("Carpeta de juegos"))
+                .child(theme::h2(t!("ps.settings.games.title")))
                 .child(
                     theme::card().child(
                         theme::list_row("ps-dir-library", true)
@@ -107,49 +108,51 @@ impl Render for SettingsView {
                                     .truncate()
                                     .child(games.display().to_string()),
                             )
-                            .child(button("ps-dir-open", ButtonKind::Secondary, "Abrir", false).on_click(
-                                move |_, _, _| {
-                                    let _ = std::fs::create_dir_all(&games);
-                                    if let Err(err) = crate::desktop::open(&games) {
-                                        tracing::warn!(dir = %games.display(), %err, "could not open the folder");
-                                    }
-                                },
-                            )),
+                            .child(
+                                button("ps-dir-open", ButtonKind::Secondary, t!("ps.settings.open"), false).on_click(
+                                    move |_, _, _| {
+                                        let _ = std::fs::create_dir_all(&games);
+                                        if let Err(err) = crate::desktop::open(&games) {
+                                            tracing::warn!(dir = %games.display(), %err, "could not open the folder");
+                                        }
+                                    },
+                                ),
+                            ),
                     ),
                 )
-                .child(theme::muted(
-                    "Junto a la biblioteca del perfil, en el mismo disco. Copiá o mové ahí tus volcados y \
-                     aparecen solos: cada carpeta y sus subcarpetas directas se leen tal cual.",
-                ))
-                .child(theme::h2("Módulos del sistema (opcional)"))
+                .child(theme::muted(t!("ps.settings.games.description")))
+                .child(theme::h2(t!("ps.settings.sys_modules.title")))
                 .child(
                     theme::card().child(
                         theme::list_row("ps-sys-modules", true)
                             .child(
-                                theme::mono()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .child(sys_modules.unwrap_or_else(|| "Sin carpeta".to_owned())),
+                                theme::mono().flex_1().min_w_0().truncate().child(
+                                    sys_modules.unwrap_or_else(|| t!("ps.settings.sys_modules.none").into_owned()),
+                                ),
                             )
                             .child(
-                                button("ps-sys-modules-pick", ButtonKind::Secondary, "Elegir", false)
-                                    .on_click(cx.listener(|this, _, _, cx| this.pick_sys_modules(cx))),
+                                button(
+                                    "ps-sys-modules-pick",
+                                    ButtonKind::Secondary,
+                                    t!("ps.settings.pick"),
+                                    false,
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| this.pick_sys_modules(cx))),
                             )
                             .when(has_sys_modules, |row| {
                                 row.child(
-                                    button("ps-sys-modules-forget", ButtonKind::Secondary, "Quitar", false)
-                                        .on_click(cx.listener(|this, _, _, cx| this.set_sys_modules(None, cx))),
+                                    button(
+                                        "ps-sys-modules-forget",
+                                        ButtonKind::Secondary,
+                                        t!("ps.settings.forget"),
+                                        false,
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| this.set_sys_modules(None, cx))),
                                 )
                             }),
                     ),
                 )
-                .child(theme::muted(
-                    "Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los \
-                     módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las \
-                     bibliotecas propias del port (BB_LLE) o para un juego que todavía necesite un módulo \
-                     de la consola. decanter no incluye ni copia ninguno.",
-                ))
+                .child(theme::muted(t!("ps.settings.sys_modules.description")))
                 .children(self.error.clone().map(theme::error)),
         )
     }

@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use decanter_core::InstalledGame;
 use gpui::{Context, SharedString, Window, prelude::*};
+use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
 use crate::widgets::{ButtonKind, Select, button, tooltip};
@@ -89,12 +90,14 @@ impl Render for CompatibilityTab {
             return not_installed();
         };
 
-        let options = std::iter::once((SharedString::default(), SharedString::from("Usar el de por defecto"))).chain(
-            self.runners.iter().map(|runner| {
-                let runner = SharedString::from(runner.clone());
-                (runner.clone(), runner)
-            }),
-        );
+        let options = std::iter::once((
+            SharedString::default(),
+            SharedString::from(t!("library.properties.compatibility.default_proton")),
+        ))
+        .chain(self.runners.iter().map(|runner| {
+            let runner = SharedString::from(runner.clone());
+            (runner.clone(), runner)
+        }));
         let entity = cx.entity();
         // A pin to a Proton that's no longer installed shows as the default,
         // the way a native select falls back to its first option.
@@ -111,23 +114,25 @@ impl Render for CompatibilityTab {
         let reset = button(
             "reset-prefix",
             ButtonKind::Secondary,
-            if self.busy { "Reseteando..." } else { "Resetear prefijo" },
+            if self.busy {
+                t!("library.properties.compatibility.resetting")
+            } else {
+                t!("library.properties.compatibility.reset")
+            },
             reset_disabled,
         )
-        .tooltip(tooltip(
-            "Borra el prefijo. Se regenera al abrir el juego. Las partidas guardadas dentro del prefijo se pierden.",
-        ))
+        .tooltip(tooltip(t!("library.properties.compatibility.reset_tooltip")))
         .when(!reset_disabled, |b| {
             b.on_click(cx.listener(|this, _, _, cx| this.reset_prefix(cx)))
         });
 
         pane()
             .child(rows().child(row(
-                "Prefijo",
+                t!("library.properties.compatibility.prefix"),
                 if self.created {
-                    "creado"
+                    t!("library.properties.compatibility.prefix_created")
                 } else {
-                    "sin prefijo (se crea al jugar)"
+                    t!("library.properties.compatibility.prefix_missing")
                 },
             )))
             .child(field_row().child(proton).child(reset))
@@ -144,7 +149,8 @@ fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Resul
     // Re-read rather than editing the copy this tab rendered from, so a
     // change made elsewhere since isn't clobbered.
     let mut current = crate::achv_try!(
-        crate::core::installed_game(account_id, product_id).ok_or("el juego ya no figura como instalado")
+        crate::core::installed_game(account_id, product_id)
+            .ok_or_else(|| t!("library.properties.compatibility.no_longer_installed").into_owned())
     );
     current.proton = proton.map(str::to_string);
     match library.write_manifest(&current) {
@@ -154,7 +160,7 @@ fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Resul
         }
         Err(err) => {
             tracing::error!(account_id, product_id, proton, error = %err, "failed to save proton pin");
-            Err(format!("guardando el manifiesto: {err}"))
+            Err(t!("library.properties.compatibility.manifest_error", error = err).into_owned())
         }
     }
 }

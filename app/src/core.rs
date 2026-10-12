@@ -8,6 +8,7 @@
 //! the database opened at all is resolved once, in `state::Session`.
 
 use decanter_core::{Db, InstalledGame, Library, Profile, Storefront, default_db_path};
+use rust_i18n::t;
 
 pub fn db() -> Result<Db, String> {
     match Db::open(default_db_path()) {
@@ -382,14 +383,14 @@ pub async fn restart_steam_to_apply_pending() -> Result<(), String> {
     crate::achv_try!(
         tokio::task::spawn_blocking(|| {
             let steam_root = decanter_core::steam::steam_root()
-                .ok_or_else(|| "no se encontro una instalacion de Steam".to_string())?;
+                .ok_or_else(|| t!("settings.general.steam.no_install").into_owned())?;
             let user_id = decanter_core::steam::local_user_id(&steam_root)
-                .ok_or_else(|| "no se pudo resolver el usuario local de Steam".to_string())?;
+                .ok_or_else(|| t!("settings.general.steam.no_user").into_owned())?;
             decanter_core::steam::apply_pending_and_restart_steam(&steam_root, &user_id)
                 .inspect_err(|err| tracing::error!(%err, "failed to restart steam to apply pending shortcuts"))
                 .map_err(|err| err.to_string())
         })
         .await
-        .map_err(|err| format!("la tarea interna fallo: {err}"))
+        .map_err(|err| t!("common.errors.internal_task", error = err).into_owned())
     )
 }

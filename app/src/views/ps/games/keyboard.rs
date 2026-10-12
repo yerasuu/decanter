@@ -3,23 +3,26 @@
 //! editable one; the one picked is the one in the port's file. The controller is the Mando tab's, for bbport; AnyPS5 reads it
 //! as it is.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use gpui::{
     Context, Entity, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
     NavigationDirection, ScrollDelta, ScrollWheelEvent, SharedString, Window, div, prelude::*, px, rgb,
 };
+use rust_i18n::t;
 
 use decanter_ps::keys::sdl_key_name;
 use decanter_ps::layouts::{self, KeyLayout, Store};
-use decanter_ps::mapping::{Action, Mapping, MouseButton, Source, Target, Wheel};
+use decanter_ps::mapping::{Action, Mapping, MouseButton, Refusal, Source, Target, Wheel};
 
+use super::layout_name;
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
 
 const GROUPS: [(&str, &[Action]); 5] = [
     (
-        "Botones",
+        "ps.keyboard.groups.buttons",
         &[
             Action::Cross,
             Action::Circle,
@@ -34,9 +37,12 @@ const GROUPS: [(&str, &[Action]); 5] = [
             Action::Options,
         ],
     ),
-    ("Cruceta", &[Action::Up, Action::Down, Action::Left, Action::Right]),
     (
-        "Stick izquierdo",
+        "ps.keyboard.groups.dpad",
+        &[Action::Up, Action::Down, Action::Left, Action::Right],
+    ),
+    (
+        "ps.keyboard.groups.left_stick",
         &[
             Action::LeftStickUp,
             Action::LeftStickDown,
@@ -45,7 +51,7 @@ const GROUPS: [(&str, &[Action]); 5] = [
         ],
     ),
     (
-        "Stick derecho",
+        "ps.keyboard.groups.right_stick",
         &[
             Action::RightStickUp,
             Action::RightStickDown,
@@ -54,7 +60,7 @@ const GROUPS: [(&str, &[Action]); 5] = [
         ],
     ),
     (
-        "Táctil y ventana",
+        "ps.keyboard.groups.touch_window",
         &[
             Action::TouchLeft,
             Action::TouchRight,
@@ -64,31 +70,38 @@ const GROUPS: [(&str, &[Action]); 5] = [
     ),
 ];
 
-fn label(action: Action) -> &'static str {
+fn label(action: Action) -> Cow<'static, str> {
     match action {
-        Action::Cross => "✕  Cruz",
-        Action::Circle => "○  Círculo",
-        Action::Square => "□  Cuadrado",
-        Action::Triangle => "△  Triángulo",
-        Action::Options => "Options",
-        Action::Up | Action::LeftStickUp | Action::RightStickUp => "Arriba",
-        Action::Down | Action::LeftStickDown | Action::RightStickDown => "Abajo",
-        Action::Left | Action::LeftStickLeft | Action::RightStickLeft => "Izquierda",
-        Action::Right | Action::LeftStickRight | Action::RightStickRight => "Derecha",
-        Action::TouchLeft => "Táctil izquierdo",
-        Action::TouchRight => "Táctil derecho",
-        Action::ToggleMouse => "Capturar ratón",
-        Action::ToggleFullscreen => "Pantalla completa",
-        other => other.name(),
+        Action::Cross => t!("ps.keyboard.actions.cross"),
+        Action::Circle => t!("ps.keyboard.actions.circle"),
+        Action::Square => t!("ps.keyboard.actions.square"),
+        Action::Triangle => t!("ps.keyboard.actions.triangle"),
+        Action::Up | Action::LeftStickUp | Action::RightStickUp => t!("ps.keyboard.actions.up"),
+        Action::Down | Action::LeftStickDown | Action::RightStickDown => t!("ps.keyboard.actions.down"),
+        Action::Left | Action::LeftStickLeft | Action::RightStickLeft => t!("ps.keyboard.actions.left"),
+        Action::Right | Action::LeftStickRight | Action::RightStickRight => t!("ps.keyboard.actions.right"),
+        Action::TouchLeft => t!("ps.keyboard.actions.touch_left"),
+        Action::TouchRight => t!("ps.keyboard.actions.touch_right"),
+        Action::ToggleMouse => t!("ps.keyboard.actions.toggle_mouse"),
+        Action::ToggleFullscreen => t!("ps.keyboard.actions.toggle_fullscreen"),
+        other => other.name().into(),
     }
 }
 
 fn source_label(source: &Source) -> String {
     match source {
         Source::Key(name) => name.clone(),
-        Source::Mouse(button) => format!("Ratón {button:?}"),
-        Source::Wheel(Wheel::Up) => "Rueda ↑".into(),
-        Source::Wheel(Wheel::Down) => "Rueda ↓".into(),
+        Source::Mouse(button) => t!("ps.keyboard.sources.mouse", button = format!("{button:?}")).into_owned(),
+        Source::Wheel(Wheel::Up) => t!("ps.keyboard.sources.wheel_up").into_owned(),
+        Source::Wheel(Wheel::Down) => t!("ps.keyboard.sources.wheel_down").into_owned(),
+    }
+}
+
+fn refusal_text(refusal: Refusal) -> Cow<'static, str> {
+    match refusal {
+        Refusal::KeysOnly => t!("ps.keyboard.refusals.keys_only"),
+        Refusal::FullscreenNeedsKey => t!("ps.keyboard.refusals.fullscreen_needs_key"),
+        Refusal::WheelNeedsButton => t!("ps.keyboard.refusals.wheel_needs_button"),
     }
 }
 
@@ -114,7 +127,7 @@ pub struct KeyboardView {
 impl KeyboardView {
     pub fn new(target: Target, path: PathBuf, mapping: Mapping, store: Store, cx: &mut Context<Self>) -> Self {
         let current = layouts::current_keys(target, &mapping, &store.key_layouts(target));
-        let name = cx.new(|cx| TextInput::new("Nombre del layout", cx));
+        let name = cx.new(|cx| TextInput::new(t!("ps.layouts.name_placeholder"), cx));
         cx.subscribe(&name, |this, name, event, cx| {
             if matches!(event, InputEvent::Submit) {
                 let text = name.read(cx).text().trim().to_owned();
@@ -176,10 +189,10 @@ impl KeyboardView {
                 this.status = Some(match result {
                     Ok(saved) => {
                         this.saved = saved;
-                        ("Guardado".into(), false)
+                        (t!("ps.keyboard.saved").into(), false)
                     }
                     Err(err) => (
-                        format!("No se pudo guardar {}: {err}", this.path.display()).into(),
+                        t!("ps.keyboard.save_error", path = this.path.display(), error = err).into(),
                         true,
                     ),
                 });
@@ -211,12 +224,16 @@ impl KeyboardView {
     fn copy(&mut self, cx: &mut Context<Self>) {
         let mut source = self.layout().unwrap_or_else(|| KeyLayout {
             id: String::new(),
-            name: "Personalizado".to_owned(),
+            name: t!("ps.layouts.custom").into_owned(),
             text: String::new(),
             builtin: true,
         });
         source.set_mapping(self.target, &self.mapping);
-        let copy = self.store.copy_keys(self.target, &source);
+        let name = t!(
+            "ps.layouts.copy_name",
+            name = layout_name(&source.id, source.builtin, &source.name)
+        );
+        let copy = self.store.copy_keys(self.target, &source, name.into_owned());
         self.current = Some(copy.id);
         self.persist(true, cx);
     }
@@ -247,7 +264,7 @@ impl KeyboardView {
                 self.mapping.add(action, source);
                 self.status = None;
             }
-            Err(reason) => self.status = Some((reason.into(), true)),
+            Err(refusal) => self.status = Some((refusal_text(refusal).into(), true)),
         }
         cx.notify();
     }
@@ -260,10 +277,7 @@ impl KeyboardView {
             Some(name) => self.capture(Source::Key(name), cx),
             None => {
                 let key = &event.keystroke.key;
-                self.status = Some((
-                    format!("La tecla '{key}' no tiene nombre SDL fiable; probá otra").into(),
-                    true,
-                ));
+                self.status = Some((t!("ps.keyboard.unknown_key", key = key).into(), true));
                 cx.notify();
             }
         }
@@ -343,7 +357,7 @@ impl KeyboardView {
                     } else {
                         theme::TEXT_PRIMARY
                     }))
-                    .child(label(action)),
+                    .child(SharedString::from(label(action))),
             )
             .child(
                 div()
@@ -356,7 +370,7 @@ impl KeyboardView {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::TEXT_DIM))
-                                .child("Sin asignar"),
+                                .child(t!("ps.keyboard.unbound")),
                         )
                     })
                     .children(sources.iter().enumerate().map(|(i, source)| {
@@ -390,7 +404,7 @@ impl KeyboardView {
                     button(
                         SharedString::from(format!("add-{}", action.name())),
                         ButtonKind::Secondary,
-                        "+ Asignar",
+                        t!("ps.keyboard.assign"),
                         false,
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -428,13 +442,13 @@ impl Render for KeyboardView {
             .map(|layout| {
                 (
                     SharedString::from(layout.id.clone()),
-                    SharedString::from(layout.name.clone()),
+                    SharedString::from(layout_name(&layout.id, layout.builtin, &layout.name).into_owned()),
                 )
             })
             .chain(
                 self.current
                     .is_none()
-                    .then(|| (SharedString::from(CUSTOM), SharedString::from("Personalizado"))),
+                    .then(|| (SharedString::from(CUSTOM), SharedString::from(t!("ps.layouts.custom")))),
             )
             .collect();
         let layout_bar = div()
@@ -442,7 +456,7 @@ impl Render for KeyboardView {
             .flex_wrap()
             .items_center()
             .gap_2()
-            .child("Layout")
+            .child(t!("ps.layouts.layout"))
             .child(
                 Select::new("ps-key-layout", options, selected)
                     .style(SelectStyle::Compact)
@@ -452,27 +466,27 @@ impl Render for KeyboardView {
                     }),
             )
             .child(
-                button("ps-key-copy", ButtonKind::Secondary, "Copiar como nuevo", false)
+                button("ps-key-copy", ButtonKind::Secondary, t!("ps.layouts.copy"), false)
                     .on_click(cx.listener(|this, _, _, cx| this.copy(cx))),
             )
             .when(editable, |bar| {
                 bar.child(div().w(px(220.)).child(self.name.clone())).child(
-                    button("ps-key-remove", ButtonKind::Secondary, "Borrar layout", false)
+                    button("ps-key-remove", ButtonKind::Secondary, t!("ps.layouts.remove"), false)
                         .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
                 )
             });
         let hint = if editable {
-            "Tu layout: + Asignar y pulsá la tecla; Guardar lo escribe. Enter guarda el nombre."
+            t!("ps.keyboard.hint.own")
         } else if self.current.is_some() {
-            "Los layouts de fábrica no se editan: copialo como nuevo para cambiarlo."
+            t!("ps.layouts.hint_builtin")
         } else {
-            "El archivo tiene teclas editadas a mano; copialas como nuevo para guardarlas como layout."
+            t!("ps.keyboard.hint.custom")
         };
         let status = self.status.clone();
         let mut groups = div().flex().flex_col().gap_5();
         for (title, actions) in GROUPS {
             groups = groups.child(
-                div().flex().flex_col().gap_2().child(theme::h3(title)).child(
+                div().flex().flex_col().gap_2().child(theme::h3(t!(title))).child(
                     div()
                         .bg(rgb(theme::BG_PANEL_2))
                         .border_1()
@@ -506,19 +520,10 @@ impl Render for KeyboardView {
                             .flex_1()
                             .flex()
                             .flex_col()
-                            .child(
-                                div().text_color(rgb(theme::TEXT_MUTED)).child(match self.target {
-                                    Target::Bbport => {
-                                        "Teclado para bbport (líneas key. de bbport.ini). Quitar todas las \
-                                         teclas de una acción la deja sin asignar."
-                                            .to_owned()
-                                    }
-                                    Target::AnyPs5 => {
-                                        "Teclado y ratón para AnyPS5. El mando funciona siempre sin configurar."
-                                            .to_owned()
-                                    }
-                                }),
-                            )
+                            .child(div().text_color(rgb(theme::TEXT_MUTED)).child(match self.target {
+                                Target::Bbport => t!("ps.keyboard.description.bbport"),
+                                Target::AnyPs5 => t!("ps.keyboard.description.anyps5"),
+                            }))
                             .child(
                                 div()
                                     .font_family(theme::MONO)
@@ -539,18 +544,26 @@ impl Render for KeyboardView {
                     .when(editable, |header| {
                         header
                             .child(
-                                button("binds-reset-all", ButtonKind::Secondary, "Restaurar todo", false).on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        this.mapping = this.defaults.clone();
-                                        cx.notify();
-                                    }),
-                                ),
+                                button(
+                                    "binds-reset-all",
+                                    ButtonKind::Secondary,
+                                    t!("ps.keyboard.reset_all"),
+                                    false,
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.mapping = this.defaults.clone();
+                                    cx.notify();
+                                })),
                             )
                             .child(
                                 button(
                                     "binds-save",
                                     ButtonKind::Primary,
-                                    if dirty { "Guardar" } else { "Guardado" },
+                                    if dirty {
+                                        t!("ps.keyboard.save")
+                                    } else {
+                                        t!("ps.keyboard.saved")
+                                    },
                                     !dirty,
                                 )
                                 .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
@@ -593,17 +606,18 @@ impl Render for KeyboardView {
                                 .child(
                                     div()
                                         .text_color(rgb(theme::TEXT_MUTED))
-                                        .child("Pulsá una tecla, un botón del ratón o mové la rueda"),
+                                        .child(t!("ps.keyboard.capture")),
                                 )
                                 .child(
-                                    button("binds-cancel", ButtonKind::Secondary, "Cancelar", false).on_mouse_down(
-                                        GpuiMouse::Left,
-                                        cx.listener(|this, _, _, cx| {
-                                            cx.stop_propagation();
-                                            this.capturing = None;
-                                            cx.notify();
-                                        }),
-                                    ),
+                                    button("binds-cancel", ButtonKind::Secondary, t!("common.cancel"), false)
+                                        .on_mouse_down(
+                                            GpuiMouse::Left,
+                                            cx.listener(|this, _, _, cx| {
+                                                cx.stop_propagation();
+                                                this.capturing = None;
+                                                cx.notify();
+                                            }),
+                                        ),
                                 ),
                         ),
                 )

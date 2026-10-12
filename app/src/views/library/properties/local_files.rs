@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use decanter_gog::VerifyReport;
 use gpui::{Context, Window, prelude::*};
+use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane};
 use crate::theme;
@@ -54,7 +55,7 @@ impl LocalFilesTab {
                     "could not resolve library, verification aborted"
                 );
                 let _ = this.update(cx, |this, cx| {
-                    this.error = "no se pudo resolver la biblioteca".to_string();
+                    this.error = t!("library.install.no_library").into_owned();
                     this.verifying = false;
                     cx.notify();
                 });
@@ -112,7 +113,7 @@ impl LocalFilesTab {
             };
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
                 tracing::error!(account_id, product_id, "could not resolve library, repair aborted");
-                fail("no se pudo resolver la biblioteca".to_string(), cx);
+                fail(t!("library.install.no_library").into_owned(), cx);
                 return;
             };
             if let Err(err) = decanter_gog::repair(&core_library, account_id, product_id, &broken).await {
@@ -146,9 +147,9 @@ impl Render for LocalFilesTab {
         }
 
         let verify_label = if self.verifying {
-            "Verificando..."
+            t!("library.properties.local_files.verifying")
         } else {
-            "Verificar archivos"
+            t!("library.properties.local_files.verify")
         };
         let mut actions = field_row().child(
             button("verify-files", ButtonKind::Secondary, verify_label, self.verifying).when(!self.verifying, |b| {
@@ -157,17 +158,26 @@ impl Render for LocalFilesTab {
         );
         if let Some(report) = &self.report {
             if report.is_clean() {
-                actions = actions.child(theme::muted(format!(
-                    "{} archivos, todo en orden.",
-                    report.files_checked
-                )));
+                let summary = if report.files_checked == 1 {
+                    t!("library.properties.local_files.clean.one")
+                } else {
+                    t!(
+                        "library.properties.local_files.clean.other",
+                        count = report.files_checked
+                    )
+                };
+                actions = actions.child(theme::muted(summary));
             } else {
-                let repair_label = if self.repairing { "Reparando..." } else { "Reparar" };
+                let repair_label = if self.repairing {
+                    t!("library.properties.local_files.repairing")
+                } else {
+                    t!("library.properties.local_files.repair")
+                };
                 actions = actions
-                    .child(theme::error(format!(
-                        "{} de {} archivos no coinciden.",
-                        report.broken.len(),
-                        report.files_checked
+                    .child(theme::error(t!(
+                        "library.properties.local_files.broken",
+                        broken = report.broken.len(),
+                        total = report.files_checked
                     )))
                     .child(
                         button("repair-files", ButtonKind::Primary, repair_label, self.repairing)
@@ -179,9 +189,7 @@ impl Render for LocalFilesTab {
         }
 
         pane()
-            .child(theme::muted(
-                "Compara cada archivo instalado contra el manifiesto de GOG y vuelve a bajar lo que no coincida.",
-            ))
+            .child(theme::muted(t!("library.properties.local_files.note")))
             .child(actions)
             .children(error_line(&self.error))
     }

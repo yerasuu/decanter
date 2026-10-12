@@ -12,6 +12,7 @@ mod general;
 
 use decanter_core::Storefront;
 use gpui::{Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
+use rust_i18n::t;
 
 use crate::state::AppState;
 use crate::theme;
@@ -25,12 +26,6 @@ enum Tab {
     Account,
     Compatibility,
 }
-
-const TABS: [(Tab, &str); 3] = [
-    (Tab::General, "General"),
-    (Tab::Account, "Cuenta"),
-    (Tab::Compatibility, "Compatibilidad"),
-];
 
 /// The open tab's own entity. Rebuilt on every tab switch or profile
 /// change, so a tab's local state (a half-typed GOG URL, a session check)
@@ -91,14 +86,19 @@ impl SettingsView {
 impl Render for SettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let tabs = crate::widgets::tabs("settings-tabs", &TABS, self.tab, move |tab, _, cx| {
+        let items = [
+            (Tab::General, t!("settings.tabs.general")),
+            (Tab::Account, t!("settings.tabs.account")),
+            (Tab::Compatibility, t!("settings.tabs.compatibility")),
+        ];
+        let tabs = crate::widgets::tabs("settings-tabs", &items, self.tab, move |tab, _, cx| {
             entity.update(cx, |this, cx| this.select(tab, cx));
         })
         .mt_6()
         .mx_8();
 
         let body = match (&AppState::get(cx).session.read(cx).core, &self.body) {
-            (Err(err), _) => theme::error(format!("Error abriendo el almacenamiento: {err}")).into_any_element(),
+            (Err(err), _) => theme::error(t!("settings.storage_error", error = err)).into_any_element(),
             (Ok(()), Some(Body::General(tab))) => tab.clone().into_any_element(),
             (Ok(()), Some(Body::Account(tab))) => tab.clone().into_any_element(),
             (Ok(()), Some(Body::Compatibility(tab))) => tab.clone().into_any_element(),
@@ -106,7 +106,7 @@ impl Render for SettingsView {
             // more — a profile always exists by the time any screen renders —
             // kept as a fallback rather than an `unreachable!` in case that
             // gate is ever bypassed.
-            (Ok(()), None) => theme::empty("Elegi un perfil arriba.").into_any_element(),
+            (Ok(()), None) => theme::empty(t!("settings.pick_profile")).into_any_element(),
         };
 
         theme::page(
@@ -114,7 +114,7 @@ impl Render for SettingsView {
             div()
                 .flex()
                 .flex_col()
-                .child(theme::h1("Ajustes"))
+                .child(theme::h1(t!("settings.title")))
                 .child(tabs)
                 .child(body),
         )

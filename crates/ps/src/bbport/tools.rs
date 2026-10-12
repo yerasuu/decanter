@@ -189,6 +189,8 @@ impl PatchProfile {
     }
 }
 
+/// The first FSR 4.1.1 asset missing or damaged, as `<model>/<file>`.
+///
 /// What `fsr411_problem` (bbport `launcher/bbport_assets.py`) checks: every pass of the model
 /// the output size and preset need, plus its initializer. File I/O: off the UI thread.
 pub fn fsr411_problem(dir: &Path, output: &str, preset: &str) -> Option<String> {
@@ -210,25 +212,46 @@ pub fn fsr411_problem(dir: &Path, output: &str, preset: &str) -> Option<String> 
             .map(|m| m.len())
             .unwrap_or(0);
         if size < 20 || !size.is_multiple_of(4) {
-            return Some(format!("falta o está dañado {model}/{name}.spv"));
+            return Some(format!("{model}/{name}.spv"));
         }
     }
     let size = std::fs::metadata(dir.join(&model).join("initializer.bin"))
         .map(|m| m.len())
         .unwrap_or(0);
-    (size != 131_072).then(|| format!("falta o está dañado {model}/initializer.bin"))
+    (size != 131_072).then(|| format!("{model}/initializer.bin"))
 }
 
 pub enum DllCheck {
     Ready {
         loader: Option<PathBuf>,
     },
-    /// Not a DLL bbport can replay; the text says why.
-    Unsupported(String),
+    /// Not a DLL bbport can replay.
+    Unsupported(Unsupported),
     /// The DLL needs the FidelityFX loader and none was found next to it.
     NeedsLoader,
     /// The loader given is not one.
-    BadLoader(String),
+    BadLoader(BadLoader),
+}
+
+pub enum Unsupported {
+    /// AMD's official FSR 4.0.x.
+    Fsr40 {
+        version: String,
+    },
+    NotFsr4,
+    /// Not AMD's official FSR 4.1.x.
+    Other {
+        version: String,
+    },
+}
+
+pub enum BadLoader {
+    /// The upscaler DLL itself.
+    IsUpscaler,
+    WrongVersion {
+        loader: PathBuf,
+        version: String,
+    },
 }
 
 /// `dll_info.inspect` on the chosen DLLs, with bbport's launcher's explanations.
@@ -247,34 +270,21 @@ pub async fn check_dll(
     let status = answer["status"].as_i64().unwrap_or(-1);
     let details = &answer["details"];
     let kind = details["kind"].as_str().unwrap_or_default();
-    let version = details["version"].as_str().unwrap_or("?");
-    let name = upscaler.file_name().unwrap_or_default().to_string_lossy();
+    let version = details["version"].as_str().unwrap_or("?").to_owned();
     if status == answer["unsupported"].as_i64().unwrap_or(2) {
         return Ok(DllCheck::Unsupported(match kind {
-            "fsr4_0" => format!(
-                "{name}: FSR {version}, la FSR 4.0.x oficial de AMD, que solo funciona en RDNA4 y no se puede \
-                 grabar bajo Proton en otras GPU. Hace falta FSR 4.1.x (FSR4_LATEST de OptiScaler o la DLL \
-                 de un juego con FSR 4.1)"
-            ),
-            "not_fsr4" => format!("{name}: no contiene FSR 4; hace falta amd_fidelityfx_upscaler_dx12.dll 4.1.x"),
-            _ => format!(
-                "{name}: versión {version}. bbport solo reproduce la FSR 4.1.x oficial de AMD (modelo \
-                 v07_fp8_no_scale); las versiones de la comunidad aún no están soportadas"
-            ),
+            "fsr4_0" => Unsupported::Fsr40 { version },
+            "not_fsr4" => Unsupported::NotFsr4,
+            _ => Unsupported::Other { version },
         }));
     }
     if status == answer["no_loader"].as_i64().unwrap_or(7) {
         return Ok(match (kind, loader) {
-            ("loader_is_upscaler", _) => DllCheck::BadLoader(
-                "eso es la DLL del reescalado; el cargador es amd_fidelityfx_loader_dx12.dll (o \
-                 amd_fidelityfx_dx12.dll en OptiScaler), en la misma carpeta del juego"
-                    .into(),
-            ),
-            (_, Some(loader)) => DllCheck::BadLoader(format!(
-                "{}: versión {}; hace falta el cargador FidelityFX 2.x del mismo juego",
-                loader.display(),
-                details["loader_version"].as_str().unwrap_or("?")
-            )),
+            ("loader_is_upscaler", _) => DllCheck::BadLoader(BadLoader::IsUpscaler),
+            (_, Some(loader)) => DllCheck::BadLoader(BadLoader::WrongVersion {
+                loader: loader.to_owned(),
+                version: details["loader_version"].as_str().unwrap_or("?").to_owned(),
+            }),
             _ => DllCheck::NeedsLoader,
         });
     }
@@ -310,8 +320,18 @@ pub async fn fsr411_build_command(
     Ok(command)
 }
 
+pub enum Fsr411Progress {
+    Preparing,
+    /// Passes recorded under Proton so far, of the total.
+    Recording {
+        done: String,
+        total: String,
+    },
+    Translating,
+}
+
 /// Progress from `build_assets.sh` output, as bbport's launcher read it.
-pub fn fsr411_progress(job: &crate::process::Job) -> String {
+pub fn fsr411_progress(job: &crate::process::Job) -> Fsr411Progress {
     for line in job.lines.iter().rev() {
         if let Some((done, total)) = line
             .trim_start()
@@ -319,32 +339,41 @@ pub fn fsr411_progress(job: &crate::process::Job) -> String {
             .and_then(|rest| rest.split_once(']'))
             .and_then(|(step, _)| step.trim().split_once('/'))
         {
-            return format!("Grabando las pasadas bajo Proton: {done} de {total}");
+            return Fsr411Progress::Recording {
+                done: done.to_owned(),
+                total: total.to_owned(),
+            };
         }
         if line.starts_with("Translating") {
-            return "Traduciendo las pasadas a SPIR-V…".to_owned();
+            return Fsr411Progress::Translating;
         }
     }
-    "Preparando…".to_owned()
+    Fsr411Progress::Preparing
 }
 
 /// `build_assets.sh` exit statuses, as bbport's launcher explained them.
-pub fn fsr411_build_error(code: Option<i32>) -> String {
+pub enum Fsr411Failure {
+    BadDll,
+    NoProton,
+    MissingTools,
+    NoProtonRan,
+    Mismatch,
+    NoLoader,
+    NixosNeedsRecorder,
+    Failed(i32),
+    Stopped,
+}
+
+pub const fn fsr411_failure(code: Option<i32>) -> Fsr411Failure {
     match code {
-        Some(2) => "La DLL no sirve: detalles en el registro".into(),
-        Some(3) => "No hay un Proton adecuado: instalá GE-Proton 10 o posterior, Proton Experimental o \
-                    Proton-CachyOS, y abrí con él cualquier juego en Steam para que instale su runtime"
-            .into(),
-        Some(4) => "Faltan programas para compilar: la lista está en el registro".into(),
-        Some(5) => "Ningún Proton ejecutó FSR 4.1 con esa DLL: son demasiado antiguos o la DLL no activa FSR \
-                    4.1 en esta GPU"
-            .into(),
-        Some(6) => "Las pasadas grabadas no coinciden con lo que reproduce bbport (otra versión de la DLL o \
-                    una GPU nueva): detalles en el registro"
-            .into(),
-        Some(7) => "No se encontró el cargador FidelityFX 2.x".into(),
-        Some(8) => "En NixOS la grabación necesita umu-launcher o Nix en el sistema".into(),
-        Some(code) => format!("La compilación falló (código {code}): detalles en el registro"),
-        None => "La compilación se detuvo".into(),
+        Some(2) => Fsr411Failure::BadDll,
+        Some(3) => Fsr411Failure::NoProton,
+        Some(4) => Fsr411Failure::MissingTools,
+        Some(5) => Fsr411Failure::NoProtonRan,
+        Some(6) => Fsr411Failure::Mismatch,
+        Some(7) => Fsr411Failure::NoLoader,
+        Some(8) => Fsr411Failure::NixosNeedsRecorder,
+        Some(code) => Fsr411Failure::Failed(code),
+        None => Fsr411Failure::Stopped,
     }
 }

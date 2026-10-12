@@ -1,0 +1,622 @@
+_version: 2
+library.pick_profile:
+  es: Elegí un perfil arriba.
+  en: Pick a profile above.
+library.offline_folders:
+  es: "Sin conectar: %{folders}. Sus juegos no figuran como instalados hasta que conectes el disco."
+  en: "Not connected: %{folders}. Their games show as not installed until you connect the drive."
+library.loading.title:
+  es: CARGANDO TU BIBLIOTECA
+  en: LOADING YOUR LIBRARY
+library.loading.searching:
+  es: Buscando tus juegos en GOG...
+  en: Looking for your games on GOG...
+library.loading.enriching:
+  es: "Completando datos: %{done} de %{total} (%{count} encontrados)"
+  en: "Filling in details: %{done} of %{total} (%{count} found)"
+library.loading.found.one:
+  es: 1 juego encontrado, completando datos...
+  en: 1 game found, filling in details...
+library.loading.found.other:
+  es: "%{count} juegos encontrados, completando datos..."
+  en: "%{count} games found, filling in details..."
+library.never_played:
+  es: Sin jugar
+  en: Never played
+library.shelves.favorites:
+  es: Favoritos
+  en: Favorites
+library.shelves.installed:
+  es: Instalados
+  en: Installed
+library.shelves.gog_library:
+  es: Biblioteca GOG
+  en: GOG library
+library.shelves.uncategorized:
+  es: Sin colección
+  en: Uncategorized
+library.sidebar.search:
+  es: Buscar...
+  en: Search...
+library.sidebar.kind.games:
+  es: Juegos
+  en: Games
+library.sidebar.kind.games_extras:
+  es: Juegos y extras
+  en: Games and extras
+library.sidebar.kind.extras:
+  es: Extras
+  en: Extras
+library.sidebar.kind.movies:
+  es: Películas
+  en: Movies
+library.sidebar.kind.all:
+  es: Todo
+  en: All
+library.sidebar.sort_recent:
+  es: Ordenar por actividad reciente
+  en: Sort by recent activity
+library.sidebar.installed_only:
+  es: Mostrar solo instalados
+  en: Show installed only
+library.sidebar.clear_search:
+  es: Limpiar búsqueda
+  en: Clear search
+library.sidebar.filters:
+  es: Filtros
+  en: Filters
+library.sidebar.no_results:
+  es: Sin resultados.
+  en: No results.
+library.sidebar.empty_shelf:
+  es: Vacía
+  en: Empty
+library.sidebar.installed:
+  es: Instalado
+  en: Installed
+library.sidebar.add_game:
+  es: AGREGAR UN JUEGO
+  en: ADD A GAME
+library.menu.games:
+  es: "%{count} juegos"
+  en: "%{count} games"
+library.collections.new:
+  es: Nueva colección
+  en: New collection
+library.collections.name_placeholder:
+  es: Nombre de la colección
+  en: Collection name
+library.collections.create:
+  es: Crear
+  en: Create
+library.collections.rename:
+  es: Renombrar
+  en: Rename
+library.collections.move_up:
+  es: Subir
+  en: Move up
+library.collections.move_down:
+  es: Bajar
+  en: Move down
+library.collections.delete:
+  es: Eliminar colección
+  en: Delete collection
+library.filters.heading:
+  es: FILTROS DE BIBLIOTECA
+  en: LIBRARY FILTERS
+library.filters.clear:
+  es: Limpiar filtros
+  en: Clear filters
+library.filters.save_dynamic:
+  es: Guardar como colección dinámica
+  en: Save as dynamic collection
+library.filters.alternatives_note:
+  es: "Alternativas: marcar dos amplía el resultado."
+  en: "Alternatives: checking two widens the result."
+library.filters.products.one:
+  es: 1 producto
+  en: 1 product
+library.filters.products.other:
+  es: "%{count} productos"
+  en: "%{count} products"
+library.filters.matched.one:
+  es: "%{matched} de %{total} coinciden · 1 filtro"
+  en: "%{matched} of %{total} match · 1 filter"
+library.filters.matched.other:
+  es: "%{matched} de %{total} coinciden · %{active} filtros"
+  en: "%{matched} of %{total} match · %{active} filters"
+library.filters.state.title:
+  es: Estado
+  en: Status
+library.filters.state.note:
+  es: "Propiedades del mismo juego: marcar dos acota."
+  en: "Properties of the same game: checking two narrows."
+library.filters.state.installed:
+  es: Instalados
+  en: Installed
+library.filters.state.played:
+  es: Jugados
+  en: Played
+library.filters.state.unplayed:
+  es: Sin jugar
+  en: Unplayed
+library.filters.state.favorite:
+  es: Favoritos
+  en: Favorites
+library.filters.achievements.title:
+  es: Logros
+  en: Achievements
+library.filters.achievements.note:
+  es: Según lo que Decanter tiene cacheado.
+  en: Based on what Decanter has cached.
+library.filters.achievements.complete:
+  es: Completados
+  en: Completed
+library.filters.achievements.in_progress:
+  es: En progreso
+  en: In progress
+library.filters.achievements.not_started:
+  es: Sin empezar
+  en: Not started
+library.filters.achievements.unmeasured:
+  es: Sin logros
+  en: No achievements
+library.filters.sort.heading:
+  es: Orden de la lista
+  en: List order
+library.filters.sort.note:
+  es: Cada estantería de portadas lleva el suyo.
+  en: Each cover shelf has its own.
+library.filters.sort.title:
+  es: Nombre
+  en: Name
+library.filters.sort.played:
+  es: Más jugado
+  en: Most played
+library.filters.sort.recent:
+  es: Jugado recientemente
+  en: Recently played
+library.filters.sort.completion:
+  es: Logros
+  en: Achievements
+library.filters.sort.release:
+  es: Lanzamiento
+  en: Release date
+library.filters.sort.size:
+  es: Tamaño en disco
+  en: Size on disk
+library.filters.sort.rating:
+  es: Calificación
+  en: Rating
+library.filters.sort.added:
+  es: Fecha agregada
+  en: Date added
+library.filters.collection.title:
+  es: Colección
+  en: Collection
+library.filters.collection.any:
+  es: Cualquier colección
+  en: Any collection
+library.filters.account.title:
+  es: Cuenta
+  en: Account
+library.filters.account.note:
+  es: Este perfil tiene más de una — marcar dos amplía el resultado.
+  en: This profile has more than one — checking two widens the result.
+library.filters.store.title:
+  es: Tienda
+  en: Store
+library.filters.store.external:
+  es: Externos
+  en: External
+library.filters.genre.title:
+  es: Género
+  en: Genre
+library.filters.genre.none:
+  es: Sin géneros todavía.
+  en: No genres yet.
+library.browser.whole_library:
+  es: Toda la biblioteca
+  en: Whole library
+library.browser.drag_to_reorder:
+  es: Arrastrar para reordenar
+  en: Drag to reorder
+library.browser.installed_count:
+  es: "%{installed}/%{total} instalados"
+  en: "%{installed}/%{total} installed"
+library.browser.remove_shelf:
+  es: Quitar estantería
+  en: Remove shelf
+library.browser.empty_shelf:
+  es: Nada en esta estantería.
+  en: Nothing on this shelf.
+library.browser.previous:
+  es: Ver anteriores
+  en: Previous
+library.browser.next:
+  es: Ver siguientes
+  en: Next
+library.browser.nothing_yet:
+  es: Todavía no hay nada que mostrar.
+  en: Nothing to show yet.
+library.browser.add_shelf:
+  es: + Añadir estantería
+  en: + Add shelf
+library.browser.favorite:
+  es: Favorito
+  en: Favorite
+library.properties.title:
+  es: Propiedades
+  en: Properties
+library.detail.tabs.summary:
+  es: Resumen
+  en: Overview
+library.detail.tabs.achievements:
+  es: Logros
+  en: Achievements
+library.detail.favorite.add:
+  es: Agregar a favoritos
+  en: Add to favorites
+library.detail.favorite.remove:
+  es: Quitar de favoritos
+  en: Remove from favorites
+library.detail.hero.achievements:
+  es: LOGROS
+  en: ACHIEVEMENTS
+library.detail.hero.played:
+  es: JUGADO
+  en: PLAYED
+library.detail.external:
+  es: Externo
+  en: External
+library.detail.play:
+  es: JUGAR
+  en: PLAY
+library.detail.stop:
+  es: DETENER
+  en: STOP
+library.detail.no_executable:
+  es: Instalado, pero sin ejecutable detectado
+  en: Installed, but no executable was found
+library.detail.uninstall.busy:
+  es: Desinstalando...
+  en: Uninstalling...
+library.detail.uninstall.uninstall:
+  es: Desinstalar
+  en: Uninstall
+library.detail.uninstall.confirm_uninstall:
+  es: Confirmar desinstalación
+  en: Confirm uninstall
+library.detail.uninstall.remove:
+  es: Eliminar
+  en: Remove
+library.detail.uninstall.confirm_remove:
+  es: Confirmar eliminación
+  en: Confirm removal
+library.detail.install.button:
+  es: INSTALAR
+  en: INSTALL
+library.detail.install.unavailable:
+  es: GOG no ofrece descarga para esta edición
+  en: GOG offers no download for this edition
+library.detail.install.failed:
+  es: "Instalación fallida: %{error}"
+  en: "Install failed: %{error}"
+library.detail.install.dismiss:
+  es: Descartar
+  en: Dismiss
+library.detail.install.dialog_title:
+  es: Instalar — %{title}
+  en: Install — %{title}
+library.detail.install.folder:
+  es: Carpeta
+  en: Folder
+library.detail.install.branch:
+  es: Rama
+  en: Branch
+library.detail.install.location:
+  es: Ubicación
+  en: Location
+library.detail.install.dlc:
+  es: Contenido adicional
+  en: Additional content
+library.detail.install.dlcs.one:
+  es: 1 marcado, se instala junto con el juego
+  en: 1 selected, installed along with the game
+library.detail.install.dlcs.other:
+  es: "%{count} marcados, se instalan junto con el juego"
+  en: "%{count} selected, installed along with the game"
+library.detail.install.offline:
+  es: "Sin conectar: %{folders}. Si el juego ya está ahí, conectá el disco en vez de instalarlo otra vez."
+  en: "Not connected: %{folders}. If the game is already there, connect the drive instead of installing it again."
+library.detail.install.folder_free:
+  es: "%{folder} — %{free} libres"
+  en: "%{folder} — %{free} free"
+library.detail.install.mainline:
+  es: Mainline (por defecto)
+  en: Mainline (default)
+library.detail.achievements.cache_error:
+  es: "Error leyendo caché de logros: %{error}"
+  en: "Error reading the achievement cache: %{error}"
+library.detail.achievements.polling:
+  es: Buscando logros...
+  en: Fetching achievements...
+library.detail.achievements.none:
+  es: Este juego no tiene logros en GOG.
+  en: This game has no achievements on GOG.
+library.detail.achievements.poll_failed:
+  es: "No se pudo consultar logros: %{error}"
+  en: "Couldn't fetch achievements: %{error}"
+library.detail.summary.playtime:
+  es: Tiempo jugado
+  en: Time played
+library.detail.summary.last_session:
+  es: Última sesión
+  en: Last session
+library.detail.summary.rating:
+  es: Calificación
+  en: Rating
+library.detail.summary.release:
+  es: Lanzamiento
+  en: Release date
+library.detail.summary.developer:
+  es: "Desarrollador: %{developer}"
+  en: "Developer: %{developer}"
+library.detail.summary.publisher:
+  es: "Editor: %{publisher}"
+  en: "Publisher: %{publisher}"
+library.detail.summary.developer_publisher:
+  es: "Desarrollador: %{developer} Editor: %{publisher}"
+  en: "Developer: %{developer} Publisher: %{publisher}"
+library.detail.summary.genres:
+  es: "Géneros: %{genres}"
+  en: "Genres: %{genres}"
+library.menu.name_placeholder:
+  es: Nombre
+  en: Name
+library.menu.hide:
+  es: Ocultar de la biblioteca
+  en: Hide from library
+library.menu.unhide:
+  es: Mostrar en la biblioteca
+  en: Show in library
+library.menu.collections:
+  es: COLECCIONES
+  en: COLLECTIONS
+library.menu.no_collections:
+  es: Todavía no creaste ninguna.
+  en: You haven't made any yet.
+library.menu.dynamic_collection:
+  es: "Colección dinámica: su contenido lo decide el filtro guardado"
+  en: "Dynamic collection: its saved filter decides what's in it"
+library.menu.new_collection:
+  es: Nueva colección…
+  en: New collection…
+library.menu.cancel_install:
+  es: Cancelar instalación
+  en: Cancel install
+library.menu.install:
+  es: Instalar
+  en: Install
+library.menu.play:
+  es: Jugar
+  en: Play
+library.menu.stop:
+  es: Detener
+  en: Stop
+library.menu.open_folder:
+  es: Abrir carpeta del juego
+  en: Open game folder
+library.menu.edit_external:
+  es: Editar juego externo…
+  en: Edit external game…
+library.install.no_library:
+  es: no se pudo resolver la biblioteca
+  en: couldn't resolve the library
+library.install.library_error:
+  es: "resolviendo la biblioteca: %{error}"
+  en: "resolving the library: %{error}"
+library.properties.window_title:
+  es: Propiedades — %{title}
+  en: Properties — %{title}
+library.properties.not_installed:
+  es: El juego no está instalado.
+  en: The game isn't installed.
+library.properties.tabs.general:
+  es: General
+  en: General
+library.properties.tabs.updates:
+  es: Actualizaciones
+  en: Updates
+library.properties.tabs.local_files:
+  es: Archivos locales
+  en: Local files
+library.properties.tabs.cloud_saves:
+  es: Guardado en la nube
+  en: Cloud saves
+library.properties.tabs.dlc:
+  es: DLC
+  en: DLC
+library.properties.tabs.betas:
+  es: Betas
+  en: Betas
+library.properties.tabs.versions:
+  es: Versiones
+  en: Versions
+library.properties.tabs.compatibility:
+  es: Compatibilidad
+  en: Compatibility
+library.properties.general.title:
+  es: Título
+  en: Title
+library.properties.general.size:
+  es: Tamaño
+  en: Size
+library.properties.general.played:
+  es: Jugado
+  en: Played
+library.properties.general.open_folder:
+  es: Abrir carpeta
+  en: Open folder
+library.properties.updates.check:
+  es: Buscar actualización
+  en: Check for updates
+library.properties.updates.checking:
+  es: Buscando...
+  en: Checking...
+library.properties.updates.update:
+  es: Actualizar ahora
+  en: Update now
+library.properties.updates.updating:
+  es: Actualizando...
+  en: Updating...
+library.properties.updates.available:
+  es: "Hay una nueva build: %{build}"
+  en: "A new build is available: %{build}"
+library.properties.updates.up_to_date:
+  es: Al día.
+  en: Up to date.
+library.properties.updates.installed_build:
+  es: Build instalado
+  en: Installed build
+library.properties.local_files.verify:
+  es: Verificar archivos
+  en: Verify files
+library.properties.local_files.verifying:
+  es: Verificando...
+  en: Verifying...
+library.properties.local_files.repair:
+  es: Reparar
+  en: Repair
+library.properties.local_files.repairing:
+  es: Reparando...
+  en: Repairing...
+library.properties.local_files.clean.one:
+  es: 1 archivo, todo en orden.
+  en: 1 file, all good.
+library.properties.local_files.clean.other:
+  es: "%{count} archivos, todo en orden."
+  en: "%{count} files, all good."
+library.properties.local_files.broken:
+  es: "%{broken} de %{total} archivos no coinciden."
+  en: "%{broken} of %{total} files don't match."
+library.properties.local_files.note:
+  es: Compara cada archivo instalado contra el manifiesto de GOG y vuelve a bajar lo que no coincida.
+  en: Checks every installed file against GOG's manifest and downloads again whatever doesn't match.
+library.properties.saves.folder_placeholder:
+  es: Carpeta de guardado
+  en: Save folder
+library.properties.saves.note:
+  es: Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indicala a mano.
+  en: Decanter tries to find the save folder from GOG's remote configuration. If it finds nothing, enter it by hand.
+library.properties.saves.detect:
+  es: Detectar automáticamente
+  en: Detect automatically
+library.properties.saves.detecting:
+  es: Detectando...
+  en: Detecting...
+library.properties.saves.none_reported:
+  es: GOG no reporta una carpeta de guardado para este juego.
+  en: GOG reports no save folder for this game.
+library.properties.saves.pick_title:
+  es: Elegí la carpeta de guardado
+  en: Choose the save folder
+library.properties.saves.pick:
+  es: Elegir carpeta...
+  en: Choose folder...
+library.properties.saves.save:
+  es: Guardar carpeta
+  en: Save folder
+library.properties.saves.last_sync:
+  es: Última sincronización
+  en: Last sync
+library.properties.saves.never:
+  es: nunca
+  en: never
+library.properties.saves.sync:
+  es: Sincronizar ahora
+  en: Sync now
+library.properties.saves.syncing:
+  es: Sincronizando...
+  en: Syncing...
+library.properties.saves.conflict:
+  es: Cambios en ambos lados desde la última sync.
+  en: Changes on both sides since the last sync.
+library.properties.saves.force_upload:
+  es: Subir de todos modos
+  en: Upload anyway
+library.properties.saves.force_download:
+  es: Descargar de todos modos
+  en: Download anyway
+library.properties.saves.uploaded:
+  es: Subido.
+  en: Uploaded.
+library.properties.saves.downloaded:
+  es: Descargado.
+  en: Downloaded.
+library.properties.saves.already_synced:
+  es: Ya estaba al día.
+  en: Already up to date.
+library.properties.saves.unresolved:
+  es: Conflicto sin resolver.
+  en: Unresolved conflict.
+library.properties.dlc.none:
+  es: Este juego no tiene contenido adicional.
+  en: This game has no additional content.
+library.properties.dlc.applying:
+  es: aplicando…
+  en: applying…
+library.properties.dlc.goodies_note:
+  es: Artbooks, bandas sonoras y similares. Son tuyos, pero GOG no los entrega como contenido instalable — se descargan aparte, y Decanter todavía no lo hace.
+  en: Artbooks, soundtracks and the like. They're yours, but GOG doesn't deliver them as installable content — they're downloaded separately, and Decanter doesn't do that yet.
+library.properties.dlc.not_installable:
+  es: no instalable
+  en: not installable
+library.properties.releases.current:
+  es: ACTUAL
+  en: CURRENT
+library.properties.betas.switch:
+  es: Cambiar
+  en: Switch
+library.properties.betas.switching:
+  es: Cambiando...
+  en: Switching...
+library.properties.betas.note:
+  es: Cambiar de rama vuelve a descargar el juego entero desde esa build. El contenido adicional ya instalado no se toca.
+  en: Switching branches downloads the whole game again from that build. Additional content already installed is left alone.
+library.properties.versions.install:
+  es: Instalar esta versión
+  en: Install this version
+library.properties.versions.installing:
+  es: Instalando...
+  en: Installing...
+library.properties.versions.note:
+  es: Instalar una versión anterior vuelve a descargar el juego entero desde esa build. Verificar archivos la va a tratar como la versión instalada, no como una desactualización.
+  en: Installing an older version downloads the whole game again from that build. Verify files will treat it as the installed version, not as out of date.
+library.properties.compatibility.default_proton:
+  es: Usar el de por defecto
+  en: Use the default
+library.properties.compatibility.reset:
+  es: Resetear prefijo
+  en: Reset prefix
+library.properties.compatibility.resetting:
+  es: Reseteando...
+  en: Resetting...
+library.properties.compatibility.reset_tooltip:
+  es: Borra el prefijo. Se regenera al abrir el juego. Las partidas guardadas dentro del prefijo se pierden.
+  en: Deletes the prefix. It's recreated when the game starts. Saves kept inside the prefix are lost.
+library.properties.compatibility.prefix:
+  es: Prefijo
+  en: Prefix
+library.properties.compatibility.prefix_created:
+  es: creado
+  en: created
+library.properties.compatibility.prefix_missing:
+  es: sin prefijo (se crea al jugar)
+  en: no prefix (created on first launch)
+library.properties.compatibility.no_longer_installed:
+  es: el juego ya no figura como instalado
+  en: the game no longer shows as installed
+library.properties.compatibility.manifest_error:
+  es: "guardando el manifiesto: %{error}"
+  en: "saving the manifest: %{error}"

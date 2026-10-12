@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use gpui::AsyncApp;
+use rust_i18n::t;
 
 use crate::state::{AppState, InstallStatus};
 
@@ -77,7 +78,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         set_status(
             &state,
             &product_id,
-            Some(InstallStatus::Failed("no se pudo resolver la biblioteca".to_owned())),
+            Some(InstallStatus::Failed(t!("library.install.no_library").into_owned())),
             cx,
         );
         return;
@@ -202,7 +203,8 @@ pub async fn uninstall(
 ) -> Result<(), String> {
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
-        crate::core::library_for_account(&account_id).map_err(|err| format!("resolviendo la biblioteca: {err}"))
+        crate::core::library_for_account(&account_id)
+            .map_err(|err| t!("library.install.library_error", error = err).into_owned())
     );
     crate::achv_try!(
         decanter_gog::uninstall(&core_library, &account_id, &product_id)

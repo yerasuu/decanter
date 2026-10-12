@@ -14,6 +14,8 @@ use std::collections::{HashMap, HashSet};
 
 use decanter_core::{Game, Storefront};
 use decanter_gog::{GameKind, LibraryEntry};
+use gpui::SharedString;
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use super::data::{Collections, LibraryStats};
@@ -109,6 +111,20 @@ pub(super) enum Sort {
 }
 
 impl Sort {
+    pub fn options() -> [(SharedString, SharedString); 8] {
+        [
+            ("title", t!("library.filters.sort.title")),
+            ("played", t!("library.filters.sort.played")),
+            ("recent", t!("library.filters.sort.recent")),
+            ("completion", t!("library.filters.sort.completion")),
+            ("release", t!("library.filters.sort.release")),
+            ("size", t!("library.filters.sort.size")),
+            ("rating", t!("library.filters.sort.rating")),
+            ("added", t!("library.filters.sort.added")),
+        ]
+        .map(|(value, label)| (SharedString::from(value), SharedString::from(label)))
+    }
+
     pub fn from_value(value: &str) -> Self {
         match value {
             "played" => Sort::MostPlayed,

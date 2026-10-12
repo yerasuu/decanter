@@ -20,6 +20,7 @@ use gpui::{
     Animation, AnimationExt as _, BoxShadow, Context, Entity, FontWeight, MouseButton, ObjectFit, ScrollHandle,
     SharedString, Task, Window, div, img, linear_color_stop, linear_gradient, point, prelude::*, px, relative, rgb,
 };
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use super::context_menu::MenuTarget;
@@ -47,17 +48,6 @@ struct Slot {
 /// Sources that exist no matter what the user has made, so a saved shelf
 /// pointing at one is always valid.
 const BUILT_IN_SOURCES: [&str; 4] = ["all", "favorites", "uncategorized", "installed"];
-
-const SORT_OPTIONS: [(&str, &str); 8] = [
-    ("title", "Nombre"),
-    ("played", "Mas jugado"),
-    ("recent", "Jugado recientemente"),
-    ("completion", "Logros"),
-    ("release", "Lanzamiento"),
-    ("size", "Tamano en disco"),
-    ("rating", "Calificacion"),
-    ("added", "Fecha agregada"),
-];
 
 /// `rgba(10, 22, 32, .88)`, the dark chip behind a capsule's pips.
 const PIP_BG: u32 = 0x0a1620;
@@ -171,6 +161,8 @@ struct ShelvesKey {
     installed_only: bool,
     pending_installs: HashSet<String>,
     slots: u64,
+    /// The source names and capsule lines are translated.
+    locale: String,
 }
 
 /// One capsule, already reduced to what gets drawn.
@@ -230,10 +222,10 @@ fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Organisation, 
     // Instalados vanished as soon as a first collection retired the
     // install-state split. Either left the shelf blank with no way back.
     let mut sources: Vec<(SharedString, SharedString)> = vec![
-        ("favorites".into(), "Favoritos".into()),
-        ("all".into(), "Toda la biblioteca".into()),
-        ("uncategorized".into(), "Sin coleccion".into()),
-        ("installed".into(), "Instalados".into()),
+        ("favorites".into(), t!("library.shelves.favorites").into()),
+        ("all".into(), t!("library.browser.whole_library").into()),
+        ("uncategorized".into(), t!("library.shelves.uncategorized").into()),
+        ("installed".into(), t!("library.shelves.installed").into()),
     ];
     sources.extend(
         built
@@ -500,6 +492,7 @@ impl BrowserView {
             // here, not just once the manifest scan catches up.
             pending_installs: pending_install_ids(&background.installing),
             slots: self.slots_epoch,
+            locale: rust_i18n::locale().to_string(),
         };
         if self.derived.as_ref().is_some_and(|derived| derived.key == key) || self.deriving.as_ref() == Some(&key) {
             return;
@@ -598,7 +591,7 @@ impl BrowserView {
                     .line_height(relative(1.))
                     .text_color(rgb(theme::TEXT_DIM))
                     .group_hover(HEAD_GROUP, |grip| grip.text_color(rgb(theme::TEXT_MUTED)))
-                    .tooltip(tooltip("Arrastrar para reordenar"))
+                    .tooltip(tooltip(t!("library.browser.drag_to_reorder")))
                     .child("⠿"),
             )
             // The source picker *is* the shelf's title.
@@ -624,17 +617,11 @@ impl BrowserView {
                 )
             })
             .child(
-                Select::new(
-                    ("shelf-sort", key),
-                    SORT_OPTIONS
-                        .iter()
-                        .map(|&(value, label)| (SharedString::from(value), SharedString::from(label))),
-                    shelf.sort.value(),
-                )
-                .style(SelectStyle::Small)
-                .on_change(cx.listener(move |this, value: &SharedString, _, cx| {
-                    this.update_slot(key, |slot| slot.sort = Sort::from_value(value), cx);
-                })),
+                Select::new(("shelf-sort", key), Sort::options(), shelf.sort.value())
+                    .style(SelectStyle::Small)
+                    .on_change(cx.listener(move |this, value: &SharedString, _, cx| {
+                        this.update_slot(key, |slot| slot.sort = Sort::from_value(value), cx);
+                    })),
             )
             .child(
                 theme::mono()
@@ -642,7 +629,11 @@ impl BrowserView {
                     .ml_auto()
                     .text_size(px(11.))
                     .text_color(rgb(theme::TEXT_DIM))
-                    .child(format!("{}/{total} instalados", shelf.installed)),
+                    .child(t!(
+                        "library.browser.installed_count",
+                        installed = shelf.installed,
+                        total = total
+                    )),
             )
             .child(
                 div()
@@ -656,7 +647,7 @@ impl BrowserView {
                     .text_size(px(12.))
                     .line_height(relative(1.))
                     .text_color(rgb(theme::TEXT_DIM))
-                    .tooltip(tooltip("Quitar estanteria"))
+                    .tooltip(tooltip(t!("library.browser.remove_shelf")))
                     .when(only_slot, |button| button.opacity(0.3).cursor_not_allowed())
                     .when(!only_slot, |button| {
                         button
@@ -683,7 +674,7 @@ impl BrowserView {
                 .rounded(px(theme::RADIUS))
                 .text_size(px(12.))
                 .text_color(rgb(theme::TEXT_DIM))
-                .child("Nada en esta estanteria.")
+                .child(t!("library.browser.empty_shelf"))
                 .into_any_element()
         } else {
             self.render_row(shelf, cx).into_any_element()
@@ -718,9 +709,9 @@ impl BrowserView {
 
         let arrow = |left: bool| {
             let (id, label, glyph, direction) = if left {
-                ("row-arrow-left", "Ver anteriores", "‹", -1.)
+                ("row-arrow-left", t!("library.browser.previous"), "‹", -1.)
             } else {
-                ("row-arrow-right", "Ver siguientes", "›", 1.)
+                ("row-arrow-right", t!("library.browser.next"), "›", 1.)
             };
             let fade = theme::alpha(theme::BG_DEEP, 0.);
             div()
@@ -838,7 +829,7 @@ impl Render for BrowserView {
 
         browser
             .when(derived.library_empty, |browser| {
-                browser.child(theme::empty("Todavia no hay nada que mostrar."))
+                browser.child(theme::empty(t!("library.browser.nothing_yet")))
             })
             .children(
                 derived
@@ -868,7 +859,7 @@ impl Render for BrowserView {
                     })
                     .active(|button| button.mt(px(5.)).mb(px(-1.)))
                     .on_click(cx.listener(|this, _, _, cx| this.add_slot(cx)))
-                    .child("+ Anadir estanteria"),
+                    .child(t!("library.browser.add_shelf")),
             )
     }
 }
@@ -879,7 +870,7 @@ fn cover_card(capsule: &Capsule, model: &Entity<LibraryModel>) -> impl IntoEleme
     let click_id = capsule.id.clone();
     let menu_id = capsule.id.clone();
     let menu_title = capsule.title.clone();
-    let pip = |id: &'static str, glyph: &'static str, color: u32, label: &'static str| {
+    let pip = |id: &'static str, glyph: &'static str, color: u32, label: SharedString| {
         div()
             .id(id)
             .bg(theme::alpha(PIP_BG, 0.88))
@@ -994,10 +985,20 @@ fn cover_card(capsule: &Capsule, model: &Entity<LibraryModel>) -> impl IntoEleme
                 .flex()
                 .gap(px(4.))
                 .when(capsule.installed, |pips| {
-                    pips.child(pip("cover-installed", "▶", theme::ACCENT_GREEN, "Instalado"))
+                    pips.child(pip(
+                        "cover-installed",
+                        "▶",
+                        theme::ACCENT_GREEN,
+                        t!("library.sidebar.installed").into(),
+                    ))
                 })
                 .when(capsule.favorite, |pips| {
-                    pips.child(pip("cover-favorite", "★", theme::ACCENT_GOLD, "Favorito"))
+                    pips.child(pip(
+                        "cover-favorite",
+                        "★",
+                        theme::ACCENT_GOLD,
+                        t!("library.browser.favorite").into(),
+                    ))
                 }),
         )
         .child(
@@ -1017,7 +1018,7 @@ fn cover_card(capsule: &Capsule, model: &Entity<LibraryModel>) -> impl IntoEleme
 /// of anything.
 fn capsule_meta(seconds: i64, completion: Option<f64>) -> String {
     let played = match seconds {
-        0 => "Sin jugar".to_string(),
+        0 => t!("library.never_played").into_owned(),
         _ if seconds < 3600 => format!("{} min", (seconds / 60).max(1)),
         _ => format!("{:.1} h", seconds as f64 / 3600.0),
     };

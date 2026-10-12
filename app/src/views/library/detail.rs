@@ -5,6 +5,7 @@
 //! into, and two tabs — Resumen (catalog metadata already on `Game` but
 //! never shown before) and Logros.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -14,6 +15,7 @@ use gpui::{
     AnyElement, BoxShadow, Context, Div, Entity, FontWeight, ObjectFit, Pixels, SharedString, Task, WeakEntity, Window,
     canvas, div, img, point, prelude::*, px, relative, rgb,
 };
+use rust_i18n::t;
 
 use super::data::PollStatus;
 use super::install::InstallRequest;
@@ -327,12 +329,11 @@ impl Render for DetailView {
 
         let external = game.storefront == Storefront::Unspecified;
         let active = if external { DetailTab::Summary } else { self.local.tab };
-        let detail_tabs: &[(DetailTab, &str)] = if external {
-            &[(DetailTab::Summary, "Resumen")]
-        } else {
-            &[(DetailTab::Summary, "Resumen"), (DetailTab::Achievements, "Logros")]
-        };
-        let tab_row = tabs("detail-tabs", detail_tabs, active, {
+        let mut detail_tabs = vec![(DetailTab::Summary, t!("library.detail.tabs.summary"))];
+        if !external {
+            detail_tabs.push((DetailTab::Achievements, t!("library.detail.tabs.achievements")));
+        }
+        let tab_row = tabs("detail-tabs", &detail_tabs, active, {
             let this = cx.entity().downgrade();
             move |tab, _, cx| {
                 let _ = this.update(cx, |this, cx| {
@@ -422,9 +423,9 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
         .py(px(4.))
         .when(is_fav, |star| star.text_color(rgb(theme::ACCENT_GOLD)))
         .tooltip(tooltip(if is_fav {
-            "Quitar de favoritos"
+            t!("library.detail.favorite.remove")
         } else {
-            "Agregar a favoritos"
+            t!("library.detail.favorite.add")
         }))
         .on_click(cx.listener(move |_, _, _, cx| {
             data::set_favorite(&account_id, storefront, &product_id, !is_fav);
@@ -442,9 +443,15 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
             .flex()
             .gap(px(10.))
             .when(storefront == Storefront::Gog, |stats| {
-                stats.child(hero_stat(format!("{unlocked}/{total}"), "LOGROS"))
+                stats.child(hero_stat(
+                    format!("{unlocked}/{total}"),
+                    t!("library.detail.hero.achievements"),
+                ))
             })
-            .child(hero_stat(fmt::duration(playtime.seconds_total), "JUGADO")),
+            .child(hero_stat(
+                fmt::duration(playtime.seconds_total),
+                t!("library.detail.hero.played"),
+            )),
     )
     .child(
         div()
@@ -459,7 +466,7 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
             .child(div().flex().child(if storefront == Storefront::Gog {
                 theme::badge("GOG", true)
             } else {
-                theme::badge("Externo", false)
+                theme::badge(t!("library.detail.external"), false)
             }))
             // Beside the title rather than at the end of the action bar: it
             // says something about the game, not something to do with it,
@@ -486,7 +493,7 @@ fn hero(game: &Game, unlocked: usize, total: usize, playtime: Playtime, is_fav: 
 /// `.hero-stat`. The webview blurred what was behind it
 /// (`backdrop-filter`), which GPUI can't; a more opaque fill keeps the
 /// number readable over busy art instead.
-fn hero_stat(value: String, label: &'static str) -> Div {
+fn hero_stat(value: String, label: impl Into<SharedString>) -> Div {
     div()
         .flex()
         .flex_col()
@@ -509,7 +516,7 @@ fn hero_stat(value: String, label: &'static str) -> Div {
                 .mt(px(2.))
                 .text_size(px(10.))
                 .text_color(rgb(theme::TEXT_MUTED))
-                .child(label),
+                .child(label.into()),
         )
 }
 
@@ -524,8 +531,8 @@ impl DetailView {
         bar.child(play_action(game, bar_state.launch, bar_state.running))
             .children(self.uninstall_action(game, cx))
             .child(
-                button("properties", ButtonKind::Icon, "Propiedades", false)
-                    .tooltip(tooltip("Propiedades"))
+                button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
+                    .tooltip(tooltip(t!("library.properties.title")))
                     .on_click(move |_, _, cx| super::open_properties(&properties_game, cx)),
             )
     }
@@ -535,18 +542,24 @@ impl DetailView {
     fn uninstall_action(&self, game: &Game, cx: &Context<Self>) -> Vec<AnyElement> {
         let uninstall = &self.local.uninstall;
         if uninstall.busy {
-            return vec![theme::muted("Desinstalando...").into_any_element()];
+            return vec![theme::muted(t!("library.detail.uninstall.busy")).into_any_element()];
         }
         // An external game's own files aren't decanter's to delete; only
         // its entry and prefix go.
         let (label, confirm) = if game.storefront == Storefront::Unspecified {
-            ("Eliminar", "Confirmar eliminacion")
+            (
+                t!("library.detail.uninstall.remove"),
+                t!("library.detail.uninstall.confirm_remove"),
+            )
         } else {
-            ("Desinstalar", "Confirmar desinstalacion")
+            (
+                t!("library.detail.uninstall.uninstall"),
+                t!("library.detail.uninstall.confirm_uninstall"),
+            )
         };
         if !uninstall.confirming {
             return vec![
-                button("uninstall", ButtonKind::Icon, label, false)
+                button("uninstall", ButtonKind::Icon, label.clone(), false)
                     .tooltip(tooltip(label))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.local.uninstall.confirming = true;
@@ -563,7 +576,7 @@ impl DetailView {
                     this.uninstall(account_id.clone(), product_id.clone(), cx);
                 }))
                 .into_any_element(),
-            button("uninstall-cancel", ButtonKind::Icon, "Cancelar", false)
+            button("uninstall-cancel", ButtonKind::Icon, t!("common.cancel"), false)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.local.uninstall.confirming = false;
                     cx.notify();
@@ -590,7 +603,7 @@ impl DetailView {
         // alongside the current one — with nothing behind them to install.
         // Pressing install on one only ever fails, so it isn't offered.
         if !installable {
-            return vec![theme::muted("GOG no ofrece descarga para esta edicion").into_any_element()];
+            return vec![theme::muted(t!("library.detail.install.unavailable")).into_any_element()];
         }
         let account_id = game.account_id.clone();
         let product_id = game.id.clone();
@@ -616,28 +629,38 @@ impl DetailView {
                                 .child(file)
                         }))
                         .into_any_element(),
-                    button("install-cancel", ButtonKind::Icon, "Cancelar", false)
+                    button("install-cancel", ButtonKind::Icon, t!("common.cancel"), false)
                         .on_click(move |_, _, cx| actions::cancel_install(account_id.clone(), product_id.clone(), cx))
                         .into_any_element(),
                 ]
             }
             Some(InstallStatus::Failed(err)) => vec![
-                theme::error(format!("Instalacion fallida: {err}")).into_any_element(),
-                button("install-dismiss", ButtonKind::Secondary, "Descartar", false)
-                    .on_click(move |_, _, cx| actions::dismiss_install(&product_id, cx))
-                    .into_any_element(),
+                theme::error(t!("library.detail.install.failed", error = err)).into_any_element(),
+                button(
+                    "install-dismiss",
+                    ButtonKind::Secondary,
+                    t!("library.detail.install.dismiss"),
+                    false,
+                )
+                .on_click(move |_, _, cx| actions::dismiss_install(&product_id, cx))
+                .into_any_element(),
             ],
             // Nothing to choose: the files go to the shared library and the
             // prefix is derived from (profile, game) when the game first runs.
             None => {
                 let mut elements = vec![
-                    button("install", ButtonKind::PlaySecondary, "INSTALAR", false)
-                        .on_click(cx.listener({
-                            let account_id = account_id.clone();
-                            let product_id = product_id.clone();
-                            move |this, _, _, cx| this.open_install_dialog(account_id.clone(), product_id.clone(), cx)
-                        }))
-                        .into_any_element(),
+                    button(
+                        "install",
+                        ButtonKind::PlaySecondary,
+                        t!("library.detail.install.button"),
+                        false,
+                    )
+                    .on_click(cx.listener({
+                        let account_id = account_id.clone();
+                        let product_id = product_id.clone();
+                        move |this, _, _, cx| this.open_install_dialog(account_id.clone(), product_id.clone(), cx)
+                    }))
+                    .into_any_element(),
                 ];
                 if let Some(dialog) = &self.local.dialog {
                     let request = InstallRequest {
@@ -670,17 +693,22 @@ impl DetailView {
         let status_error = |text: String| div().mt(px(20.)).mx(px(32.)).child(theme::error(text));
         match achievements {
             Some(Ok(list)) if !list.is_empty() => return self.achievement_grid(list, cx),
-            Some(Err(err)) => return status_error(format!("Error leyendo cache de logros: {err}")).into_any_element(),
+            Some(Err(err)) => {
+                return status_error(t!("library.detail.achievements.cache_error", error = err).into_owned())
+                    .into_any_element();
+            }
             Some(Ok(_)) | None => {}
         }
         match poll_status {
-            PollStatus::Polling => status_text("Buscando logros...".to_owned()),
+            PollStatus::Polling => status_text(t!("library.detail.achievements.polling").into_owned()),
             PollStatus::Done => div()
                 .mt(px(20.))
                 .mx(px(32.))
-                .child(theme::empty("Este juego no tiene logros en GOG.")),
-            PollStatus::Failed(err) => status_error(format!("No se pudo consultar logros: {err}")),
-            PollStatus::Idle => status_text("Cargando...".to_owned()),
+                .child(theme::empty(t!("library.detail.achievements.none"))),
+            PollStatus::Failed(err) => {
+                status_error(t!("library.detail.achievements.poll_failed", error = err).into_owned())
+            }
+            PollStatus::Idle => status_text(t!("common.loading").into_owned()),
         }
         .into_any_element()
     }
@@ -736,19 +764,19 @@ fn measure_width(this: WeakEntity<DetailView>) -> impl IntoElement {
 
 fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool) -> AnyElement {
     let Some(installed) = launch else {
-        return theme::muted("Instalado, pero sin ejecutable detectado").into_any_element();
+        return theme::muted(t!("library.detail.no_executable")).into_any_element();
     };
     let account_id = game.account_id.clone();
     let product_id = game.id.clone();
     if running {
-        return button("stop", ButtonKind::PlaySecondary, "DETENER", false)
+        return button("stop", ButtonKind::PlaySecondary, t!("library.detail.stop"), false)
             .on_click(move |_, _, cx| {
                 tracing::info!(account_id, product_id, "stopping game");
                 actions::stop_game(account_id.clone(), product_id.clone(), cx);
             })
             .into_any_element();
     }
-    button("play", ButtonKind::Play, "JUGAR", false)
+    button("play", ButtonKind::Play, t!("library.detail.play"), false)
         .on_click(move |_, _, cx| actions::launch_game(account_id.clone(), installed.clone(), cx))
         .into_any_element()
 }
@@ -800,6 +828,8 @@ fn install_dialog(
     });
     let cancel = Rc::clone(&close);
     let dismiss = Rc::clone(&close);
+    let (folder_label, branch_label) = (t!("library.detail.install.folder"), t!("library.detail.install.branch"));
+    let (install_label, cancel_label) = (t!("library.detail.install.button"), t!("common.cancel"));
 
     let panel = div()
         .w(px(640.).min(viewport.width * 0.92))
@@ -830,7 +860,7 @@ fn install_dialog(
                 .child(
                     theme::display(16.)
                         .text_color(rgb(theme::TEXT_MUTED))
-                        .child(format!("Instalar — {title}").to_uppercase()),
+                        .child(t!("library.detail.install.dialog_title", title = title).to_uppercase()),
                 )
                 .child(
                     button("install-dialog-close", ButtonKind::Icon, "✕", false)
@@ -847,13 +877,13 @@ fn install_dialog(
                 .px_6()
                 .pb_6()
                 .child(rows)
-                .children(folders.map(|folders| field_row().child(div().child("Carpeta")).child(folders)))
-                .child(field_row().child(div().child("Rama")).child(branch))
+                .children(folders.map(|folders| field_row().child(div().child(folder_label)).child(folders)))
+                .child(field_row().child(div().child(branch_label)).child(branch))
                 .child(
                     field_row()
-                        .child(button("install-confirm", ButtonKind::Play, "INSTALAR", false).on_click(confirm))
+                        .child(button("install-confirm", ButtonKind::Play, install_label, false).on_click(confirm))
                         .child(
-                            button("install-dialog-cancel", ButtonKind::Secondary, "Cancelar", false)
+                            button("install-dialog-cancel", ButtonKind::Secondary, cancel_label, false)
                                 .on_click(move |_, window, cx| cancel(window, cx)),
                         ),
                 ),
@@ -863,7 +893,7 @@ fn install_dialog(
 
 /// `.properties-rows`: where the files go and which DLC rides along.
 fn install_rows(dialog: &InstallDialog, dlc_count: usize) -> Div {
-    let row = |label: &'static str, value: String| {
+    let row = |label: Cow<'static, str>, value: String| {
         div()
             .flex()
             .justify_between()
@@ -882,13 +912,20 @@ fn install_rows(dialog: &InstallDialog, dlc_count: usize) -> Div {
             (dialog.folders.len() == 1)
                 .then(|| dialog.folders.first())
                 .flatten()
-                .map(|(root, _)| row("Ubicación", root.join("common").display().to_string())),
+                .map(|(root, _)| {
+                    row(
+                        t!("library.detail.install.location"),
+                        root.join("common").display().to_string(),
+                    )
+                }),
         )
         .when(dlc_count > 0, |rows| {
-            rows.child(row(
-                "Contenido adicional",
-                format!("{dlc_count} marcado(s), se instala junto con el juego"),
-            ))
+            let value = if dlc_count == 1 {
+                t!("library.detail.install.dlcs.one", count = dlc_count)
+            } else {
+                t!("library.detail.install.dlcs.other", count = dlc_count)
+            };
+            rows.child(row(t!("library.detail.install.dlc"), value.into_owned()))
         })
         .when(!dialog.offline.is_empty(), |rows| {
             let folders = dialog
@@ -897,9 +934,7 @@ fn install_rows(dialog: &InstallDialog, dlc_count: usize) -> Div {
                 .map(|path| path.display().to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            rows.child(theme::muted(format!(
-                "Sin conectar: {folders}. Si el juego ya está ahí, conectá el disco en vez de instalarlo otra vez."
-            )))
+            rows.child(theme::muted(t!("library.detail.install.offline", folders = folders)))
         })
 }
 
@@ -911,7 +946,12 @@ fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option
     }
     let options = dialog.folders.iter().map(|(root, free)| {
         let label = match free {
-            Some(free) => format!("{} — {} libres", root.display(), crate::format::bytes(*free)),
+            Some(free) => t!(
+                "library.detail.install.folder_free",
+                folder = root.display(),
+                free = crate::format::bytes(*free)
+            )
+            .into_owned(),
             None => root.display().to_string(),
         };
         (
@@ -944,15 +984,18 @@ fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option
 
 fn branch_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> AnyElement {
     match &dialog.branches {
-        None => theme::muted("Cargando...").into_any_element(),
+        None => theme::muted(t!("common.loading")).into_any_element(),
         Some(Err(err)) => theme::error(err.clone()).into_any_element(),
         Some(Ok(list)) => {
-            let options = std::iter::once((SharedString::default(), SharedString::from("Mainline (por defecto)")))
-                .chain(
-                    list.iter()
-                        .filter_map(|branch| branch.name.as_deref())
-                        .map(|name| (SharedString::from(name.to_owned()), SharedString::from(name.to_owned()))),
-                );
+            let options = std::iter::once((
+                SharedString::default(),
+                SharedString::from(t!("library.detail.install.mainline")),
+            ))
+            .chain(
+                list.iter()
+                    .filter_map(|branch| branch.name.as_deref())
+                    .map(|name| (SharedString::from(name.to_owned()), SharedString::from(name.to_owned()))),
+            );
             Select::new("install-branch", options, dialog.chosen.clone().unwrap_or_default())
                 .on_change(move |value, _, cx| {
                     let _ = this.update(cx, |this, cx| {
@@ -1004,29 +1047,41 @@ fn summary_tab(game: &Game, playtime: Playtime) -> Div {
         .gap(px(14.))
         .mt(px(20.))
         .mx(px(32.))
-        .child(stat_card(fmt::duration(playtime.seconds_total), "Tiempo jugado"))
+        .child(stat_card(
+            fmt::duration(playtime.seconds_total),
+            &t!("library.detail.summary.playtime"),
+        ))
         .children(
             playtime
                 .last_played_at
                 .and_then(fmt::unix_date)
-                .map(|last| stat_card(last, "Ultima sesion")),
+                .map(|last| stat_card(last, &t!("library.detail.summary.last_session"))),
         )
-        .children(game.rating.clone().map(|rating| stat_card(rating, "Calificacion")))
+        .children(
+            game.rating
+                .clone()
+                .map(|rating| stat_card(rating, &t!("library.detail.summary.rating"))),
+        )
         .children(
             game.release_date
                 .and_then(fmt::unix_date)
-                .map(|date| stat_card(date, "Lanzamiento")),
+                .map(|date| stat_card(date, &t!("library.detail.summary.release"))),
         );
 
     // HTML collapsed the two spaces the webview put after the developer
     // into one, so that's what is shown between the two credits.
     let credits = match (&game.developer, &game.publisher) {
         (None, None) => None,
-        (Some(dev), None) => Some(format!("Desarrollador: {dev}")),
-        (None, Some(publisher)) => Some(format!("Editor: {publisher}")),
-        (Some(dev), Some(publisher)) => Some(format!("Desarrollador: {dev} Editor: {publisher}")),
+        (Some(dev), None) => Some(t!("library.detail.summary.developer", developer = dev)),
+        (None, Some(publisher)) => Some(t!("library.detail.summary.publisher", publisher = publisher)),
+        (Some(dev), Some(publisher)) => Some(t!(
+            "library.detail.summary.developer_publisher",
+            developer = dev,
+            publisher = publisher
+        )),
     };
-    let genres = (!game.genres.is_empty()).then(|| format!("Generos: {}", game.genres.join(", ")));
+    let genres =
+        (!game.genres.is_empty()).then(|| t!("library.detail.summary.genres", genres = game.genres.join(", ")));
     let paragraph = |text: String| {
         div()
             .mb(px(10.))
@@ -1040,8 +1095,8 @@ fn summary_tab(game: &Game, playtime: Playtime) -> Div {
         .mb(px(40.))
         .max_w(px(720.))
         .children(game.description.clone().map(paragraph))
-        .children(credits.map(paragraph))
-        .children(genres.map(paragraph));
+        .children(credits.map(|text| paragraph(text.into_owned())))
+        .children(genres.map(|text| paragraph(text.into_owned())));
 
     div().flex().flex_col().child(stats).child(text)
 }

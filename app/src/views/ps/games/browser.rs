@@ -7,6 +7,7 @@ use gpui::{
     BoxShadow, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, SharedString, WeakEntity, Window, div, img,
     linear_color_stop, linear_gradient, point, prelude::*, px, rgb,
 };
+use rust_i18n::t;
 
 use super::GamesView;
 use super::detail::DetailView;
@@ -101,7 +102,7 @@ impl BrowserView {
                     .bg(theme::alpha(theme::BG_DEEP, 0.85))
                     .text_size(px(10.))
                     .text_color(rgb(if ready { theme::ACCENT_GREEN } else { theme::TEXT_MUTED }))
-                    .child(status_text(&entry.status)),
+                    .child(SharedString::from(status_text(&entry.status))),
             );
         div()
             .id(SharedString::from(format!("ps-cover-{}", game.dir.display())))
@@ -159,11 +160,7 @@ impl Render for BrowserView {
                 .flex()
                 .flex_col()
                 .gap(px(32.))
-                .when(empty, |page| {
-                    page.child(theme::empty(
-                        "Todavía no hay juegos: copiá tus volcados a la carpeta de juegos (ver Ajustes).",
-                    ))
-                })
+                .when(empty, |page| page.child(theme::empty(t!("ps.games.browser_empty"))))
                 .children(shelves),
         )
     }
