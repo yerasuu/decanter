@@ -342,11 +342,13 @@ pub fn failure_message(failure: &Failure) -> Cow<'_, str> {
             unimplemented,
             stubs,
             failed,
+            status,
         }) => t!(
             "ps.failures.calls.summary",
             unimplemented = unimplemented,
             stubs = stubs,
-            failed = failed
+            failed = failed,
+            status = status
         ),
         Some(Summary::Exit(Some(code))) => t!("ps.failures.exit_code", code = code),
         Some(Summary::Exit(None)) => t!("ps.failures.exit_signal"),

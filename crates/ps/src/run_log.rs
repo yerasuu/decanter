@@ -112,11 +112,12 @@ impl RunLog {
                 || "call_report: absent".to_owned(),
                 |calls| {
                     format!(
-                        "call_report: {} (unimplemented {}, stubs {}, failed {})",
+                        "call_report: {} (unimplemented {}, stubs {}, failed {}, status {})",
                         path.display(),
                         calls.unimplemented.len(),
                         calls.stubs.len(),
-                        calls.failed.len()
+                        calls.failed.len(),
+                        calls.status.len()
                     )
                 },
             ));

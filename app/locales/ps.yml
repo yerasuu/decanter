@@ -195,8 +195,8 @@ ps.failures.missing.other:
   es: "%{total} cosas sin implementar; el juego llamó a %{called}"
   en: "%{total} things unimplemented; the game called %{called}"
 ps.failures.calls.summary:
-  es: "llamadas: %{unimplemented} sin implementar, %{stubs} stub, %{failed} con error"
-  en: "calls: %{unimplemented} unimplemented, %{stubs} stubbed, %{failed} failing"
+  es: "llamadas: %{unimplemented} sin implementar, %{stubs} stub, %{failed} con error, %{status} con estado esperado"
+  en: "calls: %{unimplemented} unimplemented, %{stubs} stubbed, %{failed} failing, %{status} with an expected status"
 ps.failures.calls.unimplemented:
   es: "Sin implementar (%{count})"
   en: "Unimplemented (%{count})"
@@ -206,6 +206,9 @@ ps.failures.calls.stubs:
 ps.failures.calls.failed:
   es: "Con error (%{count})"
   en: "Failing (%{count})"
+ps.failures.calls.status:
+  es: "Estados esperados: sin evento, tiempo agotado, ocupado (%{count})"
+  en: "Expected statuses: no event, timeout, busy (%{count})"
 ps.failures.exit_code:
   es: terminó con código %{code}
   en: exited with code %{code}

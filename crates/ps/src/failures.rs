@@ -59,6 +59,8 @@ pub enum Summary {
         unimplemented: usize,
         stubs: usize,
         failed: usize,
+        #[serde(default)]
+        status: usize,
     },
     /// `None` when a signal ended the process.
     Exit(Option<i32>),
@@ -91,12 +93,15 @@ pub struct Failure {
 }
 
 /// What the port counted at exit (`BB_CALL_REPORT`, psport's `FORK.md` "Call report"): imports
-/// the game called that nothing answers for real, or that failed. Each list most calls first.
+/// the game called that nothing answers for real, or that failed, and apart from them the expected
+/// statuses of polling calls (no event, timeout, busy). Each list most calls first.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CallReport {
     pub unimplemented: Vec<Call>,
     pub stubs: Vec<Call>,
     pub failed: Vec<Call>,
+    #[serde(default)]
+    pub status: Vec<Call>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -164,15 +169,22 @@ impl CallReport {
                 "unimplemented" => report.unimplemented.push(call),
                 "stub" => report.stubs.push(call),
                 "failed" if call.error.is_some() => report.failed.push(call),
+                "status" if call.error.is_some() => report.status.push(call),
                 _ => {}
             }
         }
-        for list in [&mut report.unimplemented, &mut report.stubs, &mut report.failed] {
+        for list in [
+            &mut report.unimplemented,
+            &mut report.stubs,
+            &mut report.failed,
+            &mut report.status,
+        ] {
             list.sort_by_key(|call| Reverse(call.count));
         }
         found.then_some(report)
     }
 
+    /// Expected statuses alone don't make a run's report worth a failure record.
     pub const fn is_empty(&self) -> bool {
         self.unimplemented.is_empty() && self.stubs.is_empty() && self.failed.is_empty()
     }
@@ -235,6 +247,7 @@ impl Failure {
                 ("unimplemented", &calls.unimplemented),
                 ("stub", &calls.stubs),
                 ("failed", &calls.failed),
+                ("status", &calls.status),
             ] {
                 if !list.is_empty() {
                     text.push_str(&format!("\n{title}:\n"));
@@ -429,15 +442,17 @@ impl Scanner {
             let (message, summary) = if let Some(calls) = &calls {
                 (
                     format!(
-                        "{} unimplemented, {} stub, {} failed",
+                        "{} unimplemented, {} stub, {} failed, {} status",
                         calls.unimplemented.len(),
                         calls.stubs.len(),
-                        calls.failed.len()
+                        calls.failed.len(),
+                        calls.status.len()
                     ),
                     Summary::Calls {
                         unimplemented: calls.unimplemented.len(),
                         stubs: calls.stubs.len(),
                         failed: calls.failed.len(),
+                        status: calls.status.len(),
                     },
                 )
             } else {

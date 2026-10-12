@@ -291,7 +291,7 @@ impl Render for FailuresView {
     }
 }
 
-/// The port's three lists, each most calls first, empty ones left out.
+/// The port's lists, each most calls first, empty ones left out.
 fn calls_lists(calls: &CallReport) -> Div {
     let lists = [
         (
@@ -302,6 +302,10 @@ fn calls_lists(calls: &CallReport) -> Div {
         (
             t!("ps.failures.calls.failed", count = calls.failed.len()),
             &calls.failed,
+        ),
+        (
+            t!("ps.failures.calls.status", count = calls.status.len()),
+            &calls.status,
         ),
     ];
     div()
