@@ -369,8 +369,17 @@ impl Log {
 
 /// Short commit of a port checkout, for the records.
 pub async fn commit_of(repo: &Path) -> String {
+    rev_parse_head(repo, &["--short"]).await
+}
+
+/// Full commit of a port checkout, stable across fetches unlike the short form whose length grows with the repo.
+pub async fn full_commit_of(repo: &Path) -> String {
+    rev_parse_head(repo, &[]).await
+}
+
+async fn rev_parse_head(repo: &Path, flags: &[&str]) -> String {
     let mut git = tokio::process::Command::new("git");
-    git.arg("-C").arg(repo).args(["rev-parse", "--short", "HEAD"]);
+    git.arg("-C").arg(repo).arg("rev-parse").args(flags).arg("HEAD");
     decanter_core::strip_launcher_env(git.as_std_mut());
     git.output()
         .await

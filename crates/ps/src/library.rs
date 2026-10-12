@@ -27,6 +27,8 @@ pub struct Game {
     /// Whether the dump carries `sce_module/`. An extracted update lacks it, while a base game
     /// with the update merged in keeps it (and takes the update's `gp` category).
     pub has_modules: bool,
+    /// PS4 `ATTRIBUTE` bit 26: the title does not start without a PS VR headset.
+    pub requires_vr: bool,
 }
 
 impl Game {
@@ -79,6 +81,9 @@ fn read_ps4(dir: &Path) -> Option<Game> {
         version: get("APP_VER"),
         category: get("CATEGORY"),
         has_modules: dir.join("sce_module").is_dir(),
+        requires_vr: get("ATTRIBUTE")
+            .parse::<u32>()
+            .is_ok_and(|attribute| attribute & 0x0400_0000 != 0),
     })
 }
 
@@ -95,6 +100,7 @@ fn read_ps5(dir: &Path) -> Option<Game> {
         version: text(&json["contentVersion"]),
         category: String::new(),
         has_modules: dir.join("sce_module").is_dir(),
+        requires_vr: false,
     })
 }
 

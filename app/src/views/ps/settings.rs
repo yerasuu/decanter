@@ -117,7 +117,7 @@ impl Render for SettingsView {
                     "Junto a la biblioteca del perfil, en el mismo disco. Copiá o mové ahí tus volcados y \
                      aparecen solos: cada carpeta y sus subcarpetas directas se leen tal cual.",
                 ))
-                .child(theme::h2("Módulos del sistema"))
+                .child(theme::h2("Módulos del sistema (opcional)"))
                 .child(
                     theme::card().child(
                         theme::list_row("ps-sys-modules", true)
@@ -141,9 +141,10 @@ impl Render for SettingsView {
                     ),
                 )
                 .child(theme::muted(
-                    "Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como \
-                     libSceNgs2.sprx). Los juegos experimentales cargan de ahí los que necesiten. \
-                     decanter no incluye ni copia ninguno.",
+                    "Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los \
+                     módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las \
+                     bibliotecas propias del port (BB_LLE) o para un juego que todavía necesite un módulo \
+                     de la consola. decanter no incluye ni copia ninguno.",
                 ))
                 .children(self.error.clone().map(theme::error)),
         )

@@ -27,6 +27,7 @@ pub enum Status {
     /// Another PS4 title: bbport starts it with the imports it lacks
     /// stubbed, and the log shows how far it gets.
     Experimental,
+    NeedsVr,
     Encrypted,
     NoEboot,
 }
@@ -55,6 +56,8 @@ pub fn classify(games: &[Game]) -> Vec<Entry> {
                 (Some(Port::Bbport), bloodborne_status(game, games))
             } else if game.platform == Platform::Ps5 {
                 (Some(Port::AnyPs5), ps5_status(game))
+            } else if game.requires_vr {
+                (Some(Port::Bbport), Status::NeedsVr)
             } else if game.dir.join("eboot.bin").is_file() {
                 (Some(Port::Bbport), Status::Experimental)
             } else {

@@ -304,6 +304,7 @@ const fn status_text(status: &Status) -> &'static str {
         Status::HasPlayable(_) => "Usa la copia 1.09",
         Status::OtherEdition => "Otra edición",
         Status::Experimental => "Experimental",
+        Status::NeedsVr => "Necesita PS VR",
         Status::NeedsUpdate => "Necesita 1.09",
         Status::Encrypted => "eboot cifrado",
         Status::NoEboot => "Sin eboot.bin",

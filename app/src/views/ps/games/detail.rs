@@ -337,6 +337,7 @@ impl DetailView {
                  sustituido, sin parches ni mods: mira hasta dónde llega en Registro."
                     .to_owned(),
             ),
+            Status::NeedsVr => Some("Este juego solo arranca con un casco PS VR, y el port no tiene uno.".to_owned()),
             Status::Encrypted => Some("El eboot.bin sigue cifrado; hay que descifrarlo en la consola.".to_owned()),
             Status::NoEboot => Some("Este volcado no tiene eboot.bin.".to_owned()),
         };

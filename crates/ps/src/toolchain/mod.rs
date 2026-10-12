@@ -105,7 +105,7 @@ impl Toolchain {
     /// commit, so a checkout that moved (an update applied before the port
     /// was prepared this session) is built again rather than run stale.
     pub async fn build_stamp(&self, checkout: &Path) -> String {
-        format!("{} {}", self.id(), crate::failures::commit_of(checkout).await)
+        format!("{} {}", self.id(), crate::failures::full_commit_of(checkout).await)
     }
 
     /// For the UI's informative line; there is no choice to make.
