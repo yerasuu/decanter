@@ -134,7 +134,18 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
     // its own. They go one at a time: they share a destination directory.
     set_status(&state, &product_id, None, cx);
     refresh_install_state(&state, &account_id, &product_id, cx);
-    let cached_art = state
+    let cached_art = cached_art(&state, &product_id, cx);
+    sync_steam_shortcut_for(&account_id, &product_id, cached_art).await;
+    if let Some(game) = crate::core::installed_game(&account_id, &product_id) {
+        crate::taskbar::sync_pc(&game).await;
+    }
+
+    install_dlcs(&core_library, &account_id, &product_id, dlcs, &state, cx).await;
+    refresh_install_state(&state, &account_id, &product_id, cx);
+}
+
+fn cached_art(state: &AppState, product_id: &str, cx: &AsyncApp) -> (Option<String>, Option<String>, Option<String>) {
+    state
         .library
         .read_with(cx, |library, _| {
             library
@@ -149,20 +160,25 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
                     )
                 })
         })
-        .unwrap_or_default();
-    sync_steam_shortcut_for(&account_id, &product_id, cached_art).await;
-    if let Some(game) = crate::core::installed_game(&account_id, &product_id) {
-        crate::taskbar::sync_pc(&game).await;
-    }
+        .unwrap_or_default()
+}
 
+async fn install_dlcs(
+    core_library: &decanter_core::Library,
+    account_id: &str,
+    product_id: &str,
+    dlcs: Vec<(String, String)>,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) {
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
-        set_status(&state, &dlc_id, Some(InstallStatus::Queued), cx);
+        set_status(state, &dlc_id, Some(InstallStatus::Queued), cx);
         let outcome = decanter_gog::install(
-            &core_library,
-            &account_id,
+            core_library,
+            account_id,
             &dlc_id,
-            Some(&product_id),
+            Some(product_id),
             &dlc_title,
             None,
             None,
@@ -174,15 +190,14 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
             // the game that installed fine just before it.
             Err(err) => {
                 tracing::error!(account_id, product_id, dlc_id, error = %err, "dlc install failed");
-                set_status(&state, &dlc_id, Some(InstallStatus::Failed(err.to_string())), cx);
+                set_status(state, &dlc_id, Some(InstallStatus::Failed(err.to_string())), cx);
             }
             Ok(()) => {
                 tracing::info!(account_id, product_id, dlc_id, "dlc install finished");
-                set_status(&state, &dlc_id, None, cx);
+                set_status(state, &dlc_id, None, cx);
             }
         }
     }
-    refresh_install_state(&state, &account_id, &product_id, cx);
 }
 
 pub async fn cancel(account_id: &str, product_id: &str) {

@@ -387,6 +387,35 @@ impl Shell {
                 .children(items),
         )
     }
+
+    fn page_body(&self) -> AnyElement {
+        // Cached: a page re-renders when it notifies, not every time a
+        // hover or a tick elsewhere in the window redraws the shell.
+        let page = || StyleRefinement::default().size_full();
+        match self.page {
+            Page::Library => self.library.clone().cached(page()).into_any_element(),
+            Page::Storage => self.storage.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::Downloads => self.downloads.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::Ps => self.ps.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::Settings => self.settings.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+            Page::External => self.external.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
+        }
+    }
 }
 
 impl Render for Shell {
@@ -452,32 +481,7 @@ impl Render for Shell {
                     .child(chrome::window_controls(Rc::clone(&self.on_close))),
             );
 
-        // Cached: a page re-renders when it notifies, not every time a
-        // hover or a tick elsewhere in the window redraws the shell.
-        let page = || StyleRefinement::default().size_full();
-        let body: AnyElement = match self.page {
-            Page::Library => self.library.clone().cached(page()).into_any_element(),
-            Page::Storage => self.storage.clone().map_or_else(
-                || div().into_any_element(),
-                |view| view.cached(page()).into_any_element(),
-            ),
-            Page::Downloads => self.downloads.clone().map_or_else(
-                || div().into_any_element(),
-                |view| view.cached(page()).into_any_element(),
-            ),
-            Page::Ps => self.ps.clone().map_or_else(
-                || div().into_any_element(),
-                |view| view.cached(page()).into_any_element(),
-            ),
-            Page::Settings => self.settings.clone().map_or_else(
-                || div().into_any_element(),
-                |view| view.cached(page()).into_any_element(),
-            ),
-            Page::External => self.external.clone().map_or_else(
-                || div().into_any_element(),
-                |view| view.cached(page()).into_any_element(),
-            ),
-        };
+        let body = self.page_body();
 
         // A floating popup, not inline in the topbar: the topbar is a fixed
         // 52px and an input, two buttons and an error line don't fit in it.

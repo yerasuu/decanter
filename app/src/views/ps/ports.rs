@@ -4,10 +4,12 @@
 //! The toolchain line is information only: which one runs a port is
 //! decided by what the machine has.
 
+use std::borrow::Cow;
+
 use decanter_ps::paths;
 use decanter_ps::port::Port;
 use decanter_ps::toolchain::Toolchain;
-use decanter_ps::updater::Plan;
+use decanter_ps::updater::{Check, Plan};
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
@@ -59,20 +61,7 @@ impl PortsView {
         let state = ps.port(port);
         let stage = state.map_or(&Stage::Idle, |state| state.stage());
         let busy = state.is_some_and(|state| state.is_busy());
-        let (stage_text, progress) = match stage {
-            Stage::Idle => (t!("ps.ports.stage.idle"), None),
-            Stage::Resolving => (t!("ps.ports.stage.resolving"), None),
-            Stage::Downloading(received, total) => (
-                t!("ps.ports.stage.downloading", size = crate::format::bytes(*received)),
-                total.map(|total| *received as f64 / total.max(1) as f64),
-            ),
-            Stage::Cloning => (t!("ps.ports.stage.cloning"), None),
-            Stage::Updating => (t!("ps.ports.stage.updating"), None),
-            Stage::Fetching => (t!("ps.ports.stage.fetching"), None),
-            Stage::Building => (t!("ps.ports.stage.building"), None),
-            Stage::Ready => (t!("ps.ports.stage.ready"), None),
-            Stage::Failed(message) => (message.clone().into(), None),
-        };
+        let (stage_text, progress) = stage_status(stage);
         let toolchain = state
             .and_then(|state| state.toolchain())
             .map(|toolchain| t!("ps.ports.toolchain", name = toolchain_label(toolchain)));
@@ -81,27 +70,7 @@ impl PortsView {
             BuildOrigin::Cache => t!("ps.ports.origin.cache"),
         });
         let check = state.and_then(|state| state.check());
-        let upstream = check.map(|check| match check {
-            Ok(check) => match &check.plan {
-                Plan::UpToDate => t!("ps.ports.upstream.up_to_date", head = check.head, branch = check.branch),
-                Plan::FastForward if check.behind == 1 => t!(
-                    "ps.ports.upstream.behind.one",
-                    head = check.head,
-                    count = check.behind,
-                    branch = check.branch
-                ),
-                Plan::FastForward => t!(
-                    "ps.ports.upstream.behind.other",
-                    head = check.head,
-                    count = check.behind,
-                    branch = check.branch
-                ),
-                Plan::Rewritten => t!("ps.ports.upstream.rewritten", head = check.head),
-                Plan::LocalCommits(1) => t!("ps.ports.upstream.local.one", head = check.head, count = 1),
-                Plan::LocalCommits(count) => t!("ps.ports.upstream.local.other", head = check.head, count = count),
-            },
-            Err(err) => t!("ps.ports.upstream.error", error = err),
-        });
+        let upstream = check.map(upstream_text);
         let needs_reset = check.is_some_and(
             |check| matches!(check, Ok(check) if matches!(check.plan, Plan::Rewritten | Plan::LocalCommits(_))),
         );
@@ -194,6 +163,47 @@ impl Render for PortsView {
                 .child(theme::muted(t!("ps.ports.description")))
                 .children(cards),
         )
+    }
+}
+
+fn stage_status(stage: &Stage) -> (Cow<'static, str>, Option<f64>) {
+    match stage {
+        Stage::Idle => (t!("ps.ports.stage.idle"), None),
+        Stage::Resolving => (t!("ps.ports.stage.resolving"), None),
+        Stage::Downloading(received, total) => (
+            t!("ps.ports.stage.downloading", size = crate::format::bytes(*received)),
+            total.map(|total| *received as f64 / total.max(1) as f64),
+        ),
+        Stage::Cloning => (t!("ps.ports.stage.cloning"), None),
+        Stage::Updating => (t!("ps.ports.stage.updating"), None),
+        Stage::Fetching => (t!("ps.ports.stage.fetching"), None),
+        Stage::Building => (t!("ps.ports.stage.building"), None),
+        Stage::Ready => (t!("ps.ports.stage.ready"), None),
+        Stage::Failed(message) => (message.clone().into(), None),
+    }
+}
+
+fn upstream_text(check: &Result<Check, String>) -> Cow<'static, str> {
+    match check {
+        Ok(check) => match &check.plan {
+            Plan::UpToDate => t!("ps.ports.upstream.up_to_date", head = check.head, branch = check.branch),
+            Plan::FastForward if check.behind == 1 => t!(
+                "ps.ports.upstream.behind.one",
+                head = check.head,
+                count = check.behind,
+                branch = check.branch
+            ),
+            Plan::FastForward => t!(
+                "ps.ports.upstream.behind.other",
+                head = check.head,
+                count = check.behind,
+                branch = check.branch
+            ),
+            Plan::Rewritten => t!("ps.ports.upstream.rewritten", head = check.head),
+            Plan::LocalCommits(1) => t!("ps.ports.upstream.local.one", head = check.head, count = 1),
+            Plan::LocalCommits(count) => t!("ps.ports.upstream.local.other", head = check.head, count = count),
+        },
+        Err(err) => t!("ps.ports.upstream.error", error = err),
     }
 }
 

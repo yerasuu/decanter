@@ -385,44 +385,7 @@ impl AccountTab {
             // recorded even if Ajustes was closed mid-move — otherwise the
             // files would sit at the new root with the profile still
             // pointing at the old one.
-            let error = match move_task.await {
-                Ok(Ok((moved, relinked))) => {
-                    if relinked {
-                        crate::taskbar::refresh().await;
-                    }
-                    let new_path = moved.root().display().to_string();
-                    match crate::core::db().and_then(|moved_db| {
-                        let profiles = moved_db.list_profiles().map_err(crate::core::StoreError::Query)?;
-                        profiles
-                            .iter()
-                            .filter(|profile| {
-                                profile.id == profile_id || profile.library_path.as_ref() == Some(&old_path)
-                            })
-                            .try_for_each(|profile| {
-                                moved_db
-                                    .set_profile_library_path(&profile.id, Some(&new_path))
-                                    .map_err(crate::core::StoreError::Query)
-                            })
-                    }) {
-                        Ok(()) => {
-                            tracing::info!(profile_id, "library moved");
-                            None
-                        }
-                        Err(err) => {
-                            tracing::error!(profile_id, %err, "library moved but failed to save new path");
-                            Some(t!("settings.account.errors.save_path", error = err).into_owned())
-                        }
-                    }
-                }
-                Ok(Err(err)) => {
-                    tracing::error!(profile_id, %err, "failed to move library");
-                    Some(err.to_string())
-                }
-                Err(err) => {
-                    tracing::error!(profile_id, %err, "move task panicked");
-                    Some(t!("common.errors.internal_task", error = err).into_owned())
-                }
-            };
+            let error = record_move(move_task.await, &profile_id, &old_path).await;
             let _ = this.update(cx, |this, cx| {
                 this.moving = false;
                 this.move_progress = None;
@@ -548,6 +511,59 @@ impl AccountTab {
                 AccountStatus::Idle | AccountStatus::Working => None,
             })
     }
+}
+
+async fn record_move(
+    outcome: Result<std::io::Result<(decanter_core::Library, bool)>, tokio::task::JoinError>,
+    profile_id: &str,
+    old_path: &str,
+) -> Option<String> {
+    match outcome {
+        Ok(Ok((moved, relinked))) => save_moved_path(&moved, relinked, profile_id, old_path).await,
+        Ok(Err(err)) => {
+            tracing::error!(profile_id, %err, "failed to move library");
+            Some(err.to_string())
+        }
+        Err(err) => {
+            tracing::error!(profile_id, %err, "move task panicked");
+            Some(t!("common.errors.internal_task", error = err).into_owned())
+        }
+    }
+}
+
+async fn save_moved_path(
+    moved: &decanter_core::Library,
+    relinked: bool,
+    profile_id: &str,
+    old_path: &str,
+) -> Option<String> {
+    if relinked {
+        crate::taskbar::refresh().await;
+    }
+    let new_path = moved.root().display().to_string();
+    match repoint_profiles(profile_id, old_path, &new_path) {
+        Ok(()) => {
+            tracing::info!(profile_id, "library moved");
+            None
+        }
+        Err(err) => {
+            tracing::error!(profile_id, %err, "library moved but failed to save new path");
+            Some(t!("settings.account.errors.save_path", error = err).into_owned())
+        }
+    }
+}
+
+fn repoint_profiles(profile_id: &str, old_path: &str, new_path: &str) -> Result<(), crate::core::StoreError> {
+    let moved_db = crate::achv_try!(crate::core::db());
+    let profiles = crate::achv_try!(moved_db.list_profiles().map_err(crate::core::StoreError::Query));
+    profiles
+        .iter()
+        .filter(|profile| profile.id == profile_id || profile.library_path.as_deref() == Some(old_path))
+        .try_for_each(|profile| {
+            moved_db
+                .set_profile_library_path(&profile.id, Some(new_path))
+                .map_err(crate::core::StoreError::Query)
+        })
 }
 
 impl Render for AccountTab {

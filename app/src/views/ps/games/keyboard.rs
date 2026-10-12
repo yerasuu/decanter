@@ -7,8 +7,8 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use gpui::{
-    Context, Entity, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
-    NavigationDirection, ScrollDelta, ScrollWheelEvent, SharedString, Window, div, prelude::*, px, rgb,
+    Context, Div, Entity, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
+    NavigationDirection, ScrollDelta, ScrollWheelEvent, SharedString, Stateful, Window, div, prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
@@ -431,12 +431,8 @@ impl KeyboardView {
                 )
             })
     }
-}
 
-impl Render for KeyboardView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let dirty = self.mapping != self.saved;
-        let editable = self.editable();
+    fn layout_bar(&self, editable: bool, cx: &Context<Self>) -> Div {
         let layouts = self.store.key_layouts(self.target);
         let entity = cx.entity();
         let selected = self.current.clone().unwrap_or_else(|| CUSTOM.to_owned());
@@ -454,7 +450,7 @@ impl Render for KeyboardView {
                     .then(|| (SharedString::from(CUSTOM), SharedString::from(t!("ps.layouts.custom")))),
             )
             .collect();
-        let layout_bar = div()
+        div()
             .flex()
             .flex_wrap()
             .items_center()
@@ -477,15 +473,10 @@ impl Render for KeyboardView {
                     button("ps-key-remove", ButtonKind::Secondary, t!("ps.layouts.remove"), false)
                         .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
                 )
-            });
-        let hint = if editable {
-            t!("ps.keyboard.hint.own")
-        } else if self.current.is_some() {
-            t!("ps.layouts.hint_builtin")
-        } else {
-            t!("ps.keyboard.hint.custom")
-        };
-        let status = self.status.clone();
+            })
+    }
+
+    fn groups(&self, cx: &mut Context<Self>) -> Div {
         let mut groups = div().flex().flex_col().gap_5();
         for (title, actions) in GROUPS {
             groups = groups.child(
@@ -504,6 +495,129 @@ impl Render for KeyboardView {
                 ),
             );
         }
+        groups
+    }
+
+    fn header(&self, dirty: bool, editable: bool, cx: &Context<Self>) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .child(div().text_color(rgb(theme::TEXT_MUTED)).child(match self.target {
+                        Target::Bbport => t!("ps.keyboard.description.bbport"),
+                        Target::AnyPs5 => t!("ps.keyboard.description.anyps5"),
+                    }))
+                    .child(
+                        div()
+                            .font_family(theme::MONO)
+                            .text_size(px(11.))
+                            .text_color(rgb(theme::TEXT_DIM))
+                            .child(self.path.display().to_string()),
+                    ),
+            )
+            .children(self.status.clone().map(|(text, is_error)| {
+                div()
+                    .text_color(rgb(if is_error {
+                        theme::ERROR_TEXT
+                    } else {
+                        theme::ACCENT_GREEN
+                    }))
+                    .child(text)
+            }))
+            .when(editable, |header| {
+                header
+                    .child(
+                        button(
+                            "binds-reset-all",
+                            ButtonKind::Secondary,
+                            t!("ps.keyboard.reset_all"),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.mapping = this.defaults.clone();
+                            cx.notify();
+                        })),
+                    )
+                    .child(
+                        button(
+                            "binds-save",
+                            ButtonKind::Primary,
+                            if dirty {
+                                t!("ps.keyboard.save")
+                            } else {
+                                t!("ps.keyboard.saved")
+                            },
+                            !dirty,
+                        )
+                        .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
+                    )
+            })
+    }
+
+    fn capture_overlay(action: Action, cx: &Context<Self>) -> Stateful<Div> {
+        div()
+            .id("capture")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_start()
+            .justify_center()
+            .pt(px(120.))
+            .bg(theme::alpha(theme::BG_DEEP, 0.85))
+            .on_any_mouse_down(cx.listener(Self::on_mouse))
+            .on_scroll_wheel(cx.listener(Self::on_wheel))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_3()
+                    .px_8()
+                    .py_6()
+                    .bg(rgb(theme::BG_PANEL))
+                    .border_1()
+                    .border_color(rgb(theme::ACCENT_BLUE_DIM))
+                    .rounded(px(theme::RADIUS))
+                    .child(theme::h3(label(action)))
+                    .child(
+                        div()
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(t!("ps.keyboard.capture")),
+                    )
+                    .child(
+                        button("binds-cancel", ButtonKind::Secondary, t!("common.cancel"), false).on_mouse_down(
+                            GpuiMouse::Left,
+                            cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.capturing = None;
+                                cx.notify();
+                            }),
+                        ),
+                    ),
+            )
+    }
+}
+
+impl Render for KeyboardView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let dirty = self.mapping != self.saved;
+        let editable = self.editable();
+        let layout_bar = self.layout_bar(editable, cx);
+        let hint = if editable {
+            t!("ps.keyboard.hint.own")
+        } else if self.current.is_some() {
+            t!("ps.layouts.hint_builtin")
+        } else {
+            t!("ps.keyboard.hint.custom")
+        };
+        let groups = self.groups(cx);
         div()
             .id("binds")
             .track_focus(&self.focus)
@@ -513,117 +627,14 @@ impl Render for KeyboardView {
             .flex()
             .flex_col()
             .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex_1()
-                            .flex()
-                            .flex_col()
-                            .child(div().text_color(rgb(theme::TEXT_MUTED)).child(match self.target {
-                                Target::Bbport => t!("ps.keyboard.description.bbport"),
-                                Target::AnyPs5 => t!("ps.keyboard.description.anyps5"),
-                            }))
-                            .child(
-                                div()
-                                    .font_family(theme::MONO)
-                                    .text_size(px(11.))
-                                    .text_color(rgb(theme::TEXT_DIM))
-                                    .child(self.path.display().to_string()),
-                            ),
-                    )
-                    .children(status.map(|(text, is_error)| {
-                        div()
-                            .text_color(rgb(if is_error {
-                                theme::ERROR_TEXT
-                            } else {
-                                theme::ACCENT_GREEN
-                            }))
-                            .child(text)
-                    }))
-                    .when(editable, |header| {
-                        header
-                            .child(
-                                button(
-                                    "binds-reset-all",
-                                    ButtonKind::Secondary,
-                                    t!("ps.keyboard.reset_all"),
-                                    false,
-                                )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.mapping = this.defaults.clone();
-                                    cx.notify();
-                                })),
-                            )
-                            .child(
-                                button(
-                                    "binds-save",
-                                    ButtonKind::Primary,
-                                    if dirty {
-                                        t!("ps.keyboard.save")
-                                    } else {
-                                        t!("ps.keyboard.saved")
-                                    },
-                                    !dirty,
-                                )
-                                .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
-                            )
-                    }),
-            )
+            .child(self.header(dirty, editable, cx))
             .child(layout_bar)
             .child(theme::muted(hint).text_size(px(12.)))
             .child(groups)
             // While capturing, an overlay takes every click and wheel step so they bind instead of
             // pressing the buttons underneath; only its Cancel button escapes.
             .when_some(self.capturing, |root, action| {
-                root.child(
-                    div()
-                        .id("capture")
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .size_full()
-                        .flex()
-                        .items_start()
-                        .justify_center()
-                        .pt(px(120.))
-                        .bg(theme::alpha(theme::BG_DEEP, 0.85))
-                        .on_any_mouse_down(cx.listener(Self::on_mouse))
-                        .on_scroll_wheel(cx.listener(Self::on_wheel))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .items_center()
-                                .gap_3()
-                                .px_8()
-                                .py_6()
-                                .bg(rgb(theme::BG_PANEL))
-                                .border_1()
-                                .border_color(rgb(theme::ACCENT_BLUE_DIM))
-                                .rounded(px(theme::RADIUS))
-                                .child(theme::h3(label(action)))
-                                .child(
-                                    div()
-                                        .text_color(rgb(theme::TEXT_MUTED))
-                                        .child(t!("ps.keyboard.capture")),
-                                )
-                                .child(
-                                    button("binds-cancel", ButtonKind::Secondary, t!("common.cancel"), false)
-                                        .on_mouse_down(
-                                            GpuiMouse::Left,
-                                            cx.listener(|this, _, _, cx| {
-                                                cx.stop_propagation();
-                                                this.capturing = None;
-                                                cx.notify();
-                                            }),
-                                        ),
-                                ),
-                        ),
-                )
+                root.child(Self::capture_overlay(action, cx))
             })
     }
 }

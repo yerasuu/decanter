@@ -8,7 +8,7 @@ use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
 use decanter_ps::layouts::Store;
 use decanter_ps::port::Port;
-use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Div, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::layout_name;
@@ -366,6 +366,48 @@ impl GamepadView {
             }))
             .into_any_element()
     }
+
+    fn layout_select(layouts: &[PadLayout], current: Option<&PadLayout>, cx: &Context<Self>) -> Select {
+        let entity = cx.entity();
+        let selected = current.map_or(CUSTOM.to_owned(), |layout| layout.id.clone());
+        let options = layouts
+            .iter()
+            .map(|layout| {
+                (
+                    SharedString::from(layout.id.clone()),
+                    SharedString::from(layout_name(&layout.id, layout.builtin, &layout.name).into_owned()),
+                )
+            })
+            .chain(
+                current
+                    .is_none()
+                    .then(|| (SharedString::from(CUSTOM), SharedString::from(t!("ps.layouts.custom")))),
+            )
+            .collect::<Vec<_>>();
+        Select::new("ps-pad-layout", options, selected)
+            .style(SelectStyle::Compact)
+            .on_change(move |value, _, cx| {
+                let id = value.to_string();
+                entity.update(cx, |this, cx| this.choose(&id, cx));
+            })
+    }
+
+    fn layout_actions(&self, own: bool, cx: &Context<Self>) -> Div {
+        div()
+            .flex()
+            .flex_wrap()
+            .gap_2()
+            .child(
+                button("ps-pad-copy", ButtonKind::Secondary, t!("ps.layouts.copy"), false)
+                    .on_click(cx.listener(|this, _, _, cx| this.copy(cx))),
+            )
+            .when(own, |actions| {
+                actions.child(div().w(px(220.)).child(self.name.clone())).child(
+                    button("ps-pad-remove", ButtonKind::Secondary, t!("ps.layouts.remove"), false)
+                        .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
+                )
+            })
+    }
 }
 
 /// `back,touchpad` as `Select / Back + Touchpad`.
@@ -382,6 +424,17 @@ fn button_label(buttons: &str) -> String {
         .join(" + ")
 }
 
+fn setting_row(label: AnyElement, control: AnyElement) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .px_4()
+        .py_2()
+        .child(div().flex_1().min_w_0().child(label))
+        .child(control)
+}
+
 impl Render for GamepadView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let loaded = match &self.loaded {
@@ -394,53 +447,9 @@ impl Render for GamepadView {
         let shown = current.clone().unwrap_or_else(|| loaded.custom.clone());
         let values = loaded.values.clone();
 
-        let entity = cx.entity();
-        let selected = current.as_ref().map_or(CUSTOM.to_owned(), |layout| layout.id.clone());
-        let options = layouts
-            .iter()
-            .map(|layout| {
-                (
-                    SharedString::from(layout.id.clone()),
-                    SharedString::from(layout_name(&layout.id, layout.builtin, &layout.name).into_owned()),
-                )
-            })
-            .chain(
-                current
-                    .is_none()
-                    .then(|| (SharedString::from(CUSTOM), SharedString::from(t!("ps.layouts.custom")))),
-            )
-            .collect::<Vec<_>>();
-        let layout_select = Select::new("ps-pad-layout", options, selected)
-            .style(SelectStyle::Compact)
-            .on_change(move |value, _, cx| {
-                let id = value.to_string();
-                entity.update(cx, |this, cx| this.choose(&id, cx));
-            });
+        let layout_select = Self::layout_select(&layouts, current.as_ref(), cx);
         let own = current.as_ref().is_some_and(|layout| !layout.builtin);
-        let row = |label: AnyElement, control: AnyElement| {
-            div()
-                .flex()
-                .items_center()
-                .gap_3()
-                .px_4()
-                .py_2()
-                .child(div().flex_1().min_w_0().child(label))
-                .child(control)
-        };
-        let actions = div()
-            .flex()
-            .flex_wrap()
-            .gap_2()
-            .child(
-                button("ps-pad-copy", ButtonKind::Secondary, t!("ps.layouts.copy"), false)
-                    .on_click(cx.listener(|this, _, _, cx| this.copy(cx))),
-            )
-            .when(own, |actions| {
-                actions.child(div().w(px(220.)).child(self.name.clone())).child(
-                    button("ps-pad-remove", ButtonKind::Secondary, t!("ps.layouts.remove"), false)
-                        .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
-                )
-            });
+        let actions = self.layout_actions(own, cx);
         let hint = if own {
             t!("ps.gamepad.hint.own")
         } else if current.is_some() {
@@ -458,7 +467,7 @@ impl Render for GamepadView {
             .child(
                 theme::card()
                     .child(
-                        row(
+                        setting_row(
                             div()
                                 .flex()
                                 .flex_col()
@@ -471,14 +480,14 @@ impl Render for GamepadView {
                         .border_color(rgb(theme::LINE)),
                     )
                     .child(
-                        row(
+                        setting_row(
                             div().child(t!("ps.layouts.layout")).into_any_element(),
                             layout_select.into_any_element(),
                         )
                         .border_b_1()
                         .border_color(rgb(theme::LINE)),
                     )
-                    .child(row(
+                    .child(setting_row(
                         div()
                             .flex()
                             .flex_col()

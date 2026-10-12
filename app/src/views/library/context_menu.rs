@@ -7,8 +7,8 @@ use std::rc::Rc;
 use decanter_core::Storefront;
 use decanter_gog::{GameKind, LibraryEntry};
 use gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, Focusable as _, KeyDownEvent, Pixels, Point, SharedString, Window,
-    div, prelude::*, px,
+    AnyElement, App, Context, Div, Entity, FocusHandle, Focusable as _, KeyDownEvent, Pixels, Point, SharedString,
+    Stateful, Window, div, prelude::*, px,
 };
 use rust_i18n::t;
 
@@ -185,10 +185,6 @@ fn game_menu(
         .map(|(id, (_, storefront))| (id.clone(), *storefront))
         .collect();
     let account_for = move |product_id: &str| accounts.get(product_id).cloned();
-    // Read once per change to favourites/collections, not on every frame
-    // the menu is open (hovering its items redraws it).
-    let organisation = AppState::get(cx).background.read(cx).organisation;
-    let revision = AppState::get(cx).library.read(cx).revision;
     let single_entry = match target.product_ids.as_slice() {
         [only_id] => AppState::get(cx)
             .library
@@ -199,37 +195,14 @@ fn game_menu(
             .cloned(),
         _ => None,
     };
-    if state
-        .read(cx)
-        .data
-        .as_ref()
-        .is_none_or(|data| data.organisation != organisation || data.revision != revision)
-    {
-        // "Every one of them already is" decides which way a toggle goes,
-        // so a mixed selection moves to the same state rather than
-        // inverting each game independently.
-        let data = MenuData {
-            is_fav: target.product_ids.iter().all(|id| {
-                account_for(id).is_some_and(|(account_id, storefront)| data::is_favorite(&account_id, storefront, id))
-            }),
-            is_hidden: target.product_ids.iter().all(|id| {
-                account_for(id)
-                    .is_some_and(|(account_id, storefront)| data::hidden_ids(&account_id, storefront).contains(id))
-            }),
-            collections: data::load_collections(profile_id),
-            launch_target: single_entry
-                .as_ref()
-                .filter(|entry| entry.kind == GameKind::Game)
-                .and_then(|entry| resolve_launch_target(&entry.game.account_id, &entry.game)),
-            install_path: single_entry
-                .as_ref()
-                .filter(|entry| entry.kind == GameKind::Game)
-                .and_then(|entry| game_install_path(&entry.game.account_id, &entry.game.id)),
-            organisation,
-            revision,
-        };
-        state.update(cx, |state, _| state.data = Some(data));
-    }
+    load_menu_data(
+        &target.product_ids,
+        profile_id,
+        single_entry.as_ref(),
+        &account_for,
+        state,
+        cx,
+    );
     let Some(MenuData {
         is_fav,
         is_hidden,
@@ -252,56 +225,14 @@ fn game_menu(
             .child(menu::separator());
     }
 
-    let fav_ids = target.product_ids.clone();
-    let fav_accounts = account_for.clone();
-    let fav_close = Rc::clone(close);
-    panel = panel.child(
-        menu::item("menu-favorite", false)
-            .on_click(move |_, window, cx| {
-                tracing::info!(
-                    count = fav_ids.len(),
-                    favorite = !is_fav,
-                    "bulk favorite toggle from context menu"
-                );
-                for product_id in &fav_ids {
-                    if let Some((account_id, storefront)) = fav_accounts(product_id) {
-                        data::set_favorite(&account_id, storefront, product_id, !is_fav);
-                    }
-                }
-                bump_organisation(cx);
-                fav_close(window, cx);
-            })
-            .child(if is_fav {
-                t!("library.detail.favorite.remove")
-            } else {
-                t!("library.detail.favorite.add")
-            }),
-    );
-    let hide_ids = target.product_ids.clone();
-    let hide_accounts = account_for;
-    let hide_close = Rc::clone(close);
-    panel = panel.child(
-        menu::item("menu-hide", false)
-            .on_click(move |_, window, cx| {
-                tracing::info!(
-                    count = hide_ids.len(),
-                    hidden = !is_hidden,
-                    "bulk hide toggle from context menu"
-                );
-                for product_id in &hide_ids {
-                    if let Some((account_id, storefront)) = hide_accounts(product_id) {
-                        data::set_hidden(&account_id, storefront, product_id, !is_hidden);
-                    }
-                }
-                bump_organisation(cx);
-                hide_close(window, cx);
-            })
-            .child(if is_hidden {
-                t!("library.menu.unhide")
-            } else {
-                t!("library.menu.hide")
-            }),
-    );
+    panel = panel
+        .child(favorite_item(
+            target.product_ids.clone(),
+            account_for.clone(),
+            is_fav,
+            close,
+        ))
+        .child(hide_item(target.product_ids.clone(), account_for, is_hidden, close));
 
     panel = panel
         .child(menu::separator())
@@ -309,41 +240,156 @@ fn game_menu(
     if collections.list.is_empty() {
         panel = panel.child(menu::empty(t!("library.menu.no_collections")));
     } else {
-        let items = collections.list.iter().enumerate().map(|(index, collection)| {
-            let member = target
-                .product_ids
-                .iter()
-                .all(|id| collections.contains(&collection.id, id));
-            // A dynamic collection is defined by its filter; adding a game
-            // by hand would be a change the next render throws away.
-            let dynamic = collection.filter.is_some();
-            let members = Rc::clone(&members);
-            let collection_id = collection.id.clone();
-            menu::item(("menu-collection", index), dynamic)
-                .when(dynamic, |item| {
-                    item.tooltip(tooltip(t!("library.menu.dynamic_collection")))
-                })
-                .when(!dynamic, |item| {
-                    item.on_click(move |_, _, cx| {
-                        for (product_id, storefront) in members.iter() {
-                            data::set_collection_member(&collection_id, *storefront, product_id, !member);
-                        }
-                        bump_organisation(cx);
-                    })
-                })
-                .child(menu::check(member))
-                .child(collection.name.clone())
-                .when(dynamic, |item| item.child(div().ml_auto().child(auto_tag("auto"))))
-        });
-        panel = panel.child(
-            div()
-                .id("menu-collections")
-                .max_h(px(200.))
-                .overflow_y_scroll()
-                .children(items),
-        );
+        panel = panel.child(collection_list(&collections, &target.product_ids, &members));
     }
 
+    panel
+        .child(new_collection_entry(profile_id, members, state, cx))
+        .into_any_element()
+}
+
+fn load_menu_data(
+    product_ids: &[String],
+    profile_id: &str,
+    single_entry: Option<&LibraryEntry>,
+    account_for: &impl Fn(&str) -> Option<(String, Storefront)>,
+    state: &Entity<PopupState>,
+    cx: &mut Context<LibraryView>,
+) {
+    // Read once per change to favourites/collections, not on every frame
+    // the menu is open (hovering its items redraws it).
+    let organisation = AppState::get(cx).background.read(cx).organisation;
+    let revision = AppState::get(cx).library.read(cx).revision;
+    if state
+        .read(cx)
+        .data
+        .as_ref()
+        .is_none_or(|data| data.organisation != organisation || data.revision != revision)
+    {
+        // "Every one of them already is" decides which way a toggle goes,
+        // so a mixed selection moves to the same state rather than
+        // inverting each game independently.
+        let data = MenuData {
+            is_fav: product_ids.iter().all(|id| {
+                account_for(id).is_some_and(|(account_id, storefront)| data::is_favorite(&account_id, storefront, id))
+            }),
+            is_hidden: product_ids.iter().all(|id| {
+                account_for(id)
+                    .is_some_and(|(account_id, storefront)| data::hidden_ids(&account_id, storefront).contains(id))
+            }),
+            collections: data::load_collections(profile_id),
+            launch_target: single_entry
+                .filter(|entry| entry.kind == GameKind::Game)
+                .and_then(|entry| resolve_launch_target(&entry.game.account_id, &entry.game)),
+            install_path: single_entry
+                .filter(|entry| entry.kind == GameKind::Game)
+                .and_then(|entry| game_install_path(&entry.game.account_id, &entry.game.id)),
+            organisation,
+            revision,
+        };
+        state.update(cx, |state, _| state.data = Some(data));
+    }
+}
+
+fn favorite_item(
+    ids: Vec<String>,
+    accounts: impl Fn(&str) -> Option<(String, Storefront)> + 'static,
+    is_fav: bool,
+    close: &menu::Dismiss,
+) -> Stateful<Div> {
+    let close = Rc::clone(close);
+    menu::item("menu-favorite", false)
+        .on_click(move |_, window, cx| {
+            tracing::info!(
+                count = ids.len(),
+                favorite = !is_fav,
+                "bulk favorite toggle from context menu"
+            );
+            for product_id in &ids {
+                if let Some((account_id, storefront)) = accounts(product_id) {
+                    data::set_favorite(&account_id, storefront, product_id, !is_fav);
+                }
+            }
+            bump_organisation(cx);
+            close(window, cx);
+        })
+        .child(if is_fav {
+            t!("library.detail.favorite.remove")
+        } else {
+            t!("library.detail.favorite.add")
+        })
+}
+
+fn hide_item(
+    ids: Vec<String>,
+    accounts: impl Fn(&str) -> Option<(String, Storefront)> + 'static,
+    is_hidden: bool,
+    close: &menu::Dismiss,
+) -> Stateful<Div> {
+    let close = Rc::clone(close);
+    menu::item("menu-hide", false)
+        .on_click(move |_, window, cx| {
+            tracing::info!(
+                count = ids.len(),
+                hidden = !is_hidden,
+                "bulk hide toggle from context menu"
+            );
+            for product_id in &ids {
+                if let Some((account_id, storefront)) = accounts(product_id) {
+                    data::set_hidden(&account_id, storefront, product_id, !is_hidden);
+                }
+            }
+            bump_organisation(cx);
+            close(window, cx);
+        })
+        .child(if is_hidden {
+            t!("library.menu.unhide")
+        } else {
+            t!("library.menu.hide")
+        })
+}
+
+fn collection_list(
+    collections: &data::Collections,
+    product_ids: &[String],
+    members: &Rc<[(String, Storefront)]>,
+) -> Stateful<Div> {
+    let items = collections.list.iter().enumerate().map(|(index, collection)| {
+        let member = product_ids.iter().all(|id| collections.contains(&collection.id, id));
+        // A dynamic collection is defined by its filter; adding a game
+        // by hand would be a change the next render throws away.
+        let dynamic = collection.filter.is_some();
+        let members = Rc::clone(members);
+        let collection_id = collection.id.clone();
+        menu::item(("menu-collection", index), dynamic)
+            .when(dynamic, |item| {
+                item.tooltip(tooltip(t!("library.menu.dynamic_collection")))
+            })
+            .when(!dynamic, |item| {
+                item.on_click(move |_, _, cx| {
+                    for (product_id, storefront) in members.iter() {
+                        data::set_collection_member(&collection_id, *storefront, product_id, !member);
+                    }
+                    bump_organisation(cx);
+                })
+            })
+            .child(menu::check(member))
+            .child(collection.name.clone())
+            .when(dynamic, |item| item.child(div().ml_auto().child(auto_tag("auto"))))
+    });
+    div()
+        .id("menu-collections")
+        .max_h(px(200.))
+        .overflow_y_scroll()
+        .children(items)
+}
+
+fn new_collection_entry(
+    profile_id: &str,
+    members: Rc<[(String, Storefront)]>,
+    state: &Entity<PopupState>,
+    cx: &mut Context<LibraryView>,
+) -> AnyElement {
     if state.read(cx).naming {
         let profile_id = profile_id.to_owned();
         let name = state.read(cx).name.clone();
@@ -365,22 +411,20 @@ fn game_menu(
                 bump_organisation(cx);
             }));
         });
-        panel = panel.child(div().pt_1().child(state.read(cx).name.clone()));
+        div().pt_1().child(state.read(cx).name.clone()).into_any_element()
     } else {
         let state = state.clone();
-        panel = panel.child(
-            menu::item("menu-new-collection", false)
-                .on_click(move |_, window, cx| {
-                    state.update(cx, |state, cx| {
-                        state.naming = true;
-                        window.focus(&state.name.focus_handle(cx), cx);
-                        cx.notify();
-                    });
-                })
-                .child(t!("library.menu.new_collection")),
-        );
+        menu::item("menu-new-collection", false)
+            .on_click(move |_, window, cx| {
+                state.update(cx, |state, cx| {
+                    state.naming = true;
+                    window.focus(&state.name.focus_handle(cx), cx);
+                    cx.notify();
+                });
+            })
+            .child(t!("library.menu.new_collection"))
+            .into_any_element()
     }
-    panel.into_any_element()
 }
 
 /// `.auto-tag` / `.context-menu-tag`: marks a collection whose contents

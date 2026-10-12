@@ -88,13 +88,7 @@ pub async fn run(
     mut scanner: Option<Scanner>,
     cx: &mut AsyncApp,
 ) -> Finished {
-    let target = match &key {
-        JobKey::Port(port) => port.name().to_lowercase(),
-        JobKey::Game(dir) => dir
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
-        JobKey::Fsr411 => "fsr411".to_owned(),
-    };
+    let target = target_name(&key);
     facts.extend(scanner.as_ref().map(Scanner::facts).into_iter().flatten());
     // A job runs without its file rather than not at all; the log view says so.
     let (mut log, log_error) = match RunLog::start(root, &target, kind, &facts, &mut command, scanner.is_some()).await {
@@ -156,17 +150,7 @@ pub async fn run(
     let mut batch = Vec::with_capacity(BATCH);
     let mut exit = None;
     while events.recv_many(&mut batch, BATCH).await > 0 {
-        if let Some(file) = log.as_mut() {
-            for event in &batch {
-                if let Event::Line(line) = event
-                    && let Err(err) = file.line(line).await
-                {
-                    tracing::warn!(job = kind.name(), target, %err, "the job's log file stopped taking lines");
-                    log = None;
-                    break;
-                }
-            }
-        }
+        log_lines(&mut log, &batch, kind, &target).await;
         job.update(cx, |job, cx| {
             for event in batch.drain(..) {
                 match (&event, scanner.as_mut()) {
@@ -193,6 +177,30 @@ pub async fn run(
         scanner.exit(exit, stopped, log_path.as_deref(), report)
     });
     Finished { code, failures }
+}
+
+fn target_name(key: &JobKey) -> String {
+    match key {
+        JobKey::Port(port) => port.name().to_lowercase(),
+        JobKey::Game(dir) => dir
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+        JobKey::Fsr411 => "fsr411".to_owned(),
+    }
+}
+
+async fn log_lines(log: &mut Option<RunLog>, batch: &[Event], kind: JobKind, target: &str) {
+    if let Some(file) = log.as_mut() {
+        for event in batch {
+            if let Event::Line(line) = event
+                && let Err(err) = file.line(line).await
+            {
+                tracing::warn!(job = kind.name(), target, %err, "the job's log file stopped taking lines");
+                *log = None;
+                break;
+            }
+        }
+    }
 }
 
 fn trace_end(

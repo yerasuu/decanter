@@ -13,6 +13,8 @@
 //! [`program`] guesses which file launches the game once it's all in
 //! place, and [`rate`] smooths the transfer rate reported back.
 
+use std::path::Path;
+
 use anyhow::Context;
 use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront};
 
@@ -226,68 +228,9 @@ async fn install_into(
         }
     }
 
-    let in_flight = Cancel::default();
-    active().lock().await.insert(key.clone(), in_flight.clone());
+    let per_file = crate::achv_try!(download_into_staging(&plan, &staging, key, product_id, on_progress).await);
 
     let file_count = plan.files.len();
-    let total_size = plan.install_size_bytes;
-    let downloads: Vec<PlannedDownload> = plan
-        .files
-        .iter()
-        .map(|file| PlannedDownload {
-            relative_path: file.relative_path.clone(),
-            chunks: file.chunks.clone(),
-        })
-        .collect();
-
-    // Every file reports its own running total; the loop below keeps the
-    // latest per file and sums them, so what reaches the caller is the
-    // install's overall position rather than one arbitrary file's. Only
-    // bytes travel through this channel, not each file's own rate -- see
-    // `rate::RateTracker` for why that's measured at the install level
-    // instead of summed from what each file reports.
-    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<ProgressUpdate>(32);
-    let staging_for_worker = staging.clone();
-    let worker = tokio::spawn({
-        let in_flight = in_flight.clone();
-        async move { download_all(downloads, &staging_for_worker, in_flight, progress_tx).await }
-    });
-
-    let mut per_file_bytes = vec![0u64; file_count];
-    let mut rate_tracker = RateTracker::new();
-    while let Some((index, path, bytes)) = progress_rx.recv().await {
-        per_file_bytes[index] = bytes;
-        let bytes_downloaded = per_file_bytes.iter().sum();
-        on_progress(Progress {
-            current_file: path,
-            bytes_downloaded,
-            total_bytes: total_size,
-            bytes_per_second: rate_tracker.sample(bytes_downloaded),
-        });
-    }
-
-    // Cleared before any `?` below: leaving a stale entry would make the
-    // next `cancel` for this game try to cancel a finished install.
-    let outcome = worker.await;
-    active().lock().await.remove(&key);
-    let per_file = match outcome {
-        Ok(Ok(per_file)) => per_file,
-        Ok(Err(err)) => {
-            tracing::error!(product_id, error = %err, "install download failed, aborting install");
-            if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a failed install");
-            }
-            return Err(err);
-        }
-        Err(err) => {
-            tracing::error!(product_id, error = %err, "install worker panicked, aborting install");
-            if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a panicked install");
-            }
-            return Err(anyhow::Error::new(err).context("install worker panicked"));
-        }
-    };
-
     let downloaded: u64 = per_file.iter().sum();
     let relative_paths: Vec<String> = plan.files.iter().map(|file| file.relative_path.clone()).collect();
 
@@ -316,25 +259,12 @@ async fn install_into(
     // A DLC is recorded on the game it went into. Its own launch
     // executable is not looked for: whatever a DLC ships, the thing you
     // start is still the base game.
-    if let Some(mut parent) = parent {
-        parent.dlcs.insert(
-            product_id.to_string(),
-            InstalledDlc {
-                title: title.to_string(),
-                build_id: plan.version,
-            },
-        );
-        // The DLC's bytes are in the same directory, so the game's
-        // recorded size has to grow by them.
-        parent.size_on_disk = Some(parent.size_on_disk.unwrap_or(0) + downloaded);
-        crate::achv_try!(
-            library
-                .write_manifest(&parent)
-                .inspect_err(|err| tracing::error!(product_id, error = %err, "recording the installed dlc failed"))
-                .context("recording the DLC on its game")
-        );
-        tracing::info!(product_id, file_count, bytes = downloaded, "install completed (dlc)");
-        return Ok(());
+    if let Some(parent) = parent {
+        let dlc = InstalledDlc {
+            title: title.to_string(),
+            build_id: plan.version,
+        };
+        return record_dlc(library, parent, product_id, dlc, downloaded, file_count);
     }
 
     let launch_executable =
@@ -377,6 +307,98 @@ async fn install_into(
     );
 
     tracing::info!(product_id, file_count, bytes = downloaded, "install completed");
+    Ok(())
+}
+
+async fn download_into_staging(
+    plan: &Plan,
+    staging: &Path,
+    key: InstallKey,
+    product_id: &str,
+    on_progress: &mut (impl FnMut(Progress) + Send + 'static),
+) -> anyhow::Result<Vec<u64>> {
+    let in_flight = Cancel::default();
+    active().lock().await.insert(key.clone(), in_flight.clone());
+
+    let file_count = plan.files.len();
+    let total_size = plan.install_size_bytes;
+    let downloads: Vec<PlannedDownload> = plan
+        .files
+        .iter()
+        .map(|file| PlannedDownload {
+            relative_path: file.relative_path.clone(),
+            chunks: file.chunks.clone(),
+        })
+        .collect();
+
+    // Every file reports its own running total; the loop below keeps the
+    // latest per file and sums them, so what reaches the caller is the
+    // install's overall position rather than one arbitrary file's. Only
+    // bytes travel through this channel, not each file's own rate -- see
+    // `rate::RateTracker` for why that's measured at the install level
+    // instead of summed from what each file reports.
+    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<ProgressUpdate>(32);
+    let staging_for_worker = staging.to_path_buf();
+    let worker = tokio::spawn({
+        let in_flight = in_flight.clone();
+        async move { download_all(downloads, &staging_for_worker, in_flight, progress_tx).await }
+    });
+
+    let mut per_file_bytes = vec![0u64; file_count];
+    let mut rate_tracker = RateTracker::new();
+    while let Some((index, path, bytes)) = progress_rx.recv().await {
+        per_file_bytes[index] = bytes;
+        let bytes_downloaded = per_file_bytes.iter().sum();
+        on_progress(Progress {
+            current_file: path,
+            bytes_downloaded,
+            total_bytes: total_size,
+            bytes_per_second: rate_tracker.sample(bytes_downloaded),
+        });
+    }
+
+    // Cleared before any `?` below: leaving a stale entry would make the
+    // next `cancel` for this game try to cancel a finished install.
+    let outcome = worker.await;
+    active().lock().await.remove(&key);
+    match outcome {
+        Ok(Ok(per_file)) => Ok(per_file),
+        Ok(Err(err)) => {
+            tracing::error!(product_id, error = %err, "install download failed, aborting install");
+            if let Err(err) = tokio::fs::remove_dir_all(staging).await {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a failed install");
+            }
+            Err(err)
+        }
+        Err(err) => {
+            tracing::error!(product_id, error = %err, "install worker panicked, aborting install");
+            if let Err(err) = tokio::fs::remove_dir_all(staging).await {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a panicked install");
+            }
+            Err(anyhow::Error::new(err).context("install worker panicked"))
+        }
+    }
+}
+
+fn record_dlc(
+    library: &Library,
+    mut parent: InstalledGame,
+    product_id: &str,
+    dlc: InstalledDlc,
+    downloaded: u64,
+    file_count: usize,
+) -> anyhow::Result<()> {
+    parent.dlcs.insert(product_id.to_string(), dlc);
+    // The DLC's bytes are in the same directory, so the game's
+    // recorded size has to grow by them.
+    parent.size_on_disk = Some(parent.size_on_disk.unwrap_or(0) + downloaded);
+    crate::achv_try!(
+        library
+            .write_manifest(&parent)
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "recording the installed dlc failed"))
+            .context("recording the DLC on its game")
+    );
+    tracing::info!(product_id, file_count, bytes = downloaded, "install completed (dlc)");
     Ok(())
 }
 

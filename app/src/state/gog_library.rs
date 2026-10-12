@@ -460,51 +460,10 @@ async fn fetch_loop(
             // and none of them carries evidence of having just been added.
             let confirmed_new = has_synced_before(&account_id);
 
-            // Pass one merges into whatever is already on screen rather than
-            // starting from empty, so a full cache isn't wiped on every launch
-            // and rebuilt over the next ten seconds. Ownership can still drop —
-            // a refund, a revoked key — but that's settled by pruning once the
-            // fetch is whole, below.
-            tracing::debug!(account_id, "listing gog games");
-            // Resolved fresh each cycle, not once outside the loop: a library
-            // moved to a new location (see Ajustes) should be picked up by the
-            // very next refresh, not only after this whole loop restarts.
-            let listed = match crate::core::library_for_account(&account_id) {
-                Ok(library) => {
-                    decanter_gog::list_games(&library, &account_id, &mut |batch| {
-                        let changed = absorb(&account_id, &mut shown, batch, Pass::Listed);
-                        if !changed.is_empty() {
-                            save_entries(&account_id, &changed, confirmed_new);
-                            send(Update::Shown(shown.clone()));
-                        }
-                    })
-                    .await
-                }
-                Err(err) => Err(anyhow::anyhow!(err)),
-            };
+            let listed = list_pass(&account_id, &mut shown, confirmed_new, &send).await;
             let listed_ok = listed.is_ok();
-
-            let collected = match listed {
-                Ok(collected) => {
-                    tracing::info!(account_id, count = collected.len(), "gog library listed");
-                    // A complete listing is the whole truth about what's
-                    // owned, so anything it didn't mention isn't any more.
-                    if prune(&account_id, &mut shown, &collected) && !send(Update::Shown(shown.clone())) {
-                        return None;
-                    }
-                    collected
-                }
-                Err(err) => {
-                    // Whatever the cache seeded stays, unpruned: a failed
-                    // refresh shouldn't blank a library the user could still
-                    // browse, and a partial listing is no evidence of a
-                    // dropped entitlement.
-                    tracing::warn!(account_id, %err, "gog library listing failed, keeping what was cached");
-                    if !send(Update::Failed(err.to_string())) {
-                        return None;
-                    }
-                    Vec::new()
-                }
+            let Some(collected) = settle_listing(&account_id, &mut shown, listed, &send) else {
+                return None;
             };
 
             let full = enriched_at.is_none_or(|at| at.elapsed() >= FULL_ENRICH_INTERVAL);
@@ -575,6 +534,66 @@ async fn fetch_loop(
             () = tokio::time::sleep(REFRESH_INTERVAL) => {}
             () = updates.closed() => return,
             _ = shutdown.wait_for(|down| *down) => return,
+        }
+    }
+}
+
+async fn list_pass(
+    account_id: &str,
+    shown: &mut Vec<LibraryEntry>,
+    confirmed_new: bool,
+    send: &(impl Fn(Update) -> bool + Sync),
+) -> anyhow::Result<Vec<LibraryEntry>> {
+    // Pass one merges into whatever is already on screen rather than
+    // starting from empty, so a full cache isn't wiped on every launch
+    // and rebuilt over the next ten seconds. Ownership can still drop —
+    // a refund, a revoked key — but that's settled by pruning once the
+    // fetch is whole, below.
+    tracing::debug!(account_id, "listing gog games");
+    // Resolved fresh each cycle, not once outside the loop: a library
+    // moved to a new location (see Ajustes) should be picked up by the
+    // very next refresh, not only after this whole loop restarts.
+    match crate::core::library_for_account(account_id) {
+        Ok(library) => {
+            decanter_gog::list_games(&library, account_id, &mut |batch| {
+                let changed = absorb(account_id, shown, batch, Pass::Listed);
+                if !changed.is_empty() {
+                    save_entries(account_id, &changed, confirmed_new);
+                    send(Update::Shown(shown.clone()));
+                }
+            })
+            .await
+        }
+        Err(err) => Err(anyhow::anyhow!(err)),
+    }
+}
+
+fn settle_listing(
+    account_id: &str,
+    shown: &mut Vec<LibraryEntry>,
+    listed: anyhow::Result<Vec<LibraryEntry>>,
+    send: &impl Fn(Update) -> bool,
+) -> Option<Vec<LibraryEntry>> {
+    match listed {
+        Ok(collected) => {
+            tracing::info!(account_id, count = collected.len(), "gog library listed");
+            // A complete listing is the whole truth about what's
+            // owned, so anything it didn't mention isn't any more.
+            if prune(account_id, shown, &collected) && !send(Update::Shown(shown.clone())) {
+                return None;
+            }
+            Some(collected)
+        }
+        Err(err) => {
+            // Whatever the cache seeded stays, unpruned: a failed
+            // refresh shouldn't blank a library the user could still
+            // browse, and a partial listing is no evidence of a
+            // dropped entitlement.
+            tracing::warn!(account_id, %err, "gog library listing failed, keeping what was cached");
+            if !send(Update::Failed(err.to_string())) {
+                return None;
+            }
+            Some(Vec::new())
         }
     }
 }

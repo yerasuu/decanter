@@ -2,6 +2,8 @@
 //! this profile, newest first, each with the output around it and a report
 //! ready to paste into an upstream issue.
 
+use std::path::PathBuf;
+
 use decanter_ps::failures::{self, Call, CallReport, Failure, Kind, Log};
 use gpui::{ClipboardItem, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
@@ -136,20 +138,7 @@ impl FailuresView {
                     .py_2()
                     .cursor_pointer()
                     .hover(|row| row.bg(rgb(theme::BG_PANEL)))
-                    .child(
-                        div()
-                            .w(px(58.))
-                            .flex_none()
-                            .flex()
-                            .justify_center()
-                            .rounded(px(theme::RADIUS_SM))
-                            .border_1()
-                            .border_color(rgb(color))
-                            .text_color(rgb(color))
-                            .text_size(px(11.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(kind_label(failure.kind)),
-                    )
+                    .child(kind_badge(failure.kind, color))
                     .child(
                         theme::mono()
                             .flex_1()
@@ -173,53 +162,7 @@ impl FailuresView {
                     })),
             )
             .when(open, |row| {
-                row.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .px_4()
-                        .pb_3()
-                        .children(calls)
-                        .child(
-                            theme::mono()
-                                .p_3()
-                                .bg(rgb(theme::BG_PANEL_3))
-                                .border_1()
-                                .border_color(rgb(theme::LINE))
-                                .text_size(px(11.))
-                                .children(output.into_iter().map(|line| div().child(line))),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .gap_2()
-                                .child(
-                                    button(
-                                        ("ps-failure-copy", index),
-                                        ButtonKind::Secondary,
-                                        t!("ps.failures.copy_report"),
-                                        false,
-                                    )
-                                    .on_click(move |_, _, cx| {
-                                        cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
-                                    }),
-                                )
-                                .children(log.map(|path| {
-                                    button(
-                                        ("ps-failure-log", index),
-                                        ButtonKind::Secondary,
-                                        t!("ps.log.full"),
-                                        false,
-                                    )
-                                    .on_click(move |_, _, _| {
-                                        if let Err(err) = crate::desktop::open(&path) {
-                                            tracing::warn!(path = %path.display(), %err, "could not open the log file");
-                                        }
-                                    })
-                                })),
-                        ),
-                )
+                row.child(failure_details(index, calls, output, report, log))
             })
     }
 }
@@ -289,6 +232,75 @@ impl Render for FailuresView {
                 }),
         )
     }
+}
+
+fn kind_badge(kind: Kind, color: u32) -> Div {
+    div()
+        .w(px(58.))
+        .flex_none()
+        .flex()
+        .justify_center()
+        .rounded(px(theme::RADIUS_SM))
+        .border_1()
+        .border_color(rgb(color))
+        .text_color(rgb(color))
+        .text_size(px(11.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .child(kind_label(kind))
+}
+
+fn failure_details(
+    index: usize,
+    calls: Option<Div>,
+    output: Vec<SharedString>,
+    report: String,
+    log: Option<PathBuf>,
+) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .px_4()
+        .pb_3()
+        .children(calls)
+        .child(
+            theme::mono()
+                .p_3()
+                .bg(rgb(theme::BG_PANEL_3))
+                .border_1()
+                .border_color(rgb(theme::LINE))
+                .text_size(px(11.))
+                .children(output.into_iter().map(|line| div().child(line))),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(
+                    button(
+                        ("ps-failure-copy", index),
+                        ButtonKind::Secondary,
+                        t!("ps.failures.copy_report"),
+                        false,
+                    )
+                    .on_click(move |_, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
+                    }),
+                )
+                .children(log.map(|path| {
+                    button(
+                        ("ps-failure-log", index),
+                        ButtonKind::Secondary,
+                        t!("ps.log.full"),
+                        false,
+                    )
+                    .on_click(move |_, _, _| {
+                        if let Err(err) = crate::desktop::open(&path) {
+                            tracing::warn!(path = %path.display(), %err, "could not open the log file");
+                        }
+                    })
+                })),
+        )
 }
 
 /// The port's lists, each most calls first, empty ones left out.

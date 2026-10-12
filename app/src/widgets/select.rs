@@ -8,8 +8,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, ElementId, FontWeight, IntoElement, Pixels, RenderOnce, SharedString, Window, canvas, div, point,
-    prelude::*, px, rgb,
+    App, Bounds, Div, ElementId, FontWeight, IntoElement, Pixels, RenderOnce, SharedString, Stateful, Window, canvas,
+    div, point, prelude::*, px, rgb,
 };
 
 use super::menu;
@@ -81,6 +81,53 @@ impl Select {
     pub fn on_change(mut self, handler: impl Fn(&SharedString, &mut Window, &mut App) + 'static) -> Self {
         self.on_change = Some(Rc::new(handler));
         self
+    }
+
+    fn options_list(self, min_width: Pixels, close: &menu::Dismiss) -> Stateful<Div> {
+        div()
+            .id((self.id, "options"))
+            .flex()
+            .flex_col()
+            .min_w(min_width)
+            .max_h(px(320.))
+            .overflow_y_scroll()
+            .p(px(4.))
+            .bg(rgb(theme::BG_PANEL_2))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS))
+            .shadow(theme::popup_shadow())
+            .text_size(px(if matches!(self.style, SelectStyle::Field | SelectStyle::Heading) {
+                13.
+            } else {
+                12.
+            }))
+            .children(self.options.into_iter().enumerate().map(|(index, (value, label))| {
+                let current = value == self.selected;
+                let on_change = self.on_change.clone();
+                let close = Rc::clone(close);
+                div()
+                    .id(("option", index))
+                    .px_2()
+                    .py(px(5.))
+                    .rounded(px(theme::RADIUS_SM))
+                    .whitespace_nowrap()
+                    .cursor_pointer()
+                    .text_color(rgb(if current {
+                        theme::TEXT_BRIGHT
+                    } else {
+                        theme::TEXT_PRIMARY
+                    }))
+                    .when(current, |option| option.bg(rgb(theme::BG_PANEL)))
+                    .hover(|option| option.bg(rgb(theme::BG_PANEL_LIGHT)))
+                    .on_click(move |_, window, cx| {
+                        close(window, cx);
+                        if !current && let Some(on_change) = &on_change {
+                            on_change(&value, window, cx);
+                        }
+                    })
+                    .child(label)
+            }))
     }
 }
 
@@ -154,80 +201,7 @@ impl RenderOnce for Select {
                     cx.notify();
                 });
             });
-        let trigger = match style {
-            SelectStyle::Field => trigger
-                .pl(px(12.))
-                .pr(px(26.))
-                .py(px(9.))
-                .bg(rgb(theme::BG_PANEL))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS_SM))
-                .text_color(rgb(theme::TEXT_PRIMARY))
-                .child(chevron.right(px(9.))),
-            SelectStyle::Compact => trigger
-                .max_w(px(200.))
-                .pl(px(10.))
-                .pr(px(26.))
-                .py(px(5.))
-                .text_size(px(12.))
-                .bg(rgb(theme::BG_PANEL))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS_SM))
-                .text_color(rgb(theme::TEXT_PRIMARY))
-                .child(chevron.right(px(9.))),
-            SelectStyle::Heading => trigger
-                .max_w(px(320.))
-                .pr(px(17.))
-                .py(px(2.))
-                .font_family(theme::DISPLAY)
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_size(px(15.))
-                .text_color(rgb(theme::TEXT_BRIGHT))
-                .border_b_1()
-                .border_color(gpui::transparent_black())
-                .hover(|trigger| trigger.border_color(rgb(theme::ACCENT_BLUE)))
-                .child(chevron.right(px(1.))),
-            SelectStyle::Kind => trigger
-                .pl(px(8.))
-                .pr(px(24.))
-                .py(px(6.))
-                .text_size(px(12.))
-                .bg(rgb(theme::BG_PANEL))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS_SM))
-                .text_color(rgb(theme::TEXT_PRIMARY))
-                .child(chevron.right(px(9.))),
-            SelectStyle::Group => trigger
-                .pl(px(9.))
-                .pr(px(26.))
-                .py(px(7.))
-                .text_size(px(12.5))
-                .bg(rgb(theme::BG_PANEL))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS_SM))
-                .text_color(rgb(theme::TEXT_PRIMARY))
-                .child(chevron.right(px(9.))),
-            SelectStyle::Small => trigger
-                .pl(px(6.))
-                .pr(px(21.))
-                .py(px(3.))
-                .text_size(px(11.))
-                .bg(rgb(theme::BG_PANEL_2))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS_SM))
-                .text_color(rgb(theme::TEXT_MUTED))
-                .hover(|trigger| {
-                    trigger
-                        .text_color(rgb(theme::TEXT_PRIMARY))
-                        .border_color(rgb(theme::ACCENT_BLUE_DIM))
-                })
-                .child(chevron.right(px(6.))),
-        };
+        let trigger = style_trigger(trigger, style, chevron);
 
         let popup = bounds.filter(|_| open).map(|bounds| {
             let close_state = state.clone();
@@ -237,51 +211,7 @@ impl RenderOnce for Select {
                     cx.notify();
                 });
             });
-            let selected = self.selected.clone();
-            let list = div()
-                .id((self.id.clone(), "options"))
-                .flex()
-                .flex_col()
-                .min_w(bounds.size.width)
-                .max_h(px(320.))
-                .overflow_y_scroll()
-                .p(px(4.))
-                .bg(rgb(theme::BG_PANEL_2))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS))
-                .shadow(theme::popup_shadow())
-                .text_size(px(if matches!(style, SelectStyle::Field | SelectStyle::Heading) {
-                    13.
-                } else {
-                    12.
-                }))
-                .children(self.options.into_iter().enumerate().map(|(index, (value, label))| {
-                    let current = value == selected;
-                    let on_change = self.on_change.clone();
-                    let close = Rc::clone(&close);
-                    div()
-                        .id(("option", index))
-                        .px_2()
-                        .py(px(5.))
-                        .rounded(px(theme::RADIUS_SM))
-                        .whitespace_nowrap()
-                        .cursor_pointer()
-                        .text_color(rgb(if current {
-                            theme::TEXT_BRIGHT
-                        } else {
-                            theme::TEXT_PRIMARY
-                        }))
-                        .when(current, |option| option.bg(rgb(theme::BG_PANEL)))
-                        .hover(|option| option.bg(rgb(theme::BG_PANEL_LIGHT)))
-                        .on_click(move |_, window, cx| {
-                            close(window, cx);
-                            if !current && let Some(on_change) = &on_change {
-                                on_change(&value, window, cx);
-                            }
-                        })
-                        .child(label)
-                }));
+            let list = self.options_list(bounds.size.width, &close);
             menu::popup(point(bounds.left(), bounds.bottom() + px(2.)), list, window, close)
         });
 
@@ -290,5 +220,82 @@ impl RenderOnce for Select {
             .when(full_width, |select| select.w_full())
             .child(trigger)
             .children(popup)
+    }
+}
+
+fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> Stateful<Div> {
+    match style {
+        SelectStyle::Field => trigger
+            .pl(px(12.))
+            .pr(px(26.))
+            .py(px(9.))
+            .bg(rgb(theme::BG_PANEL))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS_SM))
+            .text_color(rgb(theme::TEXT_PRIMARY))
+            .child(chevron.right(px(9.))),
+        SelectStyle::Compact => trigger
+            .max_w(px(200.))
+            .pl(px(10.))
+            .pr(px(26.))
+            .py(px(5.))
+            .text_size(px(12.))
+            .bg(rgb(theme::BG_PANEL))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS_SM))
+            .text_color(rgb(theme::TEXT_PRIMARY))
+            .child(chevron.right(px(9.))),
+        SelectStyle::Heading => trigger
+            .max_w(px(320.))
+            .pr(px(17.))
+            .py(px(2.))
+            .font_family(theme::DISPLAY)
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_size(px(15.))
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .border_b_1()
+            .border_color(gpui::transparent_black())
+            .hover(|trigger| trigger.border_color(rgb(theme::ACCENT_BLUE)))
+            .child(chevron.right(px(1.))),
+        SelectStyle::Kind => trigger
+            .pl(px(8.))
+            .pr(px(24.))
+            .py(px(6.))
+            .text_size(px(12.))
+            .bg(rgb(theme::BG_PANEL))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS_SM))
+            .text_color(rgb(theme::TEXT_PRIMARY))
+            .child(chevron.right(px(9.))),
+        SelectStyle::Group => trigger
+            .pl(px(9.))
+            .pr(px(26.))
+            .py(px(7.))
+            .text_size(px(12.5))
+            .bg(rgb(theme::BG_PANEL))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS_SM))
+            .text_color(rgb(theme::TEXT_PRIMARY))
+            .child(chevron.right(px(9.))),
+        SelectStyle::Small => trigger
+            .pl(px(6.))
+            .pr(px(21.))
+            .py(px(3.))
+            .text_size(px(11.))
+            .bg(rgb(theme::BG_PANEL_2))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS_SM))
+            .text_color(rgb(theme::TEXT_MUTED))
+            .hover(|trigger| {
+                trigger
+                    .text_color(rgb(theme::TEXT_PRIMARY))
+                    .border_color(rgb(theme::ACCENT_BLUE_DIM))
+            })
+            .child(chevron.right(px(6.))),
     }
 }
