@@ -1,4 +1,4 @@
-//! decanter's own log: stderr as before, and a file per day in the active
+//! decanter's own log: stderr as before, and a file per UTC day in the active
 //! library's `decanter/logs/`, so what happened is still there for a
 //! developer after the terminal is gone. Plain text in English, the same
 //! lines stderr gets, plus decanter's own debug events.
@@ -8,8 +8,11 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::path::Path;
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
+use std::time::Duration;
+
+use chrono::{NaiveDate, Utc};
 
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -19,8 +22,12 @@ use tracing_subscriber::{Layer as _, fmt};
 /// Days of logs kept; older files go when a new day's file opens.
 const KEEP: usize = 14;
 
+/// How often the day is checked; a sleep until midnight would not count time spent suspended.
+const DAY_CHECK: Duration = Duration::from_secs(60);
+
 /// `None` once it's settled there is no file this session: no library, or it couldn't be opened.
-static FILE: OnceLock<Option<File>> = OnceLock::new();
+/// Swapped for the next day's file by [`rotate`].
+static FILE: OnceLock<Option<RwLock<File>>> = OnceLock::new();
 /// Lines from before [`FILE`] is settled. A mutex because any thread can log then.
 static EARLY: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
@@ -37,9 +44,10 @@ impl Write for LibraryLog {
             }
             drop(early);
         }
-        FILE.get()
-            .and_then(Option::as_ref)
-            .map_or(Ok(buf.len()), |mut file| file.write(buf))
+        FILE.get().and_then(Option::as_ref).map_or(Ok(buf.len()), |file| {
+            let file = file.read().unwrap_or_else(PoisonError::into_inner);
+            (&*file).write(buf)
+        })
     }
 
     /// Nothing to flush: writes go straight to the file.
@@ -89,13 +97,14 @@ pub fn open() {
             return;
         }
     };
-    let path = dir.join(format!("decanter-{}.log", chrono::Utc::now().format("%Y-%m-%d")));
-    let opened = fs::create_dir_all(&dir).and_then(|()| OpenOptions::new().create(true).append(true).open(&path));
-    match opened {
+    let day = Utc::now().date_naive();
+    let path = path_for(&dir, day);
+    match open_file(&path) {
         Ok(file) => {
             settle(Some(file));
             tracing::info!(path = %path.display(), "logging to file");
             prune(&dir);
+            watch_day(dir, day);
         }
         Err(err) => {
             settle(None);
@@ -108,13 +117,60 @@ fn settle(file: Option<File>) {
     let written = {
         let mut early = EARLY.lock().unwrap_or_else(PoisonError::into_inner);
         let written = file.as_ref().map_or(Ok(()), |mut file| file.write_all(&early));
-        FILE.get_or_init(|| file);
+        FILE.get_or_init(|| file.map(RwLock::new));
         *early = Vec::new();
         written
     };
     // Only once the lock is released: this line goes through the writer, which takes it.
     if let Err(err) = written {
         tracing::warn!(%err, "could not write the early lines to the log file");
+    }
+}
+
+fn path_for(dir: &Path, day: NaiveDate) -> PathBuf {
+    dir.join(format!("decanter-{}.log", day.format("%Y-%m-%d")))
+}
+
+fn open_file(path: &Path) -> io::Result<File> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    OpenOptions::new().create(true).append(true).open(path)
+}
+
+/// decanter can stay open for days in the tray; each day still gets its own file, and the
+/// oldest go as new ones open.
+#[expect(clippy::infinite_loop, reason = "the watcher lives as long as the process")]
+fn watch_day(dir: PathBuf, mut day: NaiveDate) {
+    let watcher = std::thread::Builder::new().name("log-day".to_owned()).spawn(move || {
+        loop {
+            std::thread::sleep(DAY_CHECK);
+            let today = Utc::now().date_naive();
+            if today != day {
+                day = today;
+                rotate(&dir, today);
+            }
+        }
+    });
+    if let Err(err) = watcher {
+        tracing::warn!(%err, "could not start the log's day watcher, staying on one file");
+    }
+}
+
+fn rotate(dir: &Path, day: NaiveDate) {
+    let Some(Some(current)) = FILE.get() else {
+        return;
+    };
+    let path = path_for(dir, day);
+    match open_file(&path) {
+        Ok(file) => {
+            *current.write().unwrap_or_else(PoisonError::into_inner) = file;
+            tracing::info!(build = decanter_core::BUILD, path = %path.display(), "logging to file");
+            prune(dir);
+        }
+        Err(err) => {
+            tracing::warn!(path = %path.display(), %err, "could not open the new day's log file, staying on the old one");
+        }
     }
 }
 

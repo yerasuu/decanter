@@ -60,7 +60,7 @@ pub async fn purchase_dates(account_id: &str) -> anyhow::Result<HashMap<String, 
             crate::achv_try!(
                 client
                     .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {err}"))
+                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
             );
             Ok(client.token.borrow().access_token.clone())
         })

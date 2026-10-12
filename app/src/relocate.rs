@@ -71,16 +71,21 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
     tracing::info!(account_id, game_id, from = %from.display(), to = %to.display(), "moving game to another library folder");
 
     if let (Some(files), Some(new_files)) = (&files, &new_files) {
-        crate::achv_try!(transfer::bring(files, new_files, Mode::Move, |done| progress.record(done)));
+        crate::achv_try!(
+            transfer::bring(files, new_files, Mode::Move, |done| progress.record(done)).inspect_err(
+                |err| tracing::error!(account_id, game_id, from = %files.display(), %err, "could not move the game's files")
+            )
+        );
     }
     if old_prefix.is_dir()
         && let Err(err) = transfer::bring(&old_prefix, &new_prefix, Mode::Move, |done| progress.record(done))
     {
+        tracing::error!(account_id, game_id, from = %old_prefix.display(), %err, "could not move the game's prefix");
         // Half a game in each folder runs from neither: the files go back.
         if let (Some(files), Some(new_files)) = (&files, &new_files)
             && let Err(undo) = transfer::bring(new_files, files, Mode::Move, |_| {})
         {
-            tracing::error!(%undo, "could not move the files back after the prefix failed to move");
+            tracing::error!(account_id, game_id, %undo, "could not move the files back after the prefix failed to move");
         }
         return Err(err.localized());
     }
@@ -101,12 +106,12 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
             ..record
         };
         crate::achv_try!(
-            library.relocate_manifest(&record, to).map_err(|err| t!(
-                "storage.errors.manifest",
-                game = record.name,
-                error = err
-            )
-            .into_owned())
+            library
+                .relocate_manifest(&record, to)
+                .inspect_err(
+                    |err| tracing::error!(account_id, game_id = record.game_id, %err, "could not relocate the manifest")
+                )
+                .map_err(|err| t!("storage.errors.manifest", game = record.name, error = err).into_owned())
         );
     }
     tracing::info!(account_id, game_id, to = %to.display(), "game moved to another library folder");

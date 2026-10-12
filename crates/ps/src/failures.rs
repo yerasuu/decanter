@@ -8,9 +8,12 @@ use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+
+use crate::run_log::describe_exit;
 
 /// Lines kept before a failure, and lines collected after it (backtraces, module reports).
 const CONTEXT_BEFORE: usize = 15;
@@ -406,16 +409,21 @@ impl Scanner {
 
     /// Ends the run. A failing exit is a failure of its own only when nothing above explains it;
     /// an exit the user asked for is never one. `calls`, when the port wrote it, words the run's
-    /// missing record instead of the lines scanned from the output, which it keeps for detail.
+    /// missing record and replaces the import lines scanned from the output, since it already
+    /// lists what the game called with counts; the port's own feature gaps (Ngs2, GPU stubs) stay.
     pub fn exit(
         mut self,
-        code: Option<i32>,
+        exit: Option<ExitStatus>,
         stop_requested: bool,
         log: Option<&Path>,
         calls: Option<CallReport>,
     ) -> Vec<Failure> {
         self.finish_pending();
+        let code = exit.and_then(|status| status.code());
         let calls = calls.filter(|calls| !calls.is_empty());
+        if calls.is_some() {
+            self.missing.retain(|(rank, _)| *rank == 2);
+        }
         if !self.missing.is_empty() || calls.is_some() {
             self.missing.sort_by_key(|(rank, _)| *rank);
             let (message, summary) = if let Some(calls) = &calls {
@@ -465,9 +473,10 @@ impl Scanner {
                 version: self.version.clone(),
                 commit: self.commit.clone(),
                 kind: Kind::Exit,
-                message: match code {
-                    Some(code) => format!("exited with code {code}"),
-                    None => "killed by a signal".to_owned(),
+                message: match (code, exit) {
+                    (Some(code), _) => format!("exited with code {code}"),
+                    (None, Some(_)) => format!("killed by {}", describe_exit(exit)),
+                    (None, None) => "exit status unknown".to_owned(),
                 },
                 summary: Some(Summary::Exit(code)),
                 count: 1,

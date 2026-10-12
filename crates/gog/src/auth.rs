@@ -74,16 +74,16 @@ pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
 
     let (token, user) = crate::achv_try!(crate::achv_try!(
         tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let token = crate::achv_try!(
-                gog::token::Token::from_login_code(&code)
-                    .map_err(|err| anyhow::anyhow!("GOG rejected the authorization code: {err}"))
-            );
+            let token = crate::achv_try!(gog::token::Token::from_login_code(&code).map_err(|err| anyhow::anyhow!(
+                "GOG rejected the authorization code: {}",
+                crate::without_secrets(err)
+            )));
             tracing::debug!("exchanged authorization code for a GOG session token");
             let client = gog::Gog::new(token);
             let user = crate::achv_try!(
                 client
                     .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session check failed: {err}"))
+                    .map_err(|err| anyhow::anyhow!("GOG session check failed: {}", crate::without_secrets(err)))
             );
             // Read the token back out: fetching user data may have refreshed it.
             Ok((client.token.borrow().clone(), user))
@@ -115,7 +115,7 @@ pub async fn session(account_id: &str) -> anyhow::Result<Option<Account>> {
         crate::with_session(account_id, |client| {
             client
                 .get_user_data()
-                .map_err(|err| anyhow::anyhow!("GOG session is no longer valid: {err}"))
+                .map_err(|err| anyhow::anyhow!("GOG session is no longer valid: {}", crate::without_secrets(err)))
         })
         .await
     );

@@ -128,7 +128,13 @@ pub async fn run(
     };
     let log_path = log.as_ref().map(|log| log.path().to_owned());
     let calls_path = log.as_ref().and_then(|log| log.calls_path().map(Path::to_owned));
-    tracing::info!(job = kind.name(), target, program, log = ?log_path, "job started");
+    tracing::info!(
+        job = kind.name(),
+        target,
+        program,
+        log = log_path.as_deref().map(|path| tracing::field::display(path.display())),
+        "job started"
+    );
     let started = Instant::now();
     job.log_file.clone_from(&log_path);
     if let Some(error) = log_error {
@@ -184,7 +190,7 @@ pub async fn run(
     let code = exit.and_then(|status| status.code());
     let _ = ps.update(cx, |_, cx| cx.notify());
     let failures = scanner.map_or_else(Vec::new, |scanner| {
-        scanner.exit(code, stopped, log_path.as_deref(), report)
+        scanner.exit(exit, stopped, log_path.as_deref(), report)
     });
     Finished { code, failures }
 }
@@ -200,6 +206,7 @@ fn trace_end(
     let duration_ms = started.elapsed().as_millis();
     let succeeded = exit.is_some_and(|status| status.success());
     let exit = describe_exit(exit);
+    let log = log.map(|path| tracing::field::display(path.display()));
     if succeeded || stopped {
         tracing::info!(
             job = kind.name(),
@@ -207,11 +214,11 @@ fn trace_end(
             exit,
             stopped,
             duration_ms,
-            ?log,
+            log,
             "job finished"
         );
     } else {
-        tracing::warn!(job = kind.name(), target, exit, duration_ms, ?log, "job failed");
+        tracing::warn!(job = kind.name(), target, exit, duration_ms, log, "job failed");
     }
 }
 
