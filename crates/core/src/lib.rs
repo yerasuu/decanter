@@ -27,3 +27,6 @@ pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env};
 pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size, move_dir};
 pub use profiles::Profile;
 pub use scope::{application_id, game_key, own_scope};
+
+/// How logs name this build: the workspace version and the commit it was built from.
+pub const BUILD: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("DECANTER_COMMIT"), ")");

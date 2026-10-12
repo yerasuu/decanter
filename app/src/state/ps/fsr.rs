@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use decanter_ps::bbport::tools::{self, BadLoader, DllCheck, Fsr411Failure, Unsupported};
 use decanter_ps::bbport::{GROUPS, values};
 use decanter_ps::port::Port;
+use decanter_ps::process::JobKind;
 use gpui::{AppContext as _, Context};
 use rust_i18n::t;
 
@@ -76,7 +77,8 @@ impl Ps {
                     return;
                 }
             };
-            let finished = jobs::run(&this, &root, JobKey::Fsr411, &t!("ps.jobs.fsr411"), command, None, cx).await;
+            let facts = vec![("toolchain", toolchain.id().to_owned())];
+            let finished = jobs::run(&this, &root, JobKey::Fsr411, JobKind::Fsr411, facts, command, None, cx).await;
             let stopped = this
                 .update(cx, |this, cx| {
                     this.jobs

@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 use std::io;
 use std::path::PathBuf;
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
@@ -21,8 +21,35 @@ const MAX_LINES: usize = 5000;
 
 pub enum Event {
     Line(String),
-    /// The exit code, `None` when killed by a signal.
-    Exited(Option<i32>),
+    /// `None` when waiting on the process failed.
+    Exited(Option<ExitStatus>),
+}
+
+/// What a job does. Its name is what logs and log file names say, the same whatever the UI's
+/// language; the UI words it itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobKind {
+    Clone,
+    Reset,
+    Update,
+    Build,
+    Game,
+    Convert,
+    Fsr411,
+}
+
+impl JobKind {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Clone => "clone",
+            Self::Reset => "reset",
+            Self::Update => "update",
+            Self::Build => "build",
+            Self::Game => "game",
+            Self::Convert => "convert",
+            Self::Fsr411 => "fsr411",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +59,7 @@ pub enum State {
 }
 
 pub struct Job {
-    pub label: String,
+    pub kind: JobKind,
     pub state: State,
     pub lines: VecDeque<String>,
     /// Set by [`Job::stop`], so the exit it causes is not taken for a failure.
@@ -44,9 +71,9 @@ pub struct Job {
 impl Job {
     /// A job whose process never started, holding why, so its log reads
     /// like any other.
-    pub fn failed(label: impl Into<String>, reason: String) -> Self {
+    pub fn failed(kind: JobKind, reason: String) -> Self {
         Self {
-            label: label.into(),
+            kind,
             state: State::Exited(None),
             lines: VecDeque::from([reason]),
             stop_requested: false,
@@ -66,7 +93,7 @@ impl Job {
                 }
                 self.lines.push_back(line);
             }
-            Event::Exited(code) => self.state = State::Exited(code),
+            Event::Exited(status) => self.state = State::Exited(status.as_ref().and_then(ExitStatus::code)),
         }
     }
 
@@ -81,7 +108,7 @@ impl Job {
             return;
         };
         if let Err(err) = killpg(Pid::from_raw(pid), Signal::SIGTERM) {
-            tracing::warn!(pid, label = self.label, %err, "could not stop job");
+            tracing::warn!(pid, job = self.kind.name(), %err, "could not stop job");
         }
     }
 }
@@ -132,7 +159,7 @@ pub fn in_own_scope(command: Command, key: &str, title: &str) -> Command {
 /// Starts `command` in its own process group with stdout and stderr
 /// merged into events; the last event is always [`Event::Exited`].
 /// Must be called inside the tokio runtime.
-pub fn spawn(label: impl Into<String>, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
+pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
     let mut child = match command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -155,15 +182,15 @@ pub fn spawn(label: impl Into<String>, mut command: Command) -> io::Result<(Job,
         .map(|err| tokio::spawn(forward(err, sender.clone())));
     let pid = child.id().unwrap_or_default();
     tokio::spawn(async move {
-        let code = child.wait().await.ok().and_then(|status| status.code());
+        let status = child.wait().await.ok();
         // Output written just before exit is still in the pipes; drain it first.
         for reader in [stdout, stderr].into_iter().flatten() {
             let _ = reader.await;
         }
-        let _ = sender.send(Event::Exited(code));
+        let _ = sender.send(Event::Exited(status));
     });
     let job = Job {
-        label: label.into(),
+        kind,
         state: State::Running(pid),
         lines: VecDeque::new(),
         stop_requested: false,

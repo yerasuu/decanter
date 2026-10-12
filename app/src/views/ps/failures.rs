@@ -2,8 +2,8 @@
 //! this profile, newest first, each with the output around it and a report
 //! ready to paste into an upstream issue.
 
-use decanter_ps::failures::{self, Failure, Kind, Log};
-use gpui::{ClipboardItem, Context, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use decanter_ps::failures::{self, Call, CallReport, Failure, Kind, Log};
+use gpui::{ClipboardItem, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use crate::state::{Ps, failure_message};
@@ -107,6 +107,8 @@ impl FailuresView {
             Kind::Missing => theme::ACCENT_BLUE,
         };
         let report = failure.report();
+        let calls = failure.calls.as_ref().map(calls_lists);
+        let log = failure.log.clone();
         let commit = if failure.commit.is_empty() {
             "?"
         } else {
@@ -118,13 +120,7 @@ impl FailuresView {
             failures::format_time(failure.time),
             commit
         );
-        let output: Vec<SharedString> = failure
-            .before
-            .iter()
-            .chain([&failure.message])
-            .chain(&failure.after)
-            .map(|line| SharedString::from(line.clone()))
-            .collect();
+        let output: Vec<SharedString> = failure.output().map(|line| SharedString::from(line.clone())).collect();
         div()
             .flex()
             .flex_col()
@@ -184,6 +180,7 @@ impl FailuresView {
                         .gap_2()
                         .px_4()
                         .pb_3()
+                        .children(calls)
                         .child(
                             theme::mono()
                                 .p_3()
@@ -194,17 +191,33 @@ impl FailuresView {
                                 .children(output.into_iter().map(|line| div().child(line))),
                         )
                         .child(
-                            div().flex().child(
-                                button(
-                                    ("ps-failure-copy", index),
-                                    ButtonKind::Secondary,
-                                    t!("ps.failures.copy_report"),
-                                    false,
+                            div()
+                                .flex()
+                                .gap_2()
+                                .child(
+                                    button(
+                                        ("ps-failure-copy", index),
+                                        ButtonKind::Secondary,
+                                        t!("ps.failures.copy_report"),
+                                        false,
+                                    )
+                                    .on_click(move |_, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
+                                    }),
                                 )
-                                .on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
-                                }),
-                            ),
+                                .children(log.map(|path| {
+                                    button(
+                                        ("ps-failure-log", index),
+                                        ButtonKind::Secondary,
+                                        t!("ps.log.full"),
+                                        false,
+                                    )
+                                    .on_click(move |_, _, _| {
+                                        if let Err(err) = crate::desktop::open(&path) {
+                                            tracing::warn!(path = %path.display(), %err, "could not open the log file");
+                                        }
+                                    })
+                                })),
                         ),
                 )
             })
@@ -276,6 +289,57 @@ impl Render for FailuresView {
                 }),
         )
     }
+}
+
+/// The port's three lists, each most calls first, empty ones left out.
+fn calls_lists(calls: &CallReport) -> Div {
+    let lists = [
+        (
+            t!("ps.failures.calls.unimplemented", count = calls.unimplemented.len()),
+            &calls.unimplemented,
+        ),
+        (t!("ps.failures.calls.stubs", count = calls.stubs.len()), &calls.stubs),
+        (
+            t!("ps.failures.calls.failed", count = calls.failed.len()),
+            &calls.failed,
+        ),
+    ];
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .children(
+            lists
+                .into_iter()
+                .filter(|(_, list)| !list.is_empty())
+                .map(|(title, list)| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(theme::h3(title).mb_1())
+                        .children(list.iter().map(call_row))
+                }),
+        )
+}
+
+fn call_row(call: &Call) -> Div {
+    theme::mono()
+        .flex()
+        .gap_3()
+        .text_size(px(11.))
+        .child(
+            theme::muted(format!("×{}", call.count))
+                .w(px(64.))
+                .flex_none()
+                .flex()
+                .justify_end(),
+        )
+        .child(div().text_color(rgb(theme::TEXT_BRIGHT)).child(call.name.clone()))
+        .children(
+            call.error
+                .map(|error| div().text_color(rgb(theme::ERROR_TEXT)).child(error.to_string())),
+        )
+        .children(call.nid.clone().map(theme::muted))
 }
 
 fn kind_label(kind: Kind) -> std::borrow::Cow<'static, str> {

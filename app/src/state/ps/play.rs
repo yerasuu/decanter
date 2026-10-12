@@ -3,6 +3,7 @@
 //! profile's own record.
 
 use std::borrow::Cow;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use decanter_ps::anyps5::{self, AnyPs5};
@@ -12,7 +13,7 @@ use decanter_ps::failures::{self, Failure, Scanner, Summary};
 use decanter_ps::library::Game;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::process;
+use decanter_ps::process::{self, JobKind};
 use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 use rust_i18n::t;
@@ -47,12 +48,22 @@ impl Ps {
         self.notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let command = match prepared.await {
-                Ok(toolchain) => match port {
-                    Port::Bbport => bbport_command(&root, &toolchain, &game, &profile_id, cx).await,
-                    Port::AnyPs5 => anyps5_command(&this, &root, &toolchain, &game, &profile_id, cx).await,
-                },
-                Err(err) => Err(t!("ps.play.prepare_error", name = port.name(), error = err).into_owned()),
+            let (command, facts) = match prepared.await {
+                Ok(toolchain) => {
+                    let command = match port {
+                        Port::Bbport => bbport_command(&root, &toolchain, &game, &profile_id, cx).await,
+                        Port::AnyPs5 => anyps5_command(&this, &root, &toolchain, &game, &profile_id, cx).await,
+                    };
+                    let command = command.map_err(|err| {
+                        tracing::warn!(port = port.name(), title_id = %game.title_id, error = %err, "could not start game");
+                        err.localized()
+                    });
+                    (command, jobs::port_facts(&root, port, Some(&toolchain)).await)
+                }
+                Err(err) => (
+                    Err(t!("ps.play.prepare_error", name = port.name(), error = err).into_owned()),
+                    Vec::new(),
+                ),
             };
             let command = match command {
                 Ok(command) => process::in_own_scope(command, &game.key(), &game.title),
@@ -69,7 +80,8 @@ impl Ps {
                 &this,
                 &root,
                 JobKey::Game(game.dir.clone()),
-                &t!("ps.jobs.game"),
+                JobKind::Game,
+                facts,
                 command,
                 Some(scanner),
                 cx,
@@ -109,6 +121,38 @@ impl Ps {
     }
 }
 
+/// Why a game could not be started: logged as it is, worded for the UI by
+/// [`LaunchError::localized`].
+#[derive(Debug, thiserror::Error)]
+enum LaunchError {
+    #[error("mods setup failed: {0}")]
+    Mods(io::Error),
+    #[error("could not create {}: {err}", dir.display())]
+    CreateDir { dir: PathBuf, err: io::Error },
+    #[error("launch environment setup failed: {0}")]
+    Environment(io::Error),
+    #[error("conversion output setup failed: {0}")]
+    ConvertPrepare(io::Error),
+    #[error("conversion failed")]
+    ConvertFailed,
+    #[error("run directory setup failed at {}: {err}", dir.display())]
+    RunDir { dir: PathBuf, err: io::Error },
+}
+
+impl LaunchError {
+    fn localized(&self) -> String {
+        match self {
+            Self::Mods(err) => t!("ps.play.mods_error", error = err),
+            Self::CreateDir { dir, err } => t!("ps.errors.create_dir", dir = dir.display(), error = err),
+            Self::Environment(err) => t!("ps.errors.environment", error = err),
+            Self::ConvertPrepare(err) => t!("ps.play.convert_prepare_error", error = err),
+            Self::ConvertFailed => t!("ps.play.convert_failed"),
+            Self::RunDir { dir, err } => t!("ps.play.prepare_error", name = dir.display(), error = err),
+        }
+        .into_owned()
+    }
+}
+
 fn notify(this: &WeakEntity<Ps>, text: String, error: bool, cx: &mut AsyncApp) {
     let _ = this.update(cx, |this, cx| {
         this.notice = Some((text, error));
@@ -122,7 +166,7 @@ async fn bbport_command(
     game: &Game,
     profile_id: &str,
     cx: &mut AsyncApp,
-) -> Result<Command, String> {
+) -> Result<Command, LaunchError> {
     let settings = {
         let root = root.clone();
         cx.background_spawn(async move { LauncherSettings::load(&root) }).await
@@ -149,19 +193,19 @@ async fn bbport_command(
             .await;
         match mods {
             Ok(mods) => mods,
-            Err(err) => return Err(t!("ps.play.mods_error", error = err).into_owned()),
+            Err(err) => return Err(LaunchError::Mods(err)),
         }
     } else {
         bbport::mods::Mods::off(root, &settings)
     };
     let user_dir = root.profile(profile_id).join("bbport/user");
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
-        return Err(t!("ps.errors.create_dir", dir = user_dir.display(), error = err).into_owned());
+        return Err(LaunchError::CreateDir { dir: user_dir, err });
     }
     bbport
         .launch_command(toolchain, game, &user_dir, &settings, &mods)
         .await
-        .map_err(|err| t!("ps.errors.environment", error = err).into_owned())
+        .map_err(LaunchError::Environment)
 }
 
 /// Converts first when the game has no conversion yet; the conversion is
@@ -173,7 +217,7 @@ async fn anyps5_command(
     game: &Game,
     profile_id: &str,
     cx: &mut AsyncApp,
-) -> Result<Command, String> {
+) -> Result<Command, LaunchError> {
     let anyps5 = AnyPs5::new(root.clone());
     if !anyps5.is_converted(&game.title_id).await {
         let prepared = {
@@ -183,24 +227,30 @@ async fn anyps5_command(
                 .await
         };
         if let Err(err) = prepared {
-            return Err(t!("ps.play.convert_prepare_error", error = err).into_owned());
+            return Err(LaunchError::ConvertPrepare(err));
         }
         let command = match anyps5.convert_command(toolchain, game).await {
             Ok(command) => command,
-            Err(err) => return Err(t!("ps.errors.environment", error = err).into_owned()),
+            Err(err) => return Err(LaunchError::Environment(err)),
         };
+        let mut facts = jobs::port_facts(root, Port::AnyPs5, Some(toolchain)).await;
+        facts.extend([
+            ("title_id", game.title_id.clone()),
+            ("game_dir", game.dir.display().to_string()),
+        ]);
         let finished = jobs::run(
             this,
             root,
             JobKey::Game(game.dir.clone()),
-            &t!("ps.jobs.convert"),
+            JobKind::Convert,
+            facts,
             command,
             None,
             cx,
         )
         .await;
         if !finished.succeeded() {
-            return Err(t!("ps.play.convert_failed").into_owned());
+            return Err(LaunchError::ConvertFailed);
         }
     }
     let run_dir = root.profile(profile_id).join("anyps5").join(&game.title_id);
@@ -212,12 +262,12 @@ async fn anyps5_command(
             .await
     };
     if let Err(err) = laid_out {
-        return Err(t!("ps.play.prepare_error", name = run_dir.display(), error = err).into_owned());
+        return Err(LaunchError::RunDir { dir: run_dir, err });
     }
     anyps5
         .run_command(toolchain, game, &run_dir)
         .await
-        .map_err(|err| t!("ps.errors.environment", error = err).into_owned())
+        .map_err(LaunchError::Environment)
 }
 
 async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failure>, cx: &mut AsyncApp) {
@@ -285,6 +335,16 @@ pub fn failure_message(failure: &Failure) -> Cow<'_, str> {
     match failure.summary {
         Some(Summary::Missing { total: 1, called }) => t!("ps.failures.missing.one", total = 1, called = called),
         Some(Summary::Missing { total, called }) => t!("ps.failures.missing.other", total = total, called = called),
+        Some(Summary::Calls {
+            unimplemented,
+            stubs,
+            failed,
+        }) => t!(
+            "ps.failures.calls.summary",
+            unimplemented = unimplemented,
+            stubs = stubs,
+            failed = failed
+        ),
         Some(Summary::Exit(Some(code))) => t!("ps.failures.exit_code", code = code),
         Some(Summary::Exit(None)) => t!("ps.failures.exit_signal"),
         None => Cow::Borrowed(&failure.message),

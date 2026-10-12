@@ -2,12 +2,14 @@
 //! that order, whenever something needs the port and it isn't ready — and
 //! keeping its checkout on upstream while the section is in use.
 
+use std::io;
 use std::time::Duration;
 
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::Bbport;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
+use decanter_ps::process::JobKind;
 use decanter_ps::toolchain::{self, Toolchain};
 use decanter_ps::updater::{self, Check, Plan};
 use futures::FutureExt as _;
@@ -155,11 +157,13 @@ impl Ps {
         cx.spawn(async move |this, cx| {
             let backup = updater::backup_path(&root, port, &check.head);
             let command = updater::reset_command(&port.checkout(&root), &check.branch, &backup);
+            let facts = jobs::port_facts(&root, port, None).await;
             let finished = jobs::run(
                 &this,
                 &root,
                 JobKey::Port(port),
-                &t!("ps.jobs.reset"),
+                JobKind::Reset,
+                facts,
                 command,
                 None,
                 cx,
@@ -189,10 +193,42 @@ fn set_stage(this: &WeakEntity<Ps>, port: Port, stage: Stage, cx: &mut AsyncApp)
     });
 }
 
-fn fail(this: &WeakEntity<Ps>, port: Port, message: String, cx: &mut AsyncApp) -> Prepared {
-    tracing::warn!(port = port.name(), %message, "port not ready");
+/// Why a port is not ready: logged as it is, worded for the UI by [`PortError::localized`].
+#[derive(Debug, thiserror::Error)]
+enum PortError {
+    #[error("toolchain unavailable: {0}")]
+    Toolchain(toolchain::Error),
+    #[error("git clone failed")]
+    Clone,
+    #[error("CMake cache reset failed: {0}")]
+    CmakeCache(io::Error),
+    #[error("build environment setup failed: {0}")]
+    Environment(io::Error),
+    #[error("build failed")]
+    Build,
+    #[error("build marker write failed: {0}")]
+    RecordBuild(io::Error),
+}
+
+impl PortError {
+    fn localized(&self, port: Port) -> String {
+        match self {
+            Self::Toolchain(err) => toolchain_error(err),
+            Self::Clone => t!("ps.ports.errors.clone", port = port.name()).into_owned(),
+            Self::CmakeCache(err) => t!("ps.ports.errors.cmake_cache", error = err).into_owned(),
+            Self::Environment(err) => t!("ps.errors.environment", error = err).into_owned(),
+            Self::Build => t!("ps.ports.errors.build", port = port.name()).into_owned(),
+            Self::RecordBuild(err) => t!("ps.ports.errors.record_build", error = err).into_owned(),
+        }
+    }
+}
+
+/// Returns what the port's stage now shows.
+fn fail(this: &WeakEntity<Ps>, port: Port, err: &PortError, cx: &mut AsyncApp) -> String {
+    tracing::warn!(port = port.name(), error = %err, "port not ready");
+    let message = err.localized(port);
     set_stage(this, port, Stage::Failed(message.clone()), cx);
-    Err(message)
+    message
 }
 
 async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) -> Prepared {
@@ -205,7 +241,7 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     .await;
     let toolchain = match resolved {
         Ok(toolchain) => toolchain,
-        Err(err) => return fail(this, port, toolchain_error(&err), cx),
+        Err(err) => return Err(fail(this, port, &PortError::Toolchain(err), cx)),
     };
     let _ = this.update(cx, |this, _| {
         this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
@@ -218,19 +254,15 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
             this,
             root,
             JobKey::Port(port),
-            &t!("ps.jobs.clone"),
+            JobKind::Clone,
+            jobs::port_facts(root, port, None).await,
             updater::clone_command(root, port),
             None,
             cx,
         )
         .await;
         if !finished.succeeded() {
-            return fail(
-                this,
-                port,
-                t!("ps.ports.errors.clone", port = port.name()).into_owned(),
-                cx,
-            );
+            return Err(fail(this, port, &PortError::Clone, cx));
         }
     }
 
@@ -243,7 +275,7 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     } else {
         match build(this, port, root, toolchain, cx).await {
             Ok(toolchain) => toolchain,
-            Err(message) => return fail(this, port, message, cx),
+            Err(err) => return Err(fail(this, port, &err, cx)),
         }
     };
     set_stage(this, port, Stage::Ready, cx);
@@ -258,7 +290,7 @@ async fn build(
     root: &Root,
     mut toolchain: Toolchain,
     cx: &mut AsyncApp,
-) -> Result<Toolchain, String> {
+) -> Result<Toolchain, PortError> {
     set_stage(this, port, Stage::Building, cx);
     let for_reset = port.checkout(root);
     match cx
@@ -270,7 +302,7 @@ async fn build(
                 tracing::info!(port = port.name(), dir = %dir.display(), "CMake cache from before a move reset");
             }
         }
-        Err(err) => return Err(t!("ps.ports.errors.cmake_cache", error = err).into_owned()),
+        Err(err) => return Err(PortError::CmakeCache(err)),
     }
     let mut fell_back = false;
     loop {
@@ -280,14 +312,15 @@ async fn build(
         };
         let command = match command {
             Ok(command) => command,
-            Err(err) => return Err(t!("ps.errors.environment", error = err).into_owned()),
+            Err(err) => return Err(PortError::Environment(err)),
         };
-        let finished = jobs::run(this, root, JobKey::Port(port), &t!("ps.jobs.build"), command, None, cx).await;
+        let facts = jobs::port_facts(root, port, Some(&toolchain)).await;
+        let finished = jobs::run(this, root, JobKey::Port(port), JobKind::Build, facts, command, None, cx).await;
         if finished.succeeded() {
             break;
         }
         if toolchain != Toolchain::Host || !failed_to_configure(this, port, cx) {
-            return Err(t!("ps.ports.errors.build", port = port.name()).into_owned());
+            return Err(PortError::Build);
         }
         tracing::warn!(
             port = port.name(),
@@ -298,7 +331,7 @@ async fn build(
             .background_spawn(async move { decanter_ps::cmake_cache::forget_all(&checkout) })
             .await
         {
-            return Err(t!("ps.ports.errors.cmake_cache", error = err).into_owned());
+            return Err(PortError::CmakeCache(err));
         }
         fell_back = true;
         let progress = this.clone();
@@ -309,7 +342,7 @@ async fn build(
         .await;
         toolchain = match resolved {
             Ok(nix) => nix,
-            Err(err) => return Err(toolchain_error(&err)),
+            Err(err) => return Err(PortError::Toolchain(err)),
         };
         set_stage(this, port, Stage::Building, cx);
         let _ = this.update(cx, |this, _| {
@@ -326,7 +359,7 @@ async fn build(
     };
     match recorded {
         Ok(()) => Ok(toolchain),
-        Err(err) => Err(t!("ps.ports.errors.record_build", error = err).into_owned()),
+        Err(err) => Err(PortError::RecordBuild(err)),
     }
 }
 
@@ -374,15 +407,15 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     let toolchain = match Toolchain::resolve(root, port, |_, _| {}).await {
         Ok(toolchain) => toolchain,
         Err(err) => {
-            set_stage(this, port, Stage::Failed(toolchain_error(&err)), cx);
+            fail(this, port, &PortError::Toolchain(err), cx);
             return;
         }
     };
     let _ = this.update(cx, |this, _| {
         this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
     });
-    if let Err(message) = build(this, port, root, toolchain, cx).await {
-        set_stage(this, port, Stage::Failed(message), cx);
+    if let Err(err) = build(this, port, root, toolchain, cx).await {
+        fail(this, port, &err, cx);
     } else {
         set_stage(this, port, Stage::Ready, cx);
     }
@@ -439,7 +472,18 @@ async fn apply_fast_forward(
     cx: &mut AsyncApp,
 ) {
     let command = updater::fast_forward_command(&port.checkout(root), branch);
-    let finished = jobs::run(this, root, JobKey::Port(port), &t!("ps.jobs.update"), command, None, cx).await;
+    let facts = jobs::port_facts(root, port, None).await;
+    let finished = jobs::run(
+        this,
+        root,
+        JobKey::Port(port),
+        JobKind::Update,
+        facts,
+        command,
+        None,
+        cx,
+    )
+    .await;
     if finished.succeeded() {
         tracing::info!(port = port.name(), "port fast-forwarded to upstream");
         rebuild(this, port, root, cx).await;

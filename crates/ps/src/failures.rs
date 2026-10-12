@@ -2,7 +2,9 @@
 //! across sessions in a profile's `failures.jsonl` with the output around them and the port
 //! commit, so each one can be reported upstream as it happened.
 
+use std::cmp::Reverse;
 use std::collections::VecDeque;
+use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -49,6 +51,12 @@ impl Kind {
 pub enum Summary {
     /// `total` things left undone, `called` of them reached by the game.
     Missing { total: usize, called: usize },
+    /// Distinct entries of each list of the port's [`CallReport`].
+    Calls {
+        unimplemented: usize,
+        stubs: usize,
+        failed: usize,
+    },
     /// `None` when a signal ended the process.
     Exit(Option<i32>),
 }
@@ -71,9 +79,134 @@ pub struct Failure {
     pub count: u32,
     pub before: Vec<String>,
     pub after: Vec<String>,
+    /// The run's whole output; `None` when it had no log file, and for records written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log: Option<PathBuf>,
+    /// On a [`Kind::Missing`] record, when the port wrote its call report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calls: Option<CallReport>,
+}
+
+/// What the port counted at exit (`BB_CALL_REPORT`, psport's `FORK.md` "Call report"): imports
+/// the game called that nothing answers for real, or that failed. Each list most calls first.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct CallReport {
+    pub unimplemented: Vec<Call>,
+    pub stubs: Vec<Call>,
+    pub failed: Vec<Call>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Call {
+    pub count: u64,
+    /// `None` for a GPU library function, which is no import.
+    pub nid: Option<String>,
+    pub name: String,
+    /// Only on a failed call: one entry per import and error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<CallError>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum CallError {
+    Sce(u32),
+    Errno(i32),
+}
+
+impl fmt::Display for CallError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sce(code) => write!(f, "{code:#010x}"),
+            Self::Errno(errno) => write!(f, "-1, errno {errno}"),
+        }
+    }
+}
+
+impl fmt::Display for Call {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.count, self.name)?;
+        if let Some(nid) = &self.nid {
+            write!(f, " ({nid})")?;
+        }
+        if let Some(error) = self.error {
+            write!(f, " -> {error}")?;
+        }
+        Ok(())
+    }
+}
+
+impl CallReport {
+    /// `None` without the summary's first line, so a truncated or foreign file is not taken for
+    /// a run where nothing was missing.
+    pub fn parse(text: &str) -> Option<Self> {
+        let mut report = Self::default();
+        let mut found = false;
+        for line in text.lines() {
+            let Some(rest) = line.trim().strip_prefix("Calls: summary") else {
+                continue;
+            };
+            if rest.starts_with(':') {
+                found = true;
+                continue;
+            }
+            let mut fields = rest.trim_start().splitn(3, ' ');
+            let (Some(list), Some(count), Some(call)) = (fields.next(), fields.next(), fields.next()) else {
+                continue;
+            };
+            let (Ok(count), Some(call)) = (count.parse(), parse_call(call)) else {
+                continue;
+            };
+            let call = Call { count, ..call };
+            match list {
+                "unimplemented" => report.unimplemented.push(call),
+                "stub" => report.stubs.push(call),
+                "failed" if call.error.is_some() => report.failed.push(call),
+                _ => {}
+            }
+        }
+        for list in [&mut report.unimplemented, &mut report.stubs, &mut report.failed] {
+            list.sort_by_key(|call| Reverse(call.count));
+        }
+        found.then_some(report)
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.unimplemented.is_empty() && self.stubs.is_empty() && self.failed.is_empty()
+    }
+}
+
+/// `<NID> (<name>)[ -> <error>]`, or `<function> (HLE)`; the count is the caller's.
+fn parse_call(text: &str) -> Option<Call> {
+    let (import, rest) = text.split_once(" (")?;
+    let (name, rest) = rest.split_once(')')?;
+    let (nid, name) = if name == "HLE" {
+        (None, import)
+    } else {
+        (Some(import.to_owned()), name)
+    };
+    let error = match rest.trim().strip_prefix("-> ") {
+        None => None,
+        Some(result) => Some(match result.strip_prefix("-1, errno ") {
+            Some(errno) => CallError::Errno(errno.trim().parse().ok()?),
+            None => CallError::Sce(u32::from_str_radix(result.trim().strip_prefix("0x")?, 16).ok()?),
+        }),
+    };
+    Some(Call {
+        count: 0,
+        nid,
+        name: name.to_owned(),
+        error,
+    })
 }
 
 impl Failure {
+    /// The run's output around the failure; the message is one of its lines only when quoted
+    /// from it, not when decanter worded it ([`Failure::summary`]).
+    pub fn output(&self) -> impl Iterator<Item = &String> {
+        let quoted = self.summary.is_none().then_some(&self.message);
+        self.before.iter().chain(quoted).chain(&self.after)
+    }
+
     /// Plain-text report for an issue: what, where, and the output around it.
     pub fn report(&self) -> String {
         let mut text = format!(
@@ -89,11 +222,25 @@ impl Failure {
             text.push_str(&format!("repeated {} times\n", self.count));
         }
         text.push_str("\n```\n");
-        for line in self.before.iter().chain([&self.message]).chain(&self.after) {
+        for line in self.output() {
             text.push_str(line);
             text.push('\n');
         }
         text.push_str("```\n");
+        if let Some(calls) = &self.calls {
+            for (title, list) in [
+                ("unimplemented", &calls.unimplemented),
+                ("stub", &calls.stubs),
+                ("failed", &calls.failed),
+            ] {
+                if !list.is_empty() {
+                    text.push_str(&format!("\n{title}:\n"));
+                    for call in list {
+                        text.push_str(&format!("{call}\n"));
+                    }
+                }
+            }
+        }
         text
     }
 }
@@ -197,12 +344,11 @@ impl Scanner {
     }
 
     /// What a run's log header records about the game.
-    pub fn facts(&self) -> [(&'static str, String); 4] {
+    pub fn facts(&self) -> [(&'static str, String); 3] {
         [
-            ("game", self.game_dir.display().to_string()),
-            ("title", self.title_id.clone()),
+            ("title_id", self.title_id.clone()),
             ("version", self.version.clone()),
-            ("port commit", self.commit.clone()),
+            ("game_dir", self.game_dir.display().to_string()),
         ]
     }
 
@@ -246,6 +392,8 @@ impl Scanner {
                     count: 1,
                     before: self.recent.iter().cloned().collect(),
                     after: Vec::new(),
+                    log: None,
+                    calls: None,
                 };
                 self.pending = Some(failure);
             }
@@ -257,13 +405,41 @@ impl Scanner {
     }
 
     /// Ends the run. A failing exit is a failure of its own only when nothing above explains it;
-    /// an exit the user asked for is never one.
-    pub fn exit(mut self, code: Option<i32>, stop_requested: bool) -> Vec<Failure> {
+    /// an exit the user asked for is never one. `calls`, when the port wrote it, words the run's
+    /// missing record instead of the lines scanned from the output, which it keeps for detail.
+    pub fn exit(
+        mut self,
+        code: Option<i32>,
+        stop_requested: bool,
+        log: Option<&Path>,
+        calls: Option<CallReport>,
+    ) -> Vec<Failure> {
         self.finish_pending();
-        if !self.missing.is_empty() {
+        let calls = calls.filter(|calls| !calls.is_empty());
+        if !self.missing.is_empty() || calls.is_some() {
             self.missing.sort_by_key(|(rank, _)| *rank);
-            let called = self.missing.iter().filter(|(rank, _)| *rank == 0).count();
-            let total = self.missing.len();
+            let (message, summary) = if let Some(calls) = &calls {
+                (
+                    format!(
+                        "{} unimplemented, {} stub, {} failed",
+                        calls.unimplemented.len(),
+                        calls.stubs.len(),
+                        calls.failed.len()
+                    ),
+                    Summary::Calls {
+                        unimplemented: calls.unimplemented.len(),
+                        stubs: calls.stubs.len(),
+                        failed: calls.failed.len(),
+                    },
+                )
+            } else {
+                let called = self.missing.iter().filter(|(rank, _)| *rank == 0).count();
+                let total = self.missing.len();
+                (
+                    format!("{total} unimplemented, {called} called by the game"),
+                    Summary::Missing { total, called },
+                )
+            };
             self.found.push(Failure {
                 time: now(),
                 game_dir: self.game_dir.clone(),
@@ -271,11 +447,13 @@ impl Scanner {
                 version: self.version.clone(),
                 commit: self.commit.clone(),
                 kind: Kind::Missing,
-                message: format!("{total} unimplemented, {called} called by the game"),
-                summary: Some(Summary::Missing { total, called }),
+                message,
+                summary: Some(summary),
                 count: 1,
                 before: Vec::new(),
                 after: self.missing.drain(..).map(|(_, line)| line).collect(),
+                log: None,
+                calls,
             });
         }
         let fatal = self.found.iter().any(|f| matches!(f.kind, Kind::Crash | Kind::Stop));
@@ -295,7 +473,12 @@ impl Scanner {
                 count: 1,
                 before: self.recent.iter().cloned().collect(),
                 after: Vec::new(),
+                log: None,
+                calls: None,
             });
+        }
+        for failure in &mut self.found {
+            failure.log = log.map(Path::to_owned);
         }
         self.found
     }

@@ -33,6 +33,7 @@ unicode-segmentation.workspace = true
 reqwest.workspace = true
 image.workspace = true
 rust-i18n.workspace = true
+thiserror.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni.workspace = true

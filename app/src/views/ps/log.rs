@@ -11,6 +11,7 @@ use gpui::{
 
 use rust_i18n::t;
 
+use crate::state::job_label;
 use crate::theme;
 
 pub struct LogView {
@@ -64,12 +65,13 @@ impl LogView {
 impl Render for LogView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let job = self.job.read(cx);
+        let label = job_label(job.kind);
         let status = SharedString::from(match job.state {
-            State::Running(_) => t!("ps.log.running", label = job.label),
-            State::Exited(Some(0)) => t!("ps.log.finished", label = job.label),
-            State::Exited(Some(code)) => t!("ps.log.exited", label = job.label, code = code),
-            State::Exited(None) if job.stop_requested => t!("ps.log.stopped", label = job.label),
-            State::Exited(None) => t!("ps.log.interrupted", label = job.label),
+            State::Running(_) => t!("ps.log.running", label = label),
+            State::Exited(Some(0)) => t!("ps.log.finished", label = label),
+            State::Exited(Some(code)) => t!("ps.log.exited", label = label, code = code),
+            State::Exited(None) if job.stop_requested => t!("ps.log.stopped", label = label),
+            State::Exited(None) => t!("ps.log.interrupted", label = label),
         });
         let count = job.lines.len();
         let log_file = job.log_file.clone();
