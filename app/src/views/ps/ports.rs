@@ -4,6 +4,7 @@
 //! The toolchain line is information only: which one runs a port is
 //! decided by what the machine has.
 
+use decanter_ps::paths;
 use decanter_ps::port::Port;
 use decanter_ps::updater::Plan;
 use gpui::{AnyElement, Context, Entity, Window, div, prelude::*, px, rgb};
@@ -64,6 +65,7 @@ impl PortsView {
                 total.map(|total| *received as f64 / total.max(1) as f64),
             ),
             Stage::Cloning => ("Clonando…".to_owned(), None),
+            Stage::Updating => ("Actualizando…".to_owned(), None),
             Stage::Building => ("Compilando…".to_owned(), None),
             Stage::Ready => ("Listo".to_owned(), None),
             Stage::Failed(message) => (message.clone(), None),
@@ -125,7 +127,8 @@ impl PortsView {
                         )
                         .when(!busy, |b| {
                             b.on_click(cx.listener(move |this, _, _, cx| {
-                                this.ps.update(cx, |ps, cx| drop(ps.prepare(port, cx)));
+                                this.ps
+                                    .update(cx, |ps, cx| drop(ps.prepare(port, &paths::active(), cx)));
                             }))
                         }),
                     )

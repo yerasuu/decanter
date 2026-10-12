@@ -65,9 +65,9 @@ impl GamepadView {
                 Err(err) => return Err(format!("No se pudieron leer los layouts: {err}")),
             };
             Ok(Loaded {
-                current: pad::current(&store.pad_layouts()),
-                custom: pad::from_ini(),
-                values: Values::load(),
+                current: pad::current(&decanter_ps::paths::active(), &store.pad_layouts()),
+                custom: pad::from_ini(&decanter_ps::paths::active()),
+                values: Values::load(&decanter_ps::paths::active()),
                 store,
             })
         });
@@ -87,7 +87,7 @@ impl GamepadView {
             .and_then(|state| state.toolchain().cloned());
         if let Some(toolchain) = toolchain {
             cx.spawn(async move |this, cx| {
-                let found = Bbport::new(Port::Bbport.checkout())
+                let found = Bbport::new(decanter_ps::paths::active())
                     .connected_gamepads(&toolchain)
                     .await;
                 let _ = this.update(cx, |this, cx| {
@@ -135,7 +135,7 @@ impl GamepadView {
             {
                 return Err(err);
             }
-            layout.save_to_ini()
+            layout.save_to_ini(&decanter_ps::paths::active())
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -236,7 +236,9 @@ impl GamepadView {
         };
         loaded.values.set_launch_text("button_icons", &style);
         let task = cx.background_spawn(async move {
-            decanter_ps::bbport::LauncherSettings::edit(|settings| settings.set_text("button_icons", &style))
+            decanter_ps::bbport::LauncherSettings::edit(&decanter_ps::paths::active(), |settings| {
+                settings.set_text("button_icons", &style);
+            })
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -262,7 +264,8 @@ impl GamepadView {
             .iter()
             .find(|(known, _)| *known == guid)
             .map_or_else(String::new, |(_, name)| name.clone());
-        let task = cx.background_spawn(async move { values::save(setting, &guid, Some(&name)) });
+        let task = cx
+            .background_spawn(async move { values::save(&decanter_ps::paths::active(), setting, &guid, Some(&name)) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {

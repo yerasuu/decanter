@@ -38,7 +38,11 @@ impl ExtrasView {
             }
         })
         .detach();
-        let load = cx.background_spawn(async { LauncherSettings::load().text("extra_env").map(str::to_owned) });
+        let load = cx.background_spawn(async {
+            LauncherSettings::load(&decanter_ps::paths::active())
+                .text("extra_env")
+                .map(str::to_owned)
+        });
         cx.spawn(async move |this, cx| {
             let current = load.await.unwrap_or_default();
             let _ = this.update(cx, |this, cx| {
@@ -79,7 +83,7 @@ impl ExtrasView {
         }
         self.checked_at = Some(revision);
         let task = cx.background_spawn(async {
-            let values = Values::load();
+            let values = Values::load(&decanter_ps::paths::active());
             let setting = |key| {
                 decanter_ps::bbport::GROUPS
                     .iter()
@@ -89,7 +93,7 @@ impl ExtrasView {
             };
             let output = setting("output_res").unwrap_or_else(|| "1920x1080".to_owned());
             let preset = setting("preset").unwrap_or_else(|| "4".to_owned());
-            tools::fsr411_problem(&decanter_ps::paths::fsr411(), &output, &preset)
+            tools::fsr411_problem(&decanter_ps::paths::active().fsr411(), &output, &preset)
         });
         cx.spawn(async move |this, cx| {
             let problem = task.await;
@@ -102,8 +106,11 @@ impl ExtrasView {
     }
 
     fn save_env(&mut self, value: String, cx: &mut Context<Self>) {
-        let task = cx
-            .background_spawn(async move { LauncherSettings::edit(|settings| settings.set_text("extra_env", &value)) });
+        let task = cx.background_spawn(async move {
+            LauncherSettings::edit(&decanter_ps::paths::active(), |settings| {
+                settings.set_text("extra_env", &value);
+            })
+        });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {

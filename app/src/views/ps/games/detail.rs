@@ -139,8 +139,11 @@ impl DetailView {
 
     fn load_controls(&mut self, port: Port, title_id: String, cx: &mut Context<Self>) {
         let (target, path) = match port {
-            Port::Bbport => (Target::Bbport, Bbport::ini_path()),
-            Port::AnyPs5 => (Target::AnyPs5, AnyPs5::binds_path(&title_id)),
+            Port::Bbport => (Target::Bbport, Bbport::ini_path(&decanter_ps::paths::active())),
+            Port::AnyPs5 => (
+                Target::AnyPs5,
+                AnyPs5::binds_path(&decanter_ps::paths::active(), &title_id),
+            ),
         };
         let selected = self.selected.clone();
         let read_path = path.clone();

@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
 
@@ -44,10 +45,15 @@ elif request == 'dll':
                       'unsupported': dll_info.UNSUPPORTED, 'no_loader': dll_info.NO_LOADER}))
 "#;
 
-async fn helper(toolchain: &Toolchain, request: &str, args: &[&Path]) -> Result<serde_json::Value, String> {
-    let checkout = Port::Bbport.checkout();
+async fn helper(
+    root: &Root,
+    toolchain: &Toolchain,
+    request: &str,
+    args: &[&Path],
+) -> Result<serde_json::Value, String> {
+    let checkout = Port::Bbport.checkout(root);
     let mut command = match toolchain
-        .command(Port::Bbport, &checkout, r#"exec python3 -c "$DECANTER_HELPER""#)
+        .command(root, Port::Bbport, r#"exec python3 -c "$DECANTER_HELPER""#)
         .await
     {
         Ok(command) => command,
@@ -75,8 +81,8 @@ async fn helper(toolchain: &Toolchain, request: &str, args: &[&Path]) -> Result<
 }
 
 /// Mods bbport would load from `dir` (folders with a layout `mods.py` accepts).
-pub async fn discover_mods(toolchain: &Toolchain, dir: &Path) -> Result<Vec<String>, String> {
-    match helper(toolchain, "mods", &[dir]).await {
+pub async fn discover_mods(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<String>, String> {
+    match helper(root, toolchain, "mods", &[dir]).await {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
         Err(err) => Err(err),
     }
@@ -94,8 +100,8 @@ pub struct ExternalPatch {
 }
 
 /// shadPS4-format patches for 1.09 in `dir`, as bbport's `external_patches` finds them.
-pub async fn discover_patches(toolchain: &Toolchain, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
-    match helper(toolchain, "patches", &[dir]).await {
+pub async fn discover_patches(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
+    match helper(root, toolchain, "patches", &[dir]).await {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
         Err(err) => Err(err),
     }
@@ -111,8 +117,8 @@ pub struct ModProfile {
 }
 
 impl ModProfile {
-    pub fn path() -> PathBuf {
-        crate::paths::bbport_data().join("mods.json")
+    pub fn path(root: &Root) -> PathBuf {
+        root.bbport_data().join("mods.json")
     }
 
     /// File I/O, like [`ModProfile::save`]: off the UI thread.
@@ -150,8 +156,8 @@ pub struct PatchProfile {
 }
 
 impl PatchProfile {
-    pub fn path() -> PathBuf {
-        crate::paths::bbport_data().join("patches.json")
+    pub fn path(root: &Root) -> PathBuf {
+        root.bbport_data().join("patches.json")
     }
 
     /// File I/O, like [`PatchProfile::save`]: off the UI thread.
@@ -226,10 +232,15 @@ pub enum DllCheck {
 }
 
 /// `dll_info.inspect` on the chosen DLLs, with bbport's launcher's explanations.
-pub async fn check_dll(toolchain: &Toolchain, upscaler: &Path, loader: Option<&Path>) -> Result<DllCheck, String> {
+pub async fn check_dll(
+    root: &Root,
+    toolchain: &Toolchain,
+    upscaler: &Path,
+    loader: Option<&Path>,
+) -> Result<DllCheck, String> {
     let mut args = vec![upscaler];
     args.extend(loader);
-    let answer = match helper(toolchain, "dll", &args).await {
+    let answer = match helper(root, toolchain, "dll", &args).await {
         Ok(answer) => answer,
         Err(err) => return Err(err),
     };
@@ -277,20 +288,21 @@ pub async fn check_dll(toolchain: &Toolchain, upscaler: &Path, loader: Option<&P
 /// folder must be under `$HOME` for Steam's runtime, which decanter's data
 /// directory is.
 pub async fn fsr411_build_command(
+    root: &Root,
     toolchain: &Toolchain,
     upscaler: &Path,
     loader: Option<&Path>,
 ) -> io::Result<Command> {
     let script =
         r#"exec bash tools/fsr4cap/build_assets.sh "$DECANTER_UPSCALER" ${DECANTER_LOADER:+"$DECANTER_LOADER"}"#;
-    let mut command = match toolchain.command(Port::Bbport, &Port::Bbport.checkout(), script).await {
+    let mut command = match toolchain.command(root, Port::Bbport, script).await {
         Ok(command) => command,
         Err(err) => return Err(err),
     };
     command
         .env("DECANTER_UPSCALER", upscaler)
-        .env("BB_FSR411_OUT", crate::paths::fsr411())
-        .env("BB_FSR4CAP_WORK", crate::paths::root().join("fsr4cap"))
+        .env("BB_FSR411_OUT", root.fsr411())
+        .env("BB_FSR4CAP_WORK", root.join("fsr4cap"))
         .env("BB_FSR4CAP_CLEAN", "1");
     if let Some(loader) = loader {
         command.env("DECANTER_LOADER", loader);

@@ -11,6 +11,7 @@ use std::io;
 use serde::{Deserialize, Serialize};
 
 use super::{Bbport, Ini};
+use crate::paths::Root;
 
 const PREFIX: &str = "pad.";
 
@@ -173,8 +174,8 @@ impl PadLayout {
 
     /// Against `bbport.ini` as it is now, like every other edit of it. File
     /// I/O: off the UI thread.
-    pub fn save_to_ini(&self) -> io::Result<()> {
-        let path = Bbport::ini_path();
+    pub fn save_to_ini(&self, root: &Root) -> io::Result<()> {
+        let path = Bbport::ini_path(root);
         let mut ini = Ini::load(&path);
         self.apply(&mut ini);
         ini.save(&path)
@@ -183,8 +184,8 @@ impl PadLayout {
 
 /// What `bbport.ini` holds now as an unsaved layout, so a hand-edited set
 /// of `pad.` lines can be copied into one. File I/O: off the UI thread.
-pub fn from_ini() -> PadLayout {
-    let ini = Ini::load(&Bbport::ini_path());
+pub fn from_ini(root: &Root) -> PadLayout {
+    let ini = Ini::load(&Bbport::ini_path(root));
     let mut lines: Vec<(String, String)> = ini
         .prefixed(PREFIX)
         .map(|(key, value)| (key[PREFIX.len()..].to_owned(), value.to_owned()))
@@ -200,8 +201,8 @@ pub fn from_ini() -> PadLayout {
 
 /// The id of the layout among `layouts` that `bbport.ini` holds now, `None`
 /// when its `pad.` lines match none. File I/O: off the UI thread.
-pub fn current<'a>(layouts: impl IntoIterator<Item = &'a PadLayout>) -> Option<String> {
-    let ini = Ini::load(&Bbport::ini_path());
+pub fn current<'a>(root: &Root, layouts: impl IntoIterator<Item = &'a PadLayout>) -> Option<String> {
+    let ini = Ini::load(&Bbport::ini_path(root));
     layouts
         .into_iter()
         .find(|layout| layout.matches(&ini))

@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use crate::anyps5::{self, AnyPs5, Eboot};
 use crate::bbport;
 use crate::library::{Game, Platform};
+use crate::paths::Root;
 use crate::port::Port;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,7 +48,7 @@ pub struct Entry {
 /// Every playable dump with its status; bare updates are left out, since
 /// they only matter as what a base game merges. Reads each PS5 executable's
 /// header and conversion: off the UI thread.
-pub fn classify(games: &[Game]) -> Vec<Entry> {
+pub fn classify(root: &Root, games: &[Game]) -> Vec<Entry> {
     games
         .iter()
         .filter(|game| !game.is_update())
@@ -55,7 +56,7 @@ pub fn classify(games: &[Game]) -> Vec<Entry> {
             let (port, status) = if bbport::is_bloodborne(game) {
                 (Some(Port::Bbport), bloodborne_status(game, games))
             } else if game.platform == Platform::Ps5 {
-                (Some(Port::AnyPs5), ps5_status(game))
+                (Some(Port::AnyPs5), ps5_status(root, game))
             } else if game.requires_vr {
                 (Some(Port::Bbport), Status::NeedsVr)
             } else if game.dir.join("eboot.bin").is_file() {
@@ -91,13 +92,13 @@ fn bloodborne_status(game: &Game, games: &[Game]) -> Status {
     }
 }
 
-fn ps5_status(game: &Game) -> Status {
+fn ps5_status(root: &Root, game: &Game) -> Status {
     match anyps5::eboot_state(game) {
         Eboot::Missing => Status::NoEboot,
         Eboot::Encrypted => Status::Encrypted,
         Eboot::Clean => {
             let converted =
-                fs::metadata(AnyPs5::output_dir(&game.title_id).join("app.elf")).is_ok_and(|meta| meta.is_file());
+                fs::metadata(AnyPs5::output_dir(root, &game.title_id).join("app.elf")).is_ok_and(|meta| meta.is_file());
             if converted { Status::Ready } else { Status::NeedsConvert }
         }
     }

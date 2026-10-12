@@ -18,6 +18,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::pad::PadLayout;
+use crate::paths::Root;
 
 /// Bumped whenever the drawing changes, so cached files are rebuilt.
 const GENERATION: u32 = 2;
@@ -270,7 +271,7 @@ fn redraw(tpf: &mut [u8], layout: &PadLayout, style: IconStyle) -> io::Result<us
 /// `base` (the game's file, or the one an enabled mod replaces it with).
 /// Built once per layout and base; older builds are removed. File I/O and
 /// some CPU: off the UI thread.
-pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<PathBuf> {
+pub fn prepare(root: &Root, layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<PathBuf> {
     let meta = fs::metadata(base)?;
     let modified = meta
         .modified()
@@ -286,8 +287,8 @@ pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<
             layout.lines
         ))
     );
-    let root = crate::paths::bbport_data().join("icons");
-    let dir = root.join(&key);
+    let builds = root.bbport_data().join("icons");
+    let dir = builds.join(&key);
     let file = dir.join(COMMON_TPF);
     if fs::metadata(&file).is_ok_and(|meta| meta.is_file()) {
         return Ok(dir);
@@ -300,7 +301,7 @@ pub fn prepare(layout: &PadLayout, style: IconStyle, base: &Path) -> io::Result<
     }
     crate::files::write_atomic(&file, &bytes)?;
     tracing::info!(redrawn, style = style.id(), dir = %dir.display(), "built button icons for the gamepad layout");
-    if let Ok(entries) = fs::read_dir(&root) {
+    if let Ok(entries) = fs::read_dir(&builds) {
         for entry in entries.flatten() {
             if entry.file_name() != key.as_str() {
                 let _ = fs::remove_dir_all(entry.path());

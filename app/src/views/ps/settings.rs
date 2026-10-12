@@ -34,7 +34,11 @@ impl SettingsView {
     fn refresh(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let dir = cx
-                .background_spawn(async { LauncherSettings::load().text(SYS_MODULES).map(str::to_owned) })
+                .background_spawn(async {
+                    LauncherSettings::load(&decanter_ps::paths::active())
+                        .text(SYS_MODULES)
+                        .map(str::to_owned)
+                })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.sys_modules = dir;
@@ -49,7 +53,7 @@ impl SettingsView {
         cx.spawn(async move |this, cx| {
             let saved = cx
                 .background_spawn(async move {
-                    LauncherSettings::edit(|settings| match &dir {
+                    LauncherSettings::edit(&decanter_ps::paths::active(), |settings| match &dir {
                         Some(dir) => settings.set_text(SYS_MODULES, dir),
                         None => settings.remove(SYS_MODULES),
                     })
@@ -83,7 +87,7 @@ impl SettingsView {
 
 impl Render for SettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let games = decanter_ps::paths::games();
+        let games = decanter_ps::paths::active().games();
         let sys_modules = self.sys_modules.clone();
         let has_sys_modules = sys_modules.is_some();
         theme::page(

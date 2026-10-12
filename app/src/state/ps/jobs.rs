@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use decanter_ps::failures::{Failure, Scanner};
+use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job};
 use decanter_ps::run_log::RunLog;
@@ -39,8 +40,13 @@ impl Finished {
 }
 
 /// Replaces whatever job `key` held before; its log goes with it.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the library is the caller's, fixed when its job started"
+)]
 pub async fn run(
     ps: &WeakEntity<Ps>,
+    root: &Root,
     key: JobKey,
     label: &str,
     command: Command,
@@ -56,7 +62,7 @@ pub async fn run(
     };
     let facts = scanner.as_ref().map(Scanner::facts).unwrap_or_default();
     // A job runs without its file rather than not at all; the log view says so.
-    let (mut log, log_error) = match RunLog::start(&target, label, &facts, &command).await {
+    let (mut log, log_error) = match RunLog::start(root, &target, label, &facts, &command).await {
         Ok(log) => (Some(log), None),
         Err(err) => {
             tracing::warn!(label, %err, "could not create the job's log file");

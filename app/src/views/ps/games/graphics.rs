@@ -19,7 +19,7 @@ pub struct GraphicsView {
 
 impl GraphicsView {
     pub fn new(ps: &Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        let load = cx.background_spawn(async { Values::load() });
+        let load = cx.background_spawn(async { Values::load(&decanter_ps::paths::active()) });
         cx.spawn(async move |this, cx| {
             let values = load.await;
             let _ = this.update(cx, |this, cx| {
@@ -41,7 +41,8 @@ impl GraphicsView {
             return;
         };
         values.set(setting, &value);
-        let task = cx.background_spawn(async move { values::save(setting, &value, None) });
+        let task =
+            cx.background_spawn(async move { values::save(&decanter_ps::paths::active(), setting, &value, None) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {

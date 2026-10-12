@@ -26,6 +26,7 @@ pub use ini::{Ini, read_binds, write_binds};
 pub use settings::LauncherSettings;
 
 use crate::library::{Game, Platform};
+use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
 
@@ -92,12 +93,16 @@ pub fn merge_update(base: &Path, update: &Path, version: &str) -> io::Result<Pat
 /// A bbport checkout. The toolchain that builds it must be the one that
 /// runs it: a nix-built `bb-probe` only loads nix's Vulkan drivers.
 pub struct Bbport {
+    root: Root,
     checkout: PathBuf,
 }
 
 impl Bbport {
-    pub const fn new(checkout: PathBuf) -> Self {
-        Self { checkout }
+    pub fn new(root: Root) -> Self {
+        Self {
+            checkout: Port::Bbport.checkout(&root),
+            root,
+        }
     }
 
     pub fn checkout(&self) -> &Path {
@@ -115,12 +120,12 @@ impl Bbport {
         self.checkout.join("out/decanter-toolchain")
     }
 
-    pub fn ini_path() -> PathBuf {
-        crate::paths::bbport_data().join("bbport.ini")
+    pub fn ini_path(root: &Root) -> PathBuf {
+        root.bbport_data().join("bbport.ini")
     }
 
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
-        toolchain.command(Port::Bbport, &self.checkout, "bash build.sh").await
+        toolchain.command(&self.root, Port::Bbport, "bash build.sh").await
     }
 
     /// After a build that succeeded.
@@ -150,11 +155,11 @@ impl Bbport {
         settings: &LauncherSettings,
         mods: &mods::Mods,
     ) -> io::Result<Command> {
-        let mut command = match toolchain.command(Port::Bbport, &self.checkout, "bash run.sh").await {
+        let mut command = match toolchain.command(&self.root, Port::Bbport, "bash run.sh").await {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
-        let data = crate::paths::bbport_data();
+        let data = self.root.bbport_data();
         let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
             .env("BB_PREBUILT", "1")
@@ -216,7 +221,7 @@ impl Bbport {
                 command.env(env, "1");
             }
         }
-        let fsr411 = crate::paths::fsr411();
+        let fsr411 = self.root.fsr411();
         if tokio::fs::metadata(&fsr411).await.is_ok_and(|meta| meta.is_dir()) {
             command.env("BB_FSR411_DIR", fsr411);
         }
@@ -237,7 +242,7 @@ impl Bbport {
     /// for this. Empty before the first build.
     pub async fn connected_gamepads(&self, toolchain: &Toolchain) -> Vec<(String, String)> {
         let command = toolchain
-            .command(Port::Bbport, &self.checkout, "out/bb-gpu-capabilities --gamepads")
+            .command(&self.root, Port::Bbport, "out/bb-gpu-capabilities --gamepads")
             .await;
         let Ok(mut command) = command else {
             return Vec::new();

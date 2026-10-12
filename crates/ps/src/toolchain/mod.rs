@@ -6,6 +6,9 @@
 //! host loads the host's Mesa, one built by nix only loads nix's, which is
 //! why every nix environment here sets `VK_DRIVER_FILES` itself and why a
 //! port is run inside the toolchain that built it.
+//!
+//! The host check can't foresee every package a port's build requires, so
+//! a host that fails to configure a port is set aside for nix from then on.
 
 mod portable;
 
@@ -16,6 +19,7 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
+use crate::paths::Root;
 use crate::port::Port;
 
 const PKGS_NIX: &str = include_str!("pkgs.nix");
@@ -74,22 +78,37 @@ pub enum Error {
 impl Toolchain {
     /// May download nix-portable (about 65 MB), reporting bytes so far and
     /// the total when the server sends one.
-    pub async fn resolve(port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
+    pub async fn resolve(root: &Root, port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
         if host_covers(port).await {
-            tracing::info!(?port, "host tools cover the port");
-            return Ok(Self::Host);
+            if !tokio::fs::try_exists(host_refused(root, port)).await.unwrap_or(false) {
+                tracing::info!(?port, "host tools cover the port");
+                return Ok(Self::Host);
+            }
+            tracing::info!(?port, "host tools failed to configure the port before");
         }
+        Self::nix(root, port, on_download).await
+    }
+
+    /// What [`Toolchain::resolve`] falls back to, never the host.
+    pub async fn nix(root: &Root, port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
         if let Some(nix_shell) = system_nix_shell().await {
             tracing::info!(?port, nix_shell = %nix_shell.display(), "using the system's nix");
             return Ok(Self::SystemNix(nix_shell));
         }
-        match portable::ensure(on_download).await {
+        match portable::ensure(root, on_download).await {
             Ok(path) => {
                 tracing::info!(?port, path = %path.display(), "using decanter's nix-portable");
                 Ok(Self::Portable(path))
             }
             Err(err) => Err(err),
         }
+    }
+
+    /// After the host's tools failed to configure `port`: later resolves
+    /// skip the host for it until the file under the toolchain folder is removed.
+    pub async fn refuse_host(root: &Root, port: Port) -> io::Result<()> {
+        tokio::fs::create_dir_all(root.toolchain()).await?;
+        tokio::fs::write(host_refused(root, port), b"").await
     }
 
     /// Stable across runs, to tell which toolchain a build came from.
@@ -117,10 +136,11 @@ impl Toolchain {
         }
     }
 
-    /// `script` run by bash inside `port`'s environment, from `checkout`.
-    /// Callers that run something elsewhere (a converted game) set their
-    /// own `current_dir` after.
-    pub async fn command(&self, port: Port, checkout: &Path, script: &str) -> io::Result<Command> {
+    /// `script` run by bash inside `port`'s environment, from its checkout
+    /// under `root`. Callers that run something elsewhere (a converted game)
+    /// set their own `current_dir` after.
+    pub async fn command(&self, root: &Root, port: Port, script: &str) -> io::Result<Command> {
+        let checkout = port.checkout(root);
         let mut command = match self {
             Self::Host => {
                 let mut command = Command::new("bash");
@@ -128,32 +148,37 @@ impl Toolchain {
                 command
             }
             Self::SystemNix(nix_shell) => {
-                let env_file = match write_env_files(&crate::paths::toolchain().join("env")).await {
+                let env_file = match write_env_files(&root.toolchain().join("env")).await {
                     Ok(dir) => dir.join(env_file(port)),
                     Err(err) => return Err(err),
                 };
                 let mut command = Command::new(nix_shell);
-                command.args(nix_shell_args(&env_file, checkout, script));
+                command.args(nix_shell_args(&env_file, &checkout, script));
                 command
             }
             Self::Portable(nix_portable) => {
-                let env_file = match write_env_files(&crate::paths::toolchain().join("env")).await {
+                let env_file = match write_env_files(&root.toolchain().join("env")).await {
                     Ok(dir) => dir.join(env_file(port)),
                     Err(err) => return Err(err),
                 };
                 let mut command = Command::new(nix_portable);
                 // Its store goes beside it rather than in `~/.nix-portable`.
                 command
-                    .env("NP_LOCATION", crate::paths::toolchain())
+                    .env("NP_LOCATION", root.toolchain())
                     .arg("nix-shell")
-                    .args(nix_shell_args(&env_file, checkout, script));
+                    .args(nix_shell_args(&env_file, &checkout, script));
                 command
             }
         };
-        command.current_dir(checkout).stdin(Stdio::null());
+        command.current_dir(&checkout).stdin(Stdio::null());
         decanter_core::strip_launcher_env(command.as_std_mut());
         Ok(command)
     }
+}
+
+fn host_refused(root: &Root, port: Port) -> PathBuf {
+    root.toolchain()
+        .join(format!("host-refused-{}", port.name().to_lowercase()))
 }
 
 fn nix_shell_args(env_file: &Path, checkout: &Path, script: &str) -> [OsString; 6] {

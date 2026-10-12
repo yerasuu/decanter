@@ -11,6 +11,7 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
+use crate::paths::Root;
 use crate::port::Port;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,8 +161,8 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
 
 /// The first time a port is needed. Into a sibling directory renamed into
 /// place at the end, so an interrupted clone never looks like a checkout.
-pub fn clone_command(port: Port) -> Command {
-    let checkout = port.checkout();
+pub fn clone_command(root: &Root, port: Port) -> Command {
+    let checkout = port.checkout(root);
     let partial = checkout.with_extension("cloning");
     let mut command = Command::new("bash");
     command
@@ -199,8 +200,9 @@ pub fn fast_forward_command(repo: &Path, branch: &str) -> Command {
 }
 
 /// Where [`reset_command`] saves the local diff of `port`'s checkout.
-pub fn backup_path(port: Port, head: &str) -> PathBuf {
-    crate::paths::backups().join(format!("{}-{head}.patch", port.name().to_lowercase()))
+pub fn backup_path(root: &Root, port: Port, head: &str) -> PathBuf {
+    root.backups()
+        .join(format!("{}-{head}.patch", port.name().to_lowercase()))
 }
 
 /// Only ever started by an explicit user action: saves `git diff HEAD` to

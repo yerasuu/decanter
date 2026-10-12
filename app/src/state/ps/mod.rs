@@ -110,7 +110,7 @@ impl Ps {
     pub fn failures_path(&self) -> Option<PathBuf> {
         self.profile_id
             .as_deref()
-            .map(|profile_id| decanter_ps::paths::profile(profile_id).join("failures.jsonl"))
+            .map(|profile_id| decanter_ps::paths::active().profile(profile_id).join("failures.jsonl"))
     }
 
     pub fn failures_changed(&mut self, cx: &mut Context<Self>) {
@@ -181,12 +181,13 @@ impl Ps {
         cx.notify();
         // The library's own folder, made if missing so there is a place to
         // drop dumps in.
+        let root = decanter_ps::paths::active();
         let task = cx.background_spawn(async move {
-            let games = decanter_ps::paths::games();
+            let games = root.games();
             if let Err(err) = std::fs::create_dir_all(&games) {
                 return Err(format!("No se pudo crear {}: {err}", games.display()));
             }
-            Ok(status::classify(&library::scan(std::slice::from_ref(&games))))
+            Ok(status::classify(&root, &library::scan(std::slice::from_ref(&games))))
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;

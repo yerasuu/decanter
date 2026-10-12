@@ -28,7 +28,8 @@ impl Ps {
         cx: &mut Context<Self>,
         on_checked: impl FnOnce(DllOutcome, &mut gpui::App) + 'static,
     ) {
-        let prepared = self.prepare(Port::Bbport, cx);
+        let root = decanter_ps::paths::active();
+        let prepared = self.prepare(Port::Bbport, &root, cx);
         self.notice = Some(("Comprobando la DLL…".to_owned(), false));
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -39,7 +40,7 @@ impl Ps {
                     return;
                 }
             };
-            let checked = tools::check_dll(&toolchain, &upscaler, loader.as_deref()).await;
+            let checked = tools::check_dll(&root, &toolchain, &upscaler, loader.as_deref()).await;
             let found_loader = match checked {
                 Ok(DllCheck::Ready { loader: found }) => loader.or(found),
                 Ok(DllCheck::NeedsLoader) => {
@@ -57,7 +58,8 @@ impl Ps {
                 }
             };
             cx.update(|cx| on_checked(DllOutcome::Building, cx));
-            let command = match tools::fsr411_build_command(&toolchain, &upscaler, found_loader.as_deref()).await {
+            let command = match tools::fsr411_build_command(&root, &toolchain, &upscaler, found_loader.as_deref()).await
+            {
                 Ok(command) => command,
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
@@ -67,7 +69,16 @@ impl Ps {
                     return;
                 }
             };
-            let finished = jobs::run(&this, JobKey::Fsr411, "compilación de FSR 4.1.1", command, None, cx).await;
+            let finished = jobs::run(
+                &this,
+                &root,
+                JobKey::Fsr411,
+                "compilación de FSR 4.1.1",
+                command,
+                None,
+                cx,
+            )
+            .await;
             let stopped = this
                 .update(cx, |this, cx| {
                     this.jobs
@@ -82,7 +93,8 @@ impl Ps {
                     .find(|setting| setting.key == "upscaler");
                 let chosen = match upscaler {
                     Some(setting) => {
-                        cx.background_spawn(async move { values::save(setting, "fsr411", None) })
+                        let root = root.clone();
+                        cx.background_spawn(async move { values::save(&root, setting, "fsr411", None) })
                             .await
                     }
                     None => Ok(()),

@@ -20,19 +20,35 @@ const CACHE_DIR_KEY: &str = "CMAKE_CACHEFILE_DIR:INTERNAL=";
 /// I/O over the checkout's top levels: off the UI thread.
 pub fn forget_moved(checkout: &Path) -> io::Result<Vec<PathBuf>> {
     let mut reset = Vec::new();
-    walk(checkout, 0, &mut reset)?;
+    walk(checkout, 0, &moved, &mut reset)?;
     Ok(reset)
 }
 
-fn walk(dir: &Path, depth: usize, reset: &mut Vec<PathBuf>) -> io::Result<()> {
+/// Removes every cache, for a build that changes toolchain: a cache keeps the
+/// compiler it first found whatever the new environment provides.
+pub fn forget_all(checkout: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut reset = Vec::new();
+    walk(checkout, 0, &|_, _| true, &mut reset)?;
+    Ok(reset)
+}
+
+fn moved(dir: &Path, cache: &str) -> bool {
+    cache
+        .lines()
+        .find_map(|line| line.strip_prefix(CACHE_DIR_KEY))
+        .is_some_and(|recorded| {
+            Path::new(recorded) != dir
+                && !matches!(
+                    (fs::canonicalize(recorded), fs::canonicalize(dir)),
+                    (Ok(physical), Ok(here)) if physical == here
+                )
+        })
+}
+
+fn walk(dir: &Path, depth: usize, stale: &dyn Fn(&Path, &str) -> bool, reset: &mut Vec<PathBuf>) -> io::Result<()> {
     let cache = dir.join("CMakeCache.txt");
     if let Ok(text) = fs::read_to_string(&cache)
-        && let Some(recorded) = text.lines().find_map(|line| line.strip_prefix(CACHE_DIR_KEY))
-        && Path::new(recorded) != dir
-        && !matches!(
-            (fs::canonicalize(recorded), fs::canonicalize(dir)),
-            (Ok(physical), Ok(here)) if physical == here
-        )
+        && stale(dir, &text)
     {
         fs::remove_file(&cache)?;
         match fs::remove_dir_all(dir.join("CMakeFiles")) {
@@ -63,7 +79,7 @@ fn walk(dir: &Path, depth: usize, reset: &mut Vec<PathBuf>) -> io::Result<()> {
         // `.git` is large.
         let name = entry.file_name();
         if is_dir && !matches!(name.to_str(), Some(".git" | "third_party" | "3rdparty")) {
-            walk(&entry.path(), depth + 1, reset)?;
+            walk(&entry.path(), depth + 1, stale, reset)?;
         }
     }
     Ok(())

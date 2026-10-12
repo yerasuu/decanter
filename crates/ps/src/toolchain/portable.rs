@@ -8,6 +8,7 @@ use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt as _;
 
 use super::Error;
+use crate::paths::Root;
 
 /// Pinned and bumped deliberately, like `umu-run`: a new nix-portable
 /// changing how the ports build is worth testing first.
@@ -17,14 +18,14 @@ const VERSION: &str = "v012";
 /// publishes no checksum of its own.
 const SHA256: &str = "b409c55904c909ac3aeda3fb1253319f86a89ddd1ba31a5dec33d4a06414c72a";
 
-fn path() -> PathBuf {
-    crate::paths::toolchain().join("nix-portable")
+fn path(root: &Root) -> PathBuf {
+    root.toolchain().join("nix-portable")
 }
 
 /// Only a download whose checksum matched is ever renamed into place, so
 /// a file at [`path`] is trusted as is.
-pub(super) async fn ensure(mut on_download: impl FnMut(u64, Option<u64>)) -> Result<PathBuf, Error> {
-    let path = path();
+pub(super) async fn ensure(root: &Root, mut on_download: impl FnMut(u64, Option<u64>)) -> Result<PathBuf, Error> {
+    let path = path(root);
     if tokio::fs::metadata(&path).await.is_ok_and(|meta| meta.is_file()) {
         return Ok(path);
     }

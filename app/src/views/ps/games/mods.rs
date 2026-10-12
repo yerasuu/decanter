@@ -40,7 +40,8 @@ impl ModsView {
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        let prepared = self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, cx));
+        let root = decanter_ps::paths::active();
+        let prepared = self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, &root, cx));
         cx.spawn(async move |this, cx| {
             let toolchain = match prepared.await {
                 Ok(toolchain) => toolchain,
@@ -52,21 +53,25 @@ impl ModsView {
                     return;
                 }
             };
-            let read = cx.background_spawn(async {
-                let settings = LauncherSettings::load();
-                let data = decanter_ps::paths::bbport_data();
-                let dir =
-                    |key: &str, fallback: &str| settings.text(key).map_or_else(|| data.join(fallback), PathBuf::from);
-                (
-                    dir("mods_dir", "mods"),
-                    dir("patches_dir", "patches"),
-                    ModProfile::load(&ModProfile::path()),
-                    PatchProfile::load(&PatchProfile::path()),
-                )
+            let read = cx.background_spawn({
+                let root = root.clone();
+                async move {
+                    let settings = LauncherSettings::load(&root);
+                    let data = root.bbport_data();
+                    let dir = |key: &str, fallback: &str| {
+                        settings.text(key).map_or_else(|| data.join(fallback), PathBuf::from)
+                    };
+                    (
+                        dir("mods_dir", "mods"),
+                        dir("patches_dir", "patches"),
+                        ModProfile::load(&ModProfile::path(&root)),
+                        PatchProfile::load(&PatchProfile::path(&root)),
+                    )
+                }
             });
             let (mods_dir, patches_dir, mod_profile, patch_profile) = read.await;
-            let mods = tools::discover_mods(&toolchain, &mods_dir).await;
-            let patches = tools::discover_patches(&toolchain, &patches_dir).await;
+            let mods = tools::discover_mods(&root, &toolchain, &mods_dir).await;
+            let patches = tools::discover_patches(&root, &toolchain, &patches_dir).await;
             let _ = this.update(cx, |this, cx| {
                 this.found = Some(Ok(Found {
                     mods_dir,
@@ -87,7 +92,7 @@ impl ModsView {
             return;
         };
         let profile = found.mod_profile.clone();
-        let task = cx.background_spawn(async move { profile.save(&ModProfile::path()) });
+        let task = cx.background_spawn(async move { profile.save(&ModProfile::path(&decanter_ps::paths::active())) });
         self.after_save(task, "mods.json", cx);
     }
 
@@ -96,7 +101,7 @@ impl ModsView {
             return;
         };
         let profile = found.patch_profile.clone();
-        let task = cx.background_spawn(async move { profile.save(&PatchProfile::path()) });
+        let task = cx.background_spawn(async move { profile.save(&PatchProfile::path(&decanter_ps::paths::active())) });
         self.after_save(task, "patches.json", cx);
     }
 
@@ -160,7 +165,9 @@ impl ModsView {
             };
             let path = folder.path().to_string_lossy().into_owned();
             let saved = cx
-                .background_spawn(async move { LauncherSettings::edit(|settings| settings.set_text(key, &path)) })
+                .background_spawn(async move {
+                    LauncherSettings::edit(&decanter_ps::paths::active(), |settings| settings.set_text(key, &path))
+                })
                 .await;
             let _ = this.update(cx, |this, cx| match saved {
                 Ok(()) => this.refresh(cx),

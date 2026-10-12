@@ -9,6 +9,7 @@ use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::{self, Bbport, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner};
 use decanter_ps::library::Game;
+use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
@@ -37,15 +38,16 @@ impl Ps {
             return;
         }
         let game = entry.game.clone();
-        let failures_path = decanter_ps::paths::profile(&profile_id).join("failures.jsonl");
-        let prepared = self.prepare(port, cx);
+        let root = decanter_ps::paths::active();
+        let failures_path = root.profile(&profile_id).join("failures.jsonl");
+        let prepared = self.prepare(port, &root, cx);
         self.notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let command = match prepared.await {
                 Ok(toolchain) => match port {
-                    Port::Bbport => bbport_command(&toolchain, &game, &profile_id, cx).await,
-                    Port::AnyPs5 => anyps5_command(&this, &toolchain, &game, &profile_id, cx).await,
+                    Port::Bbport => bbport_command(&root, &toolchain, &game, &profile_id, cx).await,
+                    Port::AnyPs5 => anyps5_command(&this, &root, &toolchain, &game, &profile_id, cx).await,
                 },
                 Err(err) => Err(format!("No se pudo preparar {}: {err}", port.name())),
             };
@@ -56,10 +58,11 @@ impl Ps {
                     return notify(&this, err, true, cx);
                 }
             };
-            let commit = failures::commit_of(&port.checkout()).await;
+            let commit = failures::commit_of(&port.checkout(&root)).await;
             let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit);
             let finished = jobs::run(
                 &this,
+                &root,
                 JobKey::Game(game.dir.clone()),
                 "juego",
                 command,
@@ -109,13 +112,17 @@ fn notify(this: &WeakEntity<Ps>, text: String, error: bool, cx: &mut AsyncApp) {
 }
 
 async fn bbport_command(
+    root: &Root,
     toolchain: &Toolchain,
     game: &Game,
     profile_id: &str,
     cx: &mut AsyncApp,
 ) -> Result<Command, String> {
-    let settings = cx.background_spawn(async { LauncherSettings::load() }).await;
-    let bbport = Bbport::new(Port::Bbport.checkout());
+    let settings = {
+        let root = root.clone();
+        cx.background_spawn(async move { LauncherSettings::load(&root) }).await
+    };
+    let bbport = Bbport::new(root.clone());
     let mods = if bbport::is_bloodborne(game) {
         // The automatic icon style follows the pad bbport will read: the one
         // picked in Mando, else the first connected.
@@ -129,19 +136,20 @@ async fn bbport_command(
         };
         let game_dir = game.dir.clone();
         let for_mods = settings.clone();
+        let root = root.clone();
         // The layout's button icons are built here when they need to be: a few
         // hundred milliseconds of decoding and encoding, off the UI thread.
         let mods = cx
-            .background_spawn(async move { bbport::mods::prepare(&game_dir, &for_mods, detected) })
+            .background_spawn(async move { bbport::mods::prepare(&root, &game_dir, &for_mods, detected) })
             .await;
         match mods {
             Ok(mods) => mods,
             Err(err) => return Err(format!("No se pudieron preparar los mods y los iconos: {err}")),
         }
     } else {
-        bbport::mods::Mods::off(&settings)
+        bbport::mods::Mods::off(root, &settings)
     };
-    let user_dir = decanter_ps::paths::profile(profile_id).join("bbport/user");
+    let user_dir = root.profile(profile_id).join("bbport/user");
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
         return Err(format!("No se pudo crear {}: {err}", user_dir.display()));
     }
@@ -155,17 +163,18 @@ async fn bbport_command(
 /// shared, the run directory is the profile's.
 async fn anyps5_command(
     this: &WeakEntity<Ps>,
+    root: &Root,
     toolchain: &Toolchain,
     game: &Game,
     profile_id: &str,
     cx: &mut AsyncApp,
 ) -> Result<Command, String> {
-    let anyps5 = AnyPs5::new(Port::AnyPs5.checkout());
-    if !AnyPs5::is_converted(&game.title_id).await {
+    let anyps5 = AnyPs5::new(root.clone());
+    if !anyps5.is_converted(&game.title_id).await {
         let prepared = {
-            let checkout = Port::AnyPs5.checkout();
+            let root = root.clone();
             let game = game.clone();
-            cx.background_spawn(async move { AnyPs5::new(checkout).prepare_output(&game) })
+            cx.background_spawn(async move { AnyPs5::new(root).prepare_output(&game) })
                 .await
         };
         if let Err(err) = prepared {
@@ -175,21 +184,27 @@ async fn anyps5_command(
             Ok(command) => command,
             Err(err) => return Err(format!("No se pudo preparar el entorno: {err}")),
         };
-        let finished = jobs::run(this, JobKey::Game(game.dir.clone()), "conversión", command, None, cx).await;
+        let finished = jobs::run(
+            this,
+            root,
+            JobKey::Game(game.dir.clone()),
+            "conversión",
+            command,
+            None,
+            cx,
+        )
+        .await;
         if !finished.succeeded() {
             return Err("La conversión falló; mira su registro".to_owned());
         }
     }
-    let run_dir = decanter_ps::paths::profile(profile_id)
-        .join("anyps5")
-        .join(&game.title_id);
+    let run_dir = root.profile(profile_id).join("anyps5").join(&game.title_id);
     let laid_out = {
         let title_id = game.title_id.clone();
         let run_dir = run_dir.clone();
-        cx.background_spawn(async move {
-            anyps5::prepare_run_dir(&AnyPs5::new(Port::AnyPs5.checkout()), &title_id, &run_dir)
-        })
-        .await
+        let root = root.clone();
+        cx.background_spawn(async move { anyps5::prepare_run_dir(&AnyPs5::new(root), &title_id, &run_dir) })
+            .await
     };
     if let Err(err) = laid_out {
         return Err(format!("No se pudo preparar {}: {err}", run_dir.display()));

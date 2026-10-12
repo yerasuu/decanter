@@ -61,7 +61,7 @@ pub struct Store {
 
 impl Store {
     fn path() -> PathBuf {
-        crate::paths::root().join("layouts.json")
+        crate::paths::active().join("layouts.json")
     }
 
     /// A missing file is an empty store; one that does not parse is an

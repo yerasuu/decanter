@@ -12,11 +12,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncWriteExt as _, BufWriter};
 use tokio::process::Command;
 
+use crate::paths::Root;
+
 /// Logs kept per job kind and target; older ones are deleted when a new one starts.
 const KEEP: usize = 30;
 
-pub fn dir() -> PathBuf {
-    crate::paths::root().join("logs")
+pub fn dir(root: &Root) -> PathBuf {
+    root.join("logs")
 }
 
 pub struct RunLog {
@@ -27,8 +29,14 @@ pub struct RunLog {
 impl RunLog {
     /// `target` names what the job is about (a title ID, a port); `facts` go in the header
     /// before the command. Must be called before `command` is spawned.
-    pub async fn start(target: &str, label: &str, facts: &[(&str, String)], command: &Command) -> io::Result<Self> {
-        let dir = dir();
+    pub async fn start(
+        root: &Root,
+        target: &str,
+        label: &str,
+        facts: &[(&str, String)],
+        command: &Command,
+    ) -> io::Result<Self> {
+        let dir = dir(root);
         tokio::fs::create_dir_all(&dir).await?;
         let prefix = format!("{}-{}-", slug(target), slug(label));
         prune(&dir, &prefix).await?;
