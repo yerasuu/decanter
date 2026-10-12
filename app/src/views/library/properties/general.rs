@@ -85,7 +85,7 @@ impl Render for GeneralTab {
                 )
                 .on_click(move |_, _, _| {
                     if let Err(err) = crate::desktop::open(&path) {
-                        tracing::error!("no se pudo abrir la carpeta: {err}");
+                        tracing::error!(path = %path.display(), %err, "could not open the folder");
                     }
                 }),
             )

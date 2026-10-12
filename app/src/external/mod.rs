@@ -144,7 +144,25 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
 /// installed. A game that only shares a launcher's prefix leaves it be.
 /// Files it was pointed at outside the prefix are left alone: decanter
 /// never put them there.
-pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
+/// Why [`remove`] stopped: logged as it is, worded for the UI by [`RemoveError::localized`].
+#[derive(Debug, thiserror::Error)]
+pub enum RemoveError {
+    #[error(transparent)]
+    Store(#[from] crate::core::StoreError),
+    #[error("manifest removal failed: {0}")]
+    Manifest(std::io::Error),
+}
+
+impl RemoveError {
+    pub fn localized(&self) -> String {
+        match self {
+            Self::Store(err) => err.localized(),
+            Self::Manifest(err) => t!("external.errors.remove", error = err).into_owned(),
+        }
+    }
+}
+
+pub fn remove(profile_id: &str, id: &str) -> Result<(), RemoveError> {
     let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
     let removed = library.read_manifest(profile_id, Storefront::Unspecified, id);
     // Games a launcher installed live in its prefix, which is about to go:
@@ -159,7 +177,7 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
         library
             .remove_manifest(profile_id, Storefront::Unspecified, id)
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to remove external game manifest"))
-            .map_err(|err| t!("external.errors.remove", error = err).into_owned())
+            .map_err(RemoveError::Manifest)
     );
     if crate::taskbar::remove(library.root(), &crate::taskbar::key(Storefront::Unspecified, id)) {
         tokio::spawn(crate::taskbar::refresh());
@@ -181,7 +199,7 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
     // again are only clutter.
     if let Err(err) = crate::core::db().and_then(|db| {
         db.forget_product(profile_id, Storefront::Unspecified, id)
-            .map_err(|err| err.to_string())
+            .map_err(crate::core::StoreError::Query)
     }) {
         tracing::warn!(profile_id, id, %err, "could not forget external game's favorites, playtime and collections");
     }
@@ -231,7 +249,7 @@ pub fn drive_c(profile_id: &str, id: &str, library_root: Option<&Path>) -> Optio
 
 /// `profile_id`'s library with new games aimed at `root`, if one was
 /// picked.
-pub fn library_in(profile_id: &str, root: Option<&Path>) -> Result<decanter_core::Library, String> {
+pub fn library_in(profile_id: &str, root: Option<&Path>) -> Result<decanter_core::Library, crate::core::StoreError> {
     crate::core::library_for_profile(profile_id).map(|library| match root {
         Some(root) => library.targeting(root),
         None => library,

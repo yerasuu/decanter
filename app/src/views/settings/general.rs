@@ -38,13 +38,13 @@ impl GeneralTab {
     fn reload(&mut self) {
         self.language = i18n::saved();
         self.close_to_tray = crate::core::db()
-            .and_then(|db| db.close_to_tray().map_err(|err| err.to_string()))
+            .and_then(|db| db.close_to_tray().map_err(crate::core::StoreError::Query))
             .inspect_err(
                 |err| tracing::warn!(error = %err, "failed to read close_to_tray setting, defaulting to false"),
             )
             .unwrap_or(false);
         self.steam_export_enabled = crate::core::db()
-            .and_then(|db| db.steam_export_enabled().map_err(|err| err.to_string()))
+            .and_then(|db| db.steam_export_enabled().map_err(crate::core::StoreError::Query))
             .inspect_err(
                 |err| tracing::warn!(error = %err, "failed to read steam_export_enabled setting, defaulting to true"),
             )

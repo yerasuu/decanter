@@ -107,6 +107,7 @@ mod external;
 mod format;
 mod i18n;
 mod launch;
+mod logs;
 mod relocate;
 mod state;
 mod taskbar;
@@ -119,9 +120,10 @@ mod widgets;
 rust_i18n::i18n!("locales", fallback = "es");
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    logs::init();
     let cli = cli::Cli::parse();
     open_library(cli.library);
+    logs::open();
 
     // A recognized subcommand runs headless and exits before any of the
     // GUI setup below ever runs — see `cli`. No subcommand (the ordinary
@@ -202,9 +204,9 @@ fn open_library(chosen: Option<std::path::PathBuf>) {
 /// in Ajustes only takes effect on the next launch.
 fn close_to_tray() -> bool {
     let value = core::db()
-        .and_then(|db| db.close_to_tray().map_err(|err| err.to_string()))
+        .and_then(|db| db.close_to_tray().map_err(crate::core::StoreError::Query))
         .unwrap_or_else(|err| {
-            tracing::warn!("could not read close_to_tray setting: {err}");
+            tracing::warn!(%err, "could not read close_to_tray setting");
             false
         });
     tracing::debug!(close_to_tray = value, "resolved close-to-tray setting");

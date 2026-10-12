@@ -591,7 +591,9 @@ fn prune(account_id: &str, shown: &mut Vec<LibraryEntry>, fetched: &[LibraryEntr
     let keep: Vec<String> = fetched.iter().map(|entry| entry.game.id.clone()).collect();
     match decanter_core::Db::open_active() {
         Ok(db) => match db.retain_games(account_id, decanter_core::Storefront::Gog, &keep) {
-            Ok(dropped) if dropped > 0 => tracing::info!("{dropped} game(s) are no longer in this GOG account"),
+            Ok(dropped) if dropped > 0 => {
+                tracing::info!(account_id, dropped, "games no longer owned dropped from the cache");
+            }
             Ok(_) => {}
             Err(err) => tracing::warn!(account_id, %err, "failed to prune games no longer owned from cache"),
         },

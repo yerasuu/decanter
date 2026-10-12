@@ -188,7 +188,7 @@ impl CloudSavesTab {
             }
             Err(err) if report_errors => {
                 tracing::error!(account_id, product_id = game_id, error = %err, "failed to save auto-detected cloud save path");
-                self.error = err;
+                self.error = err.localized();
             }
             Err(err) => {
                 tracing::warn!(account_id, product_id = game_id, error = %err, "failed to save auto-detected cloud save path, not reported to user");
@@ -230,7 +230,7 @@ impl CloudSavesTab {
             }
             Err(err) => {
                 tracing::error!(account_id, product_id, path = value, error = %err, "failed to save cloud save path");
-                self.error = err;
+                self.error = err.localized();
                 cx.notify();
             }
         }

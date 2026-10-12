@@ -121,7 +121,9 @@ pub async fn check_all_updates(library: &decanter_core::Library, account_id: &st
         match check_update(account_id, &game).await {
             Ok(Some(build_id)) => outdated.push((game, build_id)),
             Ok(None) => {}
-            Err(err) => tracing::debug!("update check failed for {}: {err}", game.game_id),
+            Err(err) => {
+                tracing::debug!(game_id = %game.game_id, error = %format_args!("{err:#}"), "update check failed");
+            }
         }
     }
     tracing::info!(

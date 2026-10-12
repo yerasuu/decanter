@@ -409,7 +409,7 @@ pub async fn uninstall(library: &Library, account_id: &str, product_id: &str) ->
     // Checked after the manifest is gone, so this profile's own record
     // doesn't count as another owner.
     if library.install_dir_is_shared(&game.install_dir, account_id, product_id) {
-        tracing::info!("keeping {} — another profile still has it installed", game.install_dir);
+        tracing::info!(account_id, product_id, install_dir = %game.install_dir, "files kept, another profile still has them installed");
         return Ok(());
     }
     if let Some(directory) = library.install_dir(&game.install_dir) {

@@ -7,10 +7,51 @@
 //! for the query they're making, the way `library::data` always has. Whether
 //! the database opened at all is resolved once, in `state::Session`.
 
+use std::path::PathBuf;
+
 use decanter_core::{Db, InstalledGame, Library, Profile, Storefront};
 use rust_i18n::t;
 
-pub fn db() -> Result<Db, String> {
+/// Why the database or a library can't be reached: logged as it is, worded for the UI by
+/// [`StoreError::localized`], which is also what it becomes as one of the `String` errors the
+/// views show.
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    #[error("no library configured")]
+    NoLibrary,
+    #[error("library at {} is not mounted", .0.display())]
+    Unavailable(PathBuf),
+    #[error("database open failed: {0}")]
+    Open(decanter_core::Error),
+    #[error("database query failed: {0}")]
+    Query(decanter_core::Error),
+    #[error("{0} has no manifest")]
+    NotInstalled(String),
+    #[error("manifest write failed: {0}")]
+    Manifest(std::io::Error),
+}
+
+impl StoreError {
+    pub fn localized(&self) -> String {
+        match self {
+            Self::NoLibrary => t!("messages.errors.no_library"),
+            Self::Unavailable(root) => t!("messages.errors.library_unavailable", path = root.display()),
+            Self::Open(err) => t!("messages.errors.db_open", error = err),
+            Self::Query(err) => return err.to_string(),
+            Self::NotInstalled(_) => t!("messages.errors.not_installed"),
+            Self::Manifest(err) => t!("messages.errors.save_manifest", error = err),
+        }
+        .into_owned()
+    }
+}
+
+impl From<StoreError> for String {
+    fn from(err: StoreError) -> Self {
+        err.localized()
+    }
+}
+
+pub fn db() -> Result<Db, StoreError> {
     match Db::open_active() {
         Ok(db) => {
             // Called on nearly every read across the app, so success is
@@ -24,16 +65,13 @@ pub fn db() -> Result<Db, String> {
             // swallows it into a default/empty state; this is the one place
             // that always sees it, so it's the one place that logs it.
             tracing::warn!(%err, "failed to open db");
-            Err(t!("messages.errors.db_open", error = err).into_owned())
+            Err(StoreError::Open(err))
         }
     }
 }
 
-fn no_library() -> String {
-    decanter_core::bootstrap::unavailable_root().map_or_else(
-        || t!("messages.errors.no_library").into_owned(),
-        |root| t!("messages.errors.library_unavailable", path = root.display()).into_owned(),
-    )
+fn no_library() -> StoreError {
+    decanter_core::bootstrap::unavailable_root().map_or(StoreError::NoLibrary, StoreError::Unavailable)
 }
 
 /// Creates a fresh profile and makes it the active one — the only way a
@@ -103,7 +141,7 @@ pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile,
 pub fn profiles_by_library() -> Vec<(std::path::PathBuf, Option<Vec<Profile>>)> {
     let active = decanter_core::bootstrap::active_root();
     let own = db()
-        .and_then(|db| db.list_profiles().map_err(|err| err.to_string()))
+        .and_then(|db| db.list_profiles().map_err(crate::core::StoreError::Query))
         .inspect_err(|err| tracing::warn!(%err, "failed to list profiles"))
         .unwrap_or_default();
     let others = decanter_core::bootstrap::known_roots()
@@ -151,7 +189,7 @@ pub fn switch_library(root: &std::path::Path, profile_id: &str) -> Result<(), St
 /// The library the database lives in — what a profile that never chose a
 /// location of its own uses, and the fallback for an account that (for
 /// whatever reason) resolves to no profile at all.
-pub fn library() -> Result<Library, String> {
+pub fn library() -> Result<Library, StoreError> {
     match decanter_core::bootstrap::active_root() {
         Some(root) => Ok(Library::new(root)),
         None => {
@@ -164,12 +202,12 @@ pub fn library() -> Result<Library, String> {
 /// The `Library` `profile_id` actually uses — its own chosen location if
 /// it's ever set one, otherwise [`library`]'s shared default — together
 /// with every other library folder it keeps games in.
-pub fn library_for_profile(profile_id: &str) -> Result<Library, String> {
+pub fn library_for_profile(profile_id: &str) -> Result<Library, StoreError> {
     let db = db()?;
     let chosen = crate::achv_try!(
         db.profile_library_path(profile_id)
             .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to read profile library path, using default"))
-            .map_err(|err| err.to_string())
+            .map_err(StoreError::Query)
     );
     let primary = match chosen {
         Some(path) => Library::new(path),
@@ -218,6 +256,7 @@ pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<
             .map_err(|err| t!("storage.errors.add", error = err).into_owned())
     );
     if let Err(err) = library_for_profile(profile_id)
+        .map_err(|err| err.to_string())
         .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
     {
         // Informational only: decanter reads its folders from the database.
@@ -247,6 +286,7 @@ pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result
             .map_err(|err| t!("storage.errors.remove", error = err).into_owned())
     );
     if let Err(err) = library_for_profile(profile_id)
+        .map_err(|err| err.to_string())
         .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
     {
         tracing::warn!(profile_id, %err, "could not update libraryfolders.vdf");
@@ -262,12 +302,12 @@ pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result
 /// for an account that resolves to no profile (shouldn't happen in
 /// practice, but an orphaned account is still better served by the shared
 /// default than a hard failure).
-pub fn library_for_account(account_id: &str) -> Result<Library, String> {
+pub fn library_for_account(account_id: &str) -> Result<Library, StoreError> {
     let db = db()?;
     let profile_id = crate::achv_try!(
         db.profile_id_for_account(account_id, Storefront::Gog)
             .inspect_err(|err| tracing::warn!(account_id, %err, "failed to resolve profile for account, using default"))
-            .map_err(|err| err.to_string())
+            .map_err(StoreError::Query)
     );
     if let Some(profile_id) = profile_id {
         return library_for_profile(&profile_id);
@@ -319,17 +359,17 @@ pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> 
 /// Sets (or clears) which local folder syncs against this game's Cloud
 /// Saves bucket — usually pre-filled from [`detect_cloud_save_locations`],
 /// but always overridable by hand.
-pub fn set_cloud_save_path(account_id: &str, product_id: &str, path: Option<&str>) -> Result<(), String> {
+pub fn set_cloud_save_path(account_id: &str, product_id: &str, path: Option<&str>) -> Result<(), StoreError> {
     let library = crate::achv_try!(library_for_account(account_id));
     let mut current = crate::achv_try!(
-        installed_game(account_id, product_id).ok_or_else(|| t!("messages.errors.not_installed").into_owned())
+        installed_game(account_id, product_id).ok_or_else(|| StoreError::NotInstalled(product_id.to_owned()))
     );
     current.cloud_save_path = path.filter(|value| !value.is_empty()).map(str::to_string);
     library
         .write_manifest(&current)
         .inspect(|()| tracing::debug!(account_id, product_id, "cloud save path updated"))
         .inspect_err(|err| tracing::error!(account_id, product_id, %err, "failed to save cloud save path"))
-        .map_err(|err| t!("messages.errors.save_manifest", error = err).into_owned())
+        .map_err(StoreError::Manifest)
 }
 
 /// Asks GOG's remote-config where this game keeps its saves. Empty means
@@ -363,17 +403,17 @@ pub async fn detect_cloud_save_locations(
 
 /// Stamps the manifest with when cloud saves last synced cleanly — the
 /// "changed since when" threshold the next sync classifies against.
-pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64) -> Result<(), String> {
+pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64) -> Result<(), StoreError> {
     let library = crate::achv_try!(library_for_account(account_id));
     let mut current = crate::achv_try!(
-        installed_game(account_id, product_id).ok_or_else(|| t!("messages.errors.not_installed").into_owned())
+        installed_game(account_id, product_id).ok_or_else(|| StoreError::NotInstalled(product_id.to_owned()))
     );
     current.cloud_save_last_sync = Some(last_sync);
     library
         .write_manifest(&current)
         // Failure is already warned about by every caller of this function; just note the outcome here.
         .inspect(|()| tracing::debug!(account_id, product_id, last_sync, "cloud save sync timestamp recorded"))
-        .map_err(|err| t!("messages.errors.save_manifest", error = err).into_owned())
+        .map_err(StoreError::Manifest)
 }
 
 /// Where a game runs: its own prefix, per account, created by umu on first

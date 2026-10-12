@@ -12,7 +12,7 @@
 //! A staging directory only lives as long as the form that could retry
 //! into it: leaving the form, or opening the page afresh, deletes any.
 
-use std::io::{BufRead as _, BufReader, Read as _};
+use std::io::{self, BufRead as _, BufReader, Read as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -45,6 +45,46 @@ impl Progress {
     }
 }
 
+/// Why a prefix could not be brought across: logged as it is, worded for the UI by
+/// [`Error::localized`], which is also what it becomes as a view's `String` error.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("{} is not empty: {err}", path.display())]
+    NotEmpty { path: PathBuf, err: io::Error },
+    #[error("rename into place failed: {0}")]
+    Place(io::Error),
+    #[error("measuring {} failed: {err}", path.display())]
+    Measure { path: PathBuf, err: io::Error },
+    #[error("removing {} failed: {err}", path.display())]
+    Clean { path: PathBuf, err: io::Error },
+    #[error("copy failed: {0}")]
+    Copy(io::Error),
+    #[error("rsync failed: {0}")]
+    Rsync(String),
+}
+
+impl Error {
+    pub fn localized(&self) -> String {
+        match self {
+            Self::NotEmpty { path, err } => {
+                t!("external.transfer.errors.not_empty", path = path.display(), error = err)
+            }
+            Self::Place(err) => t!("external.transfer.errors.place", error = err),
+            Self::Measure { path, err } => t!("external.transfer.errors.measure", path = path.display(), error = err),
+            Self::Clean { path, err } => t!("external.transfer.errors.clean", path = path.display(), error = err),
+            Self::Copy(err) => t!("external.transfer.errors.copy", error = err),
+            Self::Rsync(err) => t!("external.transfer.errors.rsync", error = err),
+        }
+        .into_owned()
+    }
+}
+
+impl From<Error> for String {
+    fn from(err: Error) -> Self {
+        err.localized()
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Copy,
@@ -54,18 +94,14 @@ pub enum Mode {
 /// Brings `src` to `dst`, which must not exist yet (or be empty). A move on
 /// one filesystem is a rename; anything else is a copy, and for a move
 /// `src` is removed only once the copy is whole.
-pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MoveProgress)) -> Result<(), String> {
+pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MoveProgress)) -> Result<(), Error> {
     if dst.is_dir() {
         // Left by an installer run that wrote nothing; it would block the
         // rename below.
-        crate::achv_try!(
-            std::fs::remove_dir(dst).map_err(|err| t!(
-                "external.transfer.errors.not_empty",
-                path = dst.display(),
-                error = err
-            )
-            .into_owned())
-        );
+        crate::achv_try!(std::fs::remove_dir(dst).map_err(|err| Error::NotEmpty {
+            path: dst.to_owned(),
+            err
+        }));
     }
     if mode == Mode::Move && std::fs::rename(src, dst).is_ok() {
         tracing::info!(from = %src.display(), to = %dst.display(), "prefix moved (rename)");
@@ -73,9 +109,7 @@ pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MovePro
     }
     let staging = staging_for(dst);
     crate::achv_try!(copy(src, &staging, on_progress));
-    crate::achv_try!(
-        std::fs::rename(&staging, dst).map_err(|err| t!("external.transfer.errors.place", error = err).into_owned())
-    );
+    crate::achv_try!(std::fs::rename(&staging, dst).map_err(Error::Place));
     if mode == Mode::Move
         && let Err(err) = std::fs::remove_dir_all(src)
     {
@@ -126,15 +160,11 @@ fn staging_for(dst: &Path) -> PathBuf {
     dst.with_file_name(format!(".{name}.partial"))
 }
 
-fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -> Result<(), String> {
-    let total_bytes = crate::achv_try!(
-        decanter_core::directory_size(src).map_err(|err| t!(
-            "external.transfer.errors.measure",
-            path = src.display(),
-            error = err
-        )
-        .into_owned())
-    );
+fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -> Result<(), Error> {
+    let total_bytes = crate::achv_try!(decanter_core::directory_size(src).map_err(|err| Error::Measure {
+        path: src.to_owned(),
+        err
+    }));
     on_progress(MoveProgress {
         bytes_copied: 0,
         total_bytes,
@@ -145,14 +175,14 @@ fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -
             // The built-in copy can't resume: whatever an earlier attempt
             // left would only collide with it.
             if staging.exists() {
-                crate::achv_try!(std::fs::remove_dir_all(staging).map_err(|err| {
-                    t!("external.transfer.errors.clean", path = staging.display(), error = err).into_owned()
+                crate::achv_try!(std::fs::remove_dir_all(staging).map_err(|err| Error::Clean {
+                    path: staging.to_owned(),
+                    err
                 }));
             }
-            decanter_core::copy_dir(src, staging, on_progress)
-                .map_err(|err| t!("external.transfer.errors.copy", error = err).into_owned())
+            decanter_core::copy_dir(src, staging, on_progress).map_err(Error::Copy)
         }
-        Err(RsyncError::Failed(err)) => Err(t!("external.transfer.errors.rsync", error = err).into_owned()),
+        Err(RsyncError::Failed(err)) => Err(Error::Rsync(err)),
         Ok(()) => Ok(()),
     }
 }

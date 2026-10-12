@@ -196,7 +196,7 @@ impl AccountTab {
             }
             match crate::core::db().and_then(|db| {
                 db.forget_account(&account_id, storefront)
-                    .map_err(|err| err.to_string())
+                    .map_err(crate::core::StoreError::Query)
             }) {
                 Ok(()) => {
                     tracing::info!(account_id, "account removed from profile");
@@ -209,7 +209,13 @@ impl AccountTab {
                 }
                 Err(err) => {
                     tracing::error!(account_id, error = %err, "failed to remove account from profile");
-                    Self::set_row_status(&this, &account_id, storefront, AccountStatus::Failed(err), cx);
+                    Self::set_row_status(
+                        &this,
+                        &account_id,
+                        storefront,
+                        AccountStatus::Failed(err.localized()),
+                        cx,
+                    );
                 }
             }
         })
@@ -253,10 +259,11 @@ impl AccountTab {
                                 &account.display_name,
                                 now,
                             )
-                            .map_err(|err| err.to_string())
+                            .map_err(crate::core::StoreError::Query)
                         })
                         .map(|_| account.account_id)
                         .inspect_err(|err| tracing::error!(profile_id, error = %err, "failed to save gog account"))
+                        .map_err(String::from)
                 }
                 Err(err) => {
                     tracing::error!(profile_id, error = %err, "gog login failed");
@@ -385,7 +392,7 @@ impl AccountTab {
                     }
                     let new_path = moved.root().display().to_string();
                     match crate::core::db().and_then(|moved_db| {
-                        let profiles = moved_db.list_profiles().map_err(|err| err.to_string())?;
+                        let profiles = moved_db.list_profiles().map_err(crate::core::StoreError::Query)?;
                         profiles
                             .iter()
                             .filter(|profile| {
@@ -394,7 +401,7 @@ impl AccountTab {
                             .try_for_each(|profile| {
                                 moved_db
                                     .set_profile_library_path(&profile.id, Some(&new_path))
-                                    .map_err(|err| err.to_string())
+                                    .map_err(crate::core::StoreError::Query)
                             })
                     }) {
                         Ok(()) => {

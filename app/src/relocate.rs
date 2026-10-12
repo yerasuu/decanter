@@ -82,7 +82,7 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
         {
             tracing::error!(%undo, "could not move the files back after the prefix failed to move");
         }
-        return Err(err);
+        return Err(err.localized());
     }
 
     // External games, and the games their launchers installed, record an

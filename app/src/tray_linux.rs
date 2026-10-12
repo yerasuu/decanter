@@ -126,7 +126,7 @@ pub fn spawn() -> UnboundedReceiver<TrayCommand> {
                 tracing::info!("linux tray icon started");
                 std::mem::forget(handle);
             }
-            Err(err) => tracing::warn!("could not start the Linux tray icon: {err}"),
+            Err(err) => tracing::warn!(%err, "could not start the Linux tray icon"),
         }
     });
     receiver

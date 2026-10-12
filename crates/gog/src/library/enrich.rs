@@ -102,7 +102,7 @@ pub async fn enrich_games(
     let purchased = match dates.await {
         Ok(Ok(purchased)) => purchased,
         Ok(Err(err)) => {
-            tracing::warn!("GOG order history unavailable: {err}");
+            tracing::warn!(account_id, error = %format_args!("{err:#}"), "GOG order history unavailable");
             tracing::info!(
                 account_id,
                 game_count = all.len(),
@@ -111,7 +111,7 @@ pub async fn enrich_games(
             return;
         }
         Err(err) => {
-            tracing::warn!("GOG order history task panicked: {err}");
+            tracing::warn!(account_id, %err, "GOG order history task panicked");
             tracing::info!(
                 account_id,
                 game_count = all.len(),
@@ -227,7 +227,7 @@ async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, http: &reqwest::
     // these calls — at debug level they'd drown out everything else.
     let Ok(release) = gamesdb::fetch_release(http, id)
         .await
-        .inspect_err(|err| tracing::trace!("GamesDB has no release for {id}: {err}"))
+        .inspect_err(|err| tracing::trace!(id, %err, "GamesDB has no release"))
     else {
         return false;
     };

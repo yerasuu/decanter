@@ -210,7 +210,7 @@ impl StorageView {
             // library lived inside the old data folder.
             let libraries: Vec<PathBuf> = crate::core::db()
                 .and_then(|db| {
-                    let profiles = db.list_profiles().map_err(|err| err.to_string())?;
+                    let profiles = db.list_profiles().map_err(crate::core::StoreError::Query)?;
                     Ok(profiles
                         .iter()
                         .flat_map(|profile| {

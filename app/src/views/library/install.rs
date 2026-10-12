@@ -206,8 +206,11 @@ pub async fn uninstall(
 ) -> Result<(), String> {
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
-        crate::core::library_for_account(&account_id)
-            .map_err(|err| t!("library.install.library_error", error = err).into_owned())
+        crate::core::library_for_account(&account_id).map_err(|err| t!(
+            "library.install.library_error",
+            error = err.localized()
+        )
+        .into_owned())
     );
     crate::achv_try!(
         decanter_gog::uninstall(&core_library, &account_id, &product_id)

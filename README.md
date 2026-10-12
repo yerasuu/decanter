@@ -77,7 +77,9 @@ back to the system's with "El del sistema" (System default). The change
 applies right away, except for the tray menu and text field
 placeholders, which switch on the next start, and messages already
 shown, which keep the old language until they're shown again. The
-headless CLI and the logs aren't translated.
+headless CLI and everything decanter writes (its log, the PS run logs
+and `failures.jsonl`) aren't translated: they stay in English whatever
+the language, and the UI words their data when it shows it.
 
 The texts live in `app/locales/`, one YAML file per area, each key with
 its `es` and `en` value.
@@ -127,6 +129,9 @@ Everything decanter stores lives inside the profile's library root
   library this is.
 - `<root>/decanter/art/` (art cache), `<root>/decanter/bin/` (`umu-run`),
   `<root>/decanter/{desktop,icons}/` (per-game desktop entries and icons).
+- `<root>/decanter/logs/decanter-YYYY-MM-DD.log`: decanter's own log, the
+  lines it prints to stderr plus its debug events, in English, one file
+  per UTC day, two weeks kept.
 - `<root>/psport/`: everything PS (games, ports, toolchain, settings,
   mods, logs).
 - Game files, manifests, prefixes and install staging, as before.

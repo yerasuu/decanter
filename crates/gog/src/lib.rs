@@ -70,7 +70,7 @@ pub(crate) fn http_client() -> reqwest::Client {
             // Was a silent fallback to a client with no timeout at all — the one
             // failure mode this function exists to avoid — so it's worth a warn
             // even though `Client::builder().build()` failing is rare in practice.
-            tracing::warn!("failed to build GOG HTTP client with a timeout, falling back to reqwest's default: {err}");
+            tracing::warn!(%err, "failed to build GOG HTTP client with a timeout, falling back to reqwest's default");
             reqwest::Client::default()
         })
 }

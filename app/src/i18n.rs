@@ -44,7 +44,7 @@ impl Language {
 
 pub fn saved() -> Option<Language> {
     crate::core::db()
-        .and_then(|db| db.language().map_err(|err| err.to_string()))
+        .and_then(|db| db.language().map_err(crate::core::StoreError::Query))
         .inspect_err(|err| tracing::warn!(error = %err, "failed to read language setting, following the system"))
         .ok()
         .flatten()
@@ -64,7 +64,7 @@ pub fn init() {
 pub fn set(language: Option<Language>, cx: &mut gpui::App) {
     let saved = crate::core::db().and_then(|db| {
         db.set_language(language.map(Language::code))
-            .map_err(|err| err.to_string())
+            .map_err(crate::core::StoreError::Query)
     });
     if let Err(err) = saved {
         tracing::warn!(error = %err, "failed to save language setting");

@@ -36,15 +36,15 @@ pub async fn start(
     cx: &mut AsyncApp,
 ) -> Option<std::time::Duration> {
     let Some(executable) = crate::core::executable_for(&game) else {
-        tracing::error!("{} has no launch executable", game.game_id);
+        tracing::error!(game_id = %game.game_id, "no launch executable");
         return None;
     };
     if !executable.is_file() {
-        tracing::error!("{} is not on disk", executable.display());
+        tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
         return None;
     }
     let Some(prefix) = crate::core::prefix_for(&account_id, &game.game_id) else {
-        tracing::error!("no prefix path for {}", game.game_id);
+        tracing::error!(game_id = %game.game_id, "no prefix path");
         return None;
     };
 
@@ -92,7 +92,7 @@ pub async fn start(
     let session = match decanter_runtime::start(&prefix, launch).await {
         Ok(session) => session,
         Err(err) => {
-            tracing::error!("launch failed: {err}");
+            tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
             return None;
         }
     };
@@ -103,7 +103,7 @@ pub async fn start(
     // Reported, not propagated: the session is over either way, and the
     // running state has to be cleared regardless of how it ended.
     if let Err(err) = session.wait().await {
-        tracing::warn!("session for {} ended badly: {err}", game.name);
+        tracing::warn!(game_id = %game.game_id, error = %format_args!("{err:#}"), "game session ended with an error");
     }
     set_running(&background, &game.game_id, false, cx);
     let elapsed = started.elapsed();
@@ -170,20 +170,20 @@ async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) 
     {
         Ok(outcome) if outcome.action == decanter_gog::cloud_saves::SyncAction::Conflict => {
             tracing::warn!(
-                "cloud saves conflict for {} — playing with the local copy, resolve it from Propiedades",
-                game.game_id
+                game_id = %game.game_id,
+                "cloud saves conflict before launch, playing with the local copy until resolved"
             );
             game.cloud_save_last_sync
         }
         Ok(outcome) => {
             if let Err(err) = crate::core::record_cloud_save_sync(account_id, &game.game_id, outcome.last_sync) {
-                tracing::warn!("could not record cloud saves sync for {}: {err}", game.game_id);
+                tracing::warn!(game_id = %game.game_id, error = %err, "could not record the cloud saves sync");
             }
             tracing::info!(game_id = %game.game_id, action = ?outcome.action, "cloud saves synced before launch");
             Some(outcome.last_sync)
         }
         Err(err) => {
-            tracing::warn!("cloud saves pre-launch sync failed for {}: {err}", game.game_id);
+            tracing::warn!(game_id = %game.game_id, error = %format_args!("{err:#}"), "cloud saves sync before launch failed");
             game.cloud_save_last_sync
         }
     }
@@ -206,18 +206,17 @@ async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, che
     .await
     {
         Ok(outcome) if outcome.action == decanter_gog::cloud_saves::SyncAction::Conflict => {
-            tracing::warn!(
-                "cloud saves conflict for {} after exit — resolve it from Propiedades",
-                game.game_id
-            );
+            tracing::warn!(game_id = %game.game_id, "cloud saves conflict after exit, left unresolved");
         }
         Ok(outcome) => {
             if let Err(err) = crate::core::record_cloud_save_sync(account_id, &game.game_id, outcome.last_sync) {
-                tracing::warn!("could not record cloud saves sync for {}: {err}", game.game_id);
+                tracing::warn!(game_id = %game.game_id, error = %err, "could not record the cloud saves sync");
             }
             tracing::info!(game_id = %game.game_id, action = ?outcome.action, "cloud saves synced after exit");
         }
-        Err(err) => tracing::warn!("cloud saves post-exit sync failed for {}: {err}", game.game_id),
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, error = %format_args!("{err:#}"), "cloud saves sync after exit failed");
+        }
     }
 }
 
@@ -232,7 +231,7 @@ pub async fn stop(account_id: String, game_id: String) {
     };
     match prefix.stop().await {
         Ok(()) => tracing::info!(account_id, game_id, "game stopped"),
-        Err(err) => tracing::error!("stop failed: {err}"),
+        Err(err) => tracing::error!(account_id, game_id, error = %format_args!("{err:#}"), "stop failed"),
     }
 }
 
@@ -256,14 +255,14 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
     let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
         Ok(signal) => signal,
         Err(err) => {
-            tracing::warn!("cannot watch for SIGTERM: {err}");
+            tracing::warn!(signal = "SIGTERM", %err, "cannot watch for the signal");
             return;
         }
     };
     let mut interrupt = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
         Ok(signal) => signal,
         Err(err) => {
-            tracing::warn!("cannot watch for SIGINT: {err}");
+            tracing::warn!(signal = "SIGINT", %err, "cannot watch for the signal");
             return;
         }
     };
@@ -339,6 +338,6 @@ fn record_last_played(account_id: &str, game: &InstalledGame) {
         .unwrap_or_else(|| game.clone());
     current.last_played = Some(now);
     if let Err(err) = library.write_manifest(&current) {
-        tracing::warn!("could not record last played for {}: {err}", game.game_id);
+        tracing::warn!(game_id = %game.game_id, %err, "could not record last played");
     }
 }

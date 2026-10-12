@@ -168,7 +168,7 @@ impl Shell {
             Self::switch_library(root, chosen, cx);
             return;
         }
-        match crate::core::db().and_then(|db| db.set_active_profile(chosen).map_err(|err| err.to_string())) {
+        match crate::core::db().and_then(|db| db.set_active_profile(chosen).map_err(crate::core::StoreError::Query)) {
             Ok(()) => {
                 tracing::info!(profile_id = chosen, "active profile switched");
                 decanter_core::bootstrap::remember_profile(chosen);

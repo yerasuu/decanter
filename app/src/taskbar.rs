@@ -421,7 +421,7 @@ pub async fn sweep() {
 /// anything went.
 fn remove_stale() -> bool {
     let mut roots: Vec<PathBuf> = crate::core::db()
-        .and_then(|db| db.list_profiles().map_err(|err| err.to_string()))
+        .and_then(|db| db.list_profiles().map_err(crate::core::StoreError::Query))
         .unwrap_or_default()
         .iter()
         .filter_map(|profile| crate::core::library_for_profile(&profile.id).ok())

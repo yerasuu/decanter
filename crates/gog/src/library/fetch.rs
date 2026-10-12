@@ -142,7 +142,7 @@ pub async fn list_games(
     // A failure here costs metadata and ordering, not the library — the
     // owned-id sweep below still covers everything.
     if let Err(err) = paged {
-        tracing::warn!("gog product listing failed: {err}");
+        tracing::warn!(account_id, error = %format_args!("{err:#}"), "GOG product listing failed");
     }
 
     // Owned but absent from the filtered view: that's what a non-game

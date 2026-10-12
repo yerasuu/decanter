@@ -248,7 +248,7 @@ impl DetailView {
                 .clone()
                 .update(cx, |library, cx| library.refresh_external(cx));
             let uninstall = &mut self.local.uninstall;
-            uninstall.error = result.err();
+            uninstall.error = result.err().as_ref().map(crate::external::RemoveError::localized);
             uninstall.busy = false;
             uninstall.confirming = false;
             return;

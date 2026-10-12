@@ -44,9 +44,9 @@ impl Session {
     }
 
     fn load() -> Self {
-        let core = crate::core::db().map(|_| ());
+        let core = crate::core::db().map(|_| ()).map_err(String::from);
         let active_profile = crate::core::db()
-            .and_then(|db| db.active_profile().map_err(|err| err.to_string()))
+            .and_then(|db| db.active_profile().map_err(crate::core::StoreError::Query))
             .inspect_err(|err| tracing::warn!(%err, "could not read the active profile"))
             .ok()
             .flatten()
