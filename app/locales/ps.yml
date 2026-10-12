@@ -71,6 +71,9 @@ ps.ports.stage.cloning:
 ps.ports.stage.updating:
   es: Actualizando…
   en: Updating…
+ps.ports.stage.fetching:
+  es: Descargando el port precompilado…
+  en: Downloading the prebuilt port…
 ps.ports.stage.building:
   es: Compilando…
   en: Building…
@@ -80,6 +83,12 @@ ps.ports.stage.ready:
 ps.ports.toolchain:
   es: "Entorno: %{name}"
   en: "Environment: %{name}"
+ps.ports.origin.local:
+  es: Compilado en este equipo
+  en: Built on this machine
+ps.ports.origin.cache:
+  es: Precompilado, descargado de la caché del port
+  en: Prebuilt, downloaded from the port's cache
 ps.ports.toolchains.host:
   es: herramientas del sistema
   en: system tools

@@ -138,6 +138,16 @@ impl Toolchain {
         format!("{} {}", self.id(), crate::failures::full_commit_of(checkout).await)
     }
 
+    /// Where `store_path` of this toolchain's store is seen from outside it:
+    /// nix-portable mounts its store, kept under the library, at `/nix/store`
+    /// only for what it runs.
+    pub fn store_path_on_host(&self, root: &Root, store_path: &Path) -> PathBuf {
+        match (self, store_path.strip_prefix("/")) {
+            (Self::Portable(_), Ok(relative)) => root.toolchain().join(".nix-portable").join(relative),
+            _ => store_path.to_owned(),
+        }
+    }
+
     /// `script` run by bash inside `port`'s environment, from its checkout
     /// under `root`. Callers that run something elsewhere (a converted game)
     /// set their own `current_dir` after.
@@ -175,6 +185,43 @@ impl Toolchain {
         command.current_dir(&checkout).stdin(Stdio::null());
         decanter_core::strip_launcher_env(command.as_std_mut());
         Ok(command)
+    }
+
+    /// Copies `store_path`'s closure from the binary cache at `cache` into
+    /// this toolchain's store and roots it at `gc_root`. `None` for the host,
+    /// which has no store: a prebuilt port only runs inside nix.
+    pub fn fetch_command(&self, root: &Root, cache: &str, store_path: &str, gc_root: &Path) -> Option<Command> {
+        let mut command = Command::new("bash");
+        command
+            .arg("-c")
+            .arg(
+                "set -e; cache=$1 path=$2 root=$3; shift 3; mkdir -p -- \"$(dirname -- \"$root\")\"; \
+                 \"$@\" nix --extra-experimental-features nix-command copy --no-check-sigs --from \"$cache\" -- \"$path\"; \
+                 \"$@\" nix-store --realise --add-root \"$root\" -- \"$path\" >/dev/null; \
+                 echo \"prebuilt from cache: $path\"",
+            )
+            .arg("fetch")
+            .arg(cache)
+            .arg(store_path)
+            .arg(gc_root);
+        match self {
+            Self::Host => return None,
+            Self::SystemNix(nix_shell) => {
+                // `nix` and `nix-store` sit beside `nix-shell`, which may have been found off `PATH`.
+                let dir = nix_shell.parent().map(Path::to_owned).unwrap_or_default();
+                let inherited = std::env::var_os("PATH").unwrap_or_default();
+                if let Ok(search) = std::env::join_paths(std::iter::once(dir).chain(std::env::split_paths(&inherited)))
+                {
+                    command.env("PATH", search);
+                }
+            }
+            Self::Portable(nix_portable) => {
+                command.env("NP_LOCATION", root.toolchain()).arg(nix_portable);
+            }
+        }
+        command.stdin(Stdio::null());
+        decanter_core::strip_launcher_env(command.as_std_mut());
+        Some(command)
     }
 }
 

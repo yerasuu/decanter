@@ -9,6 +9,7 @@ use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::Bbport;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
+use decanter_ps::prebuilt;
 use decanter_ps::process::JobKind;
 use decanter_ps::toolchain::{self, Toolchain};
 use decanter_ps::updater::{self, Check, Plan};
@@ -35,13 +36,23 @@ pub enum Stage {
     Cloning,
     /// Fast-forwarding the checkout to upstream, and building it again if it was prepared.
     Updating,
+    /// Fetching the checkout's commit as the port's CI built it.
+    Fetching,
     Building,
     Ready,
     Failed(String),
 }
 
+/// Where the port's current build came from, for the Ports view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildOrigin {
+    Local,
+    Cache,
+}
+
 pub struct PortState {
     stage: Stage,
+    origin: Option<BuildOrigin>,
     /// With the library it was resolved for, since nix-portable lives in each one.
     toolchain: Option<(Root, Toolchain)>,
     check: Option<Result<Check, String>>,
@@ -54,6 +65,7 @@ impl PortState {
     pub const fn new() -> Self {
         Self {
             stage: Stage::Idle,
+            origin: None,
             toolchain: None,
             check: None,
             preparing: None,
@@ -63,6 +75,10 @@ impl PortState {
 
     pub const fn stage(&self) -> &Stage {
         &self.stage
+    }
+
+    pub const fn origin(&self) -> Option<BuildOrigin> {
+        self.origin
     }
 
     pub fn toolchain(&self) -> Option<&Toolchain> {
@@ -76,7 +92,12 @@ impl PortState {
     pub const fn is_busy(&self) -> bool {
         matches!(
             self.stage,
-            Stage::Resolving | Stage::Downloading(..) | Stage::Cloning | Stage::Updating | Stage::Building
+            Stage::Resolving
+                | Stage::Downloading(..)
+                | Stage::Cloning
+                | Stage::Updating
+                | Stage::Fetching
+                | Stage::Building
         )
     }
 }
@@ -186,6 +207,13 @@ fn toolchain_error(err: &toolchain::Error) -> String {
     }
 }
 
+fn set_origin(this: &WeakEntity<Ps>, port: Port, origin: BuildOrigin, cx: &mut AsyncApp) {
+    let _ = this.update(cx, |this, cx| {
+        this.ports.entry(port).or_insert_with(PortState::new).origin = Some(origin);
+        cx.notify();
+    });
+}
+
 fn set_stage(this: &WeakEntity<Ps>, port: Port, stage: Stage, cx: &mut AsyncApp) {
     let _ = this.update(cx, |this, cx| {
         this.ports.entry(port).or_insert_with(PortState::new).stage = stage;
@@ -271,6 +299,11 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         Port::AnyPs5 => AnyPs5::new(root.clone()).is_built_with(&toolchain).await,
     };
     let toolchain = if built {
+        let origin = match port {
+            Port::Bbport if Bbport::new(root.clone()).prebuilt().await.is_some() => BuildOrigin::Cache,
+            Port::Bbport | Port::AnyPs5 => BuildOrigin::Local,
+        };
+        set_origin(this, port, origin, cx);
         toolchain
     } else {
         match build(this, port, root, toolchain, cx).await {
@@ -283,7 +316,7 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
 }
 
 /// Returns the toolchain that built it, nix's when the host's tools could
-/// not configure the port.
+/// not configure the port or when its build came from the binary cache.
 async fn build(
     this: &WeakEntity<Ps>,
     port: Port,
@@ -291,6 +324,15 @@ async fn build(
     mut toolchain: Toolchain,
     cx: &mut AsyncApp,
 ) -> Result<Toolchain, PortError> {
+    if let Some(nix) = fetch_prebuilt(this, port, root, &toolchain, cx).await {
+        let _ = this.update(cx, |this, cx| {
+            let state = this.ports.entry(port).or_insert_with(PortState::new);
+            state.toolchain = Some((root.clone(), nix.clone()));
+            state.origin = Some(BuildOrigin::Cache);
+            cx.notify();
+        });
+        return Ok(nix);
+    }
     set_stage(this, port, Stage::Building, cx);
     let for_reset = port.checkout(root);
     match cx
@@ -358,9 +400,112 @@ async fn build(
         Port::AnyPs5 => AnyPs5::new(root.clone()).record_build(&toolchain).await,
     };
     match recorded {
-        Ok(()) => Ok(toolchain),
+        Ok(()) => {
+            set_origin(this, port, BuildOrigin::Local, cx);
+            Ok(toolchain)
+        }
         Err(err) => Err(PortError::RecordBuild(err)),
     }
+}
+
+/// The checkout's commit from the port's binary cache instead of a build,
+/// when its CI published one. Run with the nix it was fetched into, whatever
+/// toolchain was resolved: its binaries only load nix's libraries. `None`
+/// for anything that stops it (no cache for the port, local changes, a
+/// commit upstream lacks or CI didn't build, a failed fetch), and the port
+/// is built as it always was.
+async fn fetch_prebuilt(
+    this: &WeakEntity<Ps>,
+    port: Port,
+    root: &Root,
+    toolchain: &Toolchain,
+    cx: &mut AsyncApp,
+) -> Option<Toolchain> {
+    let Some(cache) = prebuilt::cache(port) else {
+        return None;
+    };
+    let bbport = Bbport::new(root.clone());
+    let resolved_nix = match toolchain {
+        Toolchain::Host => None,
+        Toolchain::SystemNix(_) | Toolchain::Portable(_) => Some(toolchain.clone()),
+    };
+    // The host is resolved again on every prepare, so a build fetched before is
+    // found here, ahead of the network, and still launches offline.
+    if resolved_nix.is_none()
+        && bbport.prebuilt().await.is_some()
+        && let Ok(nix) = Toolchain::nix(root, port, |_, _| {}).await
+        && bbport.is_built_with(&nix).await
+    {
+        return Some(nix);
+    }
+    let Some(commit) = updater::upstream_commit(&port.checkout(root)).await else {
+        return None;
+    };
+    let store_path = match prebuilt::lookup(&cache, &commit).await {
+        Ok(Some(store_path)) => store_path,
+        Ok(None) => {
+            tracing::info!(
+                port = port.name(),
+                commit,
+                "no prebuilt port for this commit; building it"
+            );
+            return None;
+        }
+        Err(err) => {
+            tracing::warn!(port = port.name(), commit, %err, "binary cache lookup failed; building the port");
+            return None;
+        }
+    };
+    set_stage(this, port, Stage::Fetching, cx);
+    let nix = match resolved_nix {
+        Some(nix) => nix,
+        None => {
+            let progress = this.clone();
+            let mut async_cx = cx.clone();
+            let resolved = Toolchain::nix(root, port, move |received, total| {
+                set_stage(&progress, port, Stage::Downloading(received, total), &mut async_cx);
+            })
+            .await;
+            set_stage(this, port, Stage::Fetching, cx);
+            match resolved {
+                Ok(nix) => nix,
+                Err(err) => {
+                    tracing::warn!(port = port.name(), %err, "no nix to fetch the prebuilt port into; building it");
+                    return None;
+                }
+            }
+        }
+    };
+    let Some(command) = nix.fetch_command(root, &cache, &store_path, &prebuilt::gc_root(root, port)) else {
+        return None;
+    };
+    let mut facts = jobs::port_facts(root, port, Some(&nix)).await;
+    facts.extend([
+        ("build", "prebuilt from cache".to_owned()),
+        ("cache", cache),
+        ("store_path", store_path.clone()),
+    ]);
+    let finished = jobs::run(this, root, JobKey::Port(port), JobKind::Build, facts, command, None, cx).await;
+    if !finished.succeeded() {
+        tracing::warn!(
+            port = port.name(),
+            store_path,
+            "prebuilt port fetch failed; building it"
+        );
+        return None;
+    }
+    if let Err(err) = bbport.record_prebuilt(&nix, &store_path).await {
+        tracing::warn!(port = port.name(), %err, "could not record the prebuilt port; building it");
+        return None;
+    }
+    tracing::info!(
+        port = port.name(),
+        commit,
+        store_path,
+        toolchain = nix.id(),
+        "port prebuilt from cache"
+    );
+    Some(nix)
 }
 
 /// `CMake Error` marks a configure step that stopped, as opposed to a

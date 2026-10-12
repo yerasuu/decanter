@@ -159,6 +159,52 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
     })
 }
 
+/// The full commit the checkout stands on when it is exactly one upstream
+/// has, without local edits to tracked files: the only checkouts a build
+/// published by upstream's CI stands for. Validated, since it goes into a
+/// URL.
+pub async fn upstream_commit(repo: &Path) -> Option<String> {
+    let (head, dirty, upstream) = match (
+        git(repo, &["rev-parse", "--verify", "HEAD"]).await,
+        git(
+            repo,
+            &[
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+                "--ignore-submodules=dirty",
+            ],
+        )
+        .await,
+        git(
+            repo,
+            &[
+                "for-each-ref",
+                "--contains",
+                "HEAD",
+                "--format=%(refname)",
+                "refs/remotes/origin/",
+            ],
+        )
+        .await,
+    ) {
+        (Ok(head), Ok(dirty), Ok(upstream)) => (head, dirty, upstream),
+        (Err(err), ..) | (_, Err(err), _) | (.., Err(err)) => {
+            tracing::warn!(repo = %repo.display(), %err, "could not tell which upstream commit the checkout is on");
+            return None;
+        }
+    };
+    if !dirty.is_empty() {
+        tracing::info!(repo = %repo.display(), "checkout has local changes");
+        return None;
+    }
+    if upstream.is_empty() {
+        tracing::info!(repo = %repo.display(), head, "checkout is on a commit upstream lacks");
+        return None;
+    }
+    crate::prebuilt::valid_commit(&head).then_some(head)
+}
+
 /// The first time a port is needed. Into a sibling directory renamed into
 /// place at the end, so an interrupted clone never looks like a checkout.
 pub fn clone_command(root: &Root, port: Port) -> Command {

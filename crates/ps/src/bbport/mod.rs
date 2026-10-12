@@ -109,15 +109,32 @@ impl Bbport {
         &self.checkout
     }
 
-    fn probe(&self) -> PathBuf {
-        self.checkout.join("out/bb-probe")
-    }
-
     /// Which toolchain and commit the current build came from, so a launch
     /// with another toolchain, or after the checkout moved, builds again
-    /// instead of failing to load drivers or running the old code.
+    /// instead of failing to load drivers or running the old code. A second
+    /// line names the store path of a build fetched from the port's binary
+    /// cache instead.
     fn build_marker(&self) -> PathBuf {
         self.checkout.join("out/decanter-toolchain")
+    }
+
+    /// The fetched build the marker names, when the current one came from the
+    /// binary cache.
+    pub async fn prebuilt(&self) -> Option<PathBuf> {
+        let Ok(marker) = tokio::fs::read_to_string(self.build_marker()).await else {
+            return None;
+        };
+        marker
+            .lines()
+            .nth(1)
+            .filter(|path| crate::prebuilt::valid_store_path(path))
+            .map(PathBuf::from)
+    }
+
+    /// What `run.sh` and the port's tools run from: the fetched build, else
+    /// the checkout built in place.
+    async fn port_dir(&self) -> PathBuf {
+        self.prebuilt().await.unwrap_or_else(|| self.checkout.clone())
     }
 
     pub fn ini_path(root: &Root) -> PathBuf {
@@ -147,12 +164,28 @@ impl Bbport {
         tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
     }
 
+    /// After `store_path`, the checkout's commit as the binary cache holds it,
+    /// was fetched into `toolchain`'s store.
+    pub async fn record_prebuilt(&self, toolchain: &Toolchain, store_path: &str) -> io::Result<()> {
+        if let Err(err) = tokio::fs::create_dir_all(self.checkout.join("out")).await {
+            return Err(err);
+        }
+        let stamp = toolchain.build_stamp(&self.checkout).await;
+        tokio::fs::write(self.build_marker(), format!("{stamp}\n{store_path}")).await
+    }
+
     /// Whether `toolchain` can launch what is built, without building.
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
-        let probe = tokio::fs::metadata(self.probe()).await.is_ok_and(|meta| meta.is_file());
+        let port_dir = self.prebuilt().await.map_or_else(
+            || self.checkout.clone(),
+            |store_path| toolchain.store_path_on_host(&self.root, &store_path),
+        );
+        let probe = tokio::fs::metadata(port_dir.join("out/bb-probe"))
+            .await
+            .is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
         let stamp = toolchain.build_stamp(&self.checkout).await;
-        probe && marker.is_ok_and(|built| built == stamp)
+        probe && marker.is_ok_and(|built| built.lines().next() == Some(stamp.as_str()))
     }
 
     /// The same environment bbport's own launcher built (`game_environment`
@@ -171,15 +204,20 @@ impl Bbport {
         mods: &mods::Mods,
         menu_language: &str,
     ) -> io::Result<Command> {
-        let mut command = match toolchain.command(&self.root, Port::Bbport, "bash run.sh").await {
+        let mut command = match toolchain
+            .command(&self.root, Port::Bbport, r#"bash "$DECANTER_PORT_DIR/run.sh""#)
+            .await
+        {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
+        let port_dir = self.port_dir().await;
         let data = self.root.bbport_data();
         let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
             .env("BB_PREBUILT", "1")
-            .env("BB_PROBE", self.probe())
+            .env("BB_PROBE", port_dir.join("out/bb-probe"))
+            .env("DECANTER_PORT_DIR", port_dir)
             .env("BB_DATA_DIR", &data)
             .env("BB_USER_DIR", user_dir)
             .env("BB_GAME_DIR", &game.dir)
@@ -261,12 +299,17 @@ impl Bbport {
     /// for this. Empty before the first build.
     pub async fn connected_gamepads(&self, toolchain: &Toolchain) -> Vec<(String, String)> {
         let command = toolchain
-            .command(&self.root, Port::Bbport, "out/bb-gpu-capabilities --gamepads")
+            .command(
+                &self.root,
+                Port::Bbport,
+                r#""$DECANTER_PORT_DIR/out/bb-gpu-capabilities" --gamepads"#,
+            )
             .await;
         let Ok(mut command) = command else {
             return Vec::new();
         };
         command
+            .env("DECANTER_PORT_DIR", self.port_dir().await)
             .output()
             .await
             .ok()

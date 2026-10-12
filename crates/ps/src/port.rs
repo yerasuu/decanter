@@ -30,6 +30,15 @@ impl Port {
         }
     }
 
+    /// The Nix binary cache its CI publishes each default-branch build to
+    /// ([`crate::prebuilt`]), as a release of the same repository.
+    pub const fn binary_cache(self) -> Option<&'static str> {
+        match self {
+            Self::Bbport => Some("https://github.com/yerasuu/psport/releases/download/nix-cache"),
+            Self::AnyPs5 => None,
+        }
+    }
+
     pub fn checkout(self, root: &Root) -> PathBuf {
         let dir = match self {
             Self::Bbport => "bbport",

@@ -12,7 +12,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, p
 use rust_i18n::t;
 
 use super::log::LogView;
-use crate::state::{JobKey, Ps, Stage};
+use crate::state::{BuildOrigin, JobKey, PortState, Ps, Stage};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
@@ -68,6 +68,7 @@ impl PortsView {
             ),
             Stage::Cloning => (t!("ps.ports.stage.cloning"), None),
             Stage::Updating => (t!("ps.ports.stage.updating"), None),
+            Stage::Fetching => (t!("ps.ports.stage.fetching"), None),
             Stage::Building => (t!("ps.ports.stage.building"), None),
             Stage::Ready => (t!("ps.ports.stage.ready"), None),
             Stage::Failed(message) => (message.clone().into(), None),
@@ -75,6 +76,10 @@ impl PortsView {
         let toolchain = state
             .and_then(|state| state.toolchain())
             .map(|toolchain| t!("ps.ports.toolchain", name = toolchain_label(toolchain)));
+        let origin = state.and_then(PortState::origin).map(|origin| match origin {
+            BuildOrigin::Local => t!("ps.ports.origin.local"),
+            BuildOrigin::Cache => t!("ps.ports.origin.cache"),
+        });
         let check = state.and_then(|state| state.check());
         let upstream = check.map(|check| match check {
             Ok(check) => match &check.plan {
@@ -126,6 +131,7 @@ impl PortsView {
             )
             .children(progress.map(|fraction| progress_bar(("ps-port-progress", port as usize), Some(fraction), 4.)))
             .children(toolchain.map(theme::muted))
+            .children(origin.map(theme::muted))
             .children(upstream.map(theme::muted))
             .child(
                 div()

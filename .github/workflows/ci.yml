@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # shell.nix imports <nixpkgs>: the revision crates/ps/src/toolchain/pkgs.nix pins.
+  NIX_PATH: nixpkgs=https://github.com/NixOS/nixpkgs/archive/39ad350a0602fa0a58a544344e3e9187526ea45c.tar.gz
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: check-${{ hashFiles('Cargo.lock') }}
+          restore-keys: check-
+      - name: Format
+        run: nix-shell --run 'cargo fmt --all --check'
+      # The workspace carries pedantic warnings on purpose; only errors fail.
+      - name: Clippy
+        run: nix-shell --run 'cargo clippy --workspace --all-targets'
+
+  appimage:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: dist-${{ hashFiles('Cargo.lock') }}
+          restore-keys: dist-
+      - run: scripts/appimage
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" --clobber target/appimage/Decanter-x86_64.AppImage

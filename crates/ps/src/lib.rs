@@ -28,6 +28,7 @@ pub mod library;
 pub mod mapping;
 pub mod paths;
 pub mod port;
+pub mod prebuilt;
 pub mod process;
 pub mod run_log;
 pub mod status;

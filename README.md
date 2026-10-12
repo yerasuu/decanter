@@ -99,7 +99,14 @@ keeps it up to date and rebuilds it when its checkout moves. It builds
 with the host's tools when they're there and falls back to its own Nix
 toolchain (nix-portable if the system has no Nix) when the host can't
 configure the port; after the next update of that port it tries the host
-again. Each game runs in its own process group and
+again. psport's CI publishes each master commit's build as a Nix binary
+cache (the `nix-cache` release of yerasuu/psport); when the checkout is
+clean and on a commit that cache holds, decanter copies that build into
+its Nix store (rooted under `psport/toolchain/prebuilt/`) and runs it
+from there instead of building, and builds as above otherwise. Ports
+shows which of the two the current build is.
+`DECANTER_PS_BINARY_CACHE=<url>` points at another copy of the cache,
+for trying one served locally. Each game runs in its own process group and
 can be stopped from its row, its cover or its context menu.
 
 Bloodborne is supported as upstream bbport ships it. Every other PS4
