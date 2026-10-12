@@ -22,7 +22,11 @@ resolution, event flags), so they are fixed once, in the fork.
 What each title imports, what the port lacks and what to implement next:
 [ps4-import-matrix.md](ps4-import-matrix.md) (a dated snapshot).
 
-## What the fork adds (as of `1929daa`)
+## What the fork adds (as of `7f56232`)
+
+The fork follows its own `CLAUDE.md`: no game- or shader-specific hacks,
+no tests (the test suite inherited from bbport was removed), comments only
+where needed. `tools/regress.sh` is how progress is measured.
 
 Runtime (`src/`):
 
@@ -41,10 +45,26 @@ Runtime (`src/`):
   `Media/Plugins/*.prx`) are prelinked by `link_modules.py`, unstarted,
   and started on `sceKernelLoadStartModule`; `sceKernelDlsym` hashes
   names to NIDs; module info for unwinding (`src/runtime_module.c`).
+  Modules the game bundles in `sce_module` (such as its own
+  `libSceNpToolkit2.prx`) are linked whenever something imports their
+  library.
+- Exceptions: `sceKernelInstallExceptionHandler`/`RaiseException` deliver
+  to the target thread through `SIGRTMIN+3`, with the PS4 ucontext, on the
+  thread's own stack — Unity's garbage collector suspends threads this
+  way. Raises are held back while the thread holds a runtime lock.
+- libkernel and POSIX surface: Neo mode, SDK version, cpumode, UTC/local
+  time conversion (with the zone libc's `mktime` reads), condattr,
+  rwlocks, `sem_*`, detach, cancel state, mutex protocols, sched params,
+  direct memory query and checked release, mlock, utimes, UUIDs.
 - Newer-SDK libc hooks, kernel event flags, `ulobjmgr`, display safe
   area, `sceKernelGetdents`, thread stacks kept in their attributes,
   `scePthreadSem*` on kernel semaphores, main direct memory, the guest's
-  `/dev/urandom` and `/dev/random`.
+  `/dev/urandom` and `/dev/random`, Sysmodule reference counting, DiscMap,
+  SystemService parameters, save data umount-with-backup events,
+  `scePadGetHandle`.
+- The Bloodborne game menu's patches only apply to Bloodborne.
+- `BB_PAD_HOST=0` keeps physical controllers closed (scripted headless
+  runs set it).
 - The libc heap settings are read from `SceProcParam` +0x38 (upstream
   read +0x30, the main thread's stack size, and newer SDKs crashed there).
 - TLS module ids only for modules with TLS, up to 31.
@@ -58,12 +78,18 @@ GPU (`gpu/`):
   filled-size write-back).
 - Point-list geometry shaders declare `OutputPoints` (shadPS4 emitted a
   bare `OutputVertices`, an invalid module).
+- AvPlayer (inherited shadPS4 code): loops by seeking the streams only,
+  ends a loop that reads nothing instead of spinning, and no longer locks
+  itself (`Start` called `Stop` under its own lock; game callbacks now run
+  with no lock held). The first two bugs are also in upstream shadPS4.
 
 Libraries ported in (each first committed as it was at the source):
 
 - `gpu/ngs2/`: libSceNgs2 from AnyPS5, adapted to PS4 structure
-  layouts. Produces silence in Ryza for now (`BB_HLE=libSceNgs2` +
-  `BB_AUDIO_STATS` measures it); the user's module is used instead.
+  layouts and voice event numbers, with downmix, float PCM, VAG waveforms
+  and the game's UserFx handlers (sampler voices and custom rack module
+  `0x19`). Matches the console module in Ryza and Ayesha within a fraction
+  of a dB, so it is used instead of the user's.
 - `gpu/fiber/`: libSceFiber from shadPS4, on the game's GS-based TCB.
   Preferred over the user's module (`BB_LLE=libSceFiber` to compare).
 - `gpu/font/`: libSceFont and libSceFontFt from shadPS4 over FreeType,
@@ -72,11 +98,16 @@ Libraries ported in (each first committed as it was at the source):
   (`BB_FALLBACK_FONTS` adds folders), else the embedded DejaVu (Latin).
   FreeType is now a build dependency, so decanter's host check requires
   `freetype2`.
+- `gpu/audiodec/`: libSceAudiodec from AnyPS5 (shadPS4 has none): AAC and
+  MP3 on libavcodec, ATRAC9 on LibAtrac9. Ryza's title menu music needs it.
 
 System modules: `BB_SYS_MODULES=<folder>` links the user's own dump of
-the console's `*.sprx` a title needs, ahead of the port's versions. They
-are never shipped and each is a stopgap until the port implements its
-library.
+the console's `*.sprx` a title needs. They are never shipped and each is
+a stopgap until the port implements its library: the libraries the port
+implements (libkernel, GnmDriver, VideoOut, Pad, AudioOut, Fiber, Font,
+Audiodec, Ngs2, Ult, Rtc) win over the dump unless `BB_LLE` names them.
+Since 2026-10-12 none of the seven titles needs the dump: with it set, no
+`.sprx` from it is linked.
 
 Diagnostics and tools: `BB_NGS2_TRACE`, `BB_FIBER_TRACE`,
 `BB_DUMP_SKIPPED_GS=<dir>`, `tools/gcn_dis` (a GCN disassembler on the
@@ -108,12 +139,28 @@ flagging regressions against a previous run.
 
 All tested headless (a headless gamescope, scripted pad input through
 `BB_PAD_FILE`, the game's own frame dumps through
-`BB_PRESENT_DUMP_TRIGGER`), with the user's module dump.
+`BB_PRESENT_DUMP_TRIGGER`). SaGa draws its dialogue text since the
+buffer write traps (CPU writes to buffer pages in VRAM were missed with
+guest memory in place).
+
+`tools/regress.sh` on 2026-10-12, 06:30: six of the seven reach drawn
+frames with audio, the seventh (ALTDEUS) the GPU without visible frames.
+
+| Title | Reaches | Imports without implementation |
+|---|---|---|
+| Bloodborne | frames, audio | 6 |
+| Atelier Ryza | frames, audio | 61 |
+| Atelier Ayesha DX | frames, audio | 56 |
+| Tales of Symphonia Remastered | frames, audio | 348 |
+| Astrea | frames, audio | 348 |
+| SaGa Emerald Beyond | frames, audio | 329 |
+| ALTDEUS: Beyond Chronos | GPU, black frames (needs PS VR) | 325 |
 
 ### Atelier Ryza (CUSA16458, Gust)
 
-Sound, the title menu, New Game, the prologue's scenes and dialogue, and
-the field with the player in control. Its stream-out draws (about 60000
+Sound (the title menu's music since libSceAudiodec), the title menu, New
+Game, the prologue's scenes and dialogue, and the field with the player in
+control. Its stream-out draws (about 60000
 a session: stream 0 to buffer 0, 24-byte records, bracketed by
 `STRMOUT_BUFFER_UPDATE` 0x0 and 0x19) are captured through transform
 feedback instead of skipped; the scenes tested look the same either way.
@@ -130,11 +177,22 @@ seeks the streams only (`604f623`).
 
 ### Unity IL2CPP: Tales of Symphonia Remastered (CUSA50989), Astrea (CUSA49515), SaGa Emerald Beyond (CUSA43027), ALTDEUS: Beyond Chronos (CUSA26563)
 
-The same engine build in all four, so they move together. They boot,
-load `Il2CppUserAssemblies.prx` and `PS4Util.prx` and register the IL2CPP
-API. Next blocker, shared: the garbage collector suspends threads with
-`sceKernelRaiseException(thread, 30)` to a handler installed through
-`sceKernelInstallExceptionHandler` (libkernel_unity, called from
-`PS4Util.prx`); nothing delivers it, so the main thread waits forever for
-the acknowledgement. Being implemented. Symphonia and Astrea also probe
-`/archive/mount/point/Media/...`, not yet mounted.
+The same engine build in all four. They load `Il2CppUserAssemblies.prx`
+and `PS4Util.prx` through `sceKernelLoadStartModule` and run with the
+garbage collector suspending threads through delivered exceptions.
+
+- **Symphonia:** fmod logo, title screen, the first room with the
+  character. It aborted on AvPlayer's self-lock before.
+- **Astrea:** the intro's story panels, advanced with cross. It spun
+  forever in libc's `mktime` (the zone struct our time conversion left
+  unwritten), then blocked on a save-data event.
+- **SaGa Emerald Beyond:** title screen and the first story scenes with
+  their dialogue text, with the pad read. It crashed after its own
+  NpToolkit2 module, never linked, answered nothing.
+- **ALTDEUS:** requires a PlayStation VR headset (`param.sfo` sets
+  `require_ps_vr`). With libSceHmd reporting no headset, its setup dialog
+  is cancelled and the game reopens it forever on a black screen; it has
+  no flat-screen mode.
+
+All four probe `/archive/mount/point/Media/...` first and fall back to
+`/app0`.
