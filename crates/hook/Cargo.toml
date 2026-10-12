@@ -2,6 +2,7 @@
 name = "decanter-hook"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 # Excluded from the workspace (see root Cargo.toml), so its `unsafe_code =
 # "forbid"` doesn't apply here anyway: this crate IS Windows DLL/vtable

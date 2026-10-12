@@ -1,6 +1,7 @@
 [package]
 name = "decanter-runtime"
 version.workspace = true
+license.workspace = true
 authors.workspace = true
 edition.workspace = true
 

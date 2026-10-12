@@ -148,3 +148,9 @@ On its first start this version moves the old `~/.local/share/decanter`
 data into the library (copying, checking and only then switching) and
 leaves the old folder untouched as a backup; Ajustes > Almacenamiento
 offers to remove it afterwards.
+
+## License
+
+Decanter is free software under the GNU General Public License, version 3
+or (at your option) any later version: see [LICENSE](LICENSE). The ports it
+builds and runs keep their own licences (psport: GPL-2.0-or-later).
