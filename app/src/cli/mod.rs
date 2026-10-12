@@ -11,6 +11,8 @@
 //! subcommand runs headless and exits, and no subcommand (the ordinary
 //! double-click launch) falls through to the GUI unchanged.
 
+use std::path::PathBuf;
+
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use decanter_core::Db;
@@ -21,8 +23,21 @@ mod launch;
 #[derive(Parser)]
 #[command(name = "decanter")]
 pub struct Cli {
+    /// The library root to use instead of the active one in
+    /// `libraries.toml` — what a game's desktop entry starts it with.
+    #[arg(long, global = true, value_parser = absolute_path)]
+    pub library: Option<PathBuf>,
     #[command(subcommand)]
     pub cmd: Option<Cmd>,
+}
+
+fn absolute_path(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err(format!("{value} isn't an absolute path"))
+    }
 }
 
 #[derive(Subcommand)]
@@ -113,7 +128,7 @@ pub fn run(cmd: Cmd) -> ! {
 }
 
 async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
-    let mut db = Db::open(decanter_core::default_db_path()).context("opening decanter cache db")?;
+    let mut db = Db::open_active().context("opening decanter cache db")?;
     tracing::debug!("opened db for cli command");
 
     match cmd {

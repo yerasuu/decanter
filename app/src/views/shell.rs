@@ -156,6 +156,7 @@ impl Shell {
         match crate::core::db().and_then(|db| db.set_active_profile(chosen).map_err(|err| err.to_string())) {
             Ok(()) => {
                 tracing::info!(profile_id = chosen, "active profile switched");
+                decanter_core::bootstrap::remember_profile(chosen);
                 let session = AppState::get(cx).session.clone();
                 let chosen = chosen.to_owned();
                 session.update(cx, |session, cx| {

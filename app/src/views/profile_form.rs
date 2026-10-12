@@ -40,10 +40,11 @@ impl EventEmitter<Done> for ProfileForm {}
 impl ProfileForm {
     pub fn new(layout: Layout, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let name = cx.new(|cx| TextInput::new(t!("chrome.profile_form.name"), cx));
-        // The pre-filled default — what `Library::default_path()` itself
-        // falls back to, rendered as text.
-        let default_path =
-            decanter_core::Library::default_path().map_or_else(String::new, |path| path.display().to_string());
+        // The pre-filled default: the library this profile lands in unless
+        // another folder is picked.
+        let default_path = decanter_core::bootstrap::active_root()
+            .or_else(decanter_core::Library::default_path)
+            .map_or_else(String::new, |path| path.display().to_string());
         let library_path = cx.new(|cx| {
             let mut input = TextInput::new("", cx).read_only();
             input.set_text(default_path, cx);
@@ -79,7 +80,7 @@ impl ProfileForm {
                 tracing::info!(profile_id = %profile.id, name, "profile created");
                 let session = AppState::get(cx).session.clone();
                 session.update(cx, |session, cx| {
-                    session.active_profile = Some(profile.id);
+                    session.reload();
                     cx.notify();
                 });
                 cx.emit(Done);

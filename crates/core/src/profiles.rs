@@ -40,9 +40,7 @@ pub struct Profile {
     pub id: String,
     pub name: String,
     /// Where this profile's games, prefixes and manifests live. `None`
-    /// means `decanter_core::Library::default_path()` — the shared path
-    /// every profile used before a per-profile location existed, and still
-    /// what a profile that's never chosen one of its own resolves to.
+    /// means the library this database lives in.
     pub library_path: Option<String>,
 }
 
@@ -202,7 +200,7 @@ impl Db {
     }
 
     /// Where `profile_id`'s library lives, if it's ever chosen one of its
-    /// own — `None` means `decanter_core::Library::default_path()`.
+    /// own — `None` means the library this database lives in.
     #[inline]
     pub fn profile_library_path(&self, profile_id: &str) -> Result<Option<String>> {
         let path = self

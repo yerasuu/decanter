@@ -301,22 +301,24 @@ pub async fn sync_ps(library_root: &Path, game: &decanter_ps::library::Game) {
 }
 
 /// `decanter launch` for a GOG game, through the `AppImage` when decanter
-/// runs as one: the binary it runs from is inside a mount that moves.
+/// runs as one: the binary it runs from is inside a mount that moves. It
+/// names the library, so the game starts from it whichever one is active.
 fn relaunch(account_id: &str, product_id: &str) -> String {
     let binary = std::env::var_os("APPIMAGE")
         .map(PathBuf::from)
         .or_else(|| std::env::current_exe().ok())
         .unwrap_or_else(|| PathBuf::from("decanter"));
-    [
-        binary.to_string_lossy().as_ref(),
-        "launch",
-        "--account-id",
-        account_id,
-        "--product-id",
-        product_id,
-    ]
-    .map(exec_arg)
-    .join(" ")
+    let binary = binary.to_string_lossy();
+    let library = match decanter_core::bootstrap::location() {
+        decanter_core::bootstrap::Location::Library(root) => Some(root.to_string_lossy().into_owned()),
+        decanter_core::bootstrap::Location::Legacy(_) | decanter_core::bootstrap::Location::Unconfigured => None,
+    };
+    std::iter::once(binary.as_ref())
+        .chain(library.iter().flat_map(|root| ["--library", root.as_str()]))
+        .chain(["launch", "--account-id", account_id, "--product-id", product_id])
+        .map(exec_arg)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Removes a PC game's entry once it's uninstalled or removed.
@@ -348,7 +350,7 @@ fn remove_stale() -> bool {
         .iter()
         .filter_map(|profile| crate::core::library_for_profile(&profile.id).ok())
         .map(|library| library.root().to_owned())
-        .chain(decanter_core::Library::default_path())
+        .chain(decanter_core::bootstrap::active_root())
         .collect();
     roots.sort();
     roots.dedup();

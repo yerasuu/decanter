@@ -2,7 +2,7 @@
 use core::time::Duration;
 use std::env;
 
-use decanter_core::{Db, Library, Storefront, default_db_path};
+use decanter_core::{Db, Library, Storefront};
 use decanter_runtime::{Launch, Prefix, Proton};
 use tokio::time::sleep;
 
@@ -25,7 +25,7 @@ async fn run() -> anyhow::Result<()> {
     let game_id = env::args().nth(1).unwrap_or_else(|| "1854689188".into());
     let secs: u64 = env::args().nth(2).and_then(|value| value.parse().ok()).unwrap_or(60);
 
-    let db = match Db::open(default_db_path()) {
+    let db = match Db::open_active() {
         Ok(db) => db,
         Err(err) => return Err(err.into()),
     };
@@ -34,10 +34,10 @@ async fn run() -> anyhow::Result<()> {
         Ok(None) => return Err(anyhow::anyhow!("no active profile")),
         Err(err) => return Err(err.into()),
     };
-    let Some(default_path) = Library::default_path() else {
-        return Err(anyhow::anyhow!("could not resolve the default library path"));
+    let Some(root) = decanter_core::bootstrap::active_root() else {
+        return Err(anyhow::anyhow!("the active library isn't available"));
     };
-    let library = Library::new(default_path);
+    let library = Library::new(root);
     let Some(manifest) = library.read_manifest(&profile, Storefront::Gog, &game_id) else {
         return Err(anyhow::anyhow!("game {game_id} is not installed"));
     };

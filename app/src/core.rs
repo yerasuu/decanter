@@ -7,18 +7,19 @@
 //! for the query they're making, the way `library::data` always has. Whether
 //! the database opened at all is resolved once, in `state::Session`.
 
-use decanter_core::{Db, InstalledGame, Library, Profile, Storefront, default_db_path};
+use decanter_core::{Db, InstalledGame, Library, Profile, Storefront};
 use rust_i18n::t;
 
 pub fn db() -> Result<Db, String> {
-    match Db::open(default_db_path()) {
+    match Db::open_active() {
         Ok(db) => {
             // Called on nearly every read across the app, so success is
             // trace-level noise — only a failed open is worth a line.
             tracing::trace!("opened db");
             Ok(db)
         }
-        Err(err) => {
+        Err(decanter_core::Error::LibraryUnavailable(_) | decanter_core::Error::NoLibrary) => Err(no_library()),
+        Err(err @ decanter_core::Error::Sqlite(_)) => {
             // Every caller below either propagates this as a hard error or
             // swallows it into a default/empty state; this is the one place
             // that always sees it, so it's the one place that logs it.
@@ -26,6 +27,13 @@ pub fn db() -> Result<Db, String> {
             Err(t!("messages.errors.db_open", error = err).into_owned())
         }
     }
+}
+
+fn no_library() -> String {
+    decanter_core::bootstrap::unavailable_root().map_or_else(
+        || t!("messages.errors.no_library").into_owned(),
+        |root| t!("messages.errors.library_unavailable", path = root.display()).into_owned(),
+    )
 }
 
 /// Creates a fresh profile and makes it the active one — the only way a
@@ -38,6 +46,30 @@ pub fn db() -> Result<Db, String> {
 /// leaves the profile's `library_path` column unset, same as every profile
 /// created before this existed.
 pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile, String> {
+    // The first profile makes the first library, where its database goes.
+    let library_path = if decanter_core::bootstrap::location() == decanter_core::bootstrap::Location::Unconfigured {
+        let root = crate::achv_try!(
+            library_path
+                .map(std::path::PathBuf::from)
+                .or_else(Library::default_path)
+                .ok_or_else(no_library)
+        );
+        crate::achv_try!(
+            std::fs::create_dir_all(&root).map_err(|err| t!(
+                "messages.errors.create_dir",
+                path = root.display(),
+                error = err
+            )
+            .into_owned())
+        );
+        crate::achv_try!(
+            decanter_core::bootstrap::activate(&root)
+                .map_err(|err| t!("messages.errors.save_libraries", error = err).into_owned())
+        );
+        None
+    } else {
+        library_path
+    };
     let db = db()?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = std::time::SystemTime::now()
@@ -60,19 +92,20 @@ pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile,
             .inspect_err(|err| tracing::error!(profile_id = %profile.id, %err, "failed to activate new profile"))
             .map_err(|err| err.to_string())
     );
+    decanter_core::bootstrap::remember_profile(&profile.id);
     tracing::info!(profile_id = %profile.id, profile_name = %profile.name, "profile created");
     Ok(profile)
 }
 
-/// Where a library lives when nothing more specific is known — every
-/// profile before per-profile locations existed, and the fallback for an
-/// account that (for whatever reason) resolves to no profile at all.
+/// The library the database lives in — what a profile that never chose a
+/// location of its own uses, and the fallback for an account that (for
+/// whatever reason) resolves to no profile at all.
 pub fn library() -> Result<Library, String> {
-    match Library::default_path() {
-        Some(path) => Ok(Library::new(path)),
+    match decanter_core::bootstrap::active_root() {
+        Some(root) => Ok(Library::new(root)),
         None => {
-            tracing::warn!("no data directory for this platform");
-            Err(t!("messages.errors.no_data_dir").into_owned())
+            tracing::warn!("the active library isn't available");
+            Err(no_library())
         }
     }
 }

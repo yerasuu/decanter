@@ -120,11 +120,13 @@ rust_i18n::i18n!("locales", fallback = "es");
 
 fn main() {
     tracing_subscriber::fmt::init();
+    let cli = cli::Cli::parse();
+    open_library(cli.library);
 
     // A recognized subcommand runs headless and exits before any of the
     // GUI setup below ever runs — see `cli`. No subcommand (the ordinary
     // double-click launch) falls through to the GUI unchanged.
-    if let Some(cmd) = cli::Cli::parse().cmd {
+    if let Some(cmd) = cli.cmd {
         cli::run(cmd);
     }
 
@@ -179,6 +181,20 @@ fn main() {
     // finishes — the reason quitting goes through here rather than
     // `std::process::exit` (see `launch::exit_with_games_on_signal`).
     drop(runtime);
+}
+
+/// Before anything reads the database, for the GUI and the CLI alike: the
+/// one-time move into the library, then the lock every running decanter
+/// holds.
+fn open_library(chosen: Option<std::path::PathBuf>) {
+    if let Some(root) = chosen {
+        decanter_core::bootstrap::set_override(root);
+    }
+    match decanter_core::migrate::run(decanter_runtime::umu_run_path) {
+        Ok(outcome) => tracing::debug!(?outcome, "checked for data to migrate"),
+        Err(err) => tracing::error!(%err, "cannot move decanter's data into the library, still using the old folder"),
+    }
+    decanter_core::bootstrap::hold_shared();
 }
 
 /// Whether closing the window should leave decanter in the tray instead of

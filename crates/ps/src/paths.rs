@@ -16,14 +16,15 @@ static ACTIVE: RwLock<Option<Root>> = RwLock::new(None);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Root(PathBuf);
 
-/// Before a profile is active: the default library's folder, where a
-/// profile that never chose its own library keeps it too.
+/// Before a profile is active: the active library's folder, where a
+/// profile that never chose its own library keeps it too. Without one the
+/// window shows nothing that reads PS data, so the suggested library is
+/// only a stand-in.
 fn default_root() -> Root {
-    Root(
-        decanter_core::Library::default_path()
-            .unwrap_or_else(|| decanter_core::data_dir().join("steamapps"))
-            .join("psport"),
-    )
+    let library = decanter_core::bootstrap::active_root()
+        .or_else(decanter_core::Library::default_path)
+        .unwrap_or_default();
+    Root(library.join("psport"))
 }
 
 /// The active profile's folder, for what lists or edits its data now.

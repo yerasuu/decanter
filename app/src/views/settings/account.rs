@@ -351,9 +351,18 @@ impl AccountTab {
 
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_core::MoveProgress>();
             let move_task = tokio::task::spawn_blocking(move || {
-                library.move_to(&new_root, move |progress| {
-                    let _ = tx.send(progress);
+                let old_root = library.root().to_path_buf();
+                // The database moves along with the active library's root.
+                let moved = decanter_core::bootstrap::exclusive(|| {
+                    library.move_to(&new_root, move |progress| {
+                        let _ = tx.send(progress);
+                    })
                 })
+                .ok_or_else(|| std::io::Error::other(t!("settings.account.errors.locked").into_owned()))??;
+                if matches!(decanter_core::bootstrap::location(), decanter_core::bootstrap::Location::Library(active) if active == old_root) {
+                    decanter_core::bootstrap::relocate(&old_root, moved.root())?;
+                }
+                Ok::<_, std::io::Error>(moved)
             });
 
             while let Some(progress) = rx.recv().await {
@@ -369,7 +378,11 @@ impl AccountTab {
             // pointing at the old one.
             let error = match move_task.await {
                 Ok(Ok(moved)) => {
-                    match db.set_profile_library_path(&profile_id, Some(&moved.root().display().to_string())) {
+                    match crate::core::db().and_then(|moved_db| {
+                        moved_db
+                            .set_profile_library_path(&profile_id, Some(&moved.root().display().to_string()))
+                            .map_err(|err| err.to_string())
+                    }) {
                         Ok(()) => {
                             tracing::info!(profile_id, "library moved");
                             None

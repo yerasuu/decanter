@@ -59,3 +59,18 @@ chrome.tray.show:
 chrome.tray.quit:
   es: Salir
   en: Quit
+chrome.unavailable.title:
+  es: Biblioteca no disponible
+  en: Library unavailable
+chrome.unavailable.body:
+  es: "No se encuentra la biblioteca de %{path}. Si está en un disco externo, conéctalo y vuelve a abrir Decanter, o elige otra."
+  en: "The library at %{path} can't be found. If it's on an external drive, plug it in and open Decanter again, or pick another one."
+chrome.unavailable.use:
+  es: "Usar %{path}"
+  en: "Use %{path}"
+chrome.unavailable.pick:
+  es: Elegir otra carpeta
+  en: Choose another folder
+chrome.unavailable.pick_title:
+  es: Elige la carpeta de la biblioteca
+  en: Choose the library folder

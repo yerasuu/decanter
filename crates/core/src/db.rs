@@ -16,6 +16,10 @@ use crate::catalog::Storefront;
 pub enum Error {
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
+    #[error("the library at {} isn't there", .0.display())]
+    LibraryUnavailable(PathBuf),
+    #[error("no library has been set up yet")]
+    NoLibrary,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -215,15 +219,6 @@ DROP TABLE IF EXISTS ps_scan_dirs;
 DROP TABLE IF EXISTS game_links;
 ";
 
-/// Where `decanter-sidecar` and the UI both look for this cache — kept in one
-/// place so the two binaries can never end up pointed at different files.
-pub fn default_db_path() -> PathBuf {
-    let dir = crate::data_dir();
-    std::fs::create_dir_all(&dir).expect("creating decanter data dir");
-    tracing::debug!(dir = %dir.display(), "ensured decanter data dir exists");
-    dir.join("links.db")
-}
-
 pub struct Db {
     pub(crate) conn: Connection,
 }
@@ -234,7 +229,7 @@ const FIRST_SEEN_MIGRATION_SETTING: &str = "first_seen_migration_v1";
 /// Whether `table` has been created yet — `pragma_table_info` alone can't
 /// tell a genuinely missing table from one that's just missing a column,
 /// since both return zero rows.
-fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
+pub(crate) fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
         [table],
@@ -245,7 +240,7 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
 
 /// Whether `table` has a column named `column`. Only meaningful once
 /// [`table_exists`] has confirmed the table is actually there.
-fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+pub(crate) fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
         &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
         [column],
@@ -255,6 +250,14 @@ fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
 }
 
 impl Db {
+    /// The active library's database (see [`crate::bootstrap`]).
+    pub fn open_active() -> Result<Self> {
+        match crate::bootstrap::active_db_path() {
+            Some(path) => Self::open(path),
+            None => Err(crate::bootstrap::unavailable_root().map_or(Error::NoLibrary, Error::LibraryUnavailable)),
+        }
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         tracing::debug!(path = %path.display(), "opening db");

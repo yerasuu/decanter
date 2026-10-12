@@ -5,7 +5,7 @@
 //! The webview build pointed `<img src>` straight at GOG's CDN and let
 //! WebKit's HTTP cache deal with it. GPUI's own URI loader keeps nothing
 //! between launches, so a 700-game library would re-download every icon on
-//! every start; this keeps a copy under decanter's data directory instead
+//! every start; this keeps a copy in the library's `decanter/art` instead
 //! and hands GPUI a plain file path.
 //!
 //! What GPUI holds in memory is the decoded bitmap, so the copy on disk is
@@ -39,21 +39,11 @@ const DECODED_BUDGET: usize = 24 * 1024 * 1024;
 /// context `main` enters on the UI thread — so downloads are handed to the
 /// runtime explicitly.
 pub fn init(handle: tokio::runtime::Handle) {
-    // Full-size copies from before art was stored scaled; nothing reads
-    // them any more.
-    handle.spawn(async {
-        let legacy = decanter_core::data_dir().join("art-cache");
-        match tokio::fs::remove_dir_all(&legacy).await {
-            Ok(()) => tracing::info!(dir = %legacy.display(), "removed the full-size art cache"),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => tracing::warn!(dir = %legacy.display(), %err, "could not remove the full-size art cache"),
-        }
-    });
     let _ = TOKIO.set(handle);
 }
 
-fn cache_dir() -> PathBuf {
-    decanter_core::data_dir().join("art")
+fn cache_dir() -> Option<PathBuf> {
+    decanter_core::bootstrap::data_dir().map(|dir| dir.join("art"))
 }
 
 /// One URL at one on-screen size, in device pixels — the same art drawn
@@ -68,13 +58,15 @@ struct ArtKey {
 
 /// No extension: what's stored may be GOG's WebP as downloaded or a
 /// re-encoded JPEG/PNG, and GPUI sniffs the format from the bytes anyway.
-fn cache_path(key: &ArtKey) -> PathBuf {
-    cache_dir().join(format!(
-        "{:x}-{}x{}",
-        md5::compute(key.url.as_bytes()),
-        key.width,
-        key.height
-    ))
+fn cache_path(key: &ArtKey) -> Option<PathBuf> {
+    cache_dir().map(|dir| {
+        dir.join(format!(
+            "{:x}-{}x{}",
+            md5::compute(key.url.as_bytes()),
+            key.width,
+            key.height
+        ))
+    })
 }
 
 /// GOG's image CDNs (`images*.gog-statics.com`, and `images.gog.com` for
@@ -217,7 +209,9 @@ async fn store(key: &ArtKey, path: &Path, bytes: Vec<u8>) -> anyhow::Result<()> 
         Ok(Err(err)) => return Err(anyhow::anyhow!("{}: {err}", key.url)),
         Err(err) => return Err(anyhow::anyhow!("scaling {}: {err}", key.url)),
     };
-    if let Err(err) = tokio::fs::create_dir_all(cache_dir()).await {
+    if let Some(dir) = path.parent()
+        && let Err(err) = tokio::fs::create_dir_all(dir).await
+    {
         return Err(anyhow::anyhow!("creating the art cache: {err}"));
     }
     // Written aside and renamed into place, so a half-written file never
@@ -240,7 +234,9 @@ impl Asset for CachedArt {
 
     fn load(key: Self::Source, _: &mut App) -> impl Future<Output = Self::Output> + Send + 'static {
         async move {
-            let path = cache_path(&key);
+            let Some(path) = cache_path(&key) else {
+                return Err(Arc::new(anyhow::anyhow!("no library to keep artwork in")));
+            };
             if path.is_file() {
                 return Ok(Arc::from(path));
             }

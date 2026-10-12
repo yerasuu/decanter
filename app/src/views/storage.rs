@@ -106,6 +106,10 @@ pub struct StorageView {
     /// Redraws the progress while `moving`: the move runs on a blocking
     /// thread that can't notify this view itself.
     _ticker: Option<Task<()>>,
+    /// The folder decanter kept everything in before it moved into the
+    /// library, while it's still there.
+    legacy: Option<PathBuf>,
+    confirm_legacy: bool,
 }
 
 impl StorageView {
@@ -119,6 +123,8 @@ impl StorageView {
             moving: None,
             _move: None,
             _ticker: None,
+            legacy: None,
+            confirm_legacy: false,
         };
         this.rescan(cx);
         this
@@ -127,6 +133,7 @@ impl StorageView {
     /// Re-read on every visit, as the webview build did by remounting the
     /// page: an install or uninstall elsewhere changes what's here.
     pub fn rescan(&mut self, cx: &mut Context<Self>) {
+        self.legacy = decanter_core::migrate::legacy_leftover();
         let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
             self.folders = None;
             self.scan = None;
@@ -194,6 +201,87 @@ impl StorageView {
             Err(err) => self.error = err,
         }
         cx.notify();
+    }
+
+    fn remove_legacy(&mut self, cx: &mut Context<Self>) {
+        self.confirm_legacy = false;
+        let removal = cx.background_spawn(async {
+            // Every profile's folders, an unplugged one too: the old default
+            // library lived inside the old data folder.
+            let libraries: Vec<PathBuf> = crate::core::db()
+                .and_then(|db| {
+                    let profiles = db.list_profiles().map_err(|err| err.to_string())?;
+                    Ok(profiles
+                        .iter()
+                        .flat_map(|profile| {
+                            let extra = db.profile_extra_libraries(&profile.id).unwrap_or_default();
+                            crate::core::library_for_profile(&profile.id)
+                                .map(|library| library.roots())
+                                .unwrap_or_default()
+                                .into_iter()
+                                .chain(extra.into_iter().map(PathBuf::from))
+                        })
+                        .collect())
+                })
+                .unwrap_or_default();
+            decanter_core::migrate::remove_legacy(&libraries)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = removal.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(()) => this.error.clear(),
+                    Err(decanter_core::migrate::Error::Busy) => {
+                        this.error = t!("storage.errors.legacy_busy").into_owned();
+                    }
+                    Err(err) => {
+                        tracing::error!(%err, "cannot remove the old data folder");
+                        this.error = t!("storage.errors.legacy", error = err).into_owned();
+                    }
+                }
+                this.legacy = decanter_core::migrate::legacy_leftover();
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn legacy_card(&self, legacy: &Path, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let label = if self.confirm_legacy {
+            t!("storage.legacy.confirm")
+        } else {
+            t!("storage.legacy.remove")
+        };
+        theme::card().mt_6().child(
+            div()
+                .flex()
+                .items_center()
+                .gap_4()
+                .px(px(18.))
+                .py(px(14.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(t!("storage.legacy.title"))
+                        .child(theme::muted(t!("storage.legacy.body", path = legacy.display())).text_size(px(12.))),
+                )
+                .child(
+                    button("storage-remove-legacy", ButtonKind::Secondary, label, false).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            if this.confirm_legacy {
+                                this.remove_legacy(cx);
+                            } else {
+                                this.confirm_legacy = true;
+                                cx.notify();
+                            }
+                        },
+                    )),
+                ),
+        )
     }
 
     fn move_game(&mut self, game: &InstalledGame, to: PathBuf, cx: &mut Context<Self>) {
@@ -422,7 +510,8 @@ impl Render for StorageView {
                 )
                 .when(!self.error.is_empty(), |column| {
                     column.child(div().mt_3().child(theme::error(self.error.clone())))
-                }),
+                })
+                .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx))),
         )
     }
 }

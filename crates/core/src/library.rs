@@ -409,11 +409,11 @@ impl Library {
         Some(prefix_in(root))
     }
 
-    /// Where the library lives unless someone points decanter elsewhere.
+    /// What the first-run screen suggests when no library exists yet.
     #[must_use]
     #[inline]
     pub fn default_path() -> Option<PathBuf> {
-        Some(crate::data_dir().join("steamapps"))
+        crate::bootstrap::legacy_dir().map(|dir| dir.join("steamapps"))
     }
 
     /// The actual root under `picked` — a folder a picker handed back —

@@ -132,7 +132,7 @@ async fn apply_hook_log(account_id: &str, game: &InstalledGame, achievement_log:
     let Some(path) = achievement_log else {
         return;
     };
-    let Ok(mut db) = decanter_core::Db::open(decanter_core::default_db_path()) else {
+    let Ok(mut db) = decanter_core::Db::open_active() else {
         tracing::debug!(game_id = %game.game_id, "could not open db, decanter-hook log not applied");
         return;
     };

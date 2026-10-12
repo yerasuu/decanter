@@ -78,7 +78,7 @@ fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
 /// to `true` (behave as if already synced) when the cache can't even be
 /// opened, since in that case nothing here can be trusted anyway.
 pub(super) fn has_synced_before(account_id: &str) -> bool {
-    Db::open(decanter_core::default_db_path())
+    Db::open_active()
         .and_then(|db| db.has_games(account_id))
         .inspect_err(|err| {
             tracing::warn!(account_id, %err, "could not check prior sync state, assuming already synced");
@@ -90,7 +90,7 @@ pub(super) fn has_synced_before(account_id: &str) -> bool {
 /// startup so the sidebar isn't empty while a fresh fetch re-scans the
 /// account.
 pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
-    let Ok(db) = Db::open(decanter_core::default_db_path()) else {
+    let Ok(db) = Db::open_active() else {
         tracing::warn!(account_id, "could not open cache db, starting with an empty library");
         return Vec::new();
     };
@@ -109,7 +109,7 @@ pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
 /// before" flag from [`super::gog_library`] — see [`decanter_core::Db::upsert_game`]
 /// for why a single game entry can't answer that for itself.
 pub(super) fn save_entries(account_id: &str, entries: &[LibraryEntry], confirmed_new: bool) {
-    let db = match Db::open(decanter_core::default_db_path()) {
+    let db = match Db::open_active() {
         Ok(db) => db,
         Err(err) => {
             tracing::warn!(account_id, %err, "could not open cache db to save game entries");

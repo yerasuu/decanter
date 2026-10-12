@@ -116,6 +116,9 @@ settings.account.errors.accounts:
 settings.account.errors.library:
   es: no se pudo resolver la biblioteca actual
   en: could not resolve the current library
+settings.account.errors.locked:
+  es: hay otra ventana de Decanter abierta — ciérrala antes de mover la biblioteca
+  en: another Decanter window is open — close it before moving the library
 settings.account.errors.busy:
   es: hay un juego de este perfil en ejecución o instalándose — ciérralo antes de mover la biblioteca
   en: a game from this profile is running or installing — close it before moving the library

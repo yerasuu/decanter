@@ -9,6 +9,7 @@ mod ps;
 mod settings;
 mod shell;
 mod storage;
+mod unavailable;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -21,12 +22,14 @@ use crate::state::AppState;
 use crate::theme;
 use profile_form::ProfileForm;
 use shell::Shell;
+use unavailable::Unavailable;
 
 /// The main window's root: the first-run onboarding until a profile
-/// exists, the app shell after.
+/// exists, the app shell after, or a way out when the library isn't there.
 pub struct Root {
     shell: Option<Entity<Shell>>,
     onboarding: Option<(Entity<ProfileForm>, Subscription)>,
+    unavailable: Option<Entity<Unavailable>>,
 }
 
 impl Root {
@@ -37,6 +40,7 @@ impl Root {
         let mut this = Self {
             shell: None,
             onboarding: None,
+            unavailable: None,
         };
         this.route(window, cx);
         this
@@ -45,14 +49,24 @@ impl Root {
     /// Re-checked whenever the session changes, which covers both a
     /// profile getting created here and one picked from the switcher.
     fn route(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(root) = decanter_core::bootstrap::unavailable_root() {
+            self.onboarding = None;
+            if self.unavailable.is_none() {
+                self.unavailable = Some(cx.new(|_| Unavailable::new(root)));
+            }
+            cx.notify();
+            return;
+        }
+        self.unavailable = None;
         let ready = AppState::get(cx).session.read(cx).core.is_ok();
         // Storage that didn't open falls through to the shell, which
         // already shows that error on every screen, rather than onboarding
         // into a database that can't be written.
-        let needs_onboarding = ready
-            && crate::core::db()
-                .map(|db| db.list_profiles().unwrap_or_default().is_empty())
-                .unwrap_or(false);
+        let needs_onboarding = decanter_core::bootstrap::location() == decanter_core::bootstrap::Location::Unconfigured
+            || ready
+                && crate::core::db()
+                    .map(|db| db.list_profiles().unwrap_or_default().is_empty())
+                    .unwrap_or(false);
         if needs_onboarding {
             if self.onboarding.is_none() {
                 let form = cx.new(|cx| ProfileForm::new(profile_form::Layout::Onboarding, window, cx));
@@ -81,10 +95,11 @@ impl Render for Root {
             .font_family(theme::SANS)
             .text_size(px(14.))
             .line_height(gpui::relative(1.5))
-            .map(|root| match (&self.onboarding, &self.shell) {
-                (Some((form, _)), _) => root.child(form.clone()),
-                (None, Some(shell)) => root.child(shell.clone()),
-                (None, None) => root,
+            .map(|root| match (&self.unavailable, &self.onboarding, &self.shell) {
+                (Some(unavailable), _, _) => root.child(unavailable.clone()),
+                (None, Some((form, _)), _) => root.child(form.clone()),
+                (None, None, Some(shell)) => root.child(shell.clone()),
+                (None, None, None) => root,
             })
     }
 }

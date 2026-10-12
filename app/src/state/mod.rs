@@ -35,6 +35,14 @@ pub struct Session {
 }
 
 impl Session {
+    /// After the active library changed: everything here came from the
+    /// database of the one before.
+    pub fn reload(&mut self) {
+        let fresh = Self::load();
+        self.core = fresh.core;
+        self.active_profile = fresh.active_profile;
+    }
+
     fn load() -> Self {
         let core = crate::core::db().map(|_| ());
         let active_profile = crate::core::db()

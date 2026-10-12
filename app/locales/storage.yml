@@ -80,3 +80,21 @@ storage.errors.exists:
 storage.errors.manifest:
   es: "moviendo el registro de %{game}: %{error}"
   en: "moving the record of %{game}: %{error}"
+storage.legacy.title:
+  es: Datos antiguos de Decanter
+  en: Old Decanter data
+storage.legacy.body:
+  es: "Decanter ya guarda sus datos en la biblioteca; %{path} solo queda como copia de lo anterior."
+  en: "Decanter now keeps its data in the library; %{path} is only left as a copy of how things were."
+storage.legacy.remove:
+  es: Borrar datos antiguos
+  en: Remove old data
+storage.legacy.confirm:
+  es: "¿Borrar? No se puede deshacer"
+  en: "Remove? This can't be undone"
+storage.errors.legacy_busy:
+  es: "Hay otro Decanter o un juego abierto que puede usarlos: ciérralos antes."
+  en: "Another Decanter or a game that may be using them is running: close them first."
+storage.errors.legacy:
+  es: "borrando los datos antiguos: %{error}"
+  en: "removing the old data: %{error}"

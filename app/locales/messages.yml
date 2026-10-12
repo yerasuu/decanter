@@ -17,9 +17,15 @@ messages.errors.delete_prefix:
 messages.errors.db_open:
   es: "abriendo la base de datos: %{error}"
   en: "opening the database: %{error}"
-messages.errors.no_data_dir:
-  es: no hay directorio de datos en esta plataforma
-  en: this platform has no data directory
+messages.errors.no_library:
+  es: todavía no hay ninguna biblioteca
+  en: there's no library yet
+messages.errors.library_unavailable:
+  es: "la biblioteca de %{path} no está disponible"
+  en: "the library at %{path} isn't available"
+messages.errors.save_libraries:
+  es: "guardando la lista de bibliotecas: %{error}"
+  en: "saving the list of libraries: %{error}"
 messages.errors.save_manifest:
   es: "guardando el manifiesto: %{error}"
   en: "saving the manifest: %{error}"

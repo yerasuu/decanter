@@ -14,7 +14,7 @@
 //! not anything an env var fixes.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, bail};
 use tokio::process::Command;
@@ -36,23 +36,28 @@ fn umu_run_download_url() -> String {
     )
 }
 
-/// Where decanter keeps its own copy of `umu-run` once downloaded.
-fn umu_run_path() -> PathBuf {
-    decanter_core::data_dir().join("umu-run")
+/// Where decanter keeps its own copy of `umu-run` in a library's data
+/// folder. Named by version, so a version bump downloads the new one.
+#[must_use]
+pub fn umu_run_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("bin").join(format!("umu-run-{UMU_LAUNCHER_VERSION}"))
 }
 
 /// Downloads and extracts `umu-run` into [`umu_run_path`] the first time
 /// it's needed, and just returns that path on every call after — this
 /// module's own doc explains why decanter needs its own copy rather than
 /// whatever `umu-run` happens to be on `PATH`. Only [`UMU_LAUNCHER_VERSION`]
-/// changing invalidates the cached copy; nothing here re-checks for
-/// updates on its own.
+/// changing invalidates the cached copy, and the copies of other versions
+/// go once the new one is in; nothing here re-checks for updates on its own.
 ///
 /// # Errors
 /// Fails if the download, extraction, or making the result executable
 /// fails.
 pub(crate) async fn ensure_umu_run() -> anyhow::Result<PathBuf> {
-    let path = umu_run_path();
+    let Some(data_dir) = decanter_core::bootstrap::data_dir() else {
+        bail!("the active library isn't available");
+    };
+    let path = umu_run_path(&data_dir);
     if path.is_file() {
         return Ok(path);
     }
@@ -99,7 +104,7 @@ pub(crate) async fn ensure_umu_run() -> anyhow::Result<PathBuf> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .context("creating decanter data dir for umu-run")?;
+            .context("creating the library's bin folder for umu-run")?;
     }
     tokio::fs::copy(temp_dir.join("umu").join("umu-run"), &path)
         .await
@@ -115,5 +120,22 @@ pub(crate) async fn ensure_umu_run() -> anyhow::Result<PathBuf> {
     // Best-effort: a leftover temp dir costs disk space, not correctness.
     let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     tracing::info!(path = %path.display(), "umu-run installed");
+    remove_other_versions(&path).await;
     Ok(path)
+}
+
+async fn remove_other_versions(current: &Path) {
+    let Some(bin) = current.parent() else {
+        return;
+    };
+    let Ok(mut entries) = tokio::fs::read_dir(bin).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let stale = path != current && entry.file_name().to_string_lossy().starts_with("umu-run-");
+        if stale && let Err(err) = tokio::fs::remove_file(&path).await {
+            tracing::warn!(path = %path.display(), %err, "cannot remove an old umu-run");
+        }
+    }
 }
