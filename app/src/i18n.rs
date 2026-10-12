@@ -1,6 +1,8 @@
 //! The UI language: the one saved in Ajustes, or the system locale's when
 //! none is.
 
+use gpui::AppContext as _;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Language {
     Es,
@@ -58,7 +60,7 @@ pub fn init() {
 }
 
 /// Saves `language` (`None` follows the system) and switches to it right
-/// away. Refreshing every window re-renders even the cached views, but text
+/// away, bbport's in-game menu included from its next run. Refreshing every window re-renders even the cached views, but text
 /// a view already built and kept (an error message, say) stays in the old
 /// language until it's built again.
 pub fn set(language: Option<Language>, cx: &mut gpui::App) {
@@ -72,5 +74,12 @@ pub fn set(language: Option<Language>, cx: &mut gpui::App) {
     }
     tracing::info!(language = language.map(Language::code), "language setting changed");
     init();
+    cx.background_spawn(async {
+        let root = decanter_ps::paths::active();
+        if let Err(err) = decanter_ps::bbport::Bbport::forget_menu_language(&root) {
+            tracing::warn!(error = %err, "could not drop the in-game menu's language from bbport.ini");
+        }
+    })
+    .detach();
     cx.refresh_windows();
 }

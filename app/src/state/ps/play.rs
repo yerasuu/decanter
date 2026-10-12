@@ -203,7 +203,7 @@ async fn bbport_command(
         return Err(LaunchError::CreateDir { dir: user_dir, err });
     }
     bbport
-        .launch_command(toolchain, game, &user_dir, &settings, &mods)
+        .launch_command(toolchain, game, &user_dir, &settings, &mods, &rust_i18n::locale())
         .await
         .map_err(LaunchError::Environment)
 }

@@ -180,17 +180,26 @@ pub fn clone_command(root: &Root, port: Port) -> Command {
     command
 }
 
+/// Deinitializes the submodules that `origin/$1` tracks as plain files instead, since git won't
+/// check files out over a submodule's checkout. Their checkout is discarded: upstream's tree now
+/// carries that content.
+const DROP_FORMER_SUBMODULES: &str = "git ls-files --stage | while read -r mode _ _ path; do \
+     [ \"$mode\" = 160000 ] || continue; \
+     git ls-tree --end-of-options \"origin/$1\" \"$path\" | grep -q '^160000 ' && continue; \
+     git submodule deinit -f -- \"$path\"; done";
+
 /// The automatic update. `--ff-only` refuses rather than merges, and git
 /// itself refuses when an incoming change touches a locally edited file,
-/// so nothing local is lost. `branch` comes from a [`Check`].
+/// so nothing local is lost, except the checkout of a submodule upstream
+/// turned into plain files ([`DROP_FORMER_SUBMODULES`]). `branch` comes from a [`Check`].
 pub fn fast_forward_command(repo: &Path, branch: &str) -> Command {
     let mut command = Command::new("bash");
     command
         .arg("-c")
-        .arg(
-            "set -e; git merge --ff-only --end-of-options \"origin/$1\"; \
-             git submodule update --init --recursive; git log -1 --oneline",
-        )
+        .arg(format!(
+            "set -e; {DROP_FORMER_SUBMODULES}; git merge --ff-only --end-of-options \"origin/$1\"; \
+             git submodule update --init --recursive; git log -1 --oneline"
+        ))
         .arg("update")
         .arg(branch)
         .current_dir(repo)
@@ -211,11 +220,12 @@ pub fn reset_command(repo: &Path, branch: &str, backup: &Path) -> Command {
     let mut command = Command::new("bash");
     command
         .arg("-c")
-        .arg(
+        .arg(format!(
             "set -e; mkdir -p -- \"$(dirname -- \"$2\")\"; git diff HEAD > \"$2\"; \
-             echo \"local changes saved to $2\"; git reset --hard --end-of-options \"origin/$1\"; \
-             git submodule update --init --recursive; git log -1 --oneline",
-        )
+             echo \"local changes saved to $2\"; {DROP_FORMER_SUBMODULES}; \
+             git reset --hard --end-of-options \"origin/$1\"; \
+             git submodule update --init --recursive; git log -1 --oneline"
+        ))
         .arg("reset")
         .arg(branch)
         .arg(backup)

@@ -124,6 +124,20 @@ impl Bbport {
         root.bbport_data().join("bbport.ini")
     }
 
+    /// Drops the in-game menu's language, so the next run follows
+    /// `BB_MENU_LANGUAGE` again: the menu writes `menu_language` whenever it
+    /// saves any setting, which would otherwise keep it in the language that
+    /// was current then. File I/O: off the UI thread.
+    pub fn forget_menu_language(root: &Root) -> io::Result<()> {
+        let path = Self::ini_path(root);
+        let mut ini = Ini::load(&path);
+        if ini.get("menu_language").is_none() {
+            return Ok(());
+        }
+        ini.remove("menu_language");
+        ini.save(&path)
+    }
+
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
         toolchain.command(&self.root, Port::Bbport, "bash build.sh").await
     }
@@ -146,7 +160,8 @@ impl Bbport {
     /// plus what keeps `run.sh` from building and from writing into the
     /// checkout. `user_dir` holds the profile's saves; `mods` comes from
     /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
-    /// Bloodborne.
+    /// Bloodborne. `menu_language` is the in-game menu's until one is picked
+    /// in the menu itself.
     pub async fn launch_command(
         &self,
         toolchain: &Toolchain,
@@ -154,6 +169,7 @@ impl Bbport {
         user_dir: &Path,
         settings: &LauncherSettings,
         mods: &mods::Mods,
+        menu_language: &str,
     ) -> io::Result<Command> {
         let mut command = match toolchain.command(&self.root, Port::Bbport, "bash run.sh").await {
             Ok(command) => command,
@@ -179,8 +195,7 @@ impl Bbport {
             )
             .env("BB_PRESENT_MODE", settings.text("present_mode").unwrap_or("Mailbox"))
             .env("BB_FPS", settings.text("fps_mode").unwrap_or("uncap"))
-            // The in-game menu has no Spanish; English until one is picked in the menu itself.
-            .env("BB_MENU_LANGUAGE", "en")
+            .env("BB_MENU_LANGUAGE", menu_language)
             // Experimental memory model, AMD GPUs only upstream; off unless chosen.
             .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" })
             // SDL reads its hints from the environment too: the window's Wayland app id and X11
