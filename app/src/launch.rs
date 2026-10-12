@@ -99,12 +99,18 @@ pub async fn start(
     tracing::info!(game_id = %game.game_id, name = %game.name, "game launched");
 
     set_running(&background, &game.game_id, true, cx);
+    let target = crate::closing::Target::Pc {
+        account_id: account_id.clone(),
+        game_id: game.game_id.clone(),
+    };
+    cx.update(|cx| crate::closing::started(target.clone(), game.name.clone(), cx));
     let started = std::time::Instant::now();
     // Reported, not propagated: the session is over either way, and the
     // running state has to be cleared regardless of how it ended.
     if let Err(err) = session.wait().await {
         tracing::warn!(game_id = %game.game_id, error = %format_args!("{err:#}"), "game session ended with an error");
     }
+    cx.update(|cx| crate::closing::ended(&target, cx));
     set_running(&background, &game.game_id, false, cx);
     let elapsed = started.elapsed();
     tracing::info!(game_id = %game.game_id, duration_secs = elapsed.as_secs(), "game session ended");

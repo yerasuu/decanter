@@ -1569,6 +1569,7 @@ dependencies = [
  "image",
  "ksni",
  "md5",
+ "nix",
  "open",
  "reqwest 0.13.5",
  "rfd",
@@ -1581,6 +1582,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-segmentation",
  "uuid",
+ "zbus",
 ]
 
 [[package]]

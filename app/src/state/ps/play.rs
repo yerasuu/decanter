@@ -76,6 +76,8 @@ impl Ps {
             crate::taskbar::sync_ps(root.library(), &game).await;
             let commit = failures::commit_of(&port.checkout(&root)).await;
             let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit);
+            let target = crate::closing::Target::Ps(game.dir.clone());
+            cx.update(|cx| crate::closing::started(target.clone(), game.title.clone(), cx));
             let finished = jobs::run(
                 &this,
                 &root,
@@ -87,6 +89,7 @@ impl Ps {
                 cx,
             )
             .await;
+            cx.update(|cx| crate::closing::ended(&target, cx));
             let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
             record_failures(&this, failures_path, finished.failures, cx).await;
         })

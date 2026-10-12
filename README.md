@@ -119,6 +119,17 @@ Where each title stands and what the fork adds: `docs/ps4-ports.md`.
 What the titles import and what the port still lacks:
 `docs/ps4-import-matrix.md`.
 
+## Closing a game
+
+While a game decanter started is running, holding Select + Start for two
+seconds on any controller, or pressing Ctrl+Shift+F4 on Plasma (a global
+shortcut under System Settings > Shortcuts > Decanter), asks to close it.
+Decanter shows a notification and stops the game five seconds later the
+same way its Stop button does; asking again in the meantime cancels it.
+The controller is read from its `/dev/input` node, so the game keeps
+focus; Guide is left alone because psport and Steam use it. It can be
+turned off in Ajustes > General.
+
 ## Where decanter keeps its data
 
 Everything decanter stores lives inside the profile's library root

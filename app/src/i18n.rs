@@ -60,9 +60,10 @@ pub fn init() {
 }
 
 /// Saves `language` (`None` follows the system) and switches to it right
-/// away, bbport's in-game menu included from its next run. Refreshing every window re-renders even the cached views, but text
-/// a view already built and kept (an error message, say) stays in the old
-/// language until it's built again.
+/// away, bbport's in-game menu included from its next run. Refreshing every
+/// window re-renders even the cached views, but text a view already built
+/// and kept (an error message, say) stays in the old language until it's
+/// built again.
 pub fn set(language: Option<Language>, cx: &mut gpui::App) {
     let saved = crate::core::db().and_then(|db| {
         db.set_language(language.map(Language::code))

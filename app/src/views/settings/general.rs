@@ -1,5 +1,6 @@
 //! The UI language, window behaviour that isn't tied to any profile or
-//! game, plus the Steam export toggle and its pending-restart callout.
+//! game, closing a game from the controller or keyboard, plus the Steam
+//! export toggle and its pending-restart callout.
 
 use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
@@ -15,6 +16,7 @@ const SYSTEM_LANGUAGE: &str = "system";
 pub struct GeneralTab {
     language: Option<Language>,
     close_to_tray: bool,
+    close_game_shortcut: bool,
     steam_export_enabled: bool,
     steam_pending: bool,
     restarting_steam: bool,
@@ -26,6 +28,7 @@ impl GeneralTab {
         let mut this = Self {
             language: None,
             close_to_tray: false,
+            close_game_shortcut: true,
             steam_export_enabled: true,
             steam_pending: false,
             restarting_steam: false,
@@ -43,6 +46,7 @@ impl GeneralTab {
                 |err| tracing::warn!(error = %err, "failed to read close_to_tray setting, defaulting to false"),
             )
             .unwrap_or(false);
+        self.close_game_shortcut = crate::closing::enabled();
         self.steam_export_enabled = crate::core::db()
             .and_then(|db| db.steam_export_enabled().map_err(crate::core::StoreError::Query))
             .inspect_err(
@@ -70,6 +74,23 @@ impl GeneralTab {
             },
             Err(err) => {
                 tracing::warn!(close_to_tray, error = %err, "failed to open db, close_to_tray setting not saved");
+            }
+        }
+    }
+
+    fn set_close_game_shortcut(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        match crate::core::db() {
+            Ok(db) => match db.set_close_game_shortcut_enabled(enabled) {
+                Ok(()) => {
+                    tracing::info!(enabled, "close-game shortcut setting changed");
+                    crate::closing::sync(cx);
+                    self.reload();
+                    cx.notify();
+                }
+                Err(err) => tracing::warn!(enabled, error = %err, "failed to save close_game_shortcut setting"),
+            },
+            Err(err) => {
+                tracing::warn!(enabled, error = %err, "failed to open db, close_game_shortcut setting not saved");
             }
         }
     }
@@ -181,6 +202,19 @@ impl Render for GeneralTab {
                 cx,
             ))
             .child(theme::muted(t!("settings.general.close.restart_hint")))
+            .child(theme::h2(t!("settings.general.close_game.title")))
+            .child(Self::checkbox_row(
+                "close-game-shortcut",
+                self.close_game_shortcut,
+                t!("settings.general.close_game.enabled"),
+                Self::set_close_game_shortcut,
+                cx,
+            ))
+            .child(theme::muted(t!(
+                "settings.general.close_game.hint",
+                hold = crate::closing::HOLD.as_secs(),
+                grace = crate::closing::GRACE.as_secs()
+            )))
             .child(theme::h2(t!("settings.general.steam.title")))
             .child(Self::checkbox_row(
                 "steam-export",

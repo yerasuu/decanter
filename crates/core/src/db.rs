@@ -1023,6 +1023,19 @@ impl Db {
         self.set_setting("steam_export_enabled", if enabled { "1" } else { "0" })
     }
 
+    /// Whether a held controller chord or the global shortcut closes the
+    /// game decanter started — on by default, since nothing else gets a
+    /// player out of a fullscreen game without a mouse.
+    pub fn close_game_shortcut_enabled(&self) -> Result<bool> {
+        let enabled = self.setting("close_game_shortcut")?.as_deref() != Some("0");
+        tracing::debug!(enabled, "read close_game_shortcut setting");
+        Ok(enabled)
+    }
+
+    pub fn set_close_game_shortcut_enabled(&self, enabled: bool) -> Result<()> {
+        self.set_setting("close_game_shortcut", if enabled { "1" } else { "0" })
+    }
+
     /// The Proton build to launch with when a game has no per-game choice
     /// of its own — a bare name from `decanter_runtime::steam_runners`, or
     /// `None` for `decanter_runtime::Proton::Latest`.

@@ -29,6 +29,15 @@ settings.general.close.to_tray:
 settings.general.close.restart_hint:
   es: Requiere reiniciar Decanter para que el cambio tenga efecto.
   en: Decanter has to be restarted for the change to take effect.
+settings.general.close_game.title:
+  es: Cerrar un juego
+  en: Closing a game
+settings.general.close_game.enabled:
+  es: Cerrar el juego en marcha desde el mando o el teclado
+  en: Close the running game from the controller or keyboard
+settings.general.close_game.hint:
+  es: "Mantén Select + Start %{hold} segundos en cualquier mando, o pulsa Ctrl+Mayús+F4 en Plasma (se cambia en Preferencias del sistema > Atajos > Decanter). Decanter avisa antes de cerrarlo; si repites la combinación en los %{grace} segundos siguientes, lo cancela. En los juegos de PS4, el botón Guide abre además el aviso de cierre del propio juego."
+  en: "Hold Select + Start for %{hold} seconds on any controller, or press Ctrl+Shift+F4 on Plasma (change it in System Settings > Shortcuts > Decanter). Decanter warns before closing it; repeating the combination within the next %{grace} seconds cancels it. In PS4 games, the Guide button also opens the game's own close prompt."
 settings.general.steam.title:
   es: Exportar a Steam
   en: Export to Steam

@@ -1,0 +1,16 @@
+_version: 2
+closing.shortcut_name:
+  es: Cerrar el juego en marcha
+  en: Close the running game
+closing.notice.title:
+  es: "%{name} se va a cerrar"
+  en: "%{name} is about to close"
+closing.notice.body:
+  es: "Se cerrará en %{seconds} segundos. Para cancelarlo, vuelve a mantener Select + Start o pulsa otra vez el atajo de teclado."
+  en: "It will close in %{seconds} seconds. To cancel, hold Select + Start again or press the keyboard shortcut again."
+closing.notice.body_pad:
+  es: "Se cerrará en %{seconds} segundos. Para cancelarlo, vuelve a mantener Select + Start."
+  en: "It will close in %{seconds} seconds. To cancel, hold Select + Start again."
+closing.notice.cancelled:
+  es: "Cierre cancelado: %{name} sigue abierto"
+  en: "Close cancelled: %{name} stays open"
