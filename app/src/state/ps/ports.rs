@@ -344,16 +344,43 @@ fn failed_to_configure(this: &WeakEntity<Ps>, port: Port, cx: &mut AsyncApp) -> 
 /// After the checkout moved: built again right away, since whatever runs
 /// next would otherwise build first anyway.
 async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) {
-    let toolchain = this
+    match Toolchain::allow_host(root, port).await {
+        // Otherwise the host's configure would keep nix's compiler from the cache.
+        Ok(true) => {
+            let checkout = port.checkout(root);
+            if let Err(err) = cx
+                .background_spawn(async move { decanter_ps::cmake_cache::forget_all(&checkout) })
+                .await
+            {
+                tracing::warn!(port = port.name(), %err, "could not drop nix's CMake cache for the host");
+            }
+        }
+        Ok(false) => {}
+        Err(err) => tracing::warn!(port = port.name(), %err, "could not let the host try the port again"),
+    }
+    let prepared_here = this
         .update(cx, |this, _| {
-            this.ports.get(&port).and_then(|state| state.toolchain.clone())
+            this.ports
+                .get(&port)
+                .and_then(|state| state.toolchain.as_ref())
+                .is_some_and(|(resolved_in, _)| resolved_in == root)
         })
-        .ok()
-        .flatten();
-    let Some((_, toolchain)) = toolchain.filter(|(resolved_in, _)| resolved_in == root) else {
+        .unwrap_or(false);
+    if !prepared_here {
         // Never prepared in this library this session: the next prepare builds.
         return;
+    }
+    // Resolved again rather than reusing nix from a fallback, now that the host may build it.
+    let toolchain = match Toolchain::resolve(root, port, |_, _| {}).await {
+        Ok(toolchain) => toolchain,
+        Err(err) => {
+            set_stage(this, port, Stage::Failed(toolchain_error(&err)), cx);
+            return;
+        }
     };
+    let _ = this.update(cx, |this, _| {
+        this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
+    });
     if let Err(message) = build(this, port, root, toolchain, cx).await {
         set_stage(this, port, Stage::Failed(message), cx);
     } else {

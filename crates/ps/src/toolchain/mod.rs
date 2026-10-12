@@ -105,10 +105,21 @@ impl Toolchain {
     }
 
     /// After the host's tools failed to configure `port`: later resolves
-    /// skip the host for it until the file under the toolchain folder is removed.
+    /// skip the host for it until [`Toolchain::allow_host`].
     pub async fn refuse_host(root: &Root, port: Port) -> io::Result<()> {
         tokio::fs::create_dir_all(root.toolchain()).await?;
         tokio::fs::write(host_refused(root, port), b"").await
+    }
+
+    /// Once `port`'s checkout moved, since the new commit may configure with
+    /// the host's tools after all. True when the host had been refused: the
+    /// checkout's build caches are then nix's, which the caller must forget.
+    pub async fn allow_host(root: &Root, port: Port) -> io::Result<bool> {
+        match tokio::fs::remove_file(host_refused(root, port)).await {
+            Ok(()) => Ok(true),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err),
+        }
     }
 
     /// Stable across runs, to tell which toolchain a build came from.
