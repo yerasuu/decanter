@@ -61,6 +61,8 @@ impl Ps {
                     return notify(&this, err, true, cx);
                 }
             };
+            // Before the window can appear, so the task bar already knows it.
+            crate::taskbar::sync_ps(root.library(), &game).await;
             let commit = failures::commit_of(&port.checkout(&root)).await;
             let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit);
             let finished = jobs::run(
@@ -213,7 +215,7 @@ async fn anyps5_command(
         return Err(t!("ps.play.prepare_error", name = run_dir.display(), error = err).into_owned());
     }
     anyps5
-        .run_command(toolchain, &game.title_id, &run_dir)
+        .run_command(toolchain, game, &run_dir)
         .await
         .map_err(|err| t!("ps.errors.environment", error = err).into_owned())
 }

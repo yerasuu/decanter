@@ -127,11 +127,15 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         prefix_of: draft.prefix_of,
         art: draft.art,
     };
-    library
-        .write_manifest(&game)
-        .inspect(|()| tracing::info!(profile_id, id, name = %game.name, "external game saved"))
-        .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
-        .map_err(|err| t!("external.errors.save", error = err).into_owned())
+    crate::achv_try!(
+        library
+            .write_manifest(&game)
+            .inspect(|()| tracing::info!(profile_id, id, name = %game.name, "external game saved"))
+            .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
+            .map_err(|err| t!("external.errors.save", error = err).into_owned())
+    );
+    tokio::spawn(async move { crate::taskbar::sync_pc(&game).await });
+    Ok(())
 }
 
 /// Forgets an external game (manifest, favorites, playtime, collections)
@@ -157,6 +161,9 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), String> {
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to remove external game manifest"))
             .map_err(|err| t!("external.errors.remove", error = err).into_owned())
     );
+    if crate::taskbar::remove(library.root(), &crate::taskbar::key(Storefront::Unspecified, id)) {
+        tokio::spawn(crate::taskbar::refresh());
+    }
     // A hosted game's prefix is its launcher's, still in use.
     let owns_prefix = removed.is_none_or(|game| game.prefix_of.is_none());
     if owns_prefix && let Some(compatdata) = library.compatdata(profile_id, id) {

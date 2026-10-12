@@ -148,6 +148,7 @@ fn main() {
     // register with this runtime's reactor, which its worker threads drive.
     let tokio_context = runtime.enter();
     art::init(runtime.handle().clone());
+    runtime.spawn(taskbar::sweep());
 
     let close_to_tray = close_to_tray();
     i18n::init();

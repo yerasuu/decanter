@@ -144,15 +144,53 @@ fn fit(bytes: Vec<u8>, width: u32, height: u32) -> anyhow::Result<Vec<u8>> {
 }
 
 async fn download(key: ArtKey, path: PathBuf) -> anyhow::Result<()> {
-    let bytes = if let Some(local) = key.url.strip_prefix("file://") {
-        match tokio::fs::read(local).await {
-            Ok(bytes) => bytes,
-            Err(err) => return Err(anyhow::anyhow!("reading {local}: {err}")),
-        }
-    } else {
-        crate::achv_try!(fetch(&key.url).await)
-    };
+    let bytes = crate::achv_try!(read(&key.url).await);
     crate::achv_try!(store(&key, &path, bytes).await);
+    Ok(())
+}
+
+async fn read(url: &str) -> anyhow::Result<Vec<u8>> {
+    match url.strip_prefix("file://") {
+        Some(local) => tokio::fs::read(local)
+            .await
+            .map_err(|err| anyhow::anyhow!("reading {local}: {err}")),
+        None => fetch(url).await,
+    }
+}
+
+/// Square side a game's task bar icon is stored at, at most: what a
+/// desktop draws icons at, with room for a large panel at double scale.
+const DESKTOP_ICON: u32 = 256;
+
+/// Writes `url`'s art to `dest` as a PNG, scaled down to
+/// [`DESKTOP_ICON`] when bigger: a desktop entry's icon has to be a format
+/// every desktop reads, which GOG's JPEG and WEBP art isn't.
+pub async fn save_png(url: &str, dest: &Path) -> anyhow::Result<()> {
+    let bytes = crate::achv_try!(read(url).await);
+    let png = tokio::task::spawn_blocking(move || {
+        let image = image::load_from_memory(&bytes).map_err(|err| anyhow::anyhow!("decoding: {err}"))?;
+        let image = if image.width() > DESKTOP_ICON || image.height() > DESKTOP_ICON {
+            image.thumbnail(DESKTOP_ICON, DESKTOP_ICON)
+        } else {
+            image
+        };
+        let mut encoded = Cursor::new(Vec::new());
+        image
+            .write_to(&mut encoded, ImageFormat::Png)
+            .map_err(|err| anyhow::anyhow!("encoding: {err}"))?;
+        anyhow::Ok(encoded.into_inner())
+    });
+    let png = match png.await {
+        Ok(Ok(png)) => png,
+        Ok(Err(err)) => return Err(anyhow::anyhow!("{url}: {err}")),
+        Err(err) => return Err(anyhow::anyhow!("converting {url}: {err}")),
+    };
+    if let Some(dir) = dest.parent() {
+        crate::achv_try!(tokio::fs::create_dir_all(dir).await);
+    }
+    let partial = dest.with_extension("part");
+    crate::achv_try!(tokio::fs::write(&partial, &png).await);
+    crate::achv_try!(tokio::fs::rename(&partial, dest).await);
     Ok(())
 }
 

@@ -154,7 +154,10 @@ impl AnyPs5 {
 
     /// Runs the shared conversion from `run_dir`, the profile's own
     /// directory for this game; [`prepare_run_dir`] must have laid it out.
-    pub async fn run_command(&self, toolchain: &Toolchain, title_id: &str, run_dir: &Path) -> io::Result<Command> {
+    /// SDL 2 reads its window class hints from the environment, `app.elf`
+    /// for every title otherwise, and the task bar matches the game's
+    /// desktop entry against them.
+    pub async fn run_command(&self, toolchain: &Toolchain, game: &Game, run_dir: &Path) -> io::Result<Command> {
         let mut command = match toolchain
             .command(&self.root, Port::AnyPs5, r#"exec "$DECANTER_APP""#)
             .await
@@ -162,8 +165,11 @@ impl AnyPs5 {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
+        let class = decanter_core::application_id(&game.key());
         command
-            .env("DECANTER_APP", Self::executable(&self.root, title_id))
+            .env("DECANTER_APP", Self::executable(&self.root, &game.title_id))
+            .env("SDL_VIDEO_X11_WMCLASS", &class)
+            .env("SDL_VIDEO_WAYLAND_WMCLASS", &class)
             .current_dir(run_dir);
         Ok(command)
     }

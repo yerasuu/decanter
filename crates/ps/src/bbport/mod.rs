@@ -182,7 +182,11 @@ impl Bbport {
             // The in-game menu has no Spanish; English until one is picked in the menu itself.
             .env("BB_MENU_LANGUAGE", "en")
             // Experimental memory model, AMD GPUs only upstream; off unless chosen.
-            .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" });
+            .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" })
+            // SDL reads its hints from the environment too: the window's Wayland app id and X11
+            // class, otherwise `bb-probe` for every title, which the task bar matches the game's
+            // desktop entry against.
+            .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
         // The fork's way past `game_check.py`, which accepts only Bloodborne 1.09, and past the
         // first import the runtime lacks, so the log lists every one the title reaches.
         if !is_bloodborne(game) {

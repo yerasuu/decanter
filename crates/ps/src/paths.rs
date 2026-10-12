@@ -48,6 +48,12 @@ impl Root {
         self.0.join(path)
     }
 
+    /// The library folder this one sits in, where decanter's other data
+    /// for the profile goes.
+    pub fn library(&self) -> &Path {
+        self.0.parent().unwrap_or(&self.0)
+    }
+
     /// The only folder PS games are read from.
     pub fn games(&self) -> PathBuf {
         self.join("games")

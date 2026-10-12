@@ -15,12 +15,13 @@ decanter-core.workspace = true
 decanter-gog.workspace = true
 decanter-ps.workspace = true
 decanter-runtime.workspace = true
+dirs.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap = { workspace = true, features = ["derive"] }
-tokio = { workspace = true, features = ["time", "fs", "signal", "sync", "rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["time", "fs", "process", "signal", "sync", "rt-multi-thread", "macros"] }
 open.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

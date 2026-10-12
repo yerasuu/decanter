@@ -151,6 +151,9 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         })
         .unwrap_or_default();
     sync_steam_shortcut_for(&account_id, &product_id, cached_art).await;
+    if let Some(game) = crate::core::installed_game(&account_id, &product_id) {
+        crate::taskbar::sync_pc(&game).await;
+    }
 
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
@@ -217,6 +220,7 @@ pub async fn uninstall(
     tracing::info!(account_id, product_id, "uninstall finished");
     refresh_install_state(&state, &account_id, &product_id, cx);
     remove_steam_shortcut_for(&account_id, &product_id).await;
+    crate::taskbar::remove_pc(&account_id, decanter_core::Storefront::Gog, &product_id).await;
     Ok(())
 }
 

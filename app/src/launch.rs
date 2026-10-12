@@ -70,7 +70,7 @@ pub async fn start(
         (_, None) => Launch::new(executable, crate::external::UMU_ID),
     };
     launch.proton = crate::core::proton_for(&game);
-    launch.identity = Some((crate::taskbar::key(&game), game.name.clone()));
+    launch.identity = Some((crate::taskbar::key(game.storefront, &game.game_id), game.name.clone()));
 
     // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL
     // to patch) reads both of these itself; setting them here is what
@@ -87,6 +87,8 @@ pub async fn start(
         path
     });
 
+    // Before the window can appear, so the task bar already knows it.
+    crate::taskbar::sync_pc(&game).await;
     let session = match decanter_runtime::start(&prefix, launch).await {
         Ok(session) => session,
         Err(err) => {
