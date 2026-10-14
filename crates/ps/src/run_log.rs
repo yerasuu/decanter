@@ -1,4 +1,5 @@
-//! Every job's whole output on disk, under the PS folder's `logs/`.
+//! Every job's whole output on disk: a PS job's under the PS folder's
+//! `logs/`, a PC game's wherever its launcher keeps them.
 //!
 //! The in-app log keeps the last lines only; a crash after a long session,
 //! or a startup report hundreds of lines long, needs all of it. The header
@@ -35,21 +36,21 @@ pub struct RunLog {
 }
 
 impl RunLog {
-    /// `target` names what the job is about (a title ID, a port); `facts` go in the header
-    /// before the command. With `call_report`, the port is told to write its call report to
-    /// [`RunLog::calls_path`]. Must be called before `command` is spawned.
+    /// `target` names what the job is about (a title ID, a port, a product id); `facts` go in
+    /// the header before the command. With `call_report`, the port is told to write its call
+    /// report to [`RunLog::calls_path`]. Must be called before `command` is spawned; `dir` is
+    /// made when missing.
     pub async fn start(
-        root: &Root,
+        dir: &Path,
         target: &str,
         kind: JobKind,
         facts: &[(&str, String)],
         command: &mut Command,
         call_report: bool,
     ) -> io::Result<Self> {
-        let dir = dir(root);
-        tokio::fs::create_dir_all(&dir).await?;
+        tokio::fs::create_dir_all(dir).await?;
         let prefix = format!("{}-{}-", slug(target), kind.name());
-        prune(&dir, &prefix).await?;
+        prune(dir, &prefix).await?;
         let started_at = now();
         let stem = format!("{prefix}{}", file_stamp(started_at));
         let mut path = dir.join(format!("{stem}.log"));

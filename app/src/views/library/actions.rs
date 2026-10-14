@@ -91,7 +91,8 @@ pub fn launch_game(account_id: String, game: InstalledGame, cx: &mut App) {
 }
 
 pub fn stop_game(account_id: String, game_id: String, cx: &mut App) {
-    cx.spawn(async move |_| crate::launch::stop(account_id, game_id).await)
+    let background = AppState::get(cx).background.clone();
+    cx.spawn(async move |cx| crate::launch::stop(account_id, game_id, background, cx).await)
         .detach();
 }
 

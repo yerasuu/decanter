@@ -32,7 +32,7 @@ mod prefix;
 mod proton;
 mod umu;
 
-pub use launch::{Launch, Session, start};
+pub use launch::{Launch, Prepared, Session, prepare, start};
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix, sanitize_relative_path, stop_all};
 pub use proton::{Proton, steam_compat_dir, steam_runner_exists, steam_runners};
 pub use umu::umu_run_path;

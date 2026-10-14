@@ -1,22 +1,31 @@
 //! One game launch: the parameters ([`Launch`]), spawning it ([`start`]),
 //! and the running result ([`Session`]).
 
-use std::path::Path;
-use std::process::Stdio;
+use std::path::{Path, PathBuf};
+use std::process::{ExitStatus, Stdio};
 use std::time::Instant;
 
 use anyhow::{Context as _, bail};
-use tokio::process::{Child, Command};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
 use crate::prefix::{Prefix, live_lock};
 use crate::proton::Proton;
 use crate::umu::ensure_umu_run;
+
+/// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
+/// script, `Session.init_session`).
+const PROTON_LOG_WINEDEBUG: &str = "+timestamp,+pid,+tid,+seh,+unwind,+threadname,+debugstr,+loaddll,+mscoree";
 
 /// One game launch.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Launch {
     pub args: Vec<String>,
+    /// Pipe `umu-run`'s stdout and stderr to the caller ([`Session::take_output`])
+    /// instead of inheriting decanter's. Proton then logs to stderr at the
+    /// level `PROTON_LOG` would, rather than to its own file beside the
+    /// prefix, so one stream carries the whole run.
+    pub capture_output: bool,
     /// `(dll name, mode)` pairs, e.g. `("Galaxy64", "n,b")`.
     ///
     /// Only needed to override a DLL Wine itself provides: a proxy sitting
@@ -87,6 +96,7 @@ impl Launch {
         Self {
             executable: executable.into(),
             args: Vec::new(),
+            capture_output: false,
             working_directory: None,
             game_id: game_id.into(),
             identity: None,
@@ -146,6 +156,15 @@ impl Session {
         &self.prefix
     }
 
+    /// The launcher's pipes, once each, when the launch asked for
+    /// [`Launch::capture_output`]; `None` otherwise. The game inherits
+    /// them, so they stay open until the last process in the prefix is
+    /// gone — read them to the end, or the game blocks on a full pipe.
+    #[inline]
+    pub const fn take_output(&mut self) -> (Option<ChildStdout>, Option<ChildStderr>) {
+        (self.child.stdout.take(), self.child.stderr.take())
+    }
+
     /// Waits for the whole session: the launcher first, then anything it
     /// left running in the prefix.
     ///
@@ -158,7 +177,25 @@ impl Session {
     /// Returns an error if the launcher can't be waited on, or if it
     /// exits with a non-zero status.
     #[inline]
-    pub async fn wait(mut self) -> anyhow::Result<()> {
+    pub async fn wait(self) -> anyhow::Result<()> {
+        let status = match self.wait_status().await {
+            Ok(status) => status,
+            Err(err) => return Err(err),
+        };
+        if !status.success() {
+            bail!("umu-run exited with {status}");
+        }
+        Ok(())
+    }
+
+    /// [`Session::wait`] for a caller that records how the launcher ended
+    /// rather than treating a non-zero exit as its own failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the launcher can't be waited on.
+    #[inline]
+    pub async fn wait_status(mut self) -> anyhow::Result<ExitStatus> {
         let pid = self.child.id();
         let status = match self.child.wait().await.context("waiting for umu-run") {
             Ok(status) => status,
@@ -175,10 +212,69 @@ impl Session {
         }
         self.prefix.wait_until_idle().await;
         live_lock().remove(&self.prefix.path);
-        if !status.success() {
-            bail!("umu-run exited with {status}");
-        }
-        Ok(())
+        Ok(status)
+    }
+}
+
+/// A launch with its `umu-run` command built but not started, so a caller
+/// can record the command before it runs. [`Prepared::spawn`] starts it.
+pub struct Prepared {
+    /// `umu-run` with everything [`prepare`] put on it.
+    command: Command,
+    /// What it was prepared from, for the spawn's own log lines.
+    launch: Launch,
+    /// The prefix it runs against, handed to the [`Session`].
+    prefix: Prefix,
+    /// Named when the spawn fails.
+    umu_run_path: PathBuf,
+}
+
+impl Prepared {
+    /// The command as it will be spawned: program, arguments, working
+    /// directory and the environment decanter sets on top of its own.
+    #[inline]
+    pub const fn command_mut(&mut self) -> &mut Command {
+        &mut self.command
+    }
+
+    /// Starts the command, returning as soon as umu is running.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `umu-run` fails to spawn.
+    #[inline]
+    pub fn spawn(mut self) -> anyhow::Result<Session> {
+        let child = match self
+            .command
+            .spawn()
+            .with_context(|| format!("spawning {}", self.umu_run_path.display()))
+        {
+            Ok(child) => child,
+            Err(err) => {
+                tracing::error!(
+                    executable = %self.launch.executable.display(),
+                    game_id = %self.launch.game_id,
+                    "failed to spawn umu-run"
+                );
+                return Err(err);
+            }
+        };
+        let started_at = Instant::now();
+
+        tracing::info!(
+            pid = child.id(),
+            game_id = %self.launch.game_id,
+            proton = ?self.launch.proton,
+            "launched game process"
+        );
+
+        live_lock().insert(self.prefix.path.clone());
+
+        Ok(Session {
+            child,
+            prefix: self.prefix,
+            started_at,
+        })
     }
 }
 
@@ -193,7 +289,23 @@ impl Session {
 /// doesn't exist as a host file, if its working directory can't be
 /// resolved, or if `umu-run` fails to spawn.
 #[inline]
-pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Session> {
+pub async fn start(prefix: &Prefix, launch: Launch) -> anyhow::Result<Session> {
+    match prepare(prefix, launch).await {
+        Ok(prepared) => prepared.spawn(),
+        Err(err) => Err(err),
+    }
+}
+
+/// [`start`] up to the spawn: everything that can fail before the process
+/// exists, with the command in hand for a caller to look at first.
+///
+/// # Errors
+///
+/// Returns an error if `launch.executable` isn't a bare command and
+/// doesn't exist as a host file, or if its working directory can't be
+/// resolved.
+#[inline]
+pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prepared> {
     // A bare name (`wineboot`) is left for Wine to resolve inside the
     // prefix; anything with a path in it is a host file that has to exist,
     // and catching that here beats a launch that silently does nothing.
@@ -256,18 +368,30 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
         // own for Xalia to serve, so there is nothing lost by turning it
         // off by default; `launch.env` below can still turn it back on.
         .env("PROTON_USE_XALIA", "0")
-        // Proton stays silent about a crash inside Wine itself (a missing
-        // DLL, a bad module load) unless asked: without `PROTON_LOG` its
-        // own wrapper never opens a log file at all, and `SteamGameId` is
-        // what that log's *filename* keys off, so both have to be set for
-        // one to land anywhere findable, even though a non-Steam game only
-        // has a `GAMEID` here otherwise. Written beside the prefix rather
-        // than `$HOME` (Proton's own default) so it doesn't scatter one
-        // file per game across the account that runs decanter.
-        .env("PROTON_LOG", "1")
-        .env("PROTON_LOG_DIR", &prefix.path)
-        .env("SteamGameId", &launch.game_id)
         .stdin(Stdio::null());
+
+    // Proton stays silent about a crash inside Wine itself (a missing DLL,
+    // a bad module load) unless asked: without `PROTON_LOG` it runs Wine
+    // with `WINEDEBUG=-all`. A caller taking the output wants that detail
+    // on stderr, where it arrives in order with umu's own lines, and
+    // Proton keeps a `WINEDEBUG` it is handed. Otherwise `PROTON_LOG`
+    // sends it to Proton's own log file, whose *filename* keys off
+    // `SteamGameId`, so both have to be set for one to land anywhere
+    // findable, even though a non-Steam game only has a `GAMEID` here.
+    // Written beside the prefix rather than `$HOME` (Proton's default) so
+    // it doesn't scatter one file per game across the account that runs
+    // decanter.
+    if launch.capture_output {
+        command
+            .env("WINEDEBUG", PROTON_LOG_WINEDEBUG)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    } else {
+        command
+            .env("PROTON_LOG", "1")
+            .env("PROTON_LOG_DIR", &prefix.path)
+            .env("SteamGameId", &launch.game_id);
+    }
 
     if let Some(proton) = launch.proton.as_env_value() {
         command.env("PROTONPATH", proton);
@@ -289,38 +413,14 @@ pub async fn start(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Sessio
         game_id = %launch.game_id,
         store = ?launch.store,
         prefix = %prefix.path.display(),
-        "spawning umu-run"
+        "umu-run command built"
     );
 
-    let child = match command
-        .spawn()
-        .with_context(|| format!("spawning {}", umu_run_path.display()))
-    {
-        Ok(child) => child,
-        Err(err) => {
-            tracing::error!(
-                executable = %launch.executable.display(),
-                game_id = %launch.game_id,
-                "failed to spawn umu-run"
-            );
-            return Err(err);
-        }
-    };
-    let started_at = Instant::now();
-
-    tracing::info!(
-        pid = child.id(),
-        game_id = %launch.game_id,
-        proton = ?launch.proton,
-        "launched game process"
-    );
-
-    live_lock().insert(prefix.path.clone());
-
-    Ok(Session {
-        child,
+    Ok(Prepared {
+        command,
+        launch,
         prefix: prefix.clone(),
-        started_at,
+        umu_run_path,
     })
 }
 

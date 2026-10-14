@@ -110,6 +110,7 @@ mod i18n;
 mod launch;
 mod logs;
 mod relocate;
+mod run_log;
 mod state;
 mod taskbar;
 mod theme;

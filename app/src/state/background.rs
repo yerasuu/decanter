@@ -4,7 +4,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gpui::Context;
+use decanter_ps::process::Job;
+use gpui::{Context, Entity};
 
 #[derive(Clone, PartialEq)]
 pub enum InstallStatus {
@@ -41,6 +42,8 @@ pub struct Background {
     /// external games window locks a running game's Eliminar with it. By game id, not prefix: a prefix belongs to exactly one
     /// (profile, game).
     pub running: HashSet<String>,
+    /// The latest run of each game, finished ones included, for its log.
+    pub runs: HashMap<String, Entity<Job>>,
     /// Installs in progress, keyed by GOG product id.
     pub installing: HashMap<String, InstallStatus>,
     /// Bumped after a play session's duration is written to the playtime

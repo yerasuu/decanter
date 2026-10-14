@@ -7,9 +7,12 @@
 //! started it out of existence.
 
 use decanter_core::InstalledGame;
+use decanter_ps::process::{self, Event, Job, JobKind};
+use decanter_ps::run_log::{RunLog, describe_exit};
 use decanter_runtime::Launch;
-use gpui::{AsyncApp, Entity};
+use gpui::{AppContext as _, AsyncApp, Entity};
 use rust_i18n::t;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::state::Background;
 
@@ -87,16 +90,9 @@ pub async fn start(
         path
     });
 
-    // Before the window can appear, so the task bar already knows it.
-    crate::taskbar::sync_pc(&game).await;
-    let session = match decanter_runtime::start(&prefix, launch).await {
-        Ok(session) => session,
-        Err(err) => {
-            tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
-            return None;
-        }
+    let Some((job, events, log)) = spawn(&account_id, &game, &prefix, launch, &background, cx).await else {
+        return None;
     };
-    tracing::info!(game_id = %game.game_id, name = %game.name, "game launched");
 
     set_running(&background, &game.game_id, true, cx);
     let target = crate::closing::Target::Pc {
@@ -105,20 +101,97 @@ pub async fn start(
     };
     cx.update(|cx| crate::closing::started(target.clone(), game.name.clone(), cx));
     let started = std::time::Instant::now();
-    // Reported, not propagated: the session is over either way, and the
-    // running state has to be cleared regardless of how it ended.
-    if let Err(err) = session.wait().await {
-        tracing::warn!(game_id = %game.game_id, error = %format_args!("{err:#}"), "game session ended with an error");
-    }
+    let exit = crate::run_log::follow(&job, events, log, &game.game_id, cx).await;
     cx.update(|cx| crate::closing::ended(&target, cx));
     set_running(&background, &game.game_id, false, cx);
     let elapsed = started.elapsed();
-    tracing::info!(game_id = %game.game_id, duration_secs = elapsed.as_secs(), "game session ended");
+    tracing::info!(
+        game_id = %game.game_id,
+        exit = describe_exit(exit),
+        duration_secs = elapsed.as_secs(),
+        "game session ended"
+    );
 
     sync_cloud_saves_after_exit(&account_id, &game, cloud_save_checkpoint).await;
     record_last_played(&account_id, &game);
     apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)
+}
+
+/// Starts `launch` with its output followed into the game's run, which the
+/// library's Registro tab shows; `None` when it never started, with the
+/// reason in that run.
+async fn spawn(
+    account_id: &str,
+    game: &InstalledGame,
+    prefix: &decanter_runtime::Prefix,
+    mut launch: Launch,
+    background: &Entity<Background>,
+    cx: &mut AsyncApp,
+) -> Option<(Entity<Job>, UnboundedReceiver<Event>, Option<RunLog>)> {
+    launch.capture_output = true;
+    let mut prepared = match decanter_runtime::prepare(prefix, launch).await {
+        Ok(prepared) => prepared,
+        Err(err) => {
+            tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
+            return None;
+        }
+    };
+    // A run goes on without its file rather than not at all; the log view says so.
+    let (log, log_error) = match crate::run_log::start(account_id, game, prefix.path(), &mut prepared).await {
+        Ok(log) => (Some(log), None),
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "could not create the run's log file");
+            (None, Some(t!("ps.jobs.log_error", error = err).into_owned()))
+        }
+    };
+
+    // Before the window can appear, so the task bar already knows it.
+    crate::taskbar::sync_pc(game).await;
+    let mut session = match prepared.spawn() {
+        Ok(session) => session,
+        Err(err) => {
+            tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
+            let reason = format!("{err:#}");
+            if let Some(log) = log {
+                crate::run_log::abandon(log, &game.game_id, &reason).await;
+            }
+            let job = cx.new(|_| Job::failed(JobKind::Game, t!("ps.jobs.start_error", error = reason).into_owned()));
+            background.update(cx, |background, cx| {
+                background.runs.insert(game.game_id.clone(), job);
+                cx.notify();
+            });
+            return None;
+        }
+    };
+    tracing::info!(
+        game_id = %game.game_id,
+        name = %game.name,
+        log = log.as_ref().map(|log| tracing::field::display(log.path().display())),
+        "game launched"
+    );
+    let (stdout, stderr) = session.take_output();
+    let waited = game.game_id.clone();
+    let (mut job, events) = process::follow(JobKind::Game, session.launcher_pid(), stdout, stderr, async move {
+        match session.wait_status().await {
+            Ok(status) => Some(status),
+            Err(err) => {
+                tracing::warn!(game_id = %waited, error = %format_args!("{err:#}"), "game session ended with an error");
+                None
+            }
+        }
+    });
+    job.log_file = log.as_ref().map(|log| log.path().to_owned());
+    if let Some(error) = log_error {
+        job.push(Event::Line(error));
+    }
+    let job = cx.new(|_| job);
+    background.update(cx, |background, cx| {
+        background.runs.insert(game.game_id.clone(), job.clone());
+        cx.notify();
+    });
+
+    Some((job, events, log))
 }
 
 /// Folds in whatever decanter-hook recorded this session: a locally
@@ -230,7 +303,13 @@ async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, che
 ///
 /// Prefix-wide, which is now the same thing as game-wide: each game has
 /// its own prefix, so stopping one can't reach another.
-pub async fn stop(account_id: String, game_id: String) {
+pub async fn stop(account_id: String, game_id: String, background: Entity<Background>, cx: &mut AsyncApp) {
+    // So the exit this causes reads as a stop in the run's log, not as a crash.
+    background.update(cx, |background, cx| {
+        if let Some(job) = background.runs.get(&game_id) {
+            job.update(cx, |job, _| job.stop_requested = true);
+        }
+    });
     let Some(prefix) = crate::core::prefix_for(&account_id, &game_id) else {
         tracing::warn!(account_id, game_id, "cannot stop, no prefix resolved");
         return;

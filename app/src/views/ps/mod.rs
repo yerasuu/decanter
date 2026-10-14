@@ -4,7 +4,7 @@
 
 mod failures;
 mod games;
-mod log;
+pub mod log;
 mod ports;
 mod settings;
 

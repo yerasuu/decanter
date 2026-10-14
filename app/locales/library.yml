@@ -251,6 +251,12 @@ library.detail.tabs.summary:
 library.detail.tabs.achievements:
   es: Logros
   en: Achievements
+library.detail.tabs.log:
+  es: Registro
+  en: Log
+library.detail.no_runs:
+  es: Todavía no se ha ejecutado este juego desde decanter.
+  en: This game hasn't run from decanter yet.
 library.detail.favorite.add:
   es: Añadir a favoritos
   en: Add to favorites

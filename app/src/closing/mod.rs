@@ -15,7 +15,7 @@ use gpui::{App, AsyncApp, Global};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::state::{JobKey, Ps};
+use crate::state::{AppState, JobKey, Ps};
 
 pub const HOLD: Duration = Duration::from_secs(2);
 /// Between the notice and the stop, to ask again and cancel it.
@@ -204,7 +204,8 @@ fn stop(running: Running, cx: &mut App) {
     tracing::info!(name = %running.name, "closing the game");
     match running.target {
         Target::Pc { account_id, game_id } => {
-            cx.spawn(async move |_| crate::launch::stop(account_id, game_id).await)
+            let background = AppState::get(cx).background.clone();
+            cx.spawn(async move |cx| crate::launch::stop(account_id, game_id, background, cx).await)
                 .detach();
         }
         Target::Ps(dir) => {

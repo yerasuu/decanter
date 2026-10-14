@@ -11,7 +11,7 @@ use decanter_ps::failures::{self, CallReport, Failure, Scanner};
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job, JobKind};
-use decanter_ps::run_log::{RunLog, describe_exit};
+use decanter_ps::run_log::{self, RunLog, describe_exit};
 use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Entity, WeakEntity};
 use rust_i18n::t;
@@ -91,7 +91,16 @@ pub async fn run(
     let target = target_name(&key);
     facts.extend(scanner.as_ref().map(Scanner::facts).into_iter().flatten());
     // A job runs without its file rather than not at all; the log view says so.
-    let (mut log, log_error) = match RunLog::start(root, &target, kind, &facts, &mut command, scanner.is_some()).await {
+    let started_log = RunLog::start(
+        &run_log::dir(root),
+        &target,
+        kind,
+        &facts,
+        &mut command,
+        scanner.is_some(),
+    )
+    .await;
+    let (mut log, log_error) = match started_log {
         Ok(log) => (Some(log), None),
         Err(err) => {
             tracing::warn!(job = kind.name(), target, %err, "could not create the job's log file");

@@ -19,7 +19,7 @@ impl DetailView {
             return bar.children(self.install_action(game, bar_state, window, cx));
         }
         let properties_game = game.clone();
-        bar.child(play_action(game, bar_state.launch, bar_state.running))
+        bar.child(play_action(game, bar_state.launch, bar_state.running, cx))
             .children(self.uninstall_action(game, cx))
             .child(
                 button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
@@ -219,7 +219,7 @@ impl DetailView {
     }
 }
 
-fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool) -> AnyElement {
+fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool, cx: &Context<DetailView>) -> AnyElement {
     let Some(installed) = launch else {
         return theme::muted(t!("library.detail.no_executable")).into_any_element();
     };
@@ -234,6 +234,9 @@ fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool) -> Any
             .into_any_element();
     }
     button("play", ButtonKind::Play, t!("library.detail.play"), false)
-        .on_click(move |_, _, cx| actions::launch_game(account_id.clone(), installed.clone(), cx))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.show_log(cx);
+            actions::launch_game(account_id.clone(), installed.clone(), cx);
+        }))
         .into_any_element()
 }

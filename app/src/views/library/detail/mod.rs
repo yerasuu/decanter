@@ -19,6 +19,7 @@ use rust_i18n::t;
 use super::{LibraryModel, actions, data};
 use crate::state::{AppState, Background, InstallStatus};
 use crate::theme;
+use crate::views::ps::log::LogView;
 use crate::widgets::tabs;
 use hero::hero;
 use install_dialog::InstallDialog;
@@ -29,6 +30,7 @@ enum DetailTab {
     #[default]
     Summary,
     Achievements,
+    Log,
 }
 
 /// The sqlite and manifest reads behind the pane, cached because `render`
@@ -137,6 +139,8 @@ struct Local {
     tab: DetailTab,
     uninstall: Uninstall,
     dialog: Option<InstallDialog>,
+    /// Follows the game's latest run, which a new one replaces.
+    log: Option<Entity<LogView>>,
 }
 
 pub struct DetailView {
@@ -172,6 +176,21 @@ impl DetailView {
             }
         }
     }
+
+    fn sync_log(&mut self, game: &Game, cx: &mut Context<Self>) {
+        let run = AppState::get(cx).background.read(cx).runs.get(&game.id).cloned();
+        match (run, &self.local.log) {
+            (Some(job), Some(log)) if log.read(cx).job() == &job => {}
+            (Some(job), _) => self.local.log = Some(cx.new(|cx| LogView::new(job, cx))),
+            (None, _) => self.local.log = None,
+        }
+    }
+
+    /// JUGAR shows the run as it starts, the way the PS section does.
+    pub(super) fn show_log(&mut self, cx: &mut Context<Self>) {
+        self.local.tab = DetailTab::Log;
+        cx.notify();
+    }
 }
 
 impl Render for DetailView {
@@ -192,6 +211,8 @@ impl Render for DetailView {
         self.sync(&game, profile_id.as_deref(), background);
         let running = background.running.contains(&game.id);
         let install_status = background.installing.get(&game.id).cloned();
+        let is_installed = game.install_state.as_ref().is_some_and(|install| install.installed);
+        self.sync_log(&game, cx);
 
         let (achievements, poll_status) = {
             let model = self.model.read(cx);
@@ -221,10 +242,15 @@ impl Render for DetailView {
         let action_bar = self.action_bar(&game, bar, window, cx);
 
         let external = game.storefront == Storefront::Unspecified;
-        let active = if external { DetailTab::Summary } else { self.local.tab };
+        let hidden = (external && self.local.tab == DetailTab::Achievements)
+            || (!is_installed && self.local.tab == DetailTab::Log);
+        let active = if hidden { DetailTab::Summary } else { self.local.tab };
         let mut detail_tabs = vec![(DetailTab::Summary, t!("library.detail.tabs.summary"))];
         if !external {
             detail_tabs.push((DetailTab::Achievements, t!("library.detail.tabs.achievements")));
+        }
+        if is_installed {
+            detail_tabs.push((DetailTab::Log, t!("library.detail.tabs.log")));
         }
         let tab_row = tabs("detail-tabs", &detail_tabs, active, {
             let this = cx.entity().downgrade();
@@ -238,6 +264,13 @@ impl Render for DetailView {
         let body = match active {
             DetailTab::Summary => summary_tab(&game, playtime).into_any_element(),
             DetailTab::Achievements => self.achievements_tab(achievements.as_ref(), &poll_status, cx),
+            DetailTab::Log => {
+                let log = div().mt(px(20.)).mx(px(32.));
+                match &self.local.log {
+                    Some(view) => log.h(px(460.)).child(view.clone()).into_any_element(),
+                    None => log.child(theme::muted(t!("library.detail.no_runs"))).into_any_element(),
+                }
+            }
         };
 
         div()

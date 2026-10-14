@@ -171,30 +171,54 @@ pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedR
         Ok(child) => child,
         Err(err) => return Err(err),
     };
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let pid = child.id();
+    Ok(follow(
+        kind,
+        pid,
+        stdout,
+        stderr,
+        async move { child.wait().await.ok() },
+    ))
+}
+
+/// A process started elsewhere, followed the way [`spawn`]'s are.
+///
+/// Its pipes come as lines, then [`Event::Exited`] with what `exit`
+/// resolves to, once the pipes are drained. Must be called inside the
+/// tokio runtime.
+pub fn follow<O, E, X>(
+    kind: JobKind,
+    pid: Option<u32>,
+    stdout: Option<O>,
+    stderr: Option<E>,
+    exit: X,
+) -> (Job, UnboundedReceiver<Event>)
+where
+    O: AsyncRead + Unpin + Send + 'static,
+    E: AsyncRead + Unpin + Send + 'static,
+    X: Future<Output = Option<ExitStatus>> + Send + 'static,
+{
     let (sender, receiver) = unbounded_channel();
-    let stdout = child
-        .stdout
-        .take()
-        .map(|out| tokio::spawn(forward(out, sender.clone())));
-    let stderr = child
-        .stderr
-        .take()
-        .map(|err| tokio::spawn(forward(err, sender.clone())));
-    let pid = child.id().unwrap_or_default();
+    let readers = [
+        stdout.map(|out| tokio::spawn(forward(out, sender.clone()))),
+        stderr.map(|err| tokio::spawn(forward(err, sender.clone()))),
+    ];
     tokio::spawn(async move {
-        let status = child.wait().await.ok();
+        let status = exit.await;
         // Output written just before exit is still in the pipes; drain it first.
-        for reader in [stdout, stderr].into_iter().flatten() {
+        for reader in readers.into_iter().flatten() {
             let _ = reader.await;
         }
         let _ = sender.send(Event::Exited(status));
     });
     let job = Job {
         kind,
-        state: State::Running(pid),
+        state: State::Running(pid.unwrap_or_default()),
         lines: VecDeque::new(),
         stop_requested: false,
         log_file: None,
     };
-    Ok((job, receiver))
+    (job, receiver)
 }
