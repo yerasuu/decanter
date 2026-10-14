@@ -897,8 +897,8 @@ ps.graphics.pc_model.label:
   es: Nuevo modelo de memoria y traducción
   en: New memory and translation model
 ps.graphics.pc_model.note:
-  es: "Experimental, solo GPU AMD: la GPU usa la memoria del juego directamente y los comandos gráficos se traducen en vez de emularse. Desactivado: el modelo de la 0.3 con sus arreglos"
-  en: "Experimental, AMD GPUs only: the GPU uses the game's memory directly and graphics commands are translated instead of emulated. Off: the 0.3 model with its fixes"
+  es: "La GPU usa la memoria del juego directamente y los comandos gráficos se traducen en vez de emularse. En GPU AMD se usa siempre; actívalo para forzarlo en otras GPU (experimental fuera de AMD)"
+  en: "The GPU uses the game's memory directly and graphics commands are translated instead of emulated. Always used on AMD GPUs; turn it on to force it on other GPUs (experimental outside AMD)"
 ps.graphics.groups.display:
   es: Pantalla
   en: Display

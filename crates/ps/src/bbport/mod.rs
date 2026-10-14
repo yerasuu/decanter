@@ -251,15 +251,15 @@ impl Bbport {
             .env(var("PRESENT_MODE"), settings.text("present_mode").unwrap_or("Mailbox"))
             .env(var("FPS"), settings.text("fps_mode").unwrap_or("uncap"))
             .env(var("MENU_LANGUAGE"), menu_language)
-            // Experimental memory model, AMD GPUs only upstream; off unless chosen.
-            .env(
-                var("PC_MODEL"),
-                if settings.flag("pc_model", false) { "1" } else { "0" },
-            )
             // SDL reads its hints from the environment too: the window's Wayland app id and X11
             // class, otherwise the probe's name for every title, which the task bar matches the
             // game's desktop entry against.
             .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
+        // The port picks the memory model itself (the PC model on AMD GPUs); the setting only forces
+        // the PC model on other GPUs, so off must not pass PC_MODEL=0 and hold AMD on the old one.
+        if settings.flag("pc_model", false) {
+            command.env(var("PC_MODEL"), "1");
+        }
         // The fork's way past `game_check.py`, which accepts only Bloodborne 1.09, and past the
         // first import the runtime lacks, so the log lists every one the title reaches.
         if !is_bloodborne(game) {
