@@ -179,6 +179,52 @@ pub const GROUPS: &[Group] = &[
         }],
     },
     Group {
+        title: "ps.graphics.groups.mouse",
+        note: Some("ps.graphics.groups.mouse_note"),
+        settings: &[
+            Setting {
+                key: "game_mouse_sensitivity",
+                label: "ps.graphics.game_mouse_sensitivity.label",
+                note: Some("ps.graphics.game_mouse_sensitivity.note"),
+                store: Store::Ini,
+                control: Control::Number {
+                    min: 0.1,
+                    max: 5.0,
+                    step: 0.1,
+                    default: 1.0,
+                    decimals: 2,
+                },
+            },
+            toggle(
+                "mouse_look",
+                "ps.graphics.mouse_look.label",
+                Some("ps.graphics.mouse_look.note"),
+                Store::Ini,
+                true,
+            ),
+            Setting {
+                key: "mouse_sensitivity",
+                label: "ps.graphics.mouse_sensitivity.label",
+                note: Some("ps.graphics.mouse_sensitivity.note"),
+                store: Store::Ini,
+                control: Control::Number {
+                    min: 0.1,
+                    max: 5.0,
+                    step: 0.1,
+                    default: 1.0,
+                    decimals: 2,
+                },
+            },
+            toggle(
+                "mouse_invert_y",
+                "ps.graphics.mouse_invert_y.label",
+                None,
+                Store::Ini,
+                false,
+            ),
+        ],
+    },
+    Group {
         title: "ps.graphics.groups.upscaling",
         note: Some("ps.graphics.groups.upscaling_note"),
         settings: &[

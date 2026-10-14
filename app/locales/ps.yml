@@ -965,6 +965,33 @@ ps.graphics.gamepad.label:
 ps.graphics.gamepad.note:
   es: Con varios conectados, cuál usa el juego; la lista se actualiza al abrir esta pestaña
   en: With several connected, which one the game uses; the list refreshes when this tab opens
+ps.graphics.groups.mouse:
+  es: Ratón
+  en: Mouse
+ps.graphics.groups.mouse_note:
+  es: Se guarda en bbport.ini y se aplica en la siguiente partida
+  en: Saved in bbport.ini, applied the next time the game starts
+ps.graphics.game_mouse_sensitivity.label:
+  es: Sensibilidad del ratón en el juego
+  en: In-game mouse sensitivity
+ps.graphics.game_mouse_sensitivity.note:
+  es: La velocidad del puntero en los juegos que usan el ratón (1 = la del sistema)
+  en: Pointer speed in games that use the mouse (1 = the system's)
+ps.graphics.mouse_look.label:
+  es: Mover la cámara con el ratón
+  en: Mouse look
+ps.graphics.mouse_look.note:
+  es: Al hacer clic en la ventana el ratón mueve la cámara (el stick derecho); F1 lo suelta
+  en: Clicking the window makes the mouse move the camera (the right stick); F1 releases it
+ps.graphics.mouse_sensitivity.label:
+  es: Sensibilidad de la cámara con el ratón
+  en: Mouse look sensitivity
+ps.graphics.mouse_sensitivity.note:
+  es: Con 1, unos 1000 píxeles por segundo giran la cámara a toda velocidad
+  en: At 1, about 1000 pixels per second turn the camera at full speed
+ps.graphics.mouse_invert_y.label:
+  es: Invertir el eje vertical de la cámara
+  en: Invert the camera's vertical axis
 ps.graphics.groups.upscaling:
   es: Reescalado
   en: Upscaling
