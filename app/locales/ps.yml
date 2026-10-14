@@ -273,8 +273,8 @@ ps.settings.sys_modules.none:
   es: Sin carpeta
   en: No folder
 ps.settings.sys_modules.description:
-  es: "Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (BB_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno."
-  en: "Optional: no game needs it today. A folder with your own dump of the console's modules (*.sprx, like libSceNgs2.sprx), only to compare against the port's own libraries (BB_LLE) or for a game that still needs a console module. decanter neither ships nor copies any."
+  es: "Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno."
+  en: "Optional: no game needs it today. A folder with your own dump of the console's modules (*.sprx, like libSceNgs2.sprx), only to compare against the port's own libraries (PS_LLE) or for a game that still needs a console module. decanter neither ships nor copies any."
 ps.settings.channel.title:
   es: Canal de psport
   en: psport channel
@@ -1194,14 +1194,14 @@ ps.graphics.frame_stats.label:
   es: Estadísticas de fotogramas en el registro
   en: Frame stats in the log
 ps.graphics.frame_stats.note:
-  es: BB_FRAME_STATS
-  en: BB_FRAME_STATS
+  es: PS_FRAME_STATS
+  en: PS_FRAME_STATS
 ps.graphics.gpu_profile.label:
   es: Perfil de GPU en el registro
   en: GPU profile in the log
 ps.graphics.gpu_profile.note:
-  es: BB_GPU_PROFILE
-  en: BB_GPU_PROFILE
+  es: PS_GPU_PROFILE
+  en: PS_GPU_PROFILE
 ps.graphics.vk_validation.label:
   es: Capas de validación de Vulkan
   en: Vulkan validation layers

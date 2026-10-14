@@ -21,8 +21,8 @@ use crate::paths::Root;
 /// should anything ignore the order.
 const ICONS_MOD: &str = "zz-decanter-iconos";
 
-/// What bbport is given as `BB_MODS_DIR`, `BB_MODS_CONFIG` and
-/// `BB_MODS_ENABLED`.
+/// What bbport is given as `PS_MODS_DIR`, `PS_MODS_CONFIG` and
+/// `PS_MODS_ENABLED`.
 pub struct Mods {
     pub dir: PathBuf,
     pub config: PathBuf,

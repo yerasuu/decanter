@@ -12,7 +12,7 @@ use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
 
-/// `LauncherSettings` key; passed to bbport as `BB_SYS_MODULES`.
+/// `LauncherSettings` key; passed to bbport as `PS_SYS_MODULES`.
 const SYS_MODULES: &str = "sys_modules_dir";
 
 pub struct SettingsView {

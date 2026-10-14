@@ -65,7 +65,7 @@ impl Root {
         self.join("toolchain")
     }
 
-    /// `BB_DATA_DIR`: `bbport.ini`, the launch settings, mods, patches and the
+    /// `PS_DATA_DIR`: `bbport.ini`, the launch settings, mods, patches and the
     /// files `run.sh` generates. Shared by every profile.
     pub fn bbport_data(&self) -> PathBuf {
         self.join("bbport")
@@ -81,7 +81,7 @@ impl Root {
         self.join("backups")
     }
 
-    /// FSR 4.1.1 assets built from an AMD DLL, passed as `BB_FSR411_DIR`.
+    /// FSR 4.1.1 assets built from an AMD DLL, passed as `PS_FSR411_DIR`.
     pub fn fsr411(&self) -> PathBuf {
         self.join("fsr4_411")
     }

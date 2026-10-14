@@ -10,6 +10,7 @@ mod groups;
 pub mod icons;
 mod ini;
 pub mod mods;
+mod names;
 pub mod pad;
 mod settings;
 pub mod tools;
@@ -23,6 +24,7 @@ use tokio::process::Command;
 
 pub use groups::{Control, GROUPS, Group, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
+pub use names::Names;
 pub use settings::LauncherSettings;
 
 use crate::learned;
@@ -92,7 +94,7 @@ pub fn merge_update(base: &Path, update: &Path, version: &str) -> io::Result<Pat
 }
 
 /// A bbport checkout. The toolchain that builds it must be the one that
-/// runs it: a nix-built `bb-probe` only loads nix's Vulkan drivers.
+/// runs it: a nix-built probe only loads nix's Vulkan drivers.
 pub struct Bbport {
     root: Root,
     checkout: PathBuf,
@@ -138,12 +140,20 @@ impl Bbport {
         self.prebuilt().await.unwrap_or_else(|| self.checkout.clone())
     }
 
+    /// [`Self::port_dir`] as the host sees it, where `toolchain` may keep its store elsewhere.
+    async fn host_port_dir(&self, toolchain: &Toolchain) -> PathBuf {
+        self.prebuilt().await.map_or_else(
+            || self.checkout.clone(),
+            |store_path| toolchain.store_path_on_host(&self.root, &store_path),
+        )
+    }
+
     pub fn ini_path(root: &Root) -> PathBuf {
         root.bbport_data().join("bbport.ini")
     }
 
     /// Drops the in-game menu's language, so the next run follows
-    /// `BB_MENU_LANGUAGE` again: the menu writes `menu_language` whenever it
+    /// `PS_MENU_LANGUAGE` again: the menu writes `menu_language` whenever it
     /// saves any setting, which would otherwise keep it in the language that
     /// was current then. File I/O: off the UI thread.
     pub fn forget_menu_language(root: &Root) -> io::Result<()> {
@@ -177,11 +187,9 @@ impl Bbport {
 
     /// Whether `toolchain` can launch what is built, without building.
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
-        let port_dir = self.prebuilt().await.map_or_else(
-            || self.checkout.clone(),
-            |store_path| toolchain.store_path_on_host(&self.root, &store_path),
-        );
-        let probe = tokio::fs::metadata(port_dir.join("out/bb-probe"))
+        let port_dir = self.host_port_dir(toolchain).await;
+        let names = Names::of(&port_dir).await;
+        let probe = tokio::fs::metadata(port_dir.join(names.probe()))
             .await
             .is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
@@ -219,85 +227,92 @@ impl Bbport {
             Err(err) => return Err(err),
         };
         let port_dir = self.port_dir().await;
+        let names = Names::of(&self.host_port_dir(toolchain).await).await;
+        let var = |suffix: &str| names.var(suffix);
         let data = self.root.bbport_data();
         let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
-            .env("BB_PREBUILT", "1")
-            .env("BB_PROBE", port_dir.join("out/bb-probe"))
+            .env(var("PREBUILT"), "1")
+            .env(var("PROBE"), port_dir.join(names.probe()))
             .env("DECANTER_PORT_DIR", port_dir)
-            .env("BB_DATA_DIR", &data)
-            .env("BB_USER_DIR", user_dir)
-            .env("BB_GAME_DIR", &game.dir)
-            .env("BB_MODS_DIR", &mods.dir)
-            .env("BB_MODS_CONFIG", &mods.config)
-            .env("BB_MODS_ENABLED", if mods.enabled { "1" } else { "0" })
-            .env("BB_PATCHES_DIR", path_or("patches_dir", data.join("patches")))
-            .env("BB_PATCHES_CONFIG", data.join("patches.json"))
-            .env("BB_LANGUAGE", settings.text("language").unwrap_or("1"))
+            .env(var("DATA_DIR"), &data)
+            .env(var("USER_DIR"), user_dir)
+            .env(var("GAME_DIR"), &game.dir)
+            .env(var("MODS_DIR"), &mods.dir)
+            .env(var("MODS_CONFIG"), &mods.config)
+            .env(var("MODS_ENABLED"), if mods.enabled { "1" } else { "0" })
+            .env(var("PATCHES_DIR"), path_or("patches_dir", data.join("patches")))
+            .env(var("PATCHES_CONFIG"), data.join("patches.json"))
+            .env(var("LANGUAGE"), settings.text("language").unwrap_or("1"))
             .env(
-                "BB_FULLSCREEN",
+                var("FULLSCREEN"),
                 if settings.flag("fullscreen", false) { "1" } else { "0" },
             )
-            .env("BB_PRESENT_MODE", settings.text("present_mode").unwrap_or("Mailbox"))
-            .env("BB_FPS", settings.text("fps_mode").unwrap_or("uncap"))
-            .env("BB_MENU_LANGUAGE", menu_language)
+            .env(var("PRESENT_MODE"), settings.text("present_mode").unwrap_or("Mailbox"))
+            .env(var("FPS"), settings.text("fps_mode").unwrap_or("uncap"))
+            .env(var("MENU_LANGUAGE"), menu_language)
             // Experimental memory model, AMD GPUs only upstream; off unless chosen.
-            .env("BB_PC_MODEL", if settings.flag("pc_model", false) { "1" } else { "0" })
+            .env(
+                var("PC_MODEL"),
+                if settings.flag("pc_model", false) { "1" } else { "0" },
+            )
             // SDL reads its hints from the environment too: the window's Wayland app id and X11
-            // class, otherwise `bb-probe` for every title, which the task bar matches the game's
-            // desktop entry against.
+            // class, otherwise the probe's name for every title, which the task bar matches the
+            // game's desktop entry against.
             .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
         // The fork's way past `game_check.py`, which accepts only Bloodborne 1.09, and past the
         // first import the runtime lacks, so the log lists every one the title reaches.
         if !is_bloodborne(game) {
-            command.env("BB_SKIP_GAME_CHECK", "1").env("BB_PERMISSIVE", "1");
+            command.env(var("SKIP_GAME_CHECK"), "1").env(var("PERMISSIVE"), "1");
             // The user's own dump of the console's modules (Ajustes), which the fork links ahead of
             // its own versions; Bloodborne keeps the path it is known to work on.
             if let Some(dir) = settings.text("sys_modules_dir") {
-                command.env("BB_SYS_MODULES", dir);
+                command.env(var("SYS_MODULES"), dir);
             }
         }
         if settings.flag("hdr", false) {
-            command.env("BB_HDR", "1");
+            command.env(var("HDR"), "1");
         }
         if let Some(limit) = settings.number("fps_limit").filter(|&limit| limit > 0.0) {
-            command.env("BB_FPS_LIMIT", format!("{limit:.0}"));
+            command.env(var("FPS_LIMIT"), format!("{limit:.0}"));
         }
-        for (key, env) in [
-            ("draw_pipe", "BB_DRAW_PIPE"),
-            ("readbacks", "BB_READBACKS"),
-            ("preupload", "BB_PREUPLOAD"),
-            ("gamepad", "BB_GAMEPAD"),
+        for (key, suffix) in [
+            ("draw_pipe", "DRAW_PIPE"),
+            ("readbacks", "READBACKS"),
+            ("preupload", "PREUPLOAD"),
+            ("gamepad", "GAMEPAD"),
         ] {
             if let Some(value) = settings.text(key) {
-                command.env(env, value);
+                command.env(var(suffix), value);
             }
         }
-        for (key, env) in [
-            ("mangohud", "MANGOHUD"),
-            ("frame_stats", "BB_FRAME_STATS"),
-            ("save_log", "BB_SAVE_LOG"),
-            ("as_0_3", "BB_AS_0_3"),
-            ("gpu_profile", "BB_GPU_PROFILE"),
-            ("vk_validation", "BB_VK_VALIDATION"),
+        if settings.flag("mangohud", false) {
+            command.env("MANGOHUD", "1");
+        }
+        for (key, suffix) in [
+            ("frame_stats", "FRAME_STATS"),
+            ("save_log", "SAVE_LOG"),
+            ("as_0_3", "AS_0_3"),
+            ("gpu_profile", "GPU_PROFILE"),
+            ("vk_validation", "VK_VALIDATION"),
         ] {
             if settings.flag(key, false) {
-                command.env(env, "1");
+                command.env(var(suffix), "1");
             }
         }
         let fsr411 = self.root.fsr411();
         if tokio::fs::metadata(&fsr411).await.is_ok_and(|meta| meta.is_dir()) {
-            command.env("BB_FSR411_DIR", fsr411);
+            command.env(var("FSR411_DIR"), fsr411);
         }
         if settings.flag("crash_diag", false) {
-            for env in ["BB_FREE_CHECK", "BB_WRITE_LOG", "BB_PRODUCER_CHECK"] {
-                command.env(env, "1");
+            for suffix in ["FREE_CHECK", "WRITE_LOG", "PRODUCER_CHECK"] {
+                command.env(var(suffix), "1");
             }
         }
         // The port's guard would turn it off again a few corrupted frames in; without the
         // record the port's own default stays.
         if learned.frame_overlap_off.is_some() {
-            command.env("BB_SUBMIT_AHEAD", "0");
+            command.env(var("SUBMIT_AHEAD"), "0");
         }
         for item in settings.text("extra_env").unwrap_or_default().split_whitespace() {
             if let Some((key, value)) = item.split_once('=') {

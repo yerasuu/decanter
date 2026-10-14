@@ -17,6 +17,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncWriteExt as _, BufWriter};
 use tokio::process::Command;
 
+use crate::bbport::Names;
 use crate::failures::CallReport;
 use crate::paths::Root;
 use crate::process::JobKind;
@@ -72,7 +73,7 @@ impl RunLog {
         };
         let calls = call_report.then(|| path.with_extension("calls"));
         if let Some(report) = &calls {
-            command.env("BB_CALL_REPORT", report);
+            command.env(Names::of_command(command).var("CALL_REPORT"), report);
         }
         let header = header(kind, target, started_at, facts, command, calls.as_deref());
         file.write_all(header.as_bytes()).await?;

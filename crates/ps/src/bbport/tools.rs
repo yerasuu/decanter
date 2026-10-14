@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use super::Names;
 use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
@@ -294,7 +295,7 @@ pub async fn check_dll(
 }
 
 /// `tools/fsr4cap/build_assets.sh` writing into decanter's FSR 4.1.1
-/// directory, which `launch_command` passes as `BB_FSR411_DIR`. The work
+/// directory, which `launch_command` passes as `PS_FSR411_DIR`. The work
 /// folder must be under `$HOME` for Steam's runtime, which decanter's data
 /// directory is.
 pub async fn fsr411_build_command(
@@ -309,11 +310,12 @@ pub async fn fsr411_build_command(
         Ok(command) => command,
         Err(err) => return Err(err),
     };
+    let names = Names::of(&Port::Bbport.checkout(root)).await;
     command
         .env("DECANTER_UPSCALER", upscaler)
-        .env("BB_FSR411_OUT", root.fsr411())
-        .env("BB_FSR4CAP_WORK", root.join("fsr4cap"))
-        .env("BB_FSR4CAP_CLEAN", "1");
+        .env(names.var("FSR411_OUT"), root.fsr411())
+        .env(names.var("FSR4CAP_WORK"), root.join("fsr4cap"))
+        .env(names.var("FSR4CAP_CLEAN"), "1");
     if let Some(loader) = loader {
         command.env("DECANTER_LOADER", loader);
     }

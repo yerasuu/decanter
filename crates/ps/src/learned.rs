@@ -10,14 +10,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::bbport::Names;
 use crate::paths::Root;
 
 /// The end of the line psport's Gnm guard prints once it has caught the game rewriting a frame's
-/// command buffers while the GPU still ran them, and turned the overlap off for that session.
-const FRAME_OVERLAP_OFF: &str = "frames no longer overlap (BB_SUBMIT_AHEAD 0)";
+/// command buffers while the GPU still ran them, and turned the overlap off for that session:
+/// `frames no longer overlap (PS_SUBMIT_AHEAD 0)`, its variable in the port's own spelling.
+const FRAME_OVERLAP_OFF: &str = "frames no longer overlap (";
 
 pub fn is_frame_overlap_off(line: &str) -> bool {
-    line.contains(FRAME_OVERLAP_OFF)
+    line.split_once(FRAME_OVERLAP_OFF).is_some_and(|(_, rest)| {
+        Names::ALL.iter().any(|names| {
+            rest.strip_prefix(names.prefix())
+                .is_some_and(|variable| variable.starts_with("SUBMIT_AHEAD 0)"))
+        })
+    })
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,7 +38,7 @@ pub struct FrameOverlap {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Title {
     /// The frames of the session before this record were corrupted until the guard tripped, so
-    /// later runs start with `BB_SUBMIT_AHEAD=0` instead.
+    /// later runs start with `PS_SUBMIT_AHEAD=0` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame_overlap_off: Option<FrameOverlap>,
 }

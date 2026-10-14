@@ -92,7 +92,7 @@ pub struct Failure {
     pub calls: Option<CallReport>,
 }
 
-/// What the port counted at exit (`BB_CALL_REPORT`, psport's `FORK.md` "Call report"): imports
+/// What the port counted at exit (`PS_CALL_REPORT`, psport's `FORK.md` "Call report"): imports
 /// the game called that nothing answers for real, or that failed, and apart from them the expected
 /// statuses of polling calls (no event, timeout, busy). Each list most calls first.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
