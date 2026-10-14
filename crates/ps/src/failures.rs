@@ -343,6 +343,8 @@ pub struct Scanner {
     found: Vec<Failure>,
     /// What [`missing_rank`] matched, with its rank, each line once.
     missing: Vec<(u8, String)>,
+    /// The port's line turning frame overlap off for the session ([`crate::learned`]).
+    frame_overlap_off: Option<String>,
 }
 
 impl Scanner {
@@ -356,6 +358,7 @@ impl Scanner {
             pending: None,
             found: Vec::new(),
             missing: Vec::new(),
+            frame_overlap_off: None,
         }
     }
 
@@ -374,7 +377,15 @@ impl Scanner {
         }
     }
 
+    /// Set once the port has caught the game rewriting frames in flight during this run.
+    pub fn frame_overlap_off(&self) -> Option<&str> {
+        self.frame_overlap_off.as_deref()
+    }
+
     pub fn line(&mut self, line: &str) {
+        if self.frame_overlap_off.is_none() && crate::learned::is_frame_overlap_off(line) {
+            self.frame_overlap_off = Some(line.trim().to_owned());
+        }
         let classified = classify(line);
         let fatal = matches!(classified, Some(Kind::Crash | Kind::Stop));
         if !fatal && let Some(rank) = missing_rank(line) {

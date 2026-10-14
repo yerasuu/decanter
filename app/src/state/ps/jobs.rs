@@ -37,6 +37,8 @@ pub struct Finished {
     pub code: Option<i32>,
     /// What the scanner found, when the job had one.
     pub failures: Vec<Failure>,
+    /// The port's line turning frame overlap off during the run, when it printed one.
+    pub frame_overlap_off: Option<String>,
 }
 
 impl Finished {
@@ -126,6 +128,7 @@ pub async fn run(
             return Finished {
                 code: None,
                 failures: Vec::new(),
+                frame_overlap_off: None,
             };
         }
     };
@@ -154,6 +157,7 @@ pub async fn run(
         return Finished {
             code: None,
             failures: Vec::new(),
+            frame_overlap_off: None,
         };
     }
     let mut batch = Vec::with_capacity(BATCH);
@@ -180,12 +184,25 @@ pub async fn run(
     }
     let stopped = job.read_with(cx, |job, _| job.stop_requested);
     trace_end(kind, &target, exit, stopped, started, log_path.as_deref());
-    let code = exit.and_then(|status| status.code());
     let _ = ps.update(cx, |_, cx| cx.notify());
-    let failures = scanner.map_or_else(Vec::new, |scanner| {
-        scanner.exit(exit, stopped, log_path.as_deref(), report)
-    });
-    Finished { code, failures }
+    finished(scanner, exit, stopped, log_path.as_deref(), report)
+}
+
+fn finished(
+    scanner: Option<Scanner>,
+    exit: Option<ExitStatus>,
+    stopped: bool,
+    log: Option<&Path>,
+    report: Option<CallReport>,
+) -> Finished {
+    let frame_overlap_off = scanner
+        .as_ref()
+        .and_then(|scanner| scanner.frame_overlap_off().map(str::to_owned));
+    Finished {
+        code: exit.and_then(|status| status.code()),
+        failures: scanner.map_or_else(Vec::new, |scanner| scanner.exit(exit, stopped, log, report)),
+        frame_overlap_off,
+    }
 }
 
 fn target_name(key: &JobKey) -> String {

@@ -10,6 +10,7 @@ use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::{self, Bbport, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner, Summary};
+use decanter_ps::learned;
 use decanter_ps::library::Game;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
@@ -91,6 +92,9 @@ impl Ps {
             .await;
             cx.update(|cx| crate::closing::ended(&target, cx));
             let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
+            if let Some(line) = finished.frame_overlap_off {
+                record_frame_overlap_off(&this, &root, &game.title_id, line, cx).await;
+            }
             record_failures(&this, failures_path, finished.failures, cx).await;
         })
         .detach();
@@ -170,9 +174,16 @@ async fn bbport_command(
     profile_id: &str,
     cx: &mut AsyncApp,
 ) -> Result<Command, LaunchError> {
-    let settings = {
+    let (settings, learned) = {
         let root = root.clone();
-        cx.background_spawn(async move { LauncherSettings::load(&root) }).await
+        let title_id = game.title_id.clone();
+        cx.background_spawn(async move {
+            (
+                LauncherSettings::load(&root),
+                learned::Store::load(&root).title(&title_id),
+            )
+        })
+        .await
     };
     let bbport = Bbport::new(root.clone());
     let mods = if bbport::is_bloodborne(game) {
@@ -206,7 +217,15 @@ async fn bbport_command(
         return Err(LaunchError::CreateDir { dir: user_dir, err });
     }
     bbport
-        .launch_command(toolchain, game, &user_dir, &settings, &mods, &rust_i18n::locale())
+        .launch_command(
+            toolchain,
+            game,
+            &user_dir,
+            &settings,
+            &mods,
+            &rust_i18n::locale(),
+            &learned,
+        )
         .await
         .map_err(LaunchError::Environment)
 }
@@ -271,6 +290,30 @@ async fn anyps5_command(
         .run_command(toolchain, game, &run_dir)
         .await
         .map_err(LaunchError::Environment)
+}
+
+/// The port caught the game rewriting frames in flight and stopped overlapping them; the next
+/// run starts that way, so its first frames are not corrupted while the guard catches it again.
+async fn record_frame_overlap_off(this: &WeakEntity<Ps>, root: &Root, title_id: &str, line: String, cx: &mut AsyncApp) {
+    tracing::info!(
+        title_id,
+        line,
+        "the port turned frame overlap off: next runs start without it"
+    );
+    let saved = {
+        let (root, title_id) = (root.clone(), title_id.to_owned());
+        cx.background_spawn(async move { learned::Store::record_frame_overlap_off(&root, &title_id, line) })
+            .await
+    };
+    match saved {
+        Ok(()) => {
+            let _ = this.update(cx, Ps::learned_changed);
+        }
+        Err(err) => {
+            tracing::warn!(title_id, %err, "could not record that frame overlap is off for the title");
+            notify(this, t!("ps.learned.save_error", error = err).into_owned(), true, cx);
+        }
+    }
 }
 
 async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failure>, cx: &mut AsyncApp) {

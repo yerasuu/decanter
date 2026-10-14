@@ -25,6 +25,7 @@ pub mod failures;
 mod files;
 pub mod keys;
 pub mod layouts;
+pub mod learned;
 pub mod library;
 pub mod mapping;
 pub mod paths;

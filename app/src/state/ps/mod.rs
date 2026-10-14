@@ -41,6 +41,9 @@ pub struct Ps {
     failures_revision: u32,
     /// Bumped when an FSR 4.1.1 build ends, so its status is checked again.
     fsr_revision: u32,
+    /// Bumped whenever what a run taught about a title changes, for the
+    /// game's view to read it again.
+    learned_revision: u32,
     /// Bumped per scan, so a slow scan that finishes after a newer one,
     /// or after a profile switch, is dropped instead of shown.
     scan: u32,
@@ -74,6 +77,7 @@ impl Ps {
                 scan: 0,
                 failures_revision: 0,
                 fsr_revision: 0,
+                learned_revision: 0,
                 jobs: HashMap::new(),
                 launching: HashSet::new(),
                 ports: HashMap::new(),
@@ -119,6 +123,15 @@ impl Ps {
 
     pub fn failures_changed(&mut self, cx: &mut Context<Self>) {
         self.failures_revision = self.failures_revision.wrapping_add(1);
+        cx.notify();
+    }
+
+    pub const fn learned_revision(&self) -> u32 {
+        self.learned_revision
+    }
+
+    pub fn learned_changed(&mut self, cx: &mut Context<Self>) {
+        self.learned_revision = self.learned_revision.wrapping_add(1);
         cx.notify();
     }
 

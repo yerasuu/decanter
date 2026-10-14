@@ -25,6 +25,7 @@ pub use groups::{Control, GROUPS, Group, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
 pub use settings::LauncherSettings;
 
+use crate::learned;
 use crate::library::{Game, Platform};
 use crate::paths::Root;
 use crate::port::Port;
@@ -194,7 +195,12 @@ impl Bbport {
     /// checkout. `user_dir` holds the profile's saves; `mods` comes from
     /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
     /// Bloodborne. `menu_language` is the in-game menu's until one is picked
-    /// in the menu itself.
+    /// in the menu itself. `learned` is what earlier runs of this title taught
+    /// ([`learned::Store`]).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each one is a different source of the environment"
+    )]
     pub async fn launch_command(
         &self,
         toolchain: &Toolchain,
@@ -203,6 +209,7 @@ impl Bbport {
         settings: &LauncherSettings,
         mods: &mods::Mods,
         menu_language: &str,
+        learned: &learned::Title,
     ) -> io::Result<Command> {
         let mut command = match toolchain
             .command(&self.root, Port::Bbport, r#"bash "$DECANTER_PORT_DIR/run.sh""#)
@@ -286,6 +293,11 @@ impl Bbport {
             for env in ["BB_FREE_CHECK", "BB_WRITE_LOG", "BB_PRODUCER_CHECK"] {
                 command.env(env, "1");
             }
+        }
+        // The port's guard would turn it off again a few corrupted frames in; without the
+        // record the port's own default stays.
+        if learned.frame_overlap_off.is_some() {
+            command.env("BB_SUBMIT_AHEAD", "0");
         }
         for item in settings.text("extra_env").unwrap_or_default().split_whitespace() {
             if let Some((key, value)) = item.split_once('=') {

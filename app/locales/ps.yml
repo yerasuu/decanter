@@ -473,6 +473,21 @@ ps.detail.pick_game:
 ps.detail.no_runs:
   es: Todavía no se ha ejecutado nada para este juego.
   en: Nothing has run for this game yet.
+ps.learned.frame_overlap_off:
+  es: "Solapamiento de frames desactivado: el juego reescribía frames en vuelo (detectado el %{date})."
+  en: "Frame overlap off: the game rewrote frames in flight (detected on %{date})."
+ps.learned.forget:
+  es: Olvidar
+  en: Forget
+ps.learned.forget_tooltip:
+  es: La próxima ejecución vuelve a solapar frames; si el juego los reescribe, el port lo detectará otra vez.
+  en: The next run overlaps frames again; if the game rewrites them, the port will catch it again.
+ps.learned.save_error:
+  es: "No se pudo guardar lo aprendido del juego: %{error}"
+  en: "Couldn't save what was learned about the game: %{error}"
+ps.learned.forget_error:
+  es: "No se pudo olvidar: %{error}"
+  en: "Couldn't forget it: %{error}"
 ps.detail.reading_keyboard:
   es: Leyendo el teclado…
   en: Reading the keyboard…

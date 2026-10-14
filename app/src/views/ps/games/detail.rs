@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport};
+use decanter_ps::learned::{self, FrameOverlap};
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
@@ -78,12 +79,17 @@ pub struct DetailView {
     /// Shared by every Bloodborne copy, so kept across selections.
     graphics: Option<Entity<GraphicsView>>,
     mods: Option<Entity<ModsView>>,
+    /// What earlier runs of `selected` taught, and the revision it was read at.
+    learned: Option<FrameOverlap>,
+    learned_read_at: Option<u32>,
+    learned_error: Option<String>,
 }
 
 impl DetailView {
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
         cx.observe(&ps, |this, _, cx| {
             this.sync_log(cx);
+            this.sync_learned(cx);
             cx.notify();
         })
         .detach();
@@ -96,6 +102,9 @@ impl DetailView {
             gamepad: None,
             graphics: None,
             mods: None,
+            learned: None,
+            learned_read_at: None,
+            learned_error: None,
         }
     }
 
@@ -115,7 +124,11 @@ impl DetailView {
         self.selected = Some(dir);
         self.tab = Tab::Overview;
         self.controls = None;
+        self.learned = None;
+        self.learned_read_at = None;
+        self.learned_error = None;
         self.sync_log(cx);
+        self.sync_learned(cx);
         cx.notify();
     }
 
@@ -184,6 +197,62 @@ impl DetailView {
             (Some(job), _) => self.log = Some(cx.new(|cx| LogView::new(job, cx))),
             (None, _) => self.log = None,
         }
+    }
+
+    /// Reads the selected title's record only when it changed: the section notifies far more
+    /// often than a run teaches something.
+    fn sync_learned(&mut self, cx: &mut Context<Self>) {
+        let ps = self.ps.read(cx);
+        let revision = ps.learned_revision();
+        if self.learned_read_at == Some(revision) {
+            return;
+        }
+        let Some(title_id) = self
+            .selected
+            .as_ref()
+            .and_then(|dir| ps.entries().iter().find(|entry| &entry.game.dir == dir))
+            .map(|entry| entry.game.title_id.clone())
+        else {
+            return;
+        };
+        self.learned_read_at = Some(revision);
+        let selected = self.selected.clone();
+        let task = cx.background_spawn(async move {
+            learned::Store::load(&decanter_ps::paths::active())
+                .title(&title_id)
+                .frame_overlap_off
+        });
+        cx.spawn(async move |this, cx| {
+            let learned = task.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.selected != selected {
+                    return;
+                }
+                this.learned = learned;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Drops the record, so the next run takes the port's default again.
+    fn forget_frame_overlap(&mut self, title_id: String, cx: &mut Context<Self>) {
+        self.learned = None;
+        let task = cx.background_spawn(async move {
+            learned::Store::forget_frame_overlap(&decanter_ps::paths::active(), &title_id)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(()) => this.ps.update(cx, |ps, cx| ps.learned_changed(cx)),
+                Err(err) => {
+                    this.learned_error = Some(t!("ps.learned.forget_error", error = err).into_owned());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     /// Biblioteca's hero: the dump's own wide art (`pic1.png`) under a
@@ -358,12 +427,37 @@ impl DetailView {
             }
             _ => None,
         };
+        let learned = self.learned.as_ref().map(|record| {
+            let title_id = game.title_id.clone();
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(theme::muted(t!(
+                    "ps.learned.frame_overlap_off",
+                    date = decanter_ps::failures::format_time(record.time)
+                )))
+                .child(
+                    button(
+                        "ps-learned-forget",
+                        ButtonKind::Secondary,
+                        t!("ps.learned.forget"),
+                        false,
+                    )
+                    .tooltip(tooltip(t!("ps.learned.forget_tooltip")))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.forget_frame_overlap(title_id.clone(), cx);
+                    })),
+                )
+        });
         div()
             .flex()
             .flex_col()
             .gap_4()
             .children(explanation.map(theme::muted))
             .children(merge.map(|merge| div().flex().child(merge)))
+            .children(learned)
+            .children(self.learned_error.clone().map(theme::error))
             .child(
                 div()
                     .flex()
