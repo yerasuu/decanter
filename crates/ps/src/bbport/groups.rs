@@ -28,7 +28,7 @@ pub enum Control {
         default: f64,
         decimals: usize,
     },
-    /// The controller list from `out/bb-gpu-capabilities --gamepads` (key `gamepad`, a GUID).
+    /// The controller list from the port's GPU tool, `--gamepads` (key `gamepad`, a GUID).
     Gamepad,
 }
 
@@ -63,7 +63,7 @@ const fn toggle(
 }
 
 /// The settings page, grouped and valued as in bbport 0.4's launcher
-/// (`launcher/bbport_launcher.py`: `build_settings_page`, `DEFAULTS`, `INI_DEFAULTS`).
+/// (`launcher/psport_launcher.py`: `build_settings_page`, `DEFAULTS`, `INI_DEFAULTS`).
 /// Mods, external patches, the FSR 4.1.1 build and the free-form environment have views of
 /// their own.
 pub const GROUPS: &[Group] = &[

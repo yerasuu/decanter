@@ -1,7 +1,8 @@
-//! The two spellings of the port's interface. psport renamed bbport's `BB_*` variables to `PS_*`
-//! and `out/bb-probe` to `out/psport`; its releases before that, which the stable channel can
-//! still run, know only the old ones. Every variable decanter passes is written as its suffix and
-//! spelled here, so the two never drift apart.
+//! The spellings of the port's interface. psport renamed bbport's `BB_*` variables to `PS_*`
+//! and `out/bb-probe` to `out/psport`, and later `out/bb-gpu-capabilities` and `bbport.ini` to
+//! `out/psport-gpu-capabilities` and `psport.ini`; its releases before each step, which the stable
+//! channel can still run, know only the old ones. Every variable decanter passes is written as its
+//! suffix and spelled here, so they never drift apart.
 
 use std::path::Path;
 
@@ -10,11 +11,13 @@ use tokio::process::Command;
 #[derive(Clone, Copy)]
 pub enum Names {
     Psport,
+    /// psport with `PS_*` and `out/psport`, still with bbport's file names.
+    EarlyPsport,
     Bbport,
 }
 
 impl Names {
-    pub const ALL: [Self; 2] = [Self::Psport, Self::Bbport];
+    pub const ALL: [Self; 3] = [Self::Psport, Self::EarlyPsport, Self::Bbport];
 
     /// Told apart by `run.sh`, the script that reads the variables, rather than by the binary
     /// under `out/`: `run.sh` is in a checkout and in a fetched build alike and always from the
@@ -22,8 +25,18 @@ impl Names {
     /// channel moved the checkout to an older tag. Unreadable reads as the older port, whose probe
     /// [`Names::probe`] then finds missing.
     pub async fn of(port_dir: &Path) -> Self {
-        match tokio::fs::read_to_string(port_dir.join("run.sh")).await {
-            Ok(script) if script.contains("PS_PROBE") => Self::Psport,
+        Self::of_script(tokio::fs::read_to_string(port_dir.join("run.sh")).await.ok().as_deref())
+    }
+
+    /// [`Names::of`] for callers already doing file I/O off the UI thread.
+    pub fn of_blocking(port_dir: &Path) -> Self {
+        Self::of_script(std::fs::read_to_string(port_dir.join("run.sh")).ok().as_deref())
+    }
+
+    fn of_script(script: Option<&str>) -> Self {
+        match script {
+            Some(script) if script.contains("psport.ini") => Self::Psport,
+            Some(script) if script.contains("PS_PROBE") => Self::EarlyPsport,
             _ => Self::Bbport,
         }
     }
@@ -40,7 +53,7 @@ impl Names {
 
     pub const fn prefix(self) -> &'static str {
         match self {
-            Self::Psport => "PS_",
+            Self::Psport | Self::EarlyPsport => "PS_",
             Self::Bbport => "BB_",
         }
     }
@@ -51,8 +64,22 @@ impl Names {
 
     pub const fn probe(self) -> &'static str {
         match self {
-            Self::Psport => "out/psport",
+            Self::Psport | Self::EarlyPsport => "out/psport",
             Self::Bbport => "out/bb-probe",
+        }
+    }
+
+    pub const fn gpu_capabilities(self) -> &'static str {
+        match self {
+            Self::Psport => "out/psport-gpu-capabilities",
+            Self::EarlyPsport | Self::Bbport => "out/bb-gpu-capabilities",
+        }
+    }
+
+    pub const fn ini(self) -> &'static str {
+        match self {
+            Self::Psport => "psport.ini",
+            Self::EarlyPsport | Self::Bbport => "bbport.ini",
         }
     }
 }

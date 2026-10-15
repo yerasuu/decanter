@@ -6,6 +6,7 @@
 //! port update or reset never touches it; saves go to the profile's own
 //! directory.
 
+pub mod effects;
 mod groups;
 pub mod icons;
 mod ini;
@@ -134,6 +135,12 @@ impl Bbport {
             .map(PathBuf::from)
     }
 
+    /// The current build's marker, which changes whenever the port is built or fetched again:
+    /// what a cache of the port's answers is keyed by.
+    pub async fn build_id(&self) -> Option<String> {
+        tokio::fs::read_to_string(self.build_marker()).await.ok()
+    }
+
     /// What `run.sh` and the port's tools run from: the fetched build, else
     /// the checkout built in place.
     async fn port_dir(&self) -> PathBuf {
@@ -148,8 +155,20 @@ impl Bbport {
         )
     }
 
+    /// Spelled as the checkout's port reads it. A port that reads `psport.ini` gets a copy of the
+    /// `bbport.ini` an older one left, so the first edit here doesn't start from its defaults; the
+    /// port makes the same copy at launch, and an older tag keeps reading `bbport.ini`.
     pub fn ini_path(root: &Root) -> PathBuf {
-        root.bbport_data().join("bbport.ini")
+        let names = Names::of_blocking(&Port::Bbport.checkout(root));
+        let path = root.bbport_data().join(names.ini());
+        let older = root.bbport_data().join(Names::EarlyPsport.ini());
+        if matches!(names, Names::Psport) && !path.exists() && older.exists() {
+            match fs::copy(&older, &path) {
+                Ok(_) => tracing::info!(from = %older.display(), to = %path.display(), "port settings copied"),
+                Err(err) => tracing::warn!(from = %older.display(), %err, "port settings not copied"),
+            }
+        }
+        path
     }
 
     /// Drops the in-game menu's language, so the next run follows
@@ -198,7 +217,7 @@ impl Bbport {
     }
 
     /// The same environment bbport's own launcher built (`game_environment`
-    /// in `launcher/bbport_launcher.py`), for the settings decanter knows,
+    /// in `launcher/psport_launcher.py`), for the settings decanter knows,
     /// plus what keeps `run.sh` from building and from writing into the
     /// checkout. `user_dir` holds the profile's saves; `mods` comes from
     /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
@@ -325,18 +344,20 @@ impl Bbport {
     /// Connected controllers as `(GUID, name)`, from the tool bbport builds
     /// for this. Empty before the first build.
     pub async fn connected_gamepads(&self, toolchain: &Toolchain) -> Vec<(String, String)> {
+        let port_dir = self.port_dir().await;
+        let tool = Names::of(&port_dir).await.gpu_capabilities();
         let command = toolchain
             .command(
                 &self.root,
                 Port::Bbport,
-                r#""$DECANTER_PORT_DIR/out/bb-gpu-capabilities" --gamepads"#,
+                &format!(r#""$DECANTER_PORT_DIR/{tool}" --gamepads"#),
             )
             .await;
         let Ok(mut command) = command else {
             return Vec::new();
         };
         command
-            .env("DECANTER_PORT_DIR", self.port_dir().await)
+            .env("DECANTER_PORT_DIR", port_dir)
             .output()
             .await
             .ok()

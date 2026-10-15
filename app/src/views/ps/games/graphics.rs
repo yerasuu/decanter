@@ -1,10 +1,16 @@
 //! Gráficos: bbport's settings, grouped as its own launcher grouped them.
 //! They are bbport's and not the game folder's, so every Bloodborne copy
-//! shares them; they apply on the next start.
+//! shares them; they apply on the next start. The game effects are the
+//! selected title's, as the port lists them when it can.
 
+use std::collections::HashMap;
+use std::io;
+
+use decanter_ps::bbport::effects::{self, Section};
 use decanter_ps::bbport::values::{self, Values};
-use decanter_ps::bbport::{Control, GROUPS, Setting};
-use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use decanter_ps::bbport::{Bbport, Control, GROUPS, Group, Setting};
+use decanter_ps::port::Port;
+use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::extras::ExtrasView;
@@ -12,10 +18,26 @@ use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{Select, checkbox, select::SelectStyle};
 
+/// The group of [`GROUPS`] the port's own list of the title's effects replaces.
+const EFFECTS_GROUP: &str = "ps.graphics.groups.effects";
+
+/// The port's answer for one title, with the build that gave it.
+struct PortEffects {
+    build: Option<String>,
+    /// `None` when the port cannot list them: [`GROUPS`]' Bloodborne table stays.
+    sections: Option<Vec<Section>>,
+}
+
 pub struct GraphicsView {
+    ps: Entity<Ps>,
     values: Option<Values>,
     error: Option<String>,
     extras: Entity<ExtrasView>,
+    title_id: Option<String>,
+    /// By `TITLE_ID`, so going back to a game doesn't run the port again until it is rebuilt.
+    effects: HashMap<String, PortEffects>,
+    /// Asked for and not answered yet: its effects group waits rather than showing Bloodborne's.
+    querying: Option<String>,
 }
 
 impl GraphicsView {
@@ -29,12 +51,54 @@ impl GraphicsView {
             });
         })
         .detach();
-        let ps = ps.clone();
         Self {
+            ps: ps.clone(),
             values: None,
             error: None,
-            extras: cx.new(|cx| ExtrasView::new(ps, cx)),
+            extras: cx.new(|cx| ExtrasView::new(ps.clone(), cx)),
+            title_id: None,
+            effects: HashMap::new(),
+            querying: None,
         }
+    }
+
+    /// The game whose effects are shown. Only once bbport is built, since the list comes from its
+    /// binary; until then, and with a port that cannot list them, Bloodborne's table stays.
+    pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
+        self.title_id = Some(title_id.to_owned());
+        cx.notify();
+        let Some(toolchain) = self
+            .ps
+            .read(cx)
+            .port(Port::Bbport)
+            .and_then(|state| state.toolchain().cloned())
+        else {
+            return;
+        };
+        let title_id = title_id.to_owned();
+        let known_build = self.effects.get(&title_id).map(|known| known.build.clone());
+        if known_build.is_none() {
+            self.querying = Some(title_id.clone());
+        }
+        cx.spawn(async move |this, cx| {
+            let bbport = Bbport::new(decanter_ps::paths::active());
+            let build = bbport.build_id().await;
+            let sections = if known_build.as_ref() == Some(&build) {
+                None
+            } else {
+                Some(effects::list(&bbport, &toolchain, &title_id).await)
+            };
+            let _ = this.update(cx, |this, cx| {
+                if this.querying.as_ref() == Some(&title_id) {
+                    this.querying = None;
+                }
+                if let Some(sections) = sections {
+                    this.effects.insert(title_id, PortEffects { build, sections });
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn change(&mut self, setting: &'static Setting, value: String, cx: &mut Context<Self>) {
@@ -44,6 +108,19 @@ impl GraphicsView {
         values.set(setting, &value);
         let task =
             cx.background_spawn(async move { values::save(&decanter_ps::paths::active(), setting, &value, None) });
+        Self::after_save(task, cx);
+    }
+
+    fn change_ini(&mut self, key: SharedString, value: &'static str, cx: &mut Context<Self>) {
+        let Some(values) = &mut self.values else {
+            return;
+        };
+        values.set_ini(&key, value);
+        let task = cx.background_spawn(async move { values::save_ini(&decanter_ps::paths::active(), &key, value) });
+        Self::after_save(task, cx);
+    }
+
+    fn after_save(task: Task<io::Result<()>>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -156,6 +233,107 @@ impl GraphicsView {
             .child(arrow(format!("{}-up", setting.key), "›", up))
             .into_any_element()
     }
+
+    fn setting_row(
+        &self,
+        values: &Values,
+        setting: &'static Setting,
+        cx: &mut Context<Self>,
+    ) -> (String, Option<String>, AnyElement) {
+        let (control, note) = self.control(values, setting, cx);
+        (
+            t!(setting.label).into_owned(),
+            note.map(|note| t!(note).into_owned()),
+            control,
+        )
+    }
+
+    /// The port's sections for the selected title instead of `fallback`, the Bloodborne table,
+    /// with its `model_lod` row where a section asks for it.
+    fn port_effects(
+        &self,
+        values: &Values,
+        fallback: &'static Group,
+        cx: &mut Context<Self>,
+    ) -> Option<Vec<AnyElement>> {
+        let title_id = self.title_id.as_ref()?;
+        if self.querying.as_ref() == Some(title_id) && !self.effects.contains_key(title_id) {
+            return Some(Vec::new());
+        }
+        let sections = self.effects.get(title_id)?.sections.as_ref()?;
+        let model_lod = fallback.settings.iter().find(|setting| setting.key == "model_lod");
+        let locale = rust_i18n::locale();
+        let groups = sections
+            .iter()
+            .filter_map(|section| {
+                let mut rows = Vec::with_capacity(section.effects.len() + 1);
+                if section.model_detail
+                    && let Some(setting) = model_lod
+                {
+                    rows.push(self.setting_row(values, setting, cx));
+                }
+                for effect in &section.effects {
+                    let on = values.ini(&effect.key).map_or(effect.default, |value| value == "1");
+                    let next = if on { "0" } else { "1" };
+                    let key = SharedString::from(effect.key.clone());
+                    let toggle = div()
+                        .id(key.clone())
+                        .p_1()
+                        .cursor_pointer()
+                        .child(checkbox(on))
+                        .on_click(cx.listener(move |this, _, _, cx| this.change_ini(key.clone(), next, cx)));
+                    rows.push((
+                        effect.name.get(&locale).to_owned(),
+                        effect.description.as_ref().map(|text| text.get(&locale).to_owned()),
+                        toggle.into_any_element(),
+                    ));
+                }
+                if rows.is_empty() {
+                    return None;
+                }
+                let notes = fallback
+                    .note
+                    .map(|note| t!(note).into_owned())
+                    .into_iter()
+                    .chain(section.hint.as_ref().map(|hint| hint.get(&locale).to_owned()))
+                    .collect();
+                Some(group(t!(fallback.title).into_owned(), notes, rows))
+            })
+            .collect();
+        Some(groups)
+    }
+}
+
+/// A titled card of settings rows, each `(label, note, control)`.
+fn group(title: String, notes: Vec<String>, rows: Vec<(String, Option<String>, AnyElement)>) -> AnyElement {
+    let count = rows.len();
+    let rows = rows.into_iter().enumerate().map(|(index, (label, note, control))| {
+        div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_4()
+            .py_2()
+            .when(index + 1 < count, |row| row.border_b_1().border_color(rgb(theme::LINE)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(label)
+                    .children(note.map(|note| theme::muted(note).text_size(px(12.)))),
+            )
+            .child(control)
+    });
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(theme::h3(title))
+        .children(notes.into_iter().map(|note| theme::muted(note).text_size(px(12.))))
+        .child(theme::card().children(rows))
+        .into_any_element()
 }
 
 impl Render for GraphicsView {
@@ -163,56 +341,27 @@ impl Render for GraphicsView {
         let Some(values) = self.values.clone() else {
             return theme::muted(t!("ps.graphics.reading")).into_any_element();
         };
-        let groups: Vec<AnyElement> = GROUPS
-            .iter()
-            .filter_map(|group| {
-                // The controller is the Mando tab's; a group left empty goes.
-                let settings: Vec<&'static Setting> = group
-                    .settings
-                    .iter()
-                    .filter(|setting| !matches!(setting.control, Control::Gamepad))
-                    .collect();
-                if settings.is_empty() {
-                    return None;
-                }
-                let count = settings.len();
-                let rows: Vec<AnyElement> = settings
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, setting)| {
-                        let (control, note) = self.control(&values, setting, cx);
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .px_4()
-                            .py_2()
-                            .when(index + 1 < count, |row| row.border_b_1().border_color(rgb(theme::LINE)))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .flex()
-                                    .flex_col()
-                                    .child(t!(setting.label))
-                                    .children(note.map(|note| theme::muted(t!(note)).text_size(px(12.)))),
-                            )
-                            .child(control)
-                            .into_any_element()
-                    })
-                    .collect();
-                Some(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .child(theme::h3(t!(group.title)))
-                        .children(group.note.map(|note| theme::muted(t!(note)).text_size(px(12.))))
-                        .child(theme::card().children(rows))
-                        .into_any_element(),
-                )
-            })
-            .collect();
+        let mut groups = Vec::with_capacity(GROUPS.len());
+        for fallback in GROUPS {
+            if fallback.title == EFFECTS_GROUP
+                && let Some(port_groups) = self.port_effects(&values, fallback, cx)
+            {
+                groups.extend(port_groups);
+                continue;
+            }
+            // The controller is the Mando tab's; a group left empty goes.
+            let rows: Vec<_> = fallback
+                .settings
+                .iter()
+                .filter(|setting| !matches!(setting.control, Control::Gamepad))
+                .map(|setting| self.setting_row(&values, setting, cx))
+                .collect();
+            if rows.is_empty() {
+                continue;
+            }
+            let notes = fallback.note.map(|note| t!(note).into_owned()).into_iter().collect();
+            groups.push(group(t!(fallback.title).into_owned(), notes, rows));
+        }
         div()
             .flex()
             .flex_col()

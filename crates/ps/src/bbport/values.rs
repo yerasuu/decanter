@@ -107,6 +107,16 @@ impl Values {
     pub fn set(&mut self, setting: &Setting, value: &str) {
         apply(&mut self.ini, &mut self.launch, setting, value);
     }
+
+    /// A port ini key outside the table, such as a title's own effect switch ([`super::effects`]).
+    pub fn ini(&self, key: &str) -> Option<&str> {
+        self.ini.get(key)
+    }
+
+    /// Shows `value` at once; [`save_ini`] writes it.
+    pub fn set_ini(&mut self, key: &str, value: &str) {
+        self.ini.set(key, value);
+    }
 }
 
 fn apply(ini: &mut Ini, launch: &mut LauncherSettings, setting: &Setting, value: &str) {
@@ -132,4 +142,12 @@ pub fn save(root: &Root, setting: &Setting, value: &str, gamepad_name: Option<&s
         Store::Ini => ini.save(&path),
         Store::Launcher => launch.save(root),
     }
+}
+
+/// [`save`] for a port ini key outside the table.
+pub fn save_ini(root: &Root, key: &str, value: &str) -> io::Result<()> {
+    let path = Bbport::ini_path(root);
+    let mut ini = Ini::load(&path);
+    ini.set(key, value);
+    ini.save(&path)
 }

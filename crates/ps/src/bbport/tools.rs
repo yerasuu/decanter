@@ -1,9 +1,11 @@
 //! What bbport's own launcher managed: mods, external patches and the FSR
-//! 4.1.1 build. The discovery rules stay bbport's: its Python helpers are
-//! imported read-only (`scripts/mods.py`, `scripts/patches.py`,
-//! `tools/fsr4cap/dll_info.py`) and run inside the toolchain like the rest
-//! of the port; the selections go to the files `run.sh` reads
-//! (`mods.json`, `patches.json` in the data directory).
+//! 4.1.1 build. The discovery rules stay the port's: psport answers for mods
+//! and patches itself (`out/psport --list-mods`, `--list-patches`), older
+//! releases through their Python helpers, imported read-only
+//! (`scripts/mods.py`, `scripts/patches.py`; `tools/fsr4cap/dll_info.py` for
+//! every release), all run inside the toolchain like the rest of the port; the
+//! selections go to the files `run.sh` reads (`mods.json`, `patches.json` in
+//! the data directory).
 
 use std::collections::BTreeSet;
 use std::io;
@@ -12,7 +14,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
-use super::Names;
+use super::{Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
 use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
@@ -81,9 +83,63 @@ async fn helper(
     serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
 }
 
-/// Mods bbport would load from `dir` (folders with a layout `mods.py` accepts).
+/// Whether the checkout still has the Python helpers. psport dropped them when
+/// its launch moved into the binary (its `--list-mods`/`--list-patches` answer
+/// instead); the stable channel can still run releases from before. Told apart
+/// by the script in the checkout rather than by asking the probe, since `out/`
+/// can keep a binary built from another commit after the channel moved the
+/// checkout to an older tag, and rather than by [`Names`], since the `PS_*`
+/// rename came earlier than the helpers went away.
+async fn has_python_helpers(root: &Root) -> bool {
+    tokio::fs::try_exists(Port::Bbport.checkout(root).join("scripts/mods.py"))
+        .await
+        .unwrap_or(false)
+}
+
+/// `out/psport <request> <dir> --title …`: the port's own JSON answer for
+/// Bloodborne's executable (the mods page has no game folder at hand). Paths
+/// and names arrive through the environment, never parsed by a shell.
+async fn psport_list(
+    root: &Root,
+    toolchain: &Toolchain,
+    request: &str,
+    dir: &Path,
+) -> Result<serde_json::Value, String> {
+    let script = format!(
+        r#"exec {} "$DECANTER_REQUEST" "$DECANTER_ARG0" --title "$DECANTER_TITLE" --version "$DECANTER_VERSION""#,
+        Names::Psport.probe()
+    );
+    let mut command = match toolchain.command(root, Port::Bbport, &script).await {
+        Ok(command) => command,
+        Err(err) => return Err(format!("psport: {err}")),
+    };
+    command
+        .env("DECANTER_REQUEST", request)
+        .env("DECANTER_ARG0", dir)
+        .env("DECANTER_TITLE", SUPPORTED_TITLE)
+        .env("DECANTER_VERSION", SUPPORTED_VERSION);
+    let output = match command.output().await {
+        Ok(output) => output,
+        Err(err) => return Err(format!("psport: {err}")),
+    };
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .last()
+            .unwrap_or("error")
+            .to_owned());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
+}
+
+/// Mods the port would load from `dir` (folders with a layout it accepts).
 pub async fn discover_mods(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<String>, String> {
-    match helper(root, toolchain, "mods", &[dir]).await {
+    let answer = if has_python_helpers(root).await {
+        helper(root, toolchain, "mods", &[dir]).await
+    } else {
+        psport_list(root, toolchain, "--list-mods", dir).await
+    };
+    match answer {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
         Err(err) => Err(err),
     }
@@ -100,9 +156,14 @@ pub struct ExternalPatch {
     pub default: bool,
 }
 
-/// shadPS4-format patches for 1.09 in `dir`, as bbport's `external_patches` finds them.
+/// shadPS4-format patches for 1.09 in `dir`, as the port finds them.
 pub async fn discover_patches(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
-    match helper(root, toolchain, "patches", &[dir]).await {
+    let answer = if has_python_helpers(root).await {
+        helper(root, toolchain, "patches", &[dir]).await
+    } else {
+        psport_list(root, toolchain, "--list-patches", dir).await
+    };
+    match answer {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
         Err(err) => Err(err),
     }

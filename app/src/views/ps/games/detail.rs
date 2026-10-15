@@ -76,7 +76,8 @@ pub struct DetailView {
     controls: Option<Result<Entity<KeyboardView>, String>>,
     /// Shared by every Bloodborne copy, so kept across selections.
     gamepad: Option<Entity<GamepadView>>,
-    /// Shared by every Bloodborne copy, so kept across selections.
+    /// Shared by every Bloodborne copy, so kept across selections; told which title is selected
+    /// for its effects.
     graphics: Option<Entity<GraphicsView>>,
     mods: Option<Entity<ModsView>>,
     /// What earlier runs of `selected` taught, and the revision it was read at.
@@ -141,6 +142,11 @@ impl DetailView {
         if tab == Tab::Graphics && self.graphics.is_none() {
             let ps = self.ps.clone();
             self.graphics = Some(cx.new(|cx| GraphicsView::new(&ps, cx)));
+        }
+        if tab == Tab::Graphics
+            && let (Some(graphics), Some((Port::Bbport, title_id))) = (&self.graphics, &entry)
+        {
+            graphics.update(cx, |graphics, cx| graphics.show_title(title_id, cx));
         }
         if tab == Tab::Mods && self.mods.is_none() {
             let ps = self.ps.clone();
