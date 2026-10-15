@@ -76,7 +76,7 @@ fn valid_branch(name: &str) -> bool {
 }
 
 /// Points `origin` at `upstream` first: a checkout cloned before a port
-/// moved (bbport to decanter's fork) then follows it like any other.
+/// moved (bbport to psport) then follows it like any other.
 async fn fetch_from(repo: &Path, upstream: &str, args: &[&str]) -> Result<(), String> {
     match git(repo, &["remote", "get-url", "origin"]).await {
         Ok(current) if current == upstream => {}

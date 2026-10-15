@@ -24,7 +24,7 @@ impl Port {
     /// runs whatever upstream ships.
     pub const fn upstream(self) -> &'static str {
         match self {
-            // decanter's fork of deadinside28/bloodborne_pc: other PS4 titles on top of upstream.
+            // psport: an independent compatibility layer derived from deadinside28/bloodborne_pc, for any PS4 title.
             Self::Bbport => "https://github.com/yerasuu/psport.git",
             Self::AnyPs5 => "https://github.com/boykopovar/AnyPS5.git",
         }
