@@ -4,16 +4,25 @@
 //! storefront: each shows its own row, with its own "Cerrar sesión".
 //!
 //! Also where the profile's library lives, since moving it is a
-//! per-profile concern too.
+//! per-profile concern too, which library is the active one, and adding
+//! another person, now that the topbar only shows profiles once there are
+//! two.
 
-use decanter_core::{Account, Storefront};
-use gpui::{AsyncApp, Context, Entity, FontWeight, IntoElement, WeakEntity, Window, div, prelude::*, px};
+use std::path::{Path, PathBuf};
+
+use decanter_core::{Account, Profile, Storefront};
+use gpui::{
+    AsyncApp, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, WeakEntity, Window, div,
+    prelude::*, px,
+};
 use rust_i18n::t;
 
 use super::{column, field_row, inline, storefront_label};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
+use crate::views::profile_form::{self, ProfileForm};
+use crate::views::shell;
+use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button};
 
 #[derive(Clone, PartialEq)]
 enum AccountStatus {
@@ -42,6 +51,10 @@ pub struct AccountTab {
     moving: bool,
     move_progress: Option<(u64, u64)>,
     move_error: Option<String>,
+    libraries: Vec<(PathBuf, Option<Vec<Profile>>)>,
+    active_root: Option<PathBuf>,
+    switch_error: Option<String>,
+    new_profile: Option<(Entity<ProfileForm>, Subscription)>,
     rows: Vec<AccountRow>,
     adding: bool,
     pasted: Entity<TextInput>,
@@ -63,6 +76,10 @@ impl AccountTab {
             moving: false,
             move_progress: None,
             move_error: None,
+            libraries: crate::core::profiles_by_library(),
+            active_root: decanter_core::bootstrap::active_root(),
+            switch_error: None,
+            new_profile: None,
             rows: Vec::new(),
             adding: false,
             pasted,
@@ -429,6 +446,105 @@ impl AccountTab {
             ))
     }
 
+    /// Switches to `root` with the profile last active there, or its first
+    /// one when that's unknown: a library is only ever entered through one
+    /// of its profiles.
+    fn switch_library(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(profiles) = self
+            .libraries
+            .iter()
+            .find(|(known, _)| known == root)
+            .and_then(|(_, profiles)| profiles.as_ref())
+        else {
+            return;
+        };
+        let db_path = decanter_core::bootstrap::db_path(root);
+        let last_active = decanter_core::Db::open_read_only(&db_path)
+            .and_then(|db| db.active_profile())
+            .inspect_err(
+                |err| tracing::warn!(path = %db_path.display(), %err, "cannot read another library's active profile"),
+            )
+            .ok()
+            .flatten()
+            .filter(|active| profiles.iter().any(|profile| profile.id == active.id))
+            .map(|active| active.id);
+        let Some(profile_id) = last_active.or_else(|| profiles.first().map(|profile| profile.id.clone())) else {
+            self.switch_error = Some(t!("settings.account.library.no_profiles").into_owned());
+            cx.notify();
+            return;
+        };
+        self.switch_error = shell::switch_library(root, &profile_id, cx).err();
+        cx.notify();
+    }
+
+    fn library_switcher(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        if self.libraries.len() < 2 {
+            return None;
+        }
+        let options = self.libraries.iter().map(|(root, profiles)| {
+            let label = match profiles {
+                Some(_) => root.display().to_string(),
+                None => t!("chrome.profiles.unavailable", path = root.display()).into_owned(),
+            };
+            (
+                SharedString::from(root.display().to_string()),
+                SharedString::from(label),
+            )
+        });
+        let selected = self
+            .active_root
+            .as_ref()
+            .map(|root| root.display().to_string())
+            .unwrap_or_default();
+        let entity = cx.entity();
+        Some(
+            column()
+                .child(theme::h3(t!("settings.account.library.active_title")))
+                .child(theme::muted(t!("settings.account.library.active_hint")))
+                .children(self.switch_error.clone().map(theme::error))
+                .child(
+                    field_row().child(Select::new("library-switcher", options, selected).on_change(
+                        move |chosen, _, cx| {
+                            let root = PathBuf::from(chosen.to_string());
+                            entity.update(cx, |this, cx| {
+                                if this.active_root.as_ref() != Some(&root) {
+                                    this.switch_library(&root, cx);
+                                }
+                            });
+                        },
+                    )),
+                ),
+        )
+    }
+
+    fn open_new_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let form = cx.new(|cx| ProfileForm::new(profile_form::Layout::Inline, window, cx));
+        let subscription = cx.subscribe(&form, |this, _, _: &profile_form::Done, cx| {
+            this.new_profile = None;
+            cx.notify();
+        });
+        self.new_profile = Some((form, subscription));
+        cx.notify();
+    }
+
+    fn people(&self, cx: &Context<Self>) -> impl IntoElement {
+        let section = column()
+            .child(theme::h3(t!("settings.account.people.title")))
+            .child(theme::muted(t!("settings.account.people.hint")));
+        match &self.new_profile {
+            Some((form, _)) => section.child(form.clone()),
+            None => section.child(inline(
+                button(
+                    "add-person",
+                    ButtonKind::Secondary,
+                    t!("settings.account.people.add"),
+                    false,
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.open_new_profile(window, cx))),
+            )),
+        }
+    }
+
     fn account_rows(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.rows.len();
         theme::card().children(self.rows.iter().enumerate().flat_map(|(index, row)| {
@@ -575,8 +691,10 @@ impl Render for AccountTab {
         };
         column()
             .child(self.library_location(cx))
+            .children(self.library_switcher(cx))
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
             .child(self.add_gog_account(cx))
+            .child(self.people(cx))
     }
 }

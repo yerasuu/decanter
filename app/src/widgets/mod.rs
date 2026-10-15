@@ -18,6 +18,7 @@ use rust_i18n::t;
 pub use input::{InputEvent, TextInput};
 pub use select::Select;
 
+use crate::i18n::Language;
 use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -294,4 +295,18 @@ pub fn emoji(which: Emoji, text_size: f32) -> gpui::Img {
     };
     // The bitmaps are 76x72; a glyph is about as tall as the font size.
     gpui::img(image).h(px(text_size)).w(px(text_size * 76. / 72.))
+}
+
+/// The UI language picker, shared by Ajustes and the first-run screen so
+/// both offer the same choices. Native names, never translated, so it can be
+/// used from a UI in a language the reader doesn't know.
+pub fn language_select(
+    selected: Option<Language>,
+    on_change: impl Fn(Option<Language>, &mut Window, &mut App) + 'static,
+) -> Select {
+    const SYSTEM_LANGUAGE: &str = "system";
+    let options = std::iter::once((SYSTEM_LANGUAGE.into(), t!("settings.general.language.system").into()))
+        .chain(Language::ALL.map(|language| (language.code().into(), language.native_name().into())));
+    Select::new("language", options, selected.map_or(SYSTEM_LANGUAGE, Language::code))
+        .on_change(move |value, window, cx| on_change(Language::from_code(value), window, cx))
 }

@@ -1,5 +1,5 @@
-//! Creating a profile: the first-run onboarding screen and the topbar's
-//! "+ Crear perfil" popup are the same form in two layouts.
+//! Creating a profile: the first-run onboarding screen and Ajustes'
+//! "+ Añadir persona" are the same form in two layouts.
 //!
 //! Onboarding is a gate — decanter shows nothing else until at least one
 //! profile exists — and is reached only once in the ordinary case:
@@ -9,19 +9,20 @@
 use gpui::{Context, Entity, EventEmitter, Focusable as _, FontWeight, Window, div, prelude::*, px, relative, rgb};
 use rust_i18n::t;
 
+use crate::i18n::{self, Language};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button, language_select};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
     Onboarding,
-    Popup,
+    Inline,
 }
 
 /// Fired after a successful create (the new profile is already active by
-/// then) and on cancel alike, so the owner of the popup doesn't need to
-/// tell the two apart to know it's time to close it.
+/// then) and on cancel alike, so the owner of the inline form doesn't need
+/// to tell the two apart to know it's time to close it.
 pub struct Done;
 
 pub struct ProfileForm {
@@ -32,6 +33,12 @@ pub struct ProfileForm {
     /// pre-filled default alone creates the profile with no
     /// `library_path`, same as every profile created before that existed.
     library_path_chosen: bool,
+    /// The first-run screen's language select, read once instead of on
+    /// every render.
+    language: Option<Language>,
+    /// Picked on the first-run screen, where there may be no database to
+    /// keep it in yet: saved again once creating the profile made one.
+    language_picked: bool,
     error: Option<String>,
 }
 
@@ -39,7 +46,7 @@ impl EventEmitter<Done> for ProfileForm {}
 
 impl ProfileForm {
     pub fn new(layout: Layout, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let name = cx.new(|cx| TextInput::new(t!("chrome.profile_form.name"), cx));
+        let name = Self::name_input(layout, cx);
         // The pre-filled default: the library this profile lands in unless
         // another folder is picked.
         let default_path = decanter_core::bootstrap::active_root()
@@ -50,21 +57,41 @@ impl ProfileForm {
             input.set_text(default_path, cx);
             input
         });
-        cx.subscribe(&name, |this, _, event, cx| match event {
-            InputEvent::Changed => cx.notify(),
-            InputEvent::Submit => this.submit(cx),
-            InputEvent::Cancel if this.layout == Layout::Popup => cx.emit(Done),
-            InputEvent::Cancel => {}
-        })
-        .detach();
         window.focus(&name.focus_handle(cx), cx);
         Self {
             layout,
             name,
             library_path,
             library_path_chosen: false,
+            language: (layout == Layout::Onboarding).then(i18n::saved).flatten(),
+            language_picked: false,
             error: None,
         }
+    }
+
+    fn name_input(layout: Layout, cx: &mut Context<Self>) -> Entity<TextInput> {
+        let name = cx.new(|cx| TextInput::new(t!("chrome.profile_form.name"), cx));
+        cx.subscribe(&name, move |this, _, event, cx| match event {
+            InputEvent::Changed => cx.notify(),
+            InputEvent::Submit => this.submit(cx),
+            InputEvent::Cancel if layout == Layout::Inline => cx.emit(Done),
+            InputEvent::Cancel => {}
+        })
+        .detach();
+        name
+    }
+
+    fn set_language(&mut self, language: Option<Language>, window: &mut Window, cx: &mut Context<Self>) {
+        i18n::set(language, cx);
+        self.language = language;
+        self.language_picked = true;
+        // Rebuilt because the placeholder is fixed when the input is made,
+        // and it would otherwise stay in the language just left.
+        let typed = self.name.read(cx).text().to_owned();
+        self.name = Self::name_input(self.layout, cx);
+        self.name.update(cx, |input, cx| input.set_text(typed, cx));
+        window.focus(&self.name.focus_handle(cx), cx);
+        cx.notify();
     }
 
     fn submit(&mut self, cx: &mut Context<Self>) {
@@ -78,6 +105,9 @@ impl ProfileForm {
         match crate::core::create_profile(&name, chosen_path.as_deref()) {
             Ok(profile) => {
                 tracing::info!(profile_id = %profile.id, name, "profile created");
+                if self.language_picked {
+                    i18n::set(self.language, cx);
+                }
                 let session = AppState::get(cx).session.clone();
                 session.update(cx, |session, cx| {
                     session.reload();
@@ -135,6 +165,23 @@ impl ProfileForm {
     fn error_line(&self) -> Option<gpui::Div> {
         self.error.as_ref().map(|message| theme::error(message.clone()))
     }
+
+    /// Labelled in both languages, since whoever reads it may not know the
+    /// one the screen started in.
+    fn language_picker(&self, cx: &Context<Self>) -> gpui::Div {
+        let entity = cx.entity();
+        div()
+            .absolute()
+            .top(px(16.))
+            .right(px(16.))
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(theme::muted(t!("chrome.onboarding.language")))
+            .child(language_select(self.language, move |language, window, cx| {
+                entity.update(cx, |this, cx| this.set_language(language, window, cx));
+            }))
+    }
 }
 
 impl Render for ProfileForm {
@@ -143,6 +190,7 @@ impl Render for ProfileForm {
         match self.layout {
             Layout::Onboarding => div()
                 .size_full()
+                .relative()
                 .flex()
                 .items_center()
                 .justify_center()
@@ -178,15 +226,15 @@ impl Render for ProfileForm {
                         .child(self.path_row(cx).mt(px(20.)).w_full().max_w(px(320.)))
                         .children(self.error_line()),
                 )
+                .child(self.language_picker(cx))
                 .into_any_element(),
-            Layout::Popup => div()
-                .w(px(260.))
+            Layout::Inline => div()
+                .max_w(px(520.))
                 .p_4()
                 .bg(rgb(theme::BG_PANEL_2))
                 .border_1()
                 .border_color(rgb(theme::LINE))
                 .rounded(px(theme::RADIUS))
-                .shadow(theme::popup_shadow())
                 .flex()
                 .flex_col()
                 .child(

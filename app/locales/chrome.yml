@@ -20,9 +20,6 @@ chrome.nav.downloads:
 chrome.downbar.downloading:
   es: "Descargando: %{title}"
   en: "Downloading: %{title}"
-chrome.profiles.new:
-  es: + Crear perfil
-  en: + New profile
 chrome.profiles.create:
   es: Crear perfil
   en: Create profile
@@ -36,8 +33,8 @@ chrome.profiles.unavailable:
   es: "%{path} (no disponible)"
   en: "%{path} (unavailable)"
 chrome.profile_form.title:
-  es: NUEVO PERFIL
-  en: NEW PROFILE
+  es: NUEVA PERSONA
+  en: NEW PERSON
 chrome.profile_form.name:
   es: Nombre del perfil
   en: Profile name
@@ -59,6 +56,9 @@ chrome.onboarding.title:
 chrome.onboarding.intro:
   es: Crea un perfil para empezar — después puedes añadirle cuentas de GOG (y de otras tiendas más adelante) desde Ajustes.
   en: Create a profile to get started — you can add GOG accounts to it later (and other stores down the line) from Settings.
+chrome.onboarding.language:
+  es: Idioma · Language
+  en: Language · Idioma
 chrome.onboarding.library:
   es: "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):"
   en: "Where this profile's library lives (installs, Proton prefixes):"

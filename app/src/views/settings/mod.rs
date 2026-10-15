@@ -1,10 +1,10 @@
-//! decanter's own settings — off the library nav entirely, the way Steam
-//! keeps these behind the gear beside the account switcher rather than as
-//! a tab of its own. Three tabs: window behaviour, the profile's accounts
-//! (and where its library lives), and the default Proton every game runs
-//! on unless it pins one of its own (global, not tied to any profile).
-//! External games are added from Biblioteca instead (see
-//! `crate::views::external`).
+//! decanter's own settings, the last section of the main navigation.
+//! Three tabs: window behaviour and language (first, since it's where
+//! Ajustes opens), the profile's accounts (with where its library lives,
+//! which library is active and adding another person), and the default
+//! Proton every game runs on unless it pins one of its own (global, not
+//! tied to any profile). External games are added from Biblioteca instead
+//! (see `crate::views::external`).
 
 mod account;
 mod compatibility;
@@ -49,7 +49,7 @@ impl SettingsView {
         let session = AppState::get(cx).session.clone();
         cx.observe(&session, |this, _, cx| this.sync_profile(cx)).detach();
         let mut this = Self {
-            tab: Tab::Account,
+            tab: Tab::General,
             profile: None,
             body: None,
         };

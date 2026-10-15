@@ -64,17 +64,20 @@ pub fn init() {
 /// window re-renders even the cached views, but text a view already built
 /// and kept (an error message, say) stays in the old language until it's
 /// built again.
+///
+/// Switches even when it can't be saved, since the first-run screen picks a
+/// language before any library holds a database; that screen saves it again
+/// once there is one.
 pub fn set(language: Option<Language>, cx: &mut gpui::App) {
     let saved = crate::core::db().and_then(|db| {
         db.set_language(language.map(Language::code))
             .map_err(crate::core::StoreError::Query)
     });
     if let Err(err) = saved {
-        tracing::warn!(error = %err, "failed to save language setting");
-        return;
+        tracing::warn!(error = %err, "failed to save language setting, switching for this session only");
     }
     tracing::info!(language = language.map(Language::code), "language setting changed");
-    init();
+    rust_i18n::set_locale(language.unwrap_or_else(Language::system).code());
     cx.background_spawn(async {
         let root = decanter_ps::paths::active();
         if let Err(err) = decanter_ps::bbport::Bbport::forget_menu_language(&root) {

@@ -8,10 +8,7 @@ use rust_i18n::t;
 use super::{column, field_row, inline};
 use crate::i18n::{self, Language};
 use crate::theme;
-use crate::widgets::select::Select;
-use crate::widgets::{ButtonKind, button, checkbox};
-
-const SYSTEM_LANGUAGE: &str = "system";
+use crate::widgets::{ButtonKind, button, checkbox, language_select};
 
 pub struct GeneralTab {
     language: Option<Language>,
@@ -154,15 +151,10 @@ impl GeneralTab {
     }
 
     fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
-        let options = std::iter::once((SYSTEM_LANGUAGE.into(), t!("settings.general.language.system").into()))
-            .chain(Language::ALL.map(|language| (language.code().into(), language.native_name().into())));
-        let selected = self.language.map_or(SYSTEM_LANGUAGE, Language::code);
         let entity = cx.entity();
-        field_row().child(
-            Select::new("language", options, selected).on_change(move |value, _, cx| {
-                entity.update(cx, |this, cx| this.set_language(Language::from_code(value), cx));
-            }),
-        )
+        field_row().child(language_select(self.language, move |language, _, cx| {
+            entity.update(cx, |this, cx| this.set_language(language, cx));
+        }))
     }
 }
 

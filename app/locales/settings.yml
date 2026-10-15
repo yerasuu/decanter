@@ -113,6 +113,18 @@ settings.account.library.moving:
 settings.account.library.moving_progress:
   es: "Moviendo... %{done} de %{total}"
   en: "Moving... %{done} of %{total}"
+settings.account.library.active_title:
+  es: Biblioteca activa
+  en: Active library
+settings.account.library.active_hint:
+  es: Decanter trabaja con una biblioteca a la vez. Al cambiar, se abre con la última persona que la usó.
+  en: Decanter works with one library at a time. Switching opens it with the person who used it last.
+settings.account.library.busy:
+  es: cierra antes los juegos y las instalaciones para cambiar de biblioteca
+  en: close running games and installs before switching library
+settings.account.library.no_profiles:
+  es: esa biblioteca todavía no tiene ninguna persona
+  en: that library has no people yet
 settings.account.errors.browser:
   es: "no se pudo abrir el navegador: %{error}"
   en: "could not open the browser: %{error}"
@@ -134,6 +146,15 @@ settings.account.errors.busy:
 settings.account.errors.save_path:
   es: "se movió, pero no se pudo guardar la nueva ruta: %{error}"
   en: "it was moved, but the new path could not be saved: %{error}"
+settings.account.people.title:
+  es: Personas
+  en: People
+settings.account.people.hint:
+  es: Cada persona tiene sus propias cuentas, colecciones, partidas y trofeos. Cuando hay más de una, cambias de persona desde la barra superior.
+  en: Each person has their own accounts, collections, saves and trophies. Once there's more than one, you switch person from the top bar.
+settings.account.people.add:
+  es: + Añadir persona
+  en: + Add person
 settings.compatibility.intro:
   es: Cada juego se ejecuta en su propio prefijo, creado la primera vez que lo abres. Para fijar un Proton distinto o restablecer el prefijo de un juego concreto, abre sus Propiedades desde la biblioteca.
   en: Each game runs in its own prefix, created the first time you open it. To pin a different Proton or reset a particular game's prefix, open its Properties from the library.
