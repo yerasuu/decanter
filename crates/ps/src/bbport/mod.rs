@@ -25,7 +25,7 @@ use tokio::process::Command;
 
 pub use groups::{Control, GROUPS, Group, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
-pub use names::Names;
+pub use names::{MEMORY_MODEL_SETTINGS, Names, single_memory_model_blocking};
 pub use settings::LauncherSettings;
 
 use crate::learned;
@@ -33,6 +33,7 @@ use crate::library::{Game, Platform};
 use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
+use names::single_memory_model;
 
 const BLOODBORNE_IDS: [&str; 6] = [
     "CUSA00207",
@@ -246,8 +247,11 @@ impl Bbport {
             Err(err) => return Err(err),
         };
         let port_dir = self.port_dir().await;
-        let names = Names::of(&self.host_port_dir(toolchain).await).await;
+        let host_port_dir = self.host_port_dir(toolchain).await;
+        let names = Names::of(&host_port_dir).await;
         let var = |suffix: &str| names.var(suffix);
+        let old_memory_model = !single_memory_model(&host_port_dir).await;
+        let port_reads = |key: &str| old_memory_model || !MEMORY_MODEL_SETTINGS.contains(&key);
         let data = self.root.bbport_data();
         let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
@@ -276,7 +280,7 @@ impl Bbport {
             .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
         // The port picks the memory model itself (the PC model on AMD GPUs); the setting only forces
         // the PC model on other GPUs, so off must not pass PC_MODEL=0 and hold AMD on the old one.
-        if settings.flag("pc_model", false) {
+        if port_reads("pc_model") && settings.flag("pc_model", false) {
             command.env(var("PC_MODEL"), "1");
         }
         // The fork's way past `game_check.py`, which accepts only Bloodborne 1.09, and past the
@@ -301,7 +305,7 @@ impl Bbport {
             ("preupload", "PREUPLOAD"),
             ("gamepad", "GAMEPAD"),
         ] {
-            if let Some(value) = settings.text(key) {
+            if let Some(value) = settings.text(key).filter(|_| port_reads(key)) {
                 command.env(var(suffix), value);
             }
         }
@@ -315,7 +319,7 @@ impl Bbport {
             ("gpu_profile", "GPU_PROFILE"),
             ("vk_validation", "VK_VALIDATION"),
         ] {
-            if settings.flag(key, false) {
+            if port_reads(key) && settings.flag(key, false) {
                 command.env(var(suffix), "1");
             }
         }

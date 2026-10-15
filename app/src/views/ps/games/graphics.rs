@@ -8,7 +8,9 @@ use std::io;
 
 use decanter_ps::bbport::effects::{self, Section};
 use decanter_ps::bbport::values::{self, Values};
-use decanter_ps::bbport::{Bbport, Control, GROUPS, Group, Setting};
+use decanter_ps::bbport::{
+    Bbport, Control, GROUPS, Group, MEMORY_MODEL_SETTINGS, Setting, single_memory_model_blocking,
+};
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
@@ -31,6 +33,8 @@ struct PortEffects {
 pub struct GraphicsView {
     ps: Entity<Ps>,
     values: Option<Values>,
+    /// The checkout's port has only the PC memory model, so the old one's settings are left out.
+    single_memory_model: bool,
     error: Option<String>,
     extras: Entity<ExtrasView>,
     title_id: Option<String>,
@@ -42,11 +46,16 @@ pub struct GraphicsView {
 
 impl GraphicsView {
     pub fn new(ps: &Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        let load = cx.background_spawn(async { Values::load(&decanter_ps::paths::active()) });
+        let load = cx.background_spawn(async {
+            let root = decanter_ps::paths::active();
+            let single_memory_model = single_memory_model_blocking(&Port::Bbport.checkout(&root));
+            (Values::load(&root), single_memory_model)
+        });
         cx.spawn(async move |this, cx| {
-            let values = load.await;
+            let (values, single_memory_model) = load.await;
             let _ = this.update(cx, |this, cx| {
                 this.values = Some(values);
+                this.single_memory_model = single_memory_model;
                 cx.notify();
             });
         })
@@ -54,6 +63,7 @@ impl GraphicsView {
         Self {
             ps: ps.clone(),
             values: None,
+            single_memory_model: false,
             error: None,
             extras: cx.new(|cx| ExtrasView::new(ps.clone(), cx)),
             title_id: None,
@@ -354,6 +364,7 @@ impl Render for GraphicsView {
                 .settings
                 .iter()
                 .filter(|setting| !matches!(setting.control, Control::Gamepad))
+                .filter(|setting| !(self.single_memory_model && MEMORY_MODEL_SETTINGS.contains(&setting.key)))
                 .map(|setting| self.setting_row(&values, setting, cx))
                 .collect();
             if rows.is_empty() {

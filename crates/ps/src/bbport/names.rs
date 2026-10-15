@@ -2,7 +2,8 @@
 //! and `out/bb-probe` to `out/psport`, and later `out/bb-gpu-capabilities` and `bbport.ini` to
 //! `out/psport-gpu-capabilities` and `psport.ini`; its releases before each step, which the stable
 //! channel can still run, know only the old ones. Every variable decanter passes is written as its
-//! suffix and spelled here, so they never drift apart.
+//! suffix and spelled here, so they never drift apart. psport later removed 0.3's memory model
+//! with its variables, which [`single_memory_model`] tells.
 
 use std::path::Path;
 
@@ -82,4 +83,25 @@ impl Names {
             Self::EarlyPsport | Self::Bbport => "bbport.ini",
         }
     }
+}
+
+/// Launch settings of 0.3's memory model, which a port with [`single_memory_model`] ignores: the
+/// settings view leaves them out and the launch doesn't pass them.
+pub const MEMORY_MODEL_SETTINGS: [&str; 3] = ["pc_model", "preupload", "as_0_3"];
+
+/// Whether the port at `port_dir` has only the PC memory model, told by `run.sh` as [`Names::of`]
+/// tells the generation: from the removal on, it warns that it ignores the variables of the old one.
+pub async fn single_memory_model(port_dir: &Path) -> bool {
+    tokio::fs::read_to_string(port_dir.join("run.sh"))
+        .await
+        .is_ok_and(|script| is_single_memory_model(&script))
+}
+
+/// [`single_memory_model`] for callers already doing file I/O off the UI thread.
+pub fn single_memory_model_blocking(port_dir: &Path) -> bool {
+    std::fs::read_to_string(port_dir.join("run.sh")).is_ok_and(|script| is_single_memory_model(&script))
+}
+
+fn is_single_memory_model(script: &str) -> bool {
+    script.contains("Memory model: the PC one, the only one now")
 }
