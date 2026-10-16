@@ -14,6 +14,9 @@ common.queued:
 common.running:
   es: En ejecución
   en: Running
+common.unavailable_here:
+  es: No disponible en este sistema
+  en: Not available on this system
 common.pick_profile:
   es: Elige un perfil arriba.
   en: Pick a profile above.

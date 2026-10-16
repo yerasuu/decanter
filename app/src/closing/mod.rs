@@ -5,8 +5,26 @@
 //! wrap up as they always do.
 
 mod notice;
+#[cfg(target_os = "linux")]
 mod pads;
 mod shortcut;
+
+/// Gamepads are read from evdev nodes, which only Linux has: elsewhere the
+/// chord never comes, and the desktop's shortcut is all there is.
+#[cfg(not(target_os = "linux"))]
+mod pads {
+    pub struct Pads;
+
+    impl Pads {
+        pub const fn new() -> Self {
+            Self
+        }
+
+        pub async fn chord(&self) {
+            std::future::pending::<()>().await;
+        }
+    }
+}
 
 use std::path::PathBuf;
 use std::time::Duration;

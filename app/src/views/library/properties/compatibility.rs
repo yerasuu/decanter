@@ -9,6 +9,7 @@ use gpui::{Context, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
+use crate::theme;
 use crate::widgets::{ButtonKind, Select, button, tooltip};
 
 pub(super) struct CompatibilityTab {
@@ -89,6 +90,9 @@ impl Render for CompatibilityTab {
         let Some(installed) = &self.installed else {
             return not_installed();
         };
+        if !decanter_runtime::AVAILABLE {
+            return pane().child(theme::muted(t!("common.unavailable_here")));
+        }
 
         let options = std::iter::once((
             SharedString::default(),

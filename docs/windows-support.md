@@ -1,7 +1,27 @@
-# Windows support (future option)
+# Windows support
 
-Not planned yet; recorded on 2026-10-12 as an option, with what it would
-take. Decanter and psport are Linux-only today.
+Recorded on 2026-10-12 as an option, with what it would take; started on
+2026-10-16 (decision #439) with the non-critical parts.
+
+## Phase 1: decanter builds and starts on Windows and macOS
+
+The workspace compiles for Windows and macOS (CI checks
+`x86_64-pc-windows-msvc`, `aarch64-apple-darwin` and `x86_64-apple-darwin`,
+not yet blocking). Starting up works: first-run language, library, GOG
+login, browsing the library and achievements. Platform differences are
+`cfg(target_os)` functions where they arise:
+
+- `libraries.toml` under the platform's config folder (`dirs`), the runtime
+  lock in the local app data folder, free space through `fs4`, the keyring's
+  native store (Credential Manager, Keychain).
+- Linux-only, and said so in the UI ("not available on this system"):
+  playing (Proton through `umu-run`), per-game Proton and prefixes, the
+  tray, closing a game from a pad or shortcut, Steam export.
+- Hidden or skipped: the PS section, desktop entries for the task bar,
+  systemd scopes, and the Galaxy64 hook (not built, not deployed).
+
+Next: native launching on Windows (Job Objects instead of scopes, the hook
+DLL built natively), a tray, and macOS launching (no Proton there).
 
 ## Decanter: medium effort
 

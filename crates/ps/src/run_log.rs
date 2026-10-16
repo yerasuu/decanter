@@ -9,6 +9,7 @@
 //! language, so a log reads the same for whoever it is sent to.
 
 use std::io;
+#[cfg(unix)]
 use std::os::unix::process::ExitStatusExt as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -134,12 +135,23 @@ pub fn describe_exit(exit: Option<ExitStatus>) -> String {
     let Some(status) = exit else {
         return "none".to_owned();
     };
-    match (status.code(), status.signal()) {
+    match (status.code(), signal_of(status)) {
         (Some(code), _) => format!("code {code}"),
-        (None, Some(signal)) if status.core_dumped() => format!("signal {signal} (core dumped)"),
-        (None, Some(signal)) => format!("signal {signal}"),
+        (None, Some((signal, true))) => format!("signal {signal} (core dumped)"),
+        (None, Some((signal, false))) => format!("signal {signal}"),
         (None, None) => status.to_string(),
     }
+}
+
+/// The signal that ended the process, and whether it dumped core.
+#[cfg(unix)]
+fn signal_of(status: ExitStatus) -> Option<(i32, bool)> {
+    status.signal().map(|signal| (signal, status.core_dumped()))
+}
+
+#[cfg(not(unix))]
+const fn signal_of(_status: ExitStatus) -> Option<(i32, bool)> {
+    None
 }
 
 fn header(

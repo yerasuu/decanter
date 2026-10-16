@@ -158,7 +158,9 @@ fn main() {
     art::init(runtime.handle().clone());
     runtime.spawn(taskbar::sweep());
 
-    let close_to_tray = close_to_tray();
+    // Only Linux has a tray to close into; a library brought from there may
+    // still have the setting on.
+    let close_to_tray = cfg!(target_os = "linux") && close_to_tray();
     i18n::init();
     gpui_platform::application()
         .with_quit_mode(gpui::QuitMode::Explicit)

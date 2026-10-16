@@ -14,11 +14,14 @@
 )]
 
 use std::collections::{BTreeMap, HashMap};
+#[cfg(target_os = "linux")]
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io;
 use std::iter;
+#[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt as _;
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -163,13 +166,21 @@ fn group_by_root(source: &Connection, default_root: &Path) -> Result<Option<Grou
             tracing::warn!(root = %root.display(), "a library's disk isn't there, migration postponed");
             return Ok(None);
         }
-        let folder = fs::metadata(&root)?;
-        let first = folders
-            .entry((folder.dev(), folder.ino()))
-            .or_insert_with(|| root.clone());
+        let first = folders.entry(folder_identity(&root)?).or_insert_with(|| root.clone());
         groups.entry(first.clone()).or_default().extend(ids);
     }
     Ok(Some(groups))
+}
+
+#[cfg(unix)]
+fn folder_identity(folder: &Path) -> io::Result<(u64, u64)> {
+    let metadata = fs::metadata(folder)?;
+    Ok((metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(unix))]
+fn folder_identity(folder: &Path) -> io::Result<PathBuf> {
+    fs::canonicalize(folder)
 }
 
 fn active_profile(source: &Connection) -> Result<Option<String>, Error> {
@@ -445,6 +456,7 @@ fn drop_other_profiles(
 /// Whether a decanter, or a game one started (it runs in a
 /// `decanter.game.*` scope), is running for this same data folder — the
 /// one this process would migrate. Anyone that can't be checked counts.
+#[cfg(target_os = "linux")]
 pub(crate) fn others_running() -> bool {
     let own = std::process::id().to_string();
     let data_home = dirs::data_dir();
@@ -464,6 +476,14 @@ pub(crate) fn others_running() -> bool {
     })
 }
 
+/// Without `/proc` there is nothing to ask, and nothing to protect either:
+/// the old data folder only ever existed on Linux.
+#[cfg(not(target_os = "linux"))]
+pub(crate) const fn others_running() -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
 fn same_data_home(process: &Path, data_home: Option<&Path>) -> bool {
     let Ok(environ) = fs::read(process.join("environ")) else {
         return true;

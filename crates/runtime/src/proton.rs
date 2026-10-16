@@ -49,6 +49,9 @@ pub const UMU_PROTON_REPO: &str = "Open-Wine-Components/umu-proton";
 #[inline]
 #[must_use]
 pub fn steam_compat_dir() -> Option<PathBuf> {
+    if !crate::AVAILABLE {
+        return None;
+    }
     let Some(data) = env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))

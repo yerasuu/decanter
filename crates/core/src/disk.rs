@@ -12,8 +12,6 @@
 
 use std::path::Path;
 
-use nix::sys::statvfs::statvfs;
-
 /// `(free bytes, total bytes)` for the filesystem containing `path`.
 ///
 /// `None` if the path doesn't exist yet or the syscall fails — the
@@ -22,18 +20,31 @@ use nix::sys::statvfs::statvfs;
 #[must_use]
 #[inline]
 pub fn disk_usage(path: &Path) -> Option<(u64, u64)> {
-    let stat = match statvfs(path) {
-        Ok(stat) => stat,
+    let (free_bytes, total_bytes) = match space(path) {
+        Ok(space) => space,
         Err(err) => {
             // Previously discarded via `.ok()?`; kept as a warn rather than
             // debug since the caller silently loses the free-space figure.
-            tracing::warn!(path = %path.display(), error = %err, "statvfs failed, omitting free space");
+            tracing::warn!(path = %path.display(), error = %err, "cannot read free space, omitting it");
             return None;
         }
     };
-    let block = stat.fragment_size();
-    let free_bytes = stat.blocks_available().saturating_mul(block);
-    let total_bytes = stat.blocks().saturating_mul(block);
     tracing::debug!(path = %path.display(), free_bytes, total_bytes, "read disk usage");
     Some((free_bytes, total_bytes))
+}
+
+#[cfg(target_os = "linux")]
+fn space(path: &Path) -> nix::Result<(u64, u64)> {
+    let stat = nix::sys::statvfs::statvfs(path)?;
+    let block = stat.fragment_size();
+    Ok((
+        stat.blocks_available().saturating_mul(block),
+        stat.blocks().saturating_mul(block),
+    ))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn space(path: &Path) -> std::io::Result<(u64, u64)> {
+    let stat = fs4::statvfs(path)?;
+    Ok((stat.available_space(), stat.total_space()))
 }

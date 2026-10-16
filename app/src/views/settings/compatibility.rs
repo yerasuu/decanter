@@ -223,6 +223,9 @@ fn proton_line(tools: Option<&ToolChecks>) -> Div {
 
 impl Render for CompatibilityTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !decanter_runtime::AVAILABLE {
+            return column().child(theme::muted(t!("common.unavailable_here")));
+        }
         // A pin naming a Proton that's since been uninstalled matches no
         // option, and a native select falls back to its first one then —
         // so does this, rather than showing an empty trigger.

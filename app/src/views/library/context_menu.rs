@@ -504,6 +504,14 @@ fn game_action_item(
             .child(t!("library.detail.no_executable"))
             .into_any_element();
     };
+    if !decanter_runtime::AVAILABLE {
+        return menu::item("menu-action", false)
+            .opacity(0.5)
+            .cursor_default()
+            .hover(|item| item)
+            .child(t!("library.detail.play_unavailable"))
+            .into_any_element();
+    }
 
     if running {
         menu::item("menu-action", false)

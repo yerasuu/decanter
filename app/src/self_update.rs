@@ -7,7 +7,9 @@
 //! the release page.
 
 use std::borrow::Cow;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -15,6 +17,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use minisign_verify::{PublicKey, Signature};
+#[cfg(unix)]
 use nix::unistd::{AccessFlags, access};
 use rust_i18n::t;
 use tokio::io::AsyncWriteExt as _;
@@ -56,6 +59,9 @@ fn in_nix_store(path: &Path) -> bool {
 /// only counts as an AppImage when it names an existing file in a writable
 /// folder, outside the nix store.
 pub fn availability() -> Availability {
+    if !cfg!(target_os = "linux") {
+        return Availability::Elsewhere;
+    }
     let Some(appimage) = std::env::var_os("APPIMAGE").filter(|value| !value.is_empty()) else {
         return Availability::Elsewhere;
     };
@@ -75,6 +81,7 @@ pub fn availability() -> Availability {
     let Some(dir) = appimage.parent() else {
         return Availability::Elsewhere;
     };
+    #[cfg(unix)]
     if let Err(err) = access(dir, AccessFlags::W_OK) {
         tracing::info!(dir = %dir.display(), %err, "the AppImage's folder isn't writable");
         return Availability::Elsewhere;
@@ -255,10 +262,11 @@ pub async fn install(
 
     let dir = appimage.parent().unwrap_or(appimage);
     let partial = dir.join(format!(".{ASSET}.{}.part", std::process::id()));
-    let file = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let file = options
         .open(&partial)
         .await
         .map_err(|err| write_error(&partial, &err))?;
@@ -299,6 +307,7 @@ pub async fn install(
             .sync_all()
             .await
             .map_err(|err| write_error(&partial, &err))?;
+        #[cfg(unix)]
         tokio::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))
             .await
             .map_err(|err| write_error(&partial, &err))?;
@@ -349,6 +358,11 @@ pub fn restart_if_requested() {
     // The new AppRun sets its own; inheriting ours would stack them.
     decanter_core::strip_launcher_env(&mut command);
     tracing::info!(appimage = %appimage.display(), "restarting into the updated AppImage");
-    let err = command.exec();
-    tracing::error!(appimage = %appimage.display(), %err, "cannot start the updated AppImage");
+    #[cfg(unix)]
+    {
+        let err = command.exec();
+        tracing::error!(appimage = %appimage.display(), %err, "cannot start the updated AppImage");
+    }
+    #[cfg(not(unix))]
+    tracing::error!(appimage = %appimage.display(), "replacing this process only exists on Unix");
 }

@@ -410,7 +410,9 @@ impl Render for Shell {
                     .flex_none()
                     .gap_1()
                     .child(self.nav_link("nav-library", t!("chrome.nav.library"), Page::Library, cx))
-                    .child(self.nav_link("nav-ps", "PS", Page::Ps, cx))
+                    .when(cfg!(target_os = "linux"), |nav| {
+                        nav.child(self.nav_link("nav-ps", "PS", Page::Ps, cx))
+                    })
                     .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
                     .child(downloads_link)
                     .child(self.nav_link("nav-settings", t!("settings.title"), Page::Settings, cx)),

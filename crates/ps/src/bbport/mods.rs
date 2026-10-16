@@ -120,9 +120,9 @@ pub fn prepare(
     }
     fs::create_dir_all(&view)?;
     for name in &ordered {
-        std::os::unix::fs::symlink(dir.join(name), view.join(name))?;
+        link_mod(&dir.join(name), &view.join(name))?;
     }
-    std::os::unix::fs::symlink(&icons, view.join(ICONS_MOD))?;
+    link_mod(&icons, &view.join(ICONS_MOD))?;
     let disabled = if enabled { profile.disabled } else { ordered.clone() };
     let mut order = ordered;
     order.push(ICONS_MOD.to_owned());
@@ -133,4 +133,14 @@ pub fn prepare(
         config,
         enabled: true,
     })
+}
+
+#[cfg(unix)]
+fn link_mod(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn link_mod(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_dir(target, link)
 }

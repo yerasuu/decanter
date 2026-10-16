@@ -39,8 +39,16 @@ struct Entry<'entry> {
 
 /// The real folder under the user's applications folder that holds
 /// decanter's symlinks.
+#[cfg(target_os = "linux")]
 fn links_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|dir| dir.join("applications").join("decanter"))
+}
+
+/// Desktop entries are an XDG desktop's: elsewhere no entry is written and
+/// the task bar shows decanter's own window for a game.
+#[cfg(not(target_os = "linux"))]
+const fn links_dir() -> Option<PathBuf> {
+    None
 }
 
 fn desktop_dir(library_root: &Path) -> PathBuf {
@@ -135,6 +143,9 @@ fn source_of(desktop: &Path) -> Option<PathBuf> {
 /// the one it has; an icon that can't be made at all leaves the game without
 /// an entry rather than with a blank one.
 async fn write(library_root: &Path, entry: &Entry<'_>) -> bool {
+    if links_dir().is_none() {
+        return false;
+    }
     let desktop = desktop_file(library_root, entry.key);
     let icon = icon_file(library_root, entry.key);
     let text = render(entry, &icon);
@@ -191,7 +202,10 @@ async fn link(desktop: &Path, key: &str) -> io::Result<bool> {
         Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err),
         Ok(()) | Err(_) => {}
     }
+    #[cfg(unix)]
     tokio::fs::symlink(desktop, &path).await?;
+    #[cfg(windows)]
+    tokio::fs::symlink_file(desktop, &path).await?;
     Ok(true)
 }
 
@@ -260,7 +274,10 @@ fn relink(desktop: &Path, old: &Path, key: &str) -> io::Result<bool> {
         return Ok(false);
     }
     std::fs::remove_file(&link)?;
+    #[cfg(unix)]
     std::os::unix::fs::symlink(desktop, &link)?;
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(desktop, &link)?;
     Ok(true)
 }
 

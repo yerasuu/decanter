@@ -278,6 +278,9 @@ library.detail.play:
 library.detail.stop:
   es: DETENER
   en: STOP
+library.detail.play_unavailable:
+  es: Jugar aún no está disponible en este sistema
+  en: Playing isn't available on this system yet
 library.detail.no_executable:
   es: Instalado, pero sin ejecutable detectado
   en: Installed, but no executable was found

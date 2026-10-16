@@ -13,7 +13,13 @@ use decanter_core::{Db, HookDiagnostic, Storefront};
 /// artifact, version-locked to this exact build, not a third-party tool
 /// worth keeping independently up to date the way `decanter-runtime`
 /// fetches `umu-run`.
-static GALAXY64_DLL: &[u8] = include_bytes!(env!("GALAXY64_DLL_PATH"));
+///
+/// Built only for Linux, where games run under Proton: elsewhere installs
+/// leave a game's own `Galaxy64.dll` in place.
+#[cfg(target_os = "linux")]
+static GALAXY64_DLL: Option<&[u8]> = Some(include_bytes!(env!("GALAXY64_DLL_PATH")));
+#[cfg(not(target_os = "linux"))]
+static GALAXY64_DLL: Option<&[u8]> = None;
 
 /// What `decanter-hook` renames the real DLL to before dropping its own
 /// proxy in as `Galaxy64.dll`. Duplicated as a literal, kept in sync by
@@ -47,6 +53,10 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
         return Ok(false);
     };
     let real_dll = install_root.join(relative);
+    let Some(proxy) = GALAXY64_DLL else {
+        tracing::info!(path = %real_dll.display(), "achievement hook not built for this system, not deploying it");
+        return Ok(false);
+    };
     let backup = real_dll.with_file_name(REAL_DLL_BACKUP);
     if backup.is_file() {
         // Already deployed -- a reinstall or repair landed the same file
@@ -58,7 +68,7 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
     tokio::fs::rename(&real_dll, &backup)
         .await
         .with_context(|| format!("renaming the real {} aside", real_dll.display()))?;
-    if let Err(err) = tokio::fs::write(&real_dll, GALAXY64_DLL).await {
+    if let Err(err) = tokio::fs::write(&real_dll, proxy).await {
         // Best-effort recovery: put the real DLL back rather than leave
         // the game with neither the original nor the proxy in place.
         let _ = tokio::fs::rename(&backup, &real_dll).await;

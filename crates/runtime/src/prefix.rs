@@ -13,8 +13,6 @@ use std::time::Instant;
 
 use anyhow::Context as _;
 use futures_util::future::join_all;
-use nix::sys::signal::{Signal, kill};
-use nix::unistd::Pid;
 use tokio::time::sleep;
 
 use crate::launch::{Launch, start};
@@ -98,8 +96,7 @@ impl Prefix {
     #[inline]
     #[must_use]
     pub fn processes(&self) -> Vec<u32> {
-        let Ok(entries) = fs::read_dir("/proc") else {
-            tracing::warn!("/proc unreadable, reporting no live processes for any prefix");
+        let Some(entries) = proc_entries() else {
             return Vec::new();
         };
         let pids: Vec<u32> = entries
@@ -178,19 +175,7 @@ impl Prefix {
             if pids.is_empty() {
                 break;
             }
-            for pid in pids {
-                // A pid outside `Pid`'s range can't belong to a real
-                // process; skip rather than error, same as an already-gone one.
-                let Ok(signed_pid) = i32::try_from(pid) else {
-                    tracing::warn!(pid, "pid out of range for a signal, skipping");
-                    continue;
-                };
-                // Racy by nature — the pid may already be gone, which is
-                // the outcome being asked for anyway, so a failed send is
-                // traced rather than warned about.
-                let result = kill(Pid::from_raw(signed_pid), Signal::SIGTERM);
-                tracing::trace!(pid, ?result, "sent SIGTERM");
-            }
+            pids.into_iter().for_each(terminate);
             sleep(IDLE_POLL_INTERVAL).await;
         }
         tracing::debug!(prefix = %self.path.display(), "prefix has no live processes left");
@@ -210,6 +195,40 @@ impl Prefix {
         }
         tracing::debug!(prefix = %self.path.display(), elapsed = ?started.elapsed(), "prefix went idle");
     }
+}
+
+#[cfg(unix)]
+fn terminate(pid: u32) {
+    use nix::sys::signal::{Signal, kill};
+    use nix::unistd::Pid;
+
+    // A pid outside `Pid`'s range can't belong to a real
+    // process; skip rather than error, same as an already-gone one.
+    let Ok(signed_pid) = i32::try_from(pid) else {
+        tracing::warn!(pid, "pid out of range for a signal, skipping");
+        return;
+    };
+    // Racy by nature — the pid may already be gone, which is
+    // the outcome being asked for anyway, so a failed send is
+    // traced rather than warned about.
+    let result = kill(Pid::from_raw(signed_pid), Signal::SIGTERM);
+    tracing::trace!(pid, ?result, "sent SIGTERM");
+}
+
+#[cfg(not(unix))]
+fn terminate(pid: u32) {
+    tracing::warn!(pid, "no signals on this system, cannot ask the process to exit");
+}
+
+/// Every process's entry in `/proc`, or `None` without one to read. Off
+/// Linux nothing runs in a prefix, so there is nothing to look for.
+fn proc_entries() -> Option<fs::ReadDir> {
+    if !crate::AVAILABLE {
+        return None;
+    }
+    fs::read_dir("/proc")
+        .inspect_err(|err| tracing::warn!(%err, "/proc unreadable, reporting no live processes for any prefix"))
+        .ok()
 }
 
 /// The prefixes decanter has started something in and not seen finish.
@@ -313,8 +332,7 @@ pub fn processes_by_prefix(prefixes: &[Prefix]) -> HashMap<PathBuf, Vec<u32>> {
         .iter()
         .map(|prefix| (prefix.path.clone(), Vec::new()))
         .collect();
-    let Ok(entries) = fs::read_dir("/proc") else {
-        tracing::warn!("/proc unreadable, reporting no live processes for any prefix");
+    let Some(entries) = proc_entries() else {
         return found;
     };
     for entry in entries.flatten() {

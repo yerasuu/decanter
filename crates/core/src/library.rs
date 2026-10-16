@@ -409,11 +409,14 @@ impl Library {
         Some(prefix_in(root))
     }
 
-    /// What the first-run screen suggests when no library exists yet.
+    /// What the first-run screen suggests when no library exists yet: the
+    /// old default library's place on Linux, and on Windows under the local
+    /// app data rather than the roaming one, so games don't roam with the
+    /// user's profile.
     #[must_use]
     #[inline]
     pub fn default_path() -> Option<PathBuf> {
-        crate::bootstrap::legacy_dir().map(|dir| dir.join("steamapps"))
+        dirs::data_local_dir().map(|dir| dir.join("decanter").join("steamapps"))
     }
 
     /// The actual root under `picked` — a folder a picker handed back —
@@ -946,7 +949,7 @@ fn copy_dir_recursive(
             // Recreated as a link: following it copied what it points at —
             // a Wine prefix's `dosdevices/z:` is `/` — or failed outright
             // on a link to a directory, halfway through the move.
-            std::os::unix::fs::symlink(fs::read_link(entry.path())?, &dst_path)?;
+            copy_symlink(&entry.path(), &dst_path)?;
         } else if kind.is_dir() {
             copy_dir_recursive(&entry.path(), &dst_path, bytes_copied, total_bytes, on_progress)?;
         } else {
@@ -959,6 +962,23 @@ fn copy_dir_recursive(
         }
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn copy_symlink(link: &Path, dst: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(fs::read_link(link)?, dst)
+}
+
+/// Windows tells file links from directory links, so the kind follows what
+/// the link points at now; a dangling link is recreated as a file link.
+#[cfg(windows)]
+fn copy_symlink(link: &Path, dst: &Path) -> io::Result<()> {
+    let target = fs::read_link(link)?;
+    if fs::metadata(link).is_ok_and(|metadata| metadata.is_dir()) {
+        std::os::windows::fs::symlink_dir(target, dst)
+    } else {
+        std::os::windows::fs::symlink_file(target, dst)
+    }
 }
 
 /// A single path component that can't climb, hide, or reach an absolute

@@ -9,8 +9,6 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 
-use nix::sys::signal::{Signal, killpg};
-use nix::unistd::Pid;
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -106,13 +104,32 @@ impl Job {
             return;
         };
         self.stop_requested = true;
-        let Ok(pid) = i32::try_from(pid) else {
-            return;
-        };
-        if let Err(err) = killpg(Pid::from_raw(pid), Signal::SIGTERM) {
-            tracing::warn!(pid, job = self.kind.name(), %err, "could not stop job");
-        }
+        terminate_group(pid, self.kind);
     }
+}
+
+#[cfg(unix)]
+fn terminate_group(pid: u32, kind: JobKind) {
+    use nix::sys::signal::{Signal, killpg};
+    use nix::unistd::Pid;
+
+    let Ok(pid) = i32::try_from(pid) else {
+        return;
+    };
+    if let Err(err) = killpg(Pid::from_raw(pid), Signal::SIGTERM) {
+        tracing::warn!(pid, job = kind.name(), %err, "could not stop job");
+    }
+}
+
+/// Jobs only run on Linux today (the ports and Proton); a job reaching
+/// this elsewhere is a bug worth seeing, not a silent no-op.
+#[cfg(not(unix))]
+fn terminate_group(pid: u32, kind: JobKind) {
+    tracing::error!(
+        pid,
+        job = kind.name(),
+        "cannot stop a job's process group on this system"
+    );
 }
 
 /// Lines as they come, invalid UTF-8 replaced rather than ending the
@@ -162,11 +179,12 @@ pub fn in_own_scope(command: Command, key: &str, title: &str) -> Command {
 /// merged into events; the last event is always [`Event::Exited`].
 /// Must be called inside the tokio runtime.
 pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = match command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .process_group(0)
         .kill_on_drop(false)
         .spawn()
     {

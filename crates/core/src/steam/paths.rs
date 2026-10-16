@@ -36,6 +36,10 @@ const STEAM_ID64_ACCOUNT_OFFSET: u64 = 76_561_197_960_265_728;
 #[must_use]
 #[inline]
 pub fn steam_root() -> Option<PathBuf> {
+    // Exported shortcuts start decanter's Proton launch, which only Linux has.
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
     let home = env::var_os("HOME").map(PathBuf::from);
     let xdg_data_home = env::var_os("XDG_DATA_HOME").map(PathBuf::from);
 

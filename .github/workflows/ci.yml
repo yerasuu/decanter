@@ -60,6 +60,61 @@ jobs:
         if: matrix.rust != 'stable'
         run: nix-shell --run 'cargo check --workspace --all-targets'
 
+  # Windows and macOS builds of the tree (decision #439): they start and
+  # browse the library, but launch nothing yet. Not blocking until that port
+  # settles, and they ship nothing.
+  check-other:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          # Cross from the arm64 runner: Apple's SDK carries both architectures.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    env:
+      # aws-lc-sys assembles with NASM on x86_64 Windows; its prebuilt objects
+      # stand in for a NASM the runner doesn't have.
+      AWS_LC_SYS_PREBUILT_NASM: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy --target "${{ matrix.target }}"
+          rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: check-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: check-${{ matrix.target }}-
+      # As on Linux, the pedantic warnings stay warnings; only errors fail.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --target "${{ matrix.target }}"
+      # A test build for trying decanter on Windows by hand; not a release artifact yet.
+      - name: Windows test build
+        if: matrix.os == 'windows-latest' && github.event_name == 'push'
+        run: cargo build --release -p decanter --target "${{ matrix.target }}"
+      - if: matrix.os == 'windows-latest' && github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: decanter-windows-x86_64
+          path: target/${{ matrix.target }}/release/decanter.exe
+          if-no-files-found: error
+
   # The one release build per architecture: every later job tests or ships
   # these very files. Tags release them; main and develop build them too,
   # so a release never ships something nobody has started before.

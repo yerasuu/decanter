@@ -3,10 +3,12 @@
 //!
 //! Everything decanter stores lives in the library root (`<root>/decanter/`,
 //! beside `common/` and `compatdata/`). Outside it there is only
-//! `~/.config/decanter/libraries.toml`, the pointer to the roots, and the
-//! runtime lock that keeps a migration or a library move from running under
-//! another decanter. Before the one-time migration (see [`crate::migrate`])
-//! the database still lives in the old data directory, which [`Location::Legacy`]
+//! `libraries.toml` in the platform's config folder (`~/.config/decanter/`,
+//! `%APPDATA%\decanter\`, `~/Library/Application Support/decanter/`), the
+//! pointer to the roots, and the runtime lock that keeps a migration or a
+//! library move from running under another decanter. Before the one-time
+//! migration (see [`crate::migrate`]) the database still lives in the old
+//! data directory, which [`Location::Legacy`]
 //! keeps working until then.
 
 #![expect(
@@ -266,8 +268,7 @@ fn write_config(libraries: &Libraries) -> io::Result<()> {
 }
 
 fn open_lock() -> Option<File> {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
-    let path = Path::new(&dir).join("decanter.lock");
+    let path = lock_dir()?.join("decanter.lock");
     OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -275,6 +276,22 @@ fn open_lock() -> Option<File> {
         .open(&path)
         .inspect_err(|err| tracing::warn!(path = %path.display(), %err, "cannot open the runtime lock"))
         .ok()
+}
+
+#[cfg(target_os = "linux")]
+fn lock_dir() -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
+}
+
+/// No per-session runtime folder outside Linux: the lock file sits in
+/// decanter's local data folder instead, which it may have to create.
+#[cfg(not(target_os = "linux"))]
+fn lock_dir() -> Option<PathBuf> {
+    let dir = dirs::data_local_dir()?.join("decanter");
+    fs::create_dir_all(&dir)
+        .inspect_err(|err| tracing::warn!(dir = %dir.display(), %err, "cannot create the runtime lock's folder"))
+        .ok()?;
+    Some(dir)
 }
 
 /// Takes the shared lock every running decanter holds, waiting out a

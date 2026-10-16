@@ -42,6 +42,8 @@ dirs = "7.0.0"
 flate2 = "1"
 futures = "0.3.34"
 futures-util = "0.3.34"
+# Free disk space where nix's statvfs isn't used (Windows, macOS).
+fs4 = { version = "1.1.0", default-features = false }
 gog = "0.5.0"
 image = "0.25.10"
 keyring = "4.2.0"

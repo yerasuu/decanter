@@ -337,24 +337,8 @@ pub async fn stop_everything() {
 /// Only the polite ones: `SIGKILL` can't be caught, so a hard kill still
 /// leaves games running. Nothing can change that.
 pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
-    let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-        Ok(signal) => signal,
-        Err(err) => {
-            tracing::warn!(signal = "SIGTERM", %err, "cannot watch for the signal");
-            return;
-        }
-    };
-    let mut interrupt = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
-        Ok(signal) => signal,
-        Err(err) => {
-            tracing::warn!(signal = "SIGINT", %err, "cannot watch for the signal");
-            return;
-        }
-    };
-
-    tokio::select! {
-        _ = term.recv() => tracing::info!("received sigterm, stopping games before exit"),
-        _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
+    if !exit_signal().await {
+        return;
     }
     stop_everything().await;
 
@@ -368,6 +352,48 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
     // way -- which blocks until outstanding `spawn_blocking` work finishes,
     // so nothing is still touching OpenSSL by the time the process exits.
     cx.update(|cx| cx.quit());
+}
+
+/// Resolves once one of those signals came, or `false` at once when they
+/// can't be watched.
+#[cfg(unix)]
+async fn exit_signal() -> bool {
+    let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(signal) => signal,
+        Err(err) => {
+            tracing::warn!(signal = "SIGTERM", %err, "cannot watch for the signal");
+            return false;
+        }
+    };
+    let mut interrupt = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
+        Ok(signal) => signal,
+        Err(err) => {
+            tracing::warn!(signal = "SIGINT", %err, "cannot watch for the signal");
+            return false;
+        }
+    };
+
+    tokio::select! {
+        _ = term.recv() => tracing::info!("received sigterm, stopping games before exit"),
+        _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
+    }
+    true
+}
+
+/// Only Ctrl+C has a signal here; logging off closes the window, which
+/// quits the ordinary way.
+#[cfg(not(unix))]
+async fn exit_signal() -> bool {
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {
+            tracing::info!("received ctrl-c, stopping games before exit");
+            true
+        }
+        Err(err) => {
+            tracing::warn!(signal = "ctrl-c", %err, "cannot watch for the signal");
+            false
+        }
+    }
 }
 
 /// Throws a game's prefix away so umu builds a fresh one next launch.

@@ -21,6 +21,13 @@ uuid = { workspace = true, features = ["v4"] }
 # throwaway instance) — a session save silently didn't survive past the
 # call that made it. `dbus-secret-service-keyring-store` is the blocking
 # D-Bus backend `credentials.rs`'s own doc comment describes.
+# The default `v1` feature already picks the native store on Windows
+# (Credential Manager) and macOS (Keychain).
 keyring = { workspace = true, features = ["dbus-secret-service-keyring-store"] }
-nix = { workspace = true, features = ["fs"] }
 tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { workspace = true, features = ["fs"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+fs4.workspace = true

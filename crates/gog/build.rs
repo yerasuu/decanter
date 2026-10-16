@@ -21,6 +21,11 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    // The hook only ships where games run under Proton; `src/hook.rs`
+    // leaves it out of other targets rather than cross-compiling for them.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
+        return;
+    }
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let hook_dir = manifest_dir.join("../hook");
     let hook_manifest = hook_dir.join("Cargo.toml");

@@ -223,6 +223,9 @@ fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool, cx: &C
     let Some(installed) = launch else {
         return theme::muted(t!("library.detail.no_executable")).into_any_element();
     };
+    if !decanter_runtime::AVAILABLE {
+        return theme::muted(t!("library.detail.play_unavailable")).into_any_element();
+    }
     let account_id = game.account_id.clone();
     let product_id = game.id.clone();
     if running {

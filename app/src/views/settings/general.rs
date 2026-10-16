@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
+use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{column, field_row, inline};
@@ -388,38 +388,58 @@ impl Render for GeneralTab {
             .child(theme::h2(t!("settings.general.language.title")))
             .child(self.language_select(cx))
             .child(theme::h2(t!("settings.general.close.title")))
-            .child(Self::checkbox_row(
-                "close-to-tray",
-                self.close_to_tray,
-                t!("settings.general.close.to_tray"),
-                Self::set_close_to_tray,
-                cx,
+            .child(linux_only(
+                column()
+                    .child(Self::checkbox_row(
+                        "close-to-tray",
+                        self.close_to_tray,
+                        t!("settings.general.close.to_tray"),
+                        Self::set_close_to_tray,
+                        cx,
+                    ))
+                    .child(theme::muted(t!("settings.general.close.restart_hint"))),
             ))
-            .child(theme::muted(t!("settings.general.close.restart_hint")))
             .child(theme::h2(t!("settings.general.close_game.title")))
-            .child(Self::checkbox_row(
-                "close-game-shortcut",
-                self.close_game_shortcut,
-                t!("settings.general.close_game.enabled"),
-                Self::set_close_game_shortcut,
-                cx,
+            .child(linux_only(
+                column()
+                    .child(Self::checkbox_row(
+                        "close-game-shortcut",
+                        self.close_game_shortcut,
+                        t!("settings.general.close_game.enabled"),
+                        Self::set_close_game_shortcut,
+                        cx,
+                    ))
+                    .child(theme::muted(t!(
+                        "settings.general.close_game.hint",
+                        hold = crate::closing::HOLD.as_secs(),
+                        grace = crate::closing::GRACE.as_secs()
+                    ))),
             ))
-            .child(theme::muted(t!(
-                "settings.general.close_game.hint",
-                hold = crate::closing::HOLD.as_secs(),
-                grace = crate::closing::GRACE.as_secs()
-            )))
             .child(theme::h2(t!("settings.general.steam.title")))
-            .child(Self::checkbox_row(
-                "steam-export",
-                self.steam_export_enabled,
-                t!("settings.general.steam.add"),
-                Self::set_steam_export,
-                cx,
+            .child(linux_only(
+                column()
+                    .child(Self::checkbox_row(
+                        "steam-export",
+                        self.steam_export_enabled,
+                        t!("settings.general.steam.add"),
+                        Self::set_steam_export,
+                        cx,
+                    ))
+                    .child(theme::muted(t!("settings.general.steam.restart_hint")))
+                    .children(callout),
             ))
-            .child(theme::muted(t!("settings.general.steam.restart_hint")))
-            .children(callout)
             .child(theme::h2(t!("settings.general.updates.title")))
             .child(self.release_section(cx))
+    }
+}
+
+/// The tray (ksni), closing a game from a pad or the desktop's shortcut, and
+/// Steam shortcuts that start decanter's Proton launch lean on the Linux
+/// desktop: elsewhere their sections say they aren't there.
+fn linux_only(controls: impl IntoElement) -> AnyElement {
+    if cfg!(target_os = "linux") {
+        controls.into_any_element()
+    } else {
+        theme::muted(t!("common.unavailable_here")).into_any_element()
     }
 }

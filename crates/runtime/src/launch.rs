@@ -285,8 +285,8 @@ impl Prepared {
 ///
 /// # Errors
 ///
-/// Returns an error if `launch.executable` isn't a bare command and
-/// doesn't exist as a host file, if its working directory can't be
+/// Returns an error off Linux, if `launch.executable` isn't a bare command
+/// and doesn't exist as a host file, if its working directory can't be
 /// resolved, or if `umu-run` fails to spawn.
 #[inline]
 pub async fn start(prefix: &Prefix, launch: Launch) -> anyhow::Result<Session> {
@@ -301,11 +301,17 @@ pub async fn start(prefix: &Prefix, launch: Launch) -> anyhow::Result<Session> {
 ///
 /// # Errors
 ///
-/// Returns an error if `launch.executable` isn't a bare command and
-/// doesn't exist as a host file, or if its working directory can't be
+/// Returns an error off Linux, if `launch.executable` isn't a bare command
+/// and doesn't exist as a host file, or if its working directory can't be
 /// resolved.
 #[inline]
 pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prepared> {
+    if !crate::AVAILABLE {
+        bail!(
+            "Proton runs only on Linux, cannot start {}",
+            launch.executable.display()
+        );
+    }
     // A bare name (`wineboot`) is left for Wine to resolve inside the
     // prefix; anything with a path in it is a host file that has to exist,
     // and catching that here beats a launch that silently does nothing.

@@ -36,3 +36,8 @@ pub use launch::{Launch, Prepared, Session, prepare, start};
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix, sanitize_relative_path, stop_all};
 pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
 pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
+
+/// Whether Proton can run here at all: umu-run, Proton and the Steam Linux
+/// Runtime are Linux-only, so elsewhere every launch fails up front and the
+/// UI says so instead of offering it.
+pub const AVAILABLE: bool = cfg!(target_os = "linux");
