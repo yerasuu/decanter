@@ -196,6 +196,9 @@ no existing tag fits, and record it here.
   - shared: `toolchain` (Nix, CI, prebuilt ports), `regress` (tools/regress,
     schedules, perf runs), `workflow` (publishing flow, agent process and
     environment), `brain` (the board itself).
+- Platform, only when the entry concerns some systems or architectures and not
+  the rest (none means all, Linux x86_64 being the reference): `linux`,
+  `windows`, `macos`; `x86_64`, `aarch64`.
 - Title, when the entry is about one game: `bloodborne`, `ryza`, `ayesha`,
   `symphonia`, `saga`, `astrea`, `altdeus`, `onigiri`, `galguardians`,
   `galguardians2`, `bo1`, `bo2`, `bloodomen2`, `octopath0`.
