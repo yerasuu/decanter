@@ -1,10 +1,10 @@
-use decanter_core::CachedAchievement;
 use gpui::{AnyElement, Context, Div, FontWeight, ObjectFit, WeakEntity, canvas, div, img, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::DetailView;
 use crate::theme;
-use crate::views::library::data::PollStatus;
+use crate::views::library::data::{Achievement, PollStatus, UnlockedAt};
+use crate::views::library::fmt;
 
 /// `.achv-grid`'s `repeat(auto-fill, minmax(260px, 1fr))` and its gap.
 const ACHV_MIN_COLUMN: f32 = 260.;
@@ -17,7 +17,7 @@ impl DetailView {
     /// disambiguates it instead of always pointing at a CLI command.
     pub(super) fn achievements_tab(
         &self,
-        achievements: Option<&Result<Vec<CachedAchievement>, String>>,
+        achievements: Option<&Result<Vec<Achievement>, String>>,
         poll_status: &PollStatus,
         cx: &Context<Self>,
     ) -> AnyElement {
@@ -48,7 +48,7 @@ impl DetailView {
     /// `auto-fill` has no GPUI equivalent, so the grid measures its own
     /// width each frame and derives the column count the way CSS would:
     /// as many 260px-minimum columns as fit, sharing what's left over.
-    fn achievement_grid(&self, achievements: &[CachedAchievement], cx: &Context<Self>) -> AnyElement {
+    fn achievement_grid(&self, achievements: &[Achievement], cx: &Context<Self>) -> AnyElement {
         let width = f32::from(self.grid_width);
         let columns = ((width + ACHV_GAP) / (ACHV_MIN_COLUMN + ACHV_GAP)).floor().max(1.) as u16;
         let this = cx.entity().downgrade();
@@ -94,7 +94,12 @@ fn measure_width(this: WeakEntity<DetailView>) -> impl IntoElement {
     .size_full()
 }
 
-fn achievement_tile(achievement: &CachedAchievement) -> Div {
+fn achievement_tile(achievement: &Achievement) -> Div {
+    let unlocked_at = achievement.unlocked_at.as_ref().map(|at| match at {
+        UnlockedAt::At(at) => fmt::date_time(*at),
+        UnlockedAt::Raw(raw) => raw.clone(),
+    });
+    let achievement = &achievement.cached;
     let unlocked = achievement.unlocked;
     let icon = div()
         .size(px(40.))
@@ -127,7 +132,7 @@ fn achievement_tile(achievement: &CachedAchievement) -> Div {
                 .truncate()
                 .child(desc)
         }))
-        .children(achievement.unlocked_at.clone().map(|at| {
+        .children(unlocked_at.map(|at| {
             theme::mono()
                 .mt_1()
                 .text_size(px(10.5))
@@ -154,7 +159,7 @@ fn achievement_tile(achievement: &CachedAchievement) -> Div {
         .child(info)
 }
 
-fn icon_for(achievement: &CachedAchievement) -> Option<&str> {
+fn icon_for(achievement: &decanter_core::CachedAchievement) -> Option<&str> {
     if achievement.unlocked {
         achievement
             .icon_unlocked_url

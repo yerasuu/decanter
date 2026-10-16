@@ -17,3 +17,12 @@ common.running:
 common.pick_profile:
   es: Elige un perfil arriba.
   en: Pick a profile above.
+common.date.months:
+  es: ene feb mar abr may jun jul ago sept oct nov dic
+  en: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+common.date.format:
+  es: "%{day} %{month} %{year}"
+  en: "%{month} %{day}, %{year}"
+common.date.time:
+  es: "%{hour24}:%{minute}"
+  en: "%{hour12}:%{minute} %{meridiem}"

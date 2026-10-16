@@ -19,7 +19,6 @@ mod shelf_popups;
 mod shelves;
 mod sidebar;
 
-use decanter_core::CachedAchievement;
 use gpui::{Context, Entity, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb};
 use rust_i18n::t;
 
@@ -62,7 +61,7 @@ struct LibraryModel {
     pub(crate) renaming: Option<(String, String)>,
     pub(crate) poll_status: PollStatus,
     /// The selected game's cached achievements, re-read after each poll.
-    pub(crate) achievements: Option<Result<Vec<CachedAchievement>, String>>,
+    pub(crate) achievements: Option<Result<Vec<data::Achievement>, String>>,
     poll: Option<Task<()>>,
 }
 

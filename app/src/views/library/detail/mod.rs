@@ -219,7 +219,7 @@ impl Render for DetailView {
             (model.achievements.clone(), model.poll_status.clone())
         };
         let (unlocked, total) = match &achievements {
-            Some(Ok(list)) => (list.iter().filter(|a| a.unlocked).count(), list.len()),
+            Some(Ok(list)) => (list.iter().filter(|a| a.cached.unlocked).count(), list.len()),
             _ => (0, 0),
         };
 

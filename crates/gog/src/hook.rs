@@ -186,10 +186,9 @@ fn record_diagnostic(db: &Db, account_id: &str, product_id: &str, entry: &serde_
     }
 }
 
-/// RFC 3339, matching the shape GOG's own achievement API hands
-/// `unlocked_at` in -- the UI (see `app/src/views/library/detail.rs`)
-/// prints this field verbatim, with no parsing of its own, so a
-/// hook-reported unlock has to already look like a GOG one.
+/// RFC 3339, the nearest standard shape to GOG's own `unlocked_at`
+/// (`+0000` offsets); the UI parses both (see
+/// `app/src/views/library/data.rs`).
 fn format_unlocked_at(unix_seconds: i64) -> String {
     chrono::DateTime::from_timestamp(unix_seconds, 0)
         .unwrap_or_default()

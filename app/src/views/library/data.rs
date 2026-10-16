@@ -2,9 +2,41 @@
 //! favorites and playtime are all keyed by `(account_id, storefront,
 //! product_id)`, nothing to join against a bottle or Program for any of it.
 
+use chrono::{DateTime, Local};
 use decanter_core::{CachedAchievement, Collection, Db, Playtime, Storefront};
 
-pub(super) fn load_achievements(account_id: String, product_id: String) -> anyhow::Result<Vec<CachedAchievement>> {
+/// A cached achievement with its unlock time parsed once, on load, so the
+/// grid doesn't re-parse the stored text every frame.
+#[derive(Clone)]
+pub(crate) struct Achievement {
+    pub(crate) cached: CachedAchievement,
+    pub(crate) unlocked_at: Option<UnlockedAt>,
+}
+
+#[derive(Clone)]
+pub(crate) enum UnlockedAt {
+    At(DateTime<Local>),
+    /// Neither shape below; shown as stored rather than hidden.
+    Raw(String),
+}
+
+impl UnlockedAt {
+    /// GOG's API sends `2021-10-12T00:00:56+0000`; the hook stores RFC 3339
+    /// (`+00:00`), see `decanter_gog::hook`.
+    fn parse(raw: &str, achievement_key: &str) -> Self {
+        DateTime::parse_from_rfc3339(raw)
+            .or_else(|_| DateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S%z"))
+            .map_or_else(
+                |err| {
+                    tracing::warn!(achievement_key, raw, %err, "unparsable achievement unlock time, shown as stored");
+                    Self::Raw(raw.to_owned())
+                },
+                |at| Self::At(at.with_timezone(&Local)),
+            )
+    }
+}
+
+pub(super) fn load_achievements(account_id: String, product_id: String) -> anyhow::Result<Vec<Achievement>> {
     tracing::debug!(account_id = %account_id, product_id = %product_id, "loading cached achievements");
     let db = crate::achv_try!(Db::open_active().inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open achievement db")
@@ -12,7 +44,16 @@ pub(super) fn load_achievements(account_id: String, product_id: String) -> anyho
     let achievements = crate::achv_try!(db.list_achievements(&account_id, Storefront::Gog, &product_id).inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to read achievement cache")
     ));
-    Ok(achievements)
+    Ok(achievements
+        .into_iter()
+        .map(|cached| Achievement {
+            unlocked_at: cached
+                .unlocked_at
+                .as_deref()
+                .map(|raw| UnlockedAt::parse(raw, &cached.achievement_key)),
+            cached,
+        })
+        .collect())
 }
 
 /// Result of the last live poll for the selected game — distinct from

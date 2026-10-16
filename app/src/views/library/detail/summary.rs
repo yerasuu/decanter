@@ -25,12 +25,12 @@ pub(super) fn summary_tab(game: &Game, playtime: Playtime) -> Div {
         )
         .children(
             game.rating
-                .clone()
-                .map(|rating| stat_card(rating, &t!("library.detail.summary.rating"))),
+                .as_deref()
+                .map(|rating| stat_card(fmt::rating(rating), &t!("library.detail.summary.rating"))),
         )
         .children(
             game.release_date
-                .and_then(fmt::unix_date)
+                .and_then(fmt::utc_date)
                 .map(|date| stat_card(date, &t!("library.detail.summary.release"))),
         );
 
