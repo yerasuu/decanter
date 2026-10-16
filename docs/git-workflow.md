@@ -173,8 +173,9 @@ Los 117 commits caben en unos 12, cada uno con su porqué:
      Sin esa firma, decanter no ofrece instalar la versión por sí mismo.
 - **Clave de firma de las versiones de decanter** (se crea una vez y es tuya; ni la CI ni los
   agentes la tocan):
-  - `minisign -G -s ~/.minisign/decanter.key -p keys/release.pub` crea la secreta, con
-    contraseña, y la pública en el repositorio.
+  - `nix-shell -p minisign --run 'minisign -G -s ~/.minisign/decanter.key -p keys/release.pub'`
+    crea la secreta, con contraseña, y la pública en el repositorio; minisign no hace falta
+    instalarlo, y `scripts/sign-release` también lo saca de nix.
   - `keys/release.pub` se commitea; el build la incrusta y falla si no es una clave minisign. Vacía,
     el build sigue y el AppImage solo avisa de las versiones nuevas.
   - La firma lleva el comentario de confianza `decanter vX.Y.Z`, que decanter comprueba antes de

@@ -30,12 +30,14 @@ if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "not a version: $1" >&2
     exit 2
 fi
-for tool in minisign gh; do
-    if ! command -v "$tool" >/dev/null; then
-        echo "$tool is not installed (nix-shell -p minisign gh)" >&2
-        exit 1
+# Neither tool has to be installed: nix provides them for this run.
+if ! command -v minisign >/dev/null || ! command -v gh >/dev/null; then
+    if [[ -z "${DECANTER_SIGN_IN_NIX:-}" ]]; then
+        exec env DECANTER_SIGN_IN_NIX=1 nix-shell -p minisign gh --run "$(printf '%q ' "$0" "$@")"
     fi
-done
+    echo "minisign or gh is still missing inside nix-shell" >&2
+    exit 1
+fi
 if [[ ! -s "$public_key" ]]; then
     echo "$public_key is empty: create the key first (docs/git-workflow.md)" >&2
     exit 1
