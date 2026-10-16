@@ -1,179 +1,300 @@
 # Decanter
 
-Game launcher and achievement tracker for Linux. Runs Windows GOG games,
-and any other Windows game you add to it, through Proton/umu-run, and
-shows GOG achievements, including unlocks earned under Wine that GOG's
-own Galaxy client never sees.
+A Linux game launcher for GOG and other Windows games, with achievement
+tracking that also sees unlocks earned under Wine, and a section that runs
+your own PS4 dumps through psport.
 
-It also runs the user's own PS4 dumps natively on Linux, through
-decanter's fork of bbport ([psport](https://github.com/yerasuu/psport)):
-a compatibility layer in the manner of Wine, not an emulator: the game's
-x86-64 code runs as it is and the port provides its system libraries.
+[![CI](https://github.com/yerasuu/decanter/actions/workflows/ci.yml/badge.svg)](https://github.com/yerasuu/decanter/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/yerasuu/decanter)](https://github.com/yerasuu/decanter/releases/latest)
 
-## Layout
+## What it does
 
-- `crates/core` — local state: cached library metadata, achievements,
-  accounts/profiles, credentials.
-- `crates/gog` — GOG client: auth, library listing, installs, cloud
-  saves, achievement polling.
-- `crates/runtime` — launches games through Proton via `umu-run`
-  (fetched and cached by decanter, not resolved off `PATH`).
-- `crates/hook` — `Galaxy64.dll` proxy that captures achievement
-  unlocks under Wine and logs them for decanter to pick up. Cross-compiled
-  as a Windows cdylib, excluded from the main workspace.
-- `crates/ps` — PS4/PS5 dumps: reading them, building and updating the
-  ports (psport, AnyPS5) and their toolchain, running a game and recording
-  its log and what the port left unimplemented. No GPUI.
-- `app` — the app itself (`decanter`), built with GPUI. Also exposes
-  a headless CLI (`decanter <subcommand>`) for library listing,
-  installs, launches, and achievement polling without the GUI.
+- **GOG.** Log in with one or more GOG accounts, browse the library,
+  install, update, roll back to an earlier build, manage DLC and betas, and
+  sync a game's saves with GOG Cloud Saves before launch and after exit.
+- **Achievements.** GOG achievements are shown per game. Games that use
+  Galaxy get decanter's own `Galaxy64.dll` proxy at install time, which
+  records unlocks earned under Wine that GOG's client never sees. Those
+  unlocks stay local: decanter cannot report them to GOG.
+- **Proton.** Windows games run through Proton via `umu-run`, each in its
+  own prefix, with a default Proton in Ajustes and a per-game pin in the
+  game's properties.
+- **Other Windows games.** Add any executable, run a game's own installer,
+  or import a game from another tool's prefix (Lutris, Bottles, Heroic,
+  Proton). Games that HoYoPlay or GRYPHLINK installed inside a prefix can
+  be added as their own entries. Art comes from Steam, or from SteamGridDB
+  with your own API key.
+- **PS section.** Runs your own decrypted PS4 dumps through
+  [psport](https://github.com/yerasuu/psport), a compatibility layer in the
+  manner of Wine, not an emulator: the game's x86-64 code runs as it is and
+  the port provides the console's system libraries. PS5 dumps run through
+  [AnyPS5](https://github.com/boykopovar/AnyPS5).
+- **Desktop.** Each game gets its own desktop entry and icon, so the task
+  bar shows the game, and runs in its own systemd scope. Also a tray icon,
+  an optional export of installed games to Steam's library, and a shortcut
+  to close the running game from a controller or the keyboard.
 
-## Building
+Decanter ships no games, firmware or system modules. You bring your own
+legally obtained dumps.
 
-### With Nix
+The interface is in Spanish (Spain) and English.
 
-`shell.nix` pins every dependency (Vulkan/Wayland/X11 libraries GPUI
-loads at run time, mingw cross toolchain for `crates/hook`,
-`umu-launcher`, TLS env vars) — nothing else to install:
+## Screenshots
+
+![Library: the game grid with its sidebar](docs/screenshots/library.png)
+![A game's page with its overview](docs/screenshots/game.png)
+![Achievements tab of a game](docs/screenshots/achievements.png)
+![PS section listing PS4 dumps](docs/screenshots/ps.png)
+![Settings, General tab](docs/screenshots/settings.png)
+
+## Install
+
+### AppImage
+
+Download `Decanter-x86_64.AppImage` from the
+[latest release](https://github.com/yerasuu/decanter/releases/latest),
+make it executable and run it:
 
 ```
-nix-shell --run 'cargo run'              # dev
-nix-shell --run 'cargo build --release'  # binary
-scripts/appimage                         # target/appimage/Decanter-x86_64.AppImage
+chmod +x Decanter-x86_64.AppImage
+./Decanter-x86_64.AppImage
 ```
 
-The AppImage carries the nix glibc the binary was built against, so it
-runs on hosts with an older one too; see the script for how.
+The AppImage carries the glibc it was built against, so it also runs on
+hosts with an older one, such as SteamOS. To update, replace the file with
+a newer release.
 
-The binary links against nix's glibc, which can be newer than the host's
-(SteamOS's is): if it refuses to start with ``GLIBC_2.xx' not found``,
-start it through nix's own loader from inside the shell:
+What the host needs:
 
-```
-nix-shell --run '$(cc -print-file-name=ld-linux-x86-64.so.2) target/debug/decanter'
-```
+- A Vulkan driver for the GPU. Without one, rendering falls back to GL.
+- A D-Bus Secret Service (KWallet or GNOME Keyring), where GOG tokens and
+  the SteamGridDB key are kept.
+- Optional: a systemd user session (each game gets its own scope; without
+  one games start as decanter's children), KDE Plasma for the global
+  close-game shortcut, and Steam for the Steam export.
 
-### Without Nix
+`umu-run` does not need to be installed: decanter downloads its own copy
+(umu-launcher 1.4.4) into the library. Proton is whatever umu picks or a
+build installed for Steam.
 
-Same commands, no `nix-shell --run` wrapper, once these are on the
-system instead:
+### From source
 
-- Rust.
-- `pkg-config`, `dbus`, and what GPUI loads at run time: `vulkan-loader`,
-  `wayland`, `libxkbcommon`, the X11/xcb libraries, `fontconfig`,
-  `freetype` — check `shell.nix`'s `runtimeLibs` for the exact list.
-- `umu-launcher` on `PATH` — decanter spawns `umu-run` from it.
-- A `x86_64-pc-windows-gnu` target (`rustup target add
-  x86_64-pc-windows-gnu`) plus a mingw-w64 cross gcc and its
-  `libpthread.a`, only if rebuilding `crates/hook`'s `Galaxy64.dll`.
+See [Development](#development).
 
-## Languages
+## First steps
 
-The app is in Spanish and English. By default it follows the system
-locale: the first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set picks
-Spanish when it starts with `es`, and English otherwise. Ajustes >
-General > Idioma (Settings > General > Language) overrides it, and goes
-back to the system's with "El del sistema" (System default). The change
-applies right away, except for the tray menu and text field
-placeholders, which switch on the next start, and messages already
-shown, which keep the old language until they're shown again. The
-headless CLI and everything decanter writes (its log, the PS run logs
-and `failures.jsonl`) aren't translated: they stay in English whatever
-the language, and the UI words their data when it shows it.
+1. On the first start, pick the language and create a profile, choosing
+   the folder where its library lives (installs, Proton prefixes and
+   decanter's own data go there).
+2. In Ajustes > Cuenta (Settings > Account), add a GOG account: open GOG,
+   log in, and paste the address of the page you land on.
+3. Install games from Biblioteca (Library). Updates, versions, DLC, cloud
+   saves and the Proton pin are in each game's Propiedades (Properties).
+4. Add other Windows games with Añadir juego (Add game) in Biblioteca.
+5. For PS games, copy or move your dumps into the PS section's games
+   folder (`<root>/psport/games/`); they show up on their own. The port is
+   prepared (fetched prebuilt or built) when a game is played.
 
-The texts live in `app/locales/`, one YAML file per area, each key with
-its `es` and `en` value.
+## PS section
 
-## Achievements
+| Title | Status |
+|---|---|
+| Bloodborne (`CUSA03173`, version 01.09) | Supported. A base dump with a 1.09 update beside it is offered a merge. |
+| Other PS4 titles | Experimental: they start with the imports the port lacks stubbed, and the log shows how far they get. |
+| Titles that need PS VR (bit 26 of `ATTRIBUTE` in `param.sfo`) | Shown as unsupported; they can't be started. |
+| PS5 titles | Run through AnyPS5, converted first. |
 
-Achievement unlocks tracked through the Galaxy64 hook are local-only:
-decanter has no way to report them to GOG's own servers (no per-game
-Galaxy credentials, no write API). Syncing to an external platform is a
-possible future direction, not implemented yet.
+Which psport builds a library runs is its channel, set in the PS section's
+Ajustes:
 
-## PS4 and PS5 games
+- **Release** (default) stays on the tag psport's CI last published and
+  fetches that build from psport's Nix binary cache instead of building.
+  When the lookup fails, it builds locally and says so.
+- **Testing** follows psport's `develop` branch and builds every commit
+  locally.
 
-The PS section lists the dumps in its games folder and runs PS4 titles
-through psport and PS5 titles through AnyPS5. Decanter clones each port,
-keeps it up to date and rebuilds it when its checkout moves. It builds
-with the host's tools when they're there and falls back to its own Nix
-toolchain (nix-portable if the system has no Nix) when the host can't
-configure the port; after the next update of that port it tries the host
-again. Each game runs in its own process group and can be stopped from
-its row, its cover or its context menu.
+Builds use the host's tools when they can configure the port, and fall
+back to decanter's own Nix toolchain (nix-portable when the system has no
+Nix) when they can't. A folder with your own dump of the console's system
+modules can be set in Ajustes, but no title needs it today: it is only for
+comparing against the port's own libraries.
 
-Which psport builds a library runs is its "psport channel", set in the PS
-section's Ajustes. Stable release, the default, keeps the checkout on the
-`vX.Y.Z` tag that `latest-release` in psport's Nix binary cache (the
-`nix-cache` release of yerasuu/psport) names, and copies that tag's build
-into its Nix store (rooted under `psport/toolchain/prebuilt/`) instead of
-building; before the first release, or when the fetch fails, it builds as
-above and says so in Ports and the build log. Testing follows master and
-always builds locally. Switching moves the checkout and prepares the port
-again; Ports shows the channel with the tag or commit.
-`DECANTER_PS_BINARY_CACHE=<url>` (`http://` or `file://`) points at
-another copy of the cache, for trying one locally.
+Per-title progress and what psport adds: [docs/ps4-ports.md](docs/ps4-ports.md).
+What each title imports and what the port still lacks:
+[docs/ps4-import-matrix.md](docs/ps4-import-matrix.md).
 
-Bloodborne is supported as upstream bbport ships it. Every other PS4
-title is experimental; six of the seven tested reach gameplay with
-sound. Titles that require PS VR (`require_ps_vr` in their `param.sfo`)
-are shown as unsupported and can't be started. The user's own dump of
-the console's system modules can be set in Ajustes, but no title needs
-it today: the port implements those libraries itself, and the dump is
-only for comparing with them.
+## Where data lives
 
-Every job's whole output goes to a log under the PS folder, headed by
-the game, the port commit, the command and its environment, keeping the
-last 30 per game. Fallos records, once per run, what the port left
-unimplemented, starting with the imports the game actually called.
+Everything decanter stores lives inside the library root (`<root>`), so a
+library can be moved or copied with its profiles:
 
-Where each title stands and what the fork adds: `docs/ps4-ports.md`.
-What the titles import and what the port still lacks:
-`docs/ps4-import-matrix.md`.
+| Path | Contents |
+|---|---|
+| `<root>/decanter/decanter.db` | Profiles, accounts, game cache, achievements, playtime, collections, settings |
+| `<root>/decanter/art/` | Art cache |
+| `<root>/decanter/bin/` | `umu-run` |
+| `<root>/decanter/desktop/`, `<root>/decanter/icons/` | Per-game desktop entries and icons |
+| `<root>/decanter/logs/` | Decanter's log and each Proton game's run logs |
+| `<root>/psport/` | Everything PS: games, ports, toolchain, settings, mods, logs |
+| `<root>/common/`, `<root>/manifests/`, `<root>/compatdata/` | Game files, install manifests, Proton prefixes |
+| `<root>/downloading/` | GOG installs in progress |
+
+A library can span several folders, added and removed in Almacenamiento
+(Storage); each game lives whole in one of them.
+
+Outside the library only what cannot move:
+
+- `~/.config/decanter/libraries.toml`: the known libraries, the active one
+  and its last profile. The only pointer decanter needs.
+- `~/.local/share/applications/decanter/`: one symlink per game, because
+  Plasma only reads its own folders.
+- The keyring (service `dev.decanter.Decanter`), Steam's own files, umu's
+  shared runtime, and `decanter.lock` in `$XDG_RUNTIME_DIR`.
+
+**Upgrading from 0.2.** The first start of 0.3 copies the old
+`~/.local/share/decanter` data into each library, checks it, and only then
+writes `libraries.toml`. It waits while another decanter or a game it
+started is running, or while a library's disk is missing. The old folder
+is left untouched as a backup: older builds keep reading it, deleting
+`libraries.toml` returns to it, and Ajustes > Almacenamiento offers to
+remove it. Details: [docs/data-in-library.md](docs/data-in-library.md).
+
+## Configuration and CLI
+
+| Option | Effect |
+|---|---|
+| `--library <root>` | Use this library for one run instead of the active one. Absolute path only. |
+| `DECANTER_LIBRARY=<root>` | Same, from the environment. |
+| `DECANTER_PS_BINARY_CACHE=<url>` | Another copy of psport's binary cache (`http://` or `file://`). |
+
+A library that does not exist is reported, never created.
+
+Without a subcommand `decanter` opens the window. The same binary also
+runs headless, one GOG account at a time (`--account-id`):
+
+| Subcommand | Does |
+|---|---|
+| `library` | Lists the account's GOG library |
+| `install --product-id … --title …` | Installs a game (`--branch`, `--build-id` optional) |
+| `cancel-install --product-id …` | Cancels an install left running |
+| `launch --product-id …` | Launches an installed game, waits, then polls achievements |
+| `achievements --product-id …` | Polls achievements without launching |
+| `hook-diagnostics --product-id …` | Lists recorded `Galaxy64.dll` hook failures |
+
+Language: decanter follows `LC_ALL`, `LC_MESSAGES` or `LANG` (Spanish when
+it starts with `es`, English otherwise) unless one is chosen in
+Ajustes > General. The CLI and everything decanter writes to disk stay in
+English.
 
 ## Closing a game
 
-While a game decanter started is running, holding Select + Start for two
-seconds on any controller, or pressing Ctrl+Shift+F4 on Plasma (a global
-shortcut under System Settings > Shortcuts > Decanter), asks to close it.
-Decanter shows a notification and stops the game five seconds later the
-same way its Stop button does; asking again in the meantime cancels it.
-The controller is read from its `/dev/input` node, so the game keeps
-focus; Guide is left alone because psport and Steam use it. It can be
+While a game decanter started is running, hold Select + Start for two
+seconds on any controller, or press Ctrl+Shift+F4 on Plasma (changeable in
+System Settings > Shortcuts > Decanter). Decanter warns, and closes the
+game five seconds later unless the combination is repeated. It can be
 turned off in Ajustes > General.
 
-## Where decanter keeps its data
+## Troubleshooting
 
-Everything decanter stores lives inside the profile's library root
-(`<root>`), so a library can be moved or copied with its profiles:
+- **Logs.** Decanter's own log is
+  `<root>/decanter/logs/decanter-YYYY-MM-DD.log` (one per UTC day, two weeks
+  kept, in English, secrets stripped); the same lines go to stderr. Each
+  Proton game's whole output is in the same folder and shown in the
+  game's Registro (Log) tab.
+- **PS games.** Each job's output (build, conversion, run) is a log under
+  `<root>/psport/logs/`, 30 kept per kind and game, shown in the game's
+  Registro tab. Fallos (Failures) lists what the port left unimplemented
+  on each run, starting with the imports the game actually called.
+- **"Library unavailable".** The library in `libraries.toml` or
+  `--library` cannot be found. If it is on an external drive, plug it in
+  and reopen decanter, or pick another folder.
+- **Switching or moving a library is refused.** Close running games,
+  installs and any other decanter window first.
+- **Exported games don't show in Steam.** Steam reads its shortcuts only
+  at start; decanter holds the change while Steam is open and offers to
+  restart it.
+- **A source build won't start with `GLIBC_2.xx' not found`.** The binary
+  links against nix's glibc, which can be newer than the host's. Start it
+  through nix's loader from inside the shell:
 
-- `<root>/decanter/decanter.db`: profiles, accounts, game cache,
-  achievements, playtime, collections and settings of the profiles whose
-  library this is.
-- `<root>/decanter/art/` (art cache), `<root>/decanter/bin/` (`umu-run`),
-  `<root>/decanter/{desktop,icons}/` (per-game desktop entries and icons).
-- `<root>/decanter/logs/decanter-YYYY-MM-DD.log`: decanter's own log, the
-  lines it prints to stderr plus its debug events, in English, one file
-  per UTC day, two weeks kept.
-- `<root>/psport/`: everything PS (games, ports, toolchain, settings,
-  mods, logs).
-- Game files, manifests, prefixes and install staging, as before.
+  ```
+  nix-shell --run '$(cc -print-file-name=ld-linux-x86-64.so.2) target/debug/decanter'
+  ```
 
-Outside it only what can't move: `~/.config/decanter/libraries.toml`
-(the known libraries and the active one), one symlink per game in
-`~/.local/share/applications/decanter/` (Plasma only reads its own
-folders), the keyring (GOG tokens, SteamGridDB key), Steam's own files,
-umu's shared runtime and a lock in `$XDG_RUNTIME_DIR`. `--library <root>`
-or `DECANTER_LIBRARY` pick a library for one run. A missing library is
-reported, never created.
+## Development
 
-On its first start this version moves the old `~/.local/share/decanter`
-data into the library (copying, checking and only then switching) and
-leaves the old folder untouched as a backup; Ajustes > Almacenamiento
-offers to remove it afterwards.
+### Layout
+
+| Path | What |
+|---|---|
+| `app` | The `decanter` binary: GPUI views, CLI, tray, desktop integration |
+| `crates/core` | Local state: database, libraries, profiles, accounts, credentials, migration |
+| `crates/gog` | GOG client: auth, library, installs, cloud saves, achievements, Steam export |
+| `crates/runtime` | Proton launches through `umu-run` |
+| `crates/ps` | PS dumps, port builds and updates, toolchain, runs, run logs, failures |
+| `crates/hook` | `Galaxy64.dll` proxy, a Windows cdylib outside the workspace |
+
+UI texts live in `app/locales/`, one YAML file per area, each key with its
+`es` and `en` value.
+
+### Build
+
+`shell.nix` pins everything: the libraries GPUI loads at run time, the
+mingw cross toolchain for `crates/hook`, and the TLS and Vulkan setup.
+
+```
+nix-shell --run 'cargo run'                                # dev build
+nix-shell --run 'cargo build --release'                    # release binary
+nix-shell --run 'cargo fmt --all --check'                  # checked by CI
+nix-shell --run 'cargo clippy --workspace --all-targets'   # checked by CI
+scripts/appimage                                           # target/appimage/Decanter-x86_64.AppImage
+```
+
+Without Nix, the same `cargo` commands need:
+
+- Rust with the `x86_64-pc-windows-gnu` target
+  (`rustup target add x86_64-pc-windows-gnu`), a mingw-w64 cross gcc and
+  its `libpthread.a`: `crates/gog/build.rs` always cross-compiles the hook
+  and fails the build without them.
+- `pkg-config` and what GPUI and the keyring load at run time:
+  `vulkan-loader`, `wayland`, `libxkbcommon`, the X11/xcb libraries,
+  `fontconfig`, `freetype`, `dbus`, `openssl`. `runtimeLibs` in `shell.nix`
+  is the exact list.
+
+### Conventions
+
+- `unsafe_code` is forbidden; clippy runs with `all`, `pedantic`,
+  `restriction` and `nursery` at warn and a deny list in the workspace
+  `Cargo.toml` (no `unwrap`, `expect`, `panic!`). Format with `cargo fmt`
+  (`max_width = 120`).
+- No tests in the repository. A change to PS emulation behaviour comes with
+  a hardware test written as OpenOrbis homebrew.
+- Branches: `main` (releases, one tag per version), `develop` (integration)
+  and `<type>/<id>-<topic>` per task, integrated by rebase and fast-forward.
+  Commits follow Conventional Commits (`type(area): subject`) and are
+  signed. Enable the commit-msg hook with
+  `git config core.hooksPath .githooks`. Full guide:
+  [docs/git-workflow.md](docs/git-workflow.md) and
+  [docs/git-conventions.md](docs/git-conventions.md).
+- Versions are derived from the commits in the range (below 1.0, a
+  breaking change bumps `y` in `0.y.z`). Each version's notes are written
+  first in `tag-changelog/vX.Y.Z.md`; the build fails without the file for
+  the current version, and CI publishes it with the AppImage when a `v*`
+  tag is pushed. [CHANGELOG.md](CHANGELOG.md) groups the same changes by
+  area.
+
+## Related projects
+
+- [psport](https://github.com/yerasuu/psport): the PS4 compatibility layer
+  decanter builds and runs, derived from
+  [bbport](https://github.com/deadinside28/bloodborne_pc).
+- [AnyPS5](https://github.com/boykopovar/AnyPS5): runs PS5 dumps.
+- [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher):
+  runs Proton outside Steam.
 
 ## License
 
 Decanter is free software under the GNU General Public License, version 3
 or (at your option) any later version: see [LICENSE](LICENSE). The ports it
-builds and runs keep their own licences (psport: GPL-2.0-or-later).
+builds and runs keep their own licenses.
