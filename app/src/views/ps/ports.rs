@@ -70,6 +70,7 @@ impl PortsView {
         let origin = state.and_then(PortState::origin).map(|origin| match origin {
             BuildOrigin::Local => t!("ps.ports.origin.local"),
             BuildOrigin::Cache => t!("ps.ports.origin.cache"),
+            BuildOrigin::Bundle => t!("ps.ports.origin.bundle"),
         });
         let check = state.and_then(|state| state.check());
         let upstream = check.map(upstream_text);
@@ -214,6 +215,13 @@ fn stage_status(stage: &Stage) -> (Cow<'static, str>, Option<f64>) {
             t!("ps.ports.stage.downloading", size = crate::format::bytes(*received)),
             total.map(|total| *received as f64 / total.max(1) as f64),
         ),
+        Stage::DownloadingBundle(received, total) => (
+            t!(
+                "ps.ports.stage.downloading_bundle",
+                size = crate::format::bytes(*received)
+            ),
+            total.map(|total| *received as f64 / total.max(1) as f64),
+        ),
         Stage::Cloning => (t!("ps.ports.stage.cloning"), None),
         Stage::Updating => (t!("ps.ports.stage.updating"), None),
         Stage::Fetching => (t!("ps.ports.stage.fetching"), None),
@@ -331,5 +339,6 @@ fn toolchain_label(toolchain: &Toolchain) -> std::borrow::Cow<'static, str> {
         Toolchain::Host => t!("ps.ports.toolchains.host"),
         Toolchain::SystemNix(_) => t!("ps.ports.toolchains.system_nix"),
         Toolchain::Portable(_) => t!("ps.ports.toolchains.portable"),
+        Toolchain::Bundle => t!("ps.ports.toolchains.bundle"),
     }
 }

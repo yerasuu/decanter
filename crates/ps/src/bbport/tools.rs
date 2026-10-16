@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
-use super::{Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
+use super::{Bbport, Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
 use crate::paths::Root;
 use crate::port::Port;
 use crate::toolchain::Toolchain;
@@ -97,8 +97,10 @@ async fn has_python_helpers(root: &Root) -> bool {
 }
 
 /// `out/psport <request> <dir> --title …`: the port's own JSON answer for
-/// Bloodborne's executable (the mods page has no game folder at hand). Paths
-/// and names arrive through the environment, never parsed by a shell.
+/// Bloodborne's executable (the mods page has no game folder at hand), from
+/// wherever the port runs from (a fetched build or bundle has no `out/` in
+/// the checkout). Paths and names arrive through the environment, never
+/// parsed by a shell.
 async fn psport_list(
     root: &Root,
     toolchain: &Toolchain,
@@ -106,7 +108,7 @@ async fn psport_list(
     dir: &Path,
 ) -> Result<serde_json::Value, String> {
     let script = format!(
-        r#"exec {} "$DECANTER_REQUEST" "$DECANTER_ARG0" --title "$DECANTER_TITLE" --version "$DECANTER_VERSION""#,
+        r#"exec "$DECANTER_PORT_DIR/{}" "$DECANTER_REQUEST" "$DECANTER_ARG0" --title "$DECANTER_TITLE" --version "$DECANTER_VERSION""#,
         Names::Psport.probe()
     );
     let mut command = match toolchain.command(root, Port::Bbport, &script).await {
@@ -114,6 +116,7 @@ async fn psport_list(
         Err(err) => return Err(format!("psport: {err}")),
     };
     command
+        .env("DECANTER_PORT_DIR", Bbport::new(root.clone()).port_dir().await)
         .env("DECANTER_REQUEST", request)
         .env("DECANTER_ARG0", dir)
         .env("DECANTER_TITLE", SUPPORTED_TITLE)

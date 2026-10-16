@@ -39,6 +39,15 @@ impl Port {
         }
     }
 
+    /// Where its CI publishes each release's bundle ([`crate::bundle`]), as assets of the tag's own
+    /// release: `<this>/<tag>/<asset>`.
+    pub const fn release_downloads(self) -> Option<&'static str> {
+        match self {
+            Self::Bbport => Some("https://github.com/yerasuu/psport/releases/download"),
+            Self::AnyPs5 => None,
+        }
+    }
+
     pub fn checkout(self, root: &Root) -> PathBuf {
         let dir = match self {
             Self::Bbport => "bbport",

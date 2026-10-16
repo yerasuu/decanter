@@ -118,22 +118,30 @@ impl Bbport {
     /// with another toolchain, or after the checkout moved, builds again
     /// instead of failing to load drivers or running the old code. A second
     /// line names the store path of a build fetched from the port's binary
-    /// cache instead.
+    /// cache, or the tag of a release bundle ([`crate::bundle`]), instead.
     fn build_marker(&self) -> PathBuf {
         self.checkout.join("out/decanter-toolchain")
+    }
+
+    async fn fetched(&self) -> Option<String> {
+        let Ok(marker) = tokio::fs::read_to_string(self.build_marker()).await else {
+            return None;
+        };
+        marker.lines().nth(1).map(str::to_owned)
     }
 
     /// The fetched build the marker names, when the current one came from the
     /// binary cache.
     pub async fn prebuilt(&self) -> Option<PathBuf> {
-        let Ok(marker) = tokio::fs::read_to_string(self.build_marker()).await else {
-            return None;
-        };
-        marker
-            .lines()
-            .nth(1)
+        self.fetched()
+            .await
             .filter(|path| crate::prebuilt::valid_store_path(path))
             .map(PathBuf::from)
+    }
+
+    /// The release whose bundle the marker names, when the current build is one.
+    pub async fn bundle_tag(&self) -> Option<String> {
+        self.fetched().await.filter(|tag| crate::prebuilt::valid_tag(tag))
     }
 
     /// The current build's marker, which changes whenever the port is built or fetched again:
@@ -142,14 +150,20 @@ impl Bbport {
         tokio::fs::read_to_string(self.build_marker()).await.ok()
     }
 
-    /// What `run.sh` and the port's tools run from: the fetched build, else
-    /// the checkout built in place.
+    /// What `run.sh` and the port's tools run from: the release bundle or the
+    /// fetched build, else the checkout built in place.
     async fn port_dir(&self) -> PathBuf {
+        if let Some(tag) = self.bundle_tag().await {
+            return crate::bundle::dir(&self.root, Port::Bbport, &tag);
+        }
         self.prebuilt().await.unwrap_or_else(|| self.checkout.clone())
     }
 
     /// [`Self::port_dir`] as the host sees it, where `toolchain` may keep its store elsewhere.
     async fn host_port_dir(&self, toolchain: &Toolchain) -> PathBuf {
+        if let Some(tag) = self.bundle_tag().await {
+            return crate::bundle::dir(&self.root, Port::Bbport, &tag);
+        }
         self.prebuilt().await.map_or_else(
             || self.checkout.clone(),
             |store_path| toolchain.store_path_on_host(&self.root, &store_path),
@@ -203,6 +217,15 @@ impl Bbport {
         }
         let stamp = toolchain.build_stamp(&self.checkout).await;
         tokio::fs::write(self.build_marker(), format!("{stamp}\n{store_path}")).await
+    }
+
+    /// After `tag`'s bundle, the release the checkout is on, was installed.
+    pub async fn record_bundle(&self, tag: &str) -> io::Result<()> {
+        if let Err(err) = tokio::fs::create_dir_all(self.checkout.join("out")).await {
+            return Err(err);
+        }
+        let stamp = Toolchain::Bundle.build_stamp(&self.checkout).await;
+        tokio::fs::write(self.build_marker(), format!("{stamp}\n{tag}")).await
     }
 
     /// Whether `toolchain` can launch what is built, without building.

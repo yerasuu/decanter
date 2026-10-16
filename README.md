@@ -126,8 +126,12 @@ Which psport builds a library runs is its channel, set in the PS section's
 Ajustes:
 
 - **Release** (default) stays on the tag psport's CI last published and
-  fetches that build from psport's Nix binary cache instead of building.
-  When the lookup fails, it builds locally and says so.
+  runs that release's bundle (`psport-<tag>-x86_64.tar.zst`, checked
+  against its published SHA-256 and extracted to
+  `<root>/psport/ports/bbport-bundles/<tag>/`) with the host's Vulkan
+  drivers and no Nix at all. A release without a bundle is fetched from
+  psport's Nix binary cache instead; when that lookup fails too, it builds
+  locally and says so.
 - **Testing** follows psport's `develop` branch and builds every commit
   locally.
 
@@ -184,6 +188,7 @@ remove it. Details: [docs/data-in-library.md](docs/data-in-library.md).
 | `--library <root>` | Use this library for one run instead of the active one. Absolute path only. |
 | `DECANTER_LIBRARY=<root>` | Same, from the environment. |
 | `DECANTER_PS_BINARY_CACHE=<url>` | Another copy of psport's binary cache (`http://` or `file://`). |
+| `DECANTER_PS_BUNDLES=<url>` | Another place for psport's release bundles, as `<url>/<tag>/<asset>` (`http://` or `file://`). |
 
 A library that does not exist is reported, never created.
 

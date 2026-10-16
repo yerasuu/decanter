@@ -12,8 +12,9 @@ implemented.
 - Install staging (`<root>/downloading/`).
 - Proton logs (in the prefix) and the Galaxy hook's achievement log
   (`<prefix>/decanter-hook.jsonl`).
-- Everything PS: `<root>/psport/` (games, ports, toolchain with
-  nix-portable, settings, mods, profiles, layouts, run logs).
+- Everything PS: `<root>/psport/` (games, ports and their release
+  bundles, toolchain with nix-portable, settings, mods, profiles, layouts,
+  run logs).
 - Per-game desktop entries and icons: `<root>/decanter/{desktop,icons}`.
 
 ## Still outside, to move in

@@ -2,7 +2,8 @@
 //!
 //! The host's own tools when they cover the port, then the system's nix,
 //! then decanter's own nix-portable, downloaded the first time it is
-//! needed. The Vulkan drivers follow the same choice: a port built by the
+//! needed. A release's bundle ([`crate::bundle`]) needs none of them: it
+//! carries its libraries and only asks the host for bash. The Vulkan drivers follow the same choice: a port built by the
 //! host loads the host's Mesa, one built by nix only loads nix's, which is
 //! why every nix environment here sets `VK_DRIVER_FILES` itself and why a
 //! port is run inside the toolchain that built it.
@@ -65,6 +66,9 @@ pub enum Toolchain {
     Host,
     SystemNix(PathBuf),
     Portable(PathBuf),
+    /// A release's bundle, run by the host's bash: never chosen by [`Toolchain::resolve`] and
+    /// never building anything.
+    Bundle,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -130,6 +134,7 @@ impl Toolchain {
             Self::Host => "host",
             Self::SystemNix(_) => "system-nix",
             Self::Portable(_) => "nix-portable",
+            Self::Bundle => "bundle",
         }
     }
 
@@ -156,7 +161,7 @@ impl Toolchain {
     pub async fn command(&self, root: &Root, port: Port, script: &str) -> io::Result<Command> {
         let checkout = port.checkout(root);
         let mut command = match self {
-            Self::Host => {
+            Self::Host | Self::Bundle => {
                 let mut command = Command::new("bash");
                 command.arg("-c").arg(script);
                 command
@@ -190,8 +195,8 @@ impl Toolchain {
     }
 
     /// Copies `store_path`'s closure from the binary cache at `cache` into
-    /// this toolchain's store and roots it at `gc_root`. `None` for the host,
-    /// which has no store: a prebuilt port only runs inside nix.
+    /// this toolchain's store and roots it at `gc_root`. `None` for the host
+    /// and a bundle, which have no store: a cached port only runs inside nix.
     pub fn fetch_command(&self, root: &Root, cache: &str, store_path: &str, gc_root: &Path) -> Option<Command> {
         let mut command = Command::new("bash");
         command
@@ -207,7 +212,7 @@ impl Toolchain {
             .arg(store_path)
             .arg(gc_root);
         match self {
-            Self::Host => return None,
+            Self::Host | Self::Bundle => return None,
             Self::SystemNix(nix_shell) => {
                 // `nix` and `nix-store` sit beside `nix-shell`, which may have been found off `PATH`.
                 let dir = nix_shell.parent().map(Path::to_owned).unwrap_or_default();

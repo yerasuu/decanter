@@ -252,6 +252,29 @@ pub async fn upstream_commit(repo: &Path) -> Option<String> {
     crate::prebuilt::valid_commit(&head).then_some(head)
 }
 
+/// The highest `vX.Y.Z` tag on `commit`, a full one [`upstream_commit`] vouched for: the release
+/// whose bundle stands for the checkout. From the checkout's own tags, so it works offline.
+pub async fn release_tag(repo: &Path, commit: &str) -> Option<String> {
+    let tags = match git(repo, &["tag", "--list", "--points-at", commit, "v*"]).await {
+        Ok(tags) => tags,
+        Err(err) => {
+            tracing::warn!(repo = %repo.display(), commit, %err, "could not list the tags on the checkout's commit");
+            return None;
+        }
+    };
+    let version = |tag: &str| -> Option<(u64, u64, u64)> {
+        let mut parts = tag.strip_prefix('v')?.split('.').map(str::parse);
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some(Ok(major)), Some(Ok(minor)), Some(Ok(patch))) => Some((major, minor, patch)),
+            _ => None,
+        }
+    };
+    tags.lines()
+        .filter(|tag| crate::prebuilt::valid_tag(tag))
+        .max_by_key(|tag| version(tag))
+        .map(str::to_owned)
+}
+
 /// Fetches `upstream`'s tags, forced since a tag upstream deleted and pushed
 /// again would otherwise fail every fetch, and tells whether the checkout
 /// already stands on `release`'s commit. The tag must name that commit here

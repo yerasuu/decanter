@@ -57,8 +57,8 @@ ps.ports.title:
   es: Ports
   en: Ports
 ps.ports.description:
-  es: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando bastan y con nix cuando no.
-  en: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't.
+  es: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando bastan y con nix cuando no. Una versión estable publicada como paquete funciona sin ninguno de los dos.
+  en: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't. A stable release published as a bundle runs without either.
 ps.ports.stage.idle:
   es: Se prepara la primera vez que haga falta
   en: Set up the first time it's needed
@@ -68,6 +68,9 @@ ps.ports.stage.resolving:
 ps.ports.stage.downloading:
   es: "Descargando nix-portable: %{size}"
   en: "Downloading nix-portable: %{size}"
+ps.ports.stage.downloading_bundle:
+  es: "Descargando el paquete del port: %{size}"
+  en: "Downloading the port's bundle: %{size}"
 ps.ports.stage.cloning:
   es: Clonando…
   en: Cloning…
@@ -93,8 +96,11 @@ ps.ports.origin.local:
   es: Compilado en este equipo
   en: Built on this machine
 ps.ports.origin.cache:
-  es: Precompilado, descargado de la caché del port
-  en: Prebuilt, downloaded from the port's cache
+  es: Precompilado, descargado de la caché de nix del port
+  en: Prebuilt, downloaded from the port's nix cache
+ps.ports.origin.bundle:
+  es: Precompilado, descargado como paquete de la versión, sin nix
+  en: Prebuilt, downloaded as the release's bundle, without nix
 ps.ports.channel.release:
   es: "Canal: versión estable"
   en: "Channel: stable release"
@@ -128,6 +134,9 @@ ps.ports.toolchains.system_nix:
 ps.ports.toolchains.portable:
   es: nix-portable de decanter
   en: decanter's nix-portable
+ps.ports.toolchains.bundle:
+  es: paquete del port, sin nix
+  en: the port's bundle, without nix
 ps.ports.upstream.up_to_date:
   es: "%{head} · al día con %{branch}"
   en: "%{head} · up to date with %{branch}"

@@ -1,7 +1,8 @@
 //! Which builds of a port a library runs, chosen in the PS section's Ajustes.
 //!
 //! Release keeps the checkout on the tag the port's CI last published
-//! ([`crate::prebuilt::latest_release`]) and fetches that build; Testing
+//! ([`crate::prebuilt::latest_release`]) and runs that tag's bundle
+//! ([`crate::bundle`]), or fetches its build from the nix cache; Testing
 //! follows the default branch and builds every commit locally. Only a port
 //! whose CI publishes builds has a choice: every other one is always on
 //! Testing.

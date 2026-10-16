@@ -1,7 +1,7 @@
-//! Getting a port ready without asking: toolchain, checkout and build, in
-//! that order, whenever something needs the port and it isn't ready — and
-//! keeping its checkout on upstream, or on its latest release
-//! ([`super::channel`]), while the section is in use.
+//! Getting a port ready without asking: checkout, then Release's bundle
+//! ([`super::bundle`]) or toolchain and build, whenever something needs the
+//! port and it isn't ready — and keeping its checkout on upstream, or on its
+//! latest release ([`super::channel`]), while the section is in use.
 
 use std::io;
 use std::time::Duration;
@@ -22,6 +22,7 @@ use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
 use rust_i18n::t;
 
 use super::Ps;
+use super::bundle;
 use super::channel::{self, Track};
 use super::fallback::{self, Fallback};
 use super::jobs::{self, JobKey};
@@ -38,6 +39,8 @@ pub enum Stage {
     Resolving,
     /// Fetching nix-portable: bytes so far, and the total when known.
     Downloading(u64, Option<u64>),
+    /// Fetching the release's bundle ([`super::bundle`]): bytes so far, and the total when known.
+    DownloadingBundle(u64, Option<u64>),
     Cloning,
     /// Fast-forwarding the checkout to upstream, and building it again if it was prepared.
     Updating,
@@ -55,11 +58,13 @@ pub enum Stage {
 pub enum BuildOrigin {
     Local,
     Cache,
+    /// The release's bundle, run without nix.
+    Bundle,
 }
 
 pub struct PortState {
     stage: Stage,
-    origin: Option<BuildOrigin>,
+    pub(super) origin: Option<BuildOrigin>,
     /// With the library it was resolved for, since nix-portable lives in each one.
     pub(super) toolchain: Option<(Root, Toolchain)>,
     pub(super) check: Option<Result<Check, RemoteError>>,
@@ -70,7 +75,7 @@ pub struct PortState {
     /// When the last upstream check ended, so the Ports view tells a fresh answer from an old one.
     checked_at: Option<chrono::DateTime<chrono::Local>>,
     /// Release built locally because its prebuilt build was not there.
-    fell_back: bool,
+    pub(super) fell_back: bool,
     /// With the library it prepares in, since each library has its own checkout.
     preparing: Option<(Root, Shared<Task<Prepared>>)>,
     /// Whether the checkout moved.
@@ -141,6 +146,7 @@ impl PortState {
             self.stage,
             Stage::Resolving
                 | Stage::Downloading(..)
+                | Stage::DownloadingBundle(..)
                 | Stage::Cloning
                 | Stage::Updating
                 | Stage::Fetching
@@ -341,20 +347,7 @@ fn fail(this: &WeakEntity<Ps>, port: Port, err: &PortError, cx: &mut AsyncApp) -
 
 async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) -> Prepared {
     set_stage(this, port, Stage::Resolving, cx);
-    let progress = this.clone();
-    let mut async_cx = cx.clone();
-    let resolved = Toolchain::resolve(root, port, move |received, total| {
-        set_stage(&progress, port, Stage::Downloading(received, total), &mut async_cx);
-    })
-    .await;
-    let toolchain = match resolved {
-        Ok(toolchain) => toolchain,
-        Err(err) => return Err(fail(this, port, &PortError::Toolchain(err), cx)),
-    };
-    let _ = this.update(cx, |this, _| {
-        this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
-    });
-
+    // The clone needs only git, and goes first so Release's bundle can spare the toolchain.
     let checkout = port.checkout(root);
     if !tokio::fs::try_exists(&checkout).await.unwrap_or(false) {
         set_stage(this, port, Stage::Cloning, cx);
@@ -376,6 +369,25 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
             channel::settle_clone(this, port, root, cx).await;
         }
     }
+    if let Some(bundle) = bundle::ready(this, port, root, cx).await {
+        fallback::settle(this, port, root, true, cx).await;
+        set_stage(this, port, Stage::Ready, cx);
+        return Ok(bundle);
+    }
+
+    let progress = this.clone();
+    let mut async_cx = cx.clone();
+    let resolved = Toolchain::resolve(root, port, move |received, total| {
+        set_stage(&progress, port, Stage::Downloading(received, total), &mut async_cx);
+    })
+    .await;
+    let toolchain = match resolved {
+        Ok(toolchain) => toolchain,
+        Err(err) => return Err(fail(this, port, &PortError::Toolchain(err), cx)),
+    };
+    let _ = this.update(cx, |this, _| {
+        this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
+    });
 
     let built = match port {
         // Testing runs only what it built itself.
@@ -565,7 +577,7 @@ async fn fetch_prebuilt(
     };
     let bbport = Bbport::new(root.clone());
     let resolved_nix = match toolchain {
-        Toolchain::Host => None,
+        Toolchain::Host | Toolchain::Bundle => None,
         Toolchain::SystemNix(_) | Toolchain::Portable(_) => Some(toolchain.clone()),
     };
     // The host is resolved again on every prepare, so a build fetched before is
@@ -685,6 +697,11 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         .unwrap_or(false);
     if !prepared_here {
         // Never prepared in this library this session: the next prepare builds.
+        return;
+    }
+    if bundle::ready(this, port, root, cx).await.is_some() {
+        fallback::settle(this, port, root, true, cx).await;
+        set_stage(this, port, Stage::Ready, cx);
         return;
     }
     // Resolved again rather than reusing nix from a fallback, now that the host may build it.

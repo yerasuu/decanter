@@ -5,6 +5,7 @@
 //! profile never pays for it; kept after that, so jobs started from the
 //! section outlive switching to another one.
 
+mod bundle;
 mod channel;
 mod fallback;
 mod fsr;
