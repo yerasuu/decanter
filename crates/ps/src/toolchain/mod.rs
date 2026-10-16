@@ -12,6 +12,8 @@
 
 mod portable;
 
+pub use portable::{REPO as NIX_PORTABLE_REPO, VERSION as NIX_PORTABLE_VERSION};
+
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};

@@ -152,6 +152,24 @@ ps.ports.upstream.local.other:
 ps.ports.upstream.error:
   es: "No se pudo consultar upstream: %{error}"
   en: "Couldn't check upstream: %{error}"
+ps.ports.check:
+  es: Buscar actualizaciones
+  en: Check for updates
+ps.ports.checking:
+  es: Comprobando…
+  en: Checking…
+ps.ports.checked_at:
+  es: "Comprobado a las %{time}"
+  en: "Checked at %{time}"
+ps.ports.remote.offline:
+  es: no hay conexión con el remoto
+  en: no connection to the remote
+ps.ports.remote.rate_limited:
+  es: el remoto está limitando las consultas; vuelve a intentarlo en un rato
+  en: the remote is rate limiting requests; try again in a while
+ps.ports.remote.missing:
+  es: el repositorio remoto ya no existe o se ha movido
+  en: the remote repository is gone or has moved
 ps.ports.prepare:
   es: Preparar
   en: Prepare

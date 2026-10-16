@@ -33,6 +33,7 @@ pub mod paths;
 pub mod port;
 pub mod prebuilt;
 pub mod process;
+pub mod remote;
 pub mod run_log;
 pub mod status;
 pub mod toolchain;

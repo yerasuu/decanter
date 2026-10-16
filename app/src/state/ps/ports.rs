@@ -13,6 +13,7 @@ use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
 use decanter_ps::prebuilt;
 use decanter_ps::process::JobKind;
+use decanter_ps::remote::RemoteError;
 use decanter_ps::toolchain::{self, Toolchain};
 use decanter_ps::updater::{self, Check, Plan};
 use futures::FutureExt as _;
@@ -61,9 +62,13 @@ pub struct PortState {
     origin: Option<BuildOrigin>,
     /// With the library it was resolved for, since nix-portable lives in each one.
     pub(super) toolchain: Option<(Root, Toolchain)>,
-    pub(super) check: Option<Result<Check, String>>,
+    pub(super) check: Option<Result<Check, RemoteError>>,
     pub(super) channel: Option<Channel>,
     pub(super) track: Option<Track>,
+    /// An upstream check is running, from the periodic loop or the Ports view's button.
+    checking: bool,
+    /// When the last upstream check ended, so the Ports view tells a fresh answer from an old one.
+    checked_at: Option<chrono::DateTime<chrono::Local>>,
     /// Release built locally because its prebuilt build was not there.
     fell_back: bool,
     /// With the library it prepares in, since each library has its own checkout.
@@ -82,6 +87,8 @@ impl PortState {
             check: None,
             channel: None,
             track: None,
+            checking: false,
+            checked_at: None,
             fell_back: false,
             preparing: None,
             updating: None,
@@ -101,8 +108,16 @@ impl PortState {
         self.toolchain.as_ref().map(|(_, toolchain)| toolchain)
     }
 
-    pub const fn check(&self) -> Option<&Result<Check, String>> {
+    pub const fn check(&self) -> Option<&Result<Check, RemoteError>> {
         self.check.as_ref()
+    }
+
+    pub const fn is_checking(&self) -> bool {
+        self.checking
+    }
+
+    pub const fn checked_at(&self) -> Option<chrono::DateTime<chrono::Local>> {
+        self.checked_at
     }
 
     pub const fn channel(&self) -> Option<Channel> {
@@ -193,12 +208,20 @@ impl Ps {
                     if this.upgrade().is_none() {
                         return;
                     }
-                    check_and_update(&this, port, &paths::active(), false, cx).await;
+                    check_once(&this, port, &paths::active(), false, cx).await;
                 }
                 cx.background_executor().timer(UPDATE_INTERVAL).await;
             }
         })
         .detach();
+    }
+
+    /// The Ports view's button: asks upstream right away instead of waiting
+    /// for the next periodic check, and moves the checkout as that check would.
+    pub fn check_now(&mut self, port: Port, cx: &mut Context<Self>) {
+        let root = paths::active();
+        cx.spawn(async move |this, cx| check_once(&this, port, &root, true, cx).await)
+            .detach();
     }
 
     /// After Ajustes saved another channel: the checkout moves to it, then
@@ -682,6 +705,32 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         fallback::settle(this, port, root, true, cx).await;
         set_stage(this, port, Stage::Ready, cx);
     }
+}
+
+/// [`check_and_update`], skipped while another check of `port` runs so the
+/// button and the periodic loop never fetch into the same checkout at once.
+pub(super) async fn check_once(this: &WeakEntity<Ps>, port: Port, root: &Root, retry_failed: bool, cx: &mut AsyncApp) {
+    let started = this
+        .update(cx, |this, cx| {
+            let state = this.ports.entry(port).or_insert_with(PortState::new);
+            if state.checking {
+                return false;
+            }
+            state.checking = true;
+            cx.notify();
+            true
+        })
+        .unwrap_or(false);
+    if !started {
+        return;
+    }
+    check_and_update(this, port, root, retry_failed, cx).await;
+    let _ = this.update(cx, |this, cx| {
+        let state = this.ports.entry(port).or_insert_with(PortState::new);
+        state.checking = false;
+        state.checked_at = Some(chrono::Local::now());
+        cx.notify();
+    });
 }
 
 /// `retry_failed` moves the checkout onto a commit that failed to build before too; the

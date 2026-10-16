@@ -15,6 +15,7 @@ use tokio::process::Command;
 use crate::paths::Root;
 use crate::port::Port;
 use crate::prebuilt::Release;
+use crate::remote::RemoteError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
@@ -44,7 +45,14 @@ pub struct Check {
 
 fn git_command(repo: &Path) -> Command {
     let mut command = Command::new("git");
-    command.arg("-C").arg(repo).stdin(Stdio::null());
+    // English so `RemoteError::from_git` can read why the remote failed; no
+    // prompt, since a vanished repository asks for credentials nobody can type.
+    command
+        .arg("-C")
+        .arg(repo)
+        .env("LC_ALL", "C")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null());
     decanter_core::strip_launcher_env(command.as_std_mut());
     command
 }
@@ -97,16 +105,16 @@ async fn fetch_from(repo: &Path, upstream: &str, args: &[&str]) -> Result<(), St
 
 /// Fetches `upstream` with its tags and compares the checkout with its
 /// `develop`, or its default branch when it has none.
-pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
+pub async fn check(repo: &Path, upstream: &str) -> Result<Check, RemoteError> {
     // Forced for the reason given in `on_release`; the tags are needed here
     // because an archive tag may be the only ref still holding the commits of
     // a rewritten branch.
     if let Err(err) = fetch_from(repo, upstream, &["--tags", "--force"]).await {
-        return Err(err);
+        return Err(RemoteError::from_git(err));
     }
     let refs = match git(repo, &["ls-remote", "--symref", "origin"]).await {
         Ok(refs) => refs,
-        Err(err) => return Err(err),
+        Err(err) => return Err(RemoteError::from_git(err)),
     };
     let has_develop = refs
         .lines()
@@ -122,7 +130,7 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
         .filter(|branch| valid_branch(branch))
         .map(str::to_owned)
     else {
-        return Err("origin has no usable default branch".to_owned());
+        return Err(RemoteError::Failed("origin has no usable default branch".to_owned()));
     };
     let mut rev_list = vec!["rev-list", "--count", "--ignore-missing", "HEAD", "--not"];
     rev_list.extend(
@@ -165,7 +173,7 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
         | (_, _, _, Err(err), ..)
         | (.., Err(err), _)
         | (.., Err(err)) => {
-            return Err(err);
+            return Err(RemoteError::Failed(err));
         }
     };
     let behind = behind.parse().unwrap_or(0);
@@ -248,9 +256,9 @@ pub async fn upstream_commit(repo: &Path) -> Option<String> {
 /// again would otherwise fail every fetch, and tells whether the checkout
 /// already stands on `release`'s commit. The tag must name that commit here
 /// too, so a pointer and a tag that disagree never move the checkout.
-pub async fn on_release(repo: &Path, upstream: &str, release: &Release) -> Result<bool, String> {
+pub async fn on_release(repo: &Path, upstream: &str, release: &Release) -> Result<bool, RemoteError> {
     if let Err(err) = fetch_from(repo, upstream, &["--tags", "--force"]).await {
-        return Err(err);
+        return Err(RemoteError::from_git(err));
     }
     let tag_ref = format!("refs/tags/{}^{{commit}}", release.tag);
     let (tagged, head) = match (
@@ -263,14 +271,14 @@ pub async fn on_release(repo: &Path, upstream: &str, release: &Release) -> Resul
     ) {
         (Ok(tagged), Ok(head)) => (tagged, head),
         // `--quiet` leaves nothing else to tell: the tag isn't there.
-        (Err(_), _) => return Err(format!("upstream has no tag {}", release.tag)),
-        (_, Err(err)) => return Err(err),
+        (Err(_), _) => return Err(RemoteError::Failed(format!("upstream has no tag {}", release.tag))),
+        (_, Err(err)) => return Err(RemoteError::Failed(err)),
     };
     if tagged != release.commit {
-        return Err(format!(
+        return Err(RemoteError::Failed(format!(
             "tag {} is {tagged} upstream, not the published {}",
             release.tag, release.commit
-        ));
+        )));
     }
     Ok(head == release.commit)
 }

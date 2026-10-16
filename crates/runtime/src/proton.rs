@@ -37,6 +37,10 @@ impl Proton {
     }
 }
 
+/// Where umu downloads [`Proton::Latest`] from, into [`steam_compat_dir`]
+/// under the release's tag.
+pub const UMU_PROTON_REPO: &str = "Open-Wine-Components/umu-proton";
+
 /// Where Steam (and umu) keep Proton builds.
 ///
 /// umu resolves a bare `PROTONPATH` against this directory, so a build

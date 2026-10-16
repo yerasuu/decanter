@@ -168,6 +168,19 @@ Los 117 commits caben en unos 12, cada uno con su porqué:
   2. El commit de subida de versión.
   3. El avance de `develop` a `main`.
   4. El tag anotado y firmado sobre `main`.
+  5. En decanter, cuando la CI ha subido el AppImage a la versión, `scripts/sign-release X.Y.Z`
+     lo descarga, lo firma con minisign y sube `Decanter-x86_64.AppImage.minisig` (decisión #400).
+     Sin esa firma, decanter no ofrece instalar la versión por sí mismo.
+- **Clave de firma de las versiones de decanter** (se crea una vez y es tuya; ni la CI ni los
+  agentes la tocan):
+  - `minisign -G -s ~/.minisign/decanter.key -p keys/release.pub` crea la secreta, con
+    contraseña, y la pública en el repositorio.
+  - `keys/release.pub` se commitea; el build la incrusta y falla si no es una clave minisign. Vacía,
+    el build sigue y el AppImage solo avisa de las versiones nuevas.
+  - La firma lleva el comentario de confianza `decanter vX.Y.Z`, que decanter comprueba antes de
+    instalar. `DECANTER_MINISIGN_KEY` apunta a otra ruta de la clave secreta.
+  - Una versión firmada solo la instala un decanter que traiga esa misma clave pública: cambiar de
+    clave obliga a actualizar a mano una vez.
 - **Repin solo de dependencias** (`Cargo.lock`, `flake.lock`): es un `chore` y no saca versión.
 
 ## 6. Tablero y noches

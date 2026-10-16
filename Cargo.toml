@@ -47,6 +47,9 @@ image = "0.25.10"
 keyring = "4.2.0"
 ksni = "0.3.6"
 md5 = "0.8.1"
+# Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
+# exactly so a new release of what decides which binary runs gets read first.
+minisign-verify = "=0.3.0"
 nix = { version = "0.31.3", default-features = false }
 open = "5.4.4"
 # `default-tls` pulls in native-tls, which links the system's OpenSSL —

@@ -167,3 +167,138 @@ settings.compatibility.automatic:
 settings.compatibility.none_installed:
   es: No hay Proton instalado en Steam (compatibilitytools.d). umu descargará uno la primera vez.
   en: No Proton is installed in Steam (compatibilitytools.d). umu will download one the first time.
+settings.general.updates.title:
+  es: Actualizaciones
+  en: Updates
+settings.general.updates.installed:
+  es: "Versión instalada: %{version}"
+  en: "Installed version: %{version}"
+settings.general.updates.check:
+  es: Buscar actualizaciones
+  en: Check for updates
+settings.general.updates.checking:
+  es: Comprobando…
+  en: Checking…
+settings.general.updates.up_to_date:
+  es: "Tienes la última versión publicada (%{tag})."
+  en: "You have the latest published version (%{tag})."
+settings.general.updates.ahead:
+  es: "Esta compilación es más reciente que la última versión publicada (%{tag})."
+  en: "This build is newer than the latest published version (%{tag})."
+settings.general.updates.available:
+  es: "Hay una versión nueva: %{tag}. Por ahora se descarga a mano desde su página en GitHub."
+  en: "A new version is out: %{tag}. For now, download it by hand from its GitHub page."
+settings.general.updates.available_install:
+  es: "Hay una versión nueva: %{tag}."
+  en: "A new version is out: %{tag}."
+settings.general.updates.install:
+  es: Descargar e instalar
+  en: Download and install
+settings.general.updates.no_key:
+  es: Esta compilación no trae clave de firma, así que no puede comprobar ni instalar versiones nuevas por sí misma. Descárgala a mano desde su página en GitHub.
+  en: This build carries no signing key, so it can't verify or install new versions by itself. Download it by hand from its GitHub page.
+settings.general.updates.downloading:
+  es: "Descargando… %{done}"
+  en: "Downloading… %{done}"
+settings.general.updates.downloading_of:
+  es: "Descargando… %{done} de %{total}"
+  en: "Downloading… %{done} of %{total}"
+settings.general.updates.installed_update:
+  es: "%{tag} está instalada y su firma, comprobada. Se usará la próxima vez que abras Decanter."
+  en: "%{tag} is installed and its signature checked. It will be used the next time you open Decanter."
+settings.general.updates.restart_now:
+  es: Reiniciar ahora
+  en: Restart now
+settings.general.updates.none:
+  es: Todavía no hay ninguna versión publicada en GitHub.
+  en: No version has been published on GitHub yet.
+settings.general.updates.notes:
+  es: Notas de la versión
+  en: Release notes
+settings.updates.errors.offline:
+  es: No hay conexión con GitHub.
+  en: No connection to GitHub.
+settings.updates.errors.rate_limited:
+  es: GitHub ha limitado las consultas desde esta red; vuelve a intentarlo dentro de un rato.
+  en: GitHub is rate limiting requests from this network; try again in a while.
+settings.updates.errors.invalid:
+  es: "GitHub ha respondido algo que no es una versión válida: %{error}"
+  en: "GitHub answered something that isn't a valid release: %{error}"
+settings.updates.errors.failed:
+  es: "La consulta a GitHub ha fallado: %{error}"
+  en: "The request to GitHub failed: %{error}"
+settings.compatibility.tools.title:
+  es: Herramientas
+  en: Tools
+settings.compatibility.tools.intro:
+  es: Decanter descarga su propia copia de umu-run y de nix-portable, en versiones fijas que solo cambia tras probarlas; umu descarga UMU-Proton por su cuenta cuando el Proton es automático.
+  en: Decanter downloads its own copy of umu-run and nix-portable, at fixed versions it only changes after testing them; umu downloads UMU-Proton on its own when Proton is automatic.
+settings.compatibility.tools.check:
+  es: Buscar actualizaciones
+  en: Check for updates
+settings.compatibility.tools.checking:
+  es: Comprobando…
+  en: Checking…
+settings.compatibility.tools.pinned:
+  es: "%{tool} %{version}"
+  en: "%{tool} %{version}"
+settings.compatibility.tools.current:
+  es: "%{tool} %{version} · es la última publicada"
+  en: "%{tool} %{version} · the latest published"
+settings.compatibility.tools.newer:
+  es: "%{tool} %{version} · se ha publicado la %{latest}; Decanter la adoptará cuando esté probada"
+  en: "%{tool} %{version} · %{latest} is out; Decanter will adopt it once it's tested"
+settings.compatibility.tools.unpublished:
+  es: "%{tool} %{version} · el proyecto no tiene ninguna versión publicada"
+  en: "%{tool} %{version} · the project has no published release"
+settings.compatibility.tools.error:
+  es: "%{tool} %{version} · %{error}"
+  en: "%{tool} %{version} · %{error}"
+settings.compatibility.tools.proton.unchecked:
+  es: UMU-Proton · umu descarga la última al lanzar un juego con Proton automático
+  en: UMU-Proton · umu downloads the latest when a game launches with automatic Proton
+settings.compatibility.tools.proton.installed:
+  es: "UMU-Proton · %{tag} es la última y ya está descargada"
+  en: "UMU-Proton · %{tag} is the latest and already downloaded"
+settings.compatibility.tools.proton.pending:
+  es: "UMU-Proton · la última es %{tag}; umu la descargará al lanzar un juego con Proton automático"
+  en: "UMU-Proton · the latest is %{tag}; umu will download it when a game launches with automatic Proton"
+settings.compatibility.tools.proton.unpublished:
+  es: UMU-Proton · el proyecto no tiene ninguna versión publicada
+  en: UMU-Proton · the project has no published release
+settings.compatibility.tools.proton.error:
+  es: "UMU-Proton · %{error}"
+  en: "UMU-Proton · %{error}"
+settings.updates.install_errors.missing_appimage:
+  es: "La versión %{tag} todavía no tiene AppImage en GitHub; vuelve a intentarlo dentro de un rato."
+  en: "Version %{tag} has no AppImage on GitHub yet; try again in a while."
+settings.updates.install_errors.unsigned:
+  es: "La versión %{tag} todavía no está firmada; vuelve a intentarlo más tarde o descárgala a mano."
+  en: "Version %{tag} isn't signed yet; try again later or download it by hand."
+settings.updates.install_errors.download:
+  es: "La descarga ha fallado: %{error}"
+  en: "The download failed: %{error}"
+settings.updates.install_errors.too_large:
+  es: "La descarga supera los %{size}, más de lo que puede ocupar Decanter; no se ha instalado."
+  en: "The download is over %{size}, more than Decanter can take up; it wasn't installed."
+settings.updates.install_errors.bad_signature:
+  es: La firma no corresponde a lo descargado. No se ha instalado nada y tu versión sigue igual.
+  en: The signature doesn't match the download. Nothing was installed and your version is unchanged.
+settings.updates.install_errors.wrong_key:
+  es: La versión está firmada con una clave distinta de la de esta compilación. No se ha instalado nada.
+  en: The version is signed with a different key than this build's. Nothing was installed.
+settings.updates.install_errors.wrong_release:
+  es: "La firma es de otra versión («%{found}»). No se ha instalado nada."
+  en: "The signature belongs to another version (“%{found}”). Nothing was installed."
+settings.updates.install_errors.no_permission:
+  es: "No hay permiso para escribir en %{dir}. Mueve el AppImage a una carpeta tuya o descárgalo a mano."
+  en: "No permission to write in %{dir}. Move the AppImage to a folder of yours or download it by hand."
+settings.updates.install_errors.disk_full:
+  es: "No queda espacio en %{dir}. Libera espacio y vuelve a intentarlo; tu versión sigue igual."
+  en: "No space left in %{dir}. Free some space and try again; your version is unchanged."
+settings.updates.install_errors.io:
+  es: "No se ha podido escribir %{path}: %{error}"
+  en: "Couldn't write %{path}: %{error}"
+settings.updates.install_errors.broken_key:
+  es: "La clave de firma de esta compilación no es válida: %{error}"
+  en: "This build's signing key isn't valid: %{error}"

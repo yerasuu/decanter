@@ -1,3 +1,6 @@
 **/target
 /dll/Galaxy64.dll
 /Biblioteca achv_files/
+
+# Private release signing keys; only keys/release.pub is tracked
+keys/*.key

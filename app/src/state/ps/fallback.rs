@@ -41,7 +41,7 @@ impl Ps {
     /// built, and fallen back from again if it still fails.
     pub fn retry_update(&mut self, port: Port, cx: &mut Context<Self>) {
         let root = paths::active();
-        cx.spawn(async move |this, cx| ports::check_and_update(&this, port, &root, true, cx).await)
+        cx.spawn(async move |this, cx| ports::check_once(&this, port, &root, true, cx).await)
             .detach();
     }
 }

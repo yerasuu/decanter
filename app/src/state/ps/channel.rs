@@ -7,6 +7,7 @@ use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::prebuilt::{self, Release};
 use decanter_ps::process::JobKind;
+use decanter_ps::remote::RemoteError;
 use decanter_ps::updater;
 use gpui::{AppContext as _, AsyncApp, WeakEntity};
 
@@ -24,7 +25,7 @@ pub enum Track {
     /// CI hasn't published a release yet: the default branch, built locally.
     NoRelease,
     /// The latest release couldn't be read or vouched for; the checkout stays where it was.
-    Unknown(String),
+    Unknown(RemoteError),
 }
 
 /// Read again on every use, since Ajustes may have changed it, and kept for the Ports view.
@@ -78,7 +79,7 @@ async fn find(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp)
         }
         Err(err) => {
             tracing::warn!(port = port.name(), cache, %err, "could not read the latest release; the checkout stays where it is");
-            set_track(this, port, Track::Unknown(err.to_string()), cx);
+            set_track(this, port, Track::Unknown(err.into()), cx);
             return Found::Unknown;
         }
     };

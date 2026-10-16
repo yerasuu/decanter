@@ -1,12 +1,17 @@
 //! The UI language, window behaviour that isn't tied to any profile or
-//! game, closing a game from the controller or keyboard, plus the Steam
-//! export toggle and its pending-restart callout.
+//! game, closing a game from the controller or keyboard, the Steam export
+//! toggle and its pending-restart callout, and whether GitHub has a newer
+//! decanter, which an AppImage can install over itself.
+
+use std::path::PathBuf;
 
 use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{column, field_row, inline};
 use crate::i18n::{self, Language};
+use crate::releases::{self, Release, ReleaseError, Standing};
+use crate::self_update::{self, Availability, InstallError};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox, language_select};
 
@@ -18,6 +23,17 @@ pub struct GeneralTab {
     steam_pending: bool,
     restarting_steam: bool,
     restart_error: Option<String>,
+    checking_release: bool,
+    /// `None` until the user checks; never checked on its own.
+    release: Option<Result<Standing, ReleaseError>>,
+    availability: Availability,
+    install: Option<Install>,
+}
+
+enum Install {
+    Downloading { done: u64, total: Option<u64> },
+    Installed { tag: String, appimage: PathBuf },
+    Failed(InstallError),
 }
 
 impl GeneralTab {
@@ -30,6 +46,10 @@ impl GeneralTab {
             steam_pending: false,
             restarting_steam: false,
             restart_error: None,
+            checking_release: false,
+            release: None,
+            availability: self_update::availability(),
+            install: None,
         };
         this.reload();
         this
@@ -132,6 +152,188 @@ impl GeneralTab {
         .detach();
     }
 
+    fn check_release(&mut self, cx: &mut Context<Self>) {
+        self.checking_release = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let outcome = releases::decanter().await;
+            if let Err(err) = &outcome {
+                tracing::warn!(error = %err, "could not check decanter's latest release");
+            }
+            let _ = this.update(cx, |this, cx| {
+                this.release = Some(outcome);
+                this.checking_release = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn install_release(&mut self, release: &Release, appimage: PathBuf, cx: &mut Context<Self>) {
+        self.install = Some(Install::Downloading { done: 0, total: None });
+        cx.notify();
+        let tag = release.tag.clone();
+        cx.spawn(async move |this, cx| {
+            let outcome = self_update::install(&tag, &appimage, |done, total| {
+                let _ = this.update(cx, |this, cx| {
+                    this.install = Some(Install::Downloading { done, total });
+                    cx.notify();
+                });
+            })
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                this.install = Some(match outcome {
+                    Ok(()) => Install::Installed { tag, appimage },
+                    Err(err) => Install::Failed(err),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// What a newer release offers: the button that installs it over this
+    /// AppImage and how far that got, or why it can't be offered here.
+    fn install_section(&self, release: &Release, cx: &Context<Self>) -> impl IntoElement {
+        let appimage = match &self.availability {
+            Availability::AppImage(appimage) => appimage,
+            Availability::NoKey => {
+                return column()
+                    .child(inline(button(
+                        "install-decanter-release",
+                        ButtonKind::Primary,
+                        t!("settings.general.updates.install"),
+                        true,
+                    )))
+                    .child(theme::muted(t!("settings.general.updates.no_key")));
+            }
+            Availability::Elsewhere => return column(),
+        };
+        if let Some(Install::Installed { tag, appimage }) = &self.install {
+            let appimage = appimage.clone();
+            return column()
+                .child(div().child(t!("settings.general.updates.installed_update", tag = tag)))
+                .child(inline(
+                    button(
+                        "restart-decanter",
+                        ButtonKind::Primary,
+                        t!("settings.general.updates.restart_now"),
+                        false,
+                    )
+                    .on_click(move |_, _, cx| {
+                        self_update::restart_after_quit(appimage.clone());
+                        cx.quit();
+                    }),
+                ));
+        }
+        let downloading = match &self.install {
+            Some(Install::Downloading { done, total }) => Some(match total {
+                Some(total) => t!(
+                    "settings.general.updates.downloading_of",
+                    done = crate::format::bytes(*done),
+                    total = crate::format::bytes(*total)
+                ),
+                None => t!(
+                    "settings.general.updates.downloading",
+                    done = crate::format::bytes(*done)
+                ),
+            }),
+            None | Some(Install::Installed { .. } | Install::Failed(_)) => None,
+        };
+        let error = match &self.install {
+            Some(Install::Failed(err)) => Some(err.localized()),
+            None | Some(Install::Downloading { .. } | Install::Installed { .. }) => None,
+        };
+        let busy = downloading.is_some();
+        let release = release.clone();
+        let appimage = appimage.clone();
+        column()
+            .child(inline(
+                button(
+                    "install-decanter-release",
+                    ButtonKind::Primary,
+                    t!("settings.general.updates.install"),
+                    busy,
+                )
+                .when(!busy, |b| {
+                    b.on_click(cx.listener(move |this, _, _, cx| {
+                        this.install_release(&release, appimage.clone(), cx);
+                    }))
+                }),
+            ))
+            .children(downloading.map(theme::muted))
+            .children(error.map(theme::error))
+    }
+
+    fn release_section(&self, cx: &Context<Self>) -> impl IntoElement {
+        let checking = self.checking_release;
+        let installable = !matches!(self.availability, Availability::Elsewhere);
+        let newer = match &self.release {
+            Some(Ok(Standing::Newer(release))) => Some(release),
+            None | Some(Ok(Standing::UpToDate(_) | Standing::Ahead(_) | Standing::NoRelease) | Err(_)) => None,
+        };
+        let (text, page) = match &self.release {
+            Some(Ok(Standing::UpToDate(release))) => {
+                (Some(t!("settings.general.updates.up_to_date", tag = release.tag)), None)
+            }
+            Some(Ok(Standing::Ahead(release))) => (Some(t!("settings.general.updates.ahead", tag = release.tag)), None),
+            Some(Ok(Standing::Newer(release))) if installable => (
+                Some(t!("settings.general.updates.available_install", tag = release.tag)),
+                Some(release.url.clone()),
+            ),
+            Some(Ok(Standing::Newer(release))) => (
+                Some(t!("settings.general.updates.available", tag = release.tag)),
+                Some(release.url.clone()),
+            ),
+            Some(Ok(Standing::NoRelease)) => (Some(t!("settings.general.updates.none")), None),
+            None | Some(Err(_)) => (None, None),
+        };
+        let error = match &self.release {
+            Some(Err(err)) => Some(err.localized()),
+            None | Some(Ok(_)) => None,
+        };
+        column()
+            .child(theme::muted(t!(
+                "settings.general.updates.installed",
+                version = decanter_core::BUILD
+            )))
+            .child(
+                field_row()
+                    .mt_2()
+                    .child(
+                        button(
+                            "check-decanter-release",
+                            ButtonKind::Secondary,
+                            if checking {
+                                t!("settings.general.updates.checking")
+                            } else {
+                                t!("settings.general.updates.check")
+                            },
+                            checking,
+                        )
+                        .when(!checking, |b| {
+                            b.on_click(cx.listener(|this, _, _, cx| this.check_release(cx)))
+                        }),
+                    )
+                    .children(page.map(|url| {
+                        button(
+                            "open-release-notes",
+                            ButtonKind::Secondary,
+                            t!("settings.general.updates.notes"),
+                            false,
+                        )
+                        .on_click(move |_, _, _| {
+                            if let Err(err) = crate::desktop::open(&url) {
+                                tracing::warn!(url, %err, "could not open the release page");
+                            }
+                        })
+                    })),
+            )
+            .children(text.map(|text| div().child(text)))
+            .children(newer.map(|release| self.install_section(release, cx)))
+            .children(error.map(theme::error))
+    }
+
     /// `label.field-row` around a checkbox: the whole row toggles it, the
     /// way clicking a `<label>`'s text does.
     fn checkbox_row(
@@ -217,5 +419,7 @@ impl Render for GeneralTab {
             ))
             .child(theme::muted(t!("settings.general.steam.restart_hint")))
             .children(callout)
+            .child(theme::h2(t!("settings.general.updates.title")))
+            .child(self.release_section(cx))
     }
 }

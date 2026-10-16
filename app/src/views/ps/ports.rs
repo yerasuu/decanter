@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use decanter_ps::channel::Channel;
 use decanter_ps::paths;
 use decanter_ps::port::Port;
+use decanter_ps::remote::RemoteError;
 use decanter_ps::toolchain::Toolchain;
 use decanter_ps::updater::{Check, Plan};
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
@@ -72,6 +73,13 @@ impl PortsView {
         });
         let check = state.and_then(|state| state.check());
         let upstream = check.map(upstream_text);
+        let checking = state.is_some_and(PortState::is_checking);
+        // Only a cloned checkout has an upstream to compare with, and only it gets a check or a track.
+        let checkable = checking || check.is_some() || state.and_then(PortState::track).is_some();
+        let checked_at = state
+            .and_then(PortState::checked_at)
+            .filter(|_| checkable && !checking)
+            .map(|at| t!("ps.ports.checked_at", time = at.format("%H:%M").to_string()));
         let channel = port
             .binary_cache()
             .and(state)
@@ -113,6 +121,7 @@ impl PortsView {
             .children(origin.map(theme::muted))
             .children(fell_back.map(theme::muted))
             .children(upstream.map(theme::muted))
+            .children(checked_at.map(theme::muted))
             .children(fallback.map(|fallback| fallback_notice(port, fallback, busy, cx)))
             .child(
                 div()
@@ -133,6 +142,25 @@ impl PortsView {
                             }))
                         }),
                     )
+                    .when(checkable, |row| {
+                        row.child(
+                            button(
+                                ("ps-port-check", port as usize),
+                                ButtonKind::Secondary,
+                                if checking {
+                                    t!("ps.ports.checking")
+                                } else {
+                                    t!("ps.ports.check")
+                                },
+                                checking,
+                            )
+                            .when(!checking, |b| {
+                                b.on_click(cx.listener(move |this, _, _, cx| {
+                                    this.ps.update(cx, |ps, cx| ps.check_now(port, cx));
+                                }))
+                            }),
+                        )
+                    })
                     .when(needs_reset, |row| {
                         let label = if confirming {
                             t!("ps.ports.reset.confirm")
@@ -255,12 +283,14 @@ fn channel_text(channel: Channel, state: &PortState) -> Cow<'static, str> {
         (Channel::Release, Some(Track::OnRelease(release))) => t!("ps.ports.channel.release_at", tag = release.tag),
         (Channel::Release, Some(Track::Behind(release))) => t!("ps.ports.channel.behind", tag = release.tag),
         (Channel::Release, Some(Track::NoRelease)) => t!("ps.ports.channel.no_release"),
-        (Channel::Release, Some(Track::Unknown(error))) => t!("ps.ports.channel.unknown", error = error),
+        (Channel::Release, Some(Track::Unknown(error))) => {
+            t!("ps.ports.channel.unknown", error = remote_error_text(error))
+        }
         (Channel::Release, None) => t!("ps.ports.channel.release"),
     }
 }
 
-fn upstream_text(check: &Result<Check, String>) -> Cow<'static, str> {
+fn upstream_text(check: &Result<Check, RemoteError>) -> Cow<'static, str> {
     match check {
         Ok(check) => match &check.plan {
             Plan::UpToDate => t!("ps.ports.upstream.up_to_date", head = check.head, branch = check.branch),
@@ -283,7 +313,16 @@ fn upstream_text(check: &Result<Check, String>) -> Cow<'static, str> {
             Plan::LocalCommits(1) => t!("ps.ports.upstream.local.one", head = check.head, count = 1),
             Plan::LocalCommits(count) => t!("ps.ports.upstream.local.other", head = check.head, count = count),
         },
-        Err(err) => t!("ps.ports.upstream.error", error = err),
+        Err(err) => t!("ps.ports.upstream.error", error = remote_error_text(err)),
+    }
+}
+
+fn remote_error_text(err: &RemoteError) -> Cow<'_, str> {
+    match err {
+        RemoteError::Offline(_) => t!("ps.ports.remote.offline"),
+        RemoteError::RateLimited => t!("ps.ports.remote.rate_limited"),
+        RemoteError::Missing(_) => t!("ps.ports.remote.missing"),
+        RemoteError::Failed(detail) => Cow::Borrowed(detail),
     }
 }
 

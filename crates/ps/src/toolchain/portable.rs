@@ -12,7 +12,10 @@ use crate::paths::Root;
 
 /// Pinned and bumped deliberately, like `umu-run`: a new nix-portable
 /// changing how the ports build is worth testing first.
-const VERSION: &str = "v012";
+pub const VERSION: &str = "v012";
+
+/// The GitHub repository whose releases [`VERSION`] names.
+pub const REPO: &str = "DavHau/nix-portable";
 
 /// Of the release asset, taken when [`VERSION`] was pinned; the release
 /// publishes no checksum of its own.
@@ -29,7 +32,7 @@ pub(super) async fn ensure(root: &Root, mut on_download: impl FnMut(u64, Option<
     if tokio::fs::metadata(&path).await.is_ok_and(|meta| meta.is_file()) {
         return Ok(path);
     }
-    let url = format!("https://github.com/DavHau/nix-portable/releases/download/{VERSION}/nix-portable-x86_64");
+    let url = format!("https://github.com/{REPO}/releases/download/{VERSION}/nix-portable-x86_64");
     tracing::info!(url, "downloading nix-portable");
     let mut response = match reqwest::get(&url).await.and_then(reqwest::Response::error_for_status) {
         Ok(response) => response,

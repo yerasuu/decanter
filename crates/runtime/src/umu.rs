@@ -24,14 +24,17 @@ use tokio::process::Command;
 /// than always fetching "latest" — a silent umu upgrade changing behavior
 /// under decanter with no chance to verify it first is worse than lagging
 /// a release behind.
-const UMU_LAUNCHER_VERSION: &str = "1.4.4";
+pub const UMU_LAUNCHER_VERSION: &str = "1.4.4";
+
+/// The GitHub repository whose releases [`UMU_LAUNCHER_VERSION`] names.
+pub const UMU_LAUNCHER_REPO: &str = "Open-Wine-Components/umu-launcher";
 
 /// Where the download in [`ensure_umu_run`] comes from — the portable
 /// zipapp asset, not a distro package, since it has to run identically
 /// regardless of what's installed system-wide.
 fn umu_run_download_url() -> String {
     format!(
-        "https://github.com/Open-Wine-Components/umu-launcher/releases/download/\
+        "https://github.com/{UMU_LAUNCHER_REPO}/releases/download/\
          {UMU_LAUNCHER_VERSION}/umu-launcher-{UMU_LAUNCHER_VERSION}-zipapp.tar"
     )
 }

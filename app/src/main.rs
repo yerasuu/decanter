@@ -109,8 +109,10 @@ mod format;
 mod i18n;
 mod launch;
 mod logs;
+mod releases;
 mod relocate;
 mod run_log;
+mod self_update;
 mod state;
 mod taskbar;
 mod theme;
@@ -185,6 +187,7 @@ fn main() {
     // finishes — the reason quitting goes through here rather than
     // `std::process::exit` (see `launch::exit_with_games_on_signal`).
     drop(runtime);
+    self_update::restart_if_requested();
 }
 
 /// Before anything reads the database, for the GUI and the CLI alike: the

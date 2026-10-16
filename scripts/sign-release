@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Signs a release's AppImage with the release key and uploads the
+# signature next to it, so decanter's updater will install it (decision
+# #400). Run by hand after the CI has uploaded the AppImage to the
+# release: the signing key never leaves this machine, so a compromised
+# workflow can't ship an update.
+#
+# The AppImage signed is the one the CI uploaded, downloaded again here: a
+# local build isn't byte-for-byte the same, and the signature has to cover
+# exactly what users download. The trusted comment names the tag, which
+# decanter checks, so an older release's signature can't pass for a newer
+# one.
+#
+# Usage: scripts/sign-release X.Y.Z
+#   DECANTER_MINISIGN_KEY  secret key (default ~/.minisign/decanter.key)
+set -euo pipefail
+
+repo=yerasuu/decanter
+asset=Decanter-x86_64.AppImage
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+public_key="$repo_root/keys/release.pub"
+secret_key="${DECANTER_MINISIGN_KEY:-$HOME/.minisign/decanter.key}"
+
+if [[ $# -ne 1 ]]; then
+    echo "usage: $0 X.Y.Z" >&2
+    exit 2
+fi
+tag="v${1#v}"
+if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "not a version: $1" >&2
+    exit 2
+fi
+for tool in minisign gh; do
+    if ! command -v "$tool" >/dev/null; then
+        echo "$tool is not installed (nix-shell -p minisign gh)" >&2
+        exit 1
+    fi
+done
+if [[ ! -s "$public_key" ]]; then
+    echo "$public_key is empty: create the key first (docs/git-workflow.md)" >&2
+    exit 1
+fi
+if [[ ! -f "$secret_key" ]]; then
+    echo "no secret key at $secret_key (set DECANTER_MINISIGN_KEY)" >&2
+    exit 1
+fi
+
+out_dir="$repo_root/target/appimage"
+appimage="$out_dir/$asset"
+mkdir -p "$out_dir"
+gh release download --repo "$repo" --pattern "$asset" --dir "$out_dir" --clobber -- "$tag"
+
+minisign -S -s "$secret_key" -m "$appimage" -t "decanter $tag"
+# Checked against the committed key, so a signature from any other key
+# never reaches the release.
+minisign -V -p "$public_key" -m "$appimage"
+
+gh release upload --repo "$repo" --clobber -- "$tag" "$appimage.minisig"
+echo "signed and uploaded $asset.minisig for $tag"

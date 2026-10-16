@@ -97,7 +97,13 @@ async fn fetch(cache: &str, name: &str) -> Result<Option<String>, LookupError> {
         Ok(client) => client,
         Err(err) => return Err(err.into()),
     };
-    let response = match client.get(format!("{cache}/{name}")).send().await {
+    // `latest-release` is replaced in place, so no cache on the way may answer for it.
+    let response = match client
+        .get(format!("{cache}/{name}"))
+        .header(reqwest::header::CACHE_CONTROL, "no-cache")
+        .send()
+        .await
+    {
         Ok(response) if response.status() == reqwest::StatusCode::NOT_FOUND => return Ok(None),
         Ok(response) => response.error_for_status(),
         Err(err) => Err(err),

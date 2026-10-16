@@ -34,5 +34,5 @@ mod umu;
 
 pub use launch::{Launch, Prepared, Session, prepare, start};
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix, sanitize_relative_path, stop_all};
-pub use proton::{Proton, steam_compat_dir, steam_runner_exists, steam_runners};
-pub use umu::umu_run_path;
+pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
+pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
