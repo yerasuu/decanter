@@ -323,9 +323,6 @@ ps.games.no_match:
 ps.games.rescan:
   es: Actualizar biblioteca
   en: Refresh library
-ps.games.ready_to_play:
-  es: Listo para jugar
-  en: Ready to play
 ps.games.browser_empty:
   es: "Todavía no hay juegos: copia tus volcados a la carpeta de juegos (ver Ajustes)."
   en: "No games yet: copy your dumps to the games folder (see Settings)."

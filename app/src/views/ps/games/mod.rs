@@ -203,6 +203,9 @@ impl GamesView {
             .text_color(rgb(theme::TEXT_PRIMARY))
             .cursor_pointer()
             .hover(|row| row.bg(rgb(theme::BG_PANEL_2)))
+            .when(!running && !status.playable(), |row| {
+                row.text_color(rgb(theme::TEXT_MUTED))
+            })
             .when(active, |row| {
                 row.bg(rgb(theme::BG_PANEL_2))
                     .text_color(rgb(theme::TEXT_BRIGHT))
@@ -223,17 +226,6 @@ impl GamesView {
             .child(sidebar_title(display_title(game), running))
             .when(running, |row| {
                 row.child(running_mark(format!("ps-running-{}", game.dir.display())))
-            })
-            .when(!running && status.playable(), |row| {
-                row.child(
-                    div()
-                        .id(SharedString::from(format!("ps-ready-{}", game.dir.display())))
-                        .size(px(6.))
-                        .flex_none()
-                        .rounded_full()
-                        .bg(rgb(theme::ACCENT_GREEN))
-                        .tooltip(tooltip(t!("ps.games.ready_to_play"))),
-                )
             })
             .into_any_element()
     }

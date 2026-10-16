@@ -15,7 +15,7 @@ use crate::views::library::context_menu::{MenuTarget, auto_tag};
 use crate::views::library::filters::{Filters, KindSelection, is_installed, pending_install_ids, sort_entries};
 use crate::views::library::shelf_popups::ShelfMenuTarget;
 use crate::views::library::{LibraryPopup, actions, data, shelves};
-use crate::widgets::{running_mark, sidebar_title, tooltip};
+use crate::widgets::{running_mark, sidebar_title};
 
 /// Everything the list's rows are derived from; the rows are rebuilt only
 /// when one of these moves, not on every render.
@@ -457,6 +457,7 @@ impl SidebarView {
             .text_color(rgb(theme::TEXT_PRIMARY))
             .cursor_pointer()
             .hover(|item| item.bg(rgb(theme::BG_PANEL_2)))
+            .when(!installed && !running, |item| item.text_color(rgb(theme::TEXT_MUTED)))
             .when(is_marked && !is_active, |item| {
                 item.bg(rgb(theme::BG_PANEL_LIGHT))
                     .border_color(rgb(theme::ACCENT_GOLD))
@@ -470,18 +471,6 @@ impl SidebarView {
             .child(sidebar_title(game.title.clone(), running))
             .when(running, |item| {
                 item.child(running_mark(format!("running-mark-{}", game.id)).ml_auto())
-            })
-            .when(installed && !running, |item| {
-                item.child(
-                    div()
-                        .id(SharedString::from(format!("installed-dot-{}", game.id)))
-                        .ml_auto()
-                        .size(px(6.))
-                        .flex_none()
-                        .rounded_full()
-                        .bg(rgb(theme::ACCENT_GREEN))
-                        .tooltip(tooltip(t!("library.sidebar.installed"))),
-                )
             })
             .on_drag(
                 DraggedGame {
