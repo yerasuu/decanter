@@ -30,6 +30,26 @@ pub fn dir(root: &Root) -> PathBuf {
     root.join("logs")
 }
 
+/// The logs kept of `target`'s `kind` jobs, newest first. File I/O: off the UI thread.
+pub fn kept(dir: &Path, target: &str, kind: JobKind) -> io::Result<Vec<PathBuf>> {
+    let prefix = format!("{}-{}-", slug(target), kind.name());
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err),
+    };
+    let mut logs = Vec::new();
+    for entry in entries {
+        let name = entry?.file_name().to_string_lossy().into_owned();
+        if name.starts_with(&prefix) && name.ends_with(".log") {
+            logs.push(name);
+        }
+    }
+    // The stamp sorts like the time it records.
+    logs.sort_unstable_by(|a, b| b.cmp(a));
+    Ok(logs.into_iter().map(|name| dir.join(name)).collect())
+}
+
 pub struct RunLog {
     path: PathBuf,
     file: BufWriter<tokio::fs::File>,

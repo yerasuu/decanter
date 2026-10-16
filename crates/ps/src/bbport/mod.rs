@@ -374,7 +374,7 @@ impl Bbport {
             ("gpu_profile", "GPU_PROFILE"),
             ("vk_validation", "VK_VALIDATION"),
         ] {
-            if port_reads(key) && settings.flag(key, false) {
+            if port_reads(key) && (settings.flag(key, false) || settings.title_flag(&game.title_id, key)) {
                 command.env(var(suffix), "1");
             }
         }

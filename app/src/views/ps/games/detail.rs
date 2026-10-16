@@ -17,6 +17,7 @@ use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
 use super::keyboard::KeyboardView;
 use super::mods::ModsView;
+use super::runs::RunsView;
 use super::{art_url, display_title, platform_label, status_text};
 use crate::state::{JobKey, Ps};
 use crate::theme;
@@ -73,6 +74,8 @@ pub struct DetailView {
     selected: Option<PathBuf>,
     tab: Tab,
     log: Option<Entity<LogView>>,
+    /// The selected game's measured runs, made when its Registro first shows.
+    runs: Option<Entity<RunsView>>,
     /// The bindings of `selected`, read when its Controles tab opens.
     controls: Option<Result<Entity<KeyboardView>, String>>,
     /// Shared by every Bloodborne copy, so kept across selections.
@@ -102,6 +105,7 @@ impl DetailView {
             selected: None,
             tab: Tab::Overview,
             log: None,
+            runs: None,
             controls: None,
             gamepad: None,
             graphics: None,
@@ -122,6 +126,7 @@ impl DetailView {
         self.selected = None;
         self.controls = None;
         self.log = None;
+        self.runs = None;
         cx.notify();
     }
 
@@ -137,6 +142,7 @@ impl DetailView {
         self.selected = Some(dir);
         self.tab = Tab::Overview;
         self.controls = None;
+        self.runs = None;
         self.learned = None;
         self.learned_read_at = None;
         self.learned_error = None;
@@ -522,11 +528,22 @@ impl Render for DetailView {
             let port = port.clone();
             entity.update(cx, |this, cx| this.select_tab(tab, port, cx));
         });
+        // Only psport measures frames; the view is made here since JUGAR opens Registro too.
+        if self.tab == Tab::Log && entry.port == Some(Port::Bbport) && self.runs.is_none() {
+            let (ps, dir, title_id) = (self.ps.clone(), entry.game.dir.clone(), entry.game.title_id.clone());
+            self.runs = Some(cx.new(|cx| RunsView::new(ps, dir, title_id, cx)));
+        }
         let body = match self.tab {
-            Tab::Log => match &self.log {
-                Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
-                None => theme::muted(t!("ps.detail.no_runs")).into_any_element(),
-            },
+            Tab::Log => div()
+                .flex()
+                .flex_col()
+                .gap_5()
+                .children(self.runs.clone())
+                .child(match &self.log {
+                    Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
+                    None => theme::muted(t!("ps.detail.no_runs")).into_any_element(),
+                })
+                .into_any_element(),
             Tab::Gamepad => self
                 .gamepad
                 .clone()

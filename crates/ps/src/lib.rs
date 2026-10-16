@@ -25,6 +25,7 @@ pub mod channel;
 pub mod cmake_cache;
 pub mod failures;
 mod files;
+pub mod frame_stats;
 pub mod keys;
 pub mod layouts;
 pub mod learned;

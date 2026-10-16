@@ -9,6 +9,7 @@ mod gamepad;
 mod graphics;
 mod keyboard;
 mod mods;
+mod runs;
 
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::Status;

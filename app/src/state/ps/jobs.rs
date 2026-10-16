@@ -206,7 +206,8 @@ fn finished(
     }
 }
 
-fn target_name(key: &JobKey) -> String {
+/// What a job's log files are named after ([`RunLog::start`]'s `target`).
+pub fn target_name(key: &JobKey) -> String {
     match key {
         JobKey::Port(port) => port.name().to_lowercase(),
         JobKey::Game(dir) => dir

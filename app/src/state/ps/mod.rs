@@ -26,7 +26,7 @@ use rust_i18n::t;
 pub use channel::Track;
 pub use fallback::Fallback;
 pub use fsr::DllOutcome;
-pub use jobs::{JobKey, label as job_label};
+pub use jobs::{JobKey, label as job_label, target_name as job_target};
 pub use play::failure_message;
 pub use ports::{BuildOrigin, PortState, Stage};
 

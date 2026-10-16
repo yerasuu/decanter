@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 use crate::paths::Root;
 
+const TITLES: &str = "titles";
+
 fn path(root: &Root) -> PathBuf {
     root.bbport_data().join("settings.json")
 }
@@ -80,5 +82,39 @@ impl LauncherSettings {
 
     pub fn set_flag(&mut self, key: &str, value: bool) {
         self.0.insert(key.into(), value.into());
+    }
+
+    /// A switch of one game rather than of every game the port runs, under `titles.<TITLE_ID>`.
+    pub fn title_flag(&self, title_id: &str, key: &str) -> bool {
+        self.0
+            .get(TITLES)
+            .and_then(|titles| titles.get(title_id))
+            .and_then(|title| title.get(key))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    /// Off removes the key, and a title left with none, so the file keeps only what was turned on.
+    pub fn set_title_flag(&mut self, title_id: &str, key: &str, value: bool) {
+        use serde_json::Value;
+        let mut titles = match self.0.remove(TITLES) {
+            Some(Value::Object(titles)) => titles,
+            _ => serde_json::Map::new(),
+        };
+        let mut flags = match titles.remove(title_id) {
+            Some(Value::Object(flags)) => flags,
+            _ => serde_json::Map::new(),
+        };
+        if value {
+            flags.insert(key.into(), true.into());
+        } else {
+            flags.remove(key);
+        }
+        if !flags.is_empty() {
+            titles.insert(title_id.into(), flags.into());
+        }
+        if !titles.is_empty() {
+            self.0.insert(TITLES.into(), titles.into());
+        }
     }
 }

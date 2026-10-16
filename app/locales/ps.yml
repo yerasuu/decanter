@@ -1484,3 +1484,45 @@ ps.mods.patches.read_error:
 ps.mods.patches.empty:
   es: No hay parches en la carpeta
   en: No patches in the folder
+ps.runs.measure:
+  es: Medir el rendimiento
+  en: Measure performance
+ps.runs.measure_note:
+  es: "Las próximas partidas de este juego se inician con PS_FRAME_STATS=1; sus cifras aparecen aquí al terminar."
+  en: "This game's next runs start with PS_FRAME_STATS=1; their figures show here once they end."
+ps.runs.reading:
+  es: Leyendo las partidas medidas…
+  en: Reading the measured runs…
+ps.runs.none:
+  es: Todavía no hay partidas medidas de este juego.
+  en: No measured runs of this game yet.
+ps.runs.read_error:
+  es: "No se pudieron leer los registros de las partidas: %{error}"
+  en: "Couldn't read the runs' logs: %{error}"
+ps.runs.save_error:
+  es: "No se pudo guardar el ajuste: %{error}"
+  en: "Couldn't save the setting: %{error}"
+ps.runs.samples:
+  es: "%{count} muestras de 5 s"
+  en: "%{count} 5 s samples"
+ps.runs.delta:
+  es: "%{delta} % de FPS frente a la partida anterior"
+  en: "%{delta}% FPS against the previous run"
+ps.runs.average:
+  es: FPS medios
+  en: Average FPS
+ps.runs.low:
+  es: 1 % bajo (FPS)
+  en: 1% low (FPS)
+ps.runs.frame_time:
+  es: Fotograma mín.–máx.
+  en: Frame time min–max
+ps.runs.compiles:
+  es: Compilaciones en el hilo de GPU
+  en: Compiles on the GPU thread
+ps.runs.pipelines:
+  es: "Pipelines compilados en segundo plano: %{background}; draws que esperaron al suyo: %{waited}; draws omitidos mientras tanto: %{skipped}"
+  en: "Pipelines compiled in the background: %{background}; draws that waited for theirs: %{waited}; draws skipped meanwhile: %{skipped}"
+ps.runs.method:
+  es: "psport mide en intervalos de unos 5 s, no fotograma a fotograma. El 1 % bajo se estima con el peor fotograma de cada intervalo (algo pesimista a más de 30 FPS); el mínimo es el tiempo medio del mejor intervalo y el máximo, el peor fotograma de la partida. La línea discontinua es la media."
+  en: "psport measures in windows of about 5 s, not frame by frame. The 1% low is estimated from each window's worst frame (somewhat pessimistic above 30 FPS); the minimum is the best window's mean frame time and the maximum the run's worst frame. The dashed line is the average."
