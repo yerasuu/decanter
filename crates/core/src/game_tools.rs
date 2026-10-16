@@ -1,9 +1,8 @@
-//! Host tools a game can run with — MangoHud's overlay — turned on per game
-//! or for every game of a library.
+//! Host tools a game can run with — MangoHud's overlay, Feral's GameMode —
+//! turned on per game or for every game of a library.
 //!
 //! Neither is bundled: what the host installed is what a game gets, so each
-//! is looked for where the host's own loader finds it, and a launch only
-//! sets the environment that tool reads.
+//! is looked for where the host's own loader or bus finds it.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -15,6 +14,7 @@ use std::path::{Path, PathBuf};
 #[non_exhaustive]
 pub enum GameTool {
     MangoHud,
+    GameMode,
 }
 
 impl GameTool {
@@ -23,6 +23,7 @@ impl GameTool {
     pub const fn key(self) -> &'static str {
         match self {
             Self::MangoHud => "mangohud",
+            Self::GameMode => "gamemode",
         }
     }
 }
@@ -123,4 +124,52 @@ pub fn mangohud_log_dir(library_root: &Path) -> PathBuf {
     crate::bootstrap::library_data_dir(library_root)
         .join("logs")
         .join("mangohud")
+}
+
+/// The D-Bus service `gamemoded` is started through on the session bus.
+const GAMEMODE_SERVICE: &str = "com.feralinteractive.GameMode.service";
+
+/// `gamemoded` on `PATH`, when the session bus can also start it (its
+/// D-Bus service file is installed): without the service the request a
+/// launch makes would find nobody to answer it.
+#[must_use]
+#[inline]
+pub fn gamemoded() -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let has_service = dirs::data_dir()
+        .into_iter()
+        .chain(path_list("XDG_DATA_DIRS", "/usr/local/share:/usr/share"))
+        .any(|dir| dir.join("dbus-1").join("services").join(GAMEMODE_SERVICE).is_file());
+    if !has_service {
+        return None;
+    }
+    std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|dir| dir.join("gamemoded"))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+/// What goes before a game's command so it runs under GameMode: a shell
+/// that registers its own pid with `gamemoded -r<pid>` and then `exec`s the
+/// command, which keeps that pid. Everything the game starts inherits the
+/// niceness and I/O priority GameMode gives it, and `gamemoded` drops the
+/// registration once the pid is gone.
+///
+/// Not `gamemoderun`: its `LD_PRELOAD` of `libgamemodeauto.so.0` is cleared
+/// by umu inside a gamescope session, and a nix or bundled psport's own
+/// loader can't find the host's library by that name. A failed request is
+/// printed into the run's log and the game starts anyway.
+#[must_use]
+#[inline]
+pub fn gamemode_prefix(gamemoded: &Path) -> [OsString; 5] {
+    [
+        "sh".into(),
+        "-c".into(),
+        r#""$1" -r"$$"; shift; exec "$@""#.into(),
+        "decanter-gamemode".into(),
+        gamemoded.into(),
+    ]
 }

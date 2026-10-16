@@ -69,11 +69,19 @@ impl Ps {
             let command = match command {
                 Ok(mut command) => {
                     let key = game.key();
-                    let mangohud = crate::core::db()
-                        .ok()
-                        .and_then(|db| crate::game_tools::mangohud(&db, &key));
+                    let (mangohud, gamemoded) = crate::core::db()
+                        .map(|db| {
+                            (
+                                crate::game_tools::mangohud(&db, &key),
+                                crate::game_tools::gamemoded(&db, &key),
+                            )
+                        })
+                        .unwrap_or_default();
                     if let Some(autostart_log) = mangohud {
                         command.envs(crate::game_tools::mangohud_env(&key, root.library(), autostart_log).await);
+                    }
+                    if let Some(gamemoded) = gamemoded {
+                        command = process::through_gamemode(command, &gamemoded);
                     }
                     process::in_own_scope(command, &key, &game.title)
                 }

@@ -38,6 +38,9 @@ game_tools.off:
 game_tools.mangohud_missing:
   es: MangoHud no está instalado (no se encontró su capa Vulkan).
   en: MangoHud isn't installed (its Vulkan layer wasn't found).
+game_tools.gamemode_missing:
+  es: GameMode no está instalado (falta gamemoded o su servicio de D-Bus).
+  en: GameMode isn't installed (gamemoded or its D-Bus service is missing).
 common.pick_profile:
   es: Elige un perfil arriba.
   en: Pick a profile above.

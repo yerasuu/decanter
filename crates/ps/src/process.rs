@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
@@ -158,21 +158,36 @@ async fn forward(stream: impl AsyncRead + Unpin, sender: UnboundedSender<Event>)
 /// `command` as it was. For a game only: a build or a conversion is
 /// decanter's own work.
 pub fn in_own_scope(command: Command, key: &str, title: &str) -> Command {
-    let Some(mut scoped) = decanter_core::own_scope(key, title) else {
-        return command;
-    };
-    let original = command.as_std();
-    scoped.arg(original.get_program()).args(original.get_args());
+    match decanter_core::own_scope(key, title) {
+        Some(scoped) => wrapped(scoped, &command),
+        None => command,
+    }
+}
+
+/// `command` under GameMode, through `gamemoded` (see
+/// [`decanter_core::gamemode_prefix`]).
+pub fn through_gamemode(command: Command, gamemoded: &Path) -> Command {
+    let [shell, rest @ ..] = decanter_core::gamemode_prefix(gamemoded);
+    let mut wrapper = std::process::Command::new(shell);
+    wrapper.args(rest);
+    wrapped(wrapper, &command)
+}
+
+/// `wrapper` followed by `original`'s program and arguments, with the
+/// environment and working directory `original` was given.
+fn wrapped(mut wrapper: std::process::Command, original: &Command) -> Command {
+    let original = original.as_std();
+    wrapper.arg(original.get_program()).args(original.get_args());
     for (name, value) in original.get_envs() {
         match value {
-            Some(set) => scoped.env(name, set),
-            None => scoped.env_remove(name),
+            Some(set) => wrapper.env(name, set),
+            None => wrapper.env_remove(name),
         };
     }
     if let Some(dir) = original.get_current_dir() {
-        scoped.current_dir(dir);
+        wrapper.current_dir(dir);
     }
-    Command::from(scoped)
+    Command::from(wrapper)
 }
 
 /// Starts `command` in its own process group with stdout and stderr

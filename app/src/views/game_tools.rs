@@ -12,6 +12,8 @@ pub struct GameToolsPanel {
     game_key: String,
     mangohud: Choice,
     mangohud_installed: bool,
+    gamemode: Choice,
+    gamemode_installed: bool,
     error: Option<String>,
 }
 
@@ -23,12 +25,23 @@ struct Choice {
     default: bool,
 }
 
+impl Choice {
+    fn read(db: &decanter_core::Db, game_key: &str, tool: GameTool) -> decanter_core::Result<Self> {
+        Ok(Self {
+            chosen: db.game_tool_override(game_key, tool)?,
+            default: db.game_tool_default(tool)?,
+        })
+    }
+}
+
 impl GameToolsPanel {
     pub fn new(game_key: String) -> Self {
         let mut this = Self {
             game_key,
             mangohud: Choice::default(),
             mangohud_installed: decanter_core::mangohud_installed(),
+            gamemode: Choice::default(),
+            gamemode_installed: decanter_core::gamemoded().is_some(),
             error: None,
         };
         this.reload();
@@ -37,15 +50,16 @@ impl GameToolsPanel {
 
     fn reload(&mut self) {
         let read = crate::core::db().map_err(|err| err.localized()).and_then(|db| {
-            let chosen = db.game_tool_override(&self.game_key, GameTool::MangoHud);
-            let default = db.game_tool_default(GameTool::MangoHud);
-            chosen
-                .and_then(|chosen| default.map(|default| Choice { chosen, default }))
+            Choice::read(&db, &self.game_key, GameTool::MangoHud)
+                .and_then(|mangohud| {
+                    Choice::read(&db, &self.game_key, GameTool::GameMode).map(|gamemode| (mangohud, gamemode))
+                })
                 .map_err(|err| err.to_string())
         });
         match read {
-            Ok(choice) => {
-                self.mangohud = choice;
+            Ok((mangohud, gamemode)) => {
+                self.mangohud = mangohud;
+                self.gamemode = gamemode;
                 self.error = None;
             }
             Err(err) => {
@@ -124,8 +138,14 @@ impl Render for GameToolsPanel {
         } else {
             theme::muted(t!("game_tools.mangohud_missing")).into_any_element()
         };
+        let gamemode = if self.gamemode_installed {
+            Self::select("tool-gamemode", GameTool::GameMode, &self.gamemode, cx).into_any_element()
+        } else {
+            theme::muted(t!("game_tools.gamemode_missing")).into_any_element()
+        };
         column
             .child(line("MangoHud", mangohud))
+            .child(line("GameMode", gamemode))
             .children(self.error.clone().map(theme::error))
     }
 }

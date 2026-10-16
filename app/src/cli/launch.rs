@@ -58,6 +58,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     // version?!").
     launch.proton = crate::core::proton_for(&game);
     let key = crate::taskbar::key(game.storefront, &game.game_id);
+    launch.gamemoded = crate::game_tools::gamemoded(db, &key);
     if let Some(autostart_log) = crate::game_tools::mangohud(db, &key) {
         launch.env.extend(
             crate::game_tools::mangohud_env(&key, library.root(), autostart_log)

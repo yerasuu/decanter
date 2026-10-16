@@ -1,7 +1,7 @@
-//! The environment a launch gets from the [`GameTool`]s its game or its
+//! What a launch gets from the [`GameTool`]s its game or its
 //! library turned on, the same for a Proton game, the CLI and a PS port.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use decanter_core::{Db, GameTool};
 
@@ -23,6 +23,30 @@ pub fn mangohud(db: &Db, game_key: &str) -> Option<bool> {
         Ok(false) => None,
         Err(err) => {
             tracing::warn!(game_key, error = %err, "failed to read the MangoHud choice, starting without it");
+            None
+        }
+    }
+}
+
+/// The `gamemoded` to start `game_key` through, when it starts under
+/// GameMode. Turned on but not installed starts the game without it, said
+/// in the log.
+pub fn gamemoded(db: &Db, game_key: &str) -> Option<PathBuf> {
+    match db.game_tool_enabled(game_key, GameTool::GameMode) {
+        Ok(true) => {
+            let gamemoded = decanter_core::gamemoded();
+            match &gamemoded {
+                Some(path) => tracing::info!(game_key, gamemoded = %path.display(), "starting under GameMode"),
+                None => tracing::warn!(
+                    game_key,
+                    "GameMode is on for the game but gamemoded or its D-Bus service isn't installed, starting without it"
+                ),
+            }
+            gamemoded
+        }
+        Ok(false) => None,
+        Err(err) => {
+            tracing::warn!(game_key, error = %err, "failed to read the GameMode choice, starting without it");
             None
         }
     }

@@ -40,6 +40,9 @@ pub struct Launch {
     /// umu's game identity, which is what protonfixes keys its per-game
     /// workarounds off. Convention is `umu-<storefront id>`.
     pub game_id: String,
+    /// Runs the launch under GameMode through this `gamemoded`
+    /// ([`decanter_core::gamemode_prefix`]).
+    pub gamemoded: Option<PathBuf>,
     /// `(game key, title)` the launch's scope is named and described by —
     /// see [`decanter_core::own_scope`]. `None` names it after `game_id`
     /// and the executable, for what isn't a game of its own (an
@@ -104,6 +107,7 @@ impl Launch {
             proton: Proton::default(),
             dll_overrides: Vec::new(),
             env: Vec::new(),
+            gamemoded: None,
         }
     }
 
@@ -345,12 +349,18 @@ pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prep
         let name = launch.executable.file_name().unwrap_or_default();
         (launch.game_id.clone(), name.to_string_lossy().into_owned())
     });
-    let mut command = match decanter_core::own_scope(&key, &description) {
-        Some(mut scoped) => {
-            scoped.arg(&umu_run_path);
+    let gamemode = launch.gamemoded.as_deref().map(decanter_core::gamemode_prefix);
+    let mut command = match (decanter_core::own_scope(&key, &description), gamemode) {
+        (Some(mut scoped), gamemode) => {
+            scoped.args(gamemode.into_iter().flatten()).arg(&umu_run_path);
             Command::from(scoped)
         }
-        None => Command::new(&umu_run_path),
+        (None, Some([shell, rest @ ..])) => {
+            let mut command = Command::new(shell);
+            command.args(rest).arg(&umu_run_path);
+            command
+        }
+        (None, None) => Command::new(&umu_run_path),
     };
     // umu/Proton build whatever environment the container needs
     // themselves; decanter's own (library path, allocator and EGL
@@ -418,6 +428,7 @@ pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prep
         args = ?launch.args,
         game_id = %launch.game_id,
         store = ?launch.store,
+        gamemode = launch.gamemoded.is_some(),
         prefix = %prefix.path.display(),
         "umu-run command built"
     );

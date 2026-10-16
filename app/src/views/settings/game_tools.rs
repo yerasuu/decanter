@@ -13,6 +13,8 @@ pub struct GameToolDefaults {
     mangohud_installed: bool,
     mangohud: bool,
     mangohud_autostart_log: bool,
+    gamemode_installed: bool,
+    gamemode: bool,
     error: Option<String>,
 }
 
@@ -22,6 +24,8 @@ impl GameToolDefaults {
             mangohud_installed: decanter_core::mangohud_installed(),
             mangohud: false,
             mangohud_autostart_log: false,
+            gamemode_installed: decanter_core::gamemoded().is_some(),
+            gamemode: false,
             error: None,
         };
         this.reload();
@@ -30,14 +34,20 @@ impl GameToolDefaults {
 
     fn reload(&mut self) {
         let read = crate::core::db().map_err(|err| err.localized()).and_then(|db| {
-            db.game_tool_default(GameTool::MangoHud)
-                .and_then(|mangohud| db.mangohud_autostart_log().map(|log| (mangohud, log)))
-                .map_err(|err| err.to_string())
+            let read = || -> decanter_core::Result<_> {
+                Ok((
+                    db.game_tool_default(GameTool::MangoHud)?,
+                    db.mangohud_autostart_log()?,
+                    db.game_tool_default(GameTool::GameMode)?,
+                ))
+            };
+            read().map_err(|err| err.to_string())
         });
         match read {
-            Ok((mangohud, log)) => {
+            Ok((mangohud, log, gamemode)) => {
                 self.mangohud = mangohud;
                 self.mangohud_autostart_log = log;
+                self.gamemode = gamemode;
                 self.error = None;
             }
             Err(err) => {
@@ -65,6 +75,11 @@ impl GameToolDefaults {
 
     fn set_mangohud(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.save("mangohud", |db| db.set_game_tool_default(GameTool::MangoHud, enabled));
+        cx.notify();
+    }
+
+    fn set_gamemode(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.save("gamemode", |db| db.set_game_tool_default(GameTool::GameMode, enabled));
         cx.notify();
     }
 
@@ -115,6 +130,19 @@ impl Render for GameToolDefaults {
                 .child(theme::muted(t!("settings.compatibility.game_tools.mangohud_log_hint")))
         } else {
             section.child(theme::muted(t!("game_tools.mangohud_missing")))
+        };
+        let section = if self.gamemode_installed {
+            section
+                .child(Self::checkbox_row(
+                    "default-gamemode",
+                    self.gamemode,
+                    t!("settings.compatibility.game_tools.gamemode"),
+                    Self::set_gamemode,
+                    cx,
+                ))
+                .child(theme::muted(t!("settings.compatibility.game_tools.gamemode_hint")))
+        } else {
+            section.child(theme::muted(t!("game_tools.gamemode_missing")))
         };
         section.children(self.error.clone().map(theme::error))
     }

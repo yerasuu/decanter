@@ -24,7 +24,7 @@ pub use collections::Collection;
 pub use credentials::{KeyringError, delete as delete_session, load as load_session, save as save_session};
 pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result};
 pub use disk::disk_usage;
-pub use game_tools::{GameTool, mangohud_env, mangohud_installed, mangohud_log_dir};
+pub use game_tools::{GameTool, gamemode_prefix, gamemoded, mangohud_env, mangohud_installed, mangohud_log_dir};
 pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env};
 pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size, move_dir};
 pub use profiles::Profile;

@@ -182,6 +182,12 @@ settings.compatibility.game_tools.mangohud_log:
 settings.compatibility.game_tools.mangohud_log_hint:
   es: Los registros se guardan en decanter/logs/mangohud dentro de la biblioteca. Sin esta opción, empiezan y terminan con el atajo de MangoHud (Mayús izquierda + F2).
   en: Logs are saved in decanter/logs/mangohud inside the library. Without this option, they start and stop with MangoHud's shortcut (Left Shift + F2).
+settings.compatibility.game_tools.gamemode:
+  es: Activar GameMode mientras se juega
+  en: Turn GameMode on while playing
+settings.compatibility.game_tools.gamemode_hint:
+  es: GameMode pone la CPU en modo rendimiento y aplica el resto de ajustes de tu gamemode.ini hasta que el juego se cierra.
+  en: GameMode switches the CPU to performance and applies the rest of your gamemode.ini until the game closes.
 settings.general.updates.title:
   es: Actualizaciones
   en: Updates

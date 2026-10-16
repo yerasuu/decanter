@@ -74,9 +74,15 @@ pub async fn start(
     };
     launch.proton = crate::core::proton_for(&game);
     let key = crate::taskbar::key(game.storefront, &game.game_id);
-    let mangohud = crate::core::db()
-        .ok()
-        .and_then(|db| crate::game_tools::mangohud(&db, &key));
+    let (mangohud, gamemoded) = crate::core::db()
+        .map(|db| {
+            (
+                crate::game_tools::mangohud(&db, &key),
+                crate::game_tools::gamemoded(&db, &key),
+            )
+        })
+        .unwrap_or_default();
+    launch.gamemoded = gamemoded;
     if let Some(autostart_log) = mangohud {
         match crate::core::library_for_account(&account_id) {
             Ok(library) => launch.env.extend(
