@@ -131,6 +131,9 @@ ps.ports.upstream.behind.one:
 ps.ports.upstream.behind.other:
   es: "%{head} · %{count} commits nuevos en %{branch}"
   en: "%{head} · %{count} new commits on %{branch}"
+ps.ports.upstream.switching:
+  es: "%{head} · pasando a %{branch}"
+  en: "%{head} · moving to %{branch}"
 ps.ports.upstream.rewritten:
   es: "%{head} · upstream reescribió su historia"
   en: "%{head} · upstream rewrote its history"

@@ -214,6 +214,9 @@ fn upstream_text(check: &Result<Check, String>) -> Cow<'static, str> {
     match check {
         Ok(check) => match &check.plan {
             Plan::UpToDate => t!("ps.ports.upstream.up_to_date", head = check.head, branch = check.branch),
+            Plan::FastForward if check.behind == 0 => {
+                t!("ps.ports.upstream.switching", head = check.head, branch = check.branch)
+            }
             Plan::FastForward if check.behind == 1 => t!(
                 "ps.ports.upstream.behind.one",
                 head = check.head,

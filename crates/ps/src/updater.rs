@@ -1,11 +1,11 @@
-//! Keeps each port checkout on the newest commit of its upstream default
-//! branch, or on its latest release ([`crate::channel`]), cloning it the
-//! first time.
+//! Keeps each port checkout on the newest commit of upstream's `develop`, or
+//! its default branch when it has none, or on its latest release
+//! ([`crate::channel`]), cloning it the first time.
 //!
-//! Only clones and fast-forwards happen on their own. A checkout whose
-//! history upstream rewrote, or that carries local edits git cannot carry
-//! over, waits for the user, and the reset offered then saves the local
-//! diff first.
+//! Clones, fast-forwards and resets that lose nothing happen on their own. A
+//! checkout with commits upstream never published, or with local edits git
+//! cannot carry over, waits for the user, and the reset offered then saves
+//! the local diff first.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -19,12 +19,14 @@ use crate::prebuilt::Release;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
     UpToDate,
-    /// Upstream only added commits: `git merge --ff-only` reaches it.
+    /// Upstream only added commits, or the checkout is on another branch
+    /// than the one followed: `git merge --ff-only` reaches it.
     FastForward,
-    /// Upstream rewrote history; every local commit has an equivalent
-    /// upstream (same patch), so a reset loses nothing committed.
+    /// Upstream rewrote history, but some ref it publishes (a branch, or an
+    /// archive tag) still holds every local commit, so a reset loses nothing
+    /// committed.
     Rewritten,
-    /// Local commits upstream lacks: never touched automatically.
+    /// Commits no upstream ref holds: never touched automatically.
     LocalCommits(usize),
 }
 
@@ -93,26 +95,47 @@ async fn fetch_from(repo: &Path, upstream: &str, args: &[&str]) -> Result<(), St
     git(repo, &fetch).await.map(drop)
 }
 
-/// Fetches `upstream` and compares the checkout with its default branch.
+/// Fetches `upstream` with its tags and compares the checkout with its
+/// `develop`, or its default branch when it has none.
 pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
-    if let Err(err) = fetch_from(repo, upstream, &[]).await {
+    // Forced for the reason given in `on_release`; the tags are needed here
+    // because an archive tag may be the only ref still holding the commits of
+    // a rewritten branch.
+    if let Err(err) = fetch_from(repo, upstream, &["--tags", "--force"]).await {
         return Err(err);
     }
-    let symref = match git(repo, &["ls-remote", "--symref", "origin", "HEAD"]).await {
-        Ok(symref) => symref,
+    let refs = match git(repo, &["ls-remote", "--symref", "origin"]).await {
+        Ok(refs) => refs,
         Err(err) => return Err(err),
     };
-    let Some(branch) = symref
+    let has_develop = refs
         .lines()
-        .find_map(|line| line.strip_prefix("ref: refs/heads/"))
-        .and_then(|rest| rest.split_whitespace().next())
+        .any(|line| line.split_whitespace().nth(1) == Some("refs/heads/develop"));
+    let Some(branch) = has_develop
+        .then_some("develop")
+        .or_else(|| {
+            refs.lines()
+                .find_map(|line| line.strip_prefix("ref: refs/heads/"))
+                .filter(|rest| rest.ends_with("\tHEAD"))
+                .and_then(|rest| rest.split_whitespace().next())
+        })
         .filter(|branch| valid_branch(branch))
         .map(str::to_owned)
     else {
         return Err("origin has no usable default branch".to_owned());
     };
+    let mut rev_list = vec!["rev-list", "--count", "--ignore-missing", "HEAD", "--not"];
+    rev_list.extend(
+        refs.lines()
+            .filter_map(|line| line.split_once('\t'))
+            .filter(|&(commit, name)| {
+                (name.starts_with("refs/heads/") || name.starts_with("refs/tags/"))
+                    && crate::prebuilt::valid_commit(commit)
+            })
+            .map(|(commit, _)| commit),
+    );
     let remote = format!("origin/{branch}");
-    let (head, upstream, behind, dirty, cherry) = match (
+    let (head, upstream, behind, dirty, unpublished, current) = match (
         git(repo, &["rev-parse", "--short", "HEAD"]).await,
         git(repo, &["rev-parse", "--short", "--end-of-options", &remote]).await,
         git(
@@ -130,10 +153,18 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
             ],
         )
         .await,
-        git(repo, &["cherry", "--end-of-options", &remote, "HEAD"]).await,
+        git(repo, &rev_list).await,
+        git(repo, &["branch", "--show-current"]).await,
     ) {
-        (Ok(head), Ok(upstream), Ok(behind), Ok(dirty), Ok(cherry)) => (head, upstream, behind, dirty, cherry),
-        (Err(err), ..) | (_, Err(err), ..) | (_, _, Err(err), ..) | (.., Err(err), _) | (.., Err(err)) => {
+        (Ok(head), Ok(upstream), Ok(behind), Ok(dirty), Ok(unpublished), Ok(current)) => {
+            (head, upstream, behind, dirty, unpublished, current)
+        }
+        (Err(err), ..)
+        | (_, Err(err), ..)
+        | (_, _, Err(err), ..)
+        | (_, _, _, Err(err), ..)
+        | (.., Err(err), _)
+        | (.., Err(err)) => {
             return Err(err);
         }
     };
@@ -147,16 +178,15 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, String> {
         .status()
         .await
         .is_ok_and(|status| status.success());
-    // `git cherry` marks local commits whose patch upstream lacks with `+`.
-    let unique = cherry.lines().filter(|line| line.starts_with('+')).count();
-    let plan = if behind == 0 {
+    let unpublished = unpublished.parse().unwrap_or(0);
+    let plan = if behind == 0 && current == branch {
         Plan::UpToDate
     } else if contained {
         Plan::FastForward
-    } else if unique == 0 {
+    } else if unpublished == 0 {
         Plan::Rewritten
     } else {
-        Plan::LocalCommits(unique)
+        Plan::LocalCommits(unpublished)
     };
     Ok(Check {
         branch,
@@ -279,13 +309,20 @@ const DROP_FORMER_SUBMODULES: &str = "git ls-files --stage | while read -r mode 
 /// so nothing local is lost, except the checkout of a submodule upstream
 /// turned into plain files ([`DROP_FORMER_SUBMODULES`]). `branch` comes from a [`Check`].
 /// A checkout Release left on a tag goes back onto the branch first, so it
-/// follows it again.
+/// follows it again; one on another branch (`master` before upstream had
+/// `develop`) takes `branch` where it stands, unless a local `branch` holds
+/// commits HEAD lacks.
 pub fn fast_forward_command(repo: &Path, branch: &str) -> Command {
     let mut command = Command::new("bash");
     command
         .arg("-c")
         .arg(format!(
-            "set -e; git symbolic-ref -q HEAD >/dev/null || git checkout --quiet --end-of-options \"$2\"; \
+            "set -e; if ! git symbolic-ref -q HEAD >/dev/null; then git checkout --quiet --end-of-options \"$2\"; \
+             elif [ \"$(git branch --show-current)\" != \"$2\" ]; then \
+             if git rev-parse --quiet --verify \"refs/heads/$2\" >/dev/null \
+             && ! git merge-base --is-ancestor \"refs/heads/$2\" HEAD; then \
+             echo \"local branch $2 has commits the checkout lacks\" >&2; exit 1; fi; \
+             git checkout --quiet -B \"$2\"; fi; git branch --quiet --set-upstream-to=\"$1\"; \
              {DROP_FORMER_SUBMODULES}; git merge --ff-only --end-of-options \"$1\"; \
              git submodule update --init --recursive; git log -1 --oneline"
         ))
@@ -325,21 +362,27 @@ pub fn backup_path(root: &Root, port: Port, head: &str) -> PathBuf {
         .join(format!("{}-{head}.patch", port.name().to_lowercase()))
 }
 
-/// Only ever started by an explicit user action: saves `git diff HEAD` to
-/// `backup`, then puts the checkout on upstream exactly.
+/// Puts the checkout on `branch` at upstream exactly.
+///
+/// Started by the user, or on its own for a [`Plan::Rewritten`] checkout
+/// without local edits. Saves `git diff HEAD` to `backup` first when there
+/// is one; the branch it leaves keeps its commits.
 pub fn reset_command(repo: &Path, branch: &str, backup: &Path) -> Command {
     let mut command = Command::new("bash");
     command
         .arg("-c")
         .arg(format!(
             "set -e; mkdir -p -- \"$(dirname -- \"$2\")\"; git diff HEAD > \"$2\"; \
-             echo \"local changes saved to $2\"; {DROP_FORMER_SUBMODULES}; \
-             git reset --hard --end-of-options \"$1\"; \
+             if [ -s \"$2\" ]; then echo \"local changes saved to $2\"; else rm -f -- \"$2\"; fi; \
+             {DROP_FORMER_SUBMODULES}; \
+             git checkout --quiet --force -B \"$3\" --end-of-options \"$1\"; \
+             git branch --quiet --set-upstream-to=\"$1\"; \
              git submodule update --init --recursive; git log -1 --oneline"
         ))
         .arg("reset")
         .arg(format!("origin/{branch}"))
         .arg(backup)
+        .arg(branch)
         .current_dir(repo)
         .stdin(Stdio::null());
     decanter_core::strip_launcher_env(command.as_std_mut());

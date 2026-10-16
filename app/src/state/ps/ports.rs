@@ -654,16 +654,21 @@ async fn check_and_update(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &m
         return;
     }
     let check = updater::check(&checkout, port.upstream()).await;
-    let fast_forward = matches!(&check, Ok(check) if check.plan == Plan::FastForward);
-    let branch = check.as_ref().map(|check| check.branch.clone()).unwrap_or_default();
+    let command = match &check {
+        Ok(check) if check.plan == Plan::FastForward => Some(updater::fast_forward_command(&checkout, &check.branch)),
+        Ok(check) if check.plan == Plan::Rewritten && check.dirty.is_empty() => {
+            let backup = updater::backup_path(root, port, &check.head);
+            Some(updater::reset_command(&checkout, &check.branch, &backup))
+        }
+        _ => None,
+    };
     let _ = this.update(cx, |this, cx| {
         this.ports.entry(port).or_insert_with(PortState::new).check = Some(check);
         cx.notify();
     });
-    if !fast_forward {
+    let Some(command) = command else {
         return;
-    }
-    let command = updater::fast_forward_command(&checkout, &branch);
+    };
     let Some(updating) = start_update(this, port, root, command, cx) else {
         return;
     };
