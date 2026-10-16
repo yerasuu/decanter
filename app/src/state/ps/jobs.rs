@@ -52,6 +52,7 @@ pub fn label(kind: JobKind) -> Cow<'static, str> {
     match kind {
         JobKind::Clone => t!("ps.jobs.clone"),
         JobKind::Reset => t!("ps.jobs.reset"),
+        JobKind::Rollback => t!("ps.jobs.rollback"),
         JobKind::Update => t!("ps.jobs.update"),
         JobKind::Build => t!("ps.jobs.build"),
         JobKind::Game => t!("ps.jobs.game"),

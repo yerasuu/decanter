@@ -47,6 +47,9 @@ ps.jobs.update:
 ps.jobs.reset:
   es: restablecer
   en: reset
+ps.jobs.rollback:
+  es: volver atrás
+  en: roll back
 ps.errors.environment:
   es: "No se pudo preparar el entorno: %{error}"
   en: "Couldn't set up the environment: %{error}"
@@ -77,6 +80,9 @@ ps.ports.stage.fetching:
 ps.ports.stage.building:
   es: Compilando…
   en: Building…
+ps.ports.stage.rolling_back:
+  es: Volviendo al último commit que compiló…
+  en: Going back to the last commit that built…
 ps.ports.stage.ready:
   es: Listo
   en: Ready
@@ -164,6 +170,21 @@ ps.ports.errors.cmake_cache:
 ps.ports.errors.build:
   es: La compilación de %{port} ha fallado; mira su registro
   en: Building %{port} failed; see its log
+ps.ports.errors.build_local:
+  es: "La compilación de %{port} ha fallado; mira su registro. No se ha vuelto a %{commit}, el último commit que compiló, porque el checkout tiene cambios locales"
+  en: "Building %{port} failed; see its log. It wasn't put back on %{commit}, the last commit that built, because the checkout has local changes"
+ps.ports.errors.rollback:
+  es: "La compilación de %{port} ha fallado y no se pudo volver a %{commit}, el último commit que compiló; mira su registro"
+  en: "Building %{port} failed and it couldn't go back to %{commit}, the last commit that built; see its log"
+ps.ports.fallback.text:
+  es: "Funciona en %{good} porque %{failed} no compiló; las actualizaciones automáticas no volverán a %{failed}"
+  en: "Running on %{good} because %{failed} failed to build; automatic updates won't move to %{failed} again"
+ps.ports.fallback.log:
+  es: Registro de la compilación fallida
+  en: Failed build's log
+ps.ports.fallback.retry:
+  es: Reintentar la actualización
+  en: Retry the update
 ps.ports.errors.record_build:
   es: "No se pudo registrar la compilación: %{error}"
   en: "Couldn't record the build: %{error}"

@@ -15,7 +15,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, p
 use rust_i18n::t;
 
 use super::log::LogView;
-use crate::state::{BuildOrigin, JobKey, PortState, Ps, Stage, Track};
+use crate::state::{BuildOrigin, Fallback, JobKey, PortState, Ps, Stage, Track};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
@@ -82,6 +82,7 @@ impl PortsView {
         let needs_reset = check.is_some_and(
             |check| matches!(check, Ok(check) if matches!(check.plan, Plan::Rewritten | Plan::LocalCommits(_))),
         );
+        let fallback = state.and_then(PortState::fallback).cloned();
         let failed = matches!(stage, Stage::Failed(_));
         let confirming = self.confirm_reset == Some(port);
         let log = self
@@ -112,6 +113,7 @@ impl PortsView {
             .children(origin.map(theme::muted))
             .children(fell_back.map(theme::muted))
             .children(upstream.map(theme::muted))
+            .children(fallback.map(|fallback| fallback_notice(port, fallback, busy, cx)))
             .child(
                 div()
                     .flex()
@@ -188,9 +190,57 @@ fn stage_status(stage: &Stage) -> (Cow<'static, str>, Option<f64>) {
         Stage::Updating => (t!("ps.ports.stage.updating"), None),
         Stage::Fetching => (t!("ps.ports.stage.fetching"), None),
         Stage::Building => (t!("ps.ports.stage.building"), None),
+        Stage::RollingBack => (t!("ps.ports.stage.rolling_back"), None),
         Stage::Ready => (t!("ps.ports.stage.ready"), None),
         Stage::Failed(message) => (message.clone().into(), None),
     }
+}
+
+/// The port runs on an earlier commit than upstream's, with the failed build's log and the
+/// retry the automatic update no longer makes.
+fn fallback_notice(port: Port, fallback: Fallback, busy: bool, cx: &mut Context<PortsView>) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(div().text_color(rgb(theme::ACCENT_GOLD)).child(SharedString::from(t!(
+            "ps.ports.fallback.text",
+            good = fallback.good,
+            failed = fallback.failed
+        ))))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .children(fallback.log.map(|path| {
+                    div()
+                        .id(("ps-port-fallback-log", port as usize))
+                        .cursor_pointer()
+                        .text_color(rgb(theme::ACCENT_BLUE))
+                        .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
+                        .on_click(move |_, _, _| {
+                            if let Err(err) = crate::desktop::open(&path) {
+                                tracing::warn!(path = %path.display(), %err, "could not open the failed build's log");
+                            }
+                        })
+                        .child(t!("ps.ports.fallback.log"))
+                }))
+                .child(
+                    button(
+                        ("ps-port-retry", port as usize),
+                        ButtonKind::Secondary,
+                        t!("ps.ports.fallback.retry"),
+                        busy,
+                    )
+                    .when(!busy, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| {
+                            this.ps.update(cx, |ps, cx| ps.retry_update(port, cx));
+                        }))
+                    }),
+                ),
+        )
+        .into_any_element()
 }
 
 fn channel_text(channel: Channel, state: &PortState) -> Cow<'static, str> {

@@ -6,6 +6,7 @@
 //! section outlive switching to another one.
 
 mod channel;
+mod fallback;
 mod fsr;
 mod jobs;
 mod play;
@@ -22,6 +23,7 @@ use gpui::{App, AppContext as _, Context, Entity, Global};
 use rust_i18n::t;
 
 pub use channel::Track;
+pub use fallback::Fallback;
 pub use fsr::DllOutcome;
 pub use jobs::{JobKey, label as job_label};
 pub use play::failure_message;

@@ -31,6 +31,7 @@ pub enum Event {
 pub enum JobKind {
     Clone,
     Reset,
+    Rollback,
     Update,
     Build,
     Game,
@@ -43,6 +44,7 @@ impl JobKind {
         match self {
             Self::Clone => "clone",
             Self::Reset => "reset",
+            Self::Rollback => "rollback",
             Self::Update => "update",
             Self::Build => "build",
             Self::Game => "game",

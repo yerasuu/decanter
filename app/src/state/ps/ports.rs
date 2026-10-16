@@ -22,6 +22,7 @@ use rust_i18n::t;
 
 use super::Ps;
 use super::channel::{self, Track};
+use super::fallback::{self, Fallback};
 use super::jobs::{self, JobKey};
 
 /// How often upstream is checked once the PS section has been opened.
@@ -42,6 +43,8 @@ pub enum Stage {
     /// Fetching the checkout's commit as the port's CI built it.
     Fetching,
     Building,
+    /// Putting the checkout back on the last commit that built, after the build failed.
+    RollingBack,
     Ready,
     Failed(String),
 }
@@ -57,7 +60,7 @@ pub struct PortState {
     stage: Stage,
     origin: Option<BuildOrigin>,
     /// With the library it was resolved for, since nix-portable lives in each one.
-    toolchain: Option<(Root, Toolchain)>,
+    pub(super) toolchain: Option<(Root, Toolchain)>,
     pub(super) check: Option<Result<Check, String>>,
     pub(super) channel: Option<Channel>,
     pub(super) track: Option<Track>,
@@ -67,6 +70,7 @@ pub struct PortState {
     preparing: Option<(Root, Shared<Task<Prepared>>)>,
     /// Whether the checkout moved.
     updating: Option<Shared<Task<bool>>>,
+    pub(super) fallback: Option<Fallback>,
 }
 
 impl PortState {
@@ -81,6 +85,7 @@ impl PortState {
             fell_back: false,
             preparing: None,
             updating: None,
+            fallback: None,
         }
     }
 
@@ -112,6 +117,10 @@ impl PortState {
         self.fell_back
     }
 
+    pub const fn fallback(&self) -> Option<&Fallback> {
+        self.fallback.as_ref()
+    }
+
     pub const fn is_busy(&self) -> bool {
         matches!(
             self.stage,
@@ -121,6 +130,7 @@ impl PortState {
                 | Stage::Updating
                 | Stage::Fetching
                 | Stage::Building
+                | Stage::RollingBack
         )
     }
 }
@@ -183,7 +193,7 @@ impl Ps {
                     if this.upgrade().is_none() {
                         return;
                     }
-                    check_and_update(&this, port, &paths::active(), cx).await;
+                    check_and_update(&this, port, &paths::active(), false, cx).await;
                 }
                 cx.background_executor().timer(UPDATE_INTERVAL).await;
             }
@@ -196,7 +206,7 @@ impl Ps {
     pub fn switch_channel(&mut self, port: Port, cx: &mut Context<Self>) {
         let root = paths::active();
         cx.spawn(async move |this, cx| {
-            check_and_update(&this, port, &root, cx).await;
+            check_and_update(&this, port, &root, false, cx).await;
             let Ok(prepared) = this.update(cx, |this, cx| this.prepare(port, &root, cx)) else {
                 return;
             };
@@ -232,7 +242,7 @@ impl Ps {
             if finished.succeeded() {
                 rebuild(&this, port, &root, cx).await;
             }
-            check_and_update(&this, port, &root, cx).await;
+            check_and_update(&this, port, &root, false, cx).await;
         })
         .detach();
     }
@@ -253,7 +263,7 @@ fn set_origin(this: &WeakEntity<Ps>, port: Port, origin: BuildOrigin, cx: &mut A
     });
 }
 
-fn set_stage(this: &WeakEntity<Ps>, port: Port, stage: Stage, cx: &mut AsyncApp) {
+pub(super) fn set_stage(this: &WeakEntity<Ps>, port: Port, stage: Stage, cx: &mut AsyncApp) {
     let _ = this.update(cx, |this, cx| {
         this.ports.entry(port).or_insert_with(PortState::new).stage = stage;
         cx.notify();
@@ -262,7 +272,7 @@ fn set_stage(this: &WeakEntity<Ps>, port: Port, stage: Stage, cx: &mut AsyncApp)
 
 /// Why a port is not ready: logged as it is, worded for the UI by [`PortError::localized`].
 #[derive(Debug, thiserror::Error)]
-enum PortError {
+pub(super) enum PortError {
     #[error("toolchain unavailable: {0}")]
     Toolchain(toolchain::Error),
     #[error("git clone failed")]
@@ -273,6 +283,10 @@ enum PortError {
     Environment(io::Error),
     #[error("build failed")]
     Build,
+    #[error("build failed; local changes kept it off the last commit that built, {0}")]
+    BuildNotRolledBack(String),
+    #[error("could not put the checkout back on the last commit that built, {0}")]
+    Rollback(String),
     #[error("build marker write failed: {0}")]
     RecordBuild(io::Error),
 }
@@ -285,6 +299,10 @@ impl PortError {
             Self::CmakeCache(err) => t!("ps.ports.errors.cmake_cache", error = err).into_owned(),
             Self::Environment(err) => t!("ps.errors.environment", error = err).into_owned(),
             Self::Build => t!("ps.ports.errors.build", port = port.name()).into_owned(),
+            Self::BuildNotRolledBack(commit) => {
+                t!("ps.ports.errors.build_local", port = port.name(), commit = commit).into_owned()
+            }
+            Self::Rollback(commit) => t!("ps.ports.errors.rollback", port = port.name(), commit = commit).into_owned(),
             Self::RecordBuild(err) => t!("ps.ports.errors.record_build", error = err).into_owned(),
         }
     }
@@ -353,13 +371,32 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         set_origin(this, port, origin, cx);
         toolchain
     } else {
-        match build(this, port, root, toolchain, cx).await {
+        match build_or_fall_back(this, port, root, toolchain, cx).await {
             Ok(toolchain) => toolchain,
-            Err(err) => return Err(fail(this, port, &err, cx)),
+            Err(err) => {
+                let message = fail(this, port, &err, cx);
+                fallback::settle(this, port, root, false, cx).await;
+                return Err(message);
+            }
         }
     };
+    fallback::settle(this, port, root, true, cx).await;
     set_stage(this, port, Stage::Ready, cx);
     Ok(toolchain)
+}
+
+/// [`build`], then [`fallback::recover`] when it is the build itself that failed.
+async fn build_or_fall_back(
+    this: &WeakEntity<Ps>,
+    port: Port,
+    root: &Root,
+    toolchain: Toolchain,
+    cx: &mut AsyncApp,
+) -> Result<Toolchain, PortError> {
+    match build(this, port, root, toolchain, cx).await {
+        Err(PortError::Build) => fallback::recover(this, port, root, cx).await,
+        built => built,
+    }
 }
 
 /// Release's prebuilt build when it can be fetched, else why the port is
@@ -400,7 +437,7 @@ async fn prebuilt_or_reason(
 
 /// Returns the toolchain that built it, nix's when the host's tools could
 /// not configure the port or when its build came from the binary cache.
-async fn build(
+pub(super) async fn build(
     this: &WeakEntity<Ps>,
     port: Port,
     root: &Root,
@@ -638,23 +675,50 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     let _ = this.update(cx, |this, _| {
         this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
     });
-    if let Err(err) = build(this, port, root, toolchain, cx).await {
+    if let Err(err) = build_or_fall_back(this, port, root, toolchain, cx).await {
         fail(this, port, &err, cx);
+        fallback::settle(this, port, root, false, cx).await;
     } else {
+        fallback::settle(this, port, root, true, cx).await;
         set_stage(this, port, Stage::Ready, cx);
     }
 }
 
-async fn check_and_update(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) {
+/// `retry_failed` moves the checkout onto a commit that failed to build before too; the
+/// automatic update leaves it alone.
+pub(super) async fn check_and_update(
+    this: &WeakEntity<Ps>,
+    port: Port,
+    root: &Root,
+    retry_failed: bool,
+    cx: &mut AsyncApp,
+) {
     let checkout = port.checkout(root);
     if !tokio::fs::try_exists(&checkout).await.unwrap_or(false) {
         return;
     }
-    if channel::load(this, port, root, cx).await == Channel::Release && channel::follow(this, port, root, cx).await {
+    if channel::load(this, port, root, cx).await == Channel::Release
+        && channel::follow(this, port, root, retry_failed, cx).await
+    {
         return;
     }
     let check = updater::check(&checkout, port.upstream()).await;
+    let skipped = match &check {
+        Ok(check) if !retry_failed && matches!(check.plan, Plan::FastForward | Plan::Rewritten) => {
+            fallback::load(root, port, cx).await.failed_at(&check.upstream)
+        }
+        _ => false,
+    };
+    if skipped && let Ok(check) = &check {
+        tracing::info!(
+            port = port.name(),
+            upstream = check.upstream,
+            branch = check.branch,
+            "upstream still at a commit that failed to build; not updating until it moves or a retry"
+        );
+    }
     let command = match &check {
+        _ if skipped => None,
         Ok(check) if check.plan == Plan::FastForward => Some(updater::fast_forward_command(&checkout, &check.branch)),
         Ok(check) if check.plan == Plan::Rewritten && check.dirty.is_empty() => {
             let backup = updater::backup_path(root, port, &check.head);

@@ -356,6 +356,41 @@ pub fn release_command(repo: &Path, release: &Release) -> Command {
     command
 }
 
+/// Whether the checkout still has `commit`, a full one, to go back to.
+pub async fn has_commit(repo: &Path, commit: &str) -> bool {
+    git(
+        repo,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            &format!("{commit}^{{commit}}"),
+        ],
+    )
+    .await
+    .is_ok()
+}
+
+/// Puts the checkout back on `commit`, an earlier one it built at, after the build of where it
+/// moved failed. Only for a checkout [`upstream_commit`] vouches for, so the reset loses nothing:
+/// the branch, or the detached release, follows upstream again from there.
+pub fn rollback_command(repo: &Path, commit: &str) -> Command {
+    let mut command = Command::new("bash");
+    command
+        .arg("-c")
+        .arg(format!(
+            "set -e; {DROP_FORMER_SUBMODULES}; git reset --quiet --hard --end-of-options \"$1\"; \
+             git submodule update --init --recursive; echo \"back on $1\"; git log -1 --oneline"
+        ))
+        .arg("rollback")
+        .arg(commit)
+        .current_dir(repo)
+        .stdin(Stdio::null());
+    decanter_core::strip_launcher_env(command.as_std_mut());
+    command
+}
+
 /// Where [`reset_command`] saves the local diff of `port`'s checkout.
 pub fn backup_path(root: &Root, port: Port, head: &str) -> PathBuf {
     root.backups()

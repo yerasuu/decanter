@@ -11,6 +11,7 @@ use decanter_ps::updater;
 use gpui::{AppContext as _, AsyncApp, WeakEntity};
 
 use super::Ps;
+use super::fallback;
 use super::jobs::{self, JobKey};
 use super::ports::{self, PortState};
 
@@ -99,13 +100,29 @@ async fn find(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp)
 }
 
 /// The periodic check on Release. `false` when CI has no release yet, and the
-/// default branch is followed instead, as on Testing.
-pub(super) async fn follow(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) -> bool {
+/// default branch is followed instead, as on Testing. A release whose commit
+/// failed to build before is left alone unless `retry_failed`.
+pub(super) async fn follow(
+    this: &WeakEntity<Ps>,
+    port: Port,
+    root: &Root,
+    retry_failed: bool,
+    cx: &mut AsyncApp,
+) -> bool {
     let release = match find(this, port, root, cx).await {
         Found::NoRelease => return false,
         Found::OnIt | Found::Unknown => return true,
         Found::Elsewhere(release) => release,
     };
+    if !retry_failed && fallback::load(root, port, cx).await.failed_at(&release.commit) {
+        tracing::info!(
+            port = port.name(),
+            tag = release.tag,
+            commit = release.commit,
+            "latest release failed to build before; not moving onto it until a retry"
+        );
+        return true;
+    }
     let command = updater::release_command(&port.checkout(root), &release);
     if let Some(moving) = ports::start_update(this, port, root, command, cx)
         && moving.await
