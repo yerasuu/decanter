@@ -62,18 +62,22 @@ esac
 runtime_cache="${XDG_CACHE_HOME:-$HOME/.cache}/decanter-appimage/runtime-$arch-$runtime_version"
 
 cd "$repo_root"
-cargo build --profile dist
+# An explicit --target keeps shell.nix's host-loader RUSTFLAGS off build scripts and
+# proc macros: on aarch64 they died with SIGBUS pairing the host's ld.so with nix's libc.
+triple="$(rustc -vV | sed -n 's/^host: //p')"
+cargo build --profile dist --target "$triple"
+binary="target/$triple/dist/decanter"
 
 out_dir="$repo_root/target/appimage"
 app_dir="$out_dir/AppDir"
 rm -rf "$app_dir"
 mkdir -p "$app_dir/usr/bin" "$app_dir/usr/lib"
-cp target/dist/decanter "$app_dir/usr/bin/decanter"
+cp "$binary" "$app_dir/usr/bin/decanter"
 
 # Everything the binary links against, from the nix store — glibc and its
 # loader included, which is the point.
 loader="$(cc -print-file-name="$loader_name")"
-"$loader" --list target/dist/decanter \
+"$loader" --list "$binary" \
     | awk '/=> \// && !/ld-linux/ { print $3 }' \
     | while read -r lib; do
         cp -L -- "$lib" "$app_dir/usr/lib/"
