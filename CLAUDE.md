@@ -196,6 +196,8 @@ no existing tag fits, and record it here.
   - shared: `toolchain` (Nix, CI, prebuilt ports), `regress` (tools/regress,
     schedules, perf runs), `workflow` (publishing flow, agent process and
     environment), `brain` (the board itself).
+- State: `testing` on a task whose code is written but not yet checked running (a game, the
+  app, a real CI release); it stays parked with that tag until the check, then `done`.
 - Platform, only when the entry concerns some systems or architectures and not
   the rest (none means all, Linux x86_64 being the reference): `linux`,
   `windows`, `macos`; `x86_64`, `aarch64`.
