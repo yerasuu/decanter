@@ -17,6 +17,8 @@ exclude = ["crates/hook"]
 version = "0.3.1"
 authors = []
 edition = "2024"
+# gpui at the pinned zed rev calls `std::hint::cold_path`, stable since 1.95.
+rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 # One version of each dependency for the whole workspace; members pick the

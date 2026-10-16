@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds Decanter-x86_64.AppImage from a `dist` (LTO) build.
+# Builds Decanter-<arch>.AppImage (x86_64 or aarch64, the host's) from a
+# `dist` (LTO) build.
 #
 # The binary is built inside the project's nix-shell, so it's linked
 # against nix's glibc — newer than some hosts' (SteamOS's included), where
@@ -28,6 +29,8 @@
 #
 # nixpkgs has no appimagetool, so the AppImage is put together by hand: an
 # AppImage is the type-2 runtime followed by a squashfs of the AppDir.
+# The AppDir stays in target/appimage: scripts/packages wraps that same
+# build as .deb, .rpm and pacman packages.
 #
 # Usage: scripts/appimage   (from anywhere; enters nix-shell itself)
 set -euo pipefail
@@ -38,10 +41,25 @@ if [[ -z "${IN_NIX_SHELL:-}" ]]; then
     exec nix-shell "$repo_root/shell.nix" --run "$(printf '%q' "${BASH_SOURCE[0]}")"
 fi
 
-# Pinned so the download can be checked; bump both together.
+arch="$(uname -m)"
+# Pinned so the download can be checked; bump the version and every hash
+# together.
 runtime_version=20251108
-runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
-runtime_cache="${XDG_CACHE_HOME:-$HOME/.cache}/decanter-appimage/runtime-x86_64-$runtime_version"
+case "$arch" in
+    x86_64)
+        loader_name=ld-linux-x86-64.so.2
+        runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+        ;;
+    aarch64)
+        loader_name=ld-linux-aarch64.so.1
+        runtime_sha256=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
+        ;;
+    *)
+        echo "no AppImage runtime for $arch" >&2
+        exit 1
+        ;;
+esac
+runtime_cache="${XDG_CACHE_HOME:-$HOME/.cache}/decanter-appimage/runtime-$arch-$runtime_version"
 
 cd "$repo_root"
 cargo build --profile dist
@@ -54,19 +72,24 @@ cp target/dist/decanter "$app_dir/usr/bin/decanter"
 
 # Everything the binary links against, from the nix store — glibc and its
 # loader included, which is the point.
-loader="$(cc -print-file-name=ld-linux-x86-64.so.2)"
+loader="$(cc -print-file-name="$loader_name")"
 "$loader" --list target/dist/decanter \
     | awk '/=> \// && !/ld-linux/ { print $3 }' \
     | while read -r lib; do
         cp -L -- "$lib" "$app_dir/usr/lib/"
     done
-cp -L -- "$loader" "$app_dir/usr/lib/ld-linux-x86-64.so.2"
+cp -L -- "$loader" "$app_dir/usr/lib/$loader_name"
 chmod -R u+w "$app_dir/usr/lib"
 
-cat > "$app_dir/AppRun" <<'APPRUN'
+# The placeholders keep the script itself quoted, so nothing in it
+# expands here.
+sed -e "s|@LOADER@|$loader_name|g" -e "s|@ARCH@|$arch|g" > "$app_dir/AppRun" <<'APPRUN'
 #!/bin/sh
 here="$(dirname "$(readlink -f "$0")")"
-host="/usr/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/lib:/lib64:/lib/x86_64-linux-gnu"
+# Desktop entries decanter writes must start it through here: the inner binary
+# alone runs against the host's glibc, older than the bundled one.
+export DECANTER_LAUNCHER="$here/AppRun"
+host="/usr/lib:/usr/lib64:/usr/lib/@ARCH@-linux-gnu:/lib:/lib64:/lib/@ARCH@-linux-gnu"
 if [ -z "${__EGL_VENDOR_LIBRARY_FILENAMES:-}" ]; then
     for icd in /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json /usr/local/share/vulkan/icd.d/*.json; do
         # lavapipe is Mesa's CPU Vulkan, installed nearly everywhere; it
@@ -79,7 +102,7 @@ if [ -z "${__EGL_VENDOR_LIBRARY_FILENAMES:-}" ]; then
     done
 fi
 GLIBC_TUNABLES="glibc.malloc.arena_max=2${GLIBC_TUNABLES:+:$GLIBC_TUNABLES}" \
-    exec "$here/usr/lib/ld-linux-x86-64.so.2" --library-path "$here/usr/lib:$host" "$here/usr/bin/decanter" "$@"
+    exec "$here/usr/lib/@LOADER@" --library-path "$here/usr/lib:$host" "$here/usr/bin/decanter" "$@"
 APPRUN
 chmod +x "$app_dir/AppRun"
 
@@ -101,7 +124,7 @@ if [[ ! -f "$runtime_cache" ]] || ! echo "$runtime_sha256  $runtime_cache" | sha
     mkdir -p "$(dirname "$runtime_cache")"
     # Host curl: nix-shell's LD_LIBRARY_PATH would hand it nix's libdl/libpthread against the host libc.
     env -u LD_LIBRARY_PATH curl --fail --location --silent --show-error --output "$runtime_cache" \
-        "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-x86_64"
+        "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-$arch"
     echo "$runtime_sha256  $runtime_cache" | sha256sum --check --status \
         || { echo "AppImage runtime checksum mismatch" >&2; rm -f "$runtime_cache"; exit 1; }
 fi
@@ -109,7 +132,7 @@ fi
 squashfs="$out_dir/decanter.squashfs"
 rm -f "$squashfs"
 mksquashfs "$app_dir" "$squashfs" -root-owned -noappend -comp zstd -quiet -no-progress
-appimage="$out_dir/Decanter-x86_64.AppImage"
+appimage="$out_dir/Decanter-$arch.AppImage"
 cat "$runtime_cache" "$squashfs" > "$appimage"
 chmod +x "$appimage"
 rm -f "$squashfs"

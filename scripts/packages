@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Packages the AppDir scripts/appimage built as .deb, .rpm and pacman
+# packages, without building anything again.
+#
+# The binary is linked against nix's glibc, newer than Debian's or
+# Ubuntu's, so the packages carry the whole AppDir (its glibc, loader and
+# AppRun) under /opt/decanter instead of the bare binary, and depend on
+# nothing. /usr/bin/decanter is a link to AppRun, which finds the AppDir
+# through `readlink -f`. Self-update stays AppImage-only: it keys on
+# $APPIMAGE, which only the AppImage runtime sets.
+#
+# Usage: scripts/packages APPDIR ARCH OUT_DIR
+#   ARCH is x86_64 or aarch64 (any host can package either).
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -z "${IN_NIX_SHELL:-}" ]]; then
+    exec nix-shell -p nfpm imagemagick --run "$(printf '%q ' "${BASH_SOURCE[0]}" "$@")"
+fi
+
+[[ $# -eq 3 ]] || { echo "usage: $0 APPDIR ARCH OUT_DIR" >&2; exit 2; }
+app_dir="$(cd "$1" && pwd)"
+out_dir="$3"
+case "$2" in
+    x86_64) goarch=amd64 ;;
+    aarch64) goarch=arm64 ;;
+    *) echo "no package architecture for $2" >&2; exit 1 ;;
+esac
+[[ -x "$app_dir/AppRun" && -x "$app_dir/usr/bin/decanter" ]] || { echo "$app_dir is no AppDir" >&2; exit 1; }
+
+version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$repo_root/Cargo.toml" | head -n 1)"
+[[ -n "$version" ]] || { echo "no version in Cargo.toml" >&2; exit 1; }
+
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+
+# hicolor only looks in directories named after the icon's real size.
+magick "$app_dir/decanter.png" -resize 256x256 "$work/decanter.png"
+
+cat > "$work/nfpm.yaml" <<NFPM
+name: decanter
+arch: $goarch
+platform: linux
+version: $version
+release: 1
+section: games
+maintainer: Yerasuu <git@yerasuu.com>
+description: Linux game launcher for GOG and other Windows games
+homepage: https://github.com/yerasuu/decanter
+license: GPL-3.0-or-later
+contents:
+  - src: $app_dir
+    dst: /opt/decanter
+    type: tree
+  - src: /opt/decanter/AppRun
+    dst: /usr/bin/decanter
+    type: symlink
+  - src: $app_dir/decanter.desktop
+    dst: /usr/share/applications/decanter.desktop
+  - src: $work/decanter.png
+    dst: /usr/share/icons/hicolor/256x256/apps/decanter.png
+NFPM
+
+mkdir -p "$out_dir"
+for packager in deb rpm archlinux; do
+    nfpm package --config "$work/nfpm.yaml" --packager "$packager" --target "$out_dir"
+done

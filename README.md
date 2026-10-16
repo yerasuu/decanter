@@ -52,8 +52,8 @@ The interface is in Spanish (Spain) and English.
 
 ### AppImage
 
-Download `Decanter-x86_64.AppImage` from the
-[latest release](https://github.com/yerasuu/decanter/releases/latest),
+Download `Decanter-x86_64.AppImage` (or `Decanter-aarch64.AppImage`) from
+the [latest release](https://github.com/yerasuu/decanter/releases/latest),
 make it executable and run it:
 
 ```
@@ -77,6 +77,23 @@ What the host needs:
 `umu-run` does not need to be installed: decanter downloads its own copy
 (umu-launcher 1.4.4) into the library. Proton is whatever umu picks or a
 build installed for Steam.
+
+### Packages
+
+The release also has `.deb`, `.rpm` and pacman packages for x86_64
+(`amd64`) and aarch64 (`arm64`). They hold the same build as the AppImage,
+glibc included, under `/opt/decanter`, and add a `decanter` command, a
+desktop entry and an icon. Install the file for your system with its
+package manager:
+
+```
+sudo apt install ./decanter_<version>-1_amd64.deb                  # Debian, Ubuntu
+sudo dnf install ./decanter-<version>-1.x86_64.rpm                 # Fedora
+sudo pacman -U decanter-<version>-1-x86_64.pkg.tar.zst             # Arch Linux
+```
+
+Packages don't update themselves: install the next release's package over
+it. The host needs the same as for the AppImage.
 
 ### From source
 

@@ -380,7 +380,9 @@ pub async fn sync_ps(library_root: &Path, game: &decanter_ps::library::Game) {
 /// names the library, so the game starts from it whichever one is active.
 fn relaunch(account_id: &str, product_id: &str) -> String {
     let binary = std::env::var_os("APPIMAGE")
+        .or_else(|| std::env::var_os("DECANTER_LAUNCHER"))
         .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path.is_file())
         .or_else(|| std::env::current_exe().ok())
         .unwrap_or_else(|| PathBuf::from("decanter"));
     let binary = binary.to_string_lossy();

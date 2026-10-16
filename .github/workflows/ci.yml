@@ -14,13 +14,31 @@ env:
   NIX_PATH: nixpkgs=https://github.com/NixOS/nixpkgs/archive/39ad350a0602fa0a58a544344e3e9187526ea45c.tar.gz
 
 jobs:
+  # Compiles the tree with each toolchain; ships nothing.
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # `msrv` is the workspace's `rust-version`, read from Cargo.toml below.
+        rust: [stable, beta, msrv]
+    runs-on: ubuntu-24.04
+    # Beta breaking is a warning about the next stable, not a broken tree.
+    continue-on-error: ${{ matrix.rust == 'beta' }}
+    env:
+      RUST: ${{ matrix.rust }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
       # crates/gog/build.rs cross-compiles crates/hook; shell.nix supplies the mingw linker.
-      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy --target x86_64-pc-windows-gnu && rustup default stable
+      - name: Toolchain
+        run: |
+          toolchain="$RUST"
+          [[ "$RUST" == msrv ]] && toolchain="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          [[ -n "$toolchain" ]] || { echo "::error::no rust-version in Cargo.toml"; exit 1; }
+          components=()
+          [[ "$RUST" == stable ]] && components=(--component "rustfmt,clippy")
+          rustup toolchain install "$toolchain" --profile minimal "${components[@]}" --target x86_64-pc-windows-gnu
+          rustup default "$toolchain"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -28,25 +46,42 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: check-${{ hashFiles('Cargo.lock') }}
-          restore-keys: check-
+          key: check-${{ matrix.rust }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: check-${{ matrix.rust }}-
       - name: Format
+        if: matrix.rust == 'stable'
         run: nix-shell --run 'cargo fmt --all --check'
       # The workspace carries pedantic warnings on purpose; only errors fail.
+      # Clippy's lints change between releases, so only stable's count.
       - name: Clippy
+        if: matrix.rust == 'stable'
         run: nix-shell --run 'cargo clippy --workspace --all-targets'
+      - name: Check
+        if: matrix.rust != 'stable'
+        run: nix-shell --run 'cargo check --workspace --all-targets'
 
+  # The one release build per architecture: every later job tests or ships
+  # these very files. Tags release them; main and develop build them too,
+  # so a release never ships something nobody has started before.
   appimage:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v')
+      || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs: check
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      # The Windows target on aarch64 too: crates/hook is always an x86_64 Galaxy64.dll.
       - run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-gnu && rustup default stable
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -55,15 +90,113 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: dist-${{ hashFiles('Cargo.lock') }}
-          restore-keys: dist-
+          key: dist-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: dist-${{ matrix.arch }}-
       - run: scripts/appimage
+      # A tarball, since artifacts keep neither modes nor symlinks.
+      - run: tar -C target/appimage -cf "target/appimage/AppDir-${{ matrix.arch }}.tar" AppDir
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: target/appimage/Decanter-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: appdir-${{ matrix.arch }}
+          path: target/appimage/AppDir-${{ matrix.arch }}.tar
+          if-no-files-found: error
+
+  # Wraps the AppImage's own AppDir; nfpm writes any architecture's package.
+  packages:
+    needs: appimage
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: appdir-${{ matrix.arch }}
+          path: appdir
+      - run: tar -C appdir -xf "appdir/AppDir-${{ matrix.arch }}.tar"
+      - run: scripts/packages appdir/AppDir "${{ matrix.arch }}" dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  # Starts the built AppImage on both Ubuntu runner images, and the AppImage
+  # and the native package in other distributions' containers.
+  smoke:
+    needs: [appimage, packages]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+        where: [ubuntu-24.04, ubuntu-26.04, 'ubuntu:24.04', 'debian:stable', 'fedora:latest', 'archlinux:latest']
+        exclude:
+          # Arch Linux publishes no aarch64 image.
+          - where: 'archlinux:latest'
+            arch: aarch64
+    # A container image (`name:tag`) runs on the 24.04 runner of its architecture.
+    runs-on: >-
+      ${{ format('{0}{1}', contains(matrix.where, ':') && 'ubuntu-24.04' || matrix.where,
+      matrix.arch == 'aarch64' && '-arm' || '') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages-${{ matrix.arch }}
+          path: dist
+      - name: Start on the runner
+        if: ${{ !contains(matrix.where, ':') }}
+        run: scripts/smoke dist "${{ matrix.arch }}"
+      - name: Start and install in ${{ matrix.where }}
+        if: contains(matrix.where, ':')
+        env:
+          IMAGE: ${{ matrix.where }}
+        run: docker run --rm -v "$PWD/dist:/dist" -v "$PWD/scripts:/scripts:ro" "$IMAGE" /scripts/smoke /dist "${{ matrix.arch }}" --packages
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: smoke
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: appimage-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           notes="tag-changelog/$GITHUB_REF_NAME.md"
           [[ -f "$notes" ]] || { echo "::error::$notes is missing"; exit 1; }
+          # The packages take their version from Cargo.toml.
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          [[ "$GITHUB_REF_NAME" == "v$version" ]] || { echo "::error::tag $GITHUB_REF_NAME isn't v$version"; exit 1; }
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$notes"
-          gh release upload "$GITHUB_REF_NAME" --clobber target/appimage/Decanter-x86_64.AppImage
+          gh release upload "$GITHUB_REF_NAME" --clobber dist/*

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Starts the release AppImage, and with --packages also installs, starts
+# and removes the native package, on whatever userland this runs in (CI
+# runs it on the runner and in distribution containers). `--help` exits
+# before GPUI opens anything, but only after the loader has resolved every
+# library and glibc symbol version the binary needs, so a missing one
+# fails here.
+#
+# AppImages need FUSE to mount, which containers lack, hence
+# --appimage-extract-and-run.
+#
+# Usage: scripts/smoke DIR ARCH [--packages]
+#   DIR holds Decanter-ARCH.AppImage and, with --packages, the packages
+#   scripts/packages made; --packages needs root.
+set -euo pipefail
+
+[[ $# -ge 2 && $# -le 3 ]] || { echo "usage: $0 DIR ARCH [--packages]" >&2; exit 2; }
+dir="$(cd "$1" && pwd)"
+arch="$2"
+
+expect_usage() {
+    local out
+    out="$("$@" 2>&1)" || { echo "$out"; echo "$* failed" >&2; return 1; }
+    echo "$out"
+    grep -q '^Usage: decanter' <<<"$out" || { echo "no usage text from $*" >&2; return 1; }
+}
+
+appimage="$dir/Decanter-$arch.AppImage"
+# Workflow artifacts lose the executable bit.
+[[ -x "$appimage" ]] || chmod +x "$appimage"
+expect_usage "$appimage" --appimage-extract-and-run --help
+
+[[ "${3:-}" == --packages ]] || exit 0
+
+if command -v apt-get >/dev/null; then
+    case "$arch" in x86_64) debarch=amd64 ;; aarch64) debarch=arm64 ;; esac
+    package=("$dir"/decanter_*_"${debarch:?}".deb)
+    install=(apt-get install -y --no-install-recommends "${package[0]}")
+    remove=(apt-get remove -y decanter)
+elif command -v dnf >/dev/null; then
+    package=("$dir"/decanter-*."$arch".rpm)
+    # The package depends on nothing, so no repository metadata is needed.
+    install=(dnf install -y --disablerepo='*' "${package[0]}")
+    remove=(dnf remove -y decanter)
+elif command -v pacman >/dev/null; then
+    package=("$dir"/decanter-*-"$arch".pkg.tar.zst)
+    install=(pacman -U --noconfirm "${package[0]}")
+    remove=(pacman -R --noconfirm decanter)
+else
+    echo "no apt-get, dnf or pacman here" >&2
+    exit 1
+fi
+
+"${install[@]}"
+expect_usage decanter --help
+[[ -f /usr/share/applications/decanter.desktop && -f /usr/share/icons/hicolor/256x256/apps/decanter.png ]] \
+    || { echo "desktop entry or icon missing" >&2; exit 1; }
+"${remove[@]}"
+[[ ! -e /opt/decanter && ! -e /usr/bin/decanter ]] || { echo "decanter left files behind" >&2; exit 1; }

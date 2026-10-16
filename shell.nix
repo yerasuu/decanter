@@ -29,6 +29,13 @@ let
   # `runtimeLibs`/`buildInputs` above, which are all about running
   # decanter itself on Linux.
   mingw = pkgs.pkgsCross.mingwW64;
+  host = pkgs.stdenv.hostPlatform;
+  # The FHS path of the host's own loader, which every non-Nix build of
+  # that architecture already gets (see the RUSTFLAGS below).
+  fhsLoader = {
+    x86_64 = "/lib64/ld-linux-x86-64.so.2";
+    aarch64 = "/lib/ld-linux-aarch64.so.1";
+  }.${host.parsed.cpu.name};
 in
 pkgs.mkShell {
   # squashfsTools only for `scripts/appimage`, which packs the AppDir by
@@ -49,7 +56,11 @@ pkgs.mkShell {
   # search paths too -- confirmed the hard way, it broke the *native*
   # build's own OpenSSL (`curl`'s `static-ssl` feature) by handing its
   # build script mingw's `pthread.h` instead of glibc's.
-  buildInputs = runtimeLibs ++ [ pkgs.umu-launcher ];
+  #
+  # umu-launcher only evaluates on x86_64 (it pulls in the i686 package
+  # set), and Proton runs nothing but x86 anyway, so an aarch64 shell
+  # builds and packages decanter without it.
+  buildInputs = runtimeLibs ++ pkgs.lib.optional host.isx86_64 pkgs.umu-launcher;
 
   # `rustup target add x86_64-pc-windows-gnu` only installs the target's
   # std/core; it still needs a real cross linker, which is what the
@@ -63,7 +74,7 @@ pkgs.mkShell {
   CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-L ${mingw.windows.pthreads}/lib";
 
   # `mkShell` pulls in its own stdenv gcc even though nothing above lists
-  # it as a buildInput, so the native x86_64-linux build links against
+  # it as a buildInput, so the native Linux build links against
   # *this* glibc too -- its ELF interpreter ends up hardcoded to this
   # store path, e.g. `/nix/store/.../glibc-.../lib/ld-linux-x86-64.so.2`.
   # That path only exists on this machine: a `cargo build --release`
@@ -76,7 +87,7 @@ pkgs.mkShell {
   # its own libc.so.6, and glibc keeps forward compatibility, so a host
   # glibc equal to or newer than this one still satisfies every symbol
   # version the binary was linked against.
-  CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-Wl,--dynamic-linker=/lib64/ld-linux-x86-64.so.2";
+  "CARGO_TARGET_${host.rust.cargoEnvVarTarget}_RUSTFLAGS" = "-C link-arg=-Wl,--dynamic-linker=${fhsLoader}";
 
   # `cargo run` starts the binary as a child of this shell, and it
   # inherits LD_LIBRARY_PATH — without it, none of the above are on the
@@ -100,6 +111,6 @@ pkgs.mkShell {
   # instead. Only defaulted, so an explicit override from the caller still
   # wins.
   shellHook = ''
-    export VK_DRIVER_FILES=''${VK_DRIVER_FILES:-${pkgs.mesa}/share/vulkan/icd.d/radeon_icd.x86_64.json:${pkgs.mesa}/share/vulkan/icd.d/intel_icd.x86_64.json}
+    export VK_DRIVER_FILES=''${VK_DRIVER_FILES:-${pkgs.mesa}/share/vulkan/icd.d/radeon_icd.${host.parsed.cpu.name}.json:${pkgs.mesa}/share/vulkan/icd.d/intel_icd.${host.parsed.cpu.name}.json}
   '';
 }

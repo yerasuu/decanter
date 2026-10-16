@@ -7,6 +7,9 @@ Grouped by area. Each version's technical record is in `tag-changelog/vX.Y.Z.md`
 ### toolchain
 
 - The release AppImage is published again: the build script's download no longer breaks on the CI runner. v0.3.0 was never published as a GitHub Release, so this release carries its changes.
+- An AppImage for aarch64 (`Decanter-aarch64.AppImage`) is published next to the x86_64 one.
+- .deb, .rpm and pacman packages for x86_64 and aarch64, made from the same build as the AppImage: they install it under `/opt/decanter` with a `decanter` command, a desktop entry and an icon. Updates come from new packages; self-update stays AppImage-only.
+- CI checks the workspace with Rust stable, beta and its minimum version (1.95), and starts every release build on Ubuntu 24.04 and 26.04 and in Ubuntu, Debian, Fedora and Arch Linux containers before publishing it.
 
 ## v0.3.0
 
