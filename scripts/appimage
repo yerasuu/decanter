@@ -99,7 +99,8 @@ ln -sf decanter.png "$app_dir/.DirIcon"
 
 if [[ ! -f "$runtime_cache" ]] || ! echo "$runtime_sha256  $runtime_cache" | sha256sum --check --status; then
     mkdir -p "$(dirname "$runtime_cache")"
-    curl --fail --location --silent --show-error --output "$runtime_cache" \
+    # Host curl: nix-shell's LD_LIBRARY_PATH would hand it nix's libdl/libpthread against the host libc.
+    env -u LD_LIBRARY_PATH curl --fail --location --silent --show-error --output "$runtime_cache" \
         "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-x86_64"
     echo "$runtime_sha256  $runtime_cache" | sha256sum --check --status \
         || { echo "AppImage runtime checksum mismatch" >&2; rm -f "$runtime_cache"; exit 1; }
