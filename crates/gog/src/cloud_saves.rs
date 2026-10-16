@@ -783,11 +783,18 @@ fn scan_dir(root: &Path, dir: &Path, out: &mut Vec<LocalFile>) -> Result<()> {
             }
             continue;
         }
-        let relative_path = path
-            .strip_prefix(root)
-            .expect("entry is always under the directory it was read from")
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative_path = match path.strip_prefix(root) {
+            Ok(relative) => relative,
+            Err(err) => {
+                return Err(anyhow::Error::new(err).context(format!(
+                    "{} is not under {}",
+                    path.display(),
+                    root.display()
+                )));
+            }
+        }
+        .to_string_lossy()
+        .replace('\\', "/");
         let metadata = match entry.metadata() {
             Ok(metadata) => metadata,
             Err(err) => return Err(err.into()),

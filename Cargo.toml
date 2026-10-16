@@ -130,4 +130,11 @@ match_like_matches_macro = "deny"
 match_same_arms = "deny"
 match_wild_err_arm = "deny"
 
+panic = "deny"
+expect_used = "deny"
+unwrap_used = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+
 empty_docs = "warn"

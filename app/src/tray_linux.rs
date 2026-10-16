@@ -49,7 +49,7 @@ impl Tray for DecanterTray {
     }
 
     fn icon_pixmap(&self) -> Vec<Icon> {
-        vec![decanter_icon()]
+        decanter_icon().into_iter().collect()
     }
 
     // Left click, where a host implements it — Plasma's own native SNI
@@ -93,10 +93,14 @@ impl Tray for DecanterTray {
 /// Decodes the bundled favicon into the raw ARGB32-network-byte-order
 /// pixel data `ksni::Icon` wants — `image`'s buffer is RGBA per pixel, so
 /// each 4 bytes gets reordered to A,R,G,B rather than reinterpreted.
-fn decanter_icon() -> Icon {
-    let image = image::load_from_memory(include_bytes!("../assets/favicon.ico"))
-        .expect("bundled favicon.ico decodes")
-        .into_rgba8();
+fn decanter_icon() -> Option<Icon> {
+    let image = match image::load_from_memory(include_bytes!("../assets/favicon.ico")) {
+        Ok(image) => image.into_rgba8(),
+        Err(err) => {
+            tracing::error!(error = %err, "bundled favicon.ico doesn't decode, tray shows no icon");
+            return None;
+        }
+    };
     let (width, height) = image.dimensions();
     let data = image
         .into_raw()
@@ -105,11 +109,11 @@ fn decanter_icon() -> Icon {
         .iter()
         .flat_map(|rgba| [rgba[3], rgba[0], rgba[1], rgba[2]])
         .collect();
-    Icon {
+    Some(Icon {
         width: width as i32,
         height: height as i32,
         data,
-    }
+    })
 }
 
 /// Starts the tray as its own background task, off GPUI's event

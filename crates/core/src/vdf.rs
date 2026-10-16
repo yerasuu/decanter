@@ -29,14 +29,8 @@
     reason = "most functions here cost more than the 512-byte threshold: a couple of String \
               locals plus a Result<Value, Error> already clears it"
 )]
-#![expect(
-    clippy::panic,
-    reason = "let_underscore_must_use demands proving the writeln! Result was looked at, and \
-              String's Write impl never actually fails, so the only proof is an unreachable panic"
-)]
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::str::Chars;
 
 /// One node: either a leaf string or a nested block.
@@ -284,23 +278,14 @@ fn write_value(out: &mut String, key: &str, value: &Value, depth: usize) {
     let indent = "\t".repeat(depth);
     match value {
         Value::String(string) => {
-            let Ok(()) = writeln!(out, "{indent}\"{}\"\t\t\"{}\"", escape(key), escape(string)) else {
-                panic!("write! to a String cannot fail")
-            };
+            out.extend([indent.as_str(), "\"", &escape(key), "\"\t\t\"", &escape(string), "\"\n"]);
         }
         Value::Block(block) => {
-            let Ok(()) = writeln!(out, "{indent}\"{}\"", escape(key)) else {
-                panic!("write! to a String cannot fail")
-            };
-            let Ok(()) = writeln!(out, "{indent}{{") else {
-                panic!("write! to a String cannot fail")
-            };
+            out.extend([indent.as_str(), "\"", &escape(key), "\"\n", &indent, "{\n"]);
             for (child_key, child) in block {
                 write_value(out, child_key, child, depth.saturating_add(1));
             }
-            let Ok(()) = writeln!(out, "{indent}}}") else {
-                panic!("write! to a String cannot fail")
-            };
+            out.extend([indent.as_str(), "}\n"]);
         }
     }
 }

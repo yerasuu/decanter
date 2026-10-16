@@ -71,29 +71,26 @@ pub fn sync(steam_root: &Path, user_id: &str, spec: &ShortcutSpec<'_>, artwork: 
     place_grid_image(steam_root, user_id, grid_id, "p", artwork.portrait.as_deref())?;
     place_grid_image(steam_root, user_id, grid_id, "_hero", artwork.hero.as_deref())?;
 
-    let mut entry = Value::map();
-    entry.push("appid", appid);
-    entry.push("AppName", spec.name);
-    entry.push("Exe", exe_field);
-    entry.push("StartDir", start_dir_field);
-    entry.push(
-        "icon",
-        icon_dest.map_or_else(String::new, |path| path.to_string_lossy().into_owned()),
-    );
-    entry.push("ShortcutPath", "");
-    entry.push("LaunchOptions", "");
-    entry.push("IsHidden", 0);
-    entry.push("AllowDesktopConfig", 1);
-    entry.push("AllowOverlay", 1);
-    entry.push("OpenVR", 0);
-    entry.push("Devkit", 0);
-    entry.push("DevkitGameID", "");
-    entry.push("DevkitOverrideAppID", 0);
-    entry.push("LastPlayTime", 0);
-    entry.push("FlatpakAppID", "");
-    let mut tags = Value::map();
-    tags.push("0", TAG);
-    entry.push("tags", tags);
+    let icon = icon_dest.map_or_else(String::new, |path| path.to_string_lossy().into_owned());
+    let entry = Value::map([
+        ("appid", appid.into()),
+        ("AppName", spec.name.into()),
+        ("Exe", exe_field.into()),
+        ("StartDir", start_dir_field.into()),
+        ("icon", icon.into()),
+        ("ShortcutPath", "".into()),
+        ("LaunchOptions", "".into()),
+        ("IsHidden", 0.into()),
+        ("AllowDesktopConfig", 1.into()),
+        ("AllowOverlay", 1.into()),
+        ("OpenVR", 0.into()),
+        ("Devkit", 0.into()),
+        ("DevkitGameID", "".into()),
+        ("DevkitOverrideAppID", 0.into()),
+        ("LastPlayTime", 0.into()),
+        ("FlatpakAppID", "".into()),
+        ("tags", Value::map([("0", TAG.into())])),
+    ]);
 
     let path = resolve_write_target(steam_root, user_id)?;
     let mut root = read_shortcuts(&path)?;
@@ -207,7 +204,7 @@ fn quote(value: &str) -> String {
 fn read_shortcuts(path: &Path) -> io::Result<Value> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Value::map()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Value::Map(Vec::new())),
         Err(err) => return Err(err),
     };
     let (_root_key, root) = binary_vdf::decode(&bytes).map_err(|err| {

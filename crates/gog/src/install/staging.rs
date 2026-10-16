@@ -58,9 +58,11 @@ pub(super) async fn move_into_library(staging: &Path, destination_root: &Path) -
                 continue;
             }
 
-            let relative = source
-                .strip_prefix(staging)
-                .expect("walked paths are always under the staging root");
+            let relative = crate::achv_try!(source.strip_prefix(staging).with_context(|| format!(
+                "{} is not under staging {}",
+                source.display(),
+                staging.display()
+            )));
             let destination = destination_root.join(relative);
 
             if let Some(parent) = destination.parent() {

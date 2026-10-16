@@ -44,22 +44,8 @@ pub enum Value {
 impl Value {
     #[must_use]
     #[inline]
-    pub const fn map() -> Self {
-        Self::Map(Vec::new())
-    }
-
-    /// Appends `(key, value)`.
-    ///
-    /// # Panics
-    /// Panics if called on a leaf — every call site in this crate builds
-    /// a `Value::map()` first, so this can only happen from a programming
-    /// error, not from data.
-    #[inline]
-    pub fn push(&mut self, key: impl Into<String>, value: impl Into<Self>) {
-        match self {
-            Self::Map(entries) => entries.push((key.into(), value.into())),
-            Self::Str(_) | Self::Int(_) => panic!("Value::push called on a leaf, not a map"),
-        }
+    pub fn map<K: Into<String>>(entries: impl IntoIterator<Item = (K, Self)>) -> Self {
+        Self::Map(entries.into_iter().map(|(key, value)| (key.into(), value)).collect())
     }
 
     #[must_use]

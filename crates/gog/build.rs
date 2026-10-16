@@ -11,6 +11,12 @@
 //! failing the build outright when it's missing beats silently shipping
 //! decanter without the achievement hook and finding out at runtime.
 
+#![expect(
+    clippy::panic,
+    clippy::expect_used,
+    reason = "a panic is how a build script fails the build; it never runs in the shipped binary"
+)]
+
 use std::path::PathBuf;
 use std::process::Command;
 
