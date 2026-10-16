@@ -20,6 +20,7 @@ use super::mods::ModsView;
 use super::{art_url, display_title, platform_label, status_text};
 use crate::state::{JobKey, Ps};
 use crate::theme;
+use crate::views::game_tools::GameToolsPanel;
 use crate::views::ps::log::LogView;
 use crate::widgets::{ButtonKind, button, hero_stat, tooltip};
 
@@ -84,6 +85,8 @@ pub struct DetailView {
     learned: Option<FrameOverlap>,
     learned_read_at: Option<u32>,
     learned_error: Option<String>,
+    /// `selected`'s own tool choices, made again for each game picked.
+    tools: Option<Entity<GameToolsPanel>>,
 }
 
 impl DetailView {
@@ -106,6 +109,7 @@ impl DetailView {
             learned: None,
             learned_read_at: None,
             learned_error: None,
+            tools: None,
         }
     }
 
@@ -122,6 +126,14 @@ impl DetailView {
     }
 
     pub fn select(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        let key = self
+            .ps
+            .read(cx)
+            .entries()
+            .iter()
+            .find(|entry| entry.game.dir == dir)
+            .map(|entry| entry.game.key());
+        self.tools = key.map(|key| cx.new(|_| GameToolsPanel::new(key)));
         self.selected = Some(dir);
         self.tab = Tab::Overview;
         self.controls = None;
@@ -473,6 +485,7 @@ impl DetailView {
                     .child(fact(t!("ps.detail.facts.version"), game.version.clone()))
                     .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string())),
             )
+            .children(entry.port.and(self.tools.clone()))
             .into_any_element()
     }
 }

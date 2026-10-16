@@ -67,7 +67,16 @@ impl Ps {
                 ),
             };
             let command = match command {
-                Ok(command) => process::in_own_scope(command, &game.key(), &game.title),
+                Ok(mut command) => {
+                    let key = game.key();
+                    let mangohud = crate::core::db()
+                        .ok()
+                        .and_then(|db| crate::game_tools::mangohud(&db, &key));
+                    if let Some(autostart_log) = mangohud {
+                        command.envs(crate::game_tools::mangohud_env(&key, root.library(), autostart_log).await);
+                    }
+                    process::in_own_scope(command, &key, &game.title)
+                }
                 Err(err) => {
                     let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
                     return notify(&this, err, true, cx);

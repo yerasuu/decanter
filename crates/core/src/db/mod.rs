@@ -8,6 +8,7 @@
 
 mod achievements;
 mod favorites;
+mod game_options;
 mod games;
 mod playtime;
 mod settings;
@@ -152,6 +153,13 @@ CREATE TABLE IF NOT EXISTS steam_shortcuts (
     product_id  TEXT NOT NULL,
     appid       INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS game_options (
+    game_key  TEXT NOT NULL,
+    option    TEXT NOT NULL,
+    enabled   INTEGER NOT NULL,
+    PRIMARY KEY (game_key, option)
 );
 
 DROP TABLE IF EXISTS ps_scan_dirs;

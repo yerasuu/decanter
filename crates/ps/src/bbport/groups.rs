@@ -480,7 +480,6 @@ pub const GROUPS: &[Group] = &[
         title: "ps.graphics.groups.development",
         note: None,
         settings: &[
-            toggle("mangohud", "ps.graphics.mangohud.label", None, Store::Launcher, false),
             toggle(
                 "save_log",
                 "ps.graphics.save_log.label",

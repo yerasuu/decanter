@@ -5,11 +5,12 @@
 use std::rc::Rc;
 
 use decanter_core::InstalledGame;
-use gpui::{Context, SharedString, Window, prelude::*};
+use gpui::{Context, Entity, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
 use crate::theme;
+use crate::views::game_tools::GameToolsPanel;
 use crate::widgets::{ButtonKind, Select, button, tooltip};
 
 pub(super) struct CompatibilityTab {
@@ -19,11 +20,14 @@ pub(super) struct CompatibilityTab {
     created: bool,
     busy: bool,
     error: String,
+    tools: Entity<GameToolsPanel>,
 }
 
 impl CompatibilityTab {
-    pub(super) fn new(target: Rc<Target>) -> Self {
+    pub(super) fn new(target: Rc<Target>, cx: &mut Context<Self>) -> Self {
+        let key = crate::taskbar::key(target.storefront, &target.product_id);
         let mut this = Self {
+            tools: cx.new(|_| GameToolsPanel::new(key)),
             target,
             installed: None,
             runners: Vec::new(),
@@ -141,6 +145,7 @@ impl Render for CompatibilityTab {
             )))
             .child(field_row().child(proton).child(reset))
             .children(error_line(&self.error))
+            .child(self.tools.clone())
     }
 }
 

@@ -194,7 +194,7 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
         Tab::Betas => cx.new(|cx| releases::BetasTab::new(target, cx)).into(),
         Tab::Versions => cx.new(|cx| releases::VersionsTab::new(target, cx)).into(),
-        Tab::Compatibility => cx.new(|_| compatibility::CompatibilityTab::new(target)).into(),
+        Tab::Compatibility => cx.new(|cx| compatibility::CompatibilityTab::new(target, cx)).into(),
     }
 }
 

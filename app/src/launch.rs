@@ -73,7 +73,23 @@ pub async fn start(
         (_, None) => Launch::new(executable, crate::external::UMU_ID),
     };
     launch.proton = crate::core::proton_for(&game);
-    launch.identity = Some((crate::taskbar::key(game.storefront, &game.game_id), game.name.clone()));
+    let key = crate::taskbar::key(game.storefront, &game.game_id);
+    let mangohud = crate::core::db()
+        .ok()
+        .and_then(|db| crate::game_tools::mangohud(&db, &key));
+    if let Some(autostart_log) = mangohud {
+        match crate::core::library_for_account(&account_id) {
+            Ok(library) => launch.env.extend(
+                crate::game_tools::mangohud_env(&key, library.root(), autostart_log)
+                    .await
+                    .map(|(name, value)| (name.to_owned(), value)),
+            ),
+            Err(err) => {
+                tracing::warn!(game_id = %game.game_id, %err, "no library to log MangoHud to, starting without it")
+            }
+        }
+    }
+    launch.identity = Some((key, game.name.clone()));
 
     // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL
     // to patch) reads both of these itself; setting them here is what

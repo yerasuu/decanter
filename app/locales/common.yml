@@ -17,6 +17,27 @@ common.running:
 common.unavailable_here:
   es: No disponible en este sistema
   en: Not available on this system
+game_tools.title:
+  es: Herramientas de juego
+  en: Game tools
+game_tools.intro:
+  es: Se aplican la próxima vez que inicies el juego.
+  en: They apply the next time you start the game.
+game_tools.default_on:
+  es: Según el ajuste general (activado)
+  en: As in Settings (on)
+game_tools.default_off:
+  es: Según el ajuste general (desactivado)
+  en: As in Settings (off)
+game_tools.on:
+  es: Activado
+  en: On
+game_tools.off:
+  es: Desactivado
+  en: Off
+game_tools.mangohud_missing:
+  es: MangoHud no está instalado (no se encontró su capa Vulkan).
+  en: MangoHud isn't installed (its Vulkan layer wasn't found).
 common.pick_profile:
   es: Elige un perfil arriba.
   en: Pick a profile above.

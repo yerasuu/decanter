@@ -27,4 +27,5 @@ doc-valid-idents = [
     "Proton", "Proton's",
     "Wine", "Wine's",
     "GamesDB", "GamesDB's",
+    "MangoHud", "MangoHud's",
 ]

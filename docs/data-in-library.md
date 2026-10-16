@@ -16,6 +16,9 @@ implemented.
   bundles, toolchain with nix-portable, settings, mods, profiles, layouts,
   run logs).
 - Per-game desktop entries and icons: `<root>/decanter/{desktop,icons}`.
+- MangoHud's performance logs: `<root>/decanter/logs/mangohud/` (its
+  `output_folder`); the per-game tool choices are rows of the database's
+  `game_options`.
 
 ## Still outside, to move in
 

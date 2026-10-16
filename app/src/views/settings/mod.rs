@@ -8,6 +8,7 @@
 
 mod account;
 mod compatibility;
+mod game_tools;
 mod general;
 
 use std::borrow::Cow;

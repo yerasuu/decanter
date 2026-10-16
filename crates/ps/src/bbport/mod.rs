@@ -367,9 +367,6 @@ impl Bbport {
                 command.env(var(suffix), value);
             }
         }
-        if settings.flag("mangohud", false) {
-            command.env("MANGOHUD", "1");
-        }
         for (key, suffix) in [
             ("frame_stats", "FRAME_STATS"),
             ("save_log", "SAVE_LOG"),

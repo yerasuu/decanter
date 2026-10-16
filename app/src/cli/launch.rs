@@ -57,7 +57,15 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     // launch (seen firsthand: exit code 3, "Prefix has an invalid
     // version?!").
     launch.proton = crate::core::proton_for(&game);
-    launch.identity = Some((crate::taskbar::key(game.storefront, &game.game_id), game.name.clone()));
+    let key = crate::taskbar::key(game.storefront, &game.game_id);
+    if let Some(autostart_log) = crate::game_tools::mangohud(db, &key) {
+        launch.env.extend(
+            crate::game_tools::mangohud_env(&key, library.root(), autostart_log)
+                .await
+                .map(|(name, value)| (name.to_owned(), value)),
+        );
+    }
+    launch.identity = Some((key, game.name.clone()));
 
     let achievement_log = decanter_gog::hook::achievement_log_path(&prefix);
     launch

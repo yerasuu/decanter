@@ -106,6 +106,7 @@ mod core;
 mod desktop;
 mod external;
 mod format;
+mod game_tools;
 mod i18n;
 mod launch;
 mod logs;

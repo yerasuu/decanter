@@ -1268,9 +1268,6 @@ ps.graphics.preupload.options.off:
 ps.graphics.groups.development:
   es: Desarrollo
   en: Development
-ps.graphics.mangohud.label:
-  es: MangoHud
-  en: MangoHud
 ps.graphics.save_log.label:
   es: Guardar registro y estadísticas en archivo
   en: Save log and stats to a file

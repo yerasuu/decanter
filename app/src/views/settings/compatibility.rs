@@ -6,9 +6,10 @@
 
 use std::borrow::Cow;
 
-use gpui::{Context, Div, IntoElement, SharedString, Window, prelude::*};
+use gpui::{Context, Div, Entity, IntoElement, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
+use super::game_tools::GameToolDefaults;
 use super::{column, field_row, inline};
 use crate::releases::{self, Release, ReleaseError};
 use crate::theme;
@@ -29,11 +30,13 @@ pub struct CompatibilityTab {
     current: Option<String>,
     checking: bool,
     tools: Option<ToolChecks>,
+    game_tools: Entity<GameToolDefaults>,
 }
 
 impl CompatibilityTab {
-    pub fn new(_: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         let mut this = Self {
+            game_tools: cx.new(|_| GameToolDefaults::new()),
             runners: Vec::new(),
             current: None,
             checking: false,
@@ -255,6 +258,7 @@ impl Render for CompatibilityTab {
             .when(self.runners.is_empty(), |column| {
                 column.child(theme::muted(t!("settings.compatibility.none_installed")))
             })
+            .child(self.game_tools.clone())
             .child(self.tools_section(cx))
     }
 }

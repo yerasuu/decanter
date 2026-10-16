@@ -167,6 +167,21 @@ settings.compatibility.automatic:
 settings.compatibility.none_installed:
   es: No hay Proton instalado en Steam (compatibilitytools.d). umu descargará uno la primera vez.
   en: No Proton is installed in Steam (compatibilitytools.d). umu will download one the first time.
+settings.compatibility.game_tools.title:
+  es: Herramientas de juego
+  en: Game tools
+settings.compatibility.game_tools.intro:
+  es: Se aplican a los juegos de PC y de PS que no tienen una elección propia; cada juego puede cambiarla en sus Propiedades (PC) o en su Resumen (PS).
+  en: They apply to PC and PS games without a choice of their own; each game can change it in its Properties (PC) or its Overview (PS).
+settings.compatibility.game_tools.mangohud:
+  es: Mostrar MangoHud (FPS, tiempos de fotograma, uso de CPU y GPU)
+  en: Show MangoHud (FPS, frame times, CPU and GPU usage)
+settings.compatibility.game_tools.mangohud_log:
+  es: Registrar el rendimiento desde el inicio de cada partida con MangoHud
+  en: Log performance from the start of every MangoHud run
+settings.compatibility.game_tools.mangohud_log_hint:
+  es: Los registros se guardan en decanter/logs/mangohud dentro de la biblioteca. Sin esta opción, empiezan y terminan con el atajo de MangoHud (Mayús izquierda + F2).
+  en: Logs are saved in decanter/logs/mangohud inside the library. Without this option, they start and stop with MangoHud's shortcut (Left Shift + F2).
 settings.general.updates.title:
   es: Actualizaciones
   en: Updates

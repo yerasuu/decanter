@@ -3,6 +3,7 @@
 mod chrome;
 mod downloads;
 pub mod external;
+mod game_tools;
 pub mod library;
 mod profile_form;
 mod ps;
