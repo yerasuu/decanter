@@ -2,6 +2,12 @@
 
 Grouped by area. Each version's technical record is in `tag-changelog/vX.Y.Z.md`.
 
+## v0.3.1
+
+### toolchain
+
+- The release AppImage is published again: the build script's download no longer breaks on the CI runner. v0.3.0 was never published as a GitHub Release, so this release carries its changes.
+
 ## v0.3.0
 
 ### Breaking
