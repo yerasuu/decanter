@@ -30,3 +30,7 @@ pub use scope::{application_id, game_key, own_scope};
 
 /// How logs name this build: the workspace version and the commit it was built from.
 pub const BUILD: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("DECANTER_COMMIT"), ")");
+
+/// This version's tag notes. Including them makes the build fail while `tag-changelog/v<version>.md` is missing, so a
+/// version bump can't land without its notes.
+pub const RELEASE_NOTES: &str = include_str!(concat!("../../../tag-changelog/v", env!("CARGO_PKG_VERSION"), ".md"));
