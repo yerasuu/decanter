@@ -1,4 +1,4 @@
-//! Cross-compiles `crates/hook` into `Galaxy64.dll` and hands the result
+//! Builds `crates/hook` into `Galaxy64.dll` and hands the result
 //! to `steam_export`/`install` (well, not yet -- see that module) as
 //! `env!("GALAXY64_DLL_PATH")`, embedded via `include_bytes!`.
 //!
@@ -6,7 +6,7 @@
 //! compiles a Windows cdylib, which the main workspace's lints and
 //! `Cargo.lock` don't fit) rather than a dependency here, so this shells
 //! out to a nested `cargo build` instead of a normal Rust build-dependency.
-//! Gated on the project's own dev shell providing a real cross linker
+//! Cross-compiling from Linux is gated on the dev shell providing a real linker
 //! (see `shell.nix`'s `CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER`) --
 //! failing the build outright when it's missing beats silently shipping
 //! decanter without the achievement hook and finding out at runtime.
@@ -17,15 +17,23 @@
     reason = "a panic is how a build script fails the build; it never runs in the shipped binary"
 )]
 
+use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
-    // The hook only ships where games run under Proton; `src/hook.rs`
-    // leaves it out of other targets rather than cross-compiling for them.
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
-        return;
-    }
+    // Games are x86_64 Windows programs, under Proton on Linux and natively
+    // on Windows; `src/hook.rs` leaves the hook out of every other target.
+    // A Windows build reuses its own target so a native MSVC host needs no
+    // second toolchain.
+    let hook_target = match (
+        env::var("CARGO_CFG_TARGET_OS").as_deref(),
+        env::var("CARGO_CFG_TARGET_ARCH").as_deref(),
+    ) {
+        (Ok("linux"), _) => "x86_64-pc-windows-gnu".to_owned(),
+        (Ok("windows"), Ok("x86_64")) => env::var("TARGET").expect("cargo always sets TARGET for a build script"),
+        _ => return,
+    };
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let hook_dir = manifest_dir.join("../hook");
     let hook_manifest = hook_dir.join("Cargo.toml");
@@ -37,14 +45,14 @@ fn main() {
     println!("cargo::rerun-if-changed={}", hook_manifest.display());
     println!("cargo::rerun-if-env-changed=CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER");
 
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("cargo always sets OUT_DIR for a build script"));
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("cargo always sets OUT_DIR for a build script"));
     let hook_target_dir = out_dir.join("hook-target");
 
     let status = Command::new(env!("CARGO"))
         .arg("build")
         .arg("--release")
         .arg("--target")
-        .arg("x86_64-pc-windows-gnu")
+        .arg(&hook_target)
         .arg("--manifest-path")
         .arg(&hook_manifest)
         .arg("--target-dir")
@@ -65,17 +73,17 @@ fn main() {
         .unwrap_or_else(|err| {
             panic!(
                 "could not run `cargo build` for crates/hook ({err}) -- \
-                 the achievement hook needs a Windows cross target; see shell.nix"
+                 the achievement hook needs the {hook_target} target; see shell.nix"
             )
         });
     if !status.success() {
         panic!(
-            "cross-compiling crates/hook into Galaxy64.dll failed ({status}) -- \
-             is CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER set? see shell.nix"
+            "building crates/hook into Galaxy64.dll for {hook_target} failed ({status}) -- \
+             cross-compiling needs CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER; see shell.nix"
         );
     }
 
-    let dll_path: PathBuf = hook_target_dir.join("x86_64-pc-windows-gnu/release/Galaxy64.dll");
+    let dll_path = hook_target_dir.join(&hook_target).join("release").join("Galaxy64.dll");
     assert!(
         dll_path.is_file(),
         "crates/hook built successfully but {} is missing",

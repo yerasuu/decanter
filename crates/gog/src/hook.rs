@@ -3,10 +3,12 @@
 //! for why it exists at all) into an installed game, and reading back
 //! what it recorded after a session.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use decanter_core::{Db, HookDiagnostic, Storefront};
+#[cfg(windows)]
+use decanter_core::{Library, bootstrap};
 
 /// The proxy DLL, cross-compiled from `crates/hook` by this crate's own
 /// `build.rs`. Embedded rather than fetched: it's decanter's own small
@@ -14,11 +16,11 @@ use decanter_core::{Db, HookDiagnostic, Storefront};
 /// worth keeping independently up to date the way `decanter-runtime`
 /// fetches `umu-run`.
 ///
-/// Built only for Linux, where games run under Proton: elsewhere installs
-/// leave a game's own `Galaxy64.dll` in place.
-#[cfg(target_os = "linux")]
+/// Built where games run: Linux, under Proton, and `x86_64` Windows, natively.
+/// Elsewhere installs leave a game's own `Galaxy64.dll` in place.
+#[cfg(any(target_os = "linux", all(windows, target_arch = "x86_64")))]
 static GALAXY64_DLL: Option<&[u8]> = Some(include_bytes!(env!("GALAXY64_DLL_PATH")));
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", all(windows, target_arch = "x86_64"))))]
 static GALAXY64_DLL: Option<&[u8]> = None;
 
 /// What `decanter-hook` renames the real DLL to before dropping its own
@@ -86,8 +88,30 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
 /// already isn't.
 #[cfg(not(windows))]
 #[must_use]
-pub fn achievement_log_path(prefix: &decanter_runtime::Prefix) -> std::path::PathBuf {
+pub fn achievement_log_path(prefix: &decanter_runtime::Prefix) -> PathBuf {
     prefix.path().join("decanter-hook.jsonl")
+}
+
+/// Where decanter tells a running game's hook to write its own log on
+/// Windows.
+///
+/// There is no prefix there, so it goes in decanter's folder in the
+/// library, one file per account and game since the install directory is
+/// shared across accounts. `None` for ids that can't be part of a file name.
+#[cfg(windows)]
+#[must_use]
+#[inline]
+pub fn achievement_log_path(library: &Library, account_id: &str, product_id: &str) -> Option<PathBuf> {
+    let is_plain_id = |id: &str| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric());
+    if !is_plain_id(account_id) || !is_plain_id(product_id) {
+        tracing::warn!(
+            account_id,
+            product_id,
+            "ids unusable in a file name, no achievement hook log"
+        );
+        return None;
+    }
+    Some(bootstrap::library_data_dir(library.root()).join(format!("decanter-hook-{account_id}-{product_id}.jsonl")))
 }
 
 /// Applies whatever `path` accumulated during one session: every unlock

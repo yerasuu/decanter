@@ -32,20 +32,13 @@ type ImportsKey = (PathBuf, u64, Option<SystemTime>);
 /// A launch resolved before anything is synced or spawned.
 pub(super) struct Planned {
     launch: Launch,
-    /// Always `None`: decanter-hook isn't deployed here (see `plan`).
+    /// Where decanter-hook writes this session's unlocks; GOG games only.
     pub(super) achievement_log: Option<PathBuf>,
     /// Header lines for the run's log.
     pub(super) facts: Vec<(&'static str, String)>,
 }
 
 pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) -> Option<Planned> {
-    if game.storefront == decanter_core::Storefront::Gog {
-        // decanter-hook stands in for GOG Galaxy under Wine; here the game's
-        // own Galaxy64.dll stays in place, so unlocks reach GOG only through
-        // the Galaxy client, and decanter learns of them from the poll after
-        // the session.
-        tracing::warn!(game_id = %game.game_id, "achievement hook not deployed on this system, local unlocks are not recorded");
-    }
     // The executable's own folder, which is where most games load their
     // data from by relative path.
     let Some(working_directory) = executable.parent().map(Path::to_path_buf) else {
@@ -60,11 +53,35 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
     let mut launch = Launch::new(executable, session_key(account_id, &game.game_id));
     launch.working_directory = Some(working_directory);
     launch.capture_output = true;
+    let achievement_log = (game.storefront == decanter_core::Storefront::Gog)
+        .then(|| achievement_log(account_id, game, &mut launch))
+        .flatten();
     Some(Planned {
         launch,
-        achievement_log: None,
+        achievement_log,
         facts,
     })
+}
+
+/// Tells decanter-hook where to write and which product it records for, as
+/// the Proton backend does; without a library to put the log in, the session
+/// still runs and only the post-session poll reports unlocks.
+fn achievement_log(account_id: &str, game: &InstalledGame, launch: &mut Launch) -> Option<PathBuf> {
+    let library = match crate::core::library_for_account(account_id) {
+        Ok(library) => library,
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "no library for the achievement hook log");
+            return None;
+        }
+    };
+    let path = decanter_gog::hook::achievement_log_path(&library, account_id, &game.game_id)?;
+    launch
+        .env
+        .push(("DECANTER_PRODUCT_ID".to_owned(), game.game_id.clone()));
+    launch
+        .env
+        .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), path.display().to_string()));
+    Some(path)
 }
 
 impl Planned {

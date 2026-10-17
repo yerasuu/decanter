@@ -62,6 +62,11 @@ fn append(line: &str) {
     let Some(path) = log_path() else {
         return;
     };
+    // decanter's folder in a library it hasn't used yet may not exist; the
+    // first line of a session would otherwise be lost, and every one after.
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
         return;
     };

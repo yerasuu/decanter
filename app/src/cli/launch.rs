@@ -114,16 +114,26 @@ async fn start(
         .map(|session| (session, Some(achievement_log)))
 }
 
-/// Starts `game`'s executable from its own folder. No hook log: decanter-hook
-/// isn't deployed on Windows.
+/// Starts `game`'s executable from its own folder, with decanter-hook told
+/// where to write; the session and that log.
 #[cfg(windows)]
 fn start(
     _: &decanter_core::Db,
-    _: &Library,
+    library: &Library,
     game: &InstalledGame,
     executable: PathBuf,
 ) -> core::future::Ready<anyhow::Result<(Session, Option<PathBuf>)>> {
-    let key = format!("{}/{}", game.account_id, game.game_id);
-    let started = decanter_runtime::start(Launch::new(executable, key)).context("launching program");
-    core::future::ready(started.map(|session| (session, None)))
+    let (account_id, product_id) = (game.account_id.as_str(), game.game_id.as_str());
+    let mut launch = Launch::new(executable, format!("{account_id}/{product_id}"));
+    let achievement_log = decanter_gog::hook::achievement_log_path(library, account_id, product_id);
+    if let Some(path) = &achievement_log {
+        launch
+            .env
+            .push(("DECANTER_PRODUCT_ID".to_owned(), product_id.to_owned()));
+        launch
+            .env
+            .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), path.display().to_string()));
+    }
+    let started = decanter_runtime::start(launch).context("launching program");
+    core::future::ready(started.map(|session| (session, achievement_log)))
 }

@@ -180,10 +180,10 @@ async fn spawn(
 }
 
 /// Folds in whatever decanter-hook recorded this session: a locally
-/// witnessed achievement unlock GOG's own servers never hear about under
-/// Wine, and any failure to install its vtable patch in the first place.
-/// Without a hook log (a game run natively) only the poll runs, which is
-/// how decanter hears of what the game's own Galaxy integration unlocked.
+/// witnessed achievement unlock GOG's own servers never hear about without
+/// a Galaxy client, and any failure to install its vtable patch in the
+/// first place. The poll runs either way, which is how decanter hears of
+/// what a running Galaxy client reported for the game.
 /// Runs after [`record_last_played`], not before: neither ordering
 /// matters to the other, so this just goes last as the newest addition.
 ///

@@ -18,7 +18,8 @@ login, browsing the library and achievements. Platform differences are
   playing (Proton through `umu-run`), per-game Proton and prefixes, the
   tray, closing a game from a pad or shortcut, Steam export.
 - Hidden or skipped: the PS section, desktop entries for the task bar,
-  systemd scopes, and the Galaxy64 hook (not built, not deployed).
+  systemd scopes, and the Galaxy64 hook (not built, not deployed; see
+  phase 2).
 
 Next: native launching on Windows (Job Objects instead of scopes, the hook
 DLL built natively), a tray, and macOS launching (no Proton there).
@@ -40,9 +41,10 @@ after a few seconds if it won't.
 - Cloud save locations resolve against the user's own folders
   (`save_location::UserFolders::native`) instead of a prefix's
   `steamuser`.
-- The Galaxy64 hook stays undeployed: unlocks reach GOG through the game's
-  own Galaxy integration, and decanter polls achievements after each
-  session. Each GOG launch logs that the hook is absent.
+- The Galaxy64 hook is built for the Windows target itself and deployed
+  next to the game as on Linux (2026-10-17): unlocks are recorded locally
+  without the Galaxy client, in `decanter/decanter-hook-<account>-<game>.jsonl`
+  in the library, and decanter still polls achievements after each session.
 - Not yet: a process that detaches from the one decanter started (a
   launcher re-executing the game) ends the session early; Job Objects
   would follow it. No DirectX DLL drop-ins yet.
