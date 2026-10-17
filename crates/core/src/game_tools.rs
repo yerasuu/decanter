@@ -7,6 +7,9 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use crate::capabilities::Feature;
+use crate::platform;
+
 /// One tool a game can be started with. Its [`GameTool::key`] names both
 /// the library-wide default in `settings` and the per-game rows in
 /// `game_options`.
@@ -38,7 +41,7 @@ impl GameTool {
 #[must_use]
 #[inline]
 pub fn mangohud_installed() -> bool {
-    cfg!(target_os = "linux")
+    platform::support(Feature::MangoHud).is_offered()
         && implicit_layer_dirs().any(|dir| {
             std::fs::read_dir(dir).is_ok_and(|entries| {
                 entries.flatten().any(|entry| {
@@ -135,7 +138,7 @@ const GAMEMODE_SERVICE: &str = "com.feralinteractive.GameMode.service";
 #[must_use]
 #[inline]
 pub fn gamemoded() -> Option<PathBuf> {
-    if !cfg!(target_os = "linux") {
+    if !platform::support(Feature::GameMode).is_offered() {
         return None;
     }
     let has_service = dirs::data_dir()

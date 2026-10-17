@@ -22,6 +22,12 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    println!("cargo::rustc-check-cfg=cfg(proton)");
+    println!("cargo::rustc-check-cfg=cfg(galaxy_hook)");
+    // The launch backend, named as in decanter-runtime's build script.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        println!("cargo::rustc-cfg=proton");
+    }
     // Games are x86_64 Windows programs, under Proton on Linux and natively
     // on Windows; `src/hook.rs` leaves the hook out of every other target.
     // A Windows build reuses its own target so a native MSVC host needs no
@@ -95,4 +101,5 @@ fn main() {
     // across a `cargo clean`, so the path is re-derived by decanter-gog's
     // own build every time rather than cached anywhere longer-lived.
     println!("cargo::rustc-env=GALAXY64_DLL_PATH={}", dll_path.display());
+    println!("cargo::rustc-cfg=galaxy_hook");
 }

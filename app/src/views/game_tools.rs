@@ -2,18 +2,18 @@
 //! on, or off — shown in a PC game's Compatibilidad and a PS game's Resumen.
 
 use decanter_core::GameTool;
+use decanter_core::capabilities::{Feature, Reason, Support};
 use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
+use crate::capabilities::Caps;
 use crate::theme;
 use crate::widgets::Select;
 
 pub struct GameToolsPanel {
     game_key: String,
     mangohud: Choice,
-    mangohud_installed: bool,
     gamemode: Choice,
-    gamemode_installed: bool,
     error: Option<String>,
 }
 
@@ -39,9 +39,7 @@ impl GameToolsPanel {
         let mut this = Self {
             game_key,
             mangohud: Choice::default(),
-            mangohud_installed: decanter_core::mangohud_installed(),
             gamemode: Choice::default(),
-            gamemode_installed: decanter_core::gamemoded().is_some(),
             error: None,
         };
         this.reload();
@@ -130,19 +128,21 @@ impl Render for GameToolsPanel {
             .flex_col()
             .child(theme::h2(t!("game_tools.title")))
             .child(theme::muted(t!("game_tools.intro")).mb_3());
-        if !cfg!(target_os = "linux") {
+        let caps = Caps::get(cx);
+        let not_here = |feature| matches!(caps.support(feature), Support::Unavailable(Reason::NotOnThisSystem));
+        if not_here(Feature::MangoHud) && not_here(Feature::GameMode) {
             return column.child(theme::muted(t!("common.unavailable_here")));
         }
-        let mangohud = if self.mangohud_installed {
-            Self::select("tool-mangohud", GameTool::MangoHud, &self.mangohud, cx).into_any_element()
-        } else {
-            theme::muted(t!("game_tools.mangohud_missing")).into_any_element()
-        };
-        let gamemode = if self.gamemode_installed {
-            Self::select("tool-gamemode", GameTool::GameMode, &self.gamemode, cx).into_any_element()
-        } else {
-            theme::muted(t!("game_tools.gamemode_missing")).into_any_element()
-        };
+        let mangohud = caps.gate_or(
+            Feature::MangoHud,
+            Self::select("tool-mangohud", GameTool::MangoHud, &self.mangohud, cx),
+            t!("game_tools.mangohud_missing"),
+        );
+        let gamemode = caps.gate_or(
+            Feature::GameMode,
+            Self::select("tool-gamemode", GameTool::GameMode, &self.gamemode, cx),
+            t!("game_tools.gamemode_missing"),
+        );
         column
             .child(line("MangoHud", mangohud))
             .child(line("GameMode", gamemode))

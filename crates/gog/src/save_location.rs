@@ -42,7 +42,7 @@ pub struct UserFolders {
 
 impl UserFolders {
     /// Wine's layout for `steamuser`, the account Proton runs every game as.
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     #[inline]
     #[must_use]
     pub fn in_prefix(drive_c: &Path) -> Self {
@@ -59,7 +59,7 @@ impl UserFolders {
     /// The signed-in user's own folders, where Windows says they are: a
     /// Documents folder the user moved is followed, not assumed. `None`
     /// when Windows can't name one of them.
-    #[cfg(windows)]
+    #[cfg(not(proton))]
     #[inline]
     #[must_use]
     pub fn native() -> Option<Self> {

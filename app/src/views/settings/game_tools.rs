@@ -2,18 +2,18 @@
 //! choice of its own (set in its Propiedades, or a PS game's Resumen).
 
 use decanter_core::GameTool;
+use decanter_core::capabilities::Feature;
 use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{column, field_row};
+use crate::capabilities::Caps;
 use crate::theme;
 use crate::widgets::checkbox;
 
 pub struct GameToolDefaults {
-    mangohud_installed: bool,
     mangohud: bool,
     mangohud_autostart_log: bool,
-    gamemode_installed: bool,
     gamemode: bool,
     error: Option<String>,
 }
@@ -21,10 +21,8 @@ pub struct GameToolDefaults {
 impl GameToolDefaults {
     pub fn new() -> Self {
         let mut this = Self {
-            mangohud_installed: decanter_core::mangohud_installed(),
             mangohud: false,
             mangohud_autostart_log: false,
-            gamemode_installed: decanter_core::gamemoded().is_some(),
             gamemode: false,
             error: None,
         };
@@ -111,39 +109,35 @@ impl Render for GameToolDefaults {
         let section = column()
             .child(theme::h2(t!("settings.compatibility.game_tools.title")))
             .child(theme::muted(t!("settings.compatibility.game_tools.intro")).mb_3());
-        let section = if self.mangohud_installed {
-            section
-                .child(Self::checkbox_row(
-                    "default-mangohud",
-                    self.mangohud,
-                    t!("settings.compatibility.game_tools.mangohud"),
-                    Self::set_mangohud,
-                    cx,
-                ))
-                .child(Self::checkbox_row(
-                    "mangohud-autostart-log",
-                    self.mangohud_autostart_log,
-                    t!("settings.compatibility.game_tools.mangohud_log"),
-                    Self::set_mangohud_autostart_log,
-                    cx,
-                ))
-                .child(theme::muted(t!("settings.compatibility.game_tools.mangohud_log_hint")))
-        } else {
-            section.child(theme::muted(t!("game_tools.mangohud_missing")))
-        };
-        let section = if self.gamemode_installed {
-            section
-                .child(Self::checkbox_row(
-                    "default-gamemode",
-                    self.gamemode,
-                    t!("settings.compatibility.game_tools.gamemode"),
-                    Self::set_gamemode,
-                    cx,
-                ))
-                .child(theme::muted(t!("settings.compatibility.game_tools.gamemode_hint")))
-        } else {
-            section.child(theme::muted(t!("game_tools.gamemode_missing")))
-        };
-        section.children(self.error.clone().map(theme::error))
+        let mangohud = column()
+            .child(Self::checkbox_row(
+                "default-mangohud",
+                self.mangohud,
+                t!("settings.compatibility.game_tools.mangohud"),
+                Self::set_mangohud,
+                cx,
+            ))
+            .child(Self::checkbox_row(
+                "mangohud-autostart-log",
+                self.mangohud_autostart_log,
+                t!("settings.compatibility.game_tools.mangohud_log"),
+                Self::set_mangohud_autostart_log,
+                cx,
+            ))
+            .child(theme::muted(t!("settings.compatibility.game_tools.mangohud_log_hint")));
+        let gamemode = column()
+            .child(Self::checkbox_row(
+                "default-gamemode",
+                self.gamemode,
+                t!("settings.compatibility.game_tools.gamemode"),
+                Self::set_gamemode,
+                cx,
+            ))
+            .child(theme::muted(t!("settings.compatibility.game_tools.gamemode_hint")));
+        let caps = Caps::get(cx);
+        section
+            .child(caps.gate_or(Feature::MangoHud, mangohud, t!("game_tools.mangohud_missing")))
+            .child(caps.gate_or(Feature::GameMode, gamemode, t!("game_tools.gamemode_missing")))
+            .children(self.error.clone().map(theme::error))
     }
 }

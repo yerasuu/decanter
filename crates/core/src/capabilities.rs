@@ -16,7 +16,7 @@
     reason = "features are grouped by what they belong to (games, desktop, PS, tools), not alphabetically"
 )]
 
-use crate::{platform, scope};
+use crate::{game_tools, platform, scope};
 
 /// A feature the UI shows or hides as a whole.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -115,6 +115,12 @@ impl Capabilities {
         };
         if scope::systemd_run().is_none() {
             capabilities.restrict(Feature::Scopes, Reason::NotOnThisSystem);
+        }
+        if !game_tools::mangohud_installed() {
+            capabilities.restrict(Feature::MangoHud, Reason::NeedsSetup("MangoHud"));
+        }
+        if game_tools::gamemoded().is_none() {
+            capabilities.restrict(Feature::GameMode, Reason::NeedsSetup("GameMode"));
         }
         capabilities
     }

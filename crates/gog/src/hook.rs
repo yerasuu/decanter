@@ -6,8 +6,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
+use decanter_core::capabilities::Feature;
+use decanter_core::platform;
 use decanter_core::{Db, HookDiagnostic, Storefront};
-#[cfg(windows)]
+#[cfg(not(proton))]
 use decanter_core::{Library, bootstrap};
 
 /// The proxy DLL, cross-compiled from `crates/hook` by this crate's own
@@ -16,11 +18,12 @@ use decanter_core::{Library, bootstrap};
 /// worth keeping independently up to date the way `decanter-runtime`
 /// fetches `umu-run`.
 ///
-/// Built where games run: Linux, under Proton, and `x86_64` Windows, natively.
-/// Elsewhere installs leave a game's own `Galaxy64.dll` in place.
-#[cfg(any(target_os = "linux", all(windows, target_arch = "x86_64")))]
+/// Built where games run (`cfg(galaxy_hook)`, set by `build.rs`): Linux,
+/// under Proton, and `x86_64` Windows, natively. Elsewhere installs leave a
+/// game's own `Galaxy64.dll` in place.
+#[cfg(galaxy_hook)]
 static GALAXY64_DLL: Option<&[u8]> = Some(include_bytes!(env!("GALAXY64_DLL_PATH")));
-#[cfg(not(any(target_os = "linux", all(windows, target_arch = "x86_64"))))]
+#[cfg(not(galaxy_hook))]
 static GALAXY64_DLL: Option<&[u8]> = None;
 
 /// What `decanter-hook` renames the real DLL to before dropping its own
@@ -55,8 +58,8 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
         return Ok(false);
     };
     let real_dll = install_root.join(relative);
-    let Some(proxy) = GALAXY64_DLL else {
-        tracing::info!(path = %real_dll.display(), "achievement hook not built for this system, not deploying it");
+    let (Some(proxy), true) = (GALAXY64_DLL, platform::support(Feature::GalaxyHook).is_offered()) else {
+        tracing::info!(path = %real_dll.display(), "no achievement hook on this system, not deploying it");
         return Ok(false);
     };
     let backup = real_dll.with_file_name(REAL_DLL_BACKUP);
@@ -86,7 +89,7 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
 /// shared across every account that owns the game (see
 /// `decanter_core::Library`'s own doc), but the prefix, and so this log,
 /// already isn't.
-#[cfg(not(windows))]
+#[cfg(proton)]
 #[must_use]
 pub fn achievement_log_path(prefix: &decanter_runtime::Prefix) -> PathBuf {
     prefix.path().join("decanter-hook.jsonl")
@@ -98,7 +101,7 @@ pub fn achievement_log_path(prefix: &decanter_runtime::Prefix) -> PathBuf {
 /// There is no prefix there, so it goes in decanter's folder in the
 /// library, one file per account and game since the install directory is
 /// shared across accounts. `None` for ids that can't be part of a file name.
-#[cfg(windows)]
+#[cfg(not(proton))]
 #[must_use]
 #[inline]
 pub fn achievement_log_path(library: &Library, account_id: &str, product_id: &str) -> Option<PathBuf> {
