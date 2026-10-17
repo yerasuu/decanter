@@ -232,6 +232,21 @@ no existing tag fits, and record it here.
 The comment, doc-comment, type-annotation, derive-count, `block_on` and `println!` rules above are
 review rules: nothing checks them automatically.
 
+## Recording work (mandatory)
+
+Everything done in a session is recorded on the board as it happens, in decanter and in psport
+alike: the user follows it live and it is the only record other sessions read. This is not
+optional and not a summary at the end.
+
+- Work that changes a repository, the user's files or settings gets its task *before* it starts
+  (`kb add --start`), also quick follow-ups after a question.
+- Each step lands as a comment when it happens: builds, test runs and their results, rebases and
+  how each conflict was resolved, integrations, cleanups, changes to the user's settings.
+- Every answer the user gives (in chat or to a question) is a decision: `kb add --decision`.
+  Every non-obvious finding is a note: `kb add --note`. Pasted logs analysed go on their tasks.
+- Before ending a turn, check that nothing done or decided in it is missing from the board.
+
+<!-- kanbrain:start -->
 ## Project memory: kanbrain
 
 This project's tasks, to-dos, decisions and notes live in `.brain/`, managed only with `kb`, kanbrain's CLI.
