@@ -83,7 +83,8 @@ impl Render for LogView {
             .bg(rgb(theme::BG_PANEL_3))
             .border_1()
             .border_color(rgb(theme::LINE))
-            .rounded(px(theme::RADIUS_SM))
+            .rounded(px(theme::RADIUS))
+            .overflow_hidden()
             .child(
                 div()
                     .flex()

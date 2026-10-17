@@ -337,20 +337,14 @@ impl KeyboardView {
         self.persist(true, cx);
     }
 
-    fn row(&self, action: Action, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn row(&self, action: Action, last: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let sources = self.mapping.get(action);
         let changed = sources != self.defaults.get(action);
         let editable = self.editable();
         let removable = editable && (self.target.allows_unbound() || sources.len() > 1);
         let capturing = self.capturing == Some(action);
-        div()
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_3()
+        theme::compact_row(last)
             .py(px(6.))
-            .border_b_1()
-            .border_color(rgb(theme::LINE))
             .when(capturing, |row| row.bg(rgb(theme::BG_PANEL_LIGHT)))
             .child(
                 div()
@@ -479,21 +473,20 @@ impl KeyboardView {
     fn groups(&self, cx: &mut Context<Self>) -> Div {
         let mut groups = div().flex().flex_col().gap_5();
         for (title, actions) in GROUPS {
-            groups = groups.child(
-                div().flex().flex_col().gap_2().child(theme::h3(t!(title))).child(
-                    div()
-                        .bg(rgb(theme::BG_PANEL_2))
-                        .border_1()
-                        .border_color(rgb(theme::LINE))
-                        .rounded(px(theme::RADIUS))
-                        .children(
-                            actions
-                                .iter()
-                                .filter(|&&action| self.target.supports(action))
-                                .map(|&action| self.row(action, cx)),
-                        ),
-                ),
-            );
+            groups = groups.child(div().flex().flex_col().gap_2().child(theme::h3(t!(title))).child({
+                let last = actions
+                    .iter()
+                    .filter(|&&action| self.target.supports(action))
+                    .count()
+                    .saturating_sub(1);
+                theme::card().children(
+                    actions
+                        .iter()
+                        .filter(|&&action| self.target.supports(action))
+                        .enumerate()
+                        .map(|(index, &action)| self.row(action, index == last, cx)),
+                )
+            }));
         }
         groups
     }
@@ -584,7 +577,7 @@ impl KeyboardView {
                     .bg(rgb(theme::BG_PANEL))
                     .border_1()
                     .border_color(rgb(theme::ACCENT_BLUE_DIM))
-                    .rounded(px(theme::RADIUS))
+                    .rounded(px(theme::RADIUS_LG))
                     .child(theme::h3(label(action)))
                     .child(
                         div()

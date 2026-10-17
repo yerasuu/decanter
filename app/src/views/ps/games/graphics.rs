@@ -217,6 +217,7 @@ impl GraphicsView {
                 .flex()
                 .items_center()
                 .justify_center()
+                .rounded(px(theme::RADIUS_SM))
                 .cursor_pointer()
                 .text_color(rgb(theme::TEXT_MUTED))
                 .hover(|arrow| arrow.text_color(rgb(theme::TEXT_BRIGHT)).bg(rgb(theme::BG_PANEL_LIGHT)))
@@ -318,13 +319,7 @@ impl GraphicsView {
 fn group(title: String, notes: Vec<String>, rows: Vec<(String, Option<String>, AnyElement)>) -> AnyElement {
     let count = rows.len();
     let rows = rows.into_iter().enumerate().map(|(index, (label, note, control))| {
-        div()
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_4()
-            .py_2()
-            .when(index + 1 < count, |row| row.border_b_1().border_color(rgb(theme::LINE)))
+        theme::compact_row(index + 1 == count)
             .child(
                 div()
                     .flex_1()

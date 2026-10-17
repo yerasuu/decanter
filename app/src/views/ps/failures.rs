@@ -99,7 +99,7 @@ impl FailuresView {
         .detach();
     }
 
-    fn row(&self, index: usize, failure: &Failure, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn row(&self, index: usize, failure: &Failure, last: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let key = (failure.time, failure.message.clone());
         let open = self.expanded.as_ref() == Some(&key);
         let color = match failure.kind {
@@ -126,16 +126,10 @@ impl FailuresView {
         div()
             .flex()
             .flex_col()
-            .border_b_1()
-            .border_color(rgb(theme::LINE))
+            .when(!last, |row| row.border_b_1().border_color(rgb(theme::LINE)))
             .child(
-                div()
+                theme::compact_row(true)
                     .id(("ps-failure", index))
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_4()
-                    .py_2()
                     .cursor_pointer()
                     .hover(|row| row.bg(rgb(theme::BG_PANEL)))
                     .child(kind_badge(failure.kind, color))
@@ -170,11 +164,12 @@ impl FailuresView {
 impl Render for FailuresView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let empty = self.records.is_empty();
+        let last = self.records.len().saturating_sub(1);
         let rows: Vec<_> = self
             .records
             .iter()
             .enumerate()
-            .map(|(index, failure)| self.row(index, failure, cx).into_any_element())
+            .map(|(index, failure)| self.row(index, failure, index == last, cx).into_any_element())
             .collect();
         let clear_label = if self.confirm_clear {
             t!("ps.failures.clear.confirm")
@@ -260,7 +255,7 @@ fn failure_details(
         .flex()
         .flex_col()
         .gap_2()
-        .px_4()
+        .px(px(18.))
         .pb_3()
         .children(calls)
         .child(
@@ -269,6 +264,7 @@ fn failure_details(
                 .bg(rgb(theme::BG_PANEL_3))
                 .border_1()
                 .border_color(rgb(theme::LINE))
+                .rounded(px(theme::RADIUS_SM))
                 .text_size(px(11.))
                 .children(output.into_iter().map(|line| div().child(line))),
         )

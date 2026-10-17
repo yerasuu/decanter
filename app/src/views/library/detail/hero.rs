@@ -1,11 +1,11 @@
 use decanter_core::{Game, Playtime, Storefront};
-use gpui::{Context, Div, FontWeight, ObjectFit, SharedString, Stateful, div, img, prelude::*, px, relative, rgb};
+use gpui::{Context, Div, ObjectFit, Stateful, div, img, prelude::*, px, relative, rgb};
 use rust_i18n::t;
 
 use super::DetailView;
 use crate::theme;
 use crate::views::library::{actions, data, fmt};
-use crate::widgets::{ButtonKind, button, tooltip};
+use crate::widgets::{ButtonKind, button, hero_stat, tooltip};
 
 pub(super) fn hero(
     game: &Game,
@@ -137,34 +137,4 @@ fn favorite_button(game: &Game, is_fav: bool, cx: &Context<DetailView>) -> State
             // also re-reads the star here, since this pane caches it.
             actions::bump_organisation(cx);
         }))
-}
-
-/// `.hero-stat`. The webview blurred what was behind it
-/// (`backdrop-filter`), which GPUI can't; a more opaque fill keeps the
-/// number readable over busy art instead.
-fn hero_stat(value: String, label: impl Into<SharedString>) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .bg(theme::alpha(theme::BG_DEEP, 0.85))
-        .px_4()
-        .py_2()
-        .rounded(px(theme::RADIUS))
-        .border_1()
-        .border_color(rgb(theme::LINE))
-        .child(
-            theme::mono()
-                .text_size(px(19.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgb(theme::TEXT_BRIGHT))
-                .child(value),
-        )
-        .child(
-            div()
-                .mt(px(2.))
-                .text_size(px(10.))
-                .text_color(rgb(theme::TEXT_MUTED))
-                .child(label.into()),
-        )
 }

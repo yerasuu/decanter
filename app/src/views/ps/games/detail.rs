@@ -21,7 +21,7 @@ use super::{art_url, display_title, platform_label, status_text};
 use crate::state::{JobKey, Ps};
 use crate::theme;
 use crate::views::ps::log::LogView;
-use crate::widgets::{ButtonKind, button, tooltip};
+use crate::widgets::{ButtonKind, button, hero_stat, tooltip};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -548,32 +548,4 @@ impl Render for DetailView {
             .child(div().px(px(32.)).pt(px(20.)).child(body))
             .into_any_element()
     }
-}
-
-/// `.hero-stat`, as Biblioteca draws it.
-fn hero_stat(value: String, label: Cow<'static, str>) -> gpui::Div {
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .bg(theme::alpha(theme::BG_DEEP, 0.85))
-        .px_4()
-        .py_2()
-        .rounded(px(theme::RADIUS))
-        .border_1()
-        .border_color(rgb(theme::LINE))
-        .child(
-            theme::mono()
-                .text_size(px(17.))
-                .font_weight(gpui::FontWeight::BOLD)
-                .text_color(rgb(theme::TEXT_BRIGHT))
-                .child(value),
-        )
-        .child(
-            div()
-                .mt(px(2.))
-                .text_size(px(10.))
-                .text_color(rgb(theme::TEXT_MUTED))
-                .child(SharedString::from(label)),
-        )
 }

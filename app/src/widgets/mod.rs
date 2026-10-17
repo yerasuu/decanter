@@ -143,6 +143,37 @@ pub fn running_mark(id: impl Into<ElementId>) -> Stateful<Div> {
         .child("▶")
 }
 
+/// `.hero-stat`. The webview blurred what was behind it
+/// (`backdrop-filter`), which GPUI can't; a more opaque fill keeps the
+/// number readable over busy art instead. Shared by Biblioteca and the PS
+/// section so a game's figures read the same in both.
+pub fn hero_stat(value: String, label: impl Into<SharedString>) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .bg(theme::alpha(theme::BG_DEEP, 0.85))
+        .px_4()
+        .py_2()
+        .rounded(px(theme::RADIUS))
+        .border_1()
+        .border_color(rgb(theme::LINE))
+        .child(
+            theme::mono()
+                .text_size(px(19.))
+                .font_weight(FontWeight::BOLD)
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child(value),
+        )
+        .child(
+            div()
+                .mt(px(2.))
+                .text_size(px(10.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .child(label.into()),
+        )
+}
+
 /// A checkbox the way `accent-color: var(--accent-blue)` draws one: a
 /// 13px box, blue and ticked when on.
 pub fn checkbox(checked: bool) -> Div {

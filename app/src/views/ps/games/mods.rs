@@ -185,14 +185,7 @@ impl ModsView {
 
     fn folder_row(&self, label: SharedString, dir: PathBuf, key: &'static str, cx: &mut Context<Self>) -> AnyElement {
         let shown = dir.display().to_string();
-        div()
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_4()
-            .py_2()
-            .border_b_1()
-            .border_color(rgb(theme::LINE))
+        theme::compact_row(false)
             .child(div().flex_none().child(label))
             .child(
                 theme::mono()
@@ -233,42 +226,38 @@ impl ModsView {
         match &found.mods {
             Err(err) => vec![row_text(t!("ps.mods.mods.read_error", error = err).into_owned())],
             Ok(available) if available.is_empty() => vec![row_text(t!("ps.mods.mods.empty").into_owned())],
-            Ok(available) => found
-                .mod_profile
-                .ordered(available)
-                .into_iter()
-                .enumerate()
-                .map(|(index, name)| {
-                    let on = !found.mod_profile.disabled.contains(&name);
-                    let (up, down, toggle) = (name.clone(), name.clone(), name.clone());
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .px_4()
-                        .py_2()
-                        .border_b_1()
-                        .border_color(rgb(theme::LINE))
-                        .child(
-                            div()
-                                .id(("mod-on", index))
-                                .p_1()
-                                .cursor_pointer()
-                                .child(checkbox(on))
-                                .on_click(cx.listener(move |this, _, _, cx| this.toggle_mod(toggle.clone(), cx))),
-                        )
-                        .child(div().flex_1().min_w_0().truncate().child(name))
-                        .child(
-                            button(("mod-up", index), ButtonKind::Secondary, "↑", false)
-                                .on_click(cx.listener(move |this, _, _, cx| this.move_mod(&up, -1, cx))),
-                        )
-                        .child(
-                            button(("mod-down", index), ButtonKind::Secondary, "↓", false)
-                                .on_click(cx.listener(move |this, _, _, cx| this.move_mod(&down, 1, cx))),
-                        )
-                        .into_any_element()
-                })
-                .collect(),
+            Ok(available) => {
+                let ordered = found.mod_profile.ordered(available);
+                let last = ordered.len().saturating_sub(1);
+                ordered
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, name)| {
+                        let on = !found.mod_profile.disabled.contains(&name);
+                        let (up, down, toggle) = (name.clone(), name.clone(), name.clone());
+                        theme::compact_row(index == last)
+                            .gap_2()
+                            .child(
+                                div()
+                                    .id(("mod-on", index))
+                                    .p_1()
+                                    .cursor_pointer()
+                                    .child(checkbox(on))
+                                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_mod(toggle.clone(), cx))),
+                            )
+                            .child(div().flex_1().min_w_0().truncate().child(name))
+                            .child(
+                                button(("mod-up", index), ButtonKind::Secondary, "↑", false)
+                                    .on_click(cx.listener(move |this, _, _, cx| this.move_mod(&up, -1, cx))),
+                            )
+                            .child(
+                                button(("mod-down", index), ButtonKind::Secondary, "↓", false)
+                                    .on_click(cx.listener(move |this, _, _, cx| this.move_mod(&down, 1, cx))),
+                            )
+                            .into_any_element()
+                    })
+                    .collect()
+            }
         }
     }
 
@@ -276,62 +265,56 @@ impl ModsView {
         match &found.patches {
             Err(err) => vec![row_text(t!("ps.mods.patches.read_error", error = err).into_owned())],
             Ok(patches) if patches.is_empty() => vec![row_text(t!("ps.mods.patches.empty").into_owned())],
-            Ok(patches) => patches
-                .iter()
-                .enumerate()
-                .map(|(index, patch)| {
-                    let on = found.patch_profile.is_active(patch);
-                    let file = patch.key.split('/').next().unwrap_or_default();
-                    let detail = if patch.author.is_empty() {
-                        file.to_owned()
-                    } else {
-                        format!("{file} · {}", patch.author)
-                    };
-                    let toggled = patch.clone();
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .px_4()
-                        .py_2()
-                        .border_b_1()
-                        .border_color(rgb(theme::LINE))
-                        .child(
-                            div()
-                                .id(("patch-on", index))
-                                .p_1()
-                                .cursor_pointer()
-                                .child(checkbox(on))
-                                .on_click(cx.listener(move |this, _, _, cx| this.toggle_patch(&toggled, cx))),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .flex_col()
-                                .child(patch.name.clone())
-                                .child(theme::muted(detail).text_size(px(12.)))
-                                .when(!patch.note.is_empty(), |text| {
-                                    text.child(
-                                        div()
-                                            .text_size(px(12.))
-                                            .text_color(rgb(theme::TEXT_DIM))
-                                            .child(patch.note.clone()),
-                                    )
-                                }),
-                        )
-                        .into_any_element()
-                })
-                .collect(),
+            Ok(patches) => {
+                let last = patches.len().saturating_sub(1);
+                patches
+                    .iter()
+                    .enumerate()
+                    .map(|(index, patch)| {
+                        let on = found.patch_profile.is_active(patch);
+                        let file = patch.key.split('/').next().unwrap_or_default();
+                        let detail = if patch.author.is_empty() {
+                            file.to_owned()
+                        } else {
+                            format!("{file} · {}", patch.author)
+                        };
+                        let toggled = patch.clone();
+                        theme::compact_row(index == last)
+                            .child(
+                                div()
+                                    .id(("patch-on", index))
+                                    .p_1()
+                                    .cursor_pointer()
+                                    .child(checkbox(on))
+                                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_patch(&toggled, cx))),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(patch.name.clone())
+                                    .child(theme::muted(detail).text_size(px(12.)))
+                                    .when(!patch.note.is_empty(), |text| {
+                                        text.child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .text_color(rgb(theme::TEXT_DIM))
+                                                .child(patch.note.clone()),
+                                        )
+                                    }),
+                            )
+                            .into_any_element()
+                    })
+                    .collect()
+            }
         }
     }
 }
 
 fn row_text(text: String) -> AnyElement {
-    div()
-        .px_4()
-        .py_2()
+    theme::compact_row(true)
         .text_color(rgb(theme::TEXT_MUTED))
         .child(text)
         .into_any_element()

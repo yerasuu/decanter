@@ -8,7 +8,7 @@ use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
 use decanter_ps::layouts::Store;
 use decanter_ps::port::Port;
-use gpui::{AnyElement, Context, Div, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Div, Entity, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::layout_name;
@@ -353,13 +353,9 @@ impl GamepadView {
                     })
                     .into_any_element()
                 };
-                div()
-                    .flex()
-                    .items_center()
+                theme::compact_row(index + 1 == count)
                     .gap_4()
-                    .px_4()
                     .py(px(6.))
-                    .when(index + 1 < count, |row| row.border_b_1().border_color(rgb(theme::LINE)))
                     .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
                     .child(div().flex_1().min_w_0().truncate().child(t!(action)))
                     .child(control)
@@ -424,13 +420,8 @@ fn button_label(buttons: &str) -> String {
         .join(" + ")
 }
 
-fn setting_row(label: AnyElement, control: AnyElement) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap_3()
-        .px_4()
-        .py_2()
+fn setting_row(label: AnyElement, control: AnyElement, last: bool) -> Div {
+    theme::compact_row(last)
         .child(div().flex_1().min_w_0().child(label))
         .child(control)
 }
@@ -466,27 +457,21 @@ impl Render for GamepadView {
             .children(self.error.clone().map(theme::error))
             .child(
                 theme::card()
-                    .child(
-                        setting_row(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .child(t!("ps.gamepad.controller.title"))
-                                .child(theme::muted(t!("ps.gamepad.controller.note")).text_size(px(12.)))
-                                .into_any_element(),
-                            self.gamepad_select(&values, cx),
-                        )
-                        .border_b_1()
-                        .border_color(rgb(theme::LINE)),
-                    )
-                    .child(
-                        setting_row(
-                            div().child(t!("ps.layouts.layout")).into_any_element(),
-                            layout_select.into_any_element(),
-                        )
-                        .border_b_1()
-                        .border_color(rgb(theme::LINE)),
-                    )
+                    .child(setting_row(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(t!("ps.gamepad.controller.title"))
+                            .child(theme::muted(t!("ps.gamepad.controller.note")).text_size(px(12.)))
+                            .into_any_element(),
+                        self.gamepad_select(&values, cx),
+                        false,
+                    ))
+                    .child(setting_row(
+                        div().child(t!("ps.layouts.layout")).into_any_element(),
+                        layout_select.into_any_element(),
+                        false,
+                    ))
                     .child(setting_row(
                         div()
                             .flex()
@@ -495,6 +480,7 @@ impl Render for GamepadView {
                             .child(theme::muted(t!("ps.gamepad.icons.note")).text_size(px(12.)))
                             .into_any_element(),
                         self.icons_select(&values, cx),
+                        true,
                     )),
             )
             .child(actions)

@@ -155,6 +155,18 @@ pub fn list_row(id: impl Into<gpui::ElementId>, last: bool) -> gpui::Stateful<Di
         .hover(|row| row.bg(rgb(BG_PANEL)))
 }
 
+/// A `.list-row` at settings density, without the hover: the rows of the PS
+/// section's settings cards, which hold a dozen controls each.
+pub fn compact_row(last: bool) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .px(px(18.))
+        .py(px(10.))
+        .when(!last, |row| row.border_b_1().border_color(rgb(LINE)))
+}
+
 /// `.empty`: the dashed "nothing here" box.
 pub fn empty(text: impl Into<SharedString>) -> Div {
     div()

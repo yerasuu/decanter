@@ -5,7 +5,7 @@ use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::tools::{self, Fsr411Progress};
 use decanter_ps::bbport::values::Values;
 use decanter_ps::process::Job;
-use gpui::{AnyElement, Context, Entity, Subscription, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Entity, Subscription, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::state::{DllOutcome, JobKey, Ps};
@@ -199,14 +199,7 @@ impl ExtrasView {
             button("fsr411", ButtonKind::Secondary, t!("ps.extras.fsr.pick"), false)
                 .on_click(cx.listener(|this, _, _, cx| this.pick_dll(None, cx)))
         };
-        div()
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_4()
-            .py_2()
-            .border_b_1()
-            .border_color(rgb(theme::LINE))
+        theme::compact_row(false)
             .child(
                 div()
                     .flex_1()
@@ -235,12 +228,7 @@ impl Render for ExtrasView {
             )
             .child(
                 theme::card().child(self.fsr_row(cx)).child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .px_4()
-                        .py_2()
+                    theme::compact_row(true)
                         .child(
                             div()
                                 .flex_none()
