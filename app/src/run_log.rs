@@ -48,14 +48,15 @@ pub async fn abandon(mut log: RunLog, game_id: &str, launcher: &str, reason: &st
     }
 }
 
-/// Feeds `events` to the file and to `job` until the run ends; how it ended.
+/// Feeds `events` to the file and to `job` until the run ends; how it ended,
+/// with the file left open until [`finish`], so the backend can still add to it.
 pub async fn follow(
     job: &Entity<Job>,
     mut events: UnboundedReceiver<Event>,
     mut log: Option<RunLog>,
     game_id: &str,
     cx: &mut AsyncApp,
-) -> Option<ExitStatus> {
+) -> (Option<ExitStatus>, Option<RunLog>) {
     let mut batch = Vec::with_capacity(BATCH);
     let mut exit = None;
     while events.recv_many(&mut batch, BATCH).await > 0 {
@@ -80,10 +81,37 @@ pub async fn follow(
             cx.notify();
         });
     }
+    (exit, log)
+}
+
+/// Adds what decanter makes of a run's end: `file_line` to its file, in the
+/// log's English, and `job_line` to the Registro tab, in the UI's language.
+#[cfg(windows)]
+pub async fn note(
+    job: &Entity<Job>,
+    mut log: Option<RunLog>,
+    file_line: &str,
+    job_line: String,
+    game_id: &str,
+    cx: &mut AsyncApp,
+) -> Option<RunLog> {
+    if let Some(file) = log.as_mut()
+        && let Err(err) = file.line(file_line).await
+    {
+        tracing::warn!(game_id, %err, "the run's log file stopped taking lines");
+        log = None;
+    }
+    job.update(cx, |job, cx| {
+        job.push(Event::Line(job_line));
+        cx.notify();
+    });
+    log
+}
+
+pub async fn finish(log: Option<RunLog>, exit: Option<ExitStatus>, game_id: &str) {
     if let Some(file) = log
         && let Err(err) = file.finish(exit, None).await
     {
         tracing::warn!(game_id, %err, "could not finish the run's log file");
     }
-    exit
 }

@@ -620,3 +620,6 @@ library.properties.compatibility.prefix_created:
 library.properties.compatibility.prefix_missing:
   es: sin prefijo (se crea al jugar)
   en: no prefix (created on first launch)
+library.run.dx7_hint:
+  es: "Este juego usa DirectX 7 (DirectDraw) y se ha cerrado con un error. Puede necesitar un envoltorio de DirectDraw (por ejemplo cnc-ddraw o dgVoodoo2) junto a su ejecutable."
+  en: "This game uses DirectX 7 (DirectDraw) and closed with an error. It may need a DirectDraw wrapper (such as cnc-ddraw or dgVoodoo2) next to its executable."

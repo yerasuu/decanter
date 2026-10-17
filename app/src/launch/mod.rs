@@ -11,6 +11,8 @@
 
 #[cfg(windows)]
 mod native;
+#[cfg(windows)]
+mod pe;
 #[cfg(not(windows))]
 mod proton;
 
@@ -62,6 +64,8 @@ pub async fn start(
         tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
         return None;
     }
+    #[cfg(windows)]
+    let hinted = executable.clone();
     let Some(mut planned) = backend::plan(&account_id, &game, executable) else {
         return None;
     };
@@ -80,7 +84,10 @@ pub async fn start(
     };
     cx.update(|cx| crate::closing::started(target.clone(), game.name.clone(), cx));
     let started = std::time::Instant::now();
-    let exit = crate::run_log::follow(&job, events, log, &game.game_id, cx).await;
+    let (exit, log) = crate::run_log::follow(&job, events, log, &game.game_id, cx).await;
+    #[cfg(windows)]
+    let log = backend::hint_after_failure(&hinted, exit, &job, log, &game.game_id, cx).await;
+    crate::run_log::finish(log, exit, &game.game_id).await;
     cx.update(|cx| crate::closing::ended(&target, cx));
     set_running(&background, &game.game_id, false, cx);
     let elapsed = started.elapsed();
