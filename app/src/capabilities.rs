@@ -3,13 +3,20 @@
 //! the same way everywhere.
 
 use decanter_core::capabilities::{Capabilities, Feature, Reason, Source, Support};
+use decanter_ps::bbport::HostFeatures;
 use gpui::{AnyElement, App, Div, Global, IntoElement, ParentElement as _, SharedString, Styled as _, div};
 use rust_i18n::t;
 
 use crate::self_update::{self, Availability};
 use crate::{platform, theme};
 
-pub struct Caps(Capabilities);
+pub struct Caps {
+    /// decanter's table and its own checks, which a new report from psport
+    /// starts again from.
+    own: Capabilities,
+    /// `own` with what psport last reported about itself.
+    current: Capabilities,
+}
 
 impl Global for Caps {}
 
@@ -23,10 +30,11 @@ impl Caps {
             Availability::NoKey => capabilities.restrict(Feature::SelfUpdate, Reason::NeedsSetup("release key")),
             Availability::Elsewhere => capabilities.restrict(Feature::SelfUpdate, Reason::NotOnThisSystem),
         }
-        // TODO(#538): ask psport `--list-features` once it answers it and
-        // merge that through `Capabilities::merge_reported(Source::Psport, …)`.
         let ask_tray_host = capabilities.is_offered(Feature::Tray);
-        cx.set_global(Self(capabilities));
+        cx.set_global(Self {
+            current: capabilities.clone(),
+            own: capabilities,
+        });
         if ask_tray_host {
             cx.spawn(async |async_cx| {
                 if !platform::status_notifier_host().await {
@@ -49,19 +57,32 @@ impl Caps {
 
     /// Redraws the windows, since what they show may have just gone.
     fn restrict(cx: &mut App, features: &[Feature], reason: &Reason) {
-        let capabilities = &mut cx.global_mut::<Self>().0;
+        let caps = cx.global_mut::<Self>();
         for feature in features {
-            capabilities.restrict(*feature, reason.clone());
+            caps.own.restrict(*feature, reason.clone());
+            caps.current.restrict(*feature, reason.clone());
+        }
+        cx.refresh_windows();
+    }
+
+    /// Takes psport's latest report in place of the one before, which a
+    /// newer build may have outgrown; `None`, a port that doesn't report,
+    /// leaves decanter's own table.
+    pub fn take_psport_report(cx: &mut App, report: Option<&HostFeatures>) {
+        let caps = cx.global_mut::<Self>();
+        caps.current = caps.own.clone();
+        if let Some(report) = report {
+            report.merge_into(&mut caps.current);
         }
         cx.refresh_windows();
     }
 
     pub fn is_offered(&self, feature: Feature) -> bool {
-        self.0.is_offered(feature)
+        self.current.is_offered(feature)
     }
 
     pub fn support(&self, feature: Feature) -> &Support {
-        self.0.support(feature)
+        self.current.support(feature)
     }
 
     /// Why `feature` isn't offered, for a view that leaves out a whole pane

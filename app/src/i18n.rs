@@ -1,7 +1,7 @@
 //! The UI language: the one saved in Ajustes, or the system locale's when
 //! none is.
 
-#[cfg(target_os = "linux")]
+use decanter_core::capabilities::Feature;
 use gpui::AppContext as _;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,13 +79,14 @@ pub fn set(language: Option<Language>, cx: &mut gpui::App) {
     }
     tracing::info!(language = language.map(Language::code), "language setting changed");
     rust_i18n::set_locale(language.unwrap_or_else(Language::system).code());
-    #[cfg(target_os = "linux")]
-    cx.background_spawn(async {
-        let root = decanter_ps::paths::active();
-        if let Err(err) = decanter_ps::bbport::Bbport::forget_menu_language(&root) {
-            tracing::warn!(error = %err, "could not drop the in-game menu's language from bbport.ini");
-        }
-    })
-    .detach();
+    if crate::capabilities::Caps::get(cx).is_offered(Feature::PsSection) {
+        cx.background_spawn(async {
+            let root = decanter_ps::paths::active();
+            if let Err(err) = decanter_ps::bbport::Bbport::forget_menu_language(&root) {
+                tracing::warn!(error = %err, "could not drop the in-game menu's language from bbport.ini");
+            }
+        })
+        .detach();
+    }
     cx.refresh_windows();
 }

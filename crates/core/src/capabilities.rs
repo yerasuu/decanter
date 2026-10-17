@@ -99,6 +99,7 @@ pub enum Source {
 /// What a feature missing from the table, which can't happen, reads as.
 static NOT_HERE: Support = Support::Unavailable(Reason::NotOnThisSystem);
 
+#[derive(Clone)]
 pub struct Capabilities {
     /// Every feature once, in [`Feature::ALL`]'s order.
     states: [(Feature, Support); Feature::ALL.len()],
@@ -152,9 +153,19 @@ impl Capabilities {
         }
     }
 
+    /// Marks an available feature as being tested, as when the component
+    /// behind it says part of it is experimental here.
+    #[inline]
+    pub fn mark_testing(&mut self, feature: Feature) {
+        if let Some(state) = self.states.iter_mut().find(|state| state.0 == feature)
+            && matches!(state.1, Support::Available)
+        {
+            tracing::info!(?feature, "feature marked as being tested");
+            state.1 = Support::Testing;
+        }
+    }
+
     /// What `source` says it can't do, each with its own explanation.
-    // TODO(#538): psport answers `--list-features` soon; the app merges its
-    // answer through here once it exists. Nothing calls this yet.
     #[inline]
     pub fn merge_reported<I>(&mut self, source: Source, missing: I)
     where

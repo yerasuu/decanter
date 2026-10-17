@@ -7,6 +7,7 @@
 //! directory.
 
 pub mod effects;
+mod features;
 mod groups;
 pub mod icons;
 mod ini;
@@ -23,6 +24,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::process::Command;
 
+pub use features::{HostFeatures, host_features};
 pub use groups::{Control, GROUPS, Group, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
 pub use names::{MEMORY_MODEL_SETTINGS, Names, single_memory_model_blocking};

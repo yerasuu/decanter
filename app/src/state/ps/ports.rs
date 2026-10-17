@@ -7,7 +7,7 @@ use std::io;
 use std::time::Duration;
 
 use decanter_ps::anyps5::AnyPs5;
-use decanter_ps::bbport::Bbport;
+use decanter_ps::bbport::{self, Bbport};
 use decanter_ps::channel::Channel;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
@@ -26,6 +26,7 @@ use super::bundle;
 use super::channel::{self, Track};
 use super::fallback::{self, Fallback};
 use super::jobs::{self, JobKey};
+use crate::capabilities::Caps;
 
 /// How often upstream is checked once the PS section has been opened.
 const UPDATE_INTERVAL: Duration = Duration::from_secs(30 * 60);
@@ -371,7 +372,7 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     }
     if let Some(bundle) = bundle::ready(this, port, root, cx).await {
         fallback::settle(this, port, root, true, cx).await;
-        set_stage(this, port, Stage::Ready, cx);
+        ready(this, port, root, &bundle, cx).await;
         return Ok(bundle);
     }
 
@@ -416,8 +417,19 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         }
     };
     fallback::settle(this, port, root, true, cx).await;
-    set_stage(this, port, Stage::Ready, cx);
+    ready(this, port, root, &toolchain, cx).await;
     Ok(toolchain)
+}
+
+/// `port` can run on `toolchain` now: what psport reports about this host
+/// takes the place of what an earlier build reported.
+async fn ready(this: &WeakEntity<Ps>, port: Port, root: &Root, toolchain: &Toolchain, cx: &mut AsyncApp) {
+    set_stage(this, port, Stage::Ready, cx);
+    if port != Port::Bbport {
+        return;
+    }
+    let report = bbport::host_features(&Bbport::new(root.clone()), toolchain).await;
+    cx.update(|app| Caps::take_psport_report(app, report.as_ref()));
 }
 
 /// [`build`], then [`fallback::recover`] when it is the build itself that failed.
@@ -699,9 +711,9 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         // Never prepared in this library this session: the next prepare builds.
         return;
     }
-    if bundle::ready(this, port, root, cx).await.is_some() {
+    if let Some(bundle) = bundle::ready(this, port, root, cx).await {
         fallback::settle(this, port, root, true, cx).await;
-        set_stage(this, port, Stage::Ready, cx);
+        ready(this, port, root, &bundle, cx).await;
         return;
     }
     // Resolved again rather than reusing nix from a fallback, now that the host may build it.
@@ -715,12 +727,15 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     let _ = this.update(cx, |this, _| {
         this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
     });
-    if let Err(err) = build_or_fall_back(this, port, root, toolchain, cx).await {
-        fail(this, port, &err, cx);
-        fallback::settle(this, port, root, false, cx).await;
-    } else {
-        fallback::settle(this, port, root, true, cx).await;
-        set_stage(this, port, Stage::Ready, cx);
+    match build_or_fall_back(this, port, root, toolchain, cx).await {
+        Err(err) => {
+            fail(this, port, &err, cx);
+            fallback::settle(this, port, root, false, cx).await;
+        }
+        Ok(toolchain) => {
+            fallback::settle(this, port, root, true, cx).await;
+            ready(this, port, root, &toolchain, cx).await;
+        }
     }
 }
 

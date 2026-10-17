@@ -13,6 +13,8 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
+use decanter_core::capabilities::Feature;
+use decanter_core::platform;
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt as _;
 use tokio::process::Command;
@@ -64,7 +66,7 @@ fn asset(tag: &str) -> String {
 
 /// Where the published bundles of `port` are, when its CI publishes any for this machine.
 fn downloads(port: Port) -> Option<String> {
-    if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+    if !platform::support(Feature::PsDownloads).is_offered() {
         return None;
     }
     port.release_downloads()
