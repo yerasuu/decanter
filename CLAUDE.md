@@ -133,6 +133,9 @@ decanter builds and runs psport (`crates/ps`); work on psport's C and C++ follow
 - Once a branch is integrated and its task finished, clean it up as part of the integration: remove
   its worktree (`git worktree remove`) and delete the branch (`git branch -d`), after checking its
   content is in `develop`. Never leave integrated branches or worktrees behind.
+- A task is done only when its work is integrated (fast-forwarded into `develop`): written, built or
+  tested is not enough. Until then it stays in doing or parked (with `testing` while it waits for a
+  run).
 - One useful commit per task or feature on `develop`, with everything the change carries (docs,
   comments, locale strings); split only when each part stands on its own (e.g. a large mechanical
   move apart from the behaviour change). Branch checkpoints are squashed at integration.
