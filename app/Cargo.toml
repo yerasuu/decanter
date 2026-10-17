@@ -37,11 +37,11 @@ reqwest.workspace = true
 image.workspace = true
 rust-i18n.workspace = true
 thiserror.workspace = true
-nix = { workspace = true, features = ["fs", "inotify"] }
-zbus.workspace = true
 
 [build-dependencies]
 minisign-verify.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni.workspace = true
+nix = { workspace = true, features = ["fs", "inotify"] }
+zbus.workspace = true

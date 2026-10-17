@@ -16,7 +16,7 @@ use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use tokio::io::unix::AsyncFd;
 use tokio::time::Instant;
 
-use super::{HOLD, until};
+use crate::closing::{HOLD, until};
 
 const INPUT_DIR: &str = "/dev/input";
 const EV_SYN: u16 = 0x00;

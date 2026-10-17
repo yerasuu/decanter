@@ -4,28 +4,6 @@
 //! the way its Stop button stops it, so playtime, cloud saves and logs
 //! wrap up as they always do.
 
-mod notice;
-#[cfg(target_os = "linux")]
-mod pads;
-mod shortcut;
-
-/// Gamepads are read from evdev nodes, which only Linux has: elsewhere the
-/// chord never comes, and the desktop's shortcut is all there is.
-#[cfg(not(target_os = "linux"))]
-mod pads {
-    pub struct Pads;
-
-    impl Pads {
-        pub const fn new() -> Self {
-            Self
-        }
-
-        pub async fn chord(&self) {
-            std::future::pending::<()>().await;
-        }
-    }
-}
-
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -33,6 +11,7 @@ use gpui::{App, AsyncApp, Global};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
+use crate::platform::CloseWatch;
 use crate::state::{AppState, JobKey, Ps};
 
 pub const HOLD: Duration = Duration::from_secs(2);
@@ -130,8 +109,7 @@ async fn listen(mut listening: watch::Receiver<bool>, cx: &AsyncApp) {
                     }
                     Event::Stopped
                 }
-                () = watch.pads.chord() => Event::Asked("gamepad"),
-                () = shortcut::pressed(watch.shortcut.as_mut()) => Event::Asked("keyboard"),
+                source = watch.system.asked() => Event::Asked(source),
                 () = until(deadline) => Event::Due,
             };
             match event {
@@ -146,27 +124,15 @@ async fn listen(mut listening: watch::Receiver<bool>, cx: &AsyncApp) {
 
 /// Everything listened with while a game runs.
 struct Watch {
-    bus: Option<zbus::Connection>,
-    shortcut: Option<shortcut::Shortcut>,
-    pads: pads::Pads,
+    system: CloseWatch,
     pending: Option<Pending>,
 }
 
 impl Watch {
     async fn open() -> Self {
         tracing::info!("listening for the close-game chord and shortcut");
-        let bus = zbus::Connection::session()
-            .await
-            .inspect_err(|err| tracing::warn!(error = %err, "no session bus, closing a game has no shortcut or notice"))
-            .ok();
-        let shortcut = match &bus {
-            Some(bus) => shortcut::Shortcut::register(bus).await,
-            None => None,
-        };
         Self {
-            bus,
-            shortcut,
-            pads: pads::Pads::new(),
+            system: CloseWatch::open().await,
             pending: None,
         }
     }
@@ -175,14 +141,17 @@ impl Watch {
     async fn asked(&mut self, source: &'static str, cx: &AsyncApp) {
         if let Some(cancelled) = self.pending.take() {
             tracing::info!(source, name = %cancelled.running.name, "closing the game cancelled");
-            notice::cancelled(self.bus.as_ref(), cancelled.notice, &cancelled.running.name).await;
+            self.system
+                .notices()
+                .cancelled(cancelled.notice, &cancelled.running.name)
+                .await;
             return;
         }
         let Some(running) = cx.read_global(|closing: &Closing, _| closing.running.last().cloned()) else {
             return;
         };
         tracing::info!(source, name = %running.name, grace_secs = GRACE.as_secs(), "closing the game asked for");
-        let notice = notice::closing(self.bus.as_ref(), &running.name, self.shortcut.is_some()).await;
+        let notice = self.system.notices().closing(&running.name).await;
         self.pending = Some(Pending {
             running,
             deadline: Instant::now() + GRACE,
@@ -192,18 +161,16 @@ impl Watch {
 
     async fn due(&mut self, cx: &AsyncApp) {
         if let Some(due) = self.pending.take() {
-            notice::close(self.bus.as_ref(), due.notice).await;
+            self.system.notices().close(due.notice).await;
             cx.update(|cx| stop(due.running, cx));
         }
     }
 
     async fn close(self) {
         if let Some(pending) = self.pending {
-            notice::close(self.bus.as_ref(), pending.notice).await;
+            self.system.notices().close(pending.notice).await;
         }
-        if let Some(shortcut) = self.shortcut {
-            shortcut.release().await;
-        }
+        self.system.release().await;
         tracing::info!("stopped listening for the close-game chord and shortcut");
     }
 }
@@ -233,7 +200,7 @@ fn stop(running: Running, cx: &mut App) {
     }
 }
 
-async fn until(deadline: Option<Instant>) {
+pub async fn until(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline).await,
         None => std::future::pending().await,

@@ -7,18 +7,12 @@
 //! the release page.
 
 use std::borrow::Cow;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
-#[cfg(unix)]
-use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use minisign_verify::{PublicKey, Signature};
-#[cfg(unix)]
-use nix::unistd::{AccessFlags, access};
 use rust_i18n::t;
 use tokio::io::AsyncWriteExt as _;
 
@@ -81,8 +75,7 @@ pub fn availability() -> Availability {
     let Some(dir) = appimage.parent() else {
         return Availability::Elsewhere;
     };
-    #[cfg(unix)]
-    if let Err(err) = access(dir, AccessFlags::W_OK) {
+    if let Err(err) = crate::platform::check_writable(dir) {
         tracing::info!(dir = %dir.display(), %err, "the AppImage's folder isn't writable");
         return Availability::Elsewhere;
     }
@@ -264,8 +257,7 @@ pub async fn install(
     let partial = dir.join(format!(".{ASSET}.{}.part", std::process::id()));
     let mut options = tokio::fs::OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)]
-    options.mode(0o600);
+    crate::platform::restrict_to_owner(&mut options);
     let file = options
         .open(&partial)
         .await
@@ -307,8 +299,7 @@ pub async fn install(
             .sync_all()
             .await
             .map_err(|err| write_error(&partial, &err))?;
-        #[cfg(unix)]
-        tokio::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))
+        crate::platform::make_executable(&partial)
             .await
             .map_err(|err| write_error(&partial, &err))?;
         tokio::fs::rename(&partial, appimage)
@@ -358,11 +349,6 @@ pub fn restart_if_requested() {
     // The new AppRun sets its own; inheriting ours would stack them.
     decanter_core::strip_launcher_env(&mut command);
     tracing::info!(appimage = %appimage.display(), "restarting into the updated AppImage");
-    #[cfg(unix)]
-    {
-        let err = command.exec();
-        tracing::error!(appimage = %appimage.display(), %err, "cannot start the updated AppImage");
-    }
-    #[cfg(not(unix))]
-    tracing::error!(appimage = %appimage.display(), "replacing this process only exists on Unix");
+    let err = crate::platform::replace_process(&mut command);
+    tracing::error!(appimage = %appimage.display(), %err, "cannot start the updated AppImage");
 }

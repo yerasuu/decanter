@@ -15,7 +15,7 @@ const NORMAL: u8 = 1;
 const CANCELLED_TIMEOUT_MS: i32 = 4000;
 
 pub async fn closing(bus: Option<&Connection>, name: &str, with_shortcut: bool) -> Option<u32> {
-    let seconds = super::GRACE.as_secs();
+    let seconds = crate::closing::GRACE.as_secs();
     let body = if with_shortcut {
         t!("closing.notice.body", seconds = seconds)
     } else {

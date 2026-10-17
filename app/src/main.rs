@@ -110,6 +110,7 @@ mod game_tools;
 mod i18n;
 mod launch;
 mod logs;
+mod platform;
 mod releases;
 mod relocate;
 mod run_log;
