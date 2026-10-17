@@ -130,6 +130,9 @@ decanter builds and runs psport (`crates/ps`); work on psport's C and C++ follow
   history); into `main` by fast-forward once validated. The user pushes to GitHub (`origin`);
   never rewrite what is published unless the user orders it. See docs/git-workflow.md
   (decision #376).
+- Once a branch is integrated and its task finished, clean it up as part of the integration: remove
+  its worktree (`git worktree remove`) and delete the branch (`git branch -d`), after checking its
+  content is in `develop`. Never leave integrated branches or worktrees behind.
 - One useful commit per task or feature on `develop`, with everything the change carries (docs,
   comments, locale strings); split only when each part stands on its own (e.g. a large mechanical
   move apart from the behaviour change). Branch checkpoints are squashed at integration.
