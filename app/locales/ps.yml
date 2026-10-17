@@ -911,6 +911,21 @@ ps.gamepad.hint.own:
 ps.gamepad.hint.custom:
   es: bbport.ini tiene líneas pad. editadas a mano; cópialas como nuevo para guardarlas como esquema.
   en: bbport.ini has hand-edited pad. lines; copy them as new to save them as a layout.
+ps.gamepad.mode.list:
+  es: Lista
+  en: List
+ps.gamepad.mode.visual:
+  es: Visual
+  en: Visual
+ps.gamepad.visual.pick:
+  es: Pulsa un botón del dibujo para ver qué hace en el juego y cambiarlo.
+  en: Click a button on the drawing to see what it does in the game and change it.
+ps.gamepad.visual.button:
+  es: Botón del mando
+  en: Controller button
+ps.gamepad.visual.legend:
+  es: "Cada botón del dibujo muestra cuál de tu mando lo activa; en dorado, los que cambian respecto al esquema predeterminado. Pasa el ratón por encima para ver qué hace en el juego."
+  en: "Each button on the drawing shows which one on your controller triggers it; in gold, the ones that differ from the default layout. Hover over one to see what it does in the game."
 ps.graphics.groups.game:
   es: Juego
   en: Game

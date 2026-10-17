@@ -1,14 +1,17 @@
 //! Mando: which controller bbport reads and which layout its buttons
 //! follow. Any layout can be copied into a new editable one; the one
 //! picked is the one in `bbport.ini`, and an edit to it is written there
-//! at once. Everything applies on the next start.
+//! at once. Everything applies on the next start. The bindings show as a
+//! list or on a drawing of the pad ([`visual`]), whichever the user keeps.
+
+mod visual;
 
 use decanter_ps::bbport::pad::{self, BUTTONS, INPUTS, PadLayout};
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
 use decanter_ps::layouts::Store;
 use decanter_ps::port::Port;
-use gpui::{AnyElement, Context, Div, Entity, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::layout_name;
@@ -19,6 +22,28 @@ use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::
 /// The layout select's value while `bbport.ini` holds `pad.` lines no
 /// layout has.
 const CUSTOM: &str = "custom";
+
+/// The app setting that keeps the list or the drawing between sessions.
+const MODE_SETTING: &str = "ps_gamepad_mode";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    List,
+    Visual,
+}
+
+impl Mode {
+    const fn id(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Visual => "visual",
+        }
+    }
+
+    fn from_id(id: &str) -> Option<Self> {
+        [Self::List, Self::Visual].into_iter().find(|mode| mode.id() == id)
+    }
+}
 
 struct Loaded {
     store: Store,
@@ -42,6 +67,9 @@ pub struct GamepadView {
     gamepads: Vec<(String, String)>,
     name: Entity<TextInput>,
     error: Option<String>,
+    mode: Mode,
+    /// The input picked on the drawing, whose binding the side panel edits.
+    selected: Option<&'static str>,
 }
 
 fn gamepad_setting() -> Option<&'static Setting> {
@@ -82,6 +110,25 @@ impl GamepadView {
             });
         })
         .detach();
+        let mode = cx.background_spawn(async {
+            crate::core::db()
+                .inspect_err(|err| tracing::warn!(%err, "could not open the database for the gamepad view mode"))
+                .ok()?
+                .setting(MODE_SETTING)
+                .inspect_err(|err| tracing::warn!(%err, "could not read the gamepad view mode"))
+                .ok()
+                .flatten()
+        });
+        cx.spawn(async move |this, cx| {
+            let mode = mode.await;
+            let _ = this.update(cx, |this, cx| {
+                if let Some(mode) = mode.as_deref().and_then(Mode::from_id) {
+                    this.mode = mode;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
         // Only once bbport is built: the list comes from a tool it builds.
         let toolchain = ps
             .read(cx)
@@ -104,7 +151,64 @@ impl GamepadView {
             gamepads: Vec::new(),
             name,
             error: None,
+            mode: Mode::List,
+            selected: None,
         }
+    }
+
+    fn choose_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        if mode == self.mode {
+            return;
+        }
+        self.mode = mode;
+        cx.background_spawn(async move {
+            let saved = crate::core::db()
+                .map_err(|err| err.to_string())
+                .and_then(|db| db.set_setting(MODE_SETTING, mode.id()).map_err(|err| err.to_string()));
+            if let Err(err) = saved {
+                tracing::warn!(%err, mode = mode.id(), "could not save the gamepad view mode");
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// `Lista` / `Visual`: two ways to show the same bindings.
+    fn mode_switch(&self, cx: &Context<Self>) -> Div {
+        div()
+            .flex()
+            .flex_none()
+            .p(px(2.))
+            .gap(px(2.))
+            .bg(rgb(theme::BG_PANEL_3))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .rounded(px(theme::RADIUS))
+            .children(
+                [
+                    (Mode::List, t!("ps.gamepad.mode.list")),
+                    (Mode::Visual, t!("ps.gamepad.mode.visual")),
+                ]
+                .into_iter()
+                .map(|(mode, label)| {
+                    let active = mode == self.mode;
+                    div()
+                        .id(SharedString::from(format!("ps-pad-mode-{}", mode.id())))
+                        .px_3()
+                        .py(px(4.))
+                        .rounded(px(theme::RADIUS_SM))
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .cursor_pointer()
+                        .text_color(rgb(if active { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
+                        .when(active, |item| item.bg(rgb(theme::BG_PANEL_LIGHT)))
+                        .when(!active, |item| {
+                            item.hover(|item| item.text_color(rgb(theme::TEXT_BRIGHT)))
+                        })
+                        .on_click(cx.listener(move |this, _, _, cx| this.choose_mode(mode, cx)))
+                        .child(SharedString::from(label))
+                }),
+            )
     }
 
     fn loaded_mut(&mut self) -> Option<&mut Loaded> {
@@ -321,44 +425,47 @@ impl GamepadView {
             .into_any_element()
     }
 
-    /// One row per PS4 input: its button, picked from a list when the
-    /// layout is the user's own. A pad can't be read from here to capture
-    /// a press, so it is picked rather than pressed.
-    fn table(&self, layout: &PadLayout, cx: &mut Context<Self>) -> AnyElement {
+    /// `input`'s button, picked from a list when the layout is the user's
+    /// own. A pad can't be read from here to capture a press, so it is
+    /// picked rather than pressed.
+    fn binding_control(layout: &PadLayout, input: &'static str, cx: &Context<Self>) -> AnyElement {
+        let buttons = layout.buttons(input);
+        if layout.builtin {
+            return theme::mono().child(button_label(buttons)).into_any_element();
+        }
+        let entity = cx.entity();
+        Select::new(
+            SharedString::from(format!("ps-pad-{input}")),
+            BUTTONS
+                .iter()
+                .map(|(name, label)| (SharedString::from(*name), SharedString::from(t!(*label))))
+                .chain(buttons.contains(',').then(|| {
+                    (
+                        SharedString::from(buttons.to_owned()),
+                        SharedString::from(button_label(buttons)),
+                    )
+                })),
+            buttons.to_owned(),
+        )
+        .style(SelectStyle::Compact)
+        .on_change(move |value, _, cx| {
+            let value = value.to_string();
+            entity.update(cx, |this, cx| this.assign(input, &value, cx));
+        })
+        .into_any_element()
+    }
+
+    /// One row per PS4 input.
+    fn table(layout: &PadLayout, cx: &Context<Self>) -> AnyElement {
         let count = INPUTS.len();
         theme::card()
             .children(INPUTS.iter().enumerate().map(|(index, &(input, _, label, action))| {
-                let buttons = layout.buttons(input);
-                let control = if layout.builtin {
-                    theme::mono().child(button_label(buttons)).into_any_element()
-                } else {
-                    let entity = cx.entity();
-                    Select::new(
-                        SharedString::from(format!("ps-pad-{input}")),
-                        BUTTONS
-                            .iter()
-                            .map(|(name, label)| (SharedString::from(*name), SharedString::from(t!(*label))))
-                            .chain(buttons.contains(',').then(|| {
-                                (
-                                    SharedString::from(buttons.to_owned()),
-                                    SharedString::from(button_label(buttons)),
-                                )
-                            })),
-                        buttons.to_owned(),
-                    )
-                    .style(SelectStyle::Compact)
-                    .on_change(move |value, _, cx| {
-                        let value = value.to_string();
-                        entity.update(cx, |this, cx| this.assign(input, &value, cx));
-                    })
-                    .into_any_element()
-                };
                 theme::compact_row(index + 1 == count)
                     .gap_4()
                     .py(px(6.))
                     .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
                     .child(div().flex_1().min_w_0().truncate().child(t!(action)))
-                    .child(control)
+                    .child(Self::binding_control(layout, input, cx))
             }))
             .into_any_element()
     }
@@ -448,12 +555,22 @@ impl Render for GamepadView {
         } else {
             t!("ps.gamepad.hint.custom")
         };
-        let table = self.table(&shown, cx);
+        let bindings = match self.mode {
+            Mode::List => Self::table(&shown, cx),
+            Mode::Visual => self.visual(&shown, &values, cx),
+        };
         div()
             .flex()
             .flex_col()
             .gap_4()
-            .child(theme::muted(t!("ps.gamepad.description")))
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .gap_4()
+                    .child(theme::muted(t!("ps.gamepad.description")).flex_1().min_w_0())
+                    .child(self.mode_switch(cx)),
+            )
             .children(self.error.clone().map(theme::error))
             .child(
                 theme::card()
@@ -485,7 +602,7 @@ impl Render for GamepadView {
             )
             .child(actions)
             .child(theme::muted(hint).text_size(px(12.)))
-            .child(table)
+            .child(bindings)
             .into_any_element()
     }
 }
