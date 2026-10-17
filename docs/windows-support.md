@@ -51,49 +51,66 @@ after a few seconds if it won't.
 
 ## Platform layer and capabilities
 
-Decided 2026-10-17 (decision #538), started on `refactor/535-platform-layer`.
+Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 
-- **System calls**: each crate has a `platform` module, `platform/mod.rs`
-  plus `linux.rs`, `windows.rs` and `macos.rs`; `mod.rs` is the crate's only
-  place that asks which OS it was built for, and the OS files export the
-  same names. `decanter_core::platform` holds what the crates share: the
-  config, legacy data and default library folders, the runtime lock's
-  folder, disk space (`statvfs` on Linux, `fs4` elsewhere), folder identity
-  and the `/proc` check for the migration, Steam's roots, file and directory
-  links and the executable mode. `decanter_ps::platform` has process groups,
-  SIGTERM and exit signals; the app's has the close-game watch (pads, the
-  Plasma shortcut and notices over D-Bus), the tray host query, detached
-  spawns and the self-update's file calls. `nix` and `zbus` are Linux-only
-  dependencies of the app.
+- **System calls**: each crate that needs one has a `platform` module,
+  `platform/mod.rs` plus `linux.rs`, `windows.rs` and `macos.rs`; `mod.rs` is
+  the crate's only place that asks which OS it was built for, and the OS
+  files export the same names. No `cfg(target_os)`, `unix` or `windows` is
+  left outside them.
+  - `decanter_core::platform`: the config, legacy data and default library
+    folders, the runtime lock's folder, disk space (`statvfs` on Linux,
+    `fs4` elsewhere), folder identity and the `/proc` check for the
+    migration, Steam's roots, file and directory links, the executable mode,
+    and each OS's capability table (`support`).
+  - `decanter_ps::platform`: process groups, SIGTERM and exit signals.
+  - the app's: the close-game watch (pads, the Plasma shortcut and notices
+    over D-Bus), the tray (ksni) and the tray host query, the X11 window
+    icon, exit signals (SIGTERM/SIGINT, Ctrl+C on Windows), detached spawns
+    and the self-update's file calls. `nix`, `zbus` and `ksni` are Linux-only
+    dependencies of the app.
+- **The launch backend** is named once per crate by its `build.rs`:
+  `cfg(proton)` for code that only exists with Proton, `umu-run` and
+  prefixes (`decanter-runtime`, `decanter-gog`, the app), `not(proton)` for
+  the native Windows backend. It is set everywhere but Windows: macOS still
+  compiles the Proton code, having no backend of its own, and its table
+  leaves Play off. `decanter-gog` also sets `cfg(galaxy_hook)` when its build
+  script built `Galaxy64.dll` (Linux, x86_64 Windows).
 - **Capabilities**: `decanter_core::capabilities` is the one source of what
   the UI offers and how. Each `Feature` is `Available`, `Testing` (shown
   with an "en pruebas" badge) or `Unavailable(Reason)`, the reason being
   `NotOnThisSystem`, `NeedsSetup(what)` or `ReportedBy(source, message)`.
-  `decanter_core::platform::support` is each OS's static table;
-  `Capabilities::detect` then takes away what the machine lacks (no systemd
-  user manager: no `Scopes`), the app adds its own checks at startup (an
-  `AppImage` it can rewrite for `SelfUpdate`, a StatusNotifier host for
-  `Tray` and `CloseToTray`, asked over the session bus) and keeps the result
-  as the `Caps` global, redrawing the windows when a check lands. psport's
-  own report (`--list-features`, coming on psport's side) will be merged
-  through `Capabilities::merge_reported`; that hook is marked TODO.
+  - `platform::support` is each OS's static table; code without a GPUI
+    context (task bar entries, scopes, game tools, the hook, PS downloads,
+    `decanter_runtime::available`) reads it directly.
+  - `Capabilities::detect` takes away what the machine lacks: no systemd
+    user manager (`Scopes`), no MangoHud Vulkan layer (`MangoHud`), no
+    `gamemoded` with its D-Bus service (`GameMode`).
+  - The app adds its own checks at startup (an `AppImage` it can rewrite
+    for `SelfUpdate`; a StatusNotifier host for `Tray` and `CloseToTray`,
+    asked over the session bus) and keeps the result as the `Caps` global,
+    redrawing the windows when a check lands.
+  - psport's own table (`psport --list-features`, its decision #540) is read
+    each time the bbport port becomes ready (prepared, rebuilt, updated or
+    installed from a bundle), checked at the edge (size, OS, plain ids,
+    bounded reasons) and merged over decanter's: a feature a game needs
+    (any area but `net`) that psport reports unavailable takes `PsPlay`
+    away with psport's reason; an experimental one marks it as being
+    tested. A newer report replaces the older one; a port from before
+    `--list-features` reports nothing and decanter's table stands.
 - Views gate with `Caps::gate` (hidden when unavailable), `gate_or_reason`
-  (the reason, muted) or `gate_or` (their own text); `testing_badge` marks a
-  menu item. Migrated so far: the tray, close-game and Steam export sections
-  of Ajustes, the PS link in the top bar, the self-update's availability,
-  Play in the detail view and the context menu, and both Compatibility tabs.
+  (the reason, muted), `gate_or` (their own text) and `reason` (a whole
+  pane); `testing_badge` marks a menu item. The window closes into the tray
+  only while `CloseToTray` is offered, so a missing tray host agrees with
+  Ajustes.
 
 | Feature | Linux | Windows | macOS |
 |---|---|---|---|
-| Play, ExternalInstaller, GalaxyHook | available | testing (GalaxyHook on x86_64) | no |
+| Play, ExternalInstaller | available | testing | no |
+| GalaxyHook | available | testing (x86_64) | no |
 | Proton, Prefixes, Tray, CloseToTray, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
 | PsSection, PsPlay, MangoHud, GameMode | available | no | no |
 | PsDownloads | available on x86_64 | no | no |
-
-Still read the old way, for the next steps: the `cfg(not(windows))` view
-and launch sites from the Windows launch work (to become one Proton-backend
-predicate), the task bar entries and scopes, the tray's own start in
-`main.rs`, and the Galaxy hook's deployment.
 
 ## Decanter: medium effort
 
