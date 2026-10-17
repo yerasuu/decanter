@@ -116,6 +116,9 @@ external.form.installer.filter:
 external.form.installer.hint:
   es: ¿Viene con instalador? Ejecútalo aquí. ¿Ya está instalado en el prefijo de otra herramienta (Lutris, Bottles, Heroic, Steam)? Impórtalo.
   en: Does it come with an installer? Run it here. Is it already installed in another tool's prefix (Lutris, Bottles, Heroic, Steam)? Import it.
+external.form.installer.hint_native:
+  es: ¿Viene con instalador? Ejecútalo aquí y luego elige el ejecutable que haya instalado.
+  en: Does it come with an installer? Run it here, then choose the executable it installed.
 external.form.installer.running:
   es: Instalando... sigue los pasos del instalador.
   en: Installing... follow the installer's steps.
@@ -287,6 +290,9 @@ external.errors.remove:
 external.errors.installer:
   es: "no se pudo iniciar el instalador: %{error}"
   en: "could not start the installer: %{error}"
+external.errors.not_an_installer:
+  es: Eso no es un instalador de Windows (.exe o .msi).
+  en: That isn't a Windows installer (.exe or .msi).
 external.errors.not_a_prefix:
   es: Esa carpeta no es un prefijo de Wine (no tiene drive_c).
   en: That folder isn't a Wine prefix (it has no drive_c).

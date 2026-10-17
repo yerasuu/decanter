@@ -246,6 +246,74 @@ pub async fn run_installer(
     Ok(())
 }
 
+/// `CREATE_NO_WINDOW`, so the `powershell.exe` that starts the installer
+/// doesn't flash a console over it.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Runs a setup program (`.exe`, or `.msi` through `msiexec /i`) and waits
+/// for it to finish.
+///
+/// Started through `powershell.exe`'s `Start-Process` rather than spawned directly:
+/// that goes through the shell, so an installer that requires elevation
+/// gets its UAC prompt instead of failing to start, and `-Wait` also waits
+/// for whatever a bootstrapper hands the install over to before exiting.
+/// The path travels in the environment so that no quoting can reach the
+/// script.
+#[cfg(windows)]
+pub async fn run_installer(installer: &Path) -> Result<(), String> {
+    let is_msi = match installer
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("msi") => true,
+        Some("exe") => false,
+        _ => return Err(t!("external.errors.not_an_installer").into_owned()),
+    };
+    if !installer.is_absolute() || !installer.is_file() {
+        return Err(t!("external.errors.not_an_installer").into_owned());
+    }
+    let start = if is_msi {
+        "Start-Process -FilePath msiexec.exe -ArgumentList '/i', ('\"' + $env:DECANTER_INSTALLER + '\"')"
+    } else {
+        "Start-Process -FilePath $env:DECANTER_INSTALLER"
+    };
+    let script =
+        format!("$ErrorActionPreference = 'Stop'; {start} -WorkingDirectory $env:DECANTER_INSTALLER_DIR -Wait");
+    let directory = installer.parent().unwrap_or(installer);
+    tracing::info!(installer = %installer.display(), is_msi, "running external game installer");
+    let output = crate::achv_try!(
+        tokio::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .env("DECANTER_INSTALLER", installer)
+            .env("DECANTER_INSTALLER_DIR", directory)
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .await
+            .inspect_err(|err| tracing::error!(%err, "installer failed to start"))
+            .map_err(|err| t!("external.errors.installer", error = err).into_owned())
+    );
+    // Without `-PassThru` the installer's own exit code never reaches here,
+    // so a failure is `Start-Process` itself not starting it (UAC declined,
+    // file refused); a non-zero install is judged by what the user picks
+    // as the executable afterwards, as on Linux.
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(status = %output.status, stderr = %stderr.trim(), "installer failed to start");
+        let reason = stderr
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map_or_else(|| output.status.to_string(), str::to_owned);
+        return Err(t!("external.errors.installer", error = reason).into_owned());
+    }
+    tracing::info!(installer = %installer.display(), "external game installer finished");
+    Ok(())
+}
+
 /// Where an installer run through [`run_installer`] puts things, for the
 /// executable picker to start in.
 #[cfg(not(windows))]

@@ -5,18 +5,11 @@ use rust_i18n::t;
 
 use gpui::Task;
 
-use super::{FormEvent, GameForm, WineRows};
+use super::installer::Installer;
+use super::{FormEvent, GameForm, Rows};
 use crate::external::import::Mode as ImportMode;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
-
-pub(super) enum Installer {
-    Idle,
-    Running,
-    /// Ran in this game's prefix: the executable picker starts in its `C:`.
-    Done,
-    Failed(String),
-}
 
 /// What the form keeps for a game run under Proton: the prefix it can be
 /// installed into or imported from, and its UMU entry.
@@ -25,7 +18,6 @@ pub(super) struct Wine {
     pub(super) proton: Option<String>,
     /// The library folders a new game can go in, with their free space.
     folders: Vec<(std::path::PathBuf, Option<u64>)>,
-    installer: Installer,
     /// Another tool's prefix to move in on save, picked by folder.
     import_from: Option<std::path::PathBuf>,
     import_mode: ImportMode,
@@ -46,7 +38,6 @@ impl Wine {
         Self {
             proton,
             folders: library_folders(profile_id),
-            installer: Installer::Idle,
             import_from: None,
             import_mode: ImportMode::Copy,
             importing: false,
@@ -74,7 +65,7 @@ impl GameForm {
     /// Where the executable picker opens: the imported prefix's `C:`, or
     /// this game's after an installer ran there.
     pub(super) fn executable_start(&self) -> Option<std::path::PathBuf> {
-        match (&self.wine.import_from, &self.wine.installer) {
+        match (&self.wine.import_from, &self.installer) {
             (Some(picked), _) => crate::external::import::wine_root(picked).map(|root| root.join("drive_c")),
             (None, Installer::Done) => {
                 crate::external::drive_c(&self.profile_id, &self.id, self.library_root.as_deref())
@@ -130,7 +121,7 @@ impl GameForm {
     }
 
     pub(super) const fn busy(&self) -> bool {
-        matches!(self.wine.installer, Installer::Running) || self.wine.importing
+        matches!(self.installer, Installer::Running) || self.wine.importing
     }
 
     pub(super) fn save_label(&self) -> Cow<'static, str> {
@@ -149,46 +140,13 @@ impl GameForm {
         }
     }
 
-    pub(super) fn wine_rows(&self, cx: &Context<Self>) -> WineRows {
-        WineRows {
+    pub(super) fn wine_rows(&self, cx: &Context<Self>) -> Rows {
+        Rows {
             folder: self.folder_row(cx),
             installer: (!self.editing && self.prefix_of.is_none()).then(|| self.installer_row(cx)),
             umu: Some(self.umu_section(cx)),
             progress: self.wine.importing.then(|| self.import_progress()),
         }
-    }
-
-    fn run_installer(&mut self, cx: &mut Context<Self>) {
-        let (profile_id, id, proton) = (self.profile_id.clone(), self.id.clone(), self.wine.proton.clone());
-        let library_root = self.library_root.clone();
-        self._work = Some(cx.spawn(async move |this, cx| {
-            let Some(file) = rfd::AsyncFileDialog::new()
-                .set_title(t!("external.form.installer.pick_title"))
-                .add_filter(t!("external.form.installer.filter"), &["exe"])
-                .pick_file()
-                .await
-            else {
-                return;
-            };
-            let installer = file.path().to_path_buf();
-            let _ = this.update(cx, |this, cx| {
-                this.wine.installer = Installer::Running;
-                this.error.clear();
-                cx.notify();
-            });
-            let result =
-                crate::external::run_installer(&profile_id, &id, &installer, proton, library_root.as_deref()).await;
-            let _ = this.update(cx, |this, cx| {
-                this.wine.installer = match result {
-                    Ok(()) => Installer::Done,
-                    Err(err) => Installer::Failed(err),
-                };
-                cx.notify();
-                if matches!(this.wine.installer, Installer::Done) {
-                    this.pick_executable(cx);
-                }
-            });
-        }));
     }
 
     /// Picks another tool's prefix to bring in, then the game inside it.
@@ -220,11 +178,11 @@ impl GameForm {
     }
 
     pub(super) fn installer_row(&self, cx: &Context<Self>) -> Div {
-        let running = matches!(self.wine.installer, Installer::Running);
+        let running = matches!(self.installer, Installer::Running);
         // One or the other: an imported prefix replaces the game's own,
         // which an installer has already written into.
-        let installed = matches!(self.wine.installer, Installer::Done);
-        let status = match (&self.wine.import_from, &self.wine.installer) {
+        let installed = matches!(self.installer, Installer::Done);
+        let status = match (&self.wine.import_from, &self.installer) {
             (Some(picked), _) => theme::muted(match self.wine.import_mode {
                 ImportMode::Copy => t!("external.form.import.copy_hint", prefix = picked.display()),
                 ImportMode::Move => t!("external.form.import.move_hint", prefix = picked.display()),
@@ -316,7 +274,7 @@ impl GameForm {
         if self.editing || self.prefix_of.is_some() || self.wine.folders.len() < 2 {
             return None;
         }
-        let locked = !matches!(self.wine.installer, Installer::Idle | Installer::Failed(_));
+        let locked = !matches!(self.installer, Installer::Idle | Installer::Failed(_));
         let options = self.wine.folders.iter().map(|(root, free)| {
             let label = match free {
                 Some(free) => format!(

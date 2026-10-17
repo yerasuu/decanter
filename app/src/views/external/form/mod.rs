@@ -1,8 +1,9 @@
 //! Adding or editing one external game: its name, what launches it —
-//! optionally installed first by running its setup program in the game's
-//! own prefix, the way Heroic does — and its art.
+//! optionally installed first by running its setup program (in the game's
+//! own prefix under Proton), the way Heroic does — and its art.
 
 mod art;
+mod installer;
 #[cfg(not(windows))]
 mod prefix;
 #[cfg(not(windows))]
@@ -50,15 +51,16 @@ pub struct GameForm {
     /// by the arrows, which need the row's offset and width.
     scrolls: [ScrollHandle; 3],
     paging: Option<Task<()>>,
-    /// The installer, prefix import and UMU entry, which only a game run
-    /// under Proton has.
+    installer: installer::Installer,
+    /// The prefix import and UMU entry, which only a game run under Proton
+    /// has.
     #[cfg(not(windows))]
     wine: prefix::Wine,
 }
 
-/// The rows only a game run under Proton has, in the order they show.
+/// The optional rows around the form's fields, in the order they show.
 #[derive(Default)]
-struct WineRows {
+struct Rows {
     folder: Option<Div>,
     installer: Option<Div>,
     umu: Option<Div>,
@@ -90,6 +92,7 @@ impl GameForm {
                 _work: None,
                 scrolls: Default::default(),
                 paging: None,
+                installer: installer::Installer::Idle,
             };
         };
         name.update(cx, |input, cx| input.set_text(game.name.clone(), cx));
@@ -117,6 +120,7 @@ impl GameForm {
             _work: None,
             scrolls: Default::default(),
             paging: None,
+            installer: installer::Installer::Idle,
         }
     }
 
@@ -152,17 +156,10 @@ impl GameForm {
 
     /// Native file picker (XDG portal) rather than a typed path: typos in
     /// an absolute path otherwise only show up as a launch that does
-    /// nothing. After an installer ran it opens in the prefix's `C:`,
-    /// where that installer put the game.
-    #[cfg_attr(
-        windows,
-        expect(clippy::unused_self, reason = "only a prefix gives the picker a folder to open in")
-    )]
+    /// nothing. After an installer ran it opens where that installer most
+    /// likely put the game.
     fn pick_executable(&mut self, cx: &mut Context<Self>) {
-        #[cfg(not(windows))]
         let start = self.executable_start();
-        #[cfg(windows)]
-        let start: Option<std::path::PathBuf> = None;
         cx.spawn(async move |this, cx| {
             let mut dialog = rfd::AsyncFileDialog::new()
                 .set_title(t!("external.form.pick_exe.title"))
@@ -226,13 +223,16 @@ impl Render for GameForm {
         let (busy, save_label, rows) = (self.busy(), self.save_label(), self.wine_rows(cx));
         #[cfg(windows)]
         let (busy, save_label, rows) = (
-            false,
+            matches!(self.installer, installer::Installer::Running),
             if self.editing {
                 t!("external.form.save.edit")
             } else {
                 t!("external.form.save.add")
             },
-            WineRows::default(),
+            Rows {
+                installer: (!self.editing).then(|| self.installer_row(cx)),
+                ..Rows::default()
+            },
         );
         div()
             .flex()
