@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::icons::IconStyle;
-use decanter_ps::bbport::{self, Bbport, LauncherSettings};
+use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner, Summary};
 use decanter_ps::learned;
 use decanter_ps::library::Game;
@@ -174,16 +174,23 @@ async fn bbport_command(
     profile_id: &str,
     cx: &mut AsyncApp,
 ) -> Result<Command, LaunchError> {
-    let (settings, learned) = {
+    let (settings, learned, chosen_ratio) = {
         let root = root.clone();
         let title_id = game.title_id.clone();
         cx.background_spawn(async move {
             (
                 LauncherSettings::load(&root),
                 learned::Store::load(&root).title(&title_id),
+                Ini::load(&Bbport::ini_path(&root))
+                    .get("aspect_ratio")
+                    .map(str::to_owned),
             )
         })
         .await
+    };
+    let aspect_ratio = match chosen_ratio.as_deref() {
+        None | Some("auto") => display_aspect_ratio(cx),
+        Some(_) => None,
     };
     let bbport = Bbport::new(root.clone());
     let mods = if bbport::is_bloodborne(game) {
@@ -225,9 +232,36 @@ async fn bbport_command(
             &mods,
             &rust_i18n::locale(),
             &learned,
+            aspect_ratio,
         )
         .await
         .map_err(LaunchError::Environment)
+}
+
+/// The ratio of the display the game opens on. decanter sets no `PS_DISPLAY`, so the port takes
+/// SDL's primary display.
+fn display_aspect_ratio(cx: &mut AsyncApp) -> Option<&'static str> {
+    let size = cx.update(|cx| {
+        // Wayland names no primary display; compositors open the game on the focused output,
+        // decanter's while Play is clicked.
+        cx.primary_display()
+            .or_else(|| {
+                cx.active_window()?
+                    .update(cx, |_, window, cx| window.display(cx))
+                    .ok()
+                    .flatten()
+            })
+            .or_else(|| cx.displays().into_iter().next())
+            .map(|display| display.bounds().size)
+    });
+    let Some(size) = size else {
+        tracing::warn!("no display to take the aspect ratio from, the port keeps its own");
+        return None;
+    };
+    let (width, height) = (f32::from(size.width), f32::from(size.height));
+    let ratio = bbport::nearest_aspect_ratio(width, height);
+    tracing::info!(width, height, ratio, "display aspect ratio for the port");
+    ratio
 }
 
 /// Converts first when the game has no conversion yet; the conversion is

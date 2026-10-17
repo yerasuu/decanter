@@ -129,6 +129,25 @@ pub const GROUPS: &[Group] = &[
                 },
             },
             Setting {
+                key: "aspect_ratio",
+                label: "ps.graphics.aspect_ratio.label",
+                note: Some("ps.graphics.aspect_ratio.note"),
+                store: Store::Ini,
+                control: Control::Choice {
+                    options: &[
+                        ("ps.graphics.aspect_ratio.options.auto", "auto", None),
+                        ("ps.graphics.aspect_ratio.options.r4_3", "4:3", None),
+                        ("ps.graphics.aspect_ratio.options.r16_10", "16:10", None),
+                        ("ps.graphics.aspect_ratio.options.r16_9", "16:9", None),
+                        ("ps.graphics.aspect_ratio.options.r21_9", "21:9", None),
+                        ("ps.graphics.aspect_ratio.options.r32_9", "32:9", None),
+                    ],
+                    // The port assumes 16:9 when absent, but decanter then passes the display's
+                    // ratio ([`super::nearest_aspect_ratio`]), as it does for `auto`.
+                    default: "auto",
+                },
+            },
+            Setting {
                 key: "live_resolution",
                 label: "ps.graphics.live_resolution.label",
                 note: Some("ps.graphics.live_resolution.note"),

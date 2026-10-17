@@ -968,6 +968,30 @@ ps.graphics.output_res.options.r1440:
 ps.graphics.output_res.options.r2160:
   es: "3840×2160"
   en: "3840×2160"
+ps.graphics.aspect_ratio.label:
+  es: Relación de aspecto
+  en: Aspect ratio
+ps.graphics.aspect_ratio.note:
+  es: La de tu pantalla en Automático; elige otra si el juego se ve estirado
+  en: Your display's when Automatic; pick another if the game looks stretched
+ps.graphics.aspect_ratio.options.auto:
+  es: Automático (según la pantalla)
+  en: Automatic (by display)
+ps.graphics.aspect_ratio.options.r4_3:
+  es: "4:3"
+  en: "4:3"
+ps.graphics.aspect_ratio.options.r16_10:
+  es: "16:10 (Steam Deck)"
+  en: "16:10 (Steam Deck)"
+ps.graphics.aspect_ratio.options.r16_9:
+  es: "16:9"
+  en: "16:9"
+ps.graphics.aspect_ratio.options.r21_9:
+  es: "21:9 (ultrapanorámica)"
+  en: "21:9 (ultrawide)"
+ps.graphics.aspect_ratio.options.r32_9:
+  es: "32:9 (superpanorámica)"
+  en: "32:9 (super ultrawide)"
 ps.graphics.live_resolution.label:
   es: Cambio de resolución en caliente
   en: Live resolution change

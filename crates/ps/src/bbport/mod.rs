@@ -52,6 +52,33 @@ pub fn is_bloodborne(game: &Game) -> bool {
     game.platform == Platform::Ps4 && BLOODBORNE_IDS.contains(&game.title_id.as_str())
 }
 
+/// The `aspect_ratio` value nearest a `width` by `height` display, either way up: what the
+/// setting's automatic choice passes, since psport keeps 16:9 unless told otherwise.
+#[must_use]
+#[expect(clippy::float_arithmetic, reason = "comparing the display's ratio")]
+pub fn nearest_aspect_ratio(width: f32, height: f32) -> Option<&'static str> {
+    const RATIOS: [(&str, f32); 5] = [
+        ("4:3", 4.0 / 3.0),
+        ("16:10", 16.0 / 10.0),
+        ("16:9", 16.0 / 9.0),
+        ("21:9", 21.0 / 9.0),
+        ("32:9", 32.0 / 9.0),
+    ];
+    let (long, short) = if width >= height {
+        (width, height)
+    } else {
+        (height, width)
+    };
+    if short <= 0.0 {
+        return None;
+    }
+    let ratio = long / short;
+    RATIOS
+        .into_iter()
+        .min_by(|a, b| (a.1 - ratio).abs().total_cmp(&(b.1 - ratio).abs()))
+        .map(|(name, _)| name)
+}
+
 /// A 1.09 update folder for this base game among the scanned dumps, if one exists.
 pub fn find_update<'a>(game: &Game, games: &'a [Game]) -> Option<&'a Game> {
     games
@@ -247,7 +274,8 @@ impl Bbport {
     /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
     /// Bloodborne. `menu_language` is the in-game menu's until one is picked
     /// in the menu itself. `learned` is what earlier runs of this title taught
-    /// ([`learned::Store`]).
+    /// ([`learned::Store`]). `aspect_ratio` is the display's, when the setting is automatic
+    /// ([`nearest_aspect_ratio`]).
     #[expect(
         clippy::too_many_arguments,
         reason = "each one is a different source of the environment"
@@ -261,6 +289,7 @@ impl Bbport {
         mods: &mods::Mods,
         menu_language: &str,
         learned: &learned::Title,
+        aspect_ratio: Option<&str>,
     ) -> io::Result<Command> {
         let mut command = match toolchain
             .command(&self.root, Port::Bbport, r#"bash "$DECANTER_PORT_DIR/run.sh""#)
@@ -316,6 +345,12 @@ impl Bbport {
                 command.env(var("SYS_MODULES"), dir);
             }
         }
+        // Ports from before `psport.ini` have no aspect ratio setting to override.
+        command.envs(
+            aspect_ratio
+                .filter(|_| matches!(names, Names::Psport))
+                .map(|ratio| (var("ASPECT_RATIO"), ratio)),
+        );
         if settings.flag("hdr", false) {
             command.env(var("HDR"), "1");
         }
