@@ -56,6 +56,10 @@ impl Caps {
         cx.refresh_windows();
     }
 
+    pub fn is_offered(&self, feature: Feature) -> bool {
+        self.0.is_offered(feature)
+    }
+
     pub fn support(&self, feature: Feature) -> &Support {
         self.0.support(feature)
     }

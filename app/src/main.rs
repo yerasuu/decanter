@@ -83,6 +83,7 @@
 )]
 
 use clap::Parser as _;
+use decanter_core::capabilities::Feature;
 
 /// Runs a fallible call and returns from the enclosing function with the
 /// error instead of using `?` — `clippy::restriction` (`question_mark_used`)
@@ -119,8 +120,7 @@ mod self_update;
 mod state;
 mod taskbar;
 mod theme;
-#[cfg(target_os = "linux")]
-mod tray_linux;
+mod tray;
 mod views;
 mod widgets;
 
@@ -161,9 +161,9 @@ fn main() {
     art::init(runtime.handle().clone());
     runtime.spawn(taskbar::sweep());
 
-    // Only Linux has a tray to close into; a library brought from there may
-    // still have the setting on.
-    let close_to_tray = cfg!(target_os = "linux") && close_to_tray();
+    // Only where the capability table offers a tray (see `views::Lifecycle`):
+    // a library brought from elsewhere may still have the setting on.
+    let close_to_tray = close_to_tray();
     i18n::init();
     gpui_platform::application()
         .with_quit_mode(gpui::QuitMode::Explicit)
@@ -180,9 +180,8 @@ fn main() {
             // gone unless something goes and stops it.
             cx.spawn(async move |cx| launch::exit_with_games_on_signal(cx).await)
                 .detach();
-            #[cfg(target_os = "linux")]
-            if close_to_tray {
-                spawn_tray(cx);
+            if close_to_tray && capabilities::Caps::get(cx).is_offered(Feature::Tray) {
+                tray::spawn(cx);
             }
             views::show_main_window(cx);
         });
@@ -226,24 +225,4 @@ fn close_to_tray() -> bool {
         });
     tracing::debug!(close_to_tray = value, "resolved close-to-tray setting");
     value
-}
-
-/// GPUI has no tray of its own; `tray_linux` runs one over D-Bus and
-/// reports clicks back through a channel this loop drains.
-#[cfg(target_os = "linux")]
-fn spawn_tray(cx: &mut gpui::App) {
-    let mut commands = tray_linux::spawn();
-    cx.spawn(async move |cx| {
-        while let Some(command) = commands.recv().await {
-            match command {
-                tray_linux::TrayCommand::Show => cx.update(views::show_main_window),
-                // Games outlive decanter by design (see
-                // `launch::stop_everything`'s doc) — quitting from the tray
-                // is the same "just exit" a window close was before this
-                // setting existed.
-                tray_linux::TrayCommand::Quit => cx.update(|cx| cx.quit()),
-            }
-        }
-    })
-    .detach();
 }

@@ -24,7 +24,7 @@ pub fn window_options(
     cx: &App,
 ) -> WindowOptions {
     let bounds = gpui::Bounds::centered(None, size(px(width), px(height)), cx);
-    WindowOptions {
+    crate::platform::with_window_icon(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(gpui::TitlebarOptions {
             title: Some(title.to_owned().into()),
@@ -33,22 +33,10 @@ pub fn window_options(
         window_decorations: Some(WindowDecorations::Client),
         window_min_size: Some(size(px(min_width), px(min_height))),
         app_id: Some("decanter".to_owned()),
-        #[cfg(target_os = "linux")]
-        icon: WINDOW_ICON.clone(),
         is_resizable: true,
         ..Default::default()
-    }
+    })
 }
-
-/// The window icon, for X11 only: Wayland has no per-window icon, and takes
-/// it from the `.desktop` file matching the `app_id` instead.
-#[cfg(target_os = "linux")]
-static WINDOW_ICON: std::sync::LazyLock<Option<std::sync::Arc<image::RgbaImage>>> = std::sync::LazyLock::new(|| {
-    image::load_from_memory(include_bytes!("../../assets/favicon.ico"))
-        .inspect_err(|err| tracing::warn!(%err, "could not decode the window icon"))
-        .ok()
-        .map(|icon| std::sync::Arc::new(icon.into_rgba8()))
-});
 
 /// Starts the move a native title bar would start on mousedown.
 pub fn drag_handle(element: Div) -> Div {

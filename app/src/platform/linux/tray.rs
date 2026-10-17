@@ -26,11 +26,7 @@ use rust_i18n::t;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-/// What the user asked for by clicking the icon or one of its menu items.
-pub enum TrayCommand {
-    Show,
-    Quit,
-}
+use crate::tray::TrayCommand;
 
 struct DecanterTray {
     commands: UnboundedSender<TrayCommand>,
@@ -94,7 +90,7 @@ impl Tray for DecanterTray {
 /// pixel data `ksni::Icon` wants — `image`'s buffer is RGBA per pixel, so
 /// each 4 bytes gets reordered to A,R,G,B rather than reinterpreted.
 fn decanter_icon() -> Option<Icon> {
-    let image = match image::load_from_memory(include_bytes!("../assets/favicon.ico")) {
+    let image = match image::load_from_memory(include_bytes!("../../../assets/favicon.ico")) {
         Ok(image) => image.into_rgba8(),
         Err(err) => {
             tracing::error!(error = %err, "bundled favicon.ico doesn't decode, tray shows no icon");
@@ -118,10 +114,10 @@ fn decanter_icon() -> Option<Icon> {
 
 /// Starts the tray as its own background task, off GPUI's event
 /// loop entirely — `ksni` drives itself through its own `zbus` connection.
-/// The returned receiver is how the caller finds out what got clicked;
+/// The receiver it returns is how the caller finds out what got clicked;
 /// the `ksni::Handle` itself is deliberately leaked; nothing here ever
 /// needs to tear the tray back down before the process exits.
-pub fn spawn() -> UnboundedReceiver<TrayCommand> {
+pub fn spawn_tray() -> UnboundedReceiver<TrayCommand> {
     let (commands, receiver) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         let tray = DecanterTray { commands };

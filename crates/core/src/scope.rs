@@ -3,6 +3,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::capabilities::Feature;
+use crate::platform;
+
 /// What names a game's scope, desktop entry and icon.
 ///
 /// `id` with anything but `[A-Za-z0-9_]` turned into `_`, since it may be a
@@ -38,6 +41,9 @@ pub fn application_id(key: &str) -> String {
 #[must_use]
 #[inline]
 pub fn own_scope(key: &str, description: &str) -> Option<Command> {
+    if !platform::support(Feature::Scopes).is_offered() {
+        return None;
+    }
     let systemd_run = systemd_run()?;
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

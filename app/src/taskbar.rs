@@ -13,7 +13,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use decanter_core::{InstalledGame, Storefront};
+use decanter_core::capabilities::Feature;
+use decanter_core::{InstalledGame, Storefront, platform};
 
 /// A PC game's [`decanter_core::game_key`], prefixed by where it came from
 /// so a GOG product id and an external game's uuid never meet.
@@ -38,17 +39,14 @@ struct Entry<'entry> {
 }
 
 /// The real folder under the user's applications folder that holds
-/// decanter's symlinks.
-#[cfg(target_os = "linux")]
+/// decanter's symlinks. Desktop entries are an XDG desktop's: where the
+/// capability table leaves them off, no entry is written and the task bar
+/// shows decanter's own window for a game.
 fn links_dir() -> Option<PathBuf> {
+    if !platform::support(Feature::DesktopEntries).is_offered() {
+        return None;
+    }
     dirs::data_dir().map(|dir| dir.join("applications").join("decanter"))
-}
-
-/// Desktop entries are an XDG desktop's: elsewhere no entry is written and
-/// the task bar shows decanter's own window for a game.
-#[cfg(not(target_os = "linux"))]
-const fn links_dir() -> Option<PathBuf> {
-    None
 }
 
 fn desktop_dir(library_root: &Path) -> PathBuf {
@@ -202,10 +200,10 @@ async fn link(desktop: &Path, key: &str) -> io::Result<bool> {
         Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err),
         Ok(()) | Err(_) => {}
     }
-    #[cfg(unix)]
-    tokio::fs::symlink(desktop, &path).await?;
-    #[cfg(windows)]
-    tokio::fs::symlink_file(desktop, &path).await?;
+    let desktop = desktop.to_path_buf();
+    tokio::task::spawn_blocking(move || platform::symlink_file(&desktop, &path))
+        .await
+        .map_err(io::Error::other)??;
     Ok(true)
 }
 
@@ -274,10 +272,7 @@ fn relink(desktop: &Path, old: &Path, key: &str) -> io::Result<bool> {
         return Ok(false);
     }
     std::fs::remove_file(&link)?;
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(desktop, &link)?;
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_file(desktop, &link)?;
+    platform::symlink_file(desktop, &link)?;
     Ok(true)
 }
 

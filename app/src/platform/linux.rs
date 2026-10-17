@@ -1,13 +1,16 @@
 mod notice;
 mod pads;
 mod shortcut;
+mod tray;
 
 use std::io;
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, LazyLock};
 
 use nix::unistd::{AccessFlags, access};
+pub use tray::spawn_tray;
 
 /// What a running game can be asked to close from, and where the notice
 /// about it shows: the session bus (notifications, the Plasma shortcut)
@@ -153,4 +156,20 @@ pub async fn exit_signal() -> bool {
         _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
     }
     true
+}
+
+/// The window icon, for X11 only: Wayland has no per-window icon, and takes
+/// it from the `.desktop` file matching the `app_id` instead.
+static WINDOW_ICON: LazyLock<Option<Arc<image::RgbaImage>>> = LazyLock::new(|| {
+    image::load_from_memory(include_bytes!("../../assets/favicon.ico"))
+        .inspect_err(|err| tracing::warn!(%err, "could not decode the window icon"))
+        .ok()
+        .map(|icon| Arc::new(icon.into_rgba8()))
+});
+
+pub fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
+    gpui::WindowOptions {
+        icon: WINDOW_ICON.clone(),
+        ..options
+    }
 }

@@ -15,10 +15,13 @@ mod unavailable;
 use std::cell::Cell;
 use std::rc::Rc;
 
+use decanter_core::capabilities::Feature;
+
 use gpui::{
     App, AppContext as _, Context, Entity, Global, Subscription, Window, WindowHandle, div, prelude::*, px, rgb,
 };
 
+use crate::capabilities::Caps;
 use crate::state::AppState;
 use crate::theme;
 use profile_form::ProfileForm;
@@ -118,6 +121,13 @@ pub struct Lifecycle {
 impl Global for Lifecycle {}
 
 impl Lifecycle {
+    /// The setting, as long as a tray is there to close into: without a
+    /// `StatusNotifier` host, found only after startup, the window would
+    /// close into nothing.
+    fn closes_to_tray(&self, cx: &App) -> bool {
+        self.close_to_tray && Caps::get(cx).is_offered(Feature::CloseToTray)
+    }
+
     pub fn init(close_to_tray: bool, cx: &mut App) {
         cx.set_global(Self {
             close_to_tray,
@@ -134,7 +144,7 @@ impl Lifecycle {
             if !was_main {
                 return;
             }
-            let quit = !lifecycle.close_to_tray && !lifecycle.stopping.get();
+            let quit = !lifecycle.closes_to_tray(cx) && !lifecycle.stopping.get();
             cx.global_mut::<Self>().main = None;
             if quit {
                 cx.quit();
@@ -165,7 +175,7 @@ pub fn show_main_window(cx: &mut App) {
 /// "cerrar a la bandeja" on, stops them and leaves decanter in the tray.
 fn close_main_window(window: &mut Window, cx: &mut App) {
     let lifecycle = cx.global::<Lifecycle>();
-    let close_to_tray = lifecycle.close_to_tray;
+    let close_to_tray = lifecycle.closes_to_tray(cx);
     let stopping = Rc::clone(&lifecycle.stopping);
     stopping.set(true);
     // Gone first so closing feels immediate: stopping a game means asking

@@ -3,6 +3,10 @@ use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
 
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+
+use crate::tray::TrayCommand;
+
 /// Closing a game from a pad or a global shortcut, and the notice about
 /// it, are a Linux desktop session's (evdev, D-Bus): here nothing asks.
 pub struct CloseWatch;
@@ -47,6 +51,13 @@ impl Notices {
     pub async fn cancelled(self, _replaces: Option<u32>, _name: &str) {}
 
     pub async fn close(self, _id: Option<u32>) {}
+}
+
+/// No tray here yet: the capability table leaves it off, so nothing asks;
+/// the channel is closed from the start.
+pub fn spawn_tray() -> UnboundedReceiver<TrayCommand> {
+    tracing::warn!("asked for a tray, which this system doesn't have");
+    unbounded_channel().1
 }
 
 /// Nothing answers for a tray here yet; see the capability table.
@@ -103,4 +114,9 @@ pub async fn exit_signal() -> bool {
         _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
     }
     true
+}
+
+/// The window takes its icon from the executable here.
+pub const fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
+    options
 }
