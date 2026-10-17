@@ -24,6 +24,8 @@ const MAX_ID: usize = 64;
 const MAX_REASON: usize = 512;
 /// The area whose features only online play needs: a game runs without it.
 const ONLINE_AREA: &str = "net";
+/// psport's row for `key.menu` and `pad.menu`, which a game runs without.
+const MENU_BINDING: &str = "port_menu_binding";
 
 /// A feature's state on this host, as psport spells it.
 #[derive(Deserialize)]
@@ -70,10 +72,28 @@ impl HostFeatures {
     /// Playing goes when a feature a game needs is unavailable here, with
     /// psport's own reason for the first one, and is marked as being tested
     /// when one is only experimental. Online play has no feature of its own
-    /// in decanter yet, so its rows change nothing.
+    /// in decanter yet, so its rows change nothing. The menu binding is
+    /// offered only when the build lists it, since older ones ignore it.
     #[inline]
     pub fn merge_into(&self, capabilities: &mut Capabilities) {
-        let needed = self.rows.iter().filter(|row| row.area != ONLINE_AREA);
+        match self.rows.iter().find(|row| row.id == MENU_BINDING) {
+            Some(row) => match row.state {
+                State::Implemented => {}
+                State::Experimental => capabilities.mark_testing(Feature::PsMenuBinding),
+                State::Unavailable => capabilities.merge_reported(
+                    Source::Psport,
+                    [(Feature::PsMenuBinding, format!("{}: {}", row.id, row.reason))],
+                ),
+            },
+            None => capabilities.merge_reported(
+                Source::Psport,
+                [(Feature::PsMenuBinding, format!("{MENU_BINDING}: not in this build"))],
+            ),
+        }
+        let needed = self
+            .rows
+            .iter()
+            .filter(|row| row.area != ONLINE_AREA && row.id != MENU_BINDING);
         let missing = needed.clone().find(|row| matches!(row.state, State::Unavailable));
         match missing {
             Some(row) => capabilities.merge_reported(

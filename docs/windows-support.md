@@ -98,6 +98,9 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     away with psport's reason; an experimental one marks it as being
     tested. A newer report replaces the older one; a port from before
     `--list-features` reports nothing and decanter's table stands.
+    `PsMenuBinding` (the Teclado and Mando rows for psport's `key.menu`
+    and `pad.menu`) is the exception: off until a report lists
+    `port_menu_binding`, since older builds ignore those lines.
 - Views gate with `Caps::gate` (hidden when unavailable), `gate_or_reason`
   (the reason, muted), `gate_or` (their own text) and `reason` (a whole
   pane); `testing_badge` marks a menu item. The window closes into the tray
@@ -110,6 +113,7 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | GalaxyHook | available | testing (x86_64) | no |
 | Proton, Prefixes, Tray, CloseToTray, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
 | PsSection, PsPlay, MangoHud, GameMode | available | no | no |
+| PsMenuBinding | once psport lists it | no | no |
 | PsDownloads | available on x86_64 | no | no |
 
 ## Decanter: medium effort

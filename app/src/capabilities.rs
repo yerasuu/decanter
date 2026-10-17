@@ -31,8 +31,10 @@ impl Caps {
             Availability::Elsewhere => capabilities.restrict(Feature::SelfUpdate, Reason::NotOnThisSystem),
         }
         let ask_tray_host = capabilities.is_offered(Feature::Tray);
+        let mut current = capabilities.clone();
+        without_psport_report(&mut current);
         cx.set_global(Self {
-            current: capabilities.clone(),
+            current,
             own: capabilities,
         });
         if ask_tray_host {
@@ -71,8 +73,9 @@ impl Caps {
     pub fn take_psport_report(cx: &mut App, report: Option<&HostFeatures>) {
         let caps = cx.global_mut::<Self>();
         caps.current = caps.own.clone();
-        if let Some(report) = report {
-            report.merge_into(&mut caps.current);
+        match report {
+            Some(report) => report.merge_into(&mut caps.current),
+            None => without_psport_report(&mut caps.current),
         }
         cx.refresh_windows();
     }
@@ -116,6 +119,15 @@ impl Caps {
             Support::Unavailable(_) => theme::muted(instead).into_any_element(),
         }
     }
+}
+
+/// What only a psport build's own report can offer stays off until one
+/// arrives, since builds from before a feature silently ignore it.
+fn without_psport_report(capabilities: &mut Capabilities) {
+    capabilities.restrict(
+        Feature::PsMenuBinding,
+        Reason::NeedsSetup("psport build listing port_menu_binding"),
+    );
 }
 
 /// For a row that has room for it beside its own label, such as a menu item.

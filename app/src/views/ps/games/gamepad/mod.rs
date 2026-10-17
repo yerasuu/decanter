@@ -6,7 +6,8 @@
 
 mod visual;
 
-use decanter_ps::bbport::pad::{self, BUTTONS, INPUTS, PadLayout};
+use decanter_core::capabilities::Feature;
+use decanter_ps::bbport::pad::{self, BUTTONS, INPUTS, MENU, MENU_CHORDS, PadLayout};
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
 use decanter_ps::layouts::Store;
@@ -15,6 +16,7 @@ use gpui::{AnyElement, Context, Div, Entity, FontWeight, SharedString, Window, d
 use rust_i18n::t;
 
 use super::layout_name;
+use crate::capabilities::Caps;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
@@ -427,19 +429,23 @@ impl GamepadView {
 
     /// `input`'s button, picked from a list when the layout is the user's
     /// own. A pad can't be read from here to capture a press, so it is
-    /// picked rather than pressed.
+    /// picked rather than pressed. The port's menu also offers its chords.
     fn binding_control(layout: &PadLayout, input: &'static str, cx: &Context<Self>) -> AnyElement {
         let buttons = layout.buttons(input);
         if layout.builtin {
             return theme::mono().child(button_label(buttons)).into_any_element();
         }
         let entity = cx.entity();
+        let choices = MENU_CHORDS
+            .iter()
+            .filter(move |_| input == MENU.0)
+            .chain(BUTTONS.iter());
+        let known = choices.clone().any(|(name, _)| *name == buttons);
         Select::new(
             SharedString::from(format!("ps-pad-{input}")),
-            BUTTONS
-                .iter()
+            choices
                 .map(|(name, label)| (SharedString::from(*name), SharedString::from(t!(*label))))
-                .chain(buttons.contains(',').then(|| {
+                .chain((!known).then(|| {
                     (
                         SharedString::from(buttons.to_owned()),
                         SharedString::from(button_label(buttons)),
@@ -455,18 +461,25 @@ impl GamepadView {
         .into_any_element()
     }
 
-    /// One row per PS4 input.
+    /// One row per PS4 input, and the port's menu last for a port build that reads its binding.
     fn table(layout: &PadLayout, cx: &Context<Self>) -> AnyElement {
-        let count = INPUTS.len();
+        let menu = Caps::get(cx).is_offered(Feature::PsMenuBinding).then_some(&MENU);
+        let count = INPUTS.len().saturating_add(usize::from(menu.is_some()));
         theme::card()
-            .children(INPUTS.iter().enumerate().map(|(index, &(input, _, label, action))| {
-                theme::compact_row(index + 1 == count)
-                    .gap_4()
-                    .py(px(6.))
-                    .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
-                    .child(div().flex_1().min_w_0().truncate().child(t!(action)))
-                    .child(Self::binding_control(layout, input, cx))
-            }))
+            .children(
+                INPUTS
+                    .iter()
+                    .chain(menu)
+                    .enumerate()
+                    .map(|(index, &(input, _, label, action))| {
+                        theme::compact_row(index + 1 == count)
+                            .gap_4()
+                            .py(px(6.))
+                            .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
+                            .child(div().flex_1().min_w_0().truncate().child(t!(action)))
+                            .child(Self::binding_control(layout, input, cx))
+                    }),
+            )
             .into_any_element()
     }
 
@@ -520,6 +533,7 @@ fn button_label(buttons: &str) -> String {
         .map(|name| {
             BUTTONS
                 .iter()
+                .chain(&MENU_CHORDS)
                 .find(|(known, _)| *known == name)
                 .map_or_else(|| name.into(), |(_, label)| t!(*label))
         })

@@ -117,6 +117,22 @@ pub const INPUTS: [(&str, &str, &str, &str); 16] = [
     ),
 ];
 
+/// psport's `pad.menu`, in [`INPUTS`]' shape: the port's own menu.
+///
+/// psport opens it on L3+R3 whatever is bound, so the default writes no
+/// line. Kept out of [`PadLayout::assign`]'s swaps since the game may keep
+/// the same button.
+pub const MENU: (&str, &str, &str, &str) = (
+    "menu",
+    "leftstick+rightstick",
+    "ps.gamepad.inputs.menu.label",
+    "ps.gamepad.inputs.menu.action",
+);
+
+/// Two-button chords `pad.menu` takes besides [`BUTTONS`], with the app's
+/// locale key of their label.
+pub const MENU_CHORDS: [(&str, &str); 1] = [("leftstick+rightstick", "ps.gamepad.buttons.l3_r3")];
+
 /// SDL's gamepad button names bbport accepts, with the app's locale key of
 /// how a pad labels them.
 pub const BUTTONS: [(&str, &str); 21] = [
@@ -146,6 +162,7 @@ pub const BUTTONS: [(&str, &str); 21] = [
 fn default_buttons(input: &str) -> &'static str {
     INPUTS
         .iter()
+        .chain([&MENU])
         .find(|(name, ..)| *name == input)
         .map_or("", |(_, buttons, ..)| buttons)
 }
@@ -207,6 +224,10 @@ impl PadLayout {
     /// was its only button it takes `input`'s old ones, so the two swap and
     /// no button ends up doing two things or none.
     pub fn assign(&mut self, input: &str, button: &str) {
+        if input == MENU.0 {
+            self.set(input, button);
+            return;
+        }
         let previous = self.buttons(input).to_owned();
         let holder = INPUTS
             .iter()

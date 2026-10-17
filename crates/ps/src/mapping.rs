@@ -36,10 +36,12 @@ pub enum Action {
     TouchRight,
     ToggleMouse,
     ToggleFullscreen,
+    /// The port's own menu (psport's `key.menu`); Insert opens it too.
+    OpenMenu,
 }
 
 impl Action {
-    pub const ALL: [Action; 27] = [
+    pub const ALL: [Action; 28] = [
         Action::Cross,
         Action::Circle,
         Action::Triangle,
@@ -67,6 +69,7 @@ impl Action {
         Action::TouchRight,
         Action::ToggleMouse,
         Action::ToggleFullscreen,
+        Action::OpenMenu,
     ];
 
     /// The name written in the file.
@@ -99,6 +102,7 @@ impl Action {
             Action::TouchRight => "TouchRight",
             Action::ToggleMouse => "ToggleMouse",
             Action::ToggleFullscreen => "ToggleFullscreen",
+            Action::OpenMenu => "OpenMenu",
         }
     }
 
@@ -354,12 +358,17 @@ impl Target {
             RightStickDown => "look_down",
             RightStickLeft => "look_left",
             RightStickRight => "look_right",
+            OpenMenu => "menu",
             ToggleMouse | ToggleFullscreen => return None,
         })
     }
 
+    /// `AnyPS5` has no menu of its own to open.
     pub fn supports(self, action: Action) -> bool {
-        self == Target::AnyPs5 || Self::bbport_input(action).is_some()
+        match self {
+            Self::AnyPs5 => action != Action::OpenMenu,
+            Self::Bbport => Self::bbport_input(action).is_some(),
+        }
     }
 
     /// bbport's `key.` lines list keys only; AnyPS5 also takes mouse buttons and the wheel.

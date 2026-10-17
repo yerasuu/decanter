@@ -38,12 +38,15 @@ pub enum Feature {
     PsSection,
     PsDownloads,
     PsPlay,
+    /// A key or pad button bound to the port's own menu: only psport
+    /// builds that list it among their features read the binding.
+    PsMenuBinding,
     MangoHud,
     GameMode,
 }
 
 impl Feature {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Play,
         Self::Proton,
         Self::Prefixes,
@@ -59,6 +62,7 @@ impl Feature {
         Self::PsSection,
         Self::PsDownloads,
         Self::PsPlay,
+        Self::PsMenuBinding,
         Self::MangoHud,
         Self::GameMode,
     ];

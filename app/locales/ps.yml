@@ -611,6 +611,9 @@ ps.keyboard.game_actions.move:
 ps.keyboard.game_actions.camera:
   es: Mover la cámara
   en: Move the camera
+ps.keyboard.game_actions.menu_builtin:
+  es: Insert también lo abre
+  en: Insert opens it too
 ps.keyboard.actions.cross:
   es: ✕  Cruz
   en: ✕  Cross
@@ -647,6 +650,9 @@ ps.keyboard.actions.toggle_mouse:
 ps.keyboard.actions.toggle_fullscreen:
   es: Pantalla completa
   en: Fullscreen
+ps.keyboard.actions.open_menu:
+  es: Abrir el menú del port
+  en: Open the port's menu
 ps.keyboard.sources.mouse_left:
   es: Ratón izquierdo
   en: Left mouse button
@@ -806,6 +812,12 @@ ps.gamepad.inputs.right.label:
 ps.gamepad.inputs.right.action:
   es: Cambiar arma derecha
   en: Switch right weapon
+ps.gamepad.inputs.menu.label:
+  es: Menú
+  en: Menu
+ps.gamepad.inputs.menu.action:
+  es: Abrir el menú del port (L3 + R3 siempre lo abre)
+  en: Open the port's menu (L3 + R3 always opens it)
 ps.gamepad.buttons.a:
   es: A / ✕
   en: A / ✕
@@ -836,6 +848,9 @@ ps.gamepad.buttons.leftstick:
 ps.gamepad.buttons.rightstick:
   es: Clic stick der.
   en: Right stick click
+ps.gamepad.buttons.l3_r3:
+  es: L3 + R3
+  en: L3 + R3
 ps.gamepad.buttons.back:
   es: Select / Back
   en: Select / Back

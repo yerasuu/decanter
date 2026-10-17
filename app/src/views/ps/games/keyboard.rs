@@ -6,6 +6,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use decanter_core::capabilities::Feature;
 use gpui::{
     Context, Div, Entity, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
     NavigationDirection, ScrollDelta, ScrollWheelEvent, SharedString, Stateful, Window, div, prelude::*, px, rgb,
@@ -18,6 +19,7 @@ use decanter_ps::layouts::{self, KeyLayout, Store};
 use decanter_ps::mapping::{Action, Mapping, MouseButton, Refusal, Source, Target, Wheel};
 
 use super::layout_name;
+use crate::capabilities::Caps;
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
 
@@ -67,6 +69,7 @@ const GROUPS: [(&str, &[Action]); 5] = [
             Action::TouchRight,
             Action::ToggleMouse,
             Action::ToggleFullscreen,
+            Action::OpenMenu,
         ],
     ),
 ];
@@ -85,12 +88,14 @@ fn label(action: Action) -> Cow<'static, str> {
         Action::TouchRight => t!("ps.keyboard.actions.touch_right"),
         Action::ToggleMouse => t!("ps.keyboard.actions.toggle_mouse"),
         Action::ToggleFullscreen => t!("ps.keyboard.actions.toggle_fullscreen"),
+        Action::OpenMenu => t!("ps.keyboard.actions.open_menu"),
         other => other.name().into(),
     }
 }
 
 /// What the game does with the PS4 input an action presses: the gamepad view's texts, so both
-/// screens say the same; `None` for the port's own switches (mouse, fullscreen).
+/// screens say the same; `None` for the port's own switches (mouse, fullscreen), and for its menu
+/// the key that opens it whatever is bound.
 fn game_action(action: Action) -> Option<Cow<'static, str>> {
     let input = match action {
         Action::Cross => "cross",
@@ -115,6 +120,7 @@ fn game_action(action: Action) -> Option<Cow<'static, str>> {
         Action::RightStickUp | Action::RightStickDown | Action::RightStickLeft | Action::RightStickRight => {
             return Some(t!("ps.keyboard.game_actions.camera"));
         }
+        Action::OpenMenu => return Some(t!("ps.keyboard.game_actions.menu_builtin")),
         Action::ToggleMouse | Action::ToggleFullscreen => return None,
     };
     INPUTS
@@ -512,19 +518,25 @@ impl KeyboardView {
             })
     }
 
+    /// The menu binding only for a port build that reads it.
+    fn offers(&self, action: Action, menu_offered: bool) -> bool {
+        self.target.supports(action) && (action != Action::OpenMenu || menu_offered)
+    }
+
     fn groups(&self, cx: &mut Context<Self>) -> Div {
+        let menu_offered = Caps::get(cx).is_offered(Feature::PsMenuBinding);
         let mut groups = div().flex().flex_col().gap_5();
         for (title, actions) in GROUPS {
             groups = groups.child(div().flex().flex_col().gap_2().child(theme::h3(t!(title))).child({
                 let last = actions
                     .iter()
-                    .filter(|&&action| self.target.supports(action))
+                    .filter(|&&action| self.offers(action, menu_offered))
                     .count()
                     .saturating_sub(1);
                 theme::card().children(
                     actions
                         .iter()
-                        .filter(|&&action| self.target.supports(action))
+                        .filter(|&&action| self.offers(action, menu_offered))
                         .enumerate()
                         .map(|(index, &action)| self.row(action, index == last, cx)),
                 )
