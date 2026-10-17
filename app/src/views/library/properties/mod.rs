@@ -18,7 +18,7 @@
 //! outcome, so the work finishes and only its result is dropped.
 
 mod cloud_saves;
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod compatibility;
 mod dlc;
 mod general;
@@ -52,7 +52,7 @@ enum Tab {
     Dlc,
     Betas,
     Versions,
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     Compatibility,
 }
 
@@ -66,7 +66,7 @@ impl Tab {
             Self::Dlc => t!("library.properties.tabs.dlc"),
             Self::Betas => t!("library.properties.tabs.betas"),
             Self::Versions => t!("library.properties.tabs.versions"),
-            #[cfg(not(windows))]
+            #[cfg(proton)]
             Self::Compatibility => t!("library.properties.tabs.compatibility"),
         }
     }
@@ -80,7 +80,7 @@ const TABS: &[Tab] = &[
     Tab::Dlc,
     Tab::Betas,
     Tab::Versions,
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     Tab::Compatibility,
 ];
 
@@ -88,7 +88,7 @@ const TABS: &[Tab] = &[
 /// DLC, cloud saves) applies to a file someone pointed at.
 const EXTERNAL_TABS: &[Tab] = &[
     Tab::General,
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     Tab::Compatibility,
 ];
 
@@ -203,7 +203,7 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
         Tab::Betas => cx.new(|cx| releases::BetasTab::new(target, cx)).into(),
         Tab::Versions => cx.new(|cx| releases::VersionsTab::new(target, cx)).into(),
-        #[cfg(not(windows))]
+        #[cfg(proton)]
         Tab::Compatibility => cx.new(|cx| compatibility::CompatibilityTab::new(target, cx)).into(),
     }
 }

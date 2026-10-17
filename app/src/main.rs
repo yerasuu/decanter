@@ -203,9 +203,9 @@ fn open_library(chosen: Option<std::path::PathBuf>) {
     if let Some(root) = chosen {
         decanter_core::bootstrap::set_override(root);
     }
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     let migrated = decanter_core::migrate::run(Some(decanter_runtime::umu_run_path));
-    #[cfg(windows)]
+    #[cfg(not(proton))]
     let migrated = decanter_core::migrate::run(None);
     match migrated {
         Ok(outcome) => tracing::debug!(?outcome, "checked for data to migrate"),

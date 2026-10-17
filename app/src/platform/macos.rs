@@ -79,3 +79,28 @@ pub fn own_process_group(command: &mut Command) {
 pub fn replace_process(command: &mut Command) -> io::Error {
     command.exec()
 }
+
+/// Resolves once SIGTERM or SIGINT came, or `false` at once when they
+/// can't be watched.
+pub async fn exit_signal() -> bool {
+    let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(signal) => signal,
+        Err(err) => {
+            tracing::warn!(signal = "SIGTERM", %err, "cannot watch for the signal");
+            return false;
+        }
+    };
+    let mut interrupt = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
+        Ok(signal) => signal,
+        Err(err) => {
+            tracing::warn!(signal = "SIGINT", %err, "cannot watch for the signal");
+            return false;
+        }
+    };
+
+    tokio::select! {
+        _ = term.recv() => tracing::info!("received sigterm, stopping games before exit"),
+        _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
+    }
+    true
+}

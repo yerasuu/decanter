@@ -310,7 +310,7 @@ pub async fn start(prefix: &Prefix, launch: Launch) -> anyhow::Result<Session> {
 /// resolved.
 #[inline]
 pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prepared> {
-    if !crate::AVAILABLE {
+    if !crate::available() {
         bail!(
             "Proton runs only on Linux, cannot start {}",
             launch.executable.display()

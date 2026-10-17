@@ -86,7 +86,7 @@ pub async fn follow(
 
 /// Adds what decanter makes of a run's end: `file_line` to its file, in the
 /// log's English, and `job_line` to the Registro tab, in the UI's language.
-#[cfg(windows)]
+#[cfg(not(proton))]
 pub async fn note(
     job: &Entity<Job>,
     mut log: Option<RunLog>,

@@ -1,12 +1,12 @@
 use gpui::Context;
-#[cfg(windows)]
+#[cfg(not(proton))]
 use gpui::{Div, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::GameForm;
-#[cfg(windows)]
+#[cfg(not(proton))]
 use crate::theme;
-#[cfg(windows)]
+#[cfg(not(proton))]
 use crate::widgets::{ButtonKind, button};
 
 pub(super) enum Installer {
@@ -17,14 +17,14 @@ pub(super) enum Installer {
     Failed(String),
 }
 
-#[cfg(not(windows))]
+#[cfg(proton)]
 const INSTALLER_EXTENSIONS: &[&str] = &["exe"];
-#[cfg(windows)]
+#[cfg(not(proton))]
 const INSTALLER_EXTENSIONS: &[&str] = &["exe", "msi"];
 
 impl GameForm {
     pub(super) fn run_installer(&mut self, cx: &mut Context<Self>) {
-        #[cfg(not(windows))]
+        #[cfg(proton)]
         let (profile_id, id, proton, library_root) = (
             self.profile_id.clone(),
             self.id.clone(),
@@ -46,10 +46,10 @@ impl GameForm {
                 this.error.clear();
                 cx.notify();
             });
-            #[cfg(not(windows))]
+            #[cfg(proton)]
             let result =
                 crate::external::run_installer(&profile_id, &id, &installer, proton, library_root.as_deref()).await;
-            #[cfg(windows)]
+            #[cfg(not(proton))]
             let result = crate::external::run_installer(&installer).await;
             let _ = this.update(cx, |this, cx| {
                 this.installer = match result {
@@ -66,7 +66,7 @@ impl GameForm {
 
     /// Where the executable picker opens: Program Files once an installer
     /// ran, since installers don't say where they put the game.
-    #[cfg(windows)]
+    #[cfg(not(proton))]
     pub(super) fn executable_start(&self) -> Option<std::path::PathBuf> {
         matches!(self.installer, Installer::Done)
             .then(|| std::env::var_os("ProgramFiles"))
@@ -74,7 +74,7 @@ impl GameForm {
             .map(std::path::PathBuf::from)
     }
 
-    #[cfg(windows)]
+    #[cfg(not(proton))]
     pub(super) fn installer_row(&self, cx: &Context<Self>) -> Div {
         let running = matches!(self.installer, Installer::Running);
         let status = match &self.installer {

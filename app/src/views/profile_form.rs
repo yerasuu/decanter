@@ -6,9 +6,11 @@
 //! creating a profile here makes it active, and the check that led here
 //! never fires again with a profile already active.
 
+use decanter_core::capabilities::Feature;
 use gpui::{Context, Entity, EventEmitter, Focusable as _, FontWeight, Window, div, prelude::*, px, relative, rgb};
 use rust_i18n::t;
 
+use crate::capabilities::Caps;
 use crate::i18n::{self, Language};
 use crate::state::AppState;
 use crate::theme;
@@ -222,10 +224,10 @@ impl Render for ProfileForm {
                                     .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
                                 ),
                         )
-                        .child(theme::muted(if cfg!(windows) {
-                            t!("chrome.onboarding.library_native")
-                        } else {
+                        .child(theme::muted(if Caps::get(cx).support(Feature::Proton).is_offered() {
                             t!("chrome.onboarding.library")
+                        } else {
+                            t!("chrome.onboarding.library_native")
                         }))
                         .child(self.path_row(cx).mt(px(20.)).w_full().max_w(px(320.)))
                         .children(self.error_line()),

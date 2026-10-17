@@ -59,7 +59,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
 
 /// Starts `game` in its prefix, with decanter-hook told where to write;
 /// the session and that log.
-#[cfg(not(windows))]
+#[cfg(proton)]
 async fn start(
     db: &decanter_core::Db,
     library: &Library,
@@ -116,7 +116,7 @@ async fn start(
 
 /// Starts `game`'s executable from its own folder, with decanter-hook told
 /// where to write; the session and that log.
-#[cfg(windows)]
+#[cfg(not(proton))]
 fn start(
     _: &decanter_core::Db,
     library: &Library,

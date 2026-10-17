@@ -49,7 +49,7 @@ pub const UMU_PROTON_REPO: &str = "Open-Wine-Components/umu-proton";
 #[inline]
 #[must_use]
 pub fn steam_compat_dir() -> Option<PathBuf> {
-    if !crate::AVAILABLE {
+    if !crate::available() {
         return None;
     }
     let Some(data) = env::var_os("XDG_DATA_HOME")

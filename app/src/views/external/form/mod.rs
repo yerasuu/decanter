@@ -4,9 +4,9 @@
 
 mod art;
 mod installer;
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod prefix;
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod umu;
 
 use decanter_core::{GameArt, InstalledGame};
@@ -54,7 +54,7 @@ pub struct GameForm {
     installer: installer::Installer,
     /// The prefix import and UMU entry, which only a game run under Proton
     /// has.
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     wine: prefix::Wine,
 }
 
@@ -75,7 +75,7 @@ impl GameForm {
         let executable = cx.new(|cx| TextInput::new(t!("external.form.executable"), cx));
         let Some(game) = editing else {
             return Self {
-                #[cfg(not(windows))]
+                #[cfg(proton)]
                 wine: prefix::Wine::new(&profile_id, None),
                 profile_id,
                 id: uuid::Uuid::new_v4().to_string(),
@@ -100,7 +100,7 @@ impl GameForm {
             executable.update(cx, |input, cx| input.set_text(path.to_string_lossy().into_owned(), cx));
         }
         Self {
-            #[cfg(not(windows))]
+            #[cfg(proton)]
             wine: prefix::Wine::new(&profile_id, game.proton),
             profile_id,
             id: game.game_id,
@@ -127,7 +127,7 @@ impl GameForm {
     /// A new game a launcher installed in `host`'s prefix: filled in from
     /// what was found, running in that prefix with `host`'s Proton, and its
     /// art and UMU entry already being looked up by name.
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     pub fn hosted(
         profile_id: String,
         host: &InstalledGame,
@@ -206,7 +206,7 @@ impl GameForm {
             prefix_of: self.prefix_of.clone(),
             library_root: self.library_root.clone(),
         };
-        #[cfg(not(windows))]
+        #[cfg(proton)]
         let Some(draft) = self.import_on_save(draft, cx) else {
             return;
         };
@@ -219,9 +219,9 @@ impl GameForm {
 
 impl Render for GameForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        #[cfg(not(windows))]
+        #[cfg(proton)]
         let (busy, save_label, rows) = (self.busy(), self.save_label(), self.wine_rows(cx));
-        #[cfg(windows)]
+        #[cfg(not(proton))]
         let (busy, save_label, rows) = (
             matches!(self.installer, installer::Installer::Running),
             if self.editing {

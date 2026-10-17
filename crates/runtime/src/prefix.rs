@@ -218,7 +218,7 @@ fn terminate(pid: u32) {
 /// Every process's entry in `/proc`, or `None` without one to read. Off
 /// Linux nothing runs in a prefix, so there is nothing to look for.
 fn proc_entries() -> Option<fs::ReadDir> {
-    if !crate::AVAILABLE {
+    if !crate::available() {
         return None;
     }
     fs::read_dir("/proc")

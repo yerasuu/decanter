@@ -30,33 +30,37 @@
     reason = "most async fns here cost more than the 512-byte threshold by design"
 )]
 
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod launch;
-#[cfg(windows)]
+#[cfg(not(proton))]
 mod native;
 mod path;
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod prefix;
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod proton;
-#[cfg(not(windows))]
+#[cfg(proton)]
 mod umu;
 
-#[cfg(not(windows))]
+#[cfg(proton)]
 pub use launch::{Launch, Prepared, Session, prepare, start};
-#[cfg(windows)]
+#[cfg(not(proton))]
 pub use native::{Launch, Prepared, Session, is_live, prepare, start, stop, stop_all};
 pub use path::sanitize_relative_path;
-#[cfg(not(windows))]
+#[cfg(proton)]
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};
-#[cfg(not(windows))]
+#[cfg(proton)]
 pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
-#[cfg(not(windows))]
+#[cfg(proton)]
 pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
-/// Whether games can launch here at all.
-///
-/// Under Proton on Linux (umu-run, Proton and the Steam Linux Runtime are
-/// Linux-only) and natively on Windows. Elsewhere every launch fails up
-/// front and the UI says so instead of offering it.
-pub const AVAILABLE: bool = cfg!(any(target_os = "linux", windows));
+use decanter_core::capabilities::Feature;
+use decanter_core::platform;
+
+/// Whether games can launch here at all, as the capability table says:
+/// elsewhere every launch fails up front and the UI doesn't offer it.
+#[must_use]
+#[inline]
+pub fn available() -> bool {
+    platform::support(Feature::Play).is_offered()
+}

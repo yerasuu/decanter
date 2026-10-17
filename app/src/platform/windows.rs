@@ -74,3 +74,18 @@ pub const fn own_process_group(_command: &mut Command) {}
 pub fn replace_process(_command: &mut Command) -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, "replacing this process only exists on Unix")
 }
+
+/// Only Ctrl+C has a signal here; logging off closes the window, which
+/// quits the ordinary way.
+pub async fn exit_signal() -> bool {
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {
+            tracing::info!("received ctrl-c, stopping games before exit");
+            true
+        }
+        Err(err) => {
+            tracing::warn!(signal = "ctrl-c", %err, "cannot watch for the signal");
+            false
+        }
+    }
+}

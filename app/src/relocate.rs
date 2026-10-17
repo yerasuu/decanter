@@ -38,9 +38,9 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
         return Err(t!("storage.errors.hosted").into_owned());
     }
     let old_prefix = from.join("compatdata").join(account_id).join(game_id);
-    #[cfg(not(windows))]
+    #[cfg(proton)]
     let running = !decanter_runtime::Prefix::new(&old_prefix).processes().is_empty();
-    #[cfg(windows)]
+    #[cfg(not(proton))]
     let running = crate::launch::is_running(account_id, game_id);
     if running {
         return Err(t!("storage.errors.running").into_owned());
