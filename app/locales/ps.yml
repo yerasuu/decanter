@@ -605,6 +605,12 @@ ps.keyboard.groups.right_stick:
 ps.keyboard.groups.touch_window:
   es: Táctil y ventana
   en: Touchpad and window
+ps.keyboard.game_actions.move:
+  es: Moverse
+  en: Move
+ps.keyboard.game_actions.camera:
+  es: Mover la cámara
+  en: Move the camera
 ps.keyboard.actions.cross:
   es: ✕  Cruz
   en: ✕  Cross

@@ -12,6 +12,7 @@ use gpui::{
 };
 use rust_i18n::t;
 
+use decanter_ps::bbport::pad::INPUTS;
 use decanter_ps::keys::sdl_key_name;
 use decanter_ps::layouts::{self, KeyLayout, Store};
 use decanter_ps::mapping::{Action, Mapping, MouseButton, Refusal, Source, Target, Wheel};
@@ -86,6 +87,40 @@ fn label(action: Action) -> Cow<'static, str> {
         Action::ToggleFullscreen => t!("ps.keyboard.actions.toggle_fullscreen"),
         other => other.name().into(),
     }
+}
+
+/// What the game does with the PS4 input an action presses: the gamepad view's texts, so both
+/// screens say the same; `None` for the port's own switches (mouse, fullscreen).
+fn game_action(action: Action) -> Option<Cow<'static, str>> {
+    let input = match action {
+        Action::Cross => "cross",
+        Action::Circle => "circle",
+        Action::Square => "square",
+        Action::Triangle => "triangle",
+        Action::L1 => "l1",
+        Action::R1 => "r1",
+        Action::L2 => "l2",
+        Action::R2 => "r2",
+        Action::L3 => "l3",
+        Action::R3 => "r3",
+        Action::Options => "options",
+        Action::Up => "up",
+        Action::Down => "down",
+        Action::Left => "left",
+        Action::Right => "right",
+        Action::TouchLeft | Action::TouchRight => "touchpad",
+        Action::LeftStickUp | Action::LeftStickDown | Action::LeftStickLeft | Action::LeftStickRight => {
+            return Some(t!("ps.keyboard.game_actions.move"));
+        }
+        Action::RightStickUp | Action::RightStickDown | Action::RightStickLeft | Action::RightStickRight => {
+            return Some(t!("ps.keyboard.game_actions.camera"));
+        }
+        Action::ToggleMouse | Action::ToggleFullscreen => return None,
+    };
+    INPUTS
+        .iter()
+        .find(|&&(name, ..)| name == input)
+        .map(|&(.., key)| t!(key))
 }
 
 fn source_label(source: &Source) -> String {
@@ -354,7 +389,14 @@ impl KeyboardView {
                     } else {
                         theme::TEXT_PRIMARY
                     }))
-                    .child(SharedString::from(label(action))),
+                    .child(SharedString::from(label(action)))
+                    .children(game_action(action).map(|what| {
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT_DIM))
+                            .truncate()
+                            .child(SharedString::from(what))
+                    })),
             )
             .child(
                 div()
