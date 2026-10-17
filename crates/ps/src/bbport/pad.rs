@@ -173,6 +173,10 @@ pub struct PadLayout {
     pub name: String,
     /// `(input, SDL buttons)` for the inputs moved off their default.
     pub lines: Vec<(String, String)>,
+    /// The shipped layout a user's own one was duplicated from, which a
+    /// restore goes back to; empty for bbport's own mapping.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub template: String,
     /// Shipped with decanter: shown, applied and duplicated, never edited.
     #[serde(skip)]
     pub builtin: bool,
@@ -191,6 +195,7 @@ impl PadLayout {
                 id: "default".to_owned(),
                 name: "Predeterminado".to_owned(),
                 lines: Vec::new(),
+                template: String::new(),
                 builtin: true,
             },
             // Code Vein's fighting buttons on Bloodborne's closest actions;
@@ -207,6 +212,7 @@ impl PadLayout {
                     ("triangle", "rightshoulder"),
                     ("square", "righttrigger"),
                 ]),
+                template: String::new(),
                 builtin: true,
             },
         ]
@@ -240,6 +246,26 @@ impl PadLayout {
             self.set(holder, &replacement);
         }
         self.set(input, button);
+    }
+
+    /// The id of the shipped layout this one restores to: itself when it
+    /// is one, else the one it was duplicated from.
+    pub fn template(&self) -> &str {
+        if self.builtin { &self.id } else { &self.template }
+    }
+
+    /// Puts the inputs `scope` picks back on the template's buttons and
+    /// leaves the rest as they are.
+    pub fn restore(&mut self, scope: impl Fn(&str) -> bool) {
+        let template = Self::builtins()
+            .into_iter()
+            .find(|layout| layout.id == self.template())
+            .map(|layout| layout.lines)
+            .unwrap_or_default();
+        self.lines.retain(|(input, _)| !scope(input));
+        self.lines
+            .extend(template.into_iter().filter(|(input, _)| scope(input)));
+        self.lines.sort();
     }
 
     fn set(&mut self, input: &str, buttons: &str) {
@@ -298,6 +324,7 @@ pub fn from_ini(root: &Root) -> PadLayout {
         id: String::new(),
         name: "Personalizado".to_owned(),
         lines,
+        template: String::new(),
         builtin: true,
     }
 }

@@ -134,6 +134,7 @@ impl Store {
             id: Self::next_id(self.pad.iter().map(|layout| layout.id.as_str())),
             name,
             lines: source.lines.clone(),
+            template: source.template().to_owned(),
             builtin: false,
         };
         self.pad.push(copy.clone());

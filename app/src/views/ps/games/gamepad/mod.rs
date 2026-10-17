@@ -1,9 +1,11 @@
-//! Mando: which controller bbport reads and which layout its buttons
-//! follow. Any layout can be copied into a new editable one; the one
-//! picked is the one in `bbport.ini`, and an edit to it is written there
-//! at once. Everything applies on the next start. The bindings show as a
-//! list or on a drawing of the pad ([`visual`]), whichever the user keeps.
+//! Mando: which controller bbport reads and which configuration its
+//! buttons follow ([`config`]). The bindings show as a list or on a drawing
+//! of the pad ([`visual`]), whichever the user keeps: the list writes an
+//! edit to `bbport.ini` at once, the drawing stages edits until they are
+//! applied ([`staged`]). Everything applies on the next start.
 
+mod config;
+mod staged;
 mod visual;
 
 use decanter_core::capabilities::Feature;
@@ -14,12 +16,13 @@ use decanter_ps::layouts::Store;
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
+use staged::Scope;
 
 use super::layout_name;
 use crate::capabilities::Caps;
 use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
+use crate::widgets::{InputEvent, Select, TextInput, select::SelectStyle, tooltip};
 
 /// The layout select's value while `bbport.ini` holds `pad.` lines no
 /// layout has.
@@ -70,8 +73,11 @@ pub struct GamepadView {
     name: Entity<TextInput>,
     error: Option<String>,
     mode: Mode,
-    /// The input picked on the drawing, whose binding the side panel edits.
+    /// The input picked on the drawing, whose binding the editor under it changes.
     selected: Option<&'static str>,
+    /// The drawing's edits not yet applied; `None` when there are none.
+    draft: Option<PadLayout>,
+    scope: Scope,
 }
 
 fn gamepad_setting() -> Option<&'static Setting> {
@@ -155,6 +161,8 @@ impl GamepadView {
             error: None,
             mode: Mode::List,
             selected: None,
+            draft: None,
+            scope: Scope::Game,
         }
     }
 
@@ -175,8 +183,11 @@ impl GamepadView {
         cx.notify();
     }
 
-    /// `Lista` / `Visual`: two ways to show the same bindings.
+    /// `Lista` / `Visual`: two ways to show the same bindings. Locked while
+    /// the drawing holds unapplied edits, since the list writes at once and
+    /// would write under them.
     fn mode_switch(&self, cx: &Context<Self>) -> Div {
+        let locked = self.draft.is_some();
         div()
             .flex()
             .flex_none()
@@ -204,13 +215,25 @@ impl GamepadView {
                         .cursor_pointer()
                         .text_color(rgb(if active { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
                         .when(active, |item| item.bg(rgb(theme::BG_PANEL_LIGHT)))
-                        .when(!active, |item| {
+                        .when(!active && !locked, |item| {
                             item.hover(|item| item.text_color(rgb(theme::TEXT_BRIGHT)))
+                                .on_click(cx.listener(move |this, _, _, cx| this.choose_mode(mode, cx)))
                         })
-                        .on_click(cx.listener(move |this, _, _, cx| this.choose_mode(mode, cx)))
+                        .when(!active && locked, |item| {
+                            item.opacity(0.4)
+                                .cursor_not_allowed()
+                                .tooltip(tooltip(t!("ps.gamepad.visual.locked")))
+                        })
                         .child(SharedString::from(label))
                 }),
             )
+    }
+
+    const fn loaded(&self) -> Option<&Loaded> {
+        match &self.loaded {
+            Some(Ok(loaded)) => Some(loaded),
+            _ => None,
+        }
     }
 
     fn loaded_mut(&mut self) -> Option<&mut Loaded> {
@@ -257,54 +280,6 @@ impl GamepadView {
         .detach();
         self.sync_name(cx);
         cx.notify();
-    }
-
-    fn choose(&mut self, id: &str, cx: &mut Context<Self>) {
-        let layout = self
-            .loaded_mut()
-            .and_then(|loaded| loaded.store.pad_layouts().into_iter().find(|layout| layout.id == id));
-        if let Some(layout) = layout {
-            self.apply(layout, false, cx);
-        }
-    }
-
-    /// A new editable layout from the one in use, or from `bbport.ini`'s
-    /// own lines when they match none.
-    fn copy(&mut self, cx: &mut Context<Self>) {
-        let Some(loaded) = self.loaded_mut() else {
-            return;
-        };
-        let source = loaded.layout().unwrap_or_else(|| loaded.custom.clone());
-        let name = t!(
-            "ps.layouts.copy_name",
-            name = layout_name(&source.id, source.builtin, &source.name)
-        );
-        let copy = loaded.store.copy_pad(&source, name.into_owned());
-        self.apply(copy, true, cx);
-    }
-
-    fn rename(&mut self, name: String, cx: &mut Context<Self>) {
-        let Some(loaded) = self.loaded_mut() else {
-            return;
-        };
-        let Some(mut layout) = loaded.layout().filter(|layout| !layout.builtin && !name.is_empty()) else {
-            return;
-        };
-        layout.name = name;
-        loaded.store.update_pad(&layout);
-        self.apply(layout, true, cx);
-    }
-
-    fn remove(&mut self, cx: &mut Context<Self>) {
-        let Some(loaded) = self.loaded_mut() else {
-            return;
-        };
-        let Some(layout) = loaded.layout().filter(|layout| !layout.builtin) else {
-            return;
-        };
-        loaded.store.remove_pad(&layout.id);
-        let [default, _] = PadLayout::builtins();
-        self.apply(default, true, cx);
     }
 
     fn assign(&mut self, input: &str, button: &str, cx: &mut Context<Self>) {
@@ -427,12 +402,19 @@ impl GamepadView {
             .into_any_element()
     }
 
-    /// `input`'s button, picked from a list when the layout is the user's
-    /// own. A pad can't be read from here to capture a press, so it is
-    /// picked rather than pressed. The port's menu also offers its chords.
-    fn binding_control(layout: &PadLayout, input: &'static str, cx: &Context<Self>) -> AnyElement {
+    /// `input`'s button, picked from a list when `editable`, and handed to
+    /// `pick` (written at once, or staged). A pad can't be read from here
+    /// to capture a press, so it is picked rather than pressed. The port's
+    /// menu also offers its chords.
+    fn binding_control(
+        layout: &PadLayout,
+        input: &'static str,
+        editable: bool,
+        pick: fn(&mut Self, &str, &str, &mut Context<Self>),
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let buttons = layout.buttons(input);
-        if layout.builtin {
+        if !editable {
             return theme::mono().child(button_label(buttons)).into_any_element();
         }
         let entity = cx.entity();
@@ -456,7 +438,7 @@ impl GamepadView {
         .style(SelectStyle::Compact)
         .on_change(move |value, _, cx| {
             let value = value.to_string();
-            entity.update(cx, |this, cx| this.assign(input, &value, cx));
+            entity.update(cx, |this, cx| pick(this, input, &value, cx));
         })
         .into_any_element()
     }
@@ -477,52 +459,10 @@ impl GamepadView {
                             .py(px(6.))
                             .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
                             .child(div().flex_1().min_w_0().truncate().child(t!(action)))
-                            .child(Self::binding_control(layout, input, cx))
+                            .child(Self::binding_control(layout, input, !layout.builtin, Self::assign, cx))
                     }),
             )
             .into_any_element()
-    }
-
-    fn layout_select(layouts: &[PadLayout], current: Option<&PadLayout>, cx: &Context<Self>) -> Select {
-        let entity = cx.entity();
-        let selected = current.map_or(CUSTOM.to_owned(), |layout| layout.id.clone());
-        let options = layouts
-            .iter()
-            .map(|layout| {
-                (
-                    SharedString::from(layout.id.clone()),
-                    SharedString::from(layout_name(&layout.id, layout.builtin, &layout.name).into_owned()),
-                )
-            })
-            .chain(
-                current
-                    .is_none()
-                    .then(|| (SharedString::from(CUSTOM), SharedString::from(t!("ps.layouts.custom")))),
-            )
-            .collect::<Vec<_>>();
-        Select::new("ps-pad-layout", options, selected)
-            .style(SelectStyle::Compact)
-            .on_change(move |value, _, cx| {
-                let id = value.to_string();
-                entity.update(cx, |this, cx| this.choose(&id, cx));
-            })
-    }
-
-    fn layout_actions(&self, own: bool, cx: &Context<Self>) -> Div {
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_2()
-            .child(
-                button("ps-pad-copy", ButtonKind::Secondary, t!("ps.layouts.copy"), false)
-                    .on_click(cx.listener(|this, _, _, cx| this.copy(cx))),
-            )
-            .when(own, |actions| {
-                actions.child(div().w(px(220.)).child(self.name.clone())).child(
-                    button("ps-pad-remove", ButtonKind::Secondary, t!("ps.layouts.remove"), false)
-                        .on_click(cx.listener(|this, _, _, cx| this.remove(cx))),
-                )
-            })
     }
 }
 
@@ -559,9 +499,10 @@ impl Render for GamepadView {
         let shown = current.clone().unwrap_or_else(|| loaded.custom.clone());
         let values = loaded.values.clone();
 
-        let layout_select = Self::layout_select(&layouts, current.as_ref(), cx);
+        let layout_select = self.layout_select(&layouts, current.as_ref(), cx);
         let own = current.as_ref().is_some_and(|layout| !layout.builtin);
         let actions = self.layout_actions(own, cx);
+        // The drawing says how its own staged edits land, so this hint is the list's.
         let hint = if own {
             t!("ps.gamepad.hint.own")
         } else if current.is_some() {
@@ -569,9 +510,11 @@ impl Render for GamepadView {
         } else {
             t!("ps.gamepad.hint.custom")
         };
-        let bindings = match self.mode {
-            Mode::List => Self::table(&shown, cx),
-            Mode::Visual => self.visual(&shown, &values, cx),
+        let list = self.mode == Mode::List;
+        let bindings = if list {
+            Self::table(&shown, cx)
+        } else {
+            self.visual(&values, cx)
         };
         div()
             .flex()
@@ -600,7 +543,7 @@ impl Render for GamepadView {
                     ))
                     .child(setting_row(
                         div().child(t!("ps.layouts.layout")).into_any_element(),
-                        layout_select.into_any_element(),
+                        layout_select,
                         false,
                     ))
                     .child(setting_row(
@@ -615,7 +558,7 @@ impl Render for GamepadView {
                     )),
             )
             .child(actions)
-            .child(theme::muted(hint).text_size(px(12.)))
+            .when(list, |view| view.child(theme::muted(hint).text_size(px(12.))))
             .child(bindings)
             .into_any_element()
     }

@@ -933,14 +933,59 @@ ps.gamepad.mode.visual:
   es: Visual
   en: Visual
 ps.gamepad.visual.pick:
-  es: Pulsa un botón del dibujo para ver qué hace en el juego y cambiarlo.
-  en: Click a button on the drawing to see what it does in the game and change it.
+  es: Pulsa una fila o un botón del dibujo para elegir qué botón de tu mando lo activa.
+  en: Click a row or a button on the drawing to choose which button on your controller triggers it.
 ps.gamepad.visual.button:
   es: Botón del mando
   en: Controller button
-ps.gamepad.visual.legend:
-  es: "Cada botón del dibujo muestra cuál de tu mando lo activa; en dorado, los que cambian respecto al esquema predeterminado. Pasa el ratón por encima para ver qué hace en el juego."
-  en: "Each button on the drawing shows which one on your controller triggers it; in gold, the ones that differ from the default layout. Hover over one to see what it does in the game."
+ps.gamepad.visual.title:
+  es: Ajustes de controles
+  en: Control settings
+ps.gamepad.visual.restore:
+  es: Restaurar valores por defecto
+  en: Restore default settings
+ps.gamepad.visual.apply:
+  es: Aplicar
+  en: Apply
+ps.gamepad.visual.cancel:
+  es: Cancelar
+  en: Cancel
+ps.gamepad.visual.pending:
+  es: Hay cambios sin aplicar. Se mantienen aunque cambies de pestaña, hasta que los apliques o los canceles.
+  en: There are unapplied changes. They stay even if you switch tabs, until you apply or cancel them.
+ps.gamepad.visual.hint_template:
+  es: Es una plantilla y no se modifica; al aplicar tus cambios se guardan como una configuración tuya nueva. Si un botón ya lo usaba otra entrada, se intercambian.
+  en: This is a template and isn't modified; applying your changes saves them as a new configuration of your own. If another input already used a button, they swap.
+ps.gamepad.visual.hint_own:
+  es: Tu configuración. Los cambios se guardan al pulsar Aplicar; si un botón ya lo usaba otra entrada, se intercambian. En dorado, lo que difiere del esquema predeterminado.
+  en: Your configuration. Changes are saved when you click Apply; if another input already used a button, they swap. In gold, what differs from the default layout.
+ps.gamepad.visual.locked:
+  es: Aplica o cancela antes los cambios del dibujo.
+  en: Apply or cancel the drawing's changes first.
+ps.gamepad.visual.left_stick:
+  es: Moverse
+  en: Move
+ps.gamepad.visual.right_stick:
+  es: Mover la cámara
+  en: Move the camera
+ps.gamepad.visual.stick_fixed:
+  es: Los sticks no se reasignan; hacen lo mismo en cualquier configuración.
+  en: The sticks can't be remapped; they do the same in any configuration.
+ps.gamepad.scope.game:
+  es: Juego
+  en: Game
+ps.gamepad.scope.port:
+  es: Port
+  en: Port
+ps.gamepad.config.template:
+  es: "%{name} (plantilla)"
+  en: "%{name} (template)"
+ps.gamepad.config.duplicate:
+  es: Duplicar
+  en: Duplicate
+ps.gamepad.config.rename:
+  es: Renombrar
+  en: Rename
 ps.graphics.groups.game:
   es: Juego
   en: Game
