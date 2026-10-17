@@ -21,6 +21,8 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
+use crate::platform;
+
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 struct Libraries {
     #[serde(default)]
@@ -49,13 +51,13 @@ static HELD: OnceLock<File> = OnceLock::new();
 
 #[must_use]
 pub fn config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("decanter").join("libraries.toml"))
+    platform::config_dir().map(|dir| dir.join("libraries.toml"))
 }
 
 /// Where everything lived before it moved into the library.
 #[must_use]
 pub fn legacy_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|dir| dir.join("decanter"))
+    platform::legacy_data_dir()
 }
 
 #[must_use]
@@ -268,7 +270,7 @@ fn write_config(libraries: &Libraries) -> io::Result<()> {
 }
 
 fn open_lock() -> Option<File> {
-    let path = lock_dir()?.join("decanter.lock");
+    let path = platform::lock_dir()?.join("decanter.lock");
     OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -276,22 +278,6 @@ fn open_lock() -> Option<File> {
         .open(&path)
         .inspect_err(|err| tracing::warn!(path = %path.display(), %err, "cannot open the runtime lock"))
         .ok()
-}
-
-#[cfg(target_os = "linux")]
-fn lock_dir() -> Option<PathBuf> {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
-}
-
-/// No per-session runtime folder outside Linux: the lock file sits in
-/// decanter's local data folder instead, which it may have to create.
-#[cfg(not(target_os = "linux"))]
-fn lock_dir() -> Option<PathBuf> {
-    let dir = dirs::data_local_dir()?.join("decanter");
-    fs::create_dir_all(&dir)
-        .inspect_err(|err| tracing::warn!(dir = %dir.display(), %err, "cannot create the runtime lock's folder"))
-        .ok()?;
-    Some(dir)
 }
 
 /// Takes the shared lock every running decanter holds, waiting out a

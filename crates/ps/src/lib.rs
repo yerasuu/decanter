@@ -32,6 +32,7 @@ pub mod learned;
 pub mod library;
 pub mod mapping;
 pub mod paths;
+mod platform;
 pub mod port;
 pub mod prebuilt;
 pub mod process;

@@ -21,8 +21,7 @@ pub fn open(target: impl AsRef<OsStr>) -> io::Result<()> {
     for mut command in open::commands(target) {
         decanter_core::strip_launcher_env(&mut command);
         command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        crate::platform::own_process_group(&mut command);
         let spawned = command.spawn();
         match spawned {
             Ok(mut child) => {

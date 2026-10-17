@@ -112,7 +112,6 @@ pub(crate) async fn ensure_umu_run() -> anyhow::Result<PathBuf> {
     tokio::fs::copy(temp_dir.join("umu").join("umu-run"), &path)
         .await
         .context("installing the extracted umu-run")?;
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
         tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))

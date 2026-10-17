@@ -21,39 +21,21 @@
     reason = "directly contradicts needless_return from clippy::all, also enabled"
 )]
 
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{env, fs};
 
-use crate::vdf;
+use crate::{platform, vdf};
 
 /// A `SteamID64`'s offset from the account id used for `userdata/<id>` —
 /// every Steam client folder is named this way, regardless of platform.
 const STEAM_ID64_ACCOUNT_OFFSET: u64 = 76_561_197_960_265_728;
 
 /// The first candidate Steam installation that actually has a `userdata`
-/// directory — native installs first, Flatpak last since it's the least
-/// common on a Deck.
+/// directory, in [`crate::platform::steam_root_candidates`]' order.
 #[must_use]
 #[inline]
 pub fn steam_root() -> Option<PathBuf> {
-    // Exported shortcuts start decanter's Proton launch, which only Linux has.
-    if !cfg!(target_os = "linux") {
-        return None;
-    }
-    let home = env::var_os("HOME").map(PathBuf::from);
-    let xdg_data_home = env::var_os("XDG_DATA_HOME").map(PathBuf::from);
-
-    let candidates = [
-        xdg_data_home.map(|dir| dir.join("Steam")),
-        home.clone().map(|dir| dir.join(".local/share/Steam")),
-        home.clone().map(|dir| dir.join(".steam/steam")),
-        home.map(|dir| dir.join(".var/app/com.valvesoftware.Steam/.local/share/Steam")),
-    ];
-
-    candidates
-        .into_iter()
-        .flatten()
-        .find(|candidate| candidate.join("userdata").is_dir())
+    platform::steam_root_candidates().find(|candidate| candidate.join("userdata").is_dir())
 }
 
 /// The account id (as used in `userdata/<id>`) of whichever local Steam

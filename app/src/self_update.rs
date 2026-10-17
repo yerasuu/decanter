@@ -299,9 +299,11 @@ pub async fn install(
             .sync_all()
             .await
             .map_err(|err| write_error(&partial, &err))?;
-        crate::platform::make_executable(&partial)
-            .await
-            .map_err(|err| write_error(&partial, &err))?;
+        if let Some(executable) = decanter_core::platform::executable_permissions() {
+            tokio::fs::set_permissions(&partial, executable)
+                .await
+                .map_err(|err| write_error(&partial, &err))?;
+        }
         tokio::fs::rename(&partial, appimage)
             .await
             .map_err(|err| write_error(appimage, &err))?;

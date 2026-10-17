@@ -62,11 +62,9 @@ pub fn check_writable(dir: &Path) -> io::Result<()> {
 
 pub const fn restrict_to_owner(_options: &mut tokio::fs::OpenOptions) {}
 
-/// # Errors
-/// Never: Windows runs a file by its extension, not a mode.
-pub async fn make_executable(_path: &Path) -> io::Result<()> {
-    Ok(())
-}
+/// Process groups are a Unix job-control idea: an opened app shares
+/// nothing with decanter's console here to begin with.
+pub const fn own_process_group(_command: &mut Command) {}
 
 pub fn replace_process(_command: &mut Command) -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, "replacing this process only exists on Unix")

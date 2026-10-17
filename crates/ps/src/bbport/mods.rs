@@ -11,6 +11,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use decanter_core::platform::symlink_dir;
+
 use super::LauncherSettings;
 use super::icons::{self, COMMON_TPF, IconStyle};
 use super::pad;
@@ -120,9 +122,9 @@ pub fn prepare(
     }
     fs::create_dir_all(&view)?;
     for name in &ordered {
-        link_mod(&dir.join(name), &view.join(name))?;
+        symlink_dir(&dir.join(name), &view.join(name))?;
     }
-    link_mod(&icons, &view.join(ICONS_MOD))?;
+    symlink_dir(&icons, &view.join(ICONS_MOD))?;
     let disabled = if enabled { profile.disabled } else { ordered.clone() };
     let mut order = ordered;
     order.push(ICONS_MOD.to_owned());
@@ -133,14 +135,4 @@ pub fn prepare(
         config,
         enabled: true,
     })
-}
-
-#[cfg(unix)]
-fn link_mod(target: &Path, link: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(target, link)
-}
-
-#[cfg(windows)]
-fn link_mod(target: &Path, link: &Path) -> io::Result<()> {
-    std::os::windows::fs::symlink_dir(target, link)
 }

@@ -16,4 +16,4 @@ use macos as os;
 #[cfg(windows)]
 use windows as os;
 
-pub use os::{CloseWatch, check_writable, make_executable, replace_process, restrict_to_owner};
+pub use os::{CloseWatch, check_writable, own_process_group, replace_process, restrict_to_owner};

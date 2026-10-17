@@ -1,5 +1,4 @@
 use std::io;
-use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
@@ -66,10 +65,9 @@ pub fn restrict_to_owner(options: &mut tokio::fs::OpenOptions) {
     options.mode(0o600);
 }
 
-/// # Errors
-/// The I/O error from changing `path`'s mode.
-pub async fn make_executable(path: &Path) -> io::Result<()> {
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await
+/// So the opened app doesn't share decanter's terminal signals.
+pub fn own_process_group(command: &mut Command) {
+    command.process_group(0);
 }
 
 /// Only returns when `command` couldn't take this process's place.

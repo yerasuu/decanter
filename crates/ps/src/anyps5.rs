@@ -15,6 +15,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use decanter_core::platform::symlink_dir;
 use tokio::process::Command;
 
 use crate::library::Game;
@@ -192,14 +193,4 @@ fn replace_symlink(target: &Path, link: &Path) -> io::Result<()> {
         fs::remove_file(link)?;
     }
     symlink_dir(target, link)
-}
-
-#[cfg(unix)]
-fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(target, link)
-}
-
-#[cfg(windows)]
-fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
-    std::os::windows::fs::symlink_dir(target, link)
 }

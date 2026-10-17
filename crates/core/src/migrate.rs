@@ -14,15 +14,9 @@
 )]
 
 use std::collections::{BTreeMap, HashMap};
-#[cfg(target_os = "linux")]
-use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io;
 use std::iter;
-#[cfg(target_os = "linux")]
-use std::os::unix::ffi::OsStrExt as _;
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -30,6 +24,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension as _, params};
 
 use crate::bootstrap;
 use crate::db::{Db, has_column, table_exists};
+use crate::platform::{folder_identity, others_running};
 
 /// Profile ids by the library root they keep their games in.
 type Groups = BTreeMap<PathBuf, Vec<String>>;
@@ -172,17 +167,6 @@ fn group_by_root(source: &Connection, default_root: &Path) -> Result<Option<Grou
         groups.entry(first.clone()).or_default().extend(ids);
     }
     Ok(Some(groups))
-}
-
-#[cfg(unix)]
-fn folder_identity(folder: &Path) -> io::Result<(u64, u64)> {
-    let metadata = fs::metadata(folder)?;
-    Ok((metadata.dev(), metadata.ino()))
-}
-
-#[cfg(not(unix))]
-fn folder_identity(folder: &Path) -> io::Result<PathBuf> {
-    fs::canonicalize(folder)
 }
 
 fn active_profile(source: &Connection) -> Result<Option<String>, Error> {
@@ -453,51 +437,4 @@ fn drop_other_profiles(
     tx.execute_batch("DROP TABLE temp.kept; DROP TABLE temp.gone_owners;")?;
     tx.commit()?;
     Ok(removed)
-}
-
-/// Whether a decanter, or a game one started (it runs in a
-/// `decanter.game.*` scope), is running for this same data folder — the
-/// one this process would migrate. Anyone that can't be checked counts.
-#[cfg(target_os = "linux")]
-pub(crate) fn others_running() -> bool {
-    let own = std::process::id().to_string();
-    let data_home = dirs::data_dir();
-    let Ok(entries) = fs::read_dir("/proc") else {
-        return false;
-    };
-    entries.flatten().any(|entry| {
-        let name = entry.file_name();
-        let is_pid = name.as_bytes().iter().all(u8::is_ascii_digit);
-        if !is_pid || name.as_bytes() == own.as_bytes() {
-            return false;
-        }
-        let dir = entry.path();
-        let ours = fs::read_to_string(dir.join("comm")).is_ok_and(|comm| comm.trim_end() == "decanter")
-            || fs::read_to_string(dir.join("cgroup")).is_ok_and(|cgroup| cgroup.contains("decanter.game."));
-        ours && same_data_home(&dir, data_home.as_deref())
-    })
-}
-
-/// Without `/proc` there is nothing to ask, and nothing to protect either:
-/// the old data folder only ever existed on Linux.
-#[cfg(not(target_os = "linux"))]
-pub(crate) const fn others_running() -> bool {
-    false
-}
-
-#[cfg(target_os = "linux")]
-fn same_data_home(process: &Path, data_home: Option<&Path>) -> bool {
-    let Ok(environ) = fs::read(process.join("environ")) else {
-        return true;
-    };
-    let var = |name: &[u8]| {
-        environ
-            .split(|byte| *byte == 0)
-            .find_map(|entry| entry.strip_prefix(name)?.strip_prefix(b"="))
-            .map(|value| PathBuf::from(OsStr::from_bytes(value)))
-    };
-    let theirs = var(b"XDG_DATA_HOME")
-        .filter(|dir| dir.is_absolute())
-        .or_else(|| var(b"HOME").map(|home| home.join(".local").join("share")));
-    theirs.is_none_or(|theirs| Some(theirs.as_path()) == data_home)
 }

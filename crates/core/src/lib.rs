@@ -13,6 +13,7 @@ mod game_tools;
 mod launcher_env;
 mod library;
 pub mod migrate;
+pub mod platform;
 mod profiles;
 mod scope;
 pub mod steam;

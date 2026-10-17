@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use decanter_core::platform::executable_permissions;
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt as _;
 
@@ -75,12 +76,10 @@ pub(super) async fn ensure(root: &Root, mut on_download: impl FnMut(u64, Option<
         tracing::error!(url, "nix-portable download does not match its pinned checksum");
         return Err(Error::Checksum);
     }
-    #[cfg(unix)]
+    if let Some(executable) = executable_permissions()
+        && let Err(err) = tokio::fs::set_permissions(&partial, executable).await
     {
-        use std::os::unix::fs::PermissionsExt as _;
-        if let Err(err) = tokio::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)).await {
-            return Err(err.into());
-        }
+        return Err(err.into());
     }
     if let Err(err) = tokio::fs::rename(&partial, &path).await {
         return Err(err.into());

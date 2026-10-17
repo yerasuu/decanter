@@ -60,6 +60,7 @@ use std::iter;
 use std::path::{Path, PathBuf};
 
 use crate::catalog::Storefront;
+use crate::platform;
 use crate::vdf::{self, Value};
 
 /// Steam's `StateFlags` for "fully installed". Written so the files read
@@ -416,7 +417,7 @@ impl Library {
     #[must_use]
     #[inline]
     pub fn default_path() -> Option<PathBuf> {
-        dirs::data_local_dir().map(|dir| dir.join("decanter").join("steamapps"))
+        platform::default_library_dir()
     }
 
     /// The actual root under `picked` — a folder a picker handed back —
@@ -964,20 +965,14 @@ fn copy_dir_recursive(
     Ok(())
 }
 
-#[cfg(unix)]
-fn copy_symlink(link: &Path, dst: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(fs::read_link(link)?, dst)
-}
-
 /// Windows tells file links from directory links, so the kind follows what
 /// the link points at now; a dangling link is recreated as a file link.
-#[cfg(windows)]
 fn copy_symlink(link: &Path, dst: &Path) -> io::Result<()> {
     let target = fs::read_link(link)?;
     if fs::metadata(link).is_ok_and(|metadata| metadata.is_dir()) {
-        std::os::windows::fs::symlink_dir(target, dst)
+        platform::symlink_dir(&target, dst)
     } else {
-        std::os::windows::fs::symlink_file(target, dst)
+        platform::symlink_file(&target, dst)
     }
 }
 

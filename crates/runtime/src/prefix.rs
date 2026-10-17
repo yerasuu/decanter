@@ -198,7 +198,6 @@ impl Prefix {
     }
 }
 
-#[cfg(unix)]
 fn terminate(pid: u32) {
     use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
@@ -214,11 +213,6 @@ fn terminate(pid: u32) {
     // traced rather than warned about.
     let result = kill(Pid::from_raw(signed_pid), Signal::SIGTERM);
     tracing::trace!(pid, ?result, "sent SIGTERM");
-}
-
-#[cfg(not(unix))]
-fn terminate(pid: u32) {
-    tracing::warn!(pid, "no signals on this system, cannot ask the process to exit");
 }
 
 /// Every process's entry in `/proc`, or `None` without one to read. Off
