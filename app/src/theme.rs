@@ -36,8 +36,11 @@ pub const TEXT_ON_GREEN: u32 = 0x132406;
 pub const ACCENT_BLUE_HOVER: u32 = 0x72d7ff;
 pub const ACCENT_GREEN_HOVER: u32 = 0xb8e908;
 
-pub const RADIUS: f32 = 3.;
-pub const RADIUS_SM: f32 = 2.;
+pub const RADIUS: f32 = 6.;
+pub const RADIUS_SM: f32 = 4.;
+/// Floating panels (menus, dropdowns, dialogs): less their 6px padding it
+/// leaves `RADIUS_SM`, so the items inside them sit concentric.
+pub const RADIUS_LG: f32 = 10.;
 
 pub const SANS: &str = "Inter";
 pub const DISPLAY: &str = "Oswald";
@@ -136,7 +139,8 @@ pub fn card() -> Div {
 }
 
 /// `.list-row`: one row of a `.card`, divided from the next, lit on hover.
-/// `last` drops the divider, standing in for `:last-child`.
+/// `last` drops the divider, standing in for `:last-child`, and rounds the
+/// hover to the card's corners, since GPUI clips children to a square.
 pub fn list_row(id: impl Into<gpui::ElementId>, last: bool) -> gpui::Stateful<Div> {
     div()
         .id(id)
@@ -147,6 +151,7 @@ pub fn list_row(id: impl Into<gpui::ElementId>, last: bool) -> gpui::Stateful<Di
         .py(px(14.))
         .text_color(rgb(TEXT_PRIMARY))
         .when(!last, |row| row.border_b_1().border_color(rgb(LINE)))
+        .when(last, |row| row.rounded_b(px(RADIUS_SM)))
         .hover(|row| row.bg(rgb(BG_PANEL)))
 }
 

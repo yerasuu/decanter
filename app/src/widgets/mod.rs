@@ -50,7 +50,7 @@ pub fn button(
         .flex_none()
         .items_center()
         .justify_center()
-        .rounded(px(theme::RADIUS_SM))
+        .rounded(px(theme::RADIUS))
         .font_weight(FontWeight::BOLD)
         .line_height(relative(1.5))
         .child(label.into());
@@ -152,7 +152,7 @@ pub fn checkbox(checked: bool) -> Div {
         .items_center()
         .justify_center()
         .size(px(13.))
-        .rounded(px(2.))
+        .rounded(px(theme::RADIUS_SM))
         .border_1()
         .when(checked, |b| {
             b.bg(rgb(theme::ACCENT_BLUE))
@@ -174,17 +174,24 @@ pub fn progress_bar(id: impl Into<ElementId>, fraction: Option<f64>, height: f32
         .w_full()
         .h(px(height))
         .bg(rgb(theme::BG_PANEL_3))
-        .rounded(px(2.))
+        .rounded_full()
         .overflow_hidden()
         .relative();
     match fraction {
-        Some(fraction) => track.child(div().h_full().w(relative(fraction as f32)).bg(rgb(theme::ACCENT_BLUE))),
+        Some(fraction) => track.child(
+            div()
+                .h_full()
+                .w(relative(fraction as f32))
+                .rounded_full()
+                .bg(rgb(theme::ACCENT_BLUE)),
+        ),
         None => track.child(
             div()
                 .absolute()
                 .top_0()
                 .h_full()
                 .w(relative(0.3))
+                .rounded_full()
                 .bg(rgb(theme::ACCENT_BLUE))
                 .with_animation(
                     id,

@@ -91,11 +91,11 @@ impl Select {
             .min_w(min_width)
             .max_h(px(320.))
             .overflow_y_scroll()
-            .p(px(4.))
+            .p(px(6.))
             .bg(rgb(theme::BG_PANEL_2))
             .border_1()
             .border_color(rgb(theme::LINE))
-            .rounded(px(theme::RADIUS))
+            .rounded(px(theme::RADIUS_LG))
             .shadow(theme::popup_shadow())
             .text_size(px(if matches!(self.style, SelectStyle::Field | SelectStyle::Heading) {
                 13.
@@ -232,7 +232,7 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .bg(rgb(theme::BG_PANEL))
             .border_1()
             .border_color(rgb(theme::LINE))
-            .rounded(px(theme::RADIUS_SM))
+            .rounded(px(theme::RADIUS))
             .text_color(rgb(theme::TEXT_PRIMARY))
             .child(chevron.right(px(9.))),
         SelectStyle::Compact => trigger
@@ -278,7 +278,7 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .bg(rgb(theme::BG_PANEL))
             .border_1()
             .border_color(rgb(theme::LINE))
-            .rounded(px(theme::RADIUS_SM))
+            .rounded(px(theme::RADIUS))
             .text_color(rgb(theme::TEXT_PRIMARY))
             .child(chevron.right(px(9.))),
         SelectStyle::Small => trigger

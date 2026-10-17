@@ -686,7 +686,7 @@ impl Render for TextInput {
             .bg(rgb(theme::BG_PANEL))
             .border_1()
             .border_color(rgb(if focused { theme::ACCENT_BLUE_DIM } else { theme::LINE }))
-            .rounded(px(theme::RADIUS_SM))
+            .rounded(px(theme::RADIUS))
             .text_size(px(self.text_size))
             .line_height(relative(1.5))
             .text_color(rgb(theme::TEXT_PRIMARY))

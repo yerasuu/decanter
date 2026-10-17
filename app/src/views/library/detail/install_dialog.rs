@@ -155,7 +155,7 @@ fn dialog_frame(window: &Window) -> Div {
         .bg(rgb(theme::BG_PANEL_2))
         .border_1()
         .border_color(rgb(theme::LINE))
-        .rounded(px(6.))
+        .rounded(px(theme::RADIUS_LG))
         .shadow(vec![BoxShadow {
             color: gpui::black().opacity(0.5),
             offset: point(px(0.), px(24.)),

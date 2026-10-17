@@ -82,7 +82,7 @@ pub fn panel() -> Div {
         .bg(rgb(theme::BG_PANEL_2))
         .border_1()
         .border_color(rgb(theme::LINE))
-        .rounded(px(theme::RADIUS))
+        .rounded(px(theme::RADIUS_LG))
         .shadow(theme::popup_shadow())
         .text_size(px(12.))
 }
