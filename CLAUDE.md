@@ -202,9 +202,10 @@ no existing tag fits, and record it here.
     agent process and environment), `brain` (the board itself).
 - State: `testing` on a task whose code is written but not yet checked running (a game, the
   app, a real CI release); it stays parked with that tag until the check, then `done`.
-- Platform, only when the entry concerns some systems or architectures and not
-  the rest (none means all, Linux x86_64 being the reference): `linux`,
-  `windows`, `macos`; `x86_64`, `aarch64`.
+- Platform: `linux`, `windows`, `macos` when the entry concerns some systems and not the rest;
+  `common` when it explicitly concerns every system (shared code, cross-platform behaviour);
+  `x86_64`, `aarch64` for architectures. An entry with no platform tag is about Linux x86_64,
+  the reference.
 - Title, when the entry is about one game: `bloodborne`, `ryza`, `ayesha`,
   `symphonia`, `saga`, `astrea`, `altdeus`, `onigiri`, `galguardians`,
   `galguardians2`, `bo1`, `bo2`, `bloodomen2`, `octopath0`.
