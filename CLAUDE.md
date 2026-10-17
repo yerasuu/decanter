@@ -192,10 +192,11 @@ no existing tag fits, and record it here.
     NP offline, dialogs), `gpu` (translator, shaders, Vulkan, upscalers),
     `audio`, `video`, `input`, `net` (online, sockets, HTTP).
   - cross-cutting: `vendor` (a GPU vendor difference waiting for the user's decision on a
-    vendor-specific part).
-  - shared: `toolchain` (Nix, CI, prebuilt ports), `regress` (tools/regress,
-    schedules, perf runs), `workflow` (publishing flow, agent process and
-    environment), `brain` (the board itself).
+    vendor-specific part), `regression` (something that worked and stopped working, whatever
+    its area; it goes with that area's tag).
+  - shared: `toolchain` (Nix, CI, prebuilt ports), `regress-test` (the regress tests:
+    tools/regress, schedules, perf runs, night test sessions), `workflow` (publishing flow,
+    agent process and environment), `brain` (the board itself).
 - State: `testing` on a task whose code is written but not yet checked running (a game, the
   app, a real CI release); it stays parked with that tag until the check, then `done`.
 - Platform, only when the entry concerns some systems or architectures and not
