@@ -4,6 +4,7 @@
 
 mod accounts;
 pub mod bootstrap;
+pub mod capabilities;
 mod catalog;
 mod collections;
 mod credentials;

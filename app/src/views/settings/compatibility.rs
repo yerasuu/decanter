@@ -6,11 +6,13 @@
 
 use std::borrow::Cow;
 
+use decanter_core::capabilities::Feature;
 use gpui::{Context, Div, Entity, IntoElement, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
 use super::game_tools::GameToolDefaults;
 use super::{column, field_row, inline};
+use crate::capabilities::Caps;
 use crate::releases::{self, Release, ReleaseError};
 use crate::theme;
 use crate::widgets::{ButtonKind, Select, button};
@@ -226,8 +228,8 @@ fn proton_line(tools: Option<&ToolChecks>) -> Div {
 
 impl Render for CompatibilityTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !decanter_runtime::AVAILABLE {
-            return column().child(theme::muted(t!("common.unavailable_here")));
+        if let Some(reason) = Caps::get(cx).reason(Feature::Proton) {
+            return column().child(theme::muted(reason));
         }
         // A pin naming a Proton that's since been uninstalled matches no
         // option, and a native select falls back to its first one then —

@@ -1,9 +1,11 @@
+use decanter_core::capabilities::Feature;
 use decanter_core::{Game, InstalledGame, Storefront};
 use gpui::{AnyElement, Context, Div, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::install_dialog::install_dialog;
 use super::{BarState, DetailView};
+use crate::capabilities::Caps;
 use crate::state::{AppState, InstallStatus};
 use crate::theme;
 use crate::views::downloads::progress_lines;
@@ -223,23 +225,20 @@ fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool, cx: &C
     let Some(installed) = launch else {
         return theme::muted(t!("library.detail.no_executable")).into_any_element();
     };
-    if !decanter_runtime::AVAILABLE {
-        return theme::muted(t!("library.detail.play_unavailable")).into_any_element();
-    }
     let account_id = game.account_id.clone();
     let product_id = game.id.clone();
-    if running {
-        return button("stop", ButtonKind::PlaySecondary, t!("library.detail.stop"), false)
-            .on_click(move |_, _, cx| {
-                tracing::info!(account_id, product_id, "stopping game");
-                actions::stop_game(account_id.clone(), product_id.clone(), cx);
-            })
-            .into_any_element();
-    }
-    button("play", ButtonKind::Play, t!("library.detail.play"), false)
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.show_log(cx);
-            actions::launch_game(account_id.clone(), installed.clone(), cx);
-        }))
-        .into_any_element()
+    let action = if running {
+        button("stop", ButtonKind::PlaySecondary, t!("library.detail.stop"), false).on_click(move |_, _, cx| {
+            tracing::info!(account_id, product_id, "stopping game");
+            actions::stop_game(account_id.clone(), product_id.clone(), cx);
+        })
+    } else {
+        button("play", ButtonKind::Play, t!("library.detail.play"), false).on_click(cx.listener(
+            move |this, _, _, cx| {
+                this.show_log(cx);
+                actions::launch_game(account_id.clone(), installed.clone(), cx);
+            },
+        ))
+    };
+    Caps::get(cx).gate_or(Feature::Play, action, t!("library.detail.play_unavailable"))
 }

@@ -1,4 +1,5 @@
-//! Linux: XDG folders, `/proc`, `statvfs` and Unix links and modes.
+//! Linux: XDG folders, `/proc`, `statvfs`, Unix links and modes, and the
+//! reference capability table.
 
 use std::ffi::OsStr;
 use std::fs::{self, Permissions};
@@ -9,6 +10,8 @@ use std::path::{Path, PathBuf};
 use std::{env, process};
 
 use nix::sys::statvfs::statvfs;
+
+use crate::capabilities::{Feature, Reason, Support};
 
 /// Device and inode: the same folder reached through two paths compares equal.
 pub type FolderIdentity = (u64, u64);
@@ -140,4 +143,31 @@ pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub fn executable_permissions() -> Option<Permissions> {
     Some(Permissions::from_mode(0o755))
+}
+
+/// The reference system: everything is built for it first. What a given
+/// machine lacks is taken away later, in [`crate::capabilities`].
+#[must_use]
+#[inline]
+pub const fn support(feature: Feature) -> Support {
+    match feature {
+        Feature::PsDownloads if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
+        Feature::Play
+        | Feature::Proton
+        | Feature::Prefixes
+        | Feature::ExternalInstaller
+        | Feature::GalaxyHook
+        | Feature::Tray
+        | Feature::CloseToTray
+        | Feature::PadClose
+        | Feature::DesktopEntries
+        | Feature::Scopes
+        | Feature::SelfUpdate
+        | Feature::SteamExport
+        | Feature::PsSection
+        | Feature::PsDownloads
+        | Feature::PsPlay
+        | Feature::MangoHud
+        | Feature::GameMode => Support::Available,
+    }
 }

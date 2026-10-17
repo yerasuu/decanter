@@ -49,6 +49,11 @@ impl Notices {
     pub async fn close(self, _id: Option<u32>) {}
 }
 
+/// Nothing answers for a tray here yet; see the capability table.
+pub async fn status_notifier_host() -> bool {
+    false
+}
+
 /// Only the owner's mode bits are checked, without `access(2)`: decanter
 /// never rewrites itself here, so nothing finer depends on it.
 ///

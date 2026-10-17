@@ -1,11 +1,13 @@
 //! macOS: the platform folders `dirs` knows, `fs4` for disk space, Unix
-//! links and modes.
+//! links and modes, and what it supports so far.
 
 use core::iter;
 use std::fs::{self, Permissions};
 use std::io;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
 use std::path::{Path, PathBuf};
+
+use crate::capabilities::{Feature, Reason, Support};
 
 /// Device and inode: the same folder reached through two paths compares equal.
 pub type FolderIdentity = (u64, u64);
@@ -94,4 +96,30 @@ pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub fn executable_permissions() -> Option<Permissions> {
     Some(Permissions::from_mode(0o755))
+}
+
+/// Browsing the library, GOG and achievements only: no launch backend
+/// exists here yet.
+#[must_use]
+#[inline]
+pub const fn support(feature: Feature) -> Support {
+    match feature {
+        Feature::Play
+        | Feature::Proton
+        | Feature::Prefixes
+        | Feature::ExternalInstaller
+        | Feature::GalaxyHook
+        | Feature::Tray
+        | Feature::CloseToTray
+        | Feature::PadClose
+        | Feature::DesktopEntries
+        | Feature::Scopes
+        | Feature::SelfUpdate
+        | Feature::SteamExport
+        | Feature::PsSection
+        | Feature::PsDownloads
+        | Feature::PsPlay
+        | Feature::MangoHud
+        | Feature::GameMode => Support::Unavailable(Reason::NotOnThisSystem),
+    }
 }

@@ -1,4 +1,5 @@
-//! decanter's system calls and OS conventions, one file per OS.
+//! decanter's system calls, OS conventions and capability table, one file
+//! per OS.
 //!
 //! The only place in the crate that asks which OS it was built for; the
 //! other crates reach the same functions here for what they share.
@@ -24,5 +25,5 @@ use windows as os;
 
 pub use os::{
     FolderIdentity, config_dir, default_library_dir, disk_space, executable_permissions, folder_identity,
-    legacy_data_dir, lock_dir, others_running, steam_root_candidates, symlink_dir, symlink_file,
+    legacy_data_dir, lock_dir, others_running, steam_root_candidates, support, symlink_dir, symlink_file,
 };

@@ -1,6 +1,6 @@
 //! Transient systemd scopes for the games decanter starts.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// What names a game's scope, desktop entry and icon.
@@ -38,15 +38,7 @@ pub fn application_id(key: &str) -> String {
 #[must_use]
 #[inline]
 pub fn own_scope(key: &str, description: &str) -> Option<Command> {
-    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")?;
-    if !Path::new(&runtime_dir).join("systemd/private").exists() {
-        return None;
-    }
-    let systemd_run = std::env::var_os("PATH").and_then(|path| {
-        std::env::split_paths(&path)
-            .map(|dir| dir.join("systemd-run"))
-            .find(|candidate| candidate.is_file())
-    })?;
+    let systemd_run = systemd_run()?;
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos());
@@ -62,4 +54,18 @@ pub fn own_scope(key: &str, description: &str) -> Option<Command> {
         .arg(description)
         .arg("--");
     Some(command)
+}
+
+/// `systemd-run`, when a systemd user manager is there for it to ask.
+#[must_use]
+#[inline]
+pub fn systemd_run() -> Option<PathBuf> {
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+    if !Path::new(&runtime_dir).join("systemd/private").exists() {
+        return None;
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join("systemd-run"))
+        .find(|candidate| candidate.is_file())
 }

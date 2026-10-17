@@ -5,10 +5,12 @@
 use std::rc::Rc;
 
 use decanter_core::InstalledGame;
+use decanter_core::capabilities::Feature;
 use gpui::{Context, Entity, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
+use crate::capabilities::Caps;
 use crate::theme;
 use crate::views::game_tools::GameToolsPanel;
 use crate::widgets::{ButtonKind, Select, button, tooltip};
@@ -94,8 +96,8 @@ impl Render for CompatibilityTab {
         let Some(installed) = &self.installed else {
             return not_installed();
         };
-        if !decanter_runtime::AVAILABLE {
-            return pane().child(theme::muted(t!("common.unavailable_here")));
+        if let Some(reason) = Caps::get(cx).reason(Feature::Proton) {
+            return pane().child(theme::muted(reason));
         }
 
         let options = std::iter::once((

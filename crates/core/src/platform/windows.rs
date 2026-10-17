@@ -1,11 +1,13 @@
 //! Windows: the known folders `dirs` knows, `fs4` for disk space, file
-//! and directory links told apart, no modes.
+//! and directory links told apart, no modes, and what it supports so far.
 
 use core::iter;
 use std::fs::{self, Permissions};
 use std::io;
 use std::os::windows::fs as windows_fs;
 use std::path::{Path, PathBuf};
+
+use crate::capabilities::{Feature, Reason, Support};
 
 /// The canonical path: the same folder reached through two paths compares equal.
 pub type FolderIdentity = PathBuf;
@@ -95,4 +97,29 @@ pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub const fn executable_permissions() -> Option<Permissions> {
     None
+}
+
+/// Games run natively, so Proton and everything around it isn't here; the
+/// tray, the PS section and the Linux desktop's pieces aren't ported yet.
+#[must_use]
+#[inline]
+pub const fn support(feature: Feature) -> Support {
+    match feature {
+        Feature::GalaxyHook if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
+        Feature::Play | Feature::ExternalInstaller | Feature::GalaxyHook => Support::Testing,
+        Feature::Proton
+        | Feature::Prefixes
+        | Feature::Tray
+        | Feature::CloseToTray
+        | Feature::PadClose
+        | Feature::DesktopEntries
+        | Feature::Scopes
+        | Feature::SelfUpdate
+        | Feature::SteamExport
+        | Feature::PsSection
+        | Feature::PsDownloads
+        | Feature::PsPlay
+        | Feature::MangoHud
+        | Feature::GameMode => Support::Unavailable(Reason::NotOnThisSystem),
+    }
 }

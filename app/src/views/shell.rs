@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use decanter_core::Profile;
+use decanter_core::capabilities::Feature;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, SharedString, StyleRefinement, Window, div, prelude::*, px, rgb,
 };
@@ -18,6 +19,7 @@ use super::library::LibraryView;
 use super::ps::PsView;
 use super::settings::SettingsView;
 use super::storage::StorageView;
+use crate::capabilities::Caps;
 use crate::state::{AppState, InstallStatus};
 use crate::theme;
 use crate::widgets::{Select, progress_bar, select::SelectStyle};
@@ -378,6 +380,8 @@ impl Render for Shell {
             .nth(1)
             .is_some();
         let installing = AppState::get(cx).background.read(cx).installing.len();
+        let ps_link = self.nav_link("nav-ps", "PS", Page::Ps, cx);
+        let ps_link = Caps::get(cx).gate(Feature::PsSection, ps_link);
         let downloads_link = self
             .nav_link("nav-downloads", t!("chrome.nav.downloads"), Page::Downloads, cx)
             .when(installing > 0, |link| {
@@ -410,9 +414,7 @@ impl Render for Shell {
                     .flex_none()
                     .gap_1()
                     .child(self.nav_link("nav-library", t!("chrome.nav.library"), Page::Library, cx))
-                    .when(cfg!(target_os = "linux"), |nav| {
-                        nav.child(self.nav_link("nav-ps", "PS", Page::Ps, cx))
-                    })
+                    .children(ps_link)
                     .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
                     .child(downloads_link)
                     .child(self.nav_link("nav-settings", t!("settings.title"), Page::Settings, cx)),

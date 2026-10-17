@@ -79,6 +79,37 @@ impl Notices<'_> {
     }
 }
 
+/// Whether a tray is there to show decanter's icon: a `StatusNotifierHost`
+/// registered with the watcher, which Plasma has and GNOME only with an
+/// extension.
+pub async fn status_notifier_host() -> bool {
+    match host_registered().await {
+        Ok(registered) => {
+            tracing::info!(registered, "asked the StatusNotifier watcher for a tray host");
+            registered
+        }
+        Err(err) => {
+            tracing::info!(error = %err, "no StatusNotifier watcher to ask, so no tray host");
+            false
+        }
+    }
+}
+
+async fn host_registered() -> zbus::Result<bool> {
+    let bus = zbus::Connection::session().await?;
+    let reply = bus
+        .call_method(
+            Some("org.kde.StatusNotifierWatcher"),
+            "/StatusNotifierWatcher",
+            Some("org.freedesktop.DBus.Properties"),
+            "Get",
+            &("org.kde.StatusNotifierWatcher", "IsStatusNotifierHostRegistered"),
+        )
+        .await?;
+    let value: zbus::zvariant::OwnedValue = reply.body().deserialize()?;
+    Ok(bool::try_from(value)?)
+}
+
 /// # Errors
 /// Why `dir` can't be written to by this process.
 pub fn check_writable(dir: &Path) -> io::Result<()> {

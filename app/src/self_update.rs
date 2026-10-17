@@ -12,6 +12,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use decanter_core::capabilities::Feature;
 use minisign_verify::{PublicKey, Signature};
 use rust_i18n::t;
 use tokio::io::AsyncWriteExt as _;
@@ -52,8 +53,15 @@ fn in_nix_store(path: &Path) -> bool {
 /// `$APPIMAGE` is set by the AppImage runtime, but anything can set it: it
 /// only counts as an AppImage when it names an existing file in a writable
 /// folder, outside the nix store.
+///
+/// Decided once per run, and only where the capability table offers it.
 pub fn availability() -> Availability {
-    if !cfg!(target_os = "linux") {
+    static DECIDED: OnceLock<Availability> = OnceLock::new();
+    DECIDED.get_or_init(decide).clone()
+}
+
+fn decide() -> Availability {
+    if !decanter_core::platform::support(Feature::SelfUpdate).is_offered() {
         return Availability::Elsewhere;
     }
     let Some(appimage) = std::env::var_os("APPIMAGE").filter(|value| !value.is_empty()) else {

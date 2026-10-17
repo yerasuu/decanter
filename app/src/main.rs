@@ -100,6 +100,7 @@ macro_rules! achv_try {
 }
 
 mod art;
+mod capabilities;
 mod cli;
 mod closing;
 mod core;
@@ -172,6 +173,7 @@ fn main() {
             }
             widgets::input::bind_keys(cx);
             state::AppState::init(cx);
+            capabilities::Caps::init(cx);
             views::Lifecycle::init(close_to_tray, cx);
 
             // Once, at the root: a game keeps running after decanter is

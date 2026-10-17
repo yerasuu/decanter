@@ -8,8 +8,8 @@ Recorded on 2026-10-12 as an option, with what it would take; started on
 The workspace compiles for Windows and macOS (CI checks
 `x86_64-pc-windows-msvc`, `aarch64-apple-darwin` and `x86_64-apple-darwin`,
 not yet blocking). Starting up works: first-run language, library, GOG
-login, browsing the library and achievements. Platform differences are
-`cfg(target_os)` functions where they arise:
+login, browsing the library and achievements. Platform differences live in
+the platform layer (see below):
 
 - `libraries.toml` under the platform's config folder (`dirs`), the runtime
   lock in the local app data folder, free space through `fs4`, the keyring's
@@ -48,6 +48,52 @@ after a few seconds if it won't.
 - Not yet: a process that detaches from the one decanter started (a
   launcher re-executing the game) ends the session early; Job Objects
   would follow it. No DirectX DLL drop-ins yet.
+
+## Platform layer and capabilities
+
+Decided 2026-10-17 (decision #538), started on `refactor/535-platform-layer`.
+
+- **System calls**: each crate has a `platform` module, `platform/mod.rs`
+  plus `linux.rs`, `windows.rs` and `macos.rs`; `mod.rs` is the crate's only
+  place that asks which OS it was built for, and the OS files export the
+  same names. `decanter_core::platform` holds what the crates share: the
+  config, legacy data and default library folders, the runtime lock's
+  folder, disk space (`statvfs` on Linux, `fs4` elsewhere), folder identity
+  and the `/proc` check for the migration, Steam's roots, file and directory
+  links and the executable mode. `decanter_ps::platform` has process groups,
+  SIGTERM and exit signals; the app's has the close-game watch (pads, the
+  Plasma shortcut and notices over D-Bus), the tray host query, detached
+  spawns and the self-update's file calls. `nix` and `zbus` are Linux-only
+  dependencies of the app.
+- **Capabilities**: `decanter_core::capabilities` is the one source of what
+  the UI offers and how. Each `Feature` is `Available`, `Testing` (shown
+  with an "en pruebas" badge) or `Unavailable(Reason)`, the reason being
+  `NotOnThisSystem`, `NeedsSetup(what)` or `ReportedBy(source, message)`.
+  `decanter_core::platform::support` is each OS's static table;
+  `Capabilities::detect` then takes away what the machine lacks (no systemd
+  user manager: no `Scopes`), the app adds its own checks at startup (an
+  `AppImage` it can rewrite for `SelfUpdate`, a StatusNotifier host for
+  `Tray` and `CloseToTray`, asked over the session bus) and keeps the result
+  as the `Caps` global, redrawing the windows when a check lands. psport's
+  own report (`--list-features`, coming on psport's side) will be merged
+  through `Capabilities::merge_reported`; that hook is marked TODO.
+- Views gate with `Caps::gate` (hidden when unavailable), `gate_or_reason`
+  (the reason, muted) or `gate_or` (their own text); `testing_badge` marks a
+  menu item. Migrated so far: the tray, close-game and Steam export sections
+  of Ajustes, the PS link in the top bar, the self-update's availability,
+  Play in the detail view and the context menu, and both Compatibility tabs.
+
+| Feature | Linux | Windows | macOS |
+|---|---|---|---|
+| Play, ExternalInstaller, GalaxyHook | available | testing (GalaxyHook on x86_64) | no |
+| Proton, Prefixes, Tray, CloseToTray, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
+| PsSection, PsPlay, MangoHud, GameMode | available | no | no |
+| PsDownloads | available on x86_64 | no | no |
+
+Still read the old way, for the next steps: the `cfg(not(windows))` view
+and launch sites from the Windows launch work (to become one Proton-backend
+predicate), the task bar entries and scopes, the tray's own start in
+`main.rs`, and the Galaxy hook's deployment.
 
 ## Decanter: medium effort
 

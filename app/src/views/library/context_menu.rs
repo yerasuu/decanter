@@ -5,6 +5,7 @@
 use std::rc::Rc;
 
 use decanter_core::Storefront;
+use decanter_core::capabilities::{Feature, Support};
 use decanter_gog::{GameKind, LibraryEntry};
 use gpui::{
     AnyElement, App, Context, Div, Entity, FocusHandle, Focusable as _, KeyDownEvent, Pixels, Point, SharedString,
@@ -20,6 +21,7 @@ use super::data;
 use super::install::InstallRequest;
 use super::shelf_popups;
 use super::{LibraryModel, LibraryPopup, LibraryView};
+use crate::capabilities::{Caps, testing_badge};
 use crate::state::{AppState, InstallStatus};
 use crate::widgets::{InputEvent, TextInput, menu, tooltip};
 
@@ -504,23 +506,26 @@ fn game_action_item(
             .child(t!("library.detail.no_executable"))
             .into_any_element();
     };
-    if !decanter_runtime::AVAILABLE {
-        return menu::item("menu-action", false)
-            .opacity(0.5)
-            .cursor_default()
-            .hover(|item| item)
-            .child(t!("library.detail.play_unavailable"))
-            .into_any_element();
-    }
+    let testing = match Caps::get(cx).support(Feature::Play) {
+        Support::Unavailable(_) => {
+            return menu::item("menu-action", false)
+                .opacity(0.5)
+                .cursor_default()
+                .hover(|item| item)
+                .child(t!("library.detail.play_unavailable"))
+                .into_any_element();
+        }
+        Support::Available => false,
+        Support::Testing => true,
+    };
 
-    if running {
+    let item = if running {
         menu::item("menu-action", false)
             .on_click(move |_, window, cx| {
                 stop_game(account_id.clone(), product_id.clone(), cx);
                 close(window, cx);
             })
             .child(t!("library.menu.stop"))
-            .into_any_element()
     } else {
         menu::item("menu-action", false)
             .on_click(move |_, window, cx| {
@@ -528,8 +533,9 @@ fn game_action_item(
                 close(window, cx);
             })
             .child(t!("library.menu.play"))
-            .into_any_element()
-    }
+    };
+    item.when(testing, |item| item.child(testing_badge()))
+        .into_any_element()
 }
 
 /// Opens the install directory — needs only the files, not a resolved

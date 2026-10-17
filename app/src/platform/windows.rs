@@ -48,6 +48,11 @@ impl Notices {
     pub async fn close(self, _id: Option<u32>) {}
 }
 
+/// Nothing answers for a tray here yet; see the capability table.
+pub async fn status_notifier_host() -> bool {
+    false
+}
+
 /// Only the read-only attribute is checked: the folder's ACL decides the
 /// rest, and a write that it refuses fails with its own error.
 ///

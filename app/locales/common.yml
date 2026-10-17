@@ -17,6 +17,15 @@ common.running:
 common.unavailable_here:
   es: No disponible en este sistema
   en: Not available on this system
+common.needs_setup:
+  es: "Falta en este sistema: %{what}"
+  en: "Missing on this system: %{what}"
+common.reported_by_ps:
+  es: "El port de PS no lo admite: %{why}"
+  en: "The PS port doesn't support it: %{why}"
+common.testing:
+  es: En pruebas
+  en: Testing
 game_tools.title:
   es: Herramientas de juego
   en: Game tools

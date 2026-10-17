@@ -5,10 +5,12 @@
 
 use std::path::PathBuf;
 
-use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
+use decanter_core::capabilities::Feature;
+use gpui::{AnyElement, App, Context, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{column, field_row, inline};
+use crate::capabilities::Caps;
 use crate::i18n::{self, Language};
 use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
@@ -388,7 +390,8 @@ impl Render for GeneralTab {
             .child(theme::h2(t!("settings.general.language.title")))
             .child(self.language_select(cx))
             .child(theme::h2(t!("settings.general.close.title")))
-            .child(linux_only(
+            .child(offered(
+                Feature::CloseToTray,
                 column()
                     .child(Self::checkbox_row(
                         "close-to-tray",
@@ -398,9 +401,11 @@ impl Render for GeneralTab {
                         cx,
                     ))
                     .child(theme::muted(t!("settings.general.close.restart_hint"))),
+                cx,
             ))
             .child(theme::h2(t!("settings.general.close_game.title")))
-            .child(linux_only(
+            .child(offered(
+                Feature::PadClose,
                 column()
                     .child(Self::checkbox_row(
                         "close-game-shortcut",
@@ -414,9 +419,11 @@ impl Render for GeneralTab {
                         hold = crate::closing::HOLD.as_secs(),
                         grace = crate::closing::GRACE.as_secs()
                     ))),
+                cx,
             ))
             .child(theme::h2(t!("settings.general.steam.title")))
-            .child(linux_only(
+            .child(offered(
+                Feature::SteamExport,
                 column()
                     .child(Self::checkbox_row(
                         "steam-export",
@@ -427,19 +434,15 @@ impl Render for GeneralTab {
                     ))
                     .child(theme::muted(t!("settings.general.steam.restart_hint")))
                     .children(callout),
+                cx,
             ))
             .child(theme::h2(t!("settings.general.updates.title")))
             .child(self.release_section(cx))
     }
 }
 
-/// The tray (ksni), closing a game from a pad or the desktop's shortcut, and
-/// Steam shortcuts that start decanter's Proton launch lean on the Linux
-/// desktop: elsewhere their sections say they aren't there.
-fn linux_only(controls: impl IntoElement) -> AnyElement {
-    if cfg!(target_os = "linux") {
-        controls.into_any_element()
-    } else {
-        theme::muted(t!("common.unavailable_here")).into_any_element()
-    }
+/// A section's controls, or why they aren't there. Its arguments are built
+/// before it borrows `cx`, which the controls' listeners need too.
+fn offered(feature: Feature, controls: impl IntoElement, cx: &App) -> AnyElement {
+    Caps::get(cx).gate_or_reason(feature, controls)
 }
