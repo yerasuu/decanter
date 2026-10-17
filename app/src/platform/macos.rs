@@ -120,3 +120,7 @@ pub async fn exit_signal() -> bool {
 pub const fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
     options
 }
+
+/// Kept off so the system title bar stays and its traffic lights don't
+/// land on top of the topbar's own buttons.
+pub const NATIVE_FRAME_CONTROLS: bool = false;

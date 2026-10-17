@@ -66,8 +66,10 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
   - `decanter_ps::platform`: process groups, SIGTERM and exit signals.
   - the app's: the close-game watch (pads, the Plasma shortcut and notices
     over D-Bus), the tray (ksni) and the tray host query, the X11 window
-    icon, exit signals (SIGTERM/SIGINT, Ctrl+C on Windows), detached spawns
-    and the self-update's file calls. `nix`, `zbus` and `ksni` are Linux-only
+    icon, whether the OS hit-tests the topbar's frame controls
+    (`NATIVE_FRAME_CONTROLS`: Windows, with its caption dropped), exit
+    signals (SIGTERM/SIGINT, Ctrl+C on Windows), detached spawns and the
+    self-update's file calls. `nix`, `zbus` and `ksni` are Linux-only
     dependencies of the app.
 - **The launch backend** is named once per crate by its `build.rs`:
   `cfg(proton)` for code that only exists with Proton, `umu-run` and
@@ -109,8 +111,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 
 | Feature | Linux | Windows | macOS |
 |---|---|---|---|
-| Play, ExternalInstaller | available | testing | no |
-| GalaxyHook | available | testing (x86_64) | no |
+| Play, ExternalInstaller | available | available | no |
+| GalaxyHook | available | available (x86_64) | no |
 | Proton, Prefixes, Tray, CloseToTray, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
 | PsSection, PsPlay, MangoHud, GameMode | available | no | no |
 | PsMenuBinding | once psport lists it | no | no |

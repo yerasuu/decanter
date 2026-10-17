@@ -5,11 +5,12 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, CursorStyle, Div, MouseButton, ResizeEdge, SharedString, Stateful, Window, WindowBounds, WindowDecorations,
-    WindowOptions, div, prelude::*, px, rgb, size,
+    App, CursorStyle, Div, MouseButton, ResizeEdge, SharedString, Stateful, Window, WindowBounds, WindowControlArea,
+    WindowDecorations, WindowOptions, div, prelude::*, px, rgb, size,
 };
 use rust_i18n::t;
 
+use crate::platform::NATIVE_FRAME_CONTROLS;
 use crate::theme;
 use crate::widgets::tooltip;
 
@@ -28,6 +29,7 @@ pub fn window_options(
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(gpui::TitlebarOptions {
             title: Some(title.to_owned().into()),
+            appears_transparent: NATIVE_FRAME_CONTROLS,
             ..Default::default()
         }),
         window_decorations: Some(WindowDecorations::Client),
@@ -40,12 +42,15 @@ pub fn window_options(
 
 /// Starts the move a native title bar would start on mousedown.
 pub fn drag_handle(element: Div) -> Div {
-    element.on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+    element
+        .window_control_area(WindowControlArea::Drag)
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
 }
 
 /// The eight grab strips a native frame would have: 4px along each edge,
 /// 8px in the corners (a corner is harder to hit), on top of everything
-/// but too thin to take clicks from the content underneath.
+/// but too thin to take clicks from the content underneath. None where
+/// the OS frame keeps its own borders.
 pub fn resize_edges() -> impl Iterator<Item = Stateful<Div>> {
     const EDGES: [(&str, ResizeEdge); 8] = [
         ("resize-n", ResizeEdge::Top),
@@ -57,7 +62,8 @@ pub fn resize_edges() -> impl Iterator<Item = Stateful<Div>> {
         ("resize-se", ResizeEdge::BottomRight),
         ("resize-sw", ResizeEdge::BottomLeft),
     ];
-    EDGES.into_iter().map(|(id, edge)| {
+    let edges: &[_] = if NATIVE_FRAME_CONTROLS { &[] } else { &EDGES };
+    edges.iter().map(|&(id, edge)| {
         let strip = div().id(id).absolute().occlude();
         let strip = match edge {
             ResizeEdge::Top => strip.top_0().left(px(8.)).right(px(8.)).h(px(4.)),
@@ -107,13 +113,25 @@ pub fn window_controls(on_close: Rc<dyn Fn(&mut Window, &mut App)>) -> Div {
         .child(
             window_button("window-minimize", "─", t!("chrome.window.minimize").into())
                 .hover(|b| b.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_PRIMARY)))
-                .on_click(|_, window, _| window.minimize_window()),
+                .window_control_area(WindowControlArea::Min)
+                .on_click(|_, window, _| {
+                    if !NATIVE_FRAME_CONTROLS {
+                        window.minimize_window();
+                    }
+                }),
         )
         .child(
             window_button("window-maximize", "☐", t!("chrome.window.maximize").into())
                 .hover(|b| b.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_PRIMARY)))
-                .on_click(|_, window, _| window.zoom_window()),
+                .window_control_area(WindowControlArea::Max)
+                .on_click(|_, window, _| {
+                    if !NATIVE_FRAME_CONTROLS {
+                        window.zoom_window();
+                    }
+                }),
         )
+        // Not marked `Close`, since Windows would then post its own close and
+        // skip `on_close`, which has to stop the running games first.
         .child(
             window_button("window-close", "✕", t!("chrome.window.close").into())
                 .hover(|b| b.bg(rgb(theme::CLOSE_HOVER_BG)).text_color(rgb(theme::TEXT_BRIGHT)))

@@ -106,7 +106,7 @@ pub const fn executable_permissions() -> Option<Permissions> {
 pub const fn support(feature: Feature) -> Support {
     match feature {
         Feature::GalaxyHook if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
-        Feature::Play | Feature::ExternalInstaller | Feature::GalaxyHook => Support::Testing,
+        Feature::Play | Feature::ExternalInstaller | Feature::GalaxyHook => Support::Available,
         Feature::Proton
         | Feature::Prefixes
         | Feature::Tray

@@ -105,3 +105,11 @@ pub async fn exit_signal() -> bool {
 pub const fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
     options
 }
+
+/// Windows drops its caption only for a transparent title bar, and then
+/// hit-tests the areas marked with `window_control_area` itself: moving,
+/// snapping, double-click maximize and the buttons' snap layouts come from
+/// the OS, the frame keeps its own resize borders, and GPUI's
+/// `start_window_move`, `start_window_resize` and `zoom_window` (which only
+/// maximizes) do nothing useful here.
+pub const NATIVE_FRAME_CONTROLS: bool = true;

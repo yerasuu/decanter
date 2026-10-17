@@ -173,3 +173,7 @@ pub fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
         ..options
     }
 }
+
+/// The compositor leaves a client-decorated window's moves, resizes and
+/// buttons to the window's own handlers.
+pub const NATIVE_FRAME_CONTROLS: bool = false;
