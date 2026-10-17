@@ -62,6 +62,9 @@ chrome.onboarding.language:
 chrome.onboarding.library:
   es: "Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):"
   en: "Where this profile's library lives (installs, Proton prefixes):"
+chrome.onboarding.library_native:
+  es: "Dónde vive la biblioteca de este perfil (instalaciones):"
+  en: "Where this profile's library lives (installs):"
 chrome.tray.show:
   es: Mostrar Decanter
   en: Show Decanter

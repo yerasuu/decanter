@@ -6,16 +6,21 @@
 
 mod form;
 
+#[cfg(not(windows))]
 use std::collections::{HashMap, HashSet};
+#[cfg(not(windows))]
 use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
+#[cfg(not(windows))]
+use gpui::Task;
 use gpui::{
-    AnyElement, App, Context, Entity, FontWeight, ObjectFit, Subscription, Task, Window, div, img, prelude::*, px, rgb,
+    AnyElement, App, Context, Entity, FontWeight, ObjectFit, Subscription, Window, div, img, prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
 use crate::external::art;
+#[cfg(not(windows))]
 use crate::external::launchers::Detected;
 use crate::state::AppState;
 use crate::theme;
@@ -46,7 +51,9 @@ pub struct ExternalView {
     form: Option<(Entity<GameForm>, Subscription)>,
     /// Games a launcher installed in one of `games`' prefixes that aren't
     /// in the library yet, by the id of the game owning that prefix.
+    #[cfg(not(windows))]
     found: HashMap<String, Vec<Detected>>,
+    #[cfg(not(windows))]
     _scan: Option<Task<()>>,
     api_key: Entity<TextInput>,
     key_status: String,
@@ -55,6 +62,7 @@ pub struct ExternalView {
 impl ExternalView {
     pub fn new(cx: &mut Context<Self>) -> Self {
         // Nothing can resume a copy from a previous session's form.
+        #[cfg(not(windows))]
         if let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.as_deref() {
             crate::external::import::abandon_all(profile_id);
         }
@@ -83,7 +91,9 @@ impl ExternalView {
             profile_id: None,
             games: Vec::new(),
             form: None,
+            #[cfg(not(windows))]
             found: HashMap::new(),
+            #[cfg(not(windows))]
             _scan: None,
             api_key,
             key_status: String::new(),
@@ -101,6 +111,7 @@ impl ExternalView {
             .as_deref()
             .map(crate::external::list)
             .unwrap_or_default();
+        #[cfg(not(windows))]
         self.scan(cx);
         let editing = editing.and_then(|id| self.games.iter().find(|game| game.game_id == id).cloned());
         self.form = self
@@ -112,6 +123,7 @@ impl ExternalView {
     }
 
     /// A fresh form for a game a launcher installed in `host_id`'s prefix.
+    #[cfg(not(windows))]
     fn start_hosted(&mut self, host_id: &str, found: Detected, cx: &mut Context<Self>) {
         let (Some(profile_id), Some(host)) = (
             self.profile_id.clone(),
@@ -141,6 +153,7 @@ impl ExternalView {
     /// Looks through each prefix the profile's external games own for games
     /// a launcher there installed, off the UI thread: it reads every
     /// prefix's registry.
+    #[cfg(not(windows))]
     fn scan(&mut self, cx: &mut Context<Self>) {
         let Some(profile_id) = self.profile_id.clone() else {
             self.found.clear();
@@ -186,6 +199,7 @@ impl ExternalView {
             .as_deref()
             .map(crate::external::list)
             .unwrap_or_default();
+        #[cfg(not(windows))]
         self.scan(cx);
         AppState::get(cx)
             .library
@@ -256,6 +270,7 @@ impl ExternalView {
                 .count();
             let remove_hint = match (&game.prefix_of, hosted) {
                 (Some(host), _) => t!("external.games.remove.hosted", host = name_of(host)),
+                (None, 0) if cfg!(windows) => t!("external.games.remove.native"),
                 (None, 0) => t!("external.games.remove.alone"),
                 (None, 1) => t!("external.games.remove.launcher.one"),
                 (None, count) => t!("external.games.remove.launcher.other", count = count),
@@ -299,6 +314,7 @@ impl ExternalView {
                     )
                     .into_any_element(),
             );
+            #[cfg(not(windows))]
             for (found_index, found) in self.found.get(&game.game_id).into_iter().flatten().enumerate() {
                 let (host, found_game) = (game.game_id.clone(), found.clone());
                 rows.push(
@@ -381,6 +397,7 @@ impl Render for ExternalView {
         let tabs = crate::widgets::tabs("external-tabs", &items, self.tab, move |tab, _, cx| {
             entity.update(cx, |this, cx| {
                 // A launcher may have installed something since the last look.
+                #[cfg(not(windows))]
                 if tab == Tab::Games && this.tab != Tab::Games {
                     this.scan(cx);
                 }
@@ -416,7 +433,11 @@ impl Render for ExternalView {
                 .flex()
                 .flex_col()
                 .child(theme::h1(t!("external.title")))
-                .child(theme::muted(t!("external.intro")))
+                .child(theme::muted(if cfg!(windows) {
+                    t!("external.intro_native")
+                } else {
+                    t!("external.intro")
+                }))
                 .child(tabs)
                 .child(body),
         )

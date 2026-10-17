@@ -8,6 +8,9 @@ messages.errors.create_dir:
 messages.errors.prefix:
   es: no se pudo resolver el prefijo del juego
   en: could not resolve the game's prefix
+messages.errors.user_folders:
+  es: no se pudieron localizar las carpetas de tu usuario de Windows
+  en: could not find your Windows user folders
 messages.errors.no_prefix:
   es: no hay prefijo para este juego
   en: this game has no prefix

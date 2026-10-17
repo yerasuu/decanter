@@ -1,4 +1,7 @@
-//! Running Windows games under Proton, through `umu-run`.
+//! Running Windows games.
+//!
+//! On Windows they run as the plain programs they are (`native`); everywhere
+//! else, under Proton through `umu-run`, which the rest of this explains.
 //!
 //! umu is the launcher Valve's own Proton expects around it: it resolves
 //! (and downloads) a Proton build, sets up the Steam Linux Runtime
@@ -16,7 +19,7 @@
 //! Split by concern: [`prefix`] (a prefix and which ones are live),
 //! [`proton`] (which build to run, and finding Steam's own), [`launch`]
 //! (one game launch, spawning it, and the running result), [`umu`]
-//! (fetching decanter's own `umu-run`).
+//! (fetching decanter's own `umu-run`); [`path`] serves both.
 
 #![expect(
     clippy::implicit_return,
@@ -27,17 +30,33 @@
     reason = "most async fns here cost more than the 512-byte threshold by design"
 )]
 
+#[cfg(not(windows))]
 mod launch;
+#[cfg(windows)]
+mod native;
+mod path;
+#[cfg(not(windows))]
 mod prefix;
+#[cfg(not(windows))]
 mod proton;
+#[cfg(not(windows))]
 mod umu;
 
+#[cfg(not(windows))]
 pub use launch::{Launch, Prepared, Session, prepare, start};
-pub use prefix::{Prefix, live_prefixes, processes_by_prefix, sanitize_relative_path, stop_all};
+#[cfg(windows)]
+pub use native::{Launch, Prepared, Session, is_live, prepare, start, stop, stop_all};
+pub use path::sanitize_relative_path;
+#[cfg(not(windows))]
+pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};
+#[cfg(not(windows))]
 pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
+#[cfg(not(windows))]
 pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
-/// Whether Proton can run here at all: umu-run, Proton and the Steam Linux
-/// Runtime are Linux-only, so elsewhere every launch fails up front and the
-/// UI says so instead of offering it.
-pub const AVAILABLE: bool = cfg!(target_os = "linux");
+/// Whether games can launch here at all.
+///
+/// Under Proton on Linux (umu-run, Proton and the Steam Linux Runtime are
+/// Linux-only) and natively on Windows. Elsewhere every launch fails up
+/// front and the UI says so instead of offering it.
+pub const AVAILABLE: bool = cfg!(any(target_os = "linux", windows));

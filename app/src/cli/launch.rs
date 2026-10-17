@@ -3,15 +3,18 @@
 //! Resolved entirely from decanter's own library (`decanter_core::Library`): the
 //! manifest carries the install directory and the launch executable, and
 //! the Proton prefix lives wherever `Library::compatdata` says — created
-//! on first launch, nothing to look up beforehand.
+//! on first launch, nothing to look up beforehand. On Windows the
+//! executable runs directly, from its own folder.
 //!
 //! Separate from the GUI's own `crate::launch` (which tracks a session for
 //! the tray/exit-on-signal machinery) — this is the headless CLI path,
 //! used for scripting and for observing a launch independent of the app.
 
+use std::path::PathBuf;
+
 use anyhow::{Context, bail};
-use decanter_core::Storefront;
-use decanter_runtime::Launch;
+use decanter_core::{InstalledGame, Library, Storefront};
+use decanter_runtime::{Launch, Session};
 
 use super::report_poll;
 
@@ -36,6 +39,34 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
         tracing::error!(account_id, product_id, "installed but has no launch executable set");
         bail!("{product_id} is installed but has no launch executable set");
     };
+    let (session, achievement_log) = start(db, &library, &game, install_dir.join(executable)).await?;
+    tracing::info!(pid = session.launcher_pid(), "launched");
+
+    session.wait().await.context("running program")?;
+    tracing::info!("program exited");
+
+    tracing::debug!(account_id, product_id, "polling achievements after launch");
+    report_poll(decanter_gog::poll_achievements(db, account_id, product_id).await?);
+
+    if let Some(achievement_log) = achievement_log {
+        let applied = decanter_gog::hook::process_log(db, account_id, product_id, &achievement_log).await;
+        if applied > 0 {
+            tracing::info!(product_id, applied, "applied locally-witnessed achievement unlocks");
+        }
+    }
+    Ok(())
+}
+
+/// Starts `game` in its prefix, with decanter-hook told where to write;
+/// the session and that log.
+#[cfg(not(windows))]
+async fn start(
+    db: &decanter_core::Db,
+    library: &Library,
+    game: &InstalledGame,
+    executable: PathBuf,
+) -> anyhow::Result<(Session, Option<PathBuf>)> {
+    let (account_id, product_id) = (game.account_id.as_str(), game.game_id.as_str());
     let Some(prefix_path) = library.compatdata(account_id, product_id) else {
         tracing::error!(account_id, product_id, "unusable account or product id for prefix");
         bail!("unusable account or product id for {product_id}'s prefix");
@@ -47,7 +78,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     // over any builtin stub of the same name, which is what makes
     // decanter-hook's proxy (see `decanter_gog::hook::deploy`, run at
     // install time) the one that actually loads.
-    let mut launch = Launch::new(install_dir.join(executable), format!("umu-{product_id}")).store("gog");
+    let mut launch = Launch::new(executable, format!("umu-{product_id}")).store("gog");
     launch.dll_overrides.push(("Galaxy64".to_owned(), "n".to_owned()));
     // Same pin the GUI applies (`crate::launch::start`) — without it this
     // path falls back to `Proton::Latest`, which lets umu pick whatever
@@ -56,7 +87,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     // rather than refusing, corrupting it and making the game crash on
     // launch (seen firsthand: exit code 3, "Prefix has an invalid
     // version?!").
-    launch.proton = crate::core::proton_for(&game);
+    launch.proton = crate::core::proton_for(game);
     let key = crate::taskbar::key(game.storefront, &game.game_id);
     launch.gamemoded = crate::game_tools::gamemoded(db, &key);
     if let Some(autostart_log) = crate::game_tools::mangohud(db, &key) {
@@ -77,20 +108,22 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
         achievement_log.display().to_string(),
     ));
 
-    let session = decanter_runtime::start(&prefix, launch)
+    decanter_runtime::start(&prefix, launch)
         .await
-        .context("launching program")?;
-    tracing::info!(pid = session.launcher_pid(), "launched");
+        .context("launching program")
+        .map(|session| (session, Some(achievement_log)))
+}
 
-    session.wait().await.context("running program")?;
-    tracing::info!("program exited");
-
-    tracing::debug!(account_id, product_id, "polling achievements after launch");
-    report_poll(decanter_gog::poll_achievements(db, account_id, product_id).await?);
-
-    let applied = decanter_gog::hook::process_log(db, account_id, product_id, &achievement_log).await;
-    if applied > 0 {
-        tracing::info!(product_id, applied, "applied locally-witnessed achievement unlocks");
-    }
-    Ok(())
+/// Starts `game`'s executable from its own folder. No hook log: decanter-hook
+/// isn't deployed on Windows.
+#[cfg(windows)]
+fn start(
+    _: &decanter_core::Db,
+    _: &Library,
+    game: &InstalledGame,
+    executable: PathBuf,
+) -> core::future::Ready<anyhow::Result<(Session, Option<PathBuf>)>> {
+    let key = format!("{}/{}", game.account_id, game.game_id);
+    let started = decanter_runtime::start(Launch::new(executable, key)).context("launching program");
+    core::future::ready(started.map(|session| (session, None)))
 }

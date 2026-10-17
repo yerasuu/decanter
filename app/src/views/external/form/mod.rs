@@ -3,29 +3,22 @@
 //! own prefix, the way Heroic does — and its art.
 
 mod art;
+#[cfg(not(windows))]
 mod prefix;
+#[cfg(not(windows))]
 mod umu;
 
 use decanter_core::{GameArt, InstalledGame};
-use gpui::{Context, Entity, EventEmitter, ScrollHandle, Task, Window, div, prelude::*, px};
+use gpui::{Context, Div, Entity, EventEmitter, ScrollHandle, Task, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::external::art::Candidates;
-use crate::external::import::Mode as ImportMode;
 use crate::theme;
 use crate::widgets::{ButtonKind, TextInput, button};
 
 pub enum FormEvent {
     /// Written to disk; the list and the library should re-read.
     Saved,
-}
-
-enum Installer {
-    Idle,
-    Running,
-    /// Ran in this game's prefix: the executable picker starts in its `C:`.
-    Done,
-    Failed(String),
 }
 
 enum Search {
@@ -40,85 +33,59 @@ pub struct GameForm {
     /// run before saving has to land in the prefix the game will use.
     id: String,
     editing: bool,
-    /// An edit keeps its Proton pin for the installer too.
-    proton: Option<String>,
     umu: Option<crate::external::UmuEntry>,
     /// Kept through an edit: whose prefix this game runs in.
     prefix_of: Option<String>,
     /// That game's name, to say so on the form.
     host_name: Option<String>,
-    /// The library folders a new game can go in, with their free space.
-    folders: Vec<(std::path::PathBuf, Option<u64>)>,
     /// The folder picked for a new game; `None` is the main one.
     library_root: Option<std::path::PathBuf>,
     name: Entity<TextInput>,
     executable: Entity<TextInput>,
     art: GameArt,
-    installer: Installer,
-    /// Another tool's prefix to move in on save, picked by folder.
-    import_from: Option<std::path::PathBuf>,
-    import_mode: ImportMode,
-    /// Set while a save is bringing a prefix in.
-    importing: bool,
-    progress: std::sync::Arc<crate::external::import::Progress>,
-    /// Redraws the progress bar while `importing`: the copy runs on a
-    /// blocking thread that can't notify this view itself.
-    _ticker: Option<Task<()>>,
     search: Search,
-    /// The UMU database rows the name matched, once looked up.
-    umu_matches: Option<Result<Vec<crate::external::umu::Match>, String>>,
-    umu_searching: bool,
-    _umu_work: Option<Task<()>>,
     error: String,
     _work: Option<Task<()>>,
     /// One per [`KINDS`](art::KINDS) row: the candidates scroll sideways and are paged
     /// by the arrows, which need the row's offset and width.
     scrolls: [ScrollHandle; 3],
     paging: Option<Task<()>>,
+    /// The installer, prefix import and UMU entry, which only a game run
+    /// under Proton has.
+    #[cfg(not(windows))]
+    wine: prefix::Wine,
+}
+
+/// The rows only a game run under Proton has, in the order they show.
+#[derive(Default)]
+struct WineRows {
+    folder: Option<Div>,
+    installer: Option<Div>,
+    umu: Option<Div>,
+    progress: Option<Div>,
 }
 
 impl EventEmitter<FormEvent> for GameForm {}
 
-impl Drop for GameForm {
-    /// Leaving the form ends any chance of retrying a failed copy into its
-    /// staging directory, so that goes. One still running is left to
-    /// finish: it adds the game on its own.
-    fn drop(&mut self) {
-        if !self.importing && self.import_from.is_some() {
-            crate::external::import::abandon(&self.profile_id, &self.id);
-        }
-    }
-}
-
 impl GameForm {
     pub fn new(profile_id: String, editing: Option<InstalledGame>, cx: &mut Context<Self>) -> Self {
-        let folders = library_folders(&profile_id);
         let name = cx.new(|cx| TextInput::new(t!("external.form.name"), cx));
         let executable = cx.new(|cx| TextInput::new(t!("external.form.executable"), cx));
         let Some(game) = editing else {
             return Self {
+                #[cfg(not(windows))]
+                wine: prefix::Wine::new(&profile_id, None),
                 profile_id,
                 id: uuid::Uuid::new_v4().to_string(),
                 editing: false,
-                proton: None,
                 umu: None,
                 prefix_of: None,
                 host_name: None,
-                folders,
                 library_root: None,
                 name,
                 executable,
                 art: GameArt::default(),
-                installer: Installer::Idle,
-                import_from: None,
-                import_mode: ImportMode::Copy,
-                importing: false,
-                progress: Default::default(),
-                _ticker: None,
                 search: Search::Idle,
-                umu_matches: None,
-                umu_searching: false,
-                _umu_work: None,
                 error: String::new(),
                 _work: None,
                 scrolls: Default::default(),
@@ -130,13 +97,13 @@ impl GameForm {
             executable.update(cx, |input, cx| input.set_text(path.to_string_lossy().into_owned(), cx));
         }
         Self {
+            #[cfg(not(windows))]
+            wine: prefix::Wine::new(&profile_id, game.proton),
             profile_id,
             id: game.game_id,
             editing: true,
-            proton: game.proton,
             prefix_of: game.prefix_of,
             host_name: None,
-            folders,
             library_root: None,
             umu: game.umu_id.map(|id| crate::external::UmuEntry {
                 id,
@@ -145,16 +112,7 @@ impl GameForm {
             name,
             executable,
             art: game.art,
-            installer: Installer::Idle,
-            import_from: None,
-            import_mode: ImportMode::Copy,
-            importing: false,
-            progress: Default::default(),
-            _ticker: None,
             search: Search::Idle,
-            umu_matches: None,
-            umu_searching: false,
-            _umu_work: None,
             error: String::new(),
             _work: None,
             scrolls: Default::default(),
@@ -165,6 +123,7 @@ impl GameForm {
     /// A new game a launcher installed in `host`'s prefix: filled in from
     /// what was found, running in that prefix with `host`'s Proton, and its
     /// art and UMU entry already being looked up by name.
+    #[cfg(not(windows))]
     pub fn hosted(
         profile_id: String,
         host: &InstalledGame,
@@ -178,7 +137,7 @@ impl GameForm {
             .ok()
             .and_then(|library| library.root_of(&this.profile_id, &host.game_id));
         this.host_name = Some(host.name.clone());
-        this.proton.clone_from(&host.proton);
+        this.wine.proton.clone_from(&host.proton);
         this.name.update(cx, |input, cx| input.set_text(found.name.clone(), cx));
         this.executable.update(cx, |input, cx| {
             input.set_text(found.executable.to_string_lossy().into_owned(), cx);
@@ -195,14 +154,15 @@ impl GameForm {
     /// an absolute path otherwise only show up as a launch that does
     /// nothing. After an installer ran it opens in the prefix's `C:`,
     /// where that installer put the game.
+    #[cfg_attr(
+        windows,
+        expect(clippy::unused_self, reason = "only a prefix gives the picker a folder to open in")
+    )]
     fn pick_executable(&mut self, cx: &mut Context<Self>) {
-        let start = match (&self.import_from, &self.installer) {
-            (Some(picked), _) => crate::external::import::wine_root(picked).map(|root| root.join("drive_c")),
-            (None, Installer::Done) => {
-                crate::external::drive_c(&self.profile_id, &self.id, self.library_root.as_deref())
-            }
-            (None, _) => None,
-        };
+        #[cfg(not(windows))]
+        let start = self.executable_start();
+        #[cfg(windows)]
+        let start: Option<std::path::PathBuf> = None;
         cx.spawn(async move |this, cx| {
             let mut dialog = rfd::AsyncFileDialog::new()
                 .set_title(t!("external.form.pick_exe.title"))
@@ -249,42 +209,10 @@ impl GameForm {
             prefix_of: self.prefix_of.clone(),
             library_root: self.library_root.clone(),
         };
-        if let Some(picked) = self.import_from.clone() {
-            self.importing = true;
-            self.progress = std::sync::Arc::default();
-            let (profile_id, id, mode) = (self.profile_id.clone(), self.id.clone(), self.import_mode);
-            let progress = std::sync::Arc::clone(&self.progress);
-            self._ticker = Some(cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_millis(250))
-                        .await;
-                    let still = this.update(cx, |this, cx| {
-                        cx.notify();
-                        this.importing
-                    });
-                    if !matches!(still, Ok(true)) {
-                        return;
-                    }
-                }
-            }));
-            self._work = Some(cx.spawn(async move |this, cx| {
-                let result = tokio::task::spawn_blocking(move || {
-                    crate::external::import::import(&profile_id, &id, &picked, mode, &progress, draft)
-                })
-                .await
-                .unwrap_or_else(|err| Err(err.to_string()));
-                let _ = this.update(cx, |this, cx| {
-                    this.importing = false;
-                    match result {
-                        Ok(()) => cx.emit(FormEvent::Saved),
-                        Err(err) => this.error = err,
-                    }
-                    cx.notify();
-                });
-            }));
+        #[cfg(not(windows))]
+        let Some(draft) = self.import_on_save(draft, cx) else {
             return;
-        }
+        };
         match crate::external::save(&self.profile_id, &self.id, draft) {
             Ok(()) => cx.emit(FormEvent::Saved),
             Err(err) => self.error = err,
@@ -294,28 +222,24 @@ impl GameForm {
 
 impl Render for GameForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let busy = matches!(self.installer, Installer::Running) || self.importing;
-        let save_label = match (
-            self.editing,
-            self.importing,
-            self.import_from.is_some(),
-            self.import_mode,
-        ) {
-            (true, ..) => t!("external.form.save.edit"),
-            (false, true, _, ImportMode::Copy) => t!("external.form.save.copying"),
-            (false, true, _, ImportMode::Move) => t!("external.form.save.moving"),
-            (false, false, true, ImportMode::Copy) => t!("external.form.save.copy"),
-            (false, false, true, ImportMode::Move) => t!("external.form.save.move"),
-            (false, false, false, _) => t!("external.form.save.add"),
-        };
+        #[cfg(not(windows))]
+        let (busy, save_label, rows) = (self.busy(), self.save_label(), self.wine_rows(cx));
+        #[cfg(windows)]
+        let (busy, save_label, rows) = (
+            false,
+            if self.editing {
+                t!("external.form.save.edit")
+            } else {
+                t!("external.form.save.add")
+            },
+            WineRows::default(),
+        );
         div()
             .flex()
             .flex_col()
             .child(div().mb_3().max_w(px(520.)).child(self.name.clone()))
-            .children(self.folder_row(cx))
-            .when(!self.editing && self.prefix_of.is_none(), |form| {
-                form.child(self.installer_row(cx))
-            })
+            .children(rows.folder)
+            .children(rows.installer)
             .children(
                 self.host_name
                     .as_ref()
@@ -339,8 +263,8 @@ impl Render for GameForm {
                     ),
             )
             .child(self.art_section(cx))
-            .child(self.umu_section(cx))
-            .when(self.importing, |form| form.child(self.import_progress()))
+            .children(rows.umu)
+            .children(rows.progress)
             .when(!self.error.is_empty(), |form| {
                 form.child(div().mt_3().child(theme::error(self.error.clone())))
             })
@@ -351,17 +275,4 @@ impl Render for GameForm {
                 ),
             )
     }
-}
-
-/// `profile_id`'s library folders, main first, with each one's free space.
-fn library_folders(profile_id: &str) -> Vec<(std::path::PathBuf, Option<u64>)> {
-    crate::core::library_for_profile(profile_id)
-        .map(|library| library.roots())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|root| {
-            let free = decanter_core::disk_usage(&root).map(|(free, _)| free);
-            (root, free)
-        })
-        .collect()
 }

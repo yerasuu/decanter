@@ -2,7 +2,8 @@
 //! Propiedades for an installed game, in the same tabbed shape — General,
 //! Actualizaciones, Archivos locales, Betas, plus two decanter adds on top:
 //! Versiones (rollback to a specific historical build, not just Steam's
-//! per-branch newest) and Compatibilidad (this game's own Proton pin).
+//! per-branch newest) and Compatibilidad (this game's own Proton pin; not
+//! on Windows, where games run natively).
 //!
 //! A real second OS window rather than an in-app overlay — the same "its
 //! own floating dialog, draggable and resizable independent of the
@@ -17,6 +18,7 @@
 //! outcome, so the work finishes and only its result is dropped.
 
 mod cloud_saves;
+#[cfg(not(windows))]
 mod compatibility;
 mod dlc;
 mod general;
@@ -50,6 +52,7 @@ enum Tab {
     Dlc,
     Betas,
     Versions,
+    #[cfg(not(windows))]
     Compatibility,
 }
 
@@ -63,12 +66,13 @@ impl Tab {
             Self::Dlc => t!("library.properties.tabs.dlc"),
             Self::Betas => t!("library.properties.tabs.betas"),
             Self::Versions => t!("library.properties.tabs.versions"),
+            #[cfg(not(windows))]
             Self::Compatibility => t!("library.properties.tabs.compatibility"),
         }
     }
 }
 
-const TABS: [Tab; 8] = [
+const TABS: &[Tab] = &[
     Tab::General,
     Tab::Updates,
     Tab::LocalFiles,
@@ -76,12 +80,17 @@ const TABS: [Tab; 8] = [
     Tab::Dlc,
     Tab::Betas,
     Tab::Versions,
+    #[cfg(not(windows))]
     Tab::Compatibility,
 ];
 
 /// What an external game has to show: nothing GOG-side (builds, branches,
 /// DLC, cloud saves) applies to a file someone pointed at.
-const EXTERNAL_TABS: [Tab; 2] = [Tab::General, Tab::Compatibility];
+const EXTERNAL_TABS: &[Tab] = &[
+    Tab::General,
+    #[cfg(not(windows))]
+    Tab::Compatibility,
+];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
@@ -135,9 +144,9 @@ impl PropertiesWindow {
 
     fn tabs(&self) -> &'static [Tab] {
         if self.target.storefront == Storefront::Unspecified {
-            &EXTERNAL_TABS
+            EXTERNAL_TABS
         } else {
-            &TABS
+            TABS
         }
     }
 
@@ -194,6 +203,7 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
         Tab::Betas => cx.new(|cx| releases::BetasTab::new(target, cx)).into(),
         Tab::Versions => cx.new(|cx| releases::VersionsTab::new(target, cx)).into(),
+        #[cfg(not(windows))]
         Tab::Compatibility => cx.new(|cx| compatibility::CompatibilityTab::new(target, cx)).into(),
     }
 }

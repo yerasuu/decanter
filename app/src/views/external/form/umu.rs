@@ -16,9 +16,9 @@ impl GameForm {
             cx.notify();
             return;
         }
-        self.umu_searching = true;
+        self.wine.umu_searching = true;
         cx.notify();
-        self._umu_work = Some(cx.spawn(async move |this, cx| {
+        self.wine._umu_work = Some(cx.spawn(async move |this, cx| {
             let found = crate::external::umu::search(&name).await;
             let _ = this.update(cx, |this, cx| {
                 if this.umu.is_none()
@@ -27,8 +27,8 @@ impl GameForm {
                 {
                     this.umu = Some(exact.entry.clone());
                 }
-                this.umu_matches = Some(found);
-                this.umu_searching = false;
+                this.wine.umu_matches = Some(found);
+                this.wine.umu_searching = false;
                 cx.notify();
             });
         }));
@@ -54,7 +54,7 @@ impl GameForm {
                 cx.notify();
             }))
         };
-        let matches = match &self.umu_matches {
+        let matches = match &self.wine.umu_matches {
             Some(Ok(matches)) => matches.clone(),
             Some(Err(_)) | None => Vec::new(),
         };
@@ -64,7 +64,7 @@ impl GameForm {
             .umu
             .clone()
             .filter(|entry| !matches.iter().any(|found| &found.entry == entry));
-        let status = match (&self.umu_matches, self.umu_searching) {
+        let status = match (&self.wine.umu_matches, self.wine.umu_searching) {
             (_, true) => Some(theme::muted(t!("external.form.umu.searching"))),
             (Some(Err(err)), false) => Some(theme::error(err.clone())),
             (Some(Ok(matches)), false) if matches.is_empty() => Some(theme::muted(t!("external.form.umu.not_found"))),
@@ -91,9 +91,9 @@ impl GameForm {
                             "umu-search",
                             ButtonKind::Icon,
                             t!("external.form.umu.search"),
-                            self.umu_searching,
+                            self.wine.umu_searching,
                         )
-                        .when(!self.umu_searching, |b| {
+                        .when(!self.wine.umu_searching, |b| {
                             b.on_click(cx.listener(|this, _, _, cx| this.search_umu(cx)))
                         }),
                     ),

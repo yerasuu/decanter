@@ -83,12 +83,12 @@ pub enum Outcome {
 
 /// Moves the old database into the libraries, if it hasn't been yet, along
 /// with the old `umu-run` to where `umu_run_path` puts it in a library's
-/// data folder.
+/// data folder — `None` where nothing runs through umu.
 ///
 /// # Errors
 /// Fails when a copy can't be made or doesn't verify; nothing points at
 /// the copies then, and the old database stays in use.
-pub fn run(umu_run_path: fn(&Path) -> PathBuf) -> Result<Outcome, Error> {
+pub fn run(umu_run_path: Option<fn(&Path) -> PathBuf>) -> Result<Outcome, Error> {
     let (Some(config), Some(legacy_db)) = (bootstrap::config_path(), bootstrap::legacy_db_path()) else {
         return Ok(Outcome::NotNeeded);
     };
@@ -101,7 +101,7 @@ pub fn run(umu_run_path: fn(&Path) -> PathBuf) -> Result<Outcome, Error> {
     })
 }
 
-fn migrate(legacy_db: &Path, umu_run_path: fn(&Path) -> PathBuf) -> Result<Outcome, Error> {
+fn migrate(legacy_db: &Path, umu_run_path: Option<fn(&Path) -> PathBuf>) -> Result<Outcome, Error> {
     if others_running() {
         tracing::info!("decanter or a game it started is running, migration postponed");
         return Ok(Outcome::Postponed);
@@ -120,7 +120,9 @@ fn migrate(legacy_db: &Path, umu_run_path: fn(&Path) -> PathBuf) -> Result<Outco
     drop(source);
     for root in groups.keys() {
         copy_art(legacy_dir, root);
-        copy_umu_run(legacy_dir, &umu_run_path(&bootstrap::library_data_dir(root)));
+        if let Some(path_in) = umu_run_path {
+            copy_umu_run(legacy_dir, &path_in(&bootstrap::library_data_dir(root)));
+        }
     }
 
     let active_root = active

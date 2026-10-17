@@ -5,7 +5,6 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 
-use decanter_core::InstalledGame;
 use decanter_ps::process::{Event, Job, JobKind};
 use decanter_ps::run_log::RunLog;
 use decanter_runtime::Prepared;
@@ -22,21 +21,16 @@ fn dir(library_root: &Path) -> PathBuf {
 /// Before `prepared` is spawned, so the header holds the command it runs.
 pub async fn start(
     account_id: &str,
-    game: &InstalledGame,
-    prefix: &Path,
+    game_id: &str,
+    facts: &[(&str, String)],
     prepared: &mut Prepared,
 ) -> Result<RunLog, String> {
     let library = crate::core::library_for_account(account_id).map_err(|err| err.to_string())?;
-    let facts = [
-        ("game", game.name.clone()),
-        ("game_id", game.game_id.clone()),
-        ("prefix", prefix.display().to_string()),
-    ];
     RunLog::start(
         &dir(library.root()),
-        &game.game_id,
+        game_id,
         JobKind::Game,
-        &facts,
+        facts,
         prepared.command_mut(),
         false,
     )
@@ -45,8 +39,10 @@ pub async fn start(
 }
 
 /// Ends the log of a run whose launcher never started, with why.
-pub async fn abandon(mut log: RunLog, game_id: &str, reason: &str) {
-    let written = log.line(&format!("# error: could not start umu-run: {reason}")).await;
+pub async fn abandon(mut log: RunLog, game_id: &str, launcher: &str, reason: &str) {
+    let written = log
+        .line(&format!("# error: could not start {launcher}: {reason}"))
+        .await;
     if let Err(err) = written.and(log.finish(None, None).await) {
         tracing::warn!(game_id, %err, "could not finish the run's log file");
     }

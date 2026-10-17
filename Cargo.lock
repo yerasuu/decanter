@@ -1611,6 +1611,7 @@ dependencies = [
  "curl",
  "decanter-core",
  "decanter-runtime",
+ "dirs 7.0.0",
  "flate2",
  "futures-util",
  "gog",

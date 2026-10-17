@@ -386,12 +386,9 @@ pub async fn detect_cloud_save_locations(
             .install_dir(&game.install_dir)
             .ok_or_else(|| t!("messages.errors.install_dir").into_owned())
     );
-    let prefix = crate::achv_try!(
-        prefix_for(account_id, &game.game_id).ok_or_else(|| t!("messages.errors.prefix").into_owned())
-    );
-    let prefix_drive_c = prefix.drive_c();
+    let folders = crate::achv_try!(user_folders(account_id, &game.game_id));
     tracing::debug!(account_id, game_id = %game.game_id, "detecting cloud save locations");
-    decanter_gog::save_location::detect(account_id, &game.game_id, &install_dir, &prefix_drive_c)
+    decanter_gog::save_location::detect(account_id, &game.game_id, &install_dir, &folders)
         .await
         .inspect(|locations| {
             tracing::debug!(account_id, game_id = %game.game_id, found = locations.len(), "cloud save locations detected");
@@ -399,6 +396,23 @@ pub async fn detect_cloud_save_locations(
         // Recoverable: the caller falls back to letting the user pick a folder by hand.
         .inspect_err(|err| tracing::warn!(account_id, game_id = %game.game_id, %err, "cloud save location detection failed"))
         .map_err(|err| err.to_string())
+}
+
+/// The account folders a game sees: the ones inside its prefix under Proton.
+#[cfg(not(windows))]
+fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, String> {
+    prefix_for(account_id, game_id)
+        .map(|prefix| decanter_gog::save_location::UserFolders::in_prefix(&prefix.drive_c()))
+        .ok_or_else(|| t!("messages.errors.prefix").into_owned())
+}
+
+/// The account folders a game sees: the user's own on Windows.
+#[cfg(windows)]
+fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, String> {
+    decanter_gog::save_location::UserFolders::native().ok_or_else(|| {
+        tracing::warn!(account_id, game_id, "could not resolve this account's folders");
+        t!("messages.errors.user_folders").into_owned()
+    })
 }
 
 /// Stamps the manifest with when cloud saves last synced cleanly — the
@@ -418,6 +432,7 @@ pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64
 
 /// Where a game runs: its own prefix, per account, created by umu on first
 /// launch.
+#[cfg(not(windows))]
 pub fn prefix_for(account_id: &str, game_id: &str) -> Option<decanter_runtime::Prefix> {
     let Some(library) = library_for_account(account_id).ok() else {
         tracing::debug!(account_id, game_id, "no prefix, library unavailable");
@@ -468,12 +483,14 @@ pub fn executable_for(game: &InstalledGame) -> Option<std::path::PathBuf> {
 
 /// Which Proton a game runs on: its own pin, else the app-wide default,
 /// else whatever umu resolves.
+#[cfg(not(windows))]
 pub fn proton_for(game: &InstalledGame) -> decanter_runtime::Proton {
     proton_or_default(game.proton.clone())
 }
 
 /// `pin` if there is one, else the app-wide default, else whatever umu
 /// resolves — [`proton_for`] without a manifest to read the pin from.
+#[cfg(not(windows))]
 pub fn proton_or_default(pin: Option<String>) -> decanter_runtime::Proton {
     let pinned = pin.or_else(|| {
         // `db()` already warned about why, if it failed.

@@ -1,8 +1,8 @@
 //! Games added from outside any storefront: an executable the user points
 //! at, or installs with its own setup program first, the way Heroic's
 //! "add game" does. Each runs through the same runner as a GOG install —
-//! its own prefix, its own Proton pin — but has no catalog entry behind
-//! it, so its art comes from [`art`] instead.
+//! its own prefix, its own Proton pin, or itself on Windows — but has no
+//! catalog entry behind it, so its art comes from [`art`] instead.
 //!
 //! Filed under the profile itself rather than one of its accounts: an
 //! external game isn't owned by any storefront, so there's no account to
@@ -11,9 +11,12 @@
 //! uuid, which no GOG product id ever looks like.
 
 pub mod art;
+#[cfg(not(windows))]
 pub mod import;
+#[cfg(not(windows))]
 pub mod launchers;
 pub mod transfer;
+#[cfg(not(windows))]
 pub mod umu;
 
 use std::path::{Path, PathBuf};
@@ -25,6 +28,7 @@ use rust_i18n::t;
 /// The umu `GAMEID` every external game runs as: umu's own "unknown game"
 /// id, which lets protonfixes look the game up in the UMU database rather
 /// than under an id no database has.
+#[cfg(not(windows))]
 pub const UMU_ID: &str = "umu-default";
 
 /// Every external game in `profile_id`. An unreadable library reads as
@@ -210,6 +214,7 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), RemoveError> {
 /// anything it left running there, to finish. The prefix is the one the
 /// game will then launch in, so whatever the installer writes under
 /// `C:\` — files, registry keys, runtimes — is there for the game.
+#[cfg(not(windows))]
 pub async fn run_installer(
     profile_id: &str,
     id: &str,
@@ -243,6 +248,7 @@ pub async fn run_installer(
 
 /// Where an installer run through [`run_installer`] puts things, for the
 /// executable picker to start in.
+#[cfg(not(windows))]
 pub fn drive_c(profile_id: &str, id: &str, library_root: Option<&Path>) -> Option<PathBuf> {
     prefix_in(profile_id, id, library_root).map(|prefix| prefix.drive_c())
 }
@@ -258,6 +264,7 @@ pub fn library_in(profile_id: &str, root: Option<&Path>) -> Result<decanter_core
 
 /// The prefix `id` has, or gets, in the folder it's being added to — before
 /// its manifest exists to say where it lives.
+#[cfg(not(windows))]
 fn prefix_in(profile_id: &str, id: &str, root: Option<&Path>) -> Option<decanter_runtime::Prefix> {
     library_in(profile_id, root)
         .ok()?

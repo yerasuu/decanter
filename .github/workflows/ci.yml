@@ -61,8 +61,8 @@ jobs:
         run: nix-shell --run 'cargo check --workspace --all-targets'
 
   # Windows and macOS builds of the tree (decision #439): they start and
-  # browse the library, but launch nothing yet. Not blocking until that port
-  # settles, and they ship nothing.
+  # browse the library; Windows launches games natively, macOS nothing yet.
+  # Not blocking until that port settles, and they ship nothing.
   check-other:
     strategy:
       fail-fast: false

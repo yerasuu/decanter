@@ -23,6 +23,30 @@ login, browsing the library and achievements. Platform differences are
 Next: native launching on Windows (Job Objects instead of scopes, the hook
 DLL built natively), a tray, and macOS launching (no Proton there).
 
+## Phase 2: games launch natively on Windows
+
+Games run as the Windows programs they are (2026-10-17): the launch
+backend is split per OS (`decanter_runtime::native`, `app/src/launch/native.rs`
+against the Proton ones), so on Windows a game's executable starts directly
+from its own folder, with the same run log, playtime, running state and
+stop. A stop asks the process tree to close (`taskkill /T`) and ends it
+after a few seconds if it won't.
+
+- Removed on Windows, not just disabled: the Compatibility settings tab and
+  per-game tab, the external game form's installer, prefix import, library
+  folder and UMU entry, and launcher detection inside prefixes. Manifest
+  and settings fields for them (`Proton`, `UmuId`, `PrefixOf`,
+  `default_proton`) stay readable and are ignored.
+- Cloud save locations resolve against the user's own folders
+  (`save_location::UserFolders::native`) instead of a prefix's
+  `steamuser`.
+- The Galaxy64 hook stays undeployed: unlocks reach GOG through the game's
+  own Galaxy integration, and decanter polls achievements after each
+  session. Each GOG launch logs that the hook is absent.
+- Not yet: a process that detaches from the one decanter started (a
+  launcher re-executing the game) ends the session early; Job Objects
+  would follow it. No DirectX DLL drop-ins yet.
+
 ## Decanter: medium effort
 
 Most of it is portable already: GPUI runs on Windows (Zed ships there) and

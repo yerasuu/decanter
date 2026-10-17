@@ -5,11 +5,27 @@
 //! those call sites. Every caller runs [`start`] as a detached app-level
 //! task, not a view's: it writes to `running`, which swaps the button that
 //! started it out of existence.
+//!
+//! How a game is started and stopped is the backend's: Proton in a prefix
+//! of its own (`proton`), or the executable itself on Windows (`native`).
+
+#[cfg(windows)]
+mod native;
+#[cfg(not(windows))]
+mod proton;
+
+#[cfg(windows)]
+use native as backend;
+#[cfg(windows)]
+pub use native::is_running;
+#[cfg(not(windows))]
+use proton as backend;
+#[cfg(not(windows))]
+pub use proton::reset_prefix;
 
 use decanter_core::InstalledGame;
 use decanter_ps::process::{self, Event, Job, JobKind};
 use decanter_ps::run_log::{RunLog, describe_exit};
-use decanter_runtime::Launch;
 use gpui::{AppContext as _, AsyncApp, Entity};
 use rust_i18n::t;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -28,7 +44,7 @@ fn set_running(background: &Entity<Background>, game_id: &str, running: bool, cx
 }
 
 /// Runs `game` to completion, holding it in `running` for as long as its
-/// prefix has anything live in it.
+/// session lasts.
 ///
 /// Returns how long the session lasted, or `None` if it never started —
 /// the caller decides whether that's worth recording as playtime.
@@ -46,73 +62,14 @@ pub async fn start(
         tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
         return None;
     }
-    let Some(prefix) = crate::core::prefix_for(&account_id, &game.game_id) else {
-        tracing::error!(game_id = %game.game_id, "no prefix path");
+    let Some(mut planned) = backend::plan(&account_id, &game, executable) else {
         return None;
     };
 
     let cloud_save_checkpoint = sync_cloud_saves_before_launch(&account_id, &game).await;
+    let achievement_log = planned.achievement_log.take();
 
-    // `umu-<product id>` with `STORE=gog` is how protonfixes finds a GOG
-    // game's workarounds. An external game's uuid is in no database, so it
-    // goes in as `umu-default` with no store instead — the same as Heroic
-    // runs a sideloaded game — which some Proton builds (DW-Proton) map to
-    // the right id from the executable; a made-up id skipped that, and with
-    // it fixes a game like Arknights: Endfield can't start without.
-    // One picked from the UMU database by name goes in as that entry, store
-    // and all, which works with any Proton carrying protonfixes.
-    let mut launch = match (game.storefront, &game.umu_id) {
-        (decanter_core::Storefront::Gog, _) => Launch::new(executable, format!("umu-{}", game.game_id)).store("gog"),
-        (_, Some(id)) => {
-            let launch = Launch::new(executable, id.as_str());
-            match &game.umu_store {
-                Some(store) => launch.store(store.as_str()),
-                None => launch,
-            }
-        }
-        (_, None) => Launch::new(executable, crate::external::UMU_ID),
-    };
-    launch.proton = crate::core::proton_for(&game);
-    let key = crate::taskbar::key(game.storefront, &game.game_id);
-    let (mangohud, gamemoded) = crate::core::db()
-        .map(|db| {
-            (
-                crate::game_tools::mangohud(&db, &key),
-                crate::game_tools::gamemoded(&db, &key),
-            )
-        })
-        .unwrap_or_default();
-    launch.gamemoded = gamemoded;
-    if let Some(autostart_log) = mangohud {
-        match crate::core::library_for_account(&account_id) {
-            Ok(library) => launch.env.extend(
-                crate::game_tools::mangohud_env(&key, library.root(), autostart_log)
-                    .await
-                    .map(|(name, value)| (name.to_owned(), value)),
-            ),
-            Err(err) => {
-                tracing::warn!(game_id = %game.game_id, %err, "no library to log MangoHud to, starting without it")
-            }
-        }
-    }
-    launch.identity = Some((key, game.name.clone()));
-
-    // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL
-    // to patch) reads both of these itself; setting them here is what
-    // lets it write somewhere decanter actually knows to look afterward,
-    // and tag what it wrote with the right product id.
-    let achievement_log = (game.storefront == decanter_core::Storefront::Gog).then(|| {
-        let path = decanter_gog::hook::achievement_log_path(&prefix);
-        launch
-            .env
-            .push(("DECANTER_PRODUCT_ID".to_owned(), game.game_id.clone()));
-        launch
-            .env
-            .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), path.display().to_string()));
-        path
-    });
-
-    let Some((job, events, log)) = spawn(&account_id, &game, &prefix, launch, &background, cx).await else {
+    let Some((job, events, log)) = spawn(&account_id, &game, planned, &background, cx).await else {
         return None;
     };
 
@@ -146,13 +103,12 @@ pub async fn start(
 async fn spawn(
     account_id: &str,
     game: &InstalledGame,
-    prefix: &decanter_runtime::Prefix,
-    mut launch: Launch,
+    mut planned: backend::Planned,
     background: &Entity<Background>,
     cx: &mut AsyncApp,
 ) -> Option<(Entity<Job>, UnboundedReceiver<Event>, Option<RunLog>)> {
-    launch.capture_output = true;
-    let mut prepared = match decanter_runtime::prepare(prefix, launch).await {
+    let facts = core::mem::take(&mut planned.facts);
+    let mut prepared = match planned.prepare().await {
         Ok(prepared) => prepared,
         Err(err) => {
             tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
@@ -160,7 +116,7 @@ async fn spawn(
         }
     };
     // A run goes on without its file rather than not at all; the log view says so.
-    let (log, log_error) = match crate::run_log::start(account_id, game, prefix.path(), &mut prepared).await {
+    let (log, log_error) = match crate::run_log::start(account_id, &game.game_id, &facts, &mut prepared).await {
         Ok(log) => (Some(log), None),
         Err(err) => {
             tracing::warn!(game_id = %game.game_id, %err, "could not create the run's log file");
@@ -176,7 +132,7 @@ async fn spawn(
             tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
             let reason = format!("{err:#}");
             if let Some(log) = log {
-                crate::run_log::abandon(log, &game.game_id, &reason).await;
+                crate::run_log::abandon(log, &game.game_id, backend::LAUNCHER, &reason).await;
             }
             let job = cx.new(|_| Job::failed(JobKind::Game, t!("ps.jobs.start_error", error = reason).into_owned()));
             background.update(cx, |background, cx| {
@@ -219,6 +175,8 @@ async fn spawn(
 /// Folds in whatever decanter-hook recorded this session: a locally
 /// witnessed achievement unlock GOG's own servers never hear about under
 /// Wine, and any failure to install its vtable patch in the first place.
+/// Without a hook log (a game run natively) only the poll runs, which is
+/// how decanter hears of what the game's own Galaxy integration unlocked.
 /// Runs after [`record_last_played`], not before: neither ordering
 /// matters to the other, so this just goes last as the newest addition.
 ///
@@ -230,9 +188,9 @@ async fn spawn(
 /// unlock the moment the log is removed, with no cache row to retry it
 /// against later.
 async fn apply_hook_log(account_id: &str, game: &InstalledGame, achievement_log: Option<&std::path::Path>) {
-    let Some(path) = achievement_log else {
+    if game.storefront != decanter_core::Storefront::Gog {
         return;
-    };
+    }
     let Ok(mut db) = decanter_core::Db::open_active() else {
         tracing::debug!(game_id = %game.game_id, "could not open db, decanter-hook log not applied");
         return;
@@ -240,6 +198,9 @@ async fn apply_hook_log(account_id: &str, game: &InstalledGame, achievement_log:
     if let Err(err) = decanter_gog::poll_achievements(&mut db, account_id, &game.game_id).await {
         tracing::warn!(game_id = %game.game_id, %err, "post-session achievement poll failed");
     }
+    let Some(path) = achievement_log else {
+        return;
+    };
     let applied = decanter_gog::hook::process_log(&db, account_id, &game.game_id, path).await;
     if applied > 0 {
         tracing::info!(game_id = %game.game_id, applied, "applied locally-witnessed achievement unlocks");
@@ -322,9 +283,6 @@ async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, che
 }
 
 /// Ends a game's session.
-///
-/// Prefix-wide, which is now the same thing as game-wide: each game has
-/// its own prefix, so stopping one can't reach another.
 pub async fn stop(account_id: String, game_id: String, background: Entity<Background>, cx: &mut AsyncApp) {
     // So the exit this causes reads as a stop in the run's log, not as a crash.
     background.update(cx, |background, cx| {
@@ -332,22 +290,15 @@ pub async fn stop(account_id: String, game_id: String, background: Entity<Backgr
             job.update(cx, |job, _| job.stop_requested = true);
         }
     });
-    let Some(prefix) = crate::core::prefix_for(&account_id, &game_id) else {
-        tracing::warn!(account_id, game_id, "cannot stop, no prefix resolved");
-        return;
-    };
-    match prefix.stop().await {
-        Ok(()) => tracing::info!(account_id, game_id, "game stopped"),
-        Err(err) => tracing::error!(account_id, game_id, error = %format_args!("{err:#}"), "stop failed"),
-    }
+    backend::stop(&account_id, &game_id).await;
 }
 
 /// Stops every game decanter started.
 ///
 /// Games outlive the app that launched them — umu execs into a container
-/// and Proton detaches, so nothing here is a child process by the time it
-/// matters. Closing decanter without this leaves them running with no way
-/// left to reach them from the UI.
+/// and Proton detaches, and a native game is its own process — so closing
+/// decanter without this leaves them running with no way left to reach
+/// them from the UI.
 pub async fn stop_everything() {
     tracing::info!("stopping all running games");
     decanter_runtime::stop_all().await;
@@ -414,42 +365,6 @@ async fn exit_signal() -> bool {
         Err(err) => {
             tracing::warn!(signal = "ctrl-c", %err, "cannot watch for the signal");
             false
-        }
-    }
-}
-
-/// Throws a game's prefix away so umu builds a fresh one next launch.
-///
-/// The escape hatch for a prefix a game has wrecked — the reason each
-/// game gets its own. Saves a game keeps inside its prefix go with it,
-/// which is why this is never automatic.
-pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), String> {
-    let Some(prefix) = crate::core::prefix_for(&account_id, &game_id) else {
-        return Err(t!("messages.errors.no_prefix").into_owned());
-    };
-    // Nothing may be running in it: deleting a live prefix out from under
-    // Wine corrupts whatever it was writing.
-    crate::achv_try!(
-        prefix
-            .stop()
-            .await
-            .inspect_err(
-                |err| tracing::error!(account_id, game_id, %err, "failed to stop game before resetting its prefix")
-            )
-            .map_err(|err| err.to_string())
-    );
-    match tokio::fs::remove_dir_all(prefix.path()).await {
-        Ok(()) => {
-            tracing::info!(account_id, game_id, "prefix reset");
-            Ok(())
-        }
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            tracing::debug!(account_id, game_id, "prefix already absent, nothing to reset");
-            Ok(())
-        }
-        Err(err) => {
-            tracing::error!(account_id, game_id, %err, "failed to remove prefix directory");
-            Err(t!("messages.errors.delete_prefix", error = err).into_owned())
         }
     }
 }

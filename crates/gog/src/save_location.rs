@@ -26,6 +26,63 @@ pub struct SaveLocation {
     pub path: PathBuf,
 }
 
+/// The Windows account folders GOG's save templates are relative to.
+pub struct UserFolders {
+    /// `<?DOCUMENTS?>`.
+    documents: PathBuf,
+    /// `<?APPLICATION_DATA_LOCAL?>`.
+    local: PathBuf,
+    /// `<?APPLICATION_DATA_LOCAL_LOW?>`.
+    local_low: PathBuf,
+    /// `<?APPLICATION_DATA_ROAMING?>`.
+    roaming: PathBuf,
+    /// `<?SAVED_GAMES?>`.
+    saved_games: PathBuf,
+}
+
+impl UserFolders {
+    /// Wine's layout for `steamuser`, the account Proton runs every game as.
+    #[cfg(not(windows))]
+    #[inline]
+    #[must_use]
+    pub fn in_prefix(drive_c: &Path) -> Self {
+        let users = drive_c.join("users").join("steamuser");
+        Self {
+            documents: users.join("Documents"),
+            local: users.join("AppData/Local"),
+            local_low: users.join("AppData/LocalLow"),
+            roaming: users.join("AppData/Roaming"),
+            saved_games: users.join("Saved Games"),
+        }
+    }
+
+    /// The signed-in user's own folders, where Windows says they are: a
+    /// Documents folder the user moved is followed, not assumed. `None`
+    /// when Windows can't name one of them.
+    #[cfg(windows)]
+    #[inline]
+    #[must_use]
+    pub fn native() -> Option<Self> {
+        let (Some(documents), Some(local), Some(roaming), Some(home)) = (
+            dirs::document_dir(),
+            dirs::data_local_dir(),
+            dirs::data_dir(),
+            dirs::home_dir(),
+        ) else {
+            return None;
+        };
+        Some(Self {
+            documents,
+            // `dirs` has no getter for LocalLow or Saved Games, so both are
+            // taken at Windows' default places; one the user moved isn't followed.
+            local_low: local.with_file_name("LocalLow"),
+            local,
+            roaming,
+            saved_games: home.join("Saved Games"),
+        })
+    }
+}
+
 #[derive(Deserialize)]
 struct RemoteConfig {
     content: RemoteConfigContent,
@@ -57,14 +114,14 @@ struct LocationEntry {
 }
 
 /// Resolves this game's save locations against `install_dir` (its folder
-/// under `common/`) and `prefix_drive_c` (`drive_c` of its Proton prefix).
+/// under `common/`) and `folders`, the account folders the game sees.
 /// Empty means Windows cloud saves are switched off for this build — there
 /// is nothing to auto-detect, and the caller falls back to asking the user.
 pub async fn detect(
     account_id: &str,
     product_id: &str,
     install_dir: &Path,
-    prefix_drive_c: &Path,
+    folders: &UserFolders,
 ) -> Result<Vec<SaveLocation>> {
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
     let http = crate::http_client();
@@ -103,14 +160,13 @@ pub async fn detect(
         return Ok(Vec::new());
     }
 
-    let users = prefix_drive_c.join("users").join("steamuser");
-    let vars: HashMap<&str, PathBuf> = HashMap::from([
-        ("INSTALL", install_dir.to_path_buf()),
-        ("DOCUMENTS", users.join("Documents")),
-        ("APPLICATION_DATA_ROAMING", users.join("AppData/Roaming")),
-        ("APPLICATION_DATA_LOCAL", users.join("AppData/Local")),
-        ("APPLICATION_DATA_LOCAL_LOW", users.join("AppData/LocalLow")),
-        ("SAVED_GAMES", users.join("Saved Games")),
+    let vars: HashMap<&str, &Path> = HashMap::from([
+        ("INSTALL", install_dir),
+        ("DOCUMENTS", folders.documents.as_path()),
+        ("APPLICATION_DATA_ROAMING", folders.roaming.as_path()),
+        ("APPLICATION_DATA_LOCAL", folders.local.as_path()),
+        ("APPLICATION_DATA_LOCAL_LOW", folders.local_low.as_path()),
+        ("SAVED_GAMES", folders.saved_games.as_path()),
     ]);
 
     if cloud_storage.locations.is_empty() {
@@ -119,7 +175,8 @@ pub async fn detect(
         tracing::debug!(product_id, "resolved 1 default gog save location");
         return Ok(vec![SaveLocation {
             name: "default".to_string(),
-            path: vars["APPLICATION_DATA_LOCAL"]
+            path: folders
+                .local
                 .join("GOG.com/Galaxy/Applications")
                 .join(&build_client.client_id)
                 .join("Storage"),
@@ -147,7 +204,7 @@ pub async fn detect(
 /// Expands one `<?VAR?>relative/path` template. `None` for a template
 /// whose marker this build doesn't recognize — dropped rather than treated
 /// as fatal, since another location on the same game might still resolve.
-fn resolve(template: &str, vars: &HashMap<&str, PathBuf>) -> Option<PathBuf> {
+fn resolve(template: &str, vars: &HashMap<&str, &Path>) -> Option<PathBuf> {
     let Some(rest) = template.strip_prefix("<?") else {
         return None;
     };

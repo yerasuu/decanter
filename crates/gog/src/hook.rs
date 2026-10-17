@@ -84,6 +84,7 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
 /// shared across every account that owns the game (see
 /// `decanter_core::Library`'s own doc), but the prefix, and so this log,
 /// already isn't.
+#[cfg(not(windows))]
 #[must_use]
 pub fn achievement_log_path(prefix: &decanter_runtime::Prefix) -> std::path::PathBuf {
     prefix.path().join("decanter-hook.jsonl")

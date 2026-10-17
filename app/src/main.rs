@@ -200,7 +200,11 @@ fn open_library(chosen: Option<std::path::PathBuf>) {
     if let Some(root) = chosen {
         decanter_core::bootstrap::set_override(root);
     }
-    match decanter_core::migrate::run(decanter_runtime::umu_run_path) {
+    #[cfg(not(windows))]
+    let migrated = decanter_core::migrate::run(Some(decanter_runtime::umu_run_path));
+    #[cfg(windows)]
+    let migrated = decanter_core::migrate::run(None);
+    match migrated {
         Ok(outcome) => tracing::debug!(?outcome, "checked for data to migrate"),
         Err(err) => tracing::error!(%err, "cannot move decanter's data into the library, still using the old folder"),
     }

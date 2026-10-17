@@ -222,7 +222,11 @@ impl Render for ProfileForm {
                                     .when(!empty, |b| b.on_click(cx.listener(|this, _, _, cx| this.submit(cx)))),
                                 ),
                         )
-                        .child(theme::muted(t!("chrome.onboarding.library")))
+                        .child(theme::muted(if cfg!(windows) {
+                            t!("chrome.onboarding.library_native")
+                        } else {
+                            t!("chrome.onboarding.library")
+                        }))
                         .child(self.path_row(cx).mt(px(20.)).w_full().max_w(px(320.)))
                         .children(self.error_line()),
                 )

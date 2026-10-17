@@ -196,10 +196,19 @@ impl CloudSavesTab {
         }
     }
 
+    #[cfg_attr(
+        windows,
+        expect(clippy::unused_self, reason = "only a prefix gives the picker a folder to open in")
+    )]
     fn pick_folder(&self, cx: &Context<Self>) {
+        // Saves under Proton live in the game's prefix; on Windows the dialog
+        // opens wherever the system's last pick was.
+        #[cfg(not(windows))]
         let starting = crate::core::prefix_for(&self.target.account_id, &self.target.product_id)
             .as_ref()
             .map(decanter_runtime::Prefix::drive_c);
+        #[cfg(windows)]
+        let starting: Option<std::path::PathBuf> = None;
         cx.spawn(async move |this, cx| {
             let mut dialog = rfd::AsyncFileDialog::new().set_title(t!("library.properties.saves.pick_title"));
             if let Some(starting) = starting {

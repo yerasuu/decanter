@@ -69,6 +69,7 @@ impl GameForm {
         self.search = Search::Searching;
         self.error.clear();
         // The same name finds its protonfixes entry too.
+        #[cfg(not(windows))]
         self.search_umu(cx);
         cx.notify();
         self._work = Some(cx.spawn(async move |this, cx| {

@@ -5,6 +5,9 @@ external.title:
 external.intro:
   es: "Juegos de fuera de GOG: cada uno se ejecuta en su propio prefijo, igual que un juego instalado, y aparece en la Biblioteca con el resto."
   en: "Games from outside GOG: each runs in its own prefix, like an installed game, and shows up in the Library with the rest."
+external.intro_native:
+  es: "Juegos de fuera de GOG: cada uno se abre directamente desde su ejecutable y aparece en la Biblioteca con el resto."
+  en: "Games from outside GOG: each one starts straight from its executable and shows up in the Library with the rest."
 external.add_another:
   es: Añadir otro juego
   en: Add another game
@@ -47,6 +50,9 @@ external.games.remove.hosted:
 external.games.remove.alone:
   es: Quita el juego y borra su prefijo
   en: Removes the game and deletes its prefix
+external.games.remove.native:
+  es: Quita el juego de la Biblioteca; sus archivos se quedan donde están
+  en: Removes the game from the Library; its files stay where they are
 external.games.remove.launcher.one:
   es: Quita el juego, su prefijo y el juego que instaló
   en: Removes the game, its prefix and the game it installed
