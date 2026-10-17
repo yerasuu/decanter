@@ -2,6 +2,41 @@
 
 Grouped by area. Each version's technical record is in `tag-changelog/vX.Y.Z.md`.
 
+## v0.3.2
+
+### Windows (testing)
+
+- decanter builds and starts on Windows and macOS. Features each system can't offer are hidden, and the ones still being tested carry an "en pruebas" badge. No Windows build is published yet; CI builds one.
+- On Windows, games launch natively, without Proton, umu or prefixes, with the same run log, playtime and stop. Save paths use the user's own folders.
+- When a game that imports DirectX 7 crashes on Windows, the run log and the Registro tab suggest a DirectDraw wrapper.
+- The external-game form runs `.exe` and `.msi` installers on Windows, elevated through UAC, then opens the executable picker in Program Files.
+- GOG achievements are recorded on Windows too, through the same Galaxy proxy beside the game, without GOG Galaxy.
+
+### app
+
+- The AppImage installs decanter's new releases itself once their minisign signature checks out. Ports, `umu-run`, nix-portable and UMU-Proton are checked for updates when asked.
+- Rounder theme: larger corner radii, floating menus, dropdowns and dialogs more rounded, pill progress bars.
+- Achievement dates follow the UI language and local time zone; the GamesDB rating shows as 75/100.
+- Sidebar rows that can't be played now are dimmed instead of marked with a green dot, which stays for running games.
+
+### runtime
+
+- MangoHud can be turned on for all games or per game, with its logs kept in the library.
+- Games can start through GameMode, globally or per game.
+- Both are only offered when they are installed, and apply to PS games too.
+
+### ps
+
+- Release ports run from psport's published bundle, checked against its SHA-256, so a host without nix no longer needs nix-portable for them.
+- A port build that fails after an update goes back to the last commit that built; automatic updates skip the failing commit until retried.
+- decanter reads what the port can do from `psport --list-features` and only offers what it supports.
+- The game's aspect ratio follows the display (4:3, 16:10, 16:9, 21:9 or 32:9) unless set by hand.
+- A per-game switch measures each run: the Registro shows average FPS, 1 % low, frame times, shader-compile stalls, an FPS chart and the change from the previous run.
+- The gamepad is edited on a drawing of the pad with rows of button and action, Juego/Port tabs and changes applied together; shipped layouts are read-only, and an own configuration can be restored to the one it came from.
+- The keyboard screen shows what each key does in the game.
+- A key or pad button can open the port's menu, on ports that support it.
+- The PS section follows the app's theme.
+
 ## v0.3.1
 
 ### toolchain
