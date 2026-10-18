@@ -4,7 +4,9 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
+use super::names::{MEMORY_MODEL_SETTINGS, single_memory_model_blocking};
 use crate::paths::Root;
+use crate::port::Port;
 
 const TITLES: &str = "titles";
 
@@ -14,7 +16,8 @@ fn path(root: &Root) -> PathBuf {
 
 /// The launch settings, turned into environment variables by [`super::Bbport::launch_command`].
 /// The JSON shape of bbport's former GTK launcher, so its file imports as is; keys decanter
-/// doesn't edit are kept as they are.
+/// doesn't edit are kept as they are, except 0.3's memory model ones once the checkout's port
+/// ignores them.
 #[derive(Clone, Default)]
 pub struct LauncherSettings(serde_json::Map<String, serde_json::Value>);
 
@@ -44,7 +47,10 @@ impl LauncherSettings {
         settings.save(root)
     }
 
-    pub fn save(&self, root: &Root) -> std::io::Result<()> {
+    pub fn save(mut self, root: &Root) -> std::io::Result<()> {
+        if single_memory_model_blocking(&Port::Bbport.checkout(root)) {
+            self.0.retain(|key, _| !MEMORY_MODEL_SETTINGS.contains(&key.as_str()));
+        }
         let text = serde_json::to_string_pretty(&self.0).map_err(std::io::Error::other)?;
         crate::files::write_atomic(&path(root), text.as_bytes())
     }
