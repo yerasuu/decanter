@@ -290,6 +290,7 @@ async fn install_into(
                 install_dir: install_dir_name,
                 build_id: plan.version,
                 size_on_disk: plan.install_size_bytes.or(Some(downloaded)),
+                size_fingerprint: None,
                 launch_executable,
                 last_played,
                 proton,

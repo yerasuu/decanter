@@ -77,6 +77,9 @@ storage.errors.shared:
 storage.errors.exists:
   es: "%{path} ya existe en la carpeta de destino."
   en: "%{path} already exists in the destination folder."
+storage.errors.dump_root:
+  es: "%{path} es la carpeta de juegos entera: mete el volcado en una subcarpeta para moverlo."
+  en: "%{path} is the whole games folder: put the dump in a subfolder to move it."
 storage.errors.manifest:
   es: "moviendo el registro de %{game}: %{error}"
   en: "moving the record of %{game}: %{error}"
@@ -98,3 +101,42 @@ storage.errors.legacy_busy:
 storage.errors.legacy:
   es: "borrando los datos antiguos: %{error}"
   en: "removing the old data: %{error}"
+storage.cache.title:
+  es: Caché
+  en: Cache
+storage.cache.pick_title:
+  es: Elige dónde guarda la caché esta carpeta
+  en: Choose where this folder keeps its cache
+storage.cache.empty:
+  es: vacía
+  en: empty
+storage.cache.default:
+  es: "Dentro de la carpeta · %{size}"
+  en: "Inside the folder · %{size}"
+storage.cache.custom:
+  es: "Elegida por ti · %{size}"
+  en: "Chosen by you · %{size}"
+storage.cache.reset:
+  es: Restablecer
+  en: Reset
+storage.cache.reset_hint:
+  es: Vuelve a guardar la caché dentro de esta carpeta.
+  en: Keep the cache inside this folder again.
+storage.cache.change:
+  es: Cambiar…
+  en: Change…
+storage.cache.change_hint:
+  es: "Las cachés de shaders de los juegos de esta carpeta, de PC y de PS, van aquí. En un disco rápido, los juegos cargan antes."
+  en: "The shader caches of this folder's games, PC and PS, go here. On a fast disk, games load sooner."
+storage.cache.errors.save:
+  es: "No se pudo guardar la ubicación de la caché: %{error}"
+  en: "Couldn't save the cache location: %{error}"
+storage.cache.errors.not_dir:
+  es: "%{path} no es una carpeta."
+  en: "%{path} is not a folder."
+storage.cache.errors.inside_games:
+  es: "%{path} está dentro de los archivos de los juegos: elige otra carpeta."
+  en: "%{path} is inside the games' files: choose another folder."
+storage.cache.errors.not_writable:
+  es: "No se puede escribir en %{path}: %{error}"
+  en: "Can't write to %{path}: %{error}"

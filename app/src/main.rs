@@ -101,11 +101,13 @@ macro_rules! achv_try {
 }
 
 mod art;
+mod cache;
 mod capabilities;
 mod cli;
 mod closing;
 mod core;
 mod desktop;
+mod dump_size;
 mod external;
 mod format;
 mod game_tools;

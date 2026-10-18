@@ -122,6 +122,45 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
     Ok(())
 }
 
+/// Moves the PS dump in `dir` into `library_root`'s games folder, keeping
+/// its folder name. The caller makes sure the game isn't running. Blocking:
+/// on another disk every byte is copied, and the original is only removed
+/// once the copy is whole.
+pub fn move_dump(dir: &Path, library_root: &Path, progress: &Progress) -> Result<(), String> {
+    let games = decanter_ps::paths::games_in(library_root);
+    // A dump dropped straight into a games folder is that folder itself:
+    // moving it would take every other dump with it.
+    let Some(name) = dir
+        .file_name()
+        .filter(|_| dir.parent().is_some_and(|parent| parent.ends_with("psport/games")))
+    else {
+        return Err(t!("storage.errors.dump_root", path = dir.display()).into_owned());
+    };
+    if dir.parent() == Some(games.as_path()) {
+        return Ok(());
+    }
+    let target = games.join(name);
+    if target.exists() && std::fs::read_dir(&target).is_ok_and(|mut entries| entries.next().is_some()) {
+        return Err(t!("storage.errors.exists", path = target.display()).into_owned());
+    }
+    crate::achv_try!(
+        std::fs::create_dir_all(&games).map_err(|err| t!(
+            "messages.errors.create_dir",
+            path = games.display(),
+            error = err
+        )
+        .into_owned())
+    );
+    tracing::info!(from = %dir.display(), to = %target.display(), "moving PS dump to another library folder");
+    crate::achv_try!(
+        transfer::bring(dir, &target, Mode::Move, |done| progress.record(done))
+            .inspect_err(|err| tracing::error!(dir = %dir.display(), %err, "could not move the PS dump"))
+    );
+    crate::dump_size::moved(dir, &target);
+    tracing::info!(to = %target.display(), "PS dump moved to another library folder");
+    Ok(())
+}
+
 /// `exe` with `from` swapped for `to` when it's under `from`.
 fn remap(exe: &str, from: &Path, to: &Path) -> String {
     Path::new(exe).strip_prefix(from).map_or_else(

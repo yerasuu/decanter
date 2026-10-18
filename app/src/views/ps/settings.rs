@@ -2,6 +2,8 @@
 //! folder of the user's own system module dump, and which psport builds the
 //! library runs.
 
+use std::path::PathBuf;
+
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::channel::Channel;
 use decanter_ps::port::Port;
@@ -149,9 +151,15 @@ impl SettingsView {
 
 impl Render for SettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let games = decanter_ps::paths::active().games();
+        let roots = self.ps.read(cx).library_roots();
+        let folders: Vec<PathBuf> = if roots.is_empty() {
+            vec![decanter_ps::paths::active().games()]
+        } else {
+            roots.iter().map(|root| decanter_ps::paths::games_in(root)).collect()
+        };
         let sys_modules = self.sys_modules.clone();
         let has_sys_modules = sys_modules.is_some();
+        let count = folders.len();
         theme::page(
             "ps-settings",
             div()
@@ -160,8 +168,14 @@ impl Render for SettingsView {
                 .gap_4()
                 .child(theme::h2(t!("ps.settings.games.title")))
                 .child(
-                    theme::card().child(
-                        theme::list_row("ps-dir-library", true)
+                    theme::card().children(folders.into_iter().enumerate().map(|(index, games)| {
+                        let label = if index == 0 {
+                            t!("storage.folder.primary")
+                        } else {
+                            t!("storage.folder.extra")
+                        };
+                        theme::list_row(("ps-dir-library", index), index + 1 == count)
+                            .child(theme::badge(label, index == 0))
                             .child(
                                 theme::mono()
                                     .flex_1()
@@ -170,16 +184,20 @@ impl Render for SettingsView {
                                     .child(games.display().to_string()),
                             )
                             .child(
-                                button("ps-dir-open", ButtonKind::Secondary, t!("ps.settings.open"), false).on_click(
-                                    move |_, _, _| {
-                                        let _ = std::fs::create_dir_all(&games);
-                                        if let Err(err) = crate::desktop::open(&games) {
-                                            tracing::warn!(dir = %games.display(), %err, "could not open the folder");
-                                        }
-                                    },
-                                ),
-                            ),
-                    ),
+                                button(
+                                    ("ps-dir-open", index),
+                                    ButtonKind::Secondary,
+                                    t!("ps.settings.open"),
+                                    false,
+                                )
+                                .on_click(move |_, _, _| {
+                                    let _ = std::fs::create_dir_all(&games);
+                                    if let Err(err) = crate::desktop::open(&games) {
+                                        tracing::warn!(dir = %games.display(), %err, "could not open the folder");
+                                    }
+                                }),
+                            )
+                    })),
                 )
                 .child(theme::muted(t!("ps.settings.games.description")))
                 .child(theme::h2(t!("ps.settings.sys_modules.title")))

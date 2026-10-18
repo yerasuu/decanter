@@ -68,6 +68,7 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
     });
     launch.identity = Some((key, game.name.clone()));
     launch.capture_output = true;
+    launch.env.extend(crate::cache::launch_env(game));
 
     // decanter-hook (a GOG-only concern -- a shortcut has no Galaxy DLL
     // to patch) reads both of these itself; setting them here is what

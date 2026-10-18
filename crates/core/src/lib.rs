@@ -4,12 +4,14 @@
 
 mod accounts;
 pub mod bootstrap;
+mod cache;
 pub mod capabilities;
 mod catalog;
 mod collections;
 mod credentials;
 mod db;
 mod disk;
+mod fingerprint;
 mod game_tools;
 mod launcher_env;
 mod library;
@@ -21,11 +23,13 @@ pub mod steam;
 mod vdf;
 
 pub use accounts::Account;
+pub use cache::{cache_group, default_cache_root, game_cache_dir, shader_cache_env};
 pub use catalog::{Game, InstallState, Storefront, UnknownStorefront};
 pub use collections::Collection;
 pub use credentials::{KeyringError, delete as delete_session, load as load_session, save as save_session};
 pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result};
 pub use disk::disk_usage;
+pub use fingerprint::install_fingerprint;
 pub use game_tools::{GameTool, gamemode_prefix, gamemoded, mangohud_env, mangohud_installed, mangohud_log_dir};
 pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env};
 pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size, move_dir};

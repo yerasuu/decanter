@@ -1,5 +1,5 @@
-//! The PS section's state: the games in the active profile's library PS
-//! folder.
+//! The PS section's state: the games in the PS folders of the active
+//! profile's library folders.
 //!
 //! Created the first time the section opens, not at startup, so a PC
 //! profile never pays for it; kept after that, so jobs started from the
@@ -10,11 +10,12 @@ mod channel;
 mod fallback;
 mod fsr;
 mod jobs;
+mod moving;
 mod play;
 mod ports;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use decanter_ps::library;
 use decanter_ps::port::Port;
@@ -35,6 +36,8 @@ use super::AppState;
 pub struct Ps {
     profile_id: Option<String>,
     entries: Vec<Entry>,
+    /// The library folders the last scan read, the primary one first.
+    library_roots: Vec<PathBuf>,
     scanning: bool,
     error: Option<String>,
     /// The latest outcome worth telling: `(text, is_error)`.
@@ -55,6 +58,9 @@ pub struct Ps {
     /// Games whose port is prepared or command built but whose job doesn't
     /// exist yet, so a second JUGAR doesn't start them twice.
     launching: HashSet<PathBuf>,
+    /// Games being moved to another library folder, which can't start
+    /// until they land.
+    moving: HashSet<PathBuf>,
     ports: HashMap<Port, PortState>,
 }
 
@@ -74,6 +80,7 @@ impl Ps {
             let mut this = Self {
                 profile_id: None,
                 entries: Vec::new(),
+                library_roots: Vec::new(),
                 notice: None,
                 scanning: false,
                 error: None,
@@ -83,6 +90,7 @@ impl Ps {
                 learned_revision: 0,
                 jobs: HashMap::new(),
                 launching: HashSet::new(),
+                moving: HashSet::new(),
                 ports: HashMap::new(),
             };
             this.sync_profile(cx);
@@ -95,6 +103,20 @@ impl Ps {
 
     pub fn entries(&self) -> &[Entry] {
         &self.entries
+    }
+
+    pub fn library_roots(&self) -> &[PathBuf] {
+        &self.library_roots
+    }
+
+    /// The library folder holding the game in `dir`, and whether it is the
+    /// primary one.
+    pub fn library_of(&self, dir: &Path) -> Option<(&Path, bool)> {
+        self.library_roots
+            .iter()
+            .enumerate()
+            .find(|(_, root)| dir.starts_with(decanter_ps::paths::games_in(root)))
+            .map(|(index, root)| (root.as_path(), index == 0))
     }
 
     pub fn notice(&self) -> Option<&(String, bool)> {
@@ -153,6 +175,7 @@ impl Ps {
         }
         self.profile_id = profile_id.clone();
         self.entries.clear();
+        self.library_roots.clear();
         self.notice = None;
         self.scan = self.scan.wrapping_add(1);
         self.scanning = false;
@@ -191,23 +214,42 @@ impl Ps {
     /// Reads the folder list and every dump in it again, off the UI thread.
     pub fn rescan(&mut self, cx: &mut Context<Self>) {
         self.scan = self.scan.wrapping_add(1);
-        if self.profile_id.is_none() {
+        let Some(profile_id) = self.profile_id.clone() else {
             self.scanning = false;
             cx.notify();
             return;
-        }
+        };
         let scan = self.scan;
         self.scanning = true;
         cx.notify();
-        // The library's own folder, made if missing so there is a place to
-        // drop dumps in.
         let root = decanter_ps::paths::active();
         let task = cx.background_spawn(async move {
+            // Read again on every scan, since a folder can be added or its
+            // disk plugged in while the section is open.
+            let library_roots = crate::core::library_for_profile(&profile_id).map_or_else(
+                |err| {
+                    tracing::warn!(profile_id, %err, "could not list the library folders, reading the primary one only");
+                    vec![root.library().to_owned()]
+                },
+                |library| library.roots(),
+            );
+            // Only the primary folder is made if missing, so there is a
+            // place to drop dumps in; an extra one gets its folder when a
+            // game is moved there.
             let games = root.games();
             if let Err(err) = std::fs::create_dir_all(&games) {
                 return Err(t!("ps.errors.create_dir", dir = games.display(), error = err).into_owned());
             }
-            Ok(status::classify(&root, &library::scan(std::slice::from_ref(&games))))
+            let folders: Vec<PathBuf> = std::iter::once(games)
+                .chain(
+                    library_roots
+                        .iter()
+                        .skip(1)
+                        .map(|library_root| decanter_ps::paths::games_in(library_root))
+                        .filter(|folder| folder.is_dir()),
+                )
+                .collect();
+            Ok((status::classify(&root, &library::scan(&folders)), library_roots))
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -217,9 +259,21 @@ impl Ps {
                 }
                 this.scanning = false;
                 match result {
-                    Ok(entries) => {
-                        tracing::debug!(games = entries.len(), "scanned the PS games folder");
+                    Ok((entries, library_roots)) => {
+                        tracing::debug!(
+                            games = entries.len(),
+                            folders = library_roots.len(),
+                            "scanned the PS games folders"
+                        );
+                        // New or changed dumps (a copy dropped in, a merge) are measured now, off
+                        // the UI thread, so Almacenamiento only has to stat them.
+                        let dirs: Vec<PathBuf> = entries.iter().map(|entry| entry.game.dir.clone()).collect();
+                        cx.background_spawn(
+                            async move { crate::dump_size::refresh(dirs.iter().map(PathBuf::as_path)) },
+                        )
+                        .detach();
                         this.entries = entries;
+                        this.library_roots = library_roots;
                         this.error = None;
                     }
                     Err(err) => {

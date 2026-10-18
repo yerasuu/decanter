@@ -7,9 +7,11 @@
 //! straight off its manifests — this store never duplicates it.
 
 mod achievements;
+mod dump_sizes;
 mod favorites;
 mod game_options;
 mod games;
+mod library_caches;
 mod playtime;
 mod settings;
 mod steam_shortcuts;
@@ -160,6 +162,17 @@ CREATE TABLE IF NOT EXISTS game_options (
     option    TEXT NOT NULL,
     enabled   INTEGER NOT NULL,
     PRIMARY KEY (game_key, option)
+);
+
+CREATE TABLE IF NOT EXISTS dump_sizes (
+    dir          TEXT PRIMARY KEY,
+    size         INTEGER NOT NULL,
+    fingerprint  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS library_caches (
+    folder      TEXT PRIMARY KEY,
+    cache_path  TEXT NOT NULL
 );
 
 DROP TABLE IF EXISTS ps_scan_dirs;

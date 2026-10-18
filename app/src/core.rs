@@ -285,6 +285,13 @@ pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result
             .remove_profile_library(profile_id, &root.to_string_lossy())
             .map_err(|err| t!("storage.errors.remove", error = err).into_owned())
     );
+    // Re-adding the folder later starts from its default cache again.
+    if let Err(err) = db()
+        .map_err(|err| err.to_string())
+        .and_then(|db| db.set_library_cache(root, None).map_err(|err| err.to_string()))
+    {
+        tracing::warn!(profile_id, root = %root.display(), %err, "could not forget the folder's cache location");
+    }
     if let Err(err) = library_for_profile(profile_id)
         .map_err(|err| err.to_string())
         .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))

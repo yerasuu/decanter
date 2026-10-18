@@ -672,6 +672,11 @@ async fn save_moved_path(
 fn repoint_profiles(profile_id: &str, old_path: &str, new_path: &str) -> Result<(), crate::core::StoreError> {
     let moved_db = crate::achv_try!(crate::core::db());
     let profiles = crate::achv_try!(moved_db.list_profiles().map_err(crate::core::StoreError::Query));
+    crate::achv_try!(
+        moved_db
+            .rebase_library_caches(std::path::Path::new(old_path), std::path::Path::new(new_path))
+            .map_err(crate::core::StoreError::Query)
+    );
     profiles
         .iter()
         .filter(|profile| profile.id == profile_id || profile.library_path.as_deref() == Some(old_path))

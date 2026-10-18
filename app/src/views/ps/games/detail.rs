@@ -451,6 +451,13 @@ impl DetailView {
             }
             _ => None,
         };
+        let library = self.ps.read(cx).library_of(&game.dir).map(|(root, primary)| {
+            if primary {
+                t!("storage.folder.primary").into_owned()
+            } else {
+                format!("{} · {}", t!("storage.folder.extra"), root.display())
+            }
+        });
         let learned = self.learned.as_ref().map(|record| {
             let title_id = game.title_id.clone();
             div()
@@ -489,6 +496,7 @@ impl DetailView {
                     .gap_2()
                     .child(fact("Title ID".into(), game.title_id.clone()))
                     .child(fact(t!("ps.detail.facts.version"), game.version.clone()))
+                    .children(library.map(|library| fact(t!("ps.detail.facts.library"), library)))
                     .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string())),
             )
             .children(entry.port.and(self.tools.clone()))

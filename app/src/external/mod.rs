@@ -15,6 +15,7 @@ pub mod art;
 pub mod import;
 #[cfg(proton)]
 pub mod launchers;
+pub mod size;
 pub mod transfer;
 #[cfg(proton)]
 pub mod umu;
@@ -118,7 +119,9 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
         // component here, and the id is already unique.
         install_dir: id.to_owned(),
         build_id: String::new(),
-        size_on_disk: None,
+        size_on_disk: previous.as_ref().and_then(|game| game.size_on_disk),
+        // Cleared so the new executable or prefix is measured right away.
+        size_fingerprint: None,
         launch_executable: Some(draft.executable.to_string_lossy().into_owned()),
         last_played: previous.as_ref().and_then(|game| game.last_played),
         proton: previous.and_then(|game| game.proton),
@@ -138,7 +141,15 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
             .map_err(|err| t!("external.errors.save", error = err).into_owned())
     );
+    let (profile, game_id) = (profile_id.to_owned(), id.to_owned());
     tokio::spawn(async move { crate::taskbar::sync_pc(&game).await });
+    // Measured once the manifest is there, re-read so an edit made meanwhile
+    // isn't overwritten.
+    tokio::task::spawn_blocking(move || {
+        if let Some(saved) = library.read_manifest(&profile, Storefront::Unspecified, &game_id) {
+            size::refresh(&library, saved);
+        }
+    });
     Ok(())
 }
 

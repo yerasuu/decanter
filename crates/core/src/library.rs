@@ -128,6 +128,11 @@ pub struct InstalledGame {
     /// Proton build for this game specifically, resolved by umu. `None`
     /// uses whatever the app's default is.
     pub proton: Option<String>,
+    /// [`crate::install_fingerprint`] of the files `size_on_disk` was
+    /// measured from, for a game whose size decanter measures itself rather
+    /// than takes from an installer; it is measured again only once this
+    /// stops matching.
+    pub size_fingerprint: Option<String>,
     pub size_on_disk: Option<u64>,
     pub storefront: Storefront,
     /// umu's `GAMEID` for a game with no storefront id of its own, picked
@@ -228,6 +233,7 @@ impl InstalledGame {
             install_dir: install_dir.to_owned(),
             build_id: root.get("buildid").unwrap_or_default().to_owned(),
             size_on_disk: root.get_u64("SizeOnDisk"),
+            size_fingerprint: root.get("SizeFingerprint").map(str::to_owned),
             launch_executable: root.get("LaunchExecutable").map(str::to_owned),
             last_played: root.get("LastPlayed").and_then(|value| value.parse().ok()),
             proton: root.get("Proton").map(str::to_owned),
@@ -301,6 +307,9 @@ impl InstalledGame {
         root.insert("StateFlags", STATE_FULLY_INSTALLED);
         if let Some(size) = self.size_on_disk {
             root.insert("SizeOnDisk", size);
+        }
+        if let Some(fingerprint) = self.size_fingerprint.as_ref() {
+            root.insert("SizeFingerprint", fingerprint.clone());
         }
         if let Some(executable) = self.launch_executable.as_ref() {
             root.insert("LaunchExecutable", executable.clone());
@@ -979,7 +988,7 @@ fn copy_symlink(link: &Path, dst: &Path) -> io::Result<()> {
 /// A single path component that can't climb, hide, or reach an absolute
 /// path. Every value that reaches this came from a storefront's manifest
 /// or from an account id.
-fn safe_component(value: &str) -> Option<&str> {
+pub(crate) fn safe_component(value: &str) -> Option<&str> {
     if value.is_empty()
         || value == "."
         || value == ".."

@@ -44,6 +44,14 @@ pub fn use_library(library_root: &Path) {
     }
 }
 
+/// Where any of the profile's library folders keeps PS dumps. Only the
+/// games live there in an extra folder: everything else stays in the
+/// primary library's [`Root`], on the disk the user chose for it.
+#[must_use]
+pub fn games_in(library_root: &Path) -> PathBuf {
+    library_root.join("psport").join("games")
+}
+
 impl Root {
     pub(crate) fn join(&self, path: impl AsRef<Path>) -> PathBuf {
         self.0.join(path)
@@ -55,9 +63,10 @@ impl Root {
         self.0.parent().unwrap_or(&self.0)
     }
 
-    /// The only folder PS games are read from.
+    /// The primary library's games folder, the one made on scan so there is
+    /// always a place to drop dumps in.
     pub fn games(&self) -> PathBuf {
-        self.join("games")
+        games_in(self.library())
     }
 
     /// nix-portable, its store, and the nix environments the ports run in.

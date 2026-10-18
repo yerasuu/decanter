@@ -33,6 +33,11 @@ impl Ps {
         if self.is_running(&key, cx) {
             return;
         }
+        if self.moving.contains(dir) {
+            self.notice = Some((t!("ps.play.moving").into_owned(), true));
+            cx.notify();
+            return;
+        }
         let Some(entry) = self.entries.iter().find(|entry| entry.game.dir == dir) else {
             return;
         };
@@ -44,16 +49,25 @@ impl Ps {
         }
         let game = entry.game.clone();
         let root = decanter_ps::paths::active();
+        let folder = self
+            .library_of(dir)
+            .map_or_else(|| root.library().to_owned(), |(folder, _)| folder.to_owned());
         let failures_path = root.profile(&profile_id).join("failures.jsonl");
         let prepared = self.prepare(port, &root, cx);
         self.notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
+            let cache_dir = game_cache_dir(folder, &game.title_id, cx).await;
             let (command, facts) = match prepared.await {
                 Ok(toolchain) => {
                     let command = match port {
-                        Port::Bbport => bbport_command(&root, &toolchain, &game, &profile_id, cx).await,
-                        Port::AnyPs5 => anyps5_command(&this, &root, &toolchain, &game, &profile_id, cx).await,
+                        Port::Bbport => {
+                            bbport_command(&root, &toolchain, &game, &profile_id, cache_dir.as_deref(), cx).await
+                        }
+                        Port::AnyPs5 => {
+                            let cache_dir = cache_dir.as_deref();
+                            anyps5_command(&this, &root, &toolchain, &game, &profile_id, cache_dir, cx).await
+                        }
                     };
                     let command = command.map_err(|err| {
                         tracing::warn!(port = port.name(), title_id = %game.title_id, error = %err, "could not start game");
@@ -128,6 +142,11 @@ impl Ps {
 
     /// Builds `<base>-01.09` beside the base dump, then shows it.
     pub fn merge(&mut self, base: PathBuf, update: PathBuf, cx: &mut Context<Self>) {
+        if self.moving.contains(&base) || self.moving.contains(&update) {
+            self.notice = Some((t!("ps.play.moving").into_owned(), true));
+            cx.notify();
+            return;
+        }
         self.notice = Some((t!("ps.play.merging").into_owned(), false));
         cx.notify();
         let task = cx.background_spawn(async move { bbport::merge_update(&base, &update, bbport::SUPPORTED_VERSION) });
@@ -189,6 +208,7 @@ async fn bbport_command(
     toolchain: &Toolchain,
     game: &Game,
     profile_id: &str,
+    cache_dir: Option<&Path>,
     cx: &mut AsyncApp,
 ) -> Result<Command, LaunchError> {
     let (settings, learned, chosen_ratio) = {
@@ -245,6 +265,7 @@ async fn bbport_command(
             toolchain,
             game,
             &user_dir,
+            cache_dir,
             &settings,
             &mods,
             &rust_i18n::locale(),
@@ -283,12 +304,17 @@ fn display_aspect_ratio(cx: &mut AsyncApp) -> Option<&'static str> {
 
 /// Converts first when the game has no conversion yet; the conversion is
 /// shared, the run directory is the profile's.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the game's cache folder joins what the conversion and the run already took"
+)]
 async fn anyps5_command(
     this: &WeakEntity<Ps>,
     root: &Root,
     toolchain: &Toolchain,
     game: &Game,
     profile_id: &str,
+    cache_dir: Option<&Path>,
     cx: &mut AsyncApp,
 ) -> Result<Command, LaunchError> {
     let anyps5 = AnyPs5::new(root.clone());
@@ -337,10 +363,23 @@ async fn anyps5_command(
     if let Err(err) = laid_out {
         return Err(LaunchError::RunDir { dir: run_dir, err });
     }
-    anyps5
-        .run_command(toolchain, game, &run_dir)
+    let mut command = match anyps5.run_command(toolchain, game, &run_dir).await {
+        Ok(command) => command,
+        Err(err) => return Err(LaunchError::Environment(err)),
+    };
+    // AnyPS5 has no cache of its own to root; only the drivers' follow the game.
+    if let Some(dir) = cache_dir {
+        command.envs(decanter_core::shader_cache_env(dir));
+    }
+    Ok(command)
+}
+
+/// The game's cache folder in the cache location of `folder`, the library
+/// folder holding its dump.
+async fn game_cache_dir(folder: PathBuf, title_id: &str, cx: &AsyncApp) -> Option<PathBuf> {
+    let title_id = title_id.to_owned();
+    cx.background_spawn(async move { crate::cache::game_dir(&folder, "ps", &title_id) })
         .await
-        .map_err(LaunchError::Environment)
 }
 
 /// The port caught the game rewriting frames in flight and stopped overlapping them; the next

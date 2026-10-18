@@ -315,8 +315,8 @@ ps.settings.games.title:
   es: Carpeta de juegos
   en: Games folder
 ps.settings.games.description:
-  es: "Junto a la biblioteca del perfil, en el mismo disco. Copia o mueve ahí tus volcados y aparecerán solos: cada carpeta y sus subcarpetas directas se leen tal cual."
-  en: "Next to the profile's library, on the same disk. Copy or move your dumps there and they show up on their own: each folder and its direct subfolders are read as they are."
+  es: "Junto a cada carpeta de biblioteca del perfil, en su mismo disco. Copia o mueve ahí tus volcados y aparecerán solos: cada carpeta y sus subcarpetas directas se leen tal cual. Las partidas y los ajustes se quedan siempre en la principal; la caché va a la ubicación de caché de la carpeta de cada juego. Para pasar un juego de una carpeta a otra, o elegir dónde va su caché, usa Almacenamiento."
+  en: "Next to each of the profile's library folders, on the same disk. Copy or move your dumps there and they show up on their own: each folder and its direct subfolders are read as they are. Saves and settings always stay in the main one; the cache goes to the cache location of each game's folder. To move a game between folders, or choose where its cache goes, use Storage."
 ps.settings.sys_modules.title:
   es: Módulos del sistema (opcional)
   en: System modules (optional)
@@ -467,6 +467,9 @@ ps.play.merged:
 ps.play.merge_error:
   es: "No se pudo fusionar: %{error}"
   en: "Couldn't merge: %{error}"
+ps.play.moving:
+  es: "El juego se está moviendo a otra carpeta: espera a que termine."
+  en: "The game is being moved to another folder: wait until it's done."
 ps.detail.tabs.overview:
   es: Resumen
   en: Overview
@@ -515,6 +518,9 @@ ps.detail.facts.version:
 ps.detail.facts.folder:
   es: Carpeta
   en: Folder
+ps.detail.facts.library:
+  es: Biblioteca
+  en: Library
 ps.detail.pick_game:
   es: Elige un juego de la lista.
   en: Pick a game from the list.

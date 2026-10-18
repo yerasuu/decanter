@@ -98,6 +98,7 @@ async fn start(
         );
     }
     launch.identity = Some((key, game.name.clone()));
+    launch.env.extend(crate::cache::launch_env(game));
 
     let achievement_log = decanter_gog::hook::achievement_log_path(&prefix);
     launch

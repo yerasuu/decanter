@@ -11,7 +11,7 @@ use gpui::{AnyElement, Context, SharedString, Task, Window, div, prelude::*, px,
 use rust_i18n::t;
 
 use crate::external::transfer::Progress;
-use crate::state::AppState;
+use crate::state::{AppState, Ps};
 use crate::theme;
 use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, stat_card, tooltip};
@@ -23,14 +23,57 @@ struct Folder {
     /// `false` for a folder on a disk that isn't plugged in.
     present: bool,
     games: Vec<InstalledGame>,
+    /// PS dumps in its `psport/games`, which the profile reads from every
+    /// folder of its library.
+    dumps: Vec<Dump>,
     total: u64,
     disk: Option<(u64, u64)>,
+    /// Where its games' shader caches go, whether the user picked it, and
+    /// how much is in it (`None` before anything was written there).
+    cache: PathBuf,
+    cache_custom: bool,
+    cache_size: Option<u64>,
+}
+
+struct Dump {
+    dir: PathBuf,
+    name: String,
+    size: u64,
+    /// `false` for a dump that is the games folder itself, which can only
+    /// move with every other dump in it.
+    movable: bool,
+}
+
+impl Dump {
+    fn scan(root: &Path, db: Option<&decanter_core::Db>) -> Vec<Self> {
+        let games = decanter_ps::paths::games_in(root);
+        if !games.is_dir() {
+            return Vec::new();
+        }
+        decanter_ps::library::scan(std::slice::from_ref(&games))
+            .into_iter()
+            .map(|game| {
+                let size = crate::dump_size::size(db, &game.dir);
+                let title = if game.title.is_empty() {
+                    &game.title_id
+                } else {
+                    &game.title
+                };
+                Self {
+                    movable: game.dir != games,
+                    name: format!("{title} ({})", game.version),
+                    size,
+                    dir: game.dir,
+                }
+            })
+            .collect()
+    }
 }
 
 impl Folder {
     /// Every game recorded in `root` for the profile's accounts and for the
     /// profile itself (its external games).
-    fn scan(root: PathBuf, primary: bool, owners: &[String]) -> Self {
+    fn scan(root: PathBuf, primary: bool, owners: &[String], db: Option<&decanter_core::Db>) -> Self {
         let present = root.is_dir();
         let library = Library::new(&root);
         let mut games: Vec<InstalledGame> = owners
@@ -39,17 +82,42 @@ impl Folder {
             // An external game sharing a launcher's prefix is counted in the
             // launcher's size, not twice.
             .filter(|game| game.storefront != Storefront::Unspecified || game.prefix_of.is_none())
+            // Checked on every visit, since nothing else learns when an
+            // external game's files change; walked only when they did.
+            .map(|game| {
+                if present && game.storefront == Storefront::Unspecified {
+                    crate::external::size::refresh(&library, game)
+                } else {
+                    game
+                }
+            })
             .collect();
         games.sort_by_key(|game| std::cmp::Reverse(game.size_on_disk.unwrap_or(0)));
-        let total = games.iter().filter_map(|game| game.size_on_disk).sum();
+        let mut dumps = if present { Dump::scan(&root, db) } else { Vec::new() };
+        dumps.sort_by_key(|dump| std::cmp::Reverse(dump.size));
+        let total = games
+            .iter()
+            .filter_map(|game| game.size_on_disk)
+            .chain(dumps.iter().map(|dump| dump.size))
+            .sum();
         let disk = present.then(|| decanter_core::disk_usage(&root)).flatten();
+        let (cache, cache_custom) = crate::cache::location(&root);
+        let cache_size = cache.is_dir().then(|| {
+            decanter_core::directory_size(&cache)
+                .inspect_err(|err| tracing::warn!(dir = %cache.display(), %err, "could not measure the cache"))
+                .unwrap_or(0)
+        });
         Self {
             root,
             primary,
             present,
             games,
+            dumps,
             total,
             disk,
+            cache,
+            cache_custom,
+            cache_size,
         }
     }
 }
@@ -57,12 +125,11 @@ impl Folder {
 /// Reads every folder's manifests and free space — slow enough on a big
 /// library to be kept off the UI thread.
 fn scan(profile_id: &str) -> Vec<Folder> {
-    let db = crate::core::db();
+    let db = crate::core::db().ok();
     // What's installed is filed per account (see `decanter_core::library`);
     // external games are filed under the profile itself.
     let owners: Vec<String> = db
         .as_ref()
-        .ok()
         .and_then(|db| {
             db.accounts_in_profile(profile_id)
                 .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to list accounts for storage view"))
@@ -80,7 +147,7 @@ fn scan(profile_id: &str) -> Vec<Folder> {
     // Read from the database rather than the resolved library, which leaves
     // out a folder whose disk is unplugged — that one still gets a card.
     let extra = db
-        .ok()
+        .as_ref()
         .and_then(|db| db.profile_extra_libraries(profile_id).ok())
         .unwrap_or_default()
         .into_iter()
@@ -89,7 +156,7 @@ fn scan(profile_id: &str) -> Vec<Folder> {
         .into_iter()
         .map(|root| (root, true))
         .chain(extra.map(|root| (root, false)))
-        .map(|(root, primary)| Folder::scan(root, primary, &owners))
+        .map(|(root, primary)| Folder::scan(root, primary, &owners, db.as_ref()))
         .collect();
     tracing::debug!(profile_id, folders = folders.len(), "computed storage usage");
     folders
@@ -100,7 +167,8 @@ pub struct StorageView {
     folders: Option<Vec<Folder>>,
     error: String,
     scan: Option<Task<()>>,
-    /// The game being moved between folders, and how far it's got.
+    /// The game being moved between folders (a GOG or external game's id,
+    /// or a PS dump's folder), and how far it's got.
     moving: Option<(String, Arc<Progress>)>,
     _move: Option<Task<()>>,
     /// Redraws the progress while `moving`: the move runs on a blocking
@@ -187,6 +255,104 @@ impl StorageView {
             });
         })
         .detach();
+    }
+
+    /// Lets the user pick where `folder`'s caches go, or without `pick` puts
+    /// them back inside it.
+    fn change_cache(folder: PathBuf, pick: bool, cx: &Context<Self>) {
+        let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let picked = if pick {
+                let Some(picked) = rfd::AsyncFileDialog::new()
+                    .set_title(t!("storage.cache.pick_title"))
+                    .pick_folder()
+                    .await
+                else {
+                    return;
+                };
+                Some(picked.path().to_path_buf())
+            } else {
+                None
+            };
+            let result = cx
+                .background_spawn(async move { crate::cache::set(&profile_id, &folder, picked.as_deref()) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(()) => {
+                        this.error.clear();
+                        this.rescan(cx);
+                    }
+                    Err(err) => this.error = err,
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cache_row(index: usize, folder: &Folder, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let size = folder
+            .cache_size
+            .map_or_else(|| t!("storage.cache.empty").into_owned(), crate::format::bytes);
+        let (pick_root, reset_root) = (folder.root.clone(), folder.root.clone());
+        div()
+            .flex()
+            .items_center()
+            .gap_4()
+            .px(px(18.))
+            .py(px(10.))
+            .border_b_1()
+            .border_color(rgb(theme::LINE))
+            .child(
+                div()
+                    .w(px(70.))
+                    .flex_none()
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(t!("storage.cache.title")),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .child(theme::mono().truncate().child(folder.cache.display().to_string()))
+                    .child(
+                        theme::muted(if folder.cache_custom {
+                            t!("storage.cache.custom", size = size)
+                        } else {
+                            t!("storage.cache.default", size = size)
+                        })
+                        .text_size(px(12.)),
+                    ),
+            )
+            .when(folder.cache_custom, |row| {
+                row.child(
+                    button(
+                        ("storage-cache-reset", index),
+                        ButtonKind::Secondary,
+                        t!("storage.cache.reset"),
+                        false,
+                    )
+                    .tooltip(tooltip(t!("storage.cache.reset_hint")))
+                    .on_click(cx.listener(move |_, _, _, cx| Self::change_cache(reset_root.clone(), false, cx))),
+                )
+            })
+            .child(
+                button(
+                    ("storage-cache-pick", index),
+                    ButtonKind::Secondary,
+                    t!("storage.cache.change"),
+                    !folder.present,
+                )
+                .tooltip(tooltip(t!("storage.cache.change_hint")))
+                .when(folder.present, |b| {
+                    b.on_click(cx.listener(move |_, _, _, cx| Self::change_cache(pick_root.clone(), true, cx)))
+                }),
+            )
     }
 
     fn remove_folder(&mut self, root: &Path, cx: &mut Context<Self>) {
@@ -289,9 +455,39 @@ impl StorageView {
             return;
         }
         let progress = Arc::new(Progress::default());
-        self.moving = Some((game.game_id.clone(), Arc::clone(&progress)));
-        self.error.clear();
         let (account_id, game_id) = (game.account_id.clone(), game.game_id.clone());
+        let work = {
+            let progress = Arc::clone(&progress);
+            async move {
+                tokio::task::spawn_blocking(move || crate::relocate::move_game(&account_id, &game_id, &to, &progress))
+                    .await
+                    .unwrap_or_else(|err| Err(err.to_string()))
+            }
+        };
+        self.track_move(game.game_id.clone(), progress, work, cx);
+    }
+
+    fn move_dump(&mut self, dir: PathBuf, to: PathBuf, cx: &mut Context<Self>) {
+        if self.moving.is_some() {
+            return;
+        }
+        let progress = Arc::new(Progress::default());
+        let key = dir.to_string_lossy().into_owned();
+        let work = Ps::get(cx).update(cx, |ps, cx| ps.move_dump(dir, to, Arc::clone(&progress), cx));
+        self.track_move(key, progress, work, cx);
+    }
+
+    /// Shows `work`'s progress under `key` until it ends, then reads the
+    /// folders again.
+    fn track_move(
+        &mut self,
+        key: String,
+        progress: Arc<Progress>,
+        work: impl Future<Output = Result<(), String>> + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.moving = Some((key, progress));
+        self.error.clear();
         self._ticker = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(250)).await;
@@ -305,10 +501,7 @@ impl StorageView {
             }
         }));
         self._move = Some(cx.spawn(async move |this, cx| {
-            let result =
-                tokio::task::spawn_blocking(move || crate::relocate::move_game(&account_id, &game_id, &to, &progress))
-                    .await
-                    .unwrap_or_else(|err| Err(err.to_string()));
+            let result = work.await;
             let _ = this.update(cx, |this, cx| {
                 this.moving = None;
                 if let Err(err) = result {
@@ -320,10 +513,18 @@ impl StorageView {
         cx.notify();
     }
 
-    /// "Mover a…" for a game, or how far its move has got.
-    fn move_control(&self, id: usize, game: &InstalledGame, from: &Path, cx: &Context<Self>) -> Option<AnyElement> {
+    /// "Mover a…" for a game or dump, or how far its move has got. `start`
+    /// moves it into the library folder picked.
+    fn move_control(
+        &self,
+        id: usize,
+        key: &str,
+        from: &Path,
+        start: impl Fn(&mut Self, PathBuf, &mut Context<Self>) + 'static,
+        cx: &Context<Self>,
+    ) -> Option<AnyElement> {
         if let Some((moving, progress)) = &self.moving
-            && *moving == game.game_id
+            && moving == key
         {
             let text = progress.snapshot().map_or_else(
                 || t!("storage.moving.started"),
@@ -337,8 +538,7 @@ impl StorageView {
             );
             return Some(theme::muted(text).text_size(px(12.)).into_any_element());
         }
-        // A game a launcher installed moves with its launcher.
-        if game.prefix_of.is_some() || self.moving.is_some() {
+        if self.moving.is_some() {
             return None;
         }
         let targets: Vec<PathBuf> = self
@@ -357,7 +557,6 @@ impl StorageView {
                 (path.clone(), path)
             }),
         );
-        let game = game.clone();
         let this = cx.entity().downgrade();
         Some(
             Select::new(("storage-move", id), options, SharedString::default())
@@ -366,9 +565,44 @@ impl StorageView {
                         return;
                     }
                     let to = PathBuf::from(value.as_ref());
-                    let _ = this.update(cx, |this, cx| this.move_game(&game, to, cx));
+                    let _ = this.update(cx, |this, cx| start(this, to, cx));
                 })
                 .into_any_element(),
+        )
+    }
+
+    fn game_move_control(
+        &self,
+        id: usize,
+        game: &InstalledGame,
+        from: &Path,
+        cx: &Context<Self>,
+    ) -> Option<AnyElement> {
+        // A game a launcher installed moves with its launcher.
+        if game.prefix_of.is_some() {
+            return None;
+        }
+        let owned = game.clone();
+        self.move_control(
+            id,
+            &game.game_id,
+            from,
+            move |this, to, cx| this.move_game(&owned, to, cx),
+            cx,
+        )
+    }
+
+    fn dump_move_control(&self, id: usize, dump: &Dump, from: &Path, cx: &Context<Self>) -> Option<AnyElement> {
+        if !dump.movable {
+            return None;
+        }
+        let dir = dump.dir.clone();
+        self.move_control(
+            id,
+            &dump.dir.to_string_lossy(),
+            from,
+            move |this, to, cx| this.move_dump(dir.clone(), to, cx),
+            cx,
         )
     }
 
@@ -379,7 +613,7 @@ impl StorageView {
             t!("storage.folder.extra")
         };
         let size = crate::format::bytes(folder.total);
-        let count = folder.games.len();
+        let count = folder.games.len() + folder.dumps.len();
         let used = if count == 1 {
             t!("storage.folder.used.one", used = size)
         } else {
@@ -400,7 +634,7 @@ impl StorageView {
         // A folder with games still in it would take them out of the
         // library without moving them anywhere. An unplugged one can't be
         // checked, and is the folder most likely to be gone for good.
-        let removable = !folder.primary && (folder.games.is_empty() || !folder.present);
+        let removable = !folder.primary && (count == 0 || !folder.present);
         let root = folder.root.clone();
         theme::card()
             .mb_4()
@@ -442,15 +676,29 @@ impl StorageView {
                         )
                     }),
             )
+            .child(Self::cache_row(index, folder, cx))
             .children(folder.games.iter().enumerate().map(|(row, game)| {
                 let id = index * 10_000 + row;
                 theme::list_row(("storage-row", id), row + 1 == count)
                     .child(div().flex_1().child(game.name.clone()))
-                    .children(self.move_control(id, game, &folder.root, cx))
+                    .children(self.game_move_control(id, game, &folder.root, cx))
                     .child(
                         div()
                             .text_color(rgb(theme::TEXT_MUTED))
                             .child(crate::format::bytes(game.size_on_disk.unwrap_or(0))),
+                    )
+            }))
+            .children(folder.dumps.iter().enumerate().map(|(row, dump)| {
+                let row = folder.games.len() + row;
+                let id = index * 10_000 + row;
+                theme::list_row(("storage-row", id), row + 1 == count)
+                    .child(theme::badge("PS", false))
+                    .child(div().flex_1().min_w_0().truncate().child(dump.name.clone()))
+                    .children(self.dump_move_control(id, dump, &folder.root, cx))
+                    .child(
+                        div()
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(crate::format::bytes(dump.size)),
                     )
             }))
     }
@@ -466,7 +714,7 @@ impl Render for StorageView {
             return theme::page("storage", column);
         };
         let (games, used) = folders.iter().fold((0, 0), |(games, used), folder| {
-            (games + folder.games.len(), used + folder.total)
+            (games + folder.games.len() + folder.dumps.len(), used + folder.total)
         });
 
         let stats = div()

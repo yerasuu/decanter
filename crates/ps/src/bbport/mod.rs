@@ -277,7 +277,8 @@ impl Bbport {
     /// Bloodborne. `menu_language` is the in-game menu's until one is picked
     /// in the menu itself. `learned` is what earlier runs of this title taught
     /// ([`learned::Store`]). `aspect_ratio` is the display's, when the setting is automatic
-    /// ([`nearest_aspect_ratio`]).
+    /// ([`nearest_aspect_ratio`]). `cache_dir` is the game's own cache folder, in the location of
+    /// the library folder holding its dump; without one the port keeps its caches in `user_dir`.
     #[expect(
         clippy::too_many_arguments,
         reason = "each one is a different source of the environment"
@@ -287,6 +288,7 @@ impl Bbport {
         toolchain: &Toolchain,
         game: &Game,
         user_dir: &Path,
+        cache_dir: Option<&Path>,
         settings: &LauncherSettings,
         mods: &mods::Mods,
         menu_language: &str,
@@ -334,6 +336,9 @@ impl Bbport {
             .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
         // The port picks the memory model itself (the PC model on AMD GPUs); the setting only forces
         // the PC model on other GPUs, so off must not pass PC_MODEL=0 and hold AMD on the old one.
+        if let Some(dir) = cache_dir {
+            command.env(var("CACHE_DIR"), dir);
+        }
         if port_reads("pc_model") && settings.flag("pc_model", false) {
             command.env(var("PC_MODEL"), "1");
         }
