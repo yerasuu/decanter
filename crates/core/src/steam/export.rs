@@ -22,6 +22,7 @@ use std::{fs, io};
 
 use super::appid::{grid_appid, legacy_appid};
 use super::binary_vdf::{self, Value};
+use super::process::SteamState;
 use super::{paths, process};
 
 /// What a shortcut entry needs beyond its artwork.
@@ -142,17 +143,17 @@ pub fn has_pending_changes(steam_root: &Path, user_id: &str) -> bool {
 }
 
 /// Picks the file [`sync`]/[`remove`] should actually write to: the real
-/// `shortcuts.vdf`, unless Steam is currently running — in which case any
-/// direct write would just get clobbered the next time Steam re-saves its
-/// own in-memory copy of that file (confirmed behavior, not a guess: an
-/// entry written this way was later found wiped, with a live Steam client
-/// running the whole time). Instead the change goes to a pending file
+/// `shortcuts.vdf`, unless Steam is running or can't be ruled out — in
+/// which case any direct write would just get clobbered the next time
+/// Steam re-saves its own in-memory copy of that file (confirmed
+/// behavior, not a guess: an entry written this way was later found
+/// wiped, with a live Steam client running the whole time). Instead the change goes to a pending file
 /// beside it, seeded from whatever the real file currently holds the
 /// first time one is needed, so it starts as a faithful copy rather than
 /// dropping entries Steam already has that decanter doesn't know about.
 fn resolve_write_target(steam_root: &Path, user_id: &str) -> io::Result<PathBuf> {
     let real = paths::shortcuts_vdf_path(steam_root, user_id);
-    if !process::is_steam_running(steam_root) {
+    if process::state(steam_root) == SteamState::NotRunning {
         return Ok(real);
     }
     let pending = pending_path(steam_root, user_id);
@@ -173,25 +174,51 @@ fn resolve_write_target(steam_root: &Path, user_id: &str) -> io::Result<PathBuf>
 /// touching the file — writing while it's still tearing down would be the
 /// same race this exists to avoid.
 ///
+/// `user_confirmed_closed` is the user's word that Steam is closed, the
+/// only answer left when [`process::state`] can't tell.
+///
 /// # Errors
-/// Fails if Steam doesn't exit within the shutdown timeout (nothing is
-/// overwritten in that case), if the pending file can't be moved into
-/// place, or if Steam can't be relaunched afterward.
+/// [`ApplyError::SteamStateUnknown`] when whether Steam runs can't be
+/// told from here and the user hasn't confirmed it closed; nothing is
+/// touched then. Otherwise fails if Steam doesn't exit within the
+/// shutdown timeout (nothing is overwritten in that case), if the pending
+/// file can't be moved into place, or if Steam can't be relaunched
+/// afterward.
 #[inline]
-pub fn apply_pending_and_restart_steam(steam_root: &Path, user_id: &str) -> io::Result<()> {
+pub fn apply_pending_and_restart_steam(
+    steam_root: &Path,
+    user_id: &str,
+    user_confirmed_closed: bool,
+) -> Result<(), ApplyError> {
     let pending = pending_path(steam_root, user_id);
     if !pending.is_file() {
         return Ok(());
     }
 
-    if process::is_steam_running(steam_root) {
-        process::shutdown(steam_root)?;
-        process::wait_for_exit(steam_root)?;
+    match process::state(steam_root) {
+        SteamState::Running => {
+            process::shutdown(steam_root)?;
+            process::wait_for_exit(steam_root)?;
+        }
+        SteamState::NotRunning => {}
+        SteamState::Unknown if user_confirmed_closed => {}
+        // Asking for a shutdown wouldn't help: wait_for_exit could never
+        // confirm Steam gone, since the same probe would still say Unknown.
+        SteamState::Unknown => return Err(ApplyError::SteamStateUnknown),
     }
 
     let real = paths::shortcuts_vdf_path(steam_root, user_id);
     fs::rename(&pending, &real)?;
-    process::launch(steam_root)
+    Ok(process::launch(steam_root)?)
+}
+
+/// Why a staged change couldn't be applied.
+#[derive(Debug, thiserror::Error)]
+pub enum ApplyError {
+    #[error("cannot tell whether steam is running")]
+    SteamStateUnknown,
+    #[error(transparent)]
+    Io(#[from] io::Error),
 }
 
 fn quote(value: &str) -> String {

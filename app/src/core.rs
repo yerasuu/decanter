@@ -529,22 +529,33 @@ pub fn steam_shortcuts_pending() -> bool {
     decanter_core::steam::has_pending_changes(&steam_root, &user_id)
 }
 
+/// Why [`restart_steam_to_apply_pending`] didn't apply the staged change.
+pub enum RestartSteamError {
+    /// Whether Steam is open can't be told from here (a container without
+    /// Steam's `.steam` folder); only the user can confirm it's closed.
+    NeedsCloseConfirmation,
+    Failed(String),
+}
+
 /// Shuts Steam down, swaps the staged `shortcuts.vdf` into place, and
 /// starts it back up — the button behind [`steam_shortcuts_pending`]'s
 /// banner. Runs on a blocking worker since it waits (synchronously, with
 /// its own timeout) for the real Steam process to exit.
-pub async fn restart_steam_to_apply_pending() -> Result<(), String> {
+pub async fn restart_steam_to_apply_pending(user_confirmed_closed: bool) -> Result<(), RestartSteamError> {
     crate::achv_try!(
-        tokio::task::spawn_blocking(|| {
+        tokio::task::spawn_blocking(move || {
             let steam_root = decanter_core::steam::steam_root()
-                .ok_or_else(|| t!("settings.general.steam.no_install").into_owned())?;
+                .ok_or_else(|| RestartSteamError::Failed(t!("settings.general.steam.no_install").into_owned()))?;
             let user_id = decanter_core::steam::local_user_id(&steam_root)
-                .ok_or_else(|| t!("settings.general.steam.no_user").into_owned())?;
-            decanter_core::steam::apply_pending_and_restart_steam(&steam_root, &user_id)
+                .ok_or_else(|| RestartSteamError::Failed(t!("settings.general.steam.no_user").into_owned()))?;
+            decanter_core::steam::apply_pending_and_restart_steam(&steam_root, &user_id, user_confirmed_closed)
                 .inspect_err(|err| tracing::error!(%err, "failed to restart steam to apply pending shortcuts"))
-                .map_err(|err| err.to_string())
+                .map_err(|err| match err {
+                    decanter_core::steam::ApplyError::SteamStateUnknown => RestartSteamError::NeedsCloseConfirmation,
+                    decanter_core::steam::ApplyError::Io(err) => RestartSteamError::Failed(err.to_string()),
+                })
         })
         .await
-        .map_err(|err| t!("common.errors.internal_task", error = err).into_owned())
+        .map_err(|err| RestartSteamError::Failed(t!("common.errors.internal_task", error = err).into_owned()))
     )
 }

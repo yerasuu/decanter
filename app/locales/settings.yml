@@ -56,6 +56,12 @@ settings.general.steam.restarting:
 settings.general.steam.restart_now:
   es: Reiniciar Steam ahora
   en: Restart Steam now
+settings.general.steam.close_first:
+  es: decanter no puede saber desde aquí si Steam está abierto. Cierra Steam y confírmalo para aplicar los cambios; decanter lo volverá a abrir después.
+  en: decanter can't tell from here whether Steam is open. Close Steam and confirm it to apply the changes; decanter will start it again afterwards.
+settings.general.steam.apply_closed:
+  es: Steam está cerrado, aplicar
+  en: Steam is closed, apply
 settings.general.steam.no_install:
   es: no se encontró una instalación de Steam
   en: no Steam installation was found

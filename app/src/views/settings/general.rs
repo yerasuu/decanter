@@ -24,6 +24,7 @@ pub struct GeneralTab {
     steam_export_enabled: bool,
     steam_pending: bool,
     restarting_steam: bool,
+    steam_needs_close_confirmation: bool,
     restart_error: Option<String>,
     checking_release: bool,
     /// `None` until the user checks; never checked on its own.
@@ -47,6 +48,7 @@ impl GeneralTab {
             steam_export_enabled: true,
             steam_pending: false,
             restarting_steam: false,
+            steam_needs_close_confirmation: false,
             restart_error: None,
             checking_release: false,
             release: None,
@@ -130,19 +132,24 @@ impl GeneralTab {
         }
     }
 
-    fn restart_steam(&mut self, cx: &mut Context<Self>) {
+    fn restart_steam(&mut self, user_confirmed_closed: bool, cx: &mut Context<Self>) {
         self.restarting_steam = true;
         self.restart_error = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let outcome = crate::core::restart_steam_to_apply_pending().await;
+            let outcome = crate::core::restart_steam_to_apply_pending(user_confirmed_closed).await;
             let _ = this.update(cx, |this, cx| {
+                this.steam_needs_close_confirmation = false;
                 match outcome {
                     Ok(()) => {
                         tracing::info!("steam restarted to apply pending shortcuts");
                         this.reload();
                     }
-                    Err(err) => {
+                    Err(crate::core::RestartSteamError::NeedsCloseConfirmation) => {
+                        tracing::warn!("cannot tell whether steam is running, asking the user to close it");
+                        this.steam_needs_close_confirmation = true;
+                    }
+                    Err(crate::core::RestartSteamError::Failed(err)) => {
                         tracing::warn!(error = %err, "failed to restart steam");
                         this.restart_error = Some(err);
                     }
@@ -365,22 +372,28 @@ impl GeneralTab {
 impl Render for GeneralTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let restarting = self.restarting_steam;
+        let confirming = self.steam_needs_close_confirmation;
         let callout = self.steam_pending.then(|| {
             column()
                 .child(div().child(t!("settings.general.steam.pending")))
+                .when(confirming, |c| {
+                    c.child(div().child(t!("settings.general.steam.close_first")))
+                })
                 .child(inline(
                     button(
                         "restart-steam",
                         ButtonKind::Primary,
                         if restarting {
                             t!("settings.general.steam.restarting")
+                        } else if confirming {
+                            t!("settings.general.steam.apply_closed")
                         } else {
                             t!("settings.general.steam.restart_now")
                         },
                         restarting,
                     )
                     .when(!restarting, |b| {
-                        b.on_click(cx.listener(|this, _, _, cx| this.restart_steam(cx)))
+                        b.on_click(cx.listener(move |this, _, _, cx| this.restart_steam(confirming, cx)))
                     }),
                 ))
                 .children(self.restart_error.clone().map(theme::error))

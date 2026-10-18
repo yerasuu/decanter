@@ -23,16 +23,40 @@ use std::{fs, io, thread};
 /// purpose rather than trimmed to the common case.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Whether Steam's own client process (not one of its many `steamwebhelper`/
-/// zygote children) is currently running, by scanning `/proc/*/exe` for a
-/// binary named exactly `steam` living under `steam_root`.
+/// What can be said about the real Steam client from here. `Unknown` is
+/// its own answer rather than folded into either side, because writing
+/// `shortcuts.vdf` under a live Steam loses the change when Steam exits.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SteamState {
+    Running,
+    NotRunning,
+    Unknown,
+}
+
+/// Whether Steam's own client process is running, asked first of `/proc`
+/// and then of Steam's single-instance FIFO (`.steam/steam.pipe`), which
+/// its main process holds open for reading while it is up.
 ///
-/// Linux-only, like every other consumer of this: `/proc` is how a
-/// process's own executable is looked up here, since there is no `steam.pid`
-/// or `registry.vdf` "running" flag to read on every Steam build instead.
+/// The FIFO is what makes this work from a container without host PIDs
+/// (Flatpak, distrobox with its own pid namespace): `/proc` shows none of
+/// the host's processes there, but whether a FIFO has a reader is kernel
+/// state on the shared home, the same from every pid namespace. Neither
+/// `.steam/steam.pid` (left behind on exit, and naming a pid the
+/// container can't see) nor `registry.vdf`'s `SteamPID` (left set after a
+/// crash) can answer that.
 #[must_use]
 #[inline]
-pub fn is_steam_running(steam_root: &Path) -> bool {
+pub fn state(steam_root: &Path) -> SteamState {
+    if has_steam_process(steam_root) {
+        return SteamState::Running;
+    }
+    probe_pipe(steam_root)
+}
+
+/// Scans `/proc/*/exe` for a binary named exactly `steam` living under
+/// `steam_root` — Steam's own client, not one of its many
+/// `steamwebhelper`/zygote children.
+fn has_steam_process(steam_root: &Path) -> bool {
     let Ok(entries) = fs::read_dir("/proc") else {
         return false;
     };
@@ -52,6 +76,54 @@ pub fn is_steam_running(steam_root: &Path) -> bool {
         }
     }
     false
+}
+
+/// Opens the write end of `steam.pipe` without blocking and without
+/// writing to it: the kernel refuses with `ENXIO` exactly when nothing
+/// holds the read end, and Steam's own launcher opens and closes writers
+/// on it all the time, so probing is invisible to the running client.
+///
+/// The pipe sits in the `.steam` folder of the home Steam runs with,
+/// which for every root `steam_root_candidates` knows (including the
+/// Flatpak one under `~/.var/app`) is the nearest ancestor holding one.
+#[cfg(target_os = "linux")]
+fn probe_pipe(steam_root: &Path) -> SteamState {
+    use std::os::unix::fs::{FileTypeExt as _, OpenOptionsExt as _};
+
+    use nix::errno::Errno;
+    use nix::fcntl::OFlag;
+
+    let Some((pipe, meta)) = steam_root.ancestors().find_map(|dir| {
+        let pipe = dir.join(".steam").join("steam.pipe");
+        pipe.symlink_metadata().ok().map(|meta| (pipe, meta))
+    }) else {
+        tracing::warn!(steam_root = %steam_root.display(), "no steam.pipe found, cannot tell whether steam is running");
+        return SteamState::Unknown;
+    };
+    // Anything but a FIFO would accept the open regardless of Steam, so
+    // the probe would say nothing.
+    if !meta.file_type().is_fifo() {
+        tracing::warn!(pipe = %pipe.display(), "steam.pipe is not a fifo, cannot tell whether steam is running");
+        return SteamState::Unknown;
+    }
+    match fs::OpenOptions::new()
+        .write(true)
+        .custom_flags(OFlag::O_NONBLOCK.bits())
+        .open(&pipe)
+    {
+        Ok(_reader_present) => SteamState::Running,
+        Err(err) if err.raw_os_error().map(Errno::from_raw) == Some(Errno::ENXIO) => SteamState::NotRunning,
+        Err(err) => {
+            tracing::warn!(pipe = %pipe.display(), %err, "failed to probe steam.pipe, cannot tell whether steam is running");
+            SteamState::Unknown
+        }
+    }
+}
+
+/// Outside Linux `/proc` is all this ever looked at; nothing changes there.
+#[cfg(not(target_os = "linux"))]
+const fn probe_pipe(_steam_root: &Path) -> SteamState {
+    SteamState::NotRunning
 }
 
 /// Asks a running Steam client to shut down cleanly — `steam -shutdown`
@@ -104,18 +176,18 @@ fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
     fallback.spawn().map(|_child| ())
 }
 
-/// Blocks until [`is_steam_running`] reports Steam gone, or
-/// [`SHUTDOWN_TIMEOUT`] passes.
+/// Blocks until [`state`] reports Steam gone, or [`SHUTDOWN_TIMEOUT`]
+/// passes.
 ///
 /// # Errors
-/// Returns [`io::ErrorKind::TimedOut`] if Steam is still running once the
-/// timeout elapses — a caller should not proceed to overwrite
-/// `shortcuts.vdf` in that case, since the still-running instance would
-/// just clobber it again.
+/// Returns [`io::ErrorKind::TimedOut`] if Steam is still running (or can
+/// no longer be told apart from running) once the timeout elapses — a
+/// caller should not proceed to overwrite `shortcuts.vdf` in that case,
+/// since the still-running instance would just clobber it again.
 #[inline]
 pub fn wait_for_exit(steam_root: &Path) -> io::Result<()> {
     let start = Instant::now();
-    while is_steam_running(steam_root) {
+    while state(steam_root) != SteamState::NotRunning {
         if start.elapsed() > SHUTDOWN_TIMEOUT {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "steam did not exit in time"));
         }

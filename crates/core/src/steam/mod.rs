@@ -20,5 +20,7 @@ pub mod paths;
 pub mod process;
 
 pub use appid::{grid_appid, legacy_appid};
-pub use export::{Artwork, ShortcutSpec, apply_pending_and_restart_steam, has_pending_changes, remove, sync};
+pub use export::{
+    ApplyError, Artwork, ShortcutSpec, apply_pending_and_restart_steam, has_pending_changes, remove, sync,
+};
 pub use paths::{grid_dir, local_user_id, shortcuts_vdf_path, steam_root};
