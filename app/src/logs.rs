@@ -4,7 +4,9 @@
 //! lines stderr gets, plus decanter's own debug events.
 //!
 //! The file opens once the library is known, after the migration that may
-//! put it there; lines logged before that are kept and written first.
+//! put it there; lines logged before that are kept and written first. With
+//! debug mode on at that point, the same lines also go to the session's log in
+//! the debug log folder (see [`crate::debug_logs`]).
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
@@ -30,6 +32,13 @@ const DAY_CHECK: Duration = Duration::from_secs(60);
 static FILE: OnceLock<Option<RwLock<File>>> = OnceLock::new();
 /// Lines from before [`FILE`] is settled. A mutex because any thread can log then.
 static EARLY: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+/// Settled with [`FILE`], before it: `None` with debug mode off when decanter started.
+static DEBUG: OnceLock<Option<DebugLog>> = OnceLock::new();
+
+struct DebugLog {
+    file: File,
+    partial: PathBuf,
+}
 
 struct LibraryLog;
 
@@ -44,10 +53,18 @@ impl Write for LibraryLog {
             }
             drop(early);
         }
-        FILE.get().and_then(Option::as_ref).map_or(Ok(buf.len()), |file| {
+        let written = FILE.get().and_then(Option::as_ref).map_or(Ok(buf.len()), |file| {
             let file = file.read().unwrap_or_else(PoisonError::into_inner);
             (&*file).write(buf)
-        })
+        });
+        // Only what the library's file took, since the writer sends the rest again.
+        if let (Ok(count), Some(Some(debug))) = (&written, DEBUG.get())
+            && let Some(taken) = buf.get(..*count)
+        {
+            // A line the debug copy misses is no reason to fail the library's log.
+            let _: io::Result<()> = (&debug.file).write_all(taken);
+        }
+        written
     }
 
     /// Nothing to flush: writes go straight to the file.
@@ -93,37 +110,75 @@ pub fn open() {
         decanter_core::bootstrap::Location::Library(_)
         | decanter_core::bootstrap::Location::Legacy(_)
         | decanter_core::bootstrap::Location::Unconfigured => {
-            settle(None);
+            settle(None, None);
             return;
         }
     };
+    let debug = open_debug();
     let day = Utc::now().date_naive();
     let path = path_for(&dir, day);
     match open_file(&path) {
         Ok(file) => {
-            settle(Some(file));
+            settle(Some(file), debug);
             tracing::info!(path = %path.display(), "logging to file");
             prune(&dir);
             watch_day(dir, day);
         }
         Err(err) => {
-            settle(None);
+            settle(None, debug);
             tracing::warn!(path = %path.display(), %err, "could not open the log file");
         }
     }
+    if let Some(Some(session)) = DEBUG.get() {
+        tracing::info!(path = %session.partial.display(), "debug mode: logging this session to the debug log folder");
+    }
 }
 
-fn settle(file: Option<File>) {
-    let written = {
+/// Read once, here: the subscriber is already running, so turning the mode on later only
+/// reaches the next session.
+fn open_debug() -> Option<DebugLog> {
+    let folder = crate::debug_logs::active_folder()?;
+    crate::debug_logs::open_session(&folder)
+        .map(|(file, partial)| DebugLog { file, partial })
+        .inspect_err(|err| tracing::warn!(folder = %folder.display(), %err, "could not open the session's debug log"))
+        .ok()
+}
+
+/// Whether this session writes its log to the debug log folder.
+pub fn debug_session() -> bool {
+    matches!(DEBUG.get(), Some(Some(_)))
+}
+
+/// At a clean exit the session's debug log is whole: it loses its `.partial`, so a sync tool
+/// takes it. Lines logged after this still reach the renamed file.
+pub fn close() {
+    let Some(Some(session)) = DEBUG.get() else {
+        return;
+    };
+    tracing::info!("decanter exiting, finishing the session's debug log");
+    match crate::debug_logs::complete(&session.partial) {
+        Ok(done) => tracing::debug!(path = %done.display(), "session debug log finished"),
+        Err(err) => tracing::warn!(path = %session.partial.display(), %err, "could not finish the session's debug log"),
+    }
+}
+
+fn settle(file: Option<File>, debug: Option<DebugLog>) {
+    let (written, debug_written) = {
         let mut early = EARLY.lock().unwrap_or_else(PoisonError::into_inner);
         let written = file.as_ref().map_or(Ok(()), |mut file| file.write_all(&early));
+        let debug_written = debug.as_ref().map_or(Ok(()), |debug| (&debug.file).write_all(&early));
+        DEBUG.get_or_init(|| debug);
         FILE.get_or_init(|| file.map(RwLock::new));
         *early = Vec::new();
-        written
+        drop(early);
+        (written, debug_written)
     };
-    // Only once the lock is released: this line goes through the writer, which takes it.
+    // Only once the lock is released: these lines go through the writer, which takes it.
     if let Err(err) = written {
         tracing::warn!(%err, "could not write the early lines to the log file");
+    }
+    if let Err(err) = debug_written {
+        tracing::warn!(%err, "could not write the early lines to the session's debug log");
     }
 }
 

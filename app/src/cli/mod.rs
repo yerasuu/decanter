@@ -118,7 +118,9 @@ pub fn run(cmd: Cmd) -> ! {
             std::process::exit(1);
         }
     };
-    match runtime.block_on(dispatch(cmd)) {
+    let outcome = runtime.block_on(dispatch(cmd));
+    crate::logs::close();
+    match outcome {
         Ok(()) => std::process::exit(0),
         Err(err) => {
             eprintln!("error: {err:?}");

@@ -258,6 +258,7 @@ async fn bbport_command(
     } else {
         bbport::mods::Mods::off(root, &settings)
     };
+    let debug_dir = crate::debug_logs::ps_folder(settings.title_flag(&game.title_id, crate::debug_logs::TITLE_KEY));
     let user_dir = root.profile(profile_id).join("bbport/user");
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
         return Err(LaunchError::CreateDir { dir: user_dir, err });
@@ -268,6 +269,7 @@ async fn bbport_command(
             game,
             &user_dir,
             cache_dir,
+            debug_dir.as_deref(),
             &settings,
             &mods,
             &rust_i18n::locale(),

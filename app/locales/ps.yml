@@ -1598,6 +1598,12 @@ ps.runs.measure:
 ps.runs.measure_note:
   es: "Las próximas partidas de este juego se inician con PS_FRAME_STATS=1; sus cifras aparecen aquí al terminar."
   en: "This game's next runs start with PS_FRAME_STATS=1; their figures show here once they end."
+ps.runs.debug:
+  es: Modo depuración en este juego
+  en: Debug mode for this game
+ps.runs.debug_note:
+  es: "Las próximas partidas de este juego se inician con PS_DEBUG=1 aunque el modo depuración general esté desactivado; sus registros van a la carpeta de logs de depuración (Ajustes › General)."
+  en: "This game's next runs start with PS_DEBUG=1 even with the general debug mode off; their logs go to the debug log folder (Settings › General)."
 ps.runs.reading:
   es: Leyendo las partidas medidas…
   en: Reading the measured runs…

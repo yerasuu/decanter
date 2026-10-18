@@ -1,5 +1,6 @@
 //! Registro's measured runs: the switch that has the next runs of the game measured
-//! (`PS_FRAME_STATS=1`), and what each measured run's log says about its frame rate.
+//! (`PS_FRAME_STATS=1`), the one that has them start in debug mode (`PS_DEBUG=1`), and what each
+//! measured run's log says about its frame rate.
 
 use std::io;
 use std::path::PathBuf;
@@ -40,6 +41,8 @@ pub struct RunsView {
     title_id: String,
     /// `None` until the settings are read.
     measure: Option<bool>,
+    /// `None` until the settings are read.
+    debug: Option<bool>,
     /// Newest first; `None` until the logs are read.
     runs: Option<Vec<Run>>,
     /// The top of every chart, so runs compare at a glance.
@@ -54,12 +57,17 @@ impl RunsView {
         cx.observe(&ps, |this, _, cx| this.sync_job(cx)).detach();
         let key = title_id.clone();
         let load = cx.background_spawn(async move {
-            LauncherSettings::load(&decanter_ps::paths::active()).title_flag(&key, FRAME_STATS)
+            let settings = LauncherSettings::load(&decanter_ps::paths::active());
+            (
+                settings.title_flag(&key, FRAME_STATS),
+                settings.title_flag(&key, crate::debug_logs::TITLE_KEY),
+            )
         });
         cx.spawn(async move |this, cx| {
-            let measure = load.await;
+            let (measure, debug) = load.await;
             let _ = this.update(cx, |this, cx| {
                 this.measure = Some(measure);
+                this.debug = Some(debug);
                 cx.notify();
             });
         })
@@ -69,6 +77,7 @@ impl RunsView {
             dir,
             title_id,
             measure: None,
+            debug: None,
             runs: None,
             scale: 0.0,
             error: None,
@@ -123,21 +132,29 @@ impl RunsView {
         .detach();
     }
 
-    fn set_measure(&mut self, on: bool, cx: &mut Context<Self>) {
-        self.measure = Some(on);
+    fn switch(&mut self, key: &str) -> &mut Option<bool> {
+        if key == FRAME_STATS {
+            &mut self.measure
+        } else {
+            &mut self.debug
+        }
+    }
+
+    fn set_switch(&mut self, key: &'static str, on: bool, cx: &mut Context<Self>) {
+        *self.switch(key) = Some(on);
         self.error = None;
         let title_id = self.title_id.clone();
         let task = cx.background_spawn(async move {
             LauncherSettings::edit(&decanter_ps::paths::active(), |settings| {
-                settings.set_title_flag(&title_id, FRAME_STATS, on);
+                settings.set_title_flag(&title_id, key, on);
             })
         });
         cx.spawn(async move |this, cx| {
             let saved = task.await;
             let _ = this.update(cx, |this, cx| {
                 if let Err(err) = saved {
-                    tracing::warn!(title_id = %this.title_id, %err, "could not save the game's measuring switch");
-                    this.measure = Some(!on);
+                    tracing::warn!(title_id = %this.title_id, key, %err, "could not save the game's switch");
+                    *this.switch(key) = Some(!on);
                     this.error = Some(t!("ps.runs.save_error", error = err).into_owned());
                 }
                 cx.notify();
@@ -312,24 +329,39 @@ fn y_of(bounds: Bounds<Pixels>, fraction: f64) -> Pixels {
 
 impl Render for RunsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let measure = self.measure.unwrap_or(false);
-        let toggle = div()
-            .id("ps-runs-measure")
-            .flex()
-            .items_center()
-            .gap_3()
-            .cursor_pointer()
-            .when_some(self.measure, |row, on| {
-                row.on_click(cx.listener(move |this, _, _, cx| this.set_measure(!on, cx)))
-            })
-            .child(checkbox(measure))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(t!("ps.runs.measure"))
-                    .child(theme::muted(t!("ps.runs.measure_note")).text_size(px(12.))),
-            );
+        let toggle = |id: &'static str, key: &'static str, state: Option<bool>, label, note| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .gap_3()
+                .cursor_pointer()
+                .when_some(state, |row, on| {
+                    row.on_click(cx.listener(move |this, _, _, cx| this.set_switch(key, !on, cx)))
+                })
+                .child(checkbox(state.unwrap_or(false)))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(label)
+                        .child(theme::muted(note).text_size(px(12.))),
+                )
+        };
+        let measure = toggle(
+            "ps-runs-measure",
+            FRAME_STATS,
+            self.measure,
+            t!("ps.runs.measure"),
+            t!("ps.runs.measure_note"),
+        );
+        let debug = toggle(
+            "ps-runs-debug",
+            crate::debug_logs::TITLE_KEY,
+            self.debug,
+            t!("ps.runs.debug"),
+            t!("ps.runs.debug_note"),
+        );
         let body = match &self.runs {
             None => theme::muted(t!("ps.runs.reading")).into_any_element(),
             Some(runs) if runs.is_empty() => theme::muted(t!("ps.runs.none")).into_any_element(),
@@ -349,7 +381,8 @@ impl Render for RunsView {
             .flex()
             .flex_col()
             .gap_3()
-            .child(toggle)
+            .child(measure)
+            .child(debug)
             .children(self.error.clone().map(|error| theme::error(SharedString::from(error))))
             .child(body)
     }

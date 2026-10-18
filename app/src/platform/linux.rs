@@ -119,6 +119,13 @@ pub fn check_writable(dir: &Path) -> io::Result<()> {
     access(dir, AccessFlags::W_OK).map_err(io::Error::from)
 }
 
+/// The kernel's host name, as `hostname` prints it.
+pub fn hostname() -> Option<String> {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .inspect_err(|err| tracing::warn!(%err, "could not read the host name"))
+        .ok()
+}
+
 pub fn restrict_to_owner(options: &mut tokio::fs::OpenOptions) {
     options.mode(0o600);
 }

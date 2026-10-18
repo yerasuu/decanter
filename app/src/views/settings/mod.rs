@@ -9,6 +9,7 @@
 mod account;
 #[cfg(proton)]
 mod compatibility;
+mod debug;
 #[cfg(proton)]
 mod game_tools;
 mod general;

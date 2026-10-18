@@ -17,6 +17,6 @@ use macos as os;
 use windows as os;
 
 pub use os::{
-    CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, exit_signal, own_process_group, replace_process,
+    CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, exit_signal, hostname, own_process_group, replace_process,
     restrict_to_owner, spawn_tray, status_notifier_host, with_window_icon,
 };

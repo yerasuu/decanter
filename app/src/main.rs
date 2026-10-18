@@ -106,6 +106,7 @@ mod capabilities;
 mod cli;
 mod closing;
 mod core;
+mod debug_logs;
 mod desktop;
 mod dump_size;
 mod external;
@@ -194,6 +195,7 @@ fn main() {
     // finishes — the reason quitting goes through here rather than
     // `std::process::exit` (see `launch::exit_with_games_on_signal`).
     drop(runtime);
+    logs::close();
     self_update::restart_if_requested();
 }
 

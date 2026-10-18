@@ -74,6 +74,34 @@ impl Db {
         self.set_setting("psport_channel", if testing { "testing" } else { "release" })
     }
 
+    /// Whether decanter and psport gather their logs in the debug log folder.
+    /// The app's own session log follows it from the next start, since the
+    /// log is set up before the window.
+    pub fn debug_mode(&self) -> Result<bool> {
+        let enabled = self.setting("debug_mode")?.as_deref() == Some("1");
+        tracing::debug!(enabled, "read debug_mode setting");
+        Ok(enabled)
+    }
+
+    pub fn set_debug_mode(&self, enabled: bool) -> Result<()> {
+        self.set_setting("debug_mode", if enabled { "1" } else { "0" })
+    }
+
+    /// The folder debug logs go to, already checked when it was picked; `None`
+    /// for the default inside the library.
+    pub fn debug_log_dir(&self) -> Result<Option<String>> {
+        let dir = self.setting("debug_log_dir")?;
+        tracing::debug!(dir = dir.as_deref(), "read debug_log_dir setting");
+        Ok(dir)
+    }
+
+    pub fn set_debug_log_dir(&self, dir: Option<&str>) -> Result<()> {
+        match dir {
+            Some(path) => self.set_setting("debug_log_dir", path),
+            None => self.delete_setting("debug_log_dir"),
+        }
+    }
+
     /// The UI language's code (`es`, `en`), or `None` to follow the system
     /// locale.
     pub fn language(&self) -> Result<Option<String>> {

@@ -117,9 +117,11 @@ pub async fn run(
         Err(err) => {
             tracing::warn!(job = kind.name(), target, program, %err, "could not start job");
             if let Some(mut file) = log {
+                let path = file.path().to_owned();
                 let written = file.line(&format!("# error: could not start {program}: {err}")).await;
-                if let Err(err) = written.and(file.finish(None, None).await) {
-                    tracing::warn!(job = kind.name(), target, %err, "could not finish the job's log file");
+                match written.and(file.finish(None, None).await) {
+                    Ok(()) => crate::debug_logs::keep_job(path, None).await,
+                    Err(err) => tracing::warn!(job = kind.name(), target, %err, "could not finish the job's log file"),
                 }
             }
             let job = cx.new(|_| Job::failed(kind, t!("ps.jobs.start_error", error = err).into_owned()));
@@ -179,15 +181,29 @@ pub async fn run(
         });
     }
     let report = read_call_report(calls_path.as_deref()).await;
-    if let Some(file) = log
-        && let Err(err) = file.finish(exit, report.as_ref()).await
-    {
-        tracing::warn!(job = kind.name(), target, %err, "could not finish the job's log file");
+    if let Some(file) = log {
+        finish_log(file, exit, report.as_ref(), calls_path, kind, &target).await;
     }
     let stopped = job.read_with(cx, |job, _| job.stop_requested);
     trace_end(kind, &target, exit, stopped, started, log_path.as_deref());
     let _ = ps.update(cx, |_, cx| cx.notify());
     finished(scanner, exit, stopped, log_path.as_deref(), report)
+}
+
+/// Ends the log, and copies it to the debug log folder when debug mode is on.
+async fn finish_log(
+    file: RunLog,
+    exit: Option<ExitStatus>,
+    report: Option<&CallReport>,
+    calls: Option<PathBuf>,
+    kind: JobKind,
+    target: &str,
+) {
+    let path = file.path().to_owned();
+    match file.finish(exit, report).await {
+        Ok(()) => crate::debug_logs::keep_job(path, calls).await,
+        Err(err) => tracing::warn!(job = kind.name(), target, %err, "could not finish the job's log file"),
+    }
 }
 
 fn finished(

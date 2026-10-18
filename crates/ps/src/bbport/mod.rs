@@ -18,6 +18,7 @@ mod settings;
 pub mod tools;
 pub mod values;
 
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -279,6 +280,8 @@ impl Bbport {
     /// ([`learned::Store`]). `aspect_ratio` is the display's, when the setting is automatic
     /// ([`nearest_aspect_ratio`]). `cache_dir` is the game's own cache folder, in the location of
     /// the library folder holding its dump; without one the port keeps its caches in `user_dir`.
+    /// `debug_dir` turns the port's debug mode on, each run's logs gathered there under the port's
+    /// own folder per host.
     #[expect(
         clippy::too_many_arguments,
         reason = "each one is a different source of the environment"
@@ -289,6 +292,7 @@ impl Bbport {
         game: &Game,
         user_dir: &Path,
         cache_dir: Option<&Path>,
+        debug_dir: Option<&Path>,
         settings: &LauncherSettings,
         mods: &mods::Mods,
         menu_language: &str,
@@ -336,9 +340,8 @@ impl Bbport {
             .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
         // The port picks the memory model itself (the PC model on AMD GPUs); the setting only forces
         // the PC model on other GPUs, so off must not pass PC_MODEL=0 and hold AMD on the old one.
-        if let Some(dir) = cache_dir {
-            command.env(var("CACHE_DIR"), dir);
-        }
+        command.envs(cache_dir.map(|dir| (var("CACHE_DIR"), dir)));
+        command.envs(debug_dir.into_iter().flat_map(|dir| debug_env(names, dir)));
         if port_reads("pc_model") && settings.flag("pc_model", false) {
             command.env(var("PC_MODEL"), "1");
         }
@@ -437,4 +440,12 @@ impl Bbport {
             })
             .unwrap_or_default()
     }
+}
+
+/// The port's debug mode, each run's logs gathered in `dir` under the port's own folder per host.
+fn debug_env(names: Names, dir: &Path) -> [(String, &OsStr); 2] {
+    [
+        (names.var("DEBUG"), OsStr::new("1")),
+        (names.var("DEBUG_DIR"), dir.as_os_str()),
+    ]
 }

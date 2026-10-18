@@ -329,3 +329,54 @@ settings.updates.install_errors.io:
 settings.updates.install_errors.broken_key:
   es: "La clave de firma de esta compilación no es válida: %{error}"
   en: "This build's signing key isn't valid: %{error}"
+settings.general.debug.title:
+  es: Depuración
+  en: Debugging
+settings.general.debug.enabled:
+  es: Modo depuración
+  en: Debug mode
+settings.general.debug.hint:
+  es: "Decanter y psport guardan sus registros completos en la carpeta de abajo, dentro de una subcarpeta con el nombre de este equipo, para que puedas sincronizarla con tus otros equipos. Cada fichero aparece cuando está completo. Los juegos no cambian: solo dónde y cuánto se registra."
+  en: "Decanter and psport keep their full logs in the folder below, inside a subfolder named after this computer, so you can sync it with your other computers. Each file shows up once it's complete. Games don't change: only where and how much gets logged."
+settings.general.debug.app_log_next_start:
+  es: "Las partidas y los trabajos ya se guardan ahí; el registro de la propia aplicación empieza la próxima vez que abras Decanter."
+  en: "Runs and jobs are kept there from now on; the app's own log starts the next time you open Decanter."
+settings.general.debug.app_log_until_exit:
+  es: El registro de esta sesión de la aplicación sigue guardándose ahí hasta que cierres Decanter.
+  en: This session's app log keeps going there until you close Decanter.
+settings.general.debug.folder:
+  es: Carpeta de logs de depuración
+  en: Debug log folder
+settings.general.debug.folder_default:
+  es: Dentro de la biblioteca
+  en: Inside the library
+settings.general.debug.folder_chosen:
+  es: Elegida por ti
+  en: Chosen by you
+settings.general.debug.change:
+  es: Cambiar…
+  en: Change…
+settings.general.debug.reset:
+  es: Restablecer
+  en: Reset
+settings.general.debug.open:
+  es: Abrir carpeta
+  en: Open folder
+settings.general.debug.pick_title:
+  es: Elige dónde se guardan los logs de depuración
+  en: Choose where debug logs are kept
+settings.general.debug.errors.save:
+  es: "No se pudo guardar el ajuste de depuración: %{error}"
+  en: "Couldn't save the debug setting: %{error}"
+settings.general.debug.errors.not_dir:
+  es: "%{path} no es una carpeta."
+  en: "%{path} is not a folder."
+settings.general.debug.errors.not_writable:
+  es: "No se puede escribir en %{path}: %{error}"
+  en: "Can't write to %{path}: %{error}"
+settings.general.debug.errors.not_utf8:
+  es: "La ruta %{path} tiene caracteres que no se pueden guardar: elige otra carpeta."
+  en: "The path %{path} has characters that can't be saved: choose another folder."
+settings.general.debug.errors.open:
+  es: "No se pudo abrir la carpeta: %{error}"
+  en: "Couldn't open the folder: %{error}"

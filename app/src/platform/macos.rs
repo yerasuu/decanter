@@ -77,6 +77,17 @@ pub fn check_writable(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The Bonjour name, the one Sharing shows and that stays stable across networks.
+pub fn hostname() -> Option<String> {
+    Command::new("scutil")
+        .args(["--get", "LocalHostName"])
+        .output()
+        .inspect_err(|err| tracing::warn!(%err, "could not read the host name"))
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 pub fn restrict_to_owner(options: &mut tokio::fs::OpenOptions) {
     options.mode(0o600);
 }

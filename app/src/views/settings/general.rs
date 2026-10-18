@@ -1,14 +1,15 @@
 //! The UI language, window behaviour that isn't tied to any profile or
 //! game, closing a game from the controller or keyboard, the Steam export
-//! toggle and its pending-restart callout, and whether GitHub has a newer
-//! decanter, which an AppImage can install over itself.
+//! toggle and its pending-restart callout, whether GitHub has a newer
+//! decanter, which an AppImage can install over itself, and debug mode.
 
 use std::path::PathBuf;
 
 use decanter_core::capabilities::Feature;
-use gpui::{AnyElement, App, Context, IntoElement, SharedString, Window, div, prelude::*};
+use gpui::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
+use super::debug::DebugSection;
 use super::{column, field_row, inline};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language};
@@ -31,6 +32,7 @@ pub struct GeneralTab {
     release: Option<Result<Standing, ReleaseError>>,
     availability: Availability,
     install: Option<Install>,
+    debug: Entity<DebugSection>,
 }
 
 enum Install {
@@ -40,7 +42,7 @@ enum Install {
 }
 
 impl GeneralTab {
-    pub fn new(_: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             language: None,
             close_to_tray: false,
@@ -54,6 +56,7 @@ impl GeneralTab {
             release: None,
             availability: self_update::availability(),
             install: None,
+            debug: cx.new(DebugSection::new),
         };
         this.reload();
         this
@@ -451,6 +454,7 @@ impl Render for GeneralTab {
             ))
             .child(theme::h2(t!("settings.general.updates.title")))
             .child(self.release_section(cx))
+            .child(self.debug.clone())
     }
 }
 

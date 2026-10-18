@@ -40,11 +40,13 @@ pub async fn start(
 
 /// Ends the log of a run whose launcher never started, with why.
 pub async fn abandon(mut log: RunLog, game_id: &str, launcher: &str, reason: &str) {
+    let path = log.path().to_owned();
     let written = log
         .line(&format!("# error: could not start {launcher}: {reason}"))
         .await;
-    if let Err(err) = written.and(log.finish(None, None).await) {
-        tracing::warn!(game_id, %err, "could not finish the run's log file");
+    match written.and(log.finish(None, None).await) {
+        Ok(()) => crate::debug_logs::keep_job(path, None).await,
+        Err(err) => tracing::warn!(game_id, %err, "could not finish the run's log file"),
     }
 }
 
@@ -109,9 +111,11 @@ pub async fn note(
 }
 
 pub async fn finish(log: Option<RunLog>, exit: Option<ExitStatus>, game_id: &str) {
-    if let Some(file) = log
-        && let Err(err) = file.finish(exit, None).await
-    {
-        tracing::warn!(game_id, %err, "could not finish the run's log file");
+    if let Some(file) = log {
+        let path = file.path().to_owned();
+        match file.finish(exit, None).await {
+            Ok(()) => crate::debug_logs::keep_job(path, None).await,
+            Err(err) => tracing::warn!(game_id, %err, "could not finish the run's log file"),
+        }
     }
 }

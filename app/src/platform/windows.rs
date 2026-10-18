@@ -76,6 +76,13 @@ pub fn check_writable(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The computer's NetBIOS name, which Windows exports to every process.
+pub fn hostname() -> Option<String> {
+    std::env::var("COMPUTERNAME")
+        .inspect_err(|err| tracing::warn!(%err, "could not read the host name"))
+        .ok()
+}
+
 pub const fn restrict_to_owner(_options: &mut tokio::fs::OpenOptions) {}
 
 /// Process groups are a Unix job-control idea: an opened app shares
