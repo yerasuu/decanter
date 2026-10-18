@@ -96,8 +96,8 @@ ps.ports.origin.local:
   es: Compilado en este equipo
   en: Built on this machine
 ps.ports.origin.cache:
-  es: Precompilado, descargado de la caché de nix del port
-  en: Prebuilt, downloaded from the port's nix cache
+  es: Compilado por la CI del port, descargado de su caché de nix
+  en: Built by the port's CI, downloaded from its nix cache
 ps.ports.origin.bundle:
   es: Precompilado, descargado como paquete de la versión, sin nix
   en: Prebuilt, downloaded as the release's bundle, without nix
@@ -339,8 +339,8 @@ ps.settings.channel.testing.title:
   es: Pruebas
   en: Testing
 ps.settings.channel.testing.description:
-  es: "Cada cambio nuevo de psport en cuanto llega, compilado en este equipo."
-  en: "Every new psport change as soon as it lands, built on this machine."
+  es: "Cada cambio nuevo de psport en cuanto llega: descargado si la CI ya lo ha compilado y, si no, compilado en este equipo."
+  en: "Every new psport change as soon as it lands: downloaded once CI has built it, otherwise built on this machine."
 ps.settings.channel.save_error:
   es: "No se pudo guardar el canal: %{error}"
   en: "Couldn't save the channel: %{error}"

@@ -4,7 +4,8 @@
 //!
 //! The cache is flat: `commit-<sha>` names that commit's output store path,
 //! and is uploaded only after every path of its closure. CI publishes a
-//! build for each `vX.Y.Z` tag, and `latest-release` names the newest one.
+//! build for each `vX.Y.Z` tag, where `latest-release` names the newest
+//! one, and for the latest commits pushed to `develop` and `main`.
 //! Its paths are content-addressed and unsigned, which nix accepts from a
 //! user its daemon doesn't trust.
 

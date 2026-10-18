@@ -391,11 +391,11 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     });
 
     let built = match port {
-        // Testing runs only what it built itself.
+        // A fetched build stands only for a checkout without local changes.
         Port::Bbport => {
             let bbport = Bbport::new(root.clone());
             bbport.is_built_with(&toolchain).await
-                && (channel::load(this, port, root, cx).await == Channel::Release || bbport.prebuilt().await.is_none())
+                && (bbport.prebuilt().await.is_none() || updater::upstream_commit(&checkout).await.is_some())
         }
         Port::AnyPs5 => AnyPs5::new(root.clone()).is_built_with(&toolchain).await,
     };
@@ -446,8 +446,8 @@ async fn build_or_fall_back(
     }
 }
 
-/// Release's prebuilt build when it can be fetched, else why the port is
-/// built locally, for the build log.
+/// The checkout's commit as the port's CI built it, on either channel, when it
+/// can be fetched, else why the port is built locally, for the build log.
 async fn prebuilt_or_reason(
     this: &WeakEntity<Ps>,
     port: Port,
@@ -456,10 +456,7 @@ async fn prebuilt_or_reason(
     cx: &mut AsyncApp,
 ) -> Result<Toolchain, Option<&'static str>> {
     let channel = channel::load(this, port, root, cx).await;
-    let fetched = match channel {
-        Channel::Release => fetch_prebuilt(this, port, root, toolchain, cx).await,
-        Channel::Testing => None,
-    };
+    let fetched = fetch_prebuilt(this, port, root, toolchain, cx).await;
     let _ = this.update(cx, |this, cx| {
         let state = this.ports.entry(port).or_insert_with(PortState::new);
         state.fell_back = channel == Channel::Release && fetched.is_none();
@@ -478,7 +475,7 @@ async fn prebuilt_or_reason(
             );
             Err(Some("local: no prebuilt release build to fetch"))
         }
-        (Channel::Testing, None) => Err(port.binary_cache().map(|_| "local: testing channel")),
+        (Channel::Testing, None) => Err(port.binary_cache().map(|_| "local: no CI build to fetch")),
     }
 }
 
@@ -587,6 +584,9 @@ async fn fetch_prebuilt(
     let Some(cache) = prebuilt::cache(port) else {
         return None;
     };
+    let Some(commit) = updater::upstream_commit(&port.checkout(root)).await else {
+        return None;
+    };
     let bbport = Bbport::new(root.clone());
     let resolved_nix = match toolchain {
         Toolchain::Host | Toolchain::Bundle => None,
@@ -601,9 +601,6 @@ async fn fetch_prebuilt(
     {
         return Some(nix);
     }
-    let Some(commit) = updater::upstream_commit(&port.checkout(root)).await else {
-        return None;
-    };
     let store_path = match prebuilt::lookup(&cache, &commit).await {
         Ok(Some(store_path)) => store_path,
         Ok(None) => {
