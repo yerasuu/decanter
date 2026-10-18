@@ -58,6 +58,7 @@ pub fn label(kind: JobKind) -> Cow<'static, str> {
         JobKind::Game => t!("ps.jobs.game"),
         JobKind::Convert => t!("ps.jobs.convert"),
         JobKind::Fsr411 => t!("ps.jobs.fsr411"),
+        JobKind::VkLayer => t!("ps.jobs.vk_layer"),
     }
 }
 

@@ -22,6 +22,7 @@ use tokio::process::Command;
 
 use super::Ps;
 use super::jobs::{self, JobKey};
+use super::vk_layer;
 
 impl Ps {
     pub fn is_running(&self, key: &JobKey, cx: &gpui::App) -> bool {
@@ -73,7 +74,8 @@ impl Ps {
                         tracing::warn!(port = port.name(), title_id = %game.title_id, error = %err, "could not start game");
                         err.localized()
                     });
-                    (command, jobs::port_facts(&root, port, Some(&toolchain)).await)
+                    let facts = jobs::port_facts(&root, port, Some(&toolchain)).await;
+                    vk_layer::apply(&this, &root, &toolchain, &game.dir, command, facts, cx).await
                 }
                 Err(err) => (
                     Err(t!("ps.play.prepare_error", name = port.name(), error = err).into_owned()),

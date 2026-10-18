@@ -12,10 +12,11 @@
 //! a host that fails to configure a port is set aside for nix from then on.
 
 mod portable;
+pub mod validation;
 
 pub use portable::{REPO as NIX_PORTABLE_REPO, VERSION as NIX_PORTABLE_VERSION};
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -28,6 +29,7 @@ use crate::port::Port;
 const PKGS_NIX: &str = include_str!("pkgs.nix");
 const BBPORT_NIX: &str = include_str!("bbport.nix");
 const ANYPS5_NIX: &str = include_str!("anyps5.nix");
+const VALIDATION_NIX: &str = include_str!("validation.nix");
 
 /// What bbport's `build.sh` checks for before it gives up on the host,
 /// plus Python for `run.sh`'s helpers.
@@ -198,19 +200,27 @@ impl Toolchain {
     /// this toolchain's store and roots it at `gc_root`. `None` for the host
     /// and a bundle, which have no store: a cached port only runs inside nix.
     pub fn fetch_command(&self, root: &Root, cache: &str, store_path: &str, gc_root: &Path) -> Option<Command> {
+        self.nix_script(
+            root,
+            "set -e; cache=$1 path=$2 root=$3; shift 3; mkdir -p -- \"$(dirname -- \"$root\")\"; \
+             \"$@\" nix --extra-experimental-features nix-command copy --no-check-sigs --from \"$cache\" -- \"$path\"; \
+             \"$@\" nix-store --realise --add-root \"$root\" -- \"$path\" >/dev/null; \
+             echo \"prebuilt from cache: $path\"",
+            &[
+                OsStr::new("fetch"),
+                OsStr::new(cache),
+                OsStr::new(store_path),
+                gc_root.as_os_str(),
+            ],
+        )
+    }
+
+    /// `script` run by bash with `args` as `$0`, `$1`…, and nix's tools reachable: on `PATH` for
+    /// the system's nix, behind the `"$@"` the script must put before each one, after shifting its
+    /// own arguments, for nix-portable. `None` for the host and a bundle, which have no nix.
+    fn nix_script(&self, root: &Root, script: &str, args: &[&OsStr]) -> Option<Command> {
         let mut command = Command::new("bash");
-        command
-            .arg("-c")
-            .arg(
-                "set -e; cache=$1 path=$2 root=$3; shift 3; mkdir -p -- \"$(dirname -- \"$root\")\"; \
-                 \"$@\" nix --extra-experimental-features nix-command copy --no-check-sigs --from \"$cache\" -- \"$path\"; \
-                 \"$@\" nix-store --realise --add-root \"$root\" -- \"$path\" >/dev/null; \
-                 echo \"prebuilt from cache: $path\"",
-            )
-            .arg("fetch")
-            .arg(cache)
-            .arg(store_path)
-            .arg(gc_root);
+        command.arg("-c").arg(script).args(args);
         match self {
             Self::Host | Self::Bundle => return None,
             Self::SystemNix(nix_shell) => {
@@ -258,6 +268,7 @@ async fn write_env_files(dir: &Path) -> io::Result<PathBuf> {
         ("pkgs.nix", PKGS_NIX),
         ("bbport.nix", BBPORT_NIX),
         ("anyps5.nix", ANYPS5_NIX),
+        (validation::ENV_FILE, VALIDATION_NIX),
     ] {
         let path = dir.join(name);
         let current = tokio::fs::read_to_string(&path).await.ok();

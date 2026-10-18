@@ -12,11 +12,12 @@ use decanter_ps::bbport::{
     Bbport, Control, GROUPS, Group, MEMORY_MODEL_SETTINGS, Setting, single_memory_model_blocking,
 };
 use decanter_ps::port::Port;
+use decanter_ps::toolchain::validation::{self, Unavailable};
 use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::extras::ExtrasView;
-use crate::state::Ps;
+use crate::state::{Ps, vk_layer_unavailable_text};
 use crate::theme;
 use crate::widgets::{Select, checkbox, select::SelectStyle};
 
@@ -35,6 +36,8 @@ pub struct GraphicsView {
     values: Option<Values>,
     /// The checkout's port has only the PC memory model, so the old one's settings are left out.
     single_memory_model: bool,
+    /// Why the last launch that asked for the validation layer got none, for its setting's note.
+    vk_layer_unavailable: Option<Unavailable>,
     error: Option<String>,
     extras: Entity<ExtrasView>,
     title_id: Option<String>,
@@ -49,13 +52,15 @@ impl GraphicsView {
         let load = cx.background_spawn(async {
             let root = decanter_ps::paths::active();
             let single_memory_model = single_memory_model_blocking(&Port::Bbport.checkout(&root));
-            (Values::load(&root), single_memory_model)
+            let vk_layer_unavailable = validation::last_unavailable_blocking(&root);
+            (Values::load(&root), single_memory_model, vk_layer_unavailable)
         });
         cx.spawn(async move |this, cx| {
-            let (values, single_memory_model) = load.await;
+            let (values, single_memory_model, vk_layer_unavailable) = load.await;
             let _ = this.update(cx, |this, cx| {
                 this.values = Some(values);
                 this.single_memory_model = single_memory_model;
+                this.vk_layer_unavailable = vk_layer_unavailable;
                 cx.notify();
             });
         })
@@ -64,6 +69,7 @@ impl GraphicsView {
             ps: ps.clone(),
             values: None,
             single_memory_model: false,
+            vk_layer_unavailable: None,
             error: None,
             extras: cx.new(|cx| ExtrasView::new(ps.clone(), cx)),
             title_id: None,
@@ -252,11 +258,11 @@ impl GraphicsView {
         cx: &mut Context<Self>,
     ) -> (String, Option<String>, AnyElement) {
         let (control, note) = self.control(values, setting, cx);
-        (
-            t!(setting.label).into_owned(),
-            note.map(|note| t!(note).into_owned()),
-            control,
-        )
+        let note = match self.vk_layer_unavailable {
+            Some(why) if setting.key == "vk_validation" => Some(vk_layer_unavailable_text(why)),
+            _ => note.map(|note| t!(note).into_owned()),
+        };
+        (t!(setting.label).into_owned(), note, control)
     }
 
     /// The port's sections for the selected title instead of `fallback`, the Bloodborne table,

@@ -13,6 +13,7 @@ mod jobs;
 mod moving;
 mod play;
 mod ports;
+mod vk_layer;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -30,6 +31,7 @@ pub use fsr::DllOutcome;
 pub use jobs::{JobKey, label as job_label, target_name as job_target};
 pub use play::failure_message;
 pub use ports::{BuildOrigin, PortState, Stage};
+pub use vk_layer::unavailable_text as vk_layer_unavailable_text;
 
 use super::AppState;
 

@@ -37,6 +37,8 @@ pub enum JobKind {
     Game,
     Convert,
     Fsr411,
+    /// Realising the Vulkan validation layer before a game that asked for it.
+    VkLayer,
 }
 
 impl JobKind {
@@ -50,6 +52,7 @@ impl JobKind {
             Self::Game => "game",
             Self::Convert => "convert",
             Self::Fsr411 => "fsr411",
+            Self::VkLayer => "vk-layer",
         }
     }
 }

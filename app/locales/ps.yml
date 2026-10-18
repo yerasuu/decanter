@@ -1409,6 +1409,27 @@ ps.errors.bbport_not_ready:
 ps.jobs.fsr411:
   es: compilación de FSR 4.1.1
   en: FSR 4.1.1 build
+ps.jobs.vk_layer:
+  es: capa de validación de Vulkan
+  en: Vulkan validation layer
+ps.vk_layer.preparing:
+  es: Preparando la capa de validación de Vulkan…
+  en: Getting the Vulkan validation layer ready…
+ps.vk_layer.unavailable:
+  es: "La capa de validación de Vulkan no está disponible; el juego arranca sin validar. %{reason}"
+  en: "The Vulkan validation layer isn't available; the game starts without validation. %{reason}"
+ps.vk_layer.stopped:
+  es: Arranque cancelado mientras se preparaba la capa de validación de Vulkan.
+  en: Start cancelled while the Vulkan validation layer was being prepared.
+ps.vk_layer.reasons.no_nix:
+  es: Este port se ejecuta fuera de nix y hace falta nix instalado en el sistema para dársela.
+  en: This port runs outside nix, so it needs nix installed on the system.
+ps.vk_layer.reasons.setup:
+  es: No se pudo preparar su entorno de nix; mira el registro de decanter.
+  en: Couldn't set up its nix environment; see decanter's log.
+ps.vk_layer.reasons.build:
+  es: nix no pudo descargarla ni compilarla (¿sin conexión?); mira su registro.
+  en: nix couldn't download or build it (offline?); see its log.
 ps.fsr.checking:
   es: Comprobando la DLL…
   en: Checking the DLL…
