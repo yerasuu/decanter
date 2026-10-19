@@ -1,0 +1,116 @@
+name: Anti-bot en issues
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: antibot-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+env:
+  DRY_RUN: "false"
+
+jobs:
+  moderar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ !endsWith(github.actor, '[bot]') }}
+    steps:
+      - name: Detectar y neutralizar malware-posting
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          EVENT_JSON=$(cat "$GITHUB_EVENT_PATH")
+
+          BODY=$(jq -r '.comment.body // .issue.body // ""' <<<"$EVENT_JSON")
+          NODE_ID=$(jq -r '.comment.node_id // empty' <<<"$EVENT_JSON")
+          AUTHOR_ASSOC=$(jq -r '.comment.author_association // .issue.author_association // "NONE"' <<<"$EVENT_JSON")
+          LOGIN=$(jq -r '.comment.user.login // .issue.user.login // ""' <<<"$EVENT_JSON")
+          IS_COMMENT=$([ -n "$NODE_ID" ] && echo "si" || echo "no")
+
+          echo "Revisando contenido de @$LOGIN ($AUTHOR_ASSOC)"
+
+          case "$AUTHOR_ASSOC" in
+            OWNER|MEMBER|COLLABORATOR|CONTRIBUTOR)
+              echo "Autor de confianza, no se filtra."; exit 0 ;;
+          esac
+
+          HIT=0
+          report() { echo "::warning::$1"; HIT=1; }
+
+          # ---- 1. One-liners peligrosos (el corazón del scam) ----
+          if grep -qiE '(^|[^a-z])(iex|invoke-expression)[ (]*\( *(irm|iwr|invoke-restmethod|invoke-webrequest|wget|curl)[ )]*\(' <<<"$BODY"; then
+            report "One-liner iex(irm ...) detectado"
+          fi
+          # Obfuscaciones habituales: "ie*x", "i`Ex", comillas raras
+          if grep -qiE 'i[e\`\*''"“”]?x[ (]*\(?[i\`]?r[mW]?' <<<"$BODY"; then
+            report "Posible iex/irm ofuscado"
+          fi
+          # Piping de descarga a shell
+          if grep -qiE '(curl|wget)[^|]*\|[ ]*(bash|sh|powershell|pwsh|iex)' <<<"$BODY"; then
+            report "Descarga remota ejecutada por pipe"
+          fi
+
+          # ---- 2. Dominios maliciosos conocidos ----
+          BAD_DOMAINS=(gitrm.sbs gitrm.online gitrm.xyz gamesrepair.top pcfixhub.click)
+          for d in "${BAD_DOMAINS[@]}"; do
+            if grep -qiF "$d" <<<"$BODY"; then
+              report "Dominio malicioso conocido: $d"
+            fi
+          done
+          # Dominios .sbs/.xyz/.top usados en one-liners
+          if grep -qiE '(irm|iwr|iex|\()[ ]*"?https?://[^ ]*\.(sbs|top|xyz|click)\b' <<<"$BODY"; then
+            report "URL sospechosa (.sbs/.top/.xyz/.click) en contexto de ejecución"
+          fi
+
+          # ---- 3. Social engineering típico de este scam ----
+          if grep -qiE '(win\s*\+\s*x).*(terminal|powershell)[^.]*(admin)' <<<"$BODY"; then
+            report "Instrucción Win+X → Terminal (Admin)"
+          fi
+          if grep -qiE '(bloodborne|elden ring|sekiro|demons? souls|ps[45] emulator).{0,80}(pc|windows)' <<<"$BODY" \
+             && grep -qiE '(fix|crash|instal|setup|all.?in.?one)' <<<"$BODY"; then
+            report "Fake fix de juego para PC"
+          fi
+          if grep -qiE '(cop[íi]a|paste|pegue|pega).{0,40}(command|comando|esto|el siguiente)' <<<"$BODY" \
+             && grep -qiE '(power ?shell|terminal \(admin\)|ventana)' <<<"$BODY"; then
+            report "Instrucciones de pegar comando en PowerShell"
+          fi
+
+          if (( HIT == 0 )); then
+            echo "Sin señales de spam."; exit 0
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::error::DRY_RUN: se habría actuado contra @$LOGIN."
+            exit 1
+          fi
+
+          if [ "$IS_COMMENT" = "si" ]; then
+            gh api graphql -f query="$(cat <<'GQL'
+mutation($id: ID!) {
+  minimizeComment(input: {subjectId: $id, classifier: ABUSE}) {
+    minimizedComment { isMinimized }
+  }
+}
+GQL
+)" -f id="$NODE_ID"
+            echo "Comentario ocultado como abuso."
+          else
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
+              --add-label "spam" 2>/dev/null || true
+            gh issue close "$ISSUE_NUMBER" --repo "$REPO" \
+              --reason "spam" \
+              --comment "Cerrado automáticamente: el contenido promueve ejecutar código de una fuente no confiable (posible malware). Si esto es un error, indica el número de issue."
+            gh api -X PUT "repos/$REPO/issues/$ISSUE_NUMBER/lock" \
+              -f lock_reason="spam" || true
+            echo "Issue cerrado y bloqueado."
+          fi
