@@ -107,6 +107,9 @@ ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, e
 ps.settings.sys_modules.title: Módulos del sistema (opcional)
 ps.settings.sys_modules.none: Sin carpeta
 ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno.'
+ps.settings.sys_fonts.title: Fuentes del sistema (opcional)
+ps.settings.sys_fonts.none: Sin carpeta
+ps.settings.sys_fonts.description: 'Opcional: una carpeta con tu propio volcado de las fuentes de la consola. Sin ella, los juegos que usan las fuentes del sistema muestran el texto con fuentes de sustitución y puede no verse como en la consola. decanter no incluye ni copia ninguna.'
 ps.settings.channel.title: Canal de psport
 ps.settings.channel.release.title: Versión estable
 ps.settings.channel.release.description: La última versión publicada de psport, descargada ya compilada.
@@ -372,9 +375,20 @@ ps.graphics.present_mode.options.fifo: FIFO (VSync)
 ps.graphics.present_mode.options.fifo_relaxed: FIFO Relaxed
 ps.graphics.present_mode.options.immediate: Immediate
 ps.graphics.hdr.label: Permitir HDR
+ps.graphics.aniso.label: Filtrado anisótropo
+ps.graphics.aniso.note: Forzarlo afina las superficies vistas de lado, pero también llega a texturas que no son superficies
+ps.graphics.aniso.options.profile: El del perfil del juego
+ps.graphics.aniso.options.game: El que pide el juego
+ps.graphics.aniso.options.x4: 4x
+ps.graphics.aniso.options.x8: 8x
+ps.graphics.aniso.options.x16: 16x
 ps.graphics.groups.gamepad: Mando
 ps.graphics.gamepad.label: Mando
 ps.graphics.gamepad.note: Con varios conectados, cuál usa el juego; la lista se actualiza al abrir esta pestaña
+ps.graphics.pad_motion.label: Movimiento emulado del mando
+ps.graphics.pad_motion.note: Para mandos sin sensores de movimiento
+ps.graphics.toypad.label: Toy pad de LEGO Dimensions emulado
+ps.graphics.toypad.note: 'Conecta el toy pad emulado; solo para juegos que lo usan (las figuras se colocan en el menú de psport, Insert o L3+R3)'
 ps.graphics.groups.mouse: Ratón
 ps.graphics.groups.mouse_note: Se guarda en bbport.ini y se aplica en la siguiente partida
 ps.graphics.game_mouse_sensitivity.label: Sensibilidad del ratón en el juego
@@ -392,6 +406,8 @@ ps.graphics.upscaler.options.fsr411: FSR 4.1.1
 ps.graphics.upscaler.options.fsr3: FSR 3
 ps.graphics.upscaler.options.taa: TAA
 ps.graphics.upscaler.options.taa_note: Antialiasing a la resolución de salida, sin modelo FSR
+ps.graphics.upscaler.options.dlss: DLSS
+ps.graphics.upscaler.options.dlss_note: 'Solo NVIDIA RTX, con el puente DLSS compilado en el port; si falta, se usa FSR 3.1'
 ps.graphics.upscaler.options.off: Desactivado
 ps.graphics.preset.label: Preset
 ps.graphics.preset.options.native: Native AA
@@ -422,6 +438,11 @@ ps.graphics.skip_intro.label: Saltar vídeos de inicio
 ps.graphics.debug_camera.label: Cámara libre (Cruz + L3 / Space + Z)
 ps.graphics.debug_menu.label: Menú de depuración (táctil izquierdo / Tab)
 ps.graphics.debug_menu.note: Necesita DbgFont14h.ccm y DbgFont14h.tpf en dvdroot_ps4/font del juego
+ps.graphics.intel_tonemap.label: Arreglo del tonemapping en Intel
+ps.graphics.intel_tonemap.note: 'En CPU Intel el tonemapping del juego sale negro (sobre todo en las zonas del DLC); automático: activo solo en Intel'
+ps.graphics.intel_tonemap.options.auto: Automático
+ps.graphics.intel_tonemap.options.on: Activado
+ps.graphics.intel_tonemap.options.off: Desactivado
 ps.graphics.groups.frames: Fotogramas
 ps.graphics.fps_mode.label: Modo
 ps.graphics.fps_mode.note: Qué parche de fotogramas se aplica al juego

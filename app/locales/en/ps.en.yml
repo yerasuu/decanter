@@ -107,6 +107,9 @@ ps.settings.games.description: 'Next to each of the profile''s library folders, 
 ps.settings.sys_modules.title: System modules (optional)
 ps.settings.sys_modules.none: No folder
 ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder with your own dump of the console''s modules (*.sprx, like libSceNgs2.sprx), only to compare against the port''s own libraries (PS_LLE) or for a game that still needs a console module. decanter neither ships nor copies any.'
+ps.settings.sys_fonts.title: System fonts (optional)
+ps.settings.sys_fonts.none: No folder
+ps.settings.sys_fonts.description: 'Optional: a folder with your own dump of the console''s fonts. Without it, games that use the system fonts show their text in fallback fonts and it may not look as on the console. decanter neither ships nor copies any.'
 ps.settings.channel.title: psport channel
 ps.settings.channel.release.title: Stable release
 ps.settings.channel.release.description: psport's latest published release, downloaded prebuilt.
@@ -372,9 +375,20 @@ ps.graphics.present_mode.options.fifo: FIFO (VSync)
 ps.graphics.present_mode.options.fifo_relaxed: FIFO Relaxed
 ps.graphics.present_mode.options.immediate: Immediate
 ps.graphics.hdr.label: Allow HDR
+ps.graphics.aniso.label: Anisotropic filtering
+ps.graphics.aniso.note: Forcing it sharpens surfaces seen at an angle, but also reaches textures that are not surfaces
+ps.graphics.aniso.options.profile: The game profile's
+ps.graphics.aniso.options.game: What the game asks for
+ps.graphics.aniso.options.x4: 4x
+ps.graphics.aniso.options.x8: 8x
+ps.graphics.aniso.options.x16: 16x
 ps.graphics.groups.gamepad: Controller
 ps.graphics.gamepad.label: Controller
 ps.graphics.gamepad.note: With several connected, which one the game uses; the list refreshes when this tab opens
+ps.graphics.pad_motion.label: Emulated controller motion
+ps.graphics.pad_motion.note: For controllers without motion sensors
+ps.graphics.toypad.label: Emulated LEGO Dimensions toy pad
+ps.graphics.toypad.note: 'Plugs in the emulated toy pad; only for games that use it (figures are placed in psport''s menu, Insert or L3+R3)'
 ps.graphics.groups.mouse: Mouse
 ps.graphics.groups.mouse_note: Saved in bbport.ini, applied the next time the game starts
 ps.graphics.game_mouse_sensitivity.label: In-game mouse sensitivity
@@ -392,6 +406,8 @@ ps.graphics.upscaler.options.fsr411: FSR 4.1.1
 ps.graphics.upscaler.options.fsr3: FSR 3
 ps.graphics.upscaler.options.taa: TAA
 ps.graphics.upscaler.options.taa_note: Antialiasing at the output resolution, without an FSR model
+ps.graphics.upscaler.options.dlss: DLSS
+ps.graphics.upscaler.options.dlss_note: 'NVIDIA RTX only, with the DLSS bridge built into the port; without it, FSR 3.1 is used'
 ps.graphics.upscaler.options.off: 'Off'
 ps.graphics.preset.label: Preset
 ps.graphics.preset.options.native: Native AA
@@ -422,6 +438,11 @@ ps.graphics.skip_intro.label: Skip intro videos
 ps.graphics.debug_camera.label: Free camera (Cross + L3 / Space + Z)
 ps.graphics.debug_menu.label: Debug menu (touchpad left / Tab)
 ps.graphics.debug_menu.note: Needs DbgFont14h.ccm and DbgFont14h.tpf in the game's dvdroot_ps4/font
+ps.graphics.intel_tonemap.label: Intel tone mapping fix
+ps.graphics.intel_tonemap.note: 'On Intel CPUs the game''s tone mapping turns black (mostly in the DLC areas); automatic: on only on Intel'
+ps.graphics.intel_tonemap.options.auto: Automatic
+ps.graphics.intel_tonemap.options.on: On
+ps.graphics.intel_tonemap.options.off: Off
 ps.graphics.groups.frames: Frame rate
 ps.graphics.fps_mode.label: Mode
 ps.graphics.fps_mode.note: Which frame rate patch the game gets

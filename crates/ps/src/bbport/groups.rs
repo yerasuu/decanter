@@ -186,18 +186,50 @@ pub const GROUPS: &[Group] = &[
                 },
             },
             toggle("hdr", "ps.graphics.hdr.label", None, Store::Launcher, false),
+            Setting {
+                key: "aniso",
+                label: "ps.graphics.aniso.label",
+                note: Some("ps.graphics.aniso.note"),
+                store: Store::Launcher,
+                control: Control::Choice {
+                    options: &[
+                        ("ps.graphics.aniso.options.profile", "", None),
+                        ("ps.graphics.aniso.options.game", "0", None),
+                        ("ps.graphics.aniso.options.x4", "4", None),
+                        ("ps.graphics.aniso.options.x8", "8", None),
+                        ("ps.graphics.aniso.options.x16", "16", None),
+                    ],
+                    default: "",
+                },
+            },
         ],
     },
     Group {
         title: "ps.graphics.groups.gamepad",
         note: None,
-        settings: &[Setting {
-            key: "gamepad",
-            label: "ps.graphics.gamepad.label",
-            note: Some("ps.graphics.gamepad.note"),
-            store: Store::Launcher,
-            control: Control::Gamepad,
-        }],
+        settings: &[
+            Setting {
+                key: "gamepad",
+                label: "ps.graphics.gamepad.label",
+                note: Some("ps.graphics.gamepad.note"),
+                store: Store::Launcher,
+                control: Control::Gamepad,
+            },
+            toggle(
+                "pad_motion",
+                "ps.graphics.pad_motion.label",
+                Some("ps.graphics.pad_motion.note"),
+                Store::Ini,
+                false,
+            ),
+            toggle(
+                "toypad",
+                "ps.graphics.toypad.label",
+                Some("ps.graphics.toypad.note"),
+                Store::Ini,
+                false,
+            ),
+        ],
     },
     Group {
         title: "ps.graphics.groups.mouse",
@@ -263,6 +295,11 @@ pub const GROUPS: &[Group] = &[
                             "ps.graphics.upscaler.options.taa",
                             "taa",
                             Some("ps.graphics.upscaler.options.taa_note"),
+                        ),
+                        (
+                            "ps.graphics.upscaler.options.dlss",
+                            "dlss",
+                            Some("ps.graphics.upscaler.options.dlss_note"),
                         ),
                         ("ps.graphics.upscaler.options.off", "off", None),
                     ],
@@ -374,6 +411,20 @@ pub const GROUPS: &[Group] = &[
                 Store::Ini,
                 false,
             ),
+            Setting {
+                key: "intel_tonemap",
+                label: "ps.graphics.intel_tonemap.label",
+                note: Some("ps.graphics.intel_tonemap.note"),
+                store: Store::Launcher,
+                control: Control::Choice {
+                    options: &[
+                        ("ps.graphics.intel_tonemap.options.auto", "", None),
+                        ("ps.graphics.intel_tonemap.options.on", "1", None),
+                        ("ps.graphics.intel_tonemap.options.off", "0", None),
+                    ],
+                    default: "",
+                },
+            },
         ],
     },
     Group {

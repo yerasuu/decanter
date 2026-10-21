@@ -1,6 +1,6 @@
 //! Ajustes of the PS section: where this profile's dumps are read from, the
-//! folder of the user's own system module dump, and which psport builds the
-//! library runs.
+//! folders of the user's own system module and font dumps, and which psport
+//! builds the library runs.
 
 use std::path::PathBuf;
 
@@ -16,14 +16,36 @@ use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
 
-/// `LauncherSettings` key; passed to bbport as `PS_SYS_MODULES`.
-const SYS_MODULES: &str = "sys_modules_dir";
+/// A folder from the user's own console dump, kept under a `LauncherSettings` key that the
+/// port gets as an environment variable.
+struct DumpFolder {
+    key: &'static str,
+    title: &'static str,
+    none: &'static str,
+    description: &'static str,
+}
+
+/// `PS_SYS_MODULES` and `PS_SYS_FONTS`, in the order shown.
+const DUMP_FOLDERS: [DumpFolder; 2] = [
+    DumpFolder {
+        key: "sys_modules_dir",
+        title: "ps.settings.sys_modules.title",
+        none: "ps.settings.sys_modules.none",
+        description: "ps.settings.sys_modules.description",
+    },
+    DumpFolder {
+        key: "sys_fonts_dir",
+        title: "ps.settings.sys_fonts.title",
+        none: "ps.settings.sys_fonts.none",
+        description: "ps.settings.sys_fonts.description",
+    },
+];
 
 pub struct SettingsView {
     ps: Entity<Ps>,
-    /// Read off the UI thread when the view opens, after each change and
-    /// whenever `Ps` changes.
-    sys_modules: Option<String>,
+    /// One per `DUMP_FOLDERS`, read off the UI thread when the view opens,
+    /// after each change and whenever `Ps` changes.
+    dump_folders: [Option<String>; 2],
     channel: Option<Channel>,
     online: Entity<OnlineView>,
     error: Option<Text>,
@@ -36,7 +58,7 @@ impl SettingsView {
         cx.observe(&ps, |this, _, cx| this.refresh(cx)).detach();
         let this = Self {
             ps,
-            sys_modules: None,
+            dump_folders: [None, None],
             channel: None,
             online: cx.new(OnlineView::new),
             error: None,
@@ -47,15 +69,16 @@ impl SettingsView {
 
     fn refresh(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let (dir, channel) = cx
+            let (dirs, channel) = cx
                 .background_spawn(async {
                     let root = decanter_ps::paths::active();
-                    let dir = LauncherSettings::load(&root).text(SYS_MODULES).map(str::to_owned);
-                    (dir, Channel::of(&root, Port::Bbport))
+                    let settings = LauncherSettings::load(&root);
+                    let dirs = DUMP_FOLDERS.map(|folder| settings.text(folder.key).map(str::to_owned));
+                    (dirs, Channel::of(&root, Port::Bbport))
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                this.sys_modules = dir;
+                this.dump_folders = dirs;
                 this.channel = Some(channel);
                 cx.notify();
             });
@@ -63,14 +86,14 @@ impl SettingsView {
         .detach();
     }
 
-    /// `None` forgets the folder.
-    fn set_sys_modules(&self, dir: Option<String>, cx: &mut Context<Self>) {
+    /// `key` of one of `DUMP_FOLDERS`; `None` forgets the folder.
+    fn set_dump_folder(&self, key: &'static str, dir: Option<String>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let saved = cx
                 .background_spawn(async move {
                     LauncherSettings::edit(&decanter_ps::paths::active(), |settings| match &dir {
-                        Some(dir) => settings.set_text(SYS_MODULES, dir),
-                        None => settings.remove(SYS_MODULES),
+                        Some(dir) => settings.set_text(key, dir),
+                        None => settings.remove(key),
                     })
                 })
                 .await;
@@ -141,15 +164,64 @@ impl SettingsView {
             )
     }
 
-    fn pick_sys_modules(&self, cx: &mut Context<Self>) {
+    fn pick_dump_folder(&self, key: &'static str, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await else {
                 return;
             };
             let dir = folder.path().to_string_lossy().into_owned();
-            let _ = this.update(cx, |this, cx| this.set_sys_modules(Some(dir), cx));
+            let _ = this.update(cx, |this, cx| this.set_dump_folder(key, Some(dir), cx));
         })
         .detach();
+    }
+
+    /// `index` only tells the section's elements apart.
+    fn dump_folder_section(
+        index: usize,
+        folder: &'static DumpFolder,
+        dir: Option<String>,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let key = folder.key;
+        let has_dir = dir.is_some();
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(theme::h2(t!(folder.title)))
+            .child(
+                theme::card().child(
+                    theme::list_row(("ps-dump-folder", index), true)
+                        .child(
+                            theme::mono()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .child(dir.unwrap_or_else(|| t!(folder.none).into_owned())),
+                        )
+                        .child(
+                            button(
+                                ("ps-dump-folder-pick", index),
+                                ButtonKind::Secondary,
+                                t!("ps.settings.pick"),
+                                false,
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| this.pick_dump_folder(key, cx))),
+                        )
+                        .when(has_dir, |row| {
+                            row.child(
+                                button(
+                                    ("ps-dump-folder-forget", index),
+                                    ButtonKind::Secondary,
+                                    t!("ps.settings.forget"),
+                                    false,
+                                )
+                                .on_click(cx.listener(move |this, _, _, cx| this.set_dump_folder(key, None, cx))),
+                            )
+                        }),
+                ),
+            )
+            .child(theme::muted(t!(folder.description)))
     }
 }
 
@@ -161,8 +233,6 @@ impl Render for SettingsView {
         } else {
             roots.iter().map(|root| decanter_ps::paths::games_in(root)).collect()
         };
-        let sys_modules = self.sys_modules.clone();
-        let has_sys_modules = sys_modules.is_some();
         let count = folders.len();
         theme::page(
             "ps-settings",
@@ -204,38 +274,13 @@ impl Render for SettingsView {
                     })),
                 )
                 .child(theme::muted(t!("ps.settings.games.description")))
-                .child(theme::h2(t!("ps.settings.sys_modules.title")))
-                .child(
-                    theme::card().child(
-                        theme::list_row("ps-sys-modules", true)
-                            .child(
-                                theme::mono().flex_1().min_w_0().truncate().child(
-                                    sys_modules.unwrap_or_else(|| t!("ps.settings.sys_modules.none").into_owned()),
-                                ),
-                            )
-                            .child(
-                                button(
-                                    "ps-sys-modules-pick",
-                                    ButtonKind::Secondary,
-                                    t!("ps.settings.pick"),
-                                    false,
-                                )
-                                .on_click(cx.listener(|this, _, _, cx| this.pick_sys_modules(cx))),
-                            )
-                            .when(has_sys_modules, |row| {
-                                row.child(
-                                    button(
-                                        "ps-sys-modules-forget",
-                                        ButtonKind::Secondary,
-                                        t!("ps.settings.forget"),
-                                        false,
-                                    )
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_sys_modules(None, cx))),
-                                )
-                            }),
-                    ),
+                .children(
+                    DUMP_FOLDERS
+                        .iter()
+                        .zip(self.dump_folders.clone())
+                        .enumerate()
+                        .map(|(index, (folder, dir))| Self::dump_folder_section(index, folder, dir, cx)),
                 )
-                .child(theme::muted(t!("ps.settings.sys_modules.description")))
                 .child(theme::h2(t!("ps.settings.channel.title")))
                 .child(
                     theme::card()

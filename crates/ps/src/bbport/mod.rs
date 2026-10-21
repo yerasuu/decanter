@@ -373,17 +373,7 @@ impl Bbport {
         if let Some(limit) = settings.number("fps_limit").filter(|&limit| limit > 0.0) {
             command.env(var("FPS_LIMIT"), format!("{limit:.0}"));
         }
-        for (key, suffix) in [
-            ("draw_pipe", "DRAW_PIPE"),
-            ("readbacks", "READBACKS"),
-            ("preupload", "PREUPLOAD"),
-            ("gamepad", "GAMEPAD"),
-        ] {
-            if let Some(value) = settings.text(key).filter(|_| port_reads(key)) {
-                command.env(var(suffix), value);
-            }
-        }
-        command.envs(development_env(names, settings, &game.title_id, port_reads));
+        command.envs(optional_env(names, settings, &game.title_id, &port_reads));
         let fsr411 = self.root.fsr411();
         if tokio::fs::metadata(&fsr411).await.is_ok_and(|meta| meta.is_dir()) {
             command.env(var("FSR411_DIR"), fsr411);
@@ -472,15 +462,28 @@ async fn query_port(mut command: Command, max: usize) -> io::Result<(ExitStatus,
         .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "port query timed out")))
 }
 
-/// The development group's settings: switches that are off in the port unless set (for all
+/// The settings passed only when they differ from what the port does without them: values the
+/// user picked (empty means the port's own choice), switches off in the port unless set (for all
 /// titles or this one), and those on in the port unless told otherwise (camera cuts, image
 /// traps), for which only off is passed.
-fn development_env<'settings>(
+fn optional_env<'settings>(
     names: Names,
     settings: &'settings LauncherSettings,
     title_id: &'settings str,
-    port_reads: impl Fn(&str) -> bool + 'settings,
+    port_reads: &'settings impl Fn(&str) -> bool,
 ) -> impl Iterator<Item = (String, String)> + 'settings {
+    let values = [
+        ("draw_pipe", "DRAW_PIPE"),
+        ("readbacks", "READBACKS"),
+        ("preupload", "PREUPLOAD"),
+        ("gamepad", "GAMEPAD"),
+        ("aniso", "ANISO"),
+        ("intel_tonemap", "INTEL_TONEMAP_FIX"),
+        ("sys_fonts_dir", "SYS_FONTS"),
+    ]
+    .into_iter()
+    .filter(|&(key, _)| port_reads(key))
+    .filter_map(move |(key, suffix)| settings.text(key).map(|value| (names.var(suffix), value.to_owned())));
     let on = [
         ("frame_stats", "FRAME_STATS"),
         ("save_log", "SAVE_LOG"),
@@ -498,7 +501,7 @@ fn development_env<'settings>(
     let keep = settings
         .number("keep_logs")
         .map(|keep| (names.var("KEEP_LOGS"), format!("{keep:.0}")));
-    on.chain(off).chain(keep)
+    values.chain(on).chain(off).chain(keep)
 }
 
 /// The port's debug mode, each run's logs gathered in `dir` under the port's own folder per host.
