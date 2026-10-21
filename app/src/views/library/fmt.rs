@@ -11,10 +11,11 @@ pub(super) fn duration(seconds_total: i64) -> String {
     let hours = seconds_total / 3600;
     let minutes = (seconds_total % 3600) / 60;
     if hours > 0 {
-        format!("{hours}h {minutes}m")
+        t!("common.duration.hours_minutes", hours = hours, minutes = minutes)
     } else {
-        format!("{minutes}m")
+        t!("common.duration.minutes", minutes = minutes)
     }
+    .into_owned()
 }
 
 /// A moment the player lived (a session), so it reads in their own time zone.

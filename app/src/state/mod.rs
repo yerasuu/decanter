@@ -9,6 +9,8 @@ mod ps;
 
 use gpui::{App, AppContext as _, Entity, Global};
 
+use crate::i18n::Text;
+
 pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
 pub use ps::{
@@ -20,7 +22,7 @@ pub use ps::{
 pub struct Session {
     /// Resolved once at startup; screens show the error instead of their
     /// content when the database couldn't be opened.
-    pub core: Result<(), String>,
+    pub core: Result<(), Text>,
     /// The profile the topbar's switcher has active — read by everything
     /// that's per-profile instead of each screen picking its own.
     pub active_profile: Option<String>,
@@ -47,7 +49,7 @@ impl Session {
     }
 
     fn load() -> Self {
-        let core = crate::core::db().map(|_| ()).map_err(String::from);
+        let core = crate::core::db().map(|_| ()).map_err(Text::from);
         let active_profile = crate::core::db()
             .and_then(|db| db.active_profile().map_err(crate::core::StoreError::Query))
             .inspect_err(|err| tracing::warn!(%err, "could not read the active profile"))

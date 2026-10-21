@@ -20,13 +20,19 @@
 //! menu item's `activate` is a plain Rust closure `ksni` calls straight
 //! from the incoming `Event` — no dbusmenu-gtk3 translation in between.
 
+use std::sync::OnceLock;
+
 use ksni::menu::StandardItem;
-use ksni::{Icon, MenuItem, Tray, TrayMethods as _};
+use ksni::{Handle, Icon, MenuItem, Tray, TrayMethods as _};
 use rust_i18n::t;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::tray::TrayCommand;
+
+/// Kept for the life of the process so a language switch can have the menu
+/// read again; nothing tears the tray down before the process exits.
+static HANDLE: OnceLock<Handle<DecanterTray>> = OnceLock::new();
 
 struct DecanterTray {
     commands: UnboundedSender<TrayCommand>,
@@ -114,9 +120,7 @@ fn decanter_icon() -> Option<Icon> {
 
 /// Starts the tray as its own background task, off GPUI's event
 /// loop entirely — `ksni` drives itself through its own `zbus` connection.
-/// The receiver it returns is how the caller finds out what got clicked;
-/// the `ksni::Handle` itself is deliberately leaked; nothing here ever
-/// needs to tear the tray back down before the process exits.
+/// The receiver it returns is how the caller finds out what got clicked.
 pub fn spawn_tray() -> UnboundedReceiver<TrayCommand> {
     let (commands, receiver) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
@@ -124,10 +128,24 @@ pub fn spawn_tray() -> UnboundedReceiver<TrayCommand> {
         match tray.spawn().await {
             Ok(handle) => {
                 tracing::info!("linux tray icon started");
-                std::mem::forget(handle);
+                if HANDLE.set(handle).is_err() {
+                    tracing::warn!("a second linux tray icon started, its menu won't follow a language switch");
+                }
             }
             Err(err) => tracing::warn!(%err, "could not start the Linux tray icon"),
         }
     });
     receiver
+}
+
+/// Has the host read the menu again, after the language changed under it.
+pub fn refresh_tray() {
+    let Some(handle) = HANDLE.get().cloned() else {
+        return;
+    };
+    tokio::spawn(async move {
+        if handle.update(|_| {}).await.is_none() {
+            tracing::warn!("linux tray icon already shut down, menu not refreshed");
+        }
+    });
 }

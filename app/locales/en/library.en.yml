@@ -1,0 +1,213 @@
+library.offline_folders: 'Not connected: %{folders}. Their games show as not installed until you connect the drive.'
+library.loading.title: LOADING YOUR LIBRARY
+library.loading.searching: Looking for your games on GOG...
+library.loading.enriching: 'Filling in details: %{done} of %{total} (%{count} found)'
+library.loading.found.one: 1 game found, filling in details...
+library.loading.found.other: '%{count} games found, filling in details...'
+library.never_played: Never played
+library.played.minutes: '%{minutes} min'
+library.played.hours: '%{hours} h'
+library.shelves.favorites: Favorites
+library.shelves.installed: Installed
+library.shelves.gog_library: GOG library
+library.shelves.uncategorized: Uncategorized
+library.shelves.auto: AUTO
+library.sidebar.search: Search...
+library.sidebar.kind.games: Games
+library.sidebar.kind.games_extras: Games and extras
+library.sidebar.kind.extras: Extras
+library.sidebar.kind.movies: Movies
+library.sidebar.kind.all: All
+library.sidebar.sort_recent: Sort by recent activity
+library.sidebar.installed_only: Show installed only
+library.sidebar.clear_search: Clear search
+library.sidebar.filters: Filters
+library.sidebar.no_results: No results.
+library.sidebar.empty_shelf: Empty
+library.sidebar.installed: Installed
+library.sidebar.add_game: ADD A GAME
+library.menu.games: '%{count} games'
+library.collections.new: New collection
+library.collections.name_placeholder: Collection name
+library.collections.create: Create
+library.collections.rename: Rename
+library.collections.move_up: Move up
+library.collections.move_down: Move down
+library.collections.delete: Delete collection
+library.filters.heading: LIBRARY FILTERS
+library.filters.clear: Clear filters
+library.filters.save_dynamic: Save as dynamic collection
+library.filters.alternatives_note: 'Alternatives: checking two widens the result.'
+library.filters.products.one: 1 product
+library.filters.products.other: '%{count} products'
+library.filters.matched.one: '%{matched} of %{total} match · 1 filter'
+library.filters.matched.other: '%{matched} of %{total} match · %{active} filters'
+library.filters.state.title: Status
+library.filters.state.note: 'Properties of the same game: checking two narrows.'
+library.filters.state.installed: Installed
+library.filters.state.played: Played
+library.filters.state.unplayed: Unplayed
+library.filters.state.favorite: Favorites
+library.filters.achievements.title: Achievements
+library.filters.achievements.note: Based on what Decanter has cached.
+library.filters.achievements.complete: Completed
+library.filters.achievements.in_progress: In progress
+library.filters.achievements.not_started: Not started
+library.filters.achievements.unmeasured: No achievements
+library.filters.sort.heading: List order
+library.filters.sort.note: Each cover shelf has its own.
+library.filters.sort.title: Name
+library.filters.sort.played: Most played
+library.filters.sort.recent: Recently played
+library.filters.sort.completion: Achievements
+library.filters.sort.release: Release date
+library.filters.sort.size: Size on disk
+library.filters.sort.rating: Rating
+library.filters.sort.added: Date added
+library.filters.collection.title: Collection
+library.filters.collection.any: Any collection
+library.filters.account.title: Account
+library.filters.account.note: This profile has more than one — checking two widens the result.
+library.filters.store.title: Store
+library.filters.store.external: External
+library.filters.genre.title: Genre
+library.filters.genre.none: No genres yet.
+library.browser.whole_library: Whole library
+library.browser.drag_to_reorder: Drag to reorder
+library.browser.installed_count: '%{installed}/%{total} installed'
+library.browser.remove_shelf: Remove shelf
+library.browser.empty_shelf: Nothing on this shelf.
+library.browser.previous: Previous
+library.browser.next: Next
+library.browser.nothing_yet: Nothing to show yet.
+library.browser.add_shelf: + Add shelf
+library.browser.favorite: Favorite
+library.properties.title: Properties
+library.detail.tabs.summary: Overview
+library.detail.tabs.achievements: Achievements
+library.detail.tabs.log: Log
+library.detail.no_runs: This game hasn't run from decanter yet.
+library.detail.favorite.add: Add to favorites
+library.detail.favorite.remove: Remove from favorites
+library.detail.hero.achievements: ACHIEVEMENTS
+library.detail.hero.played: PLAYED
+library.detail.external: External
+library.detail.play: PLAY
+library.detail.stop: STOP
+library.detail.play_unavailable: Playing isn't available on this system yet
+library.detail.no_executable: Installed, but no executable was found
+library.detail.uninstall.busy: Uninstalling...
+library.detail.uninstall.uninstall: Uninstall
+library.detail.uninstall.confirm_uninstall: Confirm uninstall
+library.detail.uninstall.remove: Remove
+library.detail.uninstall.confirm_remove: Confirm removal
+library.detail.install.button: INSTALL
+library.detail.install.unavailable: GOG offers no download for this edition
+library.detail.install.failed: 'Install failed: %{error}'
+library.detail.install.dismiss: Dismiss
+library.detail.install.dialog_title: Install — %{title}
+library.detail.install.folder: Folder
+library.detail.install.branch: Branch
+library.detail.install.location: Location
+library.detail.install.dlc: Additional content
+library.detail.install.dlcs.one: 1 selected, installed along with the game
+library.detail.install.dlcs.other: '%{count} selected, installed along with the game'
+library.detail.install.offline: 'Not connected: %{folders}. If the game is already there, connect the drive instead of installing it again.'
+library.detail.install.folder_free: '%{folder} — %{free} free'
+library.detail.install.mainline: Mainline (default)
+library.detail.achievements.cache_error: 'Error reading the achievement cache: %{error}'
+library.detail.achievements.polling: Fetching achievements...
+library.detail.achievements.none: This game has no achievements on GOG.
+library.detail.achievements.poll_failed: 'Couldn''t fetch achievements: %{error}'
+library.detail.summary.playtime: Time played
+library.detail.summary.last_session: Last session
+library.detail.summary.rating: Rating
+library.detail.summary.release: Release date
+library.detail.summary.developer: 'Developer: %{developer}'
+library.detail.summary.publisher: 'Publisher: %{publisher}'
+library.detail.summary.developer_publisher: 'Developer: %{developer} Publisher: %{publisher}'
+library.detail.summary.genres: 'Genres: %{genres}'
+library.menu.name_placeholder: Name
+library.menu.hide: Hide from library
+library.menu.unhide: Show in library
+library.menu.collections: COLLECTIONS
+library.menu.no_collections: You haven't made any yet.
+library.menu.dynamic_collection: 'Dynamic collection: its saved filter decides what''s in it'
+library.menu.new_collection: New collection…
+library.menu.cancel_install: Cancel install
+library.menu.install: Install
+library.menu.play: Play
+library.menu.stop: Stop
+library.menu.open_folder: Open game folder
+library.menu.edit_external: Edit external game…
+library.install.no_library: couldn't resolve the library
+library.install.library_error: 'resolving the library: %{error}'
+library.properties.window_title: Properties — %{title}
+library.properties.not_installed: The game isn't installed.
+library.properties.tabs.general: General
+library.properties.tabs.updates: Updates
+library.properties.tabs.local_files: Local files
+library.properties.tabs.cloud_saves: Cloud saves
+library.properties.tabs.dlc: DLC
+library.properties.tabs.betas: Betas
+library.properties.tabs.versions: Versions
+library.properties.tabs.compatibility: Compatibility
+library.properties.general.title: Title
+library.properties.general.product_id: Product ID
+library.properties.general.build: Build
+library.properties.general.size: Size
+library.properties.general.played: Played
+library.properties.general.open_folder: Open folder
+library.properties.updates.check: Check for updates
+library.properties.updates.checking: Checking...
+library.properties.updates.update: Update now
+library.properties.updates.updating: Updating...
+library.properties.updates.available: 'A new build is available: %{build}'
+library.properties.updates.up_to_date: Up to date.
+library.properties.updates.installed_build: Installed build
+library.properties.local_files.verify: Verify files
+library.properties.local_files.verifying: Verifying...
+library.properties.local_files.repair: Repair
+library.properties.local_files.repairing: Repairing...
+library.properties.local_files.clean.one: 1 file, all good.
+library.properties.local_files.clean.other: '%{count} files, all good.'
+library.properties.local_files.broken: '%{broken} of %{total} files don''t match.'
+library.properties.local_files.note: Checks every installed file against GOG's manifest and downloads again whatever doesn't match.
+library.properties.saves.folder_placeholder: Save folder
+library.properties.saves.note: Decanter tries to find the save folder from GOG's remote configuration. If it finds nothing, enter it by hand.
+library.properties.saves.detect: Detect automatically
+library.properties.saves.detecting: Detecting...
+library.properties.saves.none_reported: GOG reports no save folder for this game.
+library.properties.saves.pick_title: Choose the save folder
+library.properties.saves.pick: Choose folder...
+library.properties.saves.save: Save folder
+library.properties.saves.last_sync: Last sync
+library.properties.saves.never: never
+library.properties.saves.sync: Sync now
+library.properties.saves.syncing: Syncing...
+library.properties.saves.conflict: Changes on both sides since the last sync.
+library.properties.saves.force_upload: Upload anyway
+library.properties.saves.force_download: Download anyway
+library.properties.saves.uploaded: Uploaded.
+library.properties.saves.downloaded: Downloaded.
+library.properties.saves.already_synced: Already up to date.
+library.properties.saves.unresolved: Unresolved conflict.
+library.properties.dlc.none: This game has no additional content.
+library.properties.dlc.applying: applying…
+library.properties.dlc.goodies_note: Artbooks, soundtracks and the like. They're yours, but GOG doesn't deliver them as installable content — they're downloaded separately, and Decanter doesn't do that yet.
+library.properties.dlc.not_installable: not installable
+library.properties.releases.current: CURRENT
+library.properties.betas.switch: Switch
+library.properties.betas.switching: Switching...
+library.properties.betas.note: Switching branches downloads the whole game again from that build. Additional content already installed is left alone.
+library.properties.versions.install: Install this version
+library.properties.versions.installing: Installing...
+library.properties.versions.note: Installing an older version downloads the whole game again from that build. Verify files will treat it as the installed version, not as out of date.
+library.properties.compatibility.default_proton: Use the default
+library.properties.compatibility.reset: Reset prefix
+library.properties.compatibility.resetting: Resetting...
+library.properties.compatibility.reset_tooltip: Deletes the prefix. It's recreated when the game starts. Saves kept inside the prefix are lost.
+library.properties.compatibility.prefix: Prefix
+library.properties.compatibility.prefix_created: created
+library.properties.compatibility.prefix_missing: no prefix (created on first launch)
+library.run.dx7_hint: This game uses DirectX 7 (DirectDraw) and closed with an error. It may need a DirectDraw wrapper (such as cnc-ddraw or dgVoodoo2) next to its executable.

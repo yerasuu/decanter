@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 
 use decanter_core::{Game, GameArt, InstallState, InstalledGame, Storefront};
 use decanter_gog::{GameKind, LibraryEntry};
-use rust_i18n::t;
+
+use crate::i18n::Text;
 
 /// The umu `GAMEID` every external game runs as: umu's own "unknown game"
 /// id, which lets protonfixes look the game up in the UMU database rather
@@ -106,7 +107,7 @@ pub struct UmuEntry {
 
 /// Writes `id`'s manifest — a new game, or an edit of one already there.
 /// An edit keeps what the form doesn't show (Proton pin, last played).
-pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
+pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), Text> {
     let library = crate::achv_try!(library_in(profile_id, draft.library_root.as_deref()));
     let previous = library.read_manifest(profile_id, Storefront::Unspecified, id);
     let game = InstalledGame {
@@ -139,7 +140,7 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), String> {
             .write_manifest(&game)
             .inspect(|()| tracing::info!(profile_id, id, name = %game.name, "external game saved"))
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "failed to save external game"))
-            .map_err(|err| t!("external.errors.save", error = err).into_owned())
+            .map_err(|err| Text::new("external.errors.save").arg("error", err))
     );
     let (profile, game_id) = (profile_id.to_owned(), id.to_owned());
     tokio::spawn(async move { crate::taskbar::sync_pc(&game).await });
@@ -169,10 +170,10 @@ pub enum RemoveError {
 }
 
 impl RemoveError {
-    pub fn localized(&self) -> String {
+    pub fn localized(&self) -> Text {
         match self {
             Self::Store(err) => err.localized(),
-            Self::Manifest(err) => t!("external.errors.remove", error = err).into_owned(),
+            Self::Manifest(err) => Text::new("external.errors.remove").arg("error", err),
         }
     }
 }
@@ -232,10 +233,9 @@ pub async fn run_installer(
     installer: &Path,
     proton: Option<String>,
     library_root: Option<&Path>,
-) -> Result<(), String> {
-    let prefix = crate::achv_try!(
-        prefix_in(profile_id, id, library_root).ok_or_else(|| t!("messages.errors.prefix").into_owned())
-    );
+) -> Result<(), Text> {
+    let prefix =
+        crate::achv_try!(prefix_in(profile_id, id, library_root).ok_or_else(|| Text::new("messages.errors.prefix")));
     // The same id the game itself launches with, so protonfixes treats
     // both alike.
     let launch = decanter_runtime::Launch::new(installer, UMU_ID).proton(crate::core::proton_or_default(proton));
@@ -244,7 +244,7 @@ pub async fn run_installer(
         decanter_runtime::start(&prefix, launch)
             .await
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "installer failed to start"))
-            .map_err(|err| t!("external.errors.installer", error = err).into_owned())
+            .map_err(|err| Text::new("external.errors.installer").arg("error", err))
     );
     // Many installers exit non-zero on a perfectly good install (or when
     // the user closes a "finished" dialog), so a failure status is only
@@ -272,7 +272,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// The path travels in the environment so that no quoting can reach the
 /// script.
 #[cfg(not(proton))]
-pub async fn run_installer(installer: &Path) -> Result<(), String> {
+pub async fn run_installer(installer: &Path) -> Result<(), Text> {
     let is_msi = match installer
         .extension()
         .and_then(|extension| extension.to_str())
@@ -281,10 +281,10 @@ pub async fn run_installer(installer: &Path) -> Result<(), String> {
     {
         Some("msi") => true,
         Some("exe") => false,
-        _ => return Err(t!("external.errors.not_an_installer").into_owned()),
+        _ => return Err(Text::new("external.errors.not_an_installer")),
     };
     if !installer.is_absolute() || !installer.is_file() {
-        return Err(t!("external.errors.not_an_installer").into_owned());
+        return Err(Text::new("external.errors.not_an_installer"));
     }
     let start = if is_msi {
         "Start-Process -FilePath msiexec.exe -ArgumentList '/i', ('\"' + $env:DECANTER_INSTALLER + '\"')"
@@ -305,7 +305,7 @@ pub async fn run_installer(installer: &Path) -> Result<(), String> {
             .output()
             .await
             .inspect_err(|err| tracing::error!(%err, "installer failed to start"))
-            .map_err(|err| t!("external.errors.installer", error = err).into_owned())
+            .map_err(|err| Text::new("external.errors.installer").arg("error", err))
     );
     // Without `-PassThru` the installer's own exit code never reaches here,
     // so a failure is `Start-Process` itself not starting it (UAC declined,
@@ -319,7 +319,7 @@ pub async fn run_installer(installer: &Path) -> Result<(), String> {
             .map(str::trim)
             .find(|line| !line.is_empty())
             .map_or_else(|| output.status.to_string(), str::to_owned);
-        return Err(t!("external.errors.installer", error = reason).into_owned());
+        return Err(Text::new("external.errors.installer").arg("error", reason));
     }
     tracing::info!(installer = %installer.display(), "external game installer finished");
     Ok(())

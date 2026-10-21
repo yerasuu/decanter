@@ -103,8 +103,12 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
 fn capsule_meta(seconds: i64, completion: Option<f64>) -> String {
     let played = match seconds {
         0 => t!("library.never_played").into_owned(),
-        _ if seconds < 3600 => format!("{} min", (seconds / 60).max(1)),
-        _ => format!("{:.1} h", seconds as f64 / 3600.0),
+        _ if seconds < 3600 => t!("library.played.minutes", minutes = (seconds / 60).max(1)).into_owned(),
+        _ => t!(
+            "library.played.hours",
+            hours = format!("{:.1}", seconds as f64 / 3600.0)
+        )
+        .into_owned(),
     };
     match completion {
         Some(value) => format!("{played} · {:.0}%", value * 100.0),

@@ -19,7 +19,6 @@ use decanter_ps::updater::{self, Check, Plan};
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
-use rust_i18n::t;
 
 use super::Ps;
 use super::bundle;
@@ -27,11 +26,12 @@ use super::channel::{self, Track};
 use super::fallback::{self, Fallback};
 use super::jobs::{self, JobKey};
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 
 /// How often upstream is checked once the PS section has been opened.
 const UPDATE_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
-pub type Prepared = Result<Toolchain, String>;
+pub type Prepared = Result<Toolchain, Text>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stage {
@@ -51,7 +51,7 @@ pub enum Stage {
     /// Putting the checkout back on the last commit that built, after the build failed.
     RollingBack,
     Ready,
-    Failed(String),
+    Failed(Text),
 }
 
 /// Where the port's current build came from, for the Ports view.
@@ -241,7 +241,7 @@ impl Ps {
                 return;
             };
             if let Err(err) = prepared.await {
-                tracing::warn!(port = port.name(), error = err, "port not ready on its new channel");
+                tracing::warn!(port = port.name(), error = %err, "port not ready on its new channel");
             }
         })
         .detach();
@@ -278,11 +278,11 @@ impl Ps {
     }
 }
 
-fn toolchain_error(err: &toolchain::Error) -> String {
+fn toolchain_error(err: &toolchain::Error) -> Text {
     match err {
-        toolchain::Error::Download(err) => t!("ps.ports.errors.download", error = err).into_owned(),
-        toolchain::Error::Checksum => t!("ps.ports.errors.checksum").into_owned(),
-        toolchain::Error::Io(err) => err.to_string(),
+        toolchain::Error::Download(err) => Text::new("ps.ports.errors.download").arg("error", err),
+        toolchain::Error::Checksum => Text::new("ps.ports.errors.checksum"),
+        toolchain::Error::Io(err) => Text::verbatim(err),
     }
 }
 
@@ -322,24 +322,26 @@ pub(super) enum PortError {
 }
 
 impl PortError {
-    fn localized(&self, port: Port) -> String {
+    fn localized(&self, port: Port) -> Text {
         match self {
             Self::Toolchain(err) => toolchain_error(err),
-            Self::Clone => t!("ps.ports.errors.clone", port = port.name()).into_owned(),
-            Self::CmakeCache(err) => t!("ps.ports.errors.cmake_cache", error = err).into_owned(),
-            Self::Environment(err) => t!("ps.errors.environment", error = err).into_owned(),
-            Self::Build => t!("ps.ports.errors.build", port = port.name()).into_owned(),
-            Self::BuildNotRolledBack(commit) => {
-                t!("ps.ports.errors.build_local", port = port.name(), commit = commit).into_owned()
-            }
-            Self::Rollback(commit) => t!("ps.ports.errors.rollback", port = port.name(), commit = commit).into_owned(),
-            Self::RecordBuild(err) => t!("ps.ports.errors.record_build", error = err).into_owned(),
+            Self::Clone => Text::new("ps.ports.errors.clone").arg("port", port.name()),
+            Self::CmakeCache(err) => Text::new("ps.ports.errors.cmake_cache").arg("error", err),
+            Self::Environment(err) => Text::new("ps.errors.environment").arg("error", err),
+            Self::Build => Text::new("ps.ports.errors.build").arg("port", port.name()),
+            Self::BuildNotRolledBack(commit) => Text::new("ps.ports.errors.build_local")
+                .arg("port", port.name())
+                .arg("commit", commit),
+            Self::Rollback(commit) => Text::new("ps.ports.errors.rollback")
+                .arg("port", port.name())
+                .arg("commit", commit),
+            Self::RecordBuild(err) => Text::new("ps.ports.errors.record_build").arg("error", err),
         }
     }
 }
 
 /// Returns what the port's stage now shows.
-fn fail(this: &WeakEntity<Ps>, port: Port, err: &PortError, cx: &mut AsyncApp) -> String {
+fn fail(this: &WeakEntity<Ps>, port: Port, err: &PortError, cx: &mut AsyncApp) -> Text {
     tracing::warn!(port = port.name(), error = %err, "port not ready");
     let message = err.localized(port);
     set_stage(this, port, Stage::Failed(message.clone()), cx);

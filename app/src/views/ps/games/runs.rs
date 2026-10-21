@@ -9,12 +9,10 @@ use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::frame_stats::RunStats;
 use decanter_ps::process::{Job, JobKind};
 use decanter_ps::run_log;
-use gpui::{
-    AnyElement, Bounds, Context, Entity, PathBuilder, Pixels, SharedString, Window, canvas, div, point, prelude::*, px,
-    rgb,
-};
+use gpui::{AnyElement, Bounds, Context, Entity, PathBuilder, Pixels, Window, canvas, div, point, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::{JobKey, Ps, job_target};
 use crate::theme;
 use crate::widgets::{checkbox, stat_card};
@@ -47,7 +45,7 @@ pub struct RunsView {
     runs: Option<Vec<Run>>,
     /// The top of every chart, so runs compare at a glance.
     scale: f64,
-    error: Option<String>,
+    error: Option<Text>,
     /// The game's job last seen and whether it ran: a run is read once it has ended.
     seen: Option<(Entity<Job>, bool)>,
 }
@@ -123,7 +121,7 @@ impl RunsView {
                     }
                     Err(err) => {
                         tracing::warn!(title_id = %this.title_id, %err, "could not list the game's run logs");
-                        this.error = Some(t!("ps.runs.read_error", error = err).into_owned());
+                        this.error = Some(Text::new("ps.runs.read_error").arg("error", err));
                     }
                 }
                 cx.notify();
@@ -155,7 +153,7 @@ impl RunsView {
                 if let Err(err) = saved {
                     tracing::warn!(title_id = %this.title_id, key, %err, "could not save the game's switch");
                     *this.switch(key) = Some(!on);
-                    this.error = Some(t!("ps.runs.save_error", error = err).into_owned());
+                    this.error = Some(Text::new("ps.runs.save_error").arg("error", err));
                 }
                 cx.notify();
             });
@@ -383,7 +381,7 @@ impl Render for RunsView {
             .gap_3()
             .child(measure)
             .child(debug)
-            .children(self.error.clone().map(|error| theme::error(SharedString::from(error))))
+            .children(self.error.as_ref().map(theme::error))
             .child(body)
     }
 }

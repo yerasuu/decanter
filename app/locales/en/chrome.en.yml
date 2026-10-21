@@ -1,0 +1,28 @@
+chrome.window.minimize: Minimize
+chrome.window.maximize: Maximize
+chrome.window.close: Close
+chrome.nav.library: Library
+chrome.nav.storage: Storage
+chrome.nav.downloads: Downloads
+chrome.downbar.downloading: 'Downloading: %{title}'
+chrome.profiles.create: Create profile
+chrome.profiles.elsewhere: '%{name} — %{path}'
+chrome.profiles.busy: '%{name} — %{path} (close running games and installs first)'
+chrome.profiles.unavailable: '%{path} (unavailable)'
+chrome.profile_form.title: NEW PERSON
+chrome.profile_form.name: Profile name
+chrome.profile_form.library: 'Where this profile''s library lives:'
+chrome.profile_form.pick: Choose folder
+chrome.profile_form.pick_title: Choose where this profile's library lives
+chrome.profile_form.create: Create
+chrome.onboarding.title: Welcome to Decanter
+chrome.onboarding.intro: Create a profile to get started — you can add GOG accounts to it later (and other stores down the line) from Settings.
+chrome.onboarding.library: 'Where this profile''s library lives (installs, Proton prefixes):'
+chrome.onboarding.library_native: 'Where this profile''s library lives (installs):'
+chrome.tray.show: Show Decanter
+chrome.tray.quit: Quit
+chrome.unavailable.title: Library unavailable
+chrome.unavailable.body: The library at %{path} can't be found. If it's on an external drive, plug it in and open Decanter again, or pick another one.
+chrome.unavailable.use: Use %{path}
+chrome.unavailable.pick: Choose another folder
+chrome.unavailable.pick_title: Choose the library folder

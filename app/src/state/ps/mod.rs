@@ -23,7 +23,6 @@ use decanter_ps::port::Port;
 use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
-use rust_i18n::t;
 
 pub use channel::Track;
 pub use fallback::Fallback;
@@ -34,6 +33,7 @@ pub use ports::{BuildOrigin, PortState, Stage};
 pub use vk_layer::unavailable_text as vk_layer_unavailable_text;
 
 use super::AppState;
+use crate::i18n::Text;
 
 pub struct Ps {
     profile_id: Option<String>,
@@ -41,9 +41,9 @@ pub struct Ps {
     /// The library folders the last scan read, the primary one first.
     library_roots: Vec<PathBuf>,
     scanning: bool,
-    error: Option<String>,
+    error: Option<Text>,
     /// The latest outcome worth telling: `(text, is_error)`.
-    notice: Option<(String, bool)>,
+    notice: Option<(Text, bool)>,
     /// Bumped whenever the profile's failure record changes, for the
     /// view that reads it to know when to read it again.
     failures_revision: u32,
@@ -121,7 +121,7 @@ impl Ps {
             .map(|(index, root)| (root.as_path(), index == 0))
     }
 
-    pub fn notice(&self) -> Option<&(String, bool)> {
+    pub const fn notice(&self) -> Option<&(Text, bool)> {
         self.notice.as_ref()
     }
 
@@ -129,8 +129,8 @@ impl Ps {
         self.scanning
     }
 
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+    pub const fn error(&self) -> Option<&Text> {
+        self.error.as_ref()
     }
 
     pub const fn fsr_revision(&self) -> u32 {
@@ -204,7 +204,7 @@ impl Ps {
                     }
                     Err(err) => {
                         tracing::warn!(%err, "could not place the PS data in the profile's library");
-                        this.error = Some(t!("ps.games.library_error", error = err).into_owned());
+                        this.error = Some(Text::new("ps.games.library_error").arg("error", err));
                         cx.notify();
                     }
                 }
@@ -240,7 +240,7 @@ impl Ps {
             // game is moved there.
             let games = root.games();
             if let Err(err) = std::fs::create_dir_all(&games) {
-                return Err(t!("ps.errors.create_dir", dir = games.display(), error = err).into_owned());
+                return Err(Text::new("ps.errors.create_dir").arg("dir", games.display()).arg("error", err));
             }
             let folders: Vec<PathBuf> = std::iter::once(games)
                 .chain(

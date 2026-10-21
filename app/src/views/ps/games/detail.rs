@@ -20,6 +20,7 @@ use super::mods::ModsView;
 use super::online::OnlineTitleView;
 use super::runs::RunsView;
 use super::{art_url, display_title, platform_label, status_text};
+use crate::i18n::Text;
 use crate::state::{JobKey, Ps};
 use crate::theme;
 use crate::views::game_tools::GameToolsPanel;
@@ -81,7 +82,7 @@ pub struct DetailView {
     /// The selected game's measured runs, made when its Registro first shows.
     runs: Option<Entity<RunsView>>,
     /// The bindings of `selected`, read when its Controles tab opens.
-    controls: Option<Result<Entity<KeyboardView>, String>>,
+    controls: Option<Result<Entity<KeyboardView>, Text>>,
     /// Shared by every Bloodborne copy, so kept across selections.
     gamepad: Option<Entity<GamepadView>>,
     /// Shared by every Bloodborne copy, so kept across selections; told which title is selected
@@ -92,7 +93,7 @@ pub struct DetailView {
     /// What earlier runs of `selected` taught, and the revision it was read at.
     learned: Option<FrameOverlap>,
     learned_read_at: Option<u32>,
-    learned_error: Option<String>,
+    learned_error: Option<Text>,
     /// `selected`'s own tool choices, made again for each game picked.
     tools: Option<Entity<GameToolsPanel>>,
 }
@@ -204,9 +205,11 @@ impl DetailView {
         let selected = self.selected.clone();
         let read_path = path.clone();
         let task = cx.background_spawn(async move {
-            let store = decanter_ps::layouts::Store::load()
-                .map_err(|err| t!("ps.layouts.read_error", error = err).into_owned());
-            decanter_ps::binds::read(target, &read_path).and_then(|mapping| store.map(|store| (mapping, store)))
+            let store =
+                decanter_ps::layouts::Store::load().map_err(|err| Text::new("ps.layouts.read_error").arg("error", err));
+            decanter_ps::binds::read(target, &read_path)
+                .map_err(Text::verbatim)
+                .and_then(|mapping| store.map(|store| (mapping, store)))
         });
         cx.spawn(async move |this, cx| {
             let mapping = task.await;
@@ -284,7 +287,7 @@ impl DetailView {
             let _ = this.update(cx, |this, cx| match result {
                 Ok(()) => this.ps.update(cx, |ps, cx| ps.learned_changed(cx)),
                 Err(err) => {
-                    this.learned_error = Some(t!("ps.learned.forget_error", error = err).into_owned());
+                    this.learned_error = Some(Text::new("ps.learned.forget_error").arg("error", err));
                     cx.notify();
                 }
             });
@@ -502,13 +505,13 @@ impl DetailView {
             .children(explanation.map(theme::muted))
             .children(merge.map(|merge| div().flex().child(merge)))
             .children(learned)
-            .children(self.learned_error.clone().map(theme::error))
+            .children(self.learned_error.as_ref().map(theme::error))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(fact("Title ID".into(), game.title_id.clone()))
+                    .child(fact(t!("ps.detail.facts.title_id"), game.title_id.clone()))
                     .child(fact(t!("ps.detail.facts.version"), game.version.clone()))
                     .children(library.map(|library| fact(t!("ps.detail.facts.library"), library)))
                     .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string())),
@@ -572,7 +575,7 @@ impl Render for DetailView {
                 .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
             Tab::Keyboard => match &self.controls {
                 Some(Ok(controls)) => controls.clone().into_any_element(),
-                Some(Err(err)) => theme::error(err.clone()).into_any_element(),
+                Some(Err(err)) => theme::error(err).into_any_element(),
                 None => theme::muted(t!("ps.detail.reading_keyboard")).into_any_element(),
             },
             Tab::Graphics => self

@@ -18,6 +18,7 @@ use gpui::{
 use rust_i18n::t;
 
 use super::{column, field_row, inline, storefront_label};
+use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::views::profile_form::{self, ProfileForm};
@@ -28,7 +29,7 @@ use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button};
 enum AccountStatus {
     Idle,
     Working,
-    Failed(String),
+    Failed(Text),
 }
 
 /// The upstream session check behind a row's label.
@@ -47,13 +48,13 @@ struct AccountRow {
 
 pub struct AccountTab {
     profile_id: String,
-    library_path: String,
+    library_path: Option<String>,
     moving: bool,
     move_progress: Option<(u64, u64)>,
-    move_error: Option<String>,
+    move_error: Option<Text>,
     libraries: Vec<(PathBuf, Option<Vec<Profile>>)>,
     active_root: Option<PathBuf>,
-    switch_error: Option<String>,
+    switch_error: Option<Text>,
     new_profile: Option<(Entity<ProfileForm>, Subscription)>,
     rows: Vec<AccountRow>,
     adding: bool,
@@ -72,7 +73,7 @@ impl AccountTab {
         .detach();
         let mut this = Self {
             profile_id,
-            library_path: String::new(),
+            library_path: None,
             moving: false,
             move_progress: None,
             move_error: None,
@@ -92,8 +93,8 @@ impl AccountTab {
 
     fn reload_library_path(&mut self) {
         self.library_path = crate::core::library_for_profile(&self.profile_id)
-            .map(|library| library.root().display().to_string())
-            .unwrap_or_else(|_| t!("settings.account.library.unknown").into_owned());
+            .ok()
+            .map(|library| library.root().display().to_string());
     }
 
     /// Re-lists the profile's accounts, keeping each surviving row's state
@@ -206,7 +207,7 @@ impl AccountTab {
                     &this,
                     &account_id,
                     storefront,
-                    AccountStatus::Failed(err.to_string()),
+                    AccountStatus::Failed(Text::verbatim(err)),
                     cx,
                 );
                 return;
@@ -242,7 +243,7 @@ impl AccountTab {
     fn open_gog(&mut self, cx: &mut Context<Self>) {
         if let Err(err) = crate::desktop::open(decanter_gog::auth_url()) {
             tracing::error!(error = %err, "failed to open browser for gog login");
-            self.add_status = AccountStatus::Failed(t!("settings.account.errors.browser", error = err).into_owned());
+            self.add_status = AccountStatus::Failed(Text::new("settings.account.errors.browser").arg("error", err));
             cx.notify();
         }
     }
@@ -280,11 +281,11 @@ impl AccountTab {
                         })
                         .map(|_| account.account_id)
                         .inspect_err(|err| tracing::error!(profile_id, error = %err, "failed to save gog account"))
-                        .map_err(String::from)
+                        .map_err(Text::from)
                 }
                 Err(err) => {
                     tracing::error!(profile_id, error = %err, "gog login failed");
-                    Err(err.to_string())
+                    Err(Text::verbatim(err))
                 }
             };
             match outcome {
@@ -309,7 +310,7 @@ impl AccountTab {
         .detach();
     }
 
-    fn set_move_error(this: &WeakEntity<Self>, message: String, cx: &mut AsyncApp) {
+    fn set_move_error(this: &WeakEntity<Self>, message: Text, cx: &mut AsyncApp) {
         let _ = this.update(cx, |this, cx| {
             this.move_error = Some(message);
             cx.notify();
@@ -337,15 +338,15 @@ impl AccountTab {
             let new_root = decanter_core::Library::root_under(folder.path());
 
             let Ok(db) = crate::core::db() else {
-                Self::set_move_error(&this, t!("settings.account.errors.db").into_owned(), cx);
+                Self::set_move_error(&this, Text::new("settings.account.errors.db"), cx);
                 return;
             };
             let Ok(accounts) = db.accounts_in_profile(&profile_id) else {
-                Self::set_move_error(&this, t!("settings.account.errors.accounts").into_owned(), cx);
+                Self::set_move_error(&this, Text::new("settings.account.errors.accounts"), cx);
                 return;
             };
             let Ok(library) = crate::core::library_for_profile(&profile_id) else {
-                Self::set_move_error(&this, t!("settings.account.errors.library").into_owned(), cx);
+                Self::set_move_error(&this, Text::new("settings.account.errors.library"), cx);
                 return;
             };
 
@@ -361,7 +362,7 @@ impl AccountTab {
                 })
             });
             if busy {
-                Self::set_move_error(&this, t!("settings.account.errors.busy").into_owned(), cx);
+                Self::set_move_error(&this, Text::new("settings.account.errors.busy"), cx);
                 return;
             }
 
@@ -388,7 +389,6 @@ impl AccountTab {
                     let relinked = crate::taskbar::relocate(&old_root, moved.root());
                     Ok::<_, std::io::Error>((moved, relinked))
                 })
-                .ok_or_else(|| std::io::Error::other(t!("settings.account.errors.locked").into_owned()))?
             });
 
             while let Some(progress) = rx.recv().await {
@@ -420,7 +420,11 @@ impl AccountTab {
         let moving = self.moving;
         column()
             .child(theme::h3(t!("settings.account.library.title")))
-            .child(theme::muted(self.library_path.clone()))
+            .child(theme::muted(
+                self.library_path
+                    .clone()
+                    .unwrap_or_else(|| t!("settings.account.library.unknown").into_owned()),
+            ))
             .children(self.move_progress.map(|(copied, total)| {
                 theme::muted(t!(
                     "settings.account.library.moving_progress",
@@ -428,7 +432,7 @@ impl AccountTab {
                     total = crate::format::bytes(total)
                 ))
             }))
-            .children(self.move_error.clone().map(theme::error))
+            .children(self.move_error.as_ref().map(theme::error))
             .child(inline(
                 button(
                     "move-library",
@@ -469,7 +473,7 @@ impl AccountTab {
             .filter(|active| profiles.iter().any(|profile| profile.id == active.id))
             .map(|active| active.id);
         let Some(profile_id) = last_active.or_else(|| profiles.first().map(|profile| profile.id.clone())) else {
-            self.switch_error = Some(t!("settings.account.library.no_profiles").into_owned());
+            self.switch_error = Some(Text::new("settings.account.library.no_profiles"));
             cx.notify();
             return;
         };
@@ -501,7 +505,7 @@ impl AccountTab {
             column()
                 .child(theme::h3(t!("settings.account.library.active_title")))
                 .child(theme::muted(t!("settings.account.library.active_hint")))
-                .children(self.switch_error.clone().map(theme::error))
+                .children(self.switch_error.as_ref().map(theme::error))
                 .child(
                     field_row().child(Select::new("library-switcher", options, selected).on_change(
                         move |chosen, _, cx| {
@@ -629,20 +633,27 @@ impl AccountTab {
     }
 }
 
+/// A library move run under the libraries' lock: `None` when another decanter held it.
+type LockedMove = Option<std::io::Result<(decanter_core::Library, bool)>>;
+
 async fn record_move(
-    outcome: Result<std::io::Result<(decanter_core::Library, bool)>, tokio::task::JoinError>,
+    outcome: Result<LockedMove, tokio::task::JoinError>,
     profile_id: &str,
     old_path: &str,
-) -> Option<String> {
+) -> Option<Text> {
     match outcome {
-        Ok(Ok((moved, relinked))) => save_moved_path(&moved, relinked, profile_id, old_path).await,
-        Ok(Err(err)) => {
+        Ok(Some(Ok((moved, relinked)))) => save_moved_path(&moved, relinked, profile_id, old_path).await,
+        Ok(Some(Err(err))) => {
             tracing::error!(profile_id, %err, "failed to move library");
-            Some(err.to_string())
+            Some(Text::verbatim(err))
+        }
+        Ok(None) => {
+            tracing::error!(profile_id, "library move refused, another decanter holds the libraries");
+            Some(Text::new("settings.account.errors.locked"))
         }
         Err(err) => {
             tracing::error!(profile_id, %err, "move task panicked");
-            Some(t!("common.errors.internal_task", error = err).into_owned())
+            Some(Text::new("common.errors.internal_task").arg("error", err))
         }
     }
 }
@@ -652,7 +663,7 @@ async fn save_moved_path(
     relinked: bool,
     profile_id: &str,
     old_path: &str,
-) -> Option<String> {
+) -> Option<Text> {
     if relinked {
         crate::taskbar::refresh().await;
     }
@@ -664,7 +675,7 @@ async fn save_moved_path(
         }
         Err(err) => {
             tracing::error!(profile_id, %err, "library moved but failed to save new path");
-            Some(t!("settings.account.errors.save_path", error = err).into_owned())
+            Some(Text::new("settings.account.errors.save_path").arg("error", err))
         }
     }
 }

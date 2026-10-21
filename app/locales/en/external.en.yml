@@ -1,0 +1,109 @@
+external.title: External games
+external.intro: 'Games from outside GOG: each runs in its own prefix, like an installed game, and shows up in the Library with the rest.'
+external.intro_native: 'Games from outside GOG: each one starts straight from its executable and shows up in the Library with the rest.'
+external.add_another: Add another game
+external.tabs.add: Add game
+external.tabs.edit: Edit game
+external.tabs.games: Your games
+external.tabs.sources: Image sources
+external.games.empty: You haven't added any external games yet.
+external.games.edit: Edit
+external.games.in_host: In %{host}
+external.games.found: 'Found in %{host}: %{game}'
+external.games.add_found: Add
+external.games.remove.button: Delete
+external.games.remove.running: Stop the game before deleting it
+external.games.remove.hosted: Removes the game; the prefix still belongs to %{host}
+external.games.remove.alone: Removes the game and deletes its prefix
+external.games.remove.native: Removes the game from the Library; its files stay where they are
+external.games.remove.launcher.one: Removes the game, its prefix and the game it installed
+external.games.remove.launcher.other: Removes the game, its prefix and the %{count} games it installed
+external.sources.hint: With a SteamGridDB key the search brings its covers, backgrounds and icons; without one it only searches Steam.
+external.sources.key_placeholder: SteamGridDB API key
+external.sources.save: Save
+external.sources.saving: Saving...
+external.sources.saved: Saved.
+external.sources.get_key: Get a key
+external.sources.errors.keyring: 'saving the key to the keyring: %{error}'
+external.form.name: Name
+external.form.executable: Executable (.exe)
+external.form.hosted: 'Installed by %{host}: it runs in its prefix, with its Proton, its session and its data.'
+external.form.pick_exe.button: Choose file...
+external.form.pick_exe.title: Choose the game's executable
+external.form.pick_exe.filter: Windows executables
+external.form.folder.title: Folder
+external.form.folder.free: '%{free} free'
+external.form.installer.run: Run installer...
+external.form.installer.pick_title: Choose the installer
+external.form.installer.filter: Windows installers
+external.form.installer.hint: Does it come with an installer? Run it here. Is it already installed in another tool's prefix (Lutris, Bottles, Heroic, Steam)? Import it.
+external.form.installer.hint_native: Does it come with an installer? Run it here, then choose the executable it installed.
+external.form.installer.running: Installing... follow the installer's steps.
+external.form.installer.done: Installer finished. Choose the executable it installed.
+external.form.import.button: Import prefix...
+external.form.import.pick_title: Choose the prefix folder
+external.form.import.copy: Copy
+external.form.import.move: Move
+external.form.import.cancel: Don't import
+external.form.import.copy_hint: 'When the game is added, the prefix %{prefix} is copied into decanter: the other tool keeps it, but it takes twice the space and the saves stay separate.'
+external.form.import.move_hint: 'When the game is added, the prefix %{prefix} is moved into decanter: it takes no extra space, but the other tool loses it.'
+external.form.import.measuring: Measuring the prefix...
+external.form.import.progress: '%{done} of %{total} (%{percent}%)'
+external.form.umu.title: Proton fixes
+external.form.umu.search: Search UMU
+external.form.umu.hint: 'The game in the UMU database: with it, protonfixes applies its fixes on any Proton.'
+external.form.umu.automatic: Automatic
+external.form.umu.searching: Searching the UMU database...
+external.form.umu.not_found: That name isn't in the UMU database.
+external.form.art.cover: Cover
+external.form.art.hero: Background
+external.form.art.icon: Icon
+external.form.art.search: Search images
+external.form.art.searching: Searching...
+external.form.art.hint: By name, on SteamGridDB and Steam.
+external.form.art.none: No images were found with that name.
+external.form.art.found.one: 1 found
+external.form.art.found.other: '%{count} found'
+external.form.art.file: File...
+external.form.art.clear: Remove
+external.form.art.previous: Show previous
+external.form.art.next: Show next
+external.form.art.empty: No image
+external.form.art.pick_title: Choose an image
+external.form.art.filter: Images
+external.form.save.edit: Save changes
+external.form.save.add: Add to library
+external.form.save.copy: Copy prefix and add
+external.form.save.move: Move prefix and add
+external.form.save.copying: Copying the prefix...
+external.form.save.moving: Moving the prefix...
+external.form.errors.name_for_art: Enter a name to search for its images.
+external.form.errors.name_for_umu: Enter a name to search for it on UMU.
+external.form.errors.missing: Enter a name and an executable.
+external.form.errors.no_executable: That executable doesn't exist.
+external.art.no_key: no key, only Steam was searched.
+external.art.problem: '%{source}: %{problem}'
+external.art.errors.offline: no connection (%{error})
+external.art.errors.bad_key: the key isn't valid
+external.art.errors.status: response %{status} (%{error})
+external.art.errors.truncated: response cut off (%{error})
+external.art.errors.unexpected: unexpected response (%{error})
+external.art.errors.base_url: invalid base URL
+external.art.errors.unknown_game: it doesn't know any game called “%{name}”
+external.art.errors.no_game: it has no game called “%{name}”
+external.umu.errors.download: 'downloading the UMU database: %{error}'
+external.umu.errors.read: 'reading the UMU database: %{error}'
+external.errors.save: 'saving the game: %{error}'
+external.errors.remove: 'deleting the game: %{error}'
+external.errors.installer: 'could not start the installer: %{error}'
+external.errors.not_an_installer: That isn't a Windows installer (.exe or .msi).
+external.errors.not_a_prefix: That folder isn't a Wine prefix (it has no drive_c).
+external.errors.prefix_busy: 'Something is running in that prefix: close it first.'
+external.errors.new_prefix: could not resolve the new prefix
+external.errors.has_prefix: This game already has its own prefix; start a new one to import.
+external.transfer.errors.not_empty: '%{path} isn''t empty: %{error}'
+external.transfer.errors.place: 'putting the prefix in place: %{error}'
+external.transfer.errors.measure: 'measuring %{path}: %{error}'
+external.transfer.errors.clean: 'cleaning up %{path}: %{error}'
+external.transfer.errors.copy: 'copying the prefix: %{error}'
+external.transfer.errors.rsync: 'copying the prefix with rsync: %{error}'

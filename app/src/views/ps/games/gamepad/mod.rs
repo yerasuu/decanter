@@ -20,6 +20,7 @@ use staged::Scope;
 
 use super::layout_name;
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{InputEvent, Select, TextInput, select::SelectStyle, tooltip};
@@ -67,11 +68,11 @@ impl Loaded {
 }
 
 pub struct GamepadView {
-    loaded: Option<Result<Loaded, String>>,
+    loaded: Option<Result<Loaded, Text>>,
     /// Connected controllers `(GUID, name)`, read when the view opens.
     gamepads: Vec<(String, String)>,
     name: Entity<TextInput>,
-    error: Option<String>,
+    error: Option<Text>,
     mode: Mode,
     /// The input picked on the drawing, whose binding the editor under it changes.
     selected: Option<&'static str>,
@@ -89,7 +90,7 @@ fn gamepad_setting() -> Option<&'static Setting> {
 
 impl GamepadView {
     pub fn new(ps: &Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        let name = cx.new(|cx| TextInput::new(t!("ps.layouts.name_placeholder"), cx));
+        let name = cx.new(|cx| TextInput::new(Text::new("ps.layouts.name_placeholder"), cx));
         cx.subscribe(&name, |this, name, event, cx| {
             if matches!(event, InputEvent::Submit) {
                 let text = name.read(cx).text().trim().to_owned();
@@ -100,7 +101,7 @@ impl GamepadView {
         let load = cx.background_spawn(async {
             let store = match Store::load() {
                 Ok(store) => store,
-                Err(err) => return Err(t!("ps.layouts.read_error", error = err).into_owned()),
+                Err(err) => return Err(Text::new("ps.layouts.read_error").arg("error", err)),
             };
             Ok(Loaded {
                 current: pad::current(&decanter_ps::paths::active(), &store.pad_layouts()),
@@ -273,7 +274,7 @@ impl GamepadView {
             let _ = this.update(cx, |this, cx| {
                 this.error = result
                     .err()
-                    .map(|err| t!("ps.gamepad.save_error", error = err).into_owned());
+                    .map(|err| Text::new("ps.gamepad.save_error").arg("error", err));
                 cx.notify();
             });
         })
@@ -337,7 +338,7 @@ impl GamepadView {
             let _ = this.update(cx, |this, cx| {
                 this.error = result
                     .err()
-                    .map(|err| t!("ps.gamepad.save_error", error = err).into_owned());
+                    .map(|err| Text::new("ps.gamepad.save_error").arg("error", err));
                 cx.notify();
             });
         })
@@ -365,7 +366,7 @@ impl GamepadView {
             let _ = this.update(cx, |this, cx| {
                 this.error = result
                     .err()
-                    .map(|err| t!("ps.gamepad.save_error", error = err).into_owned());
+                    .map(|err| Text::new("ps.gamepad.save_error").arg("error", err));
                 cx.notify();
             });
         })
@@ -491,7 +492,7 @@ impl Render for GamepadView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let loaded = match &self.loaded {
             None => return theme::muted(t!("ps.gamepad.reading")).into_any_element(),
-            Some(Err(err)) => return theme::error(err.clone()).into_any_element(),
+            Some(Err(err)) => return theme::error(err).into_any_element(),
             Some(Ok(loaded)) => loaded,
         };
         let layouts = loaded.store.pad_layouts();
@@ -528,7 +529,7 @@ impl Render for GamepadView {
                     .child(theme::muted(t!("ps.gamepad.description")).flex_1().min_w_0())
                     .child(self.mode_switch(cx)),
             )
-            .children(self.error.clone().map(theme::error))
+            .children(self.error.as_ref().map(theme::error))
             .child(
                 theme::card()
                     .child(setting_row(

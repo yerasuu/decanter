@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Arc, LazyLock};
 
 use nix::unistd::{AccessFlags, access};
-pub use tray::spawn_tray;
+pub use tray::{refresh_tray, spawn_tray};
 
 /// What a running game can be asked to close from, and where the notice
 /// about it shows: the session bus (notifications, the Plasma shortcut)

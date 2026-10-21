@@ -10,6 +10,7 @@ use gpui::{Context, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, not_installed, pane};
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
@@ -23,7 +24,7 @@ pub(super) struct BetasTab {
     branches: Remote<Branch>,
     /// The branch being switched to, `Some(None)` for mainline.
     switching: Option<Option<String>>,
-    error: String,
+    error: Option<Text>,
 }
 
 impl BetasTab {
@@ -34,7 +35,7 @@ impl BetasTab {
             installed,
             branches: None,
             switching: None,
-            error: String::new(),
+            error: None,
         };
         if this.installed.is_some() {
             this.load(cx);
@@ -59,7 +60,7 @@ impl BetasTab {
     fn switch(&mut self, branch_name: Option<String>, cx: &mut Context<Self>) {
         let target = Rc::clone(&self.target);
         self.switching = Some(branch_name.clone());
-        self.error.clear();
+        self.error = None;
         tracing::info!(
             account_id = target.account_id,
             product_id = target.product_id,
@@ -73,7 +74,7 @@ impl BetasTab {
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
                 tracing::error!(account_id, product_id, "could not resolve library, branch switch aborted");
                 let _ = this.update(cx, |this, cx| {
-                    this.error = t!("library.install.no_library").into_owned();
+                    this.error = Some(Text::new("library.install.no_library"));
                     this.switching = None;
                     cx.notify();
                 });
@@ -99,7 +100,7 @@ impl BetasTab {
                     }
                     Err(err) => {
                         tracing::error!(account_id, product_id, branch = branch_name, error = %err, "branch switch failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 this.installed = crate::core::installed_game(account_id, product_id);
@@ -155,7 +156,7 @@ impl Render for BetasTab {
         pane()
             .child(card)
             .child(theme::muted(t!("library.properties.betas.note")))
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
     }
 }
 
@@ -170,7 +171,7 @@ pub(super) struct VersionsTab {
     branch: Option<String>,
     builds: Remote<Build>,
     installing: Option<String>,
-    error: String,
+    error: Option<Text>,
 }
 
 impl VersionsTab {
@@ -182,7 +183,7 @@ impl VersionsTab {
             installed,
             builds: None,
             installing: None,
-            error: String::new(),
+            error: None,
         };
         if this.installed.is_some() {
             this.load(cx);
@@ -212,7 +213,7 @@ impl VersionsTab {
         let branch = installed.branch.clone();
         let target = Rc::clone(&self.target);
         self.installing = Some(target_build_id.clone());
-        self.error.clear();
+        self.error = None;
         tracing::info!(
             account_id = target.account_id,
             product_id = target.product_id,
@@ -226,7 +227,7 @@ impl VersionsTab {
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
                 tracing::error!(account_id, product_id, "could not resolve library, rollback aborted");
                 let _ = this.update(cx, |this, cx| {
-                    this.error = t!("library.install.no_library").into_owned();
+                    this.error = Some(Text::new("library.install.no_library"));
                     this.installing = None;
                     cx.notify();
                 });
@@ -252,7 +253,7 @@ impl VersionsTab {
                     }
                     Err(err) => {
                         tracing::error!(account_id, product_id, target_build_id, error = %err, "build rollback failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 this.installed = crate::core::installed_game(account_id, product_id);
@@ -308,6 +309,6 @@ impl Render for VersionsTab {
         pane()
             .child(card)
             .child(theme::muted(t!("library.properties.versions.note")))
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
     }
 }

@@ -60,6 +60,9 @@ pub fn spawn_tray() -> UnboundedReceiver<TrayCommand> {
     unbounded_channel().1
 }
 
+/// No tray here to redraw.
+pub const fn refresh_tray() {}
+
 /// Nothing answers for a tray here yet; see the capability table.
 pub async fn status_notifier_host() -> bool {
     false

@@ -1,0 +1,47 @@
+storage.title: Almacenamiento
+storage.add: Añadir carpeta de biblioteca
+storage.add_title: Elige dónde guardar los juegos
+storage.stats.used.one: usado por 1 juego
+storage.stats.used.other: usado por %{count} juegos
+storage.stats.folders.one: carpeta de biblioteca
+storage.stats.folders.other: carpetas de biblioteca
+storage.folder.primary: Principal
+storage.folder.extra: Adicional
+storage.folder.offline: Disco no conectado
+storage.folder.used.one: '%{used} usados por 1 juego'
+storage.folder.used.other: '%{used} usados por %{count} juegos'
+storage.folder.free: '%{free} libres de %{total}'
+storage.folder.remove: Quitar
+storage.folder.remove_hint: Deja de usar esta carpeta; lo que haya en el disco se queda
+storage.folder.remove_blocked: 'Tiene juegos: desinstálalos o muévelos antes'
+storage.move_to: Mover a…
+storage.moving.started: Moviendo...
+storage.moving.progress: Moviendo %{done} de %{total}
+storage.errors.nested: '%{path} ya es parte de la biblioteca (%{folder})'
+storage.errors.add: 'guardando la carpeta: %{error}'
+storage.errors.remove: 'quitando la carpeta: %{error}'
+storage.errors.hosted: 'Este juego vive en el prefijo de su lanzador: mueve el lanzador y el juego irá con él.'
+storage.errors.running: 'El juego está abierto: ciérralo antes de moverlo.'
+storage.errors.shared: 'Otra cuenta comparte estos archivos: no se pueden mover solos.'
+storage.errors.exists: '%{path} ya existe en la carpeta de destino.'
+storage.errors.dump_root: '%{path} es la carpeta de juegos entera: mete el volcado en una subcarpeta para moverlo.'
+storage.errors.manifest: 'moviendo el registro de %{game}: %{error}'
+storage.legacy.title: Datos antiguos de Decanter
+storage.legacy.body: Decanter ya guarda sus datos en la biblioteca; %{path} solo queda como copia de lo anterior.
+storage.legacy.remove: Borrar datos antiguos
+storage.legacy.confirm: ¿Borrar? No se puede deshacer
+storage.errors.legacy_busy: 'Hay otro Decanter o un juego abierto que puede usarlos: ciérralos antes.'
+storage.errors.legacy: 'borrando los datos antiguos: %{error}'
+storage.cache.title: Caché
+storage.cache.pick_title: Elige dónde guarda la caché esta carpeta
+storage.cache.empty: vacía
+storage.cache.default: Dentro de la carpeta · %{size}
+storage.cache.custom: Elegida por ti · %{size}
+storage.cache.reset: Restablecer
+storage.cache.reset_hint: Vuelve a guardar la caché dentro de esta carpeta.
+storage.cache.change: Cambiar…
+storage.cache.change_hint: Las cachés de shaders de los juegos de esta carpeta, de PC y de PS, van aquí. En un disco rápido, los juegos cargan antes.
+storage.cache.errors.save: 'No se pudo guardar la ubicación de la caché: %{error}'
+storage.cache.errors.not_dir: '%{path} no es una carpeta.'
+storage.cache.errors.inside_games: '%{path} está dentro de los archivos de los juegos: elige otra carpeta.'
+storage.cache.errors.not_writable: 'No se puede escribir en %{path}: %{error}'

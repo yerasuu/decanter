@@ -8,6 +8,7 @@ use decanter_ps::process::Job;
 use gpui::{AnyElement, Context, Entity, Subscription, Window, div, prelude::*, px};
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::{DllOutcome, JobKey, Ps};
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
@@ -18,7 +19,7 @@ pub struct ExtrasView {
     /// there; outer `None` while it's being checked.
     fsr_problem: Option<Option<String>>,
     checked_at: Option<u32>,
-    message: Option<(String, bool)>,
+    message: Option<(Text, bool)>,
     env: Entity<TextInput>,
     /// The build being watched, so its progress line follows its output.
     fsr_job: Option<(Entity<Job>, Subscription)>,
@@ -31,7 +32,7 @@ impl ExtrasView {
             this.watch_fsr_job(cx);
         })
         .detach();
-        let env = cx.new(|cx| TextInput::new(t!("ps.extras.env.placeholder"), cx));
+        let env = cx.new(|cx| TextInput::new(Text::new("ps.extras.env.placeholder"), cx));
         cx.subscribe(&env, |this, env, event, cx| {
             if matches!(event, InputEvent::Submit) {
                 let value = env.read(cx).text().trim().to_owned();
@@ -116,8 +117,8 @@ impl ExtrasView {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.message = Some(match result {
-                    Ok(()) => (t!("ps.extras.env.saved").into_owned(), false),
-                    Err(err) => (t!("ps.extras.env.save_error", error = err).into_owned(), true),
+                    Ok(()) => (Text::new("ps.extras.env.saved"), false),
+                    Err(err) => (Text::new("ps.extras.env.save_error").arg("error", err), true),
                 });
                 cx.notify();
             });
@@ -147,7 +148,7 @@ impl ExtrasView {
                     Some(upscaler) => (upscaler, Some(chosen)),
                     None => (chosen, None),
                 };
-                this.message = Some((t!("ps.fsr.checking").into_owned(), false));
+                this.message = Some((Text::new("ps.fsr.checking"), false));
                 let view = cx.entity().downgrade();
                 this.ps.update(cx, |ps, cx| {
                     ps.build_fsr411(upscaler, loader, cx, move |outcome, cx| {
@@ -155,7 +156,7 @@ impl ExtrasView {
                             match outcome {
                                 DllOutcome::Building => this.message = None,
                                 DllOutcome::NeedsLoader(upscaler) => {
-                                    this.message = Some((t!("ps.extras.fsr.needs_loader").into_owned(), false));
+                                    this.message = Some((Text::new("ps.extras.fsr.needs_loader"), false));
                                     this.pick_dll(Some(upscaler), cx);
                                 }
                                 DllOutcome::Refused(why) => this.message = Some((why, true)),
@@ -223,8 +224,8 @@ impl Render for ExtrasView {
             .child(theme::h3(t!("ps.extras.title")))
             .children(
                 self.message
-                    .clone()
-                    .map(|(text, error)| if error { theme::error(text) } else { theme::muted(text) }),
+                    .as_ref()
+                    .map(|(text, error)| if *error { theme::error(text) } else { theme::muted(text) }),
             )
             .child(
                 theme::card().child(self.fsr_row(cx)).child(

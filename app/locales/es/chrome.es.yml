@@ -1,0 +1,28 @@
+chrome.window.minimize: Minimizar
+chrome.window.maximize: Maximizar
+chrome.window.close: Cerrar
+chrome.nav.library: Biblioteca
+chrome.nav.storage: Almacenamiento
+chrome.nav.downloads: Descargas
+chrome.downbar.downloading: 'Descargando: %{title}'
+chrome.profiles.create: Crear perfil
+chrome.profiles.elsewhere: '%{name} — %{path}'
+chrome.profiles.busy: '%{name} — %{path} (cierra antes los juegos y las instalaciones)'
+chrome.profiles.unavailable: '%{path} (no disponible)'
+chrome.profile_form.title: NUEVA PERSONA
+chrome.profile_form.name: Nombre del perfil
+chrome.profile_form.library: 'Dónde vive la biblioteca de este perfil:'
+chrome.profile_form.pick: Elegir carpeta
+chrome.profile_form.pick_title: Elige dónde vive la biblioteca de este perfil
+chrome.profile_form.create: Crear
+chrome.onboarding.title: Bienvenido a Decanter
+chrome.onboarding.intro: Crea un perfil para empezar — después puedes añadirle cuentas de GOG (y de otras tiendas más adelante) desde Ajustes.
+chrome.onboarding.library: 'Dónde vive la biblioteca de este perfil (instalaciones, prefijos de Proton):'
+chrome.onboarding.library_native: 'Dónde vive la biblioteca de este perfil (instalaciones):'
+chrome.tray.show: Mostrar Decanter
+chrome.tray.quit: Salir
+chrome.unavailable.title: Biblioteca no disponible
+chrome.unavailable.body: No se encuentra la biblioteca de %{path}. Si está en un disco externo, conéctalo y vuelve a abrir Decanter, o elige otra.
+chrome.unavailable.use: Usar %{path}
+chrome.unavailable.pick: Elegir otra carpeta
+chrome.unavailable.pick_title: Elige la carpeta de la biblioteca

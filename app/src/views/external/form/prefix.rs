@@ -8,6 +8,7 @@ use gpui::Task;
 use super::installer::Installer;
 use super::{FormEvent, GameForm, Rows};
 use crate::external::import::Mode as ImportMode;
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
@@ -28,7 +29,7 @@ pub(super) struct Wine {
     /// blocking thread that can't notify this view itself.
     _ticker: Option<Task<()>>,
     /// The UMU database rows the name matched, once looked up.
-    pub(super) umu_matches: Option<Result<Vec<crate::external::umu::Match>, String>>,
+    pub(super) umu_matches: Option<Result<Vec<crate::external::umu::Match>, Text>>,
     pub(super) umu_searching: bool,
     pub(super) _umu_work: Option<Task<()>>,
 }
@@ -107,12 +108,12 @@ impl GameForm {
                 crate::external::import::import(&profile_id, &id, &picked, mode, &progress, draft)
             })
             .await
-            .unwrap_or_else(|err| Err(err.to_string()));
+            .unwrap_or_else(|err| Err(Text::verbatim(err)));
             let _ = this.update(cx, |this, cx| {
                 this.wine.importing = false;
                 match result {
                     Ok(()) => cx.emit(FormEvent::Saved),
-                    Err(err) => this.error = err,
+                    Err(err) => this.error = Some(err),
                 }
                 cx.notify();
             });
@@ -163,12 +164,12 @@ impl GameForm {
             let picked = folder.path().to_path_buf();
             let _ = this.update(cx, |this, cx| {
                 if crate::external::import::wine_root(&picked).is_none() {
-                    this.error = t!("external.errors.not_a_prefix").into_owned();
+                    this.error = Some(Text::new("external.errors.not_a_prefix"));
                     cx.notify();
                     return;
                 }
                 tracing::debug!(prefix = %picked.display(), "prefix picked for import");
-                this.error.clear();
+                this.error = None;
                 this.wine.import_from = Some(picked);
                 this.pick_executable(cx);
                 cx.notify();
@@ -190,7 +191,7 @@ impl GameForm {
             (None, Installer::Idle) => theme::muted(t!("external.form.installer.hint")),
             (None, Installer::Running) => theme::muted(t!("external.form.installer.running")),
             (None, Installer::Done) => theme::muted(t!("external.form.installer.done")),
-            (None, Installer::Failed(err)) => theme::error(err.clone()),
+            (None, Installer::Failed(err)) => theme::error(err),
         };
         div()
             .flex()

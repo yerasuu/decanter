@@ -1,0 +1,109 @@
+external.title: Juegos externos
+external.intro: 'Juegos de fuera de GOG: cada uno se ejecuta en su propio prefijo, igual que un juego instalado, y aparece en la Biblioteca con el resto.'
+external.intro_native: 'Juegos de fuera de GOG: cada uno se abre directamente desde su ejecutable y aparece en la Biblioteca con el resto.'
+external.add_another: Añadir otro juego
+external.tabs.add: Añadir juego
+external.tabs.edit: Editar juego
+external.tabs.games: Tus juegos
+external.tabs.sources: Fuentes de imágenes
+external.games.empty: Todavía no has añadido ningún juego externo.
+external.games.edit: Editar
+external.games.in_host: En %{host}
+external.games.found: 'Encontrado en %{host}: %{game}'
+external.games.add_found: Añadir
+external.games.remove.button: Eliminar
+external.games.remove.running: Detén el juego antes de eliminarlo
+external.games.remove.hosted: Quita el juego; el prefijo sigue siendo de %{host}
+external.games.remove.alone: Quita el juego y borra su prefijo
+external.games.remove.native: Quita el juego de la Biblioteca; sus archivos se quedan donde están
+external.games.remove.launcher.one: Quita el juego, su prefijo y el juego que instaló
+external.games.remove.launcher.other: Quita el juego, su prefijo y los %{count} juegos que instaló
+external.sources.hint: Con una clave de SteamGridDB la búsqueda trae sus portadas, fondos e iconos; sin ella solo busca en Steam.
+external.sources.key_placeholder: Clave de API de SteamGridDB
+external.sources.save: Guardar
+external.sources.saving: Guardando...
+external.sources.saved: Guardada.
+external.sources.get_key: Conseguir una clave
+external.sources.errors.keyring: 'guardando la clave en el llavero: %{error}'
+external.form.name: Nombre
+external.form.executable: Ejecutable (.exe)
+external.form.hosted: 'Lo instaló %{host}: se ejecuta en su prefijo, con su Proton, su sesión y sus datos.'
+external.form.pick_exe.button: Elegir archivo...
+external.form.pick_exe.title: Elige el ejecutable del juego
+external.form.pick_exe.filter: Ejecutables de Windows
+external.form.folder.title: Carpeta
+external.form.folder.free: '%{free} libres'
+external.form.installer.run: Ejecutar instalador...
+external.form.installer.pick_title: Elige el instalador
+external.form.installer.filter: Instaladores de Windows
+external.form.installer.hint: ¿Viene con instalador? Ejecútalo aquí. ¿Ya está instalado en el prefijo de otra herramienta (Lutris, Bottles, Heroic, Steam)? Impórtalo.
+external.form.installer.hint_native: ¿Viene con instalador? Ejecútalo aquí y luego elige el ejecutable que haya instalado.
+external.form.installer.running: Instalando... sigue los pasos del instalador.
+external.form.installer.done: Instalador terminado. Elige el ejecutable que ha instalado.
+external.form.import.button: Importar prefijo...
+external.form.import.pick_title: Elige la carpeta del prefijo
+external.form.import.copy: Copiar
+external.form.import.move: Mover
+external.form.import.cancel: No importar
+external.form.import.copy_hint: 'Al añadir, el prefijo %{prefix} se copia a decanter: la otra herramienta lo sigue teniendo, pero ocupa el doble y las partidas quedan separadas.'
+external.form.import.move_hint: 'Al añadir, el prefijo %{prefix} se mueve a decanter: no ocupa más espacio, pero la otra herramienta se queda sin él.'
+external.form.import.measuring: Midiendo el prefijo...
+external.form.import.progress: '%{done} de %{total} (%{percent}%)'
+external.form.umu.title: Arreglos de Proton
+external.form.umu.search: Buscar en UMU
+external.form.umu.hint: 'El juego en la base de datos de UMU: con él, protonfixes aplica sus arreglos con cualquier Proton.'
+external.form.umu.automatic: Automático
+external.form.umu.searching: Buscando en la base de datos de UMU...
+external.form.umu.not_found: Ese nombre no está en la base de datos de UMU.
+external.form.art.cover: Portada
+external.form.art.hero: Fondo
+external.form.art.icon: Icono
+external.form.art.search: Buscar imágenes
+external.form.art.searching: Buscando...
+external.form.art.hint: Por nombre, en SteamGridDB y en Steam.
+external.form.art.none: No se encontraron imágenes con ese nombre.
+external.form.art.found.one: 1 encontrada
+external.form.art.found.other: '%{count} encontradas'
+external.form.art.file: Archivo...
+external.form.art.clear: Quitar
+external.form.art.previous: Ver anteriores
+external.form.art.next: Ver siguientes
+external.form.art.empty: Sin imagen
+external.form.art.pick_title: Elige una imagen
+external.form.art.filter: Imágenes
+external.form.save.edit: Guardar cambios
+external.form.save.add: Añadir a la biblioteca
+external.form.save.copy: Copiar prefijo y añadir
+external.form.save.move: Mover prefijo y añadir
+external.form.save.copying: Copiando el prefijo...
+external.form.save.moving: Moviendo el prefijo...
+external.form.errors.name_for_art: Escribe un nombre para buscar sus imágenes.
+external.form.errors.name_for_umu: Escribe un nombre para buscarlo en UMU.
+external.form.errors.missing: Indica un nombre y un ejecutable.
+external.form.errors.no_executable: Ese ejecutable no existe.
+external.art.no_key: sin clave, solo se ha buscado en Steam.
+external.art.problem: '%{source}: %{problem}'
+external.art.errors.offline: sin conexión (%{error})
+external.art.errors.bad_key: la clave no es válida
+external.art.errors.status: respuesta %{status} (%{error})
+external.art.errors.truncated: respuesta cortada (%{error})
+external.art.errors.unexpected: respuesta inesperada (%{error})
+external.art.errors.base_url: URL base inválida
+external.art.errors.unknown_game: no conoce ningún juego llamado «%{name}»
+external.art.errors.no_game: no tiene ningún juego llamado «%{name}»
+external.umu.errors.download: 'descargando la base de datos de UMU: %{error}'
+external.umu.errors.read: 'leyendo la base de datos de UMU: %{error}'
+external.errors.save: 'guardando el juego: %{error}'
+external.errors.remove: 'borrando el juego: %{error}'
+external.errors.installer: 'no se pudo iniciar el instalador: %{error}'
+external.errors.not_an_installer: Eso no es un instalador de Windows (.exe o .msi).
+external.errors.not_a_prefix: Esa carpeta no es un prefijo de Wine (no tiene drive_c).
+external.errors.prefix_busy: 'Hay algo ejecutándose en ese prefijo: ciérralo primero.'
+external.errors.new_prefix: no se pudo resolver el prefijo nuevo
+external.errors.has_prefix: Este juego ya tiene un prefijo propio; crea uno nuevo para importar.
+external.transfer.errors.not_empty: '%{path} no está vacío: %{error}'
+external.transfer.errors.place: 'dejando el prefijo en su sitio: %{error}'
+external.transfer.errors.measure: 'midiendo %{path}: %{error}'
+external.transfer.errors.clean: 'limpiando %{path}: %{error}'
+external.transfer.errors.copy: 'copiando el prefijo: %{error}'
+external.transfer.errors.rsync: 'copiando el prefijo con rsync: %{error}'

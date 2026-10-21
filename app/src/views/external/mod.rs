@@ -24,6 +24,7 @@ use crate::capabilities::Caps;
 use crate::external::art;
 #[cfg(proton)]
 use crate::external::launchers::Detected;
+use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::{ButtonKind, TextInput, button, tooltip};
@@ -58,7 +59,7 @@ pub struct ExternalView {
     #[cfg(proton)]
     _scan: Option<Task<()>>,
     api_key: Entity<TextInput>,
-    key_status: String,
+    key_status: Option<Text>,
 }
 
 impl ExternalView {
@@ -78,7 +79,7 @@ impl ExternalView {
             }
         })
         .detach();
-        let api_key = cx.new(|cx| TextInput::new(t!("external.sources.key_placeholder"), cx));
+        let api_key = cx.new(|cx| TextInput::new(Text::new("external.sources.key_placeholder"), cx));
         // A keyring round trip: off the UI thread, filled in when it lands.
         let field = api_key.clone();
         cx.spawn(async move |_, cx| {
@@ -98,7 +99,7 @@ impl ExternalView {
             #[cfg(proton)]
             _scan: None,
             api_key,
-            key_status: String::new(),
+            key_status: None,
         };
         this.start(None, cx);
         this
@@ -233,17 +234,17 @@ impl ExternalView {
 
     fn save_key(&mut self, cx: &mut Context<Self>) {
         let key = self.api_key.read(cx).text().trim().to_owned();
-        self.key_status = t!("external.sources.saving").into_owned();
+        self.key_status = Some(Text::new("external.sources.saving"));
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = tokio::task::spawn_blocking(move || art::set_api_key(&key))
                 .await
-                .unwrap_or_else(|err| Err(err.to_string()));
+                .unwrap_or_else(|err| Err(Text::verbatim(err)));
             let _ = this.update(cx, |this, cx| {
-                this.key_status = match result {
-                    Ok(()) => t!("external.sources.saved").into_owned(),
+                this.key_status = Some(match result {
+                    Ok(()) => Text::new("external.sources.saved"),
                     Err(err) => err,
-                };
+                });
                 cx.notify();
             });
         })
@@ -377,8 +378,8 @@ impl ExternalView {
                         ),
                     ),
             )
-            .when(!self.key_status.is_empty(), |column| {
-                column.child(theme::muted(self.key_status.clone()).mt_2())
+            .when_some(self.key_status.as_ref(), |column, status| {
+                column.child(theme::muted(status).mt_2())
             })
     }
 }

@@ -275,8 +275,11 @@ turned off in Ajustes > General.
 | `crates/ps` | PS dumps, port builds and updates, toolchain, runs, run logs, failures |
 | `crates/hook` | `Galaxy64.dll` proxy, a Windows cdylib outside the workspace |
 
-UI texts live in `app/locales/`, one YAML file per area, each key with its
-`es` and `en` value.
+UI texts live in `app/locales/`, a folder per language (`es/`, `en/`) with
+one YAML file per area, `<area>.<language>.yml`, and `_language.<language>.yml`
+for the language's own name. A language is added by copying `es/`, renaming
+the files and translating them: the language picker and the system locale
+match find it with no code change.
 
 ### Build
 

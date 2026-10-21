@@ -1,0 +1,12 @@
+messages.errors.not_installed: the game is no longer listed as installed
+messages.errors.create_dir: 'creating %{path}: %{error}'
+messages.errors.prefix: could not resolve the game's prefix
+messages.errors.user_folders: could not find your Windows user folders
+messages.errors.no_prefix: this game has no prefix
+messages.errors.delete_prefix: 'deleting the prefix: %{error}'
+messages.errors.db_open: 'opening the database: %{error}'
+messages.errors.no_library: there's no library yet
+messages.errors.library_unavailable: the library at %{path} isn't available
+messages.errors.save_libraries: 'saving the list of libraries: %{error}'
+messages.errors.save_manifest: 'saving the manifest: %{error}'
+messages.errors.install_dir: invalid install directory

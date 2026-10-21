@@ -9,8 +9,8 @@
 use std::time::Duration;
 
 use gpui::AsyncApp;
-use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::{AppState, InstallStatus};
 
 const UI_UPDATE_INTERVAL: Duration = Duration::from_millis(150);
@@ -78,7 +78,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         set_status(
             &state,
             &product_id,
-            Some(InstallStatus::Failed(t!("library.install.no_library").into_owned())),
+            Some(InstallStatus::Failed(Text::new("library.install.no_library"))),
             cx,
         );
         return;
@@ -124,7 +124,12 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
 
     if let Err(err) = outcome {
         tracing::error!(account_id, product_id, error = %err, "install failed");
-        set_status(&state, &product_id, Some(InstallStatus::Failed(err.to_string())), cx);
+        set_status(
+            &state,
+            &product_id,
+            Some(InstallStatus::Failed(Text::verbatim(&err))),
+            cx,
+        );
         return;
     }
     tracing::info!(account_id, product_id, "install finished");
@@ -190,7 +195,7 @@ async fn install_dlcs(
             // the game that installed fine just before it.
             Err(err) => {
                 tracing::error!(account_id, product_id, dlc_id, error = %err, "dlc install failed");
-                set_status(state, &dlc_id, Some(InstallStatus::Failed(err.to_string())), cx);
+                set_status(state, &dlc_id, Some(InstallStatus::Failed(Text::verbatim(&err))), cx);
             }
             Ok(()) => {
                 tracing::info!(account_id, product_id, dlc_id, "dlc install finished");
@@ -213,24 +218,16 @@ pub async fn cancel_and_forget(account_id: String, product_id: String, state: Ap
     refresh_install_state(&state, &account_id, &product_id, cx);
 }
 
-pub async fn uninstall(
-    account_id: String,
-    product_id: String,
-    state: AppState,
-    cx: &mut AsyncApp,
-) -> Result<(), String> {
+pub async fn uninstall(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) -> Result<(), Text> {
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
-        crate::core::library_for_account(&account_id).map_err(|err| t!(
-            "library.install.library_error",
-            error = err.localized()
-        )
-        .into_owned())
+        crate::core::library_for_account(&account_id)
+            .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))
     );
     crate::achv_try!(
         decanter_gog::uninstall(&core_library, &account_id, &product_id)
             .await
-            .map_err(|err| err.to_string())
+            .map_err(Text::verbatim)
             // Bubbles up to the confirm step's red error text — this is
             // where it becomes user-visible.
             .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "uninstall failed"))

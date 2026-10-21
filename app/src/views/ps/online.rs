@@ -10,6 +10,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude:
 use rust_i18n::t;
 
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::state::online_error;
 use crate::theme;
 use crate::widgets::{ButtonKind, TextInput, button, checkbox};
@@ -40,7 +41,7 @@ pub struct OnlineView {
     stored: Result<Stored, String>,
     /// Also while the first read is under way, since saving needs [`Self::saved_npid`].
     is_busy: bool,
-    message: Option<(String, bool)>,
+    message: Option<(Text, bool)>,
     probes: Option<[Probe; 3]>,
 }
 
@@ -48,16 +49,16 @@ impl OnlineView {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let fields = [
             cx.new(|cx| TextInput::new(online::SHADNET_SERVER, cx)),
-            cx.new(|cx| TextInput::new(t!("ps.online.webapi_placeholder"), cx)),
+            cx.new(|cx| TextInput::new(Text::new("ps.online.webapi_placeholder"), cx)),
             cx.new(|cx| TextInput::new(online::COMMUNITY_SERVER, cx)),
-            cx.new(|cx| TextInput::new(t!("ps.online.npid_placeholder"), cx)),
+            cx.new(|cx| TextInput::new(Text::new("ps.online.npid_placeholder"), cx)),
         ];
         let this = Self {
             is_on: false,
             is_upnp: true,
             fields,
             password: cx.new(|cx| TextInput::new("", cx).masked()),
-            token: cx.new(|cx| TextInput::new(t!("ps.online.token_placeholder"), cx).masked()),
+            token: cx.new(|cx| TextInput::new(Text::new("ps.online.token_placeholder"), cx).masked()),
             saved_npid: None,
             stored: Ok(Stored::default()),
             is_busy: true,
@@ -97,9 +98,9 @@ impl OnlineView {
 
     fn refresh_password_placeholder(&self, cx: &mut Context<Self>) {
         let placeholder = match &self.stored {
-            Ok(stored) if stored.password => t!("ps.online.password_saved"),
-            Ok(_) => t!("ps.online.password_none"),
-            Err(_) => t!("ps.online.password_unavailable"),
+            Ok(stored) if stored.password => Text::new("ps.online.password_saved"),
+            Ok(_) => Text::new("ps.online.password_none"),
+            Err(_) => Text::new("ps.online.password_unavailable"),
         };
         self.password
             .update(cx, |field, cx| field.set_placeholder(placeholder, cx));
@@ -119,7 +120,7 @@ impl OnlineView {
             let _ = this.update(cx, |this, cx| {
                 if let Err(err) = saved {
                     tracing::warn!(key, %err, "could not save an online setting");
-                    this.message = Some((t!("ps.online.save_error", error = err).into_owned(), true));
+                    this.message = Some((Text::new("ps.online.save_error").arg("error", err), true));
                 }
                 cx.notify();
             });
@@ -135,7 +136,7 @@ impl OnlineView {
             .unwrap_or_default()
     }
 
-    fn addresses(&self, cx: &Context<Self>) -> Result<Addresses, String> {
+    fn addresses(&self, cx: &Context<Self>) -> Result<Addresses, Text> {
         Addresses::new(&self.text(0, cx), &self.text(1, cx), &self.text(2, cx)).map_err(|err| online_error(&err))
     }
 
@@ -158,7 +159,7 @@ impl OnlineView {
         let password = self.password.read(cx).text().to_owned();
         let token = self.token.read(cx).text().to_owned();
         if npid.is_none() && !(password.is_empty() && token.is_empty()) {
-            self.message = Some((t!("ps.online.errors.secret_without_npid").into_owned(), true));
+            self.message = Some((Text::new("ps.online.errors.secret_without_npid"), true));
             cx.notify();
             return;
         }
@@ -189,7 +190,7 @@ impl OnlineView {
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
                         this.is_busy = false;
-                        this.message = Some((t!("ps.online.keyring_error", error = err).into_owned(), true));
+                        this.message = Some((Text::new("ps.online.keyring_error").arg("error", err), true));
                         cx.notify();
                     });
                     return;
@@ -209,16 +210,16 @@ impl OnlineView {
                 })
                 .await;
             let outcome = match (saved, previous) {
-                (Err(err), _) => Err(t!("ps.online.save_error", error = err).into_owned()),
+                (Err(err), _) => Err(Text::new("ps.online.save_error").arg("error", err)),
                 (Ok(()), Some(previous)) if moved == Moved::All => {
                     tokio::task::spawn_blocking(move || forget(&previous))
                         .await
                         .unwrap_or_else(|err| Err(err.to_string()))
-                        .map(|()| t!("ps.online.saved").into_owned())
-                        .map_err(|err| t!("ps.online.keyring_error", error = err).into_owned())
+                        .map(|()| Text::new("ps.online.saved"))
+                        .map_err(|err| Text::new("ps.online.keyring_error").arg("error", err))
                 }
-                (Ok(()), Some(previous)) => Ok(t!("ps.online.kept_existing", previous = previous).into_owned()),
-                (Ok(()), None) => Ok(t!("ps.online.saved").into_owned()),
+                (Ok(()), Some(previous)) => Ok(Text::new("ps.online.kept_existing").arg("previous", previous)),
+                (Ok(()), None) => Ok(Text::new("ps.online.saved")),
             };
             let _ = this.update(cx, |this, cx| {
                 this.is_busy = false;
@@ -250,7 +251,7 @@ impl OnlineView {
                 this.is_busy = false;
                 this.message = forgotten
                     .err()
-                    .map(|err| (t!("ps.online.keyring_error", error = err).into_owned(), true));
+                    .map(|err| (Text::new("ps.online.keyring_error").arg("error", err), true));
                 Self::reload(cx);
             });
         })
@@ -269,7 +270,7 @@ impl OnlineView {
         };
         self.is_busy = true;
         self.probes = None;
-        self.message = Some((t!("ps.online.checking").into_owned(), false));
+        self.message = Some((Text::new("ps.online.checking"), false));
         cx.notify();
         cx.spawn(async move |this, cx| {
             let probes = online::check(&addresses).await;
@@ -401,8 +402,8 @@ impl Render for OnlineView {
             })
             .children(keyring_error.map(|err| theme::error(t!("ps.online.keyring_unavailable", error = err))))
             .child(actions)
-            .children(self.message.clone().map(|(text, is_error)| {
-                if is_error {
+            .children(self.message.as_ref().map(|(text, is_error)| {
+                if *is_error {
                     theme::error(text)
                 } else {
                     theme::muted(text)

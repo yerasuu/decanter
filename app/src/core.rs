@@ -10,10 +10,11 @@
 use std::path::PathBuf;
 
 use decanter_core::{Db, InstalledGame, Library, Profile, Storefront};
-use rust_i18n::t;
+
+use crate::i18n::Text;
 
 /// Why the database or a library can't be reached: logged as it is, worded for the UI by
-/// [`StoreError::localized`], which is also what it becomes as one of the `String` errors the
+/// [`StoreError::localized`], which is also what it becomes as one of the [`Text`] errors the
 /// views show.
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -32,20 +33,19 @@ pub enum StoreError {
 }
 
 impl StoreError {
-    pub fn localized(&self) -> String {
+    pub fn localized(&self) -> Text {
         match self {
-            Self::NoLibrary => t!("messages.errors.no_library"),
-            Self::Unavailable(root) => t!("messages.errors.library_unavailable", path = root.display()),
-            Self::Open(err) => t!("messages.errors.db_open", error = err),
-            Self::Query(err) => return err.to_string(),
-            Self::NotInstalled(_) => t!("messages.errors.not_installed"),
-            Self::Manifest(err) => t!("messages.errors.save_manifest", error = err),
+            Self::NoLibrary => Text::new("messages.errors.no_library"),
+            Self::Unavailable(root) => Text::new("messages.errors.library_unavailable").arg("path", root.display()),
+            Self::Open(err) => Text::new("messages.errors.db_open").arg("error", err),
+            Self::Query(err) => Text::verbatim(err),
+            Self::NotInstalled(_) => Text::new("messages.errors.not_installed"),
+            Self::Manifest(err) => Text::new("messages.errors.save_manifest").arg("error", err),
         }
-        .into_owned()
     }
 }
 
-impl From<StoreError> for String {
+impl From<StoreError> for Text {
     fn from(err: StoreError) -> Self {
         err.localized()
     }
@@ -83,7 +83,7 @@ fn no_library() -> StoreError {
 /// creation form instead of leaving it on the pre-filled default — `None`
 /// leaves the profile's `library_path` column unset, same as every profile
 /// created before this existed.
-pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile, String> {
+pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile, Text> {
     // The first profile makes the first library, where its database goes.
     let library_path = if decanter_core::bootstrap::location() == decanter_core::bootstrap::Location::Unconfigured {
         let root = crate::achv_try!(
@@ -92,17 +92,14 @@ pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile,
                 .or_else(Library::default_path)
                 .ok_or_else(no_library)
         );
-        crate::achv_try!(
-            std::fs::create_dir_all(&root).map_err(|err| t!(
-                "messages.errors.create_dir",
-                path = root.display(),
-                error = err
-            )
-            .into_owned())
-        );
+        crate::achv_try!(std::fs::create_dir_all(&root).map_err(|err| {
+            Text::new("messages.errors.create_dir")
+                .arg("path", root.display())
+                .arg("error", err)
+        }));
         crate::achv_try!(
             decanter_core::bootstrap::activate(&root)
-                .map_err(|err| t!("messages.errors.save_libraries", error = err).into_owned())
+                .map_err(|err| Text::new("messages.errors.save_libraries").arg("error", err))
         );
         None
     } else {
@@ -116,19 +113,19 @@ pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile,
     let profile = crate::achv_try!(
         db.upsert_profile(&id, name, now)
             .inspect_err(|err| tracing::error!(profile_name = name, %err, "failed to create profile"))
-            .map_err(|err| err.to_string())
+            .map_err(Text::verbatim)
     );
     if let Some(path) = library_path {
         crate::achv_try!(
             db.set_profile_library_path(&profile.id, Some(path))
                 .inspect_err(|err| tracing::error!(profile_id = %profile.id, path, %err, "failed to set new profile's library path"))
-                .map_err(|err| err.to_string())
+                .map_err(Text::verbatim)
         );
     }
     crate::achv_try!(
         db.set_active_profile(&profile.id)
             .inspect_err(|err| tracing::error!(profile_id = %profile.id, %err, "failed to activate new profile"))
-            .map_err(|err| err.to_string())
+            .map_err(Text::verbatim)
     );
     decanter_core::bootstrap::remember_profile(&profile.id);
     tracing::info!(profile_id = %profile.id, profile_name = %profile.name, "profile created");
@@ -172,15 +169,15 @@ pub fn profiles_by_library() -> Vec<(std::path::PathBuf, Option<Vec<Profile>>)> 
 
 /// Makes `profile_id`, which lives in the library at `root`, the active
 /// profile, and that library the active one.
-pub fn switch_library(root: &std::path::Path, profile_id: &str) -> Result<(), String> {
+pub fn switch_library(root: &std::path::Path, profile_id: &str) -> Result<(), Text> {
     crate::achv_try!(
         Db::open(decanter_core::bootstrap::db_path(root))
             .and_then(|db| db.set_active_profile(profile_id))
-            .map_err(|err| t!("messages.errors.db_open", error = err).into_owned())
+            .map_err(|err| Text::new("messages.errors.db_open").arg("error", err))
     );
     crate::achv_try!(
         decanter_core::bootstrap::activate(root)
-            .map_err(|err| t!("messages.errors.save_libraries", error = err).into_owned())
+            .map_err(|err| Text::new("messages.errors.save_libraries").arg("error", err))
     );
     decanter_core::bootstrap::remember_profile(profile_id);
     Ok(())
@@ -228,7 +225,7 @@ pub fn library_for_profile(profile_id: &str) -> Result<Library, StoreError> {
 /// Makes `picked` (or the `steamapps` folder under it, the way Steam lays
 /// out a library folder) one more place `profile_id` keeps games, and
 /// returns that folder.
-pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<std::path::PathBuf, String> {
+pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<std::path::PathBuf, Text> {
     let root = Library::root_under(picked);
     let library = library_for_profile(profile_id)?;
     // Nested folders would see each other's games twice, or miss them.
@@ -237,23 +234,22 @@ pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<
         .into_iter()
         .find(|existing| existing.starts_with(&root) || root.starts_with(existing))
     {
-        return Err(t!("storage.errors.nested", path = root.display(), folder = clash.display()).into_owned());
+        return Err(Text::new("storage.errors.nested")
+            .arg("path", root.display())
+            .arg("folder", clash.display()));
     }
-    crate::achv_try!(
-        std::fs::create_dir_all(&root).map_err(|err| t!(
-            "messages.errors.create_dir",
-            path = root.display(),
-            error = err
-        )
-        .into_owned())
-    );
+    crate::achv_try!(std::fs::create_dir_all(&root).map_err(|err| {
+        Text::new("messages.errors.create_dir")
+            .arg("path", root.display())
+            .arg("error", err)
+    }));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
     crate::achv_try!(
         db()?
             .add_profile_library(profile_id, &root.to_string_lossy(), now)
-            .map_err(|err| t!("storage.errors.add", error = err).into_owned())
+            .map_err(|err| Text::new("storage.errors.add").arg("error", err))
     );
     if let Err(err) = library_for_profile(profile_id)
         .map_err(|err| err.to_string())
@@ -279,11 +275,11 @@ pub fn offline_library_folders(profile_id: &str) -> Vec<std::path::PathBuf> {
 }
 
 /// Stops keeping games in `root`. Whatever is on that disk stays there.
-pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result<(), String> {
+pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result<(), Text> {
     crate::achv_try!(
         db()?
             .remove_profile_library(profile_id, &root.to_string_lossy())
-            .map_err(|err| t!("storage.errors.remove", error = err).into_owned())
+            .map_err(|err| Text::new("storage.errors.remove").arg("error", err))
     );
     // Re-adding the folder later starts from its default cache again.
     if let Err(err) = db()
@@ -386,12 +382,12 @@ pub fn set_cloud_save_path(account_id: &str, product_id: &str, path: Option<&str
 pub async fn detect_cloud_save_locations(
     account_id: &str,
     game: &InstalledGame,
-) -> Result<Vec<decanter_gog::save_location::SaveLocation>, String> {
+) -> Result<Vec<decanter_gog::save_location::SaveLocation>, Text> {
     let library = crate::achv_try!(library_for_account(account_id));
     let install_dir = crate::achv_try!(
         library
             .install_dir(&game.install_dir)
-            .ok_or_else(|| t!("messages.errors.install_dir").into_owned())
+            .ok_or_else(|| Text::new("messages.errors.install_dir"))
     );
     let folders = crate::achv_try!(user_folders(account_id, &game.game_id));
     tracing::debug!(account_id, game_id = %game.game_id, "detecting cloud save locations");
@@ -402,23 +398,23 @@ pub async fn detect_cloud_save_locations(
         })
         // Recoverable: the caller falls back to letting the user pick a folder by hand.
         .inspect_err(|err| tracing::warn!(account_id, game_id = %game.game_id, %err, "cloud save location detection failed"))
-        .map_err(|err| err.to_string())
+        .map_err(Text::verbatim)
 }
 
 /// The account folders a game sees: the ones inside its prefix under Proton.
 #[cfg(proton)]
-fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, String> {
+fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, Text> {
     prefix_for(account_id, game_id)
         .map(|prefix| decanter_gog::save_location::UserFolders::in_prefix(&prefix.drive_c()))
-        .ok_or_else(|| t!("messages.errors.prefix").into_owned())
+        .ok_or_else(|| Text::new("messages.errors.prefix"))
 }
 
 /// The account folders a game sees: the user's own on Windows.
 #[cfg(not(proton))]
-fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, String> {
+fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, Text> {
     decanter_gog::save_location::UserFolders::native().ok_or_else(|| {
         tracing::warn!(account_id, game_id, "could not resolve this account's folders");
-        t!("messages.errors.user_folders").into_owned()
+        Text::new("messages.errors.user_folders")
     })
 }
 
@@ -534,7 +530,7 @@ pub enum RestartSteamError {
     /// Whether Steam is open can't be told from here (a container without
     /// Steam's `.steam` folder); only the user can confirm it's closed.
     NeedsCloseConfirmation,
-    Failed(String),
+    Failed(Text),
 }
 
 /// Shuts Steam down, swaps the staged `shortcuts.vdf` into place, and
@@ -545,17 +541,17 @@ pub async fn restart_steam_to_apply_pending(user_confirmed_closed: bool) -> Resu
     crate::achv_try!(
         tokio::task::spawn_blocking(move || {
             let steam_root = decanter_core::steam::steam_root()
-                .ok_or_else(|| RestartSteamError::Failed(t!("settings.general.steam.no_install").into_owned()))?;
+                .ok_or_else(|| RestartSteamError::Failed(Text::new("settings.general.steam.no_install")))?;
             let user_id = decanter_core::steam::local_user_id(&steam_root)
-                .ok_or_else(|| RestartSteamError::Failed(t!("settings.general.steam.no_user").into_owned()))?;
+                .ok_or_else(|| RestartSteamError::Failed(Text::new("settings.general.steam.no_user")))?;
             decanter_core::steam::apply_pending_and_restart_steam(&steam_root, &user_id, user_confirmed_closed)
                 .inspect_err(|err| tracing::error!(%err, "failed to restart steam to apply pending shortcuts"))
                 .map_err(|err| match err {
                     decanter_core::steam::ApplyError::SteamStateUnknown => RestartSteamError::NeedsCloseConfirmation,
-                    decanter_core::steam::ApplyError::Io(err) => RestartSteamError::Failed(err.to_string()),
+                    decanter_core::steam::ApplyError::Io(err) => RestartSteamError::Failed(Text::verbatim(err)),
                 })
         })
         .await
-        .map_err(|err| RestartSteamError::Failed(t!("common.errors.internal_task", error = err).into_owned()))
+        .map_err(|err| RestartSteamError::Failed(Text::new("common.errors.internal_task").arg("error", err)))
     )
 }

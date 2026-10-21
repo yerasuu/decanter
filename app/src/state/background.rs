@@ -7,6 +7,8 @@ use std::collections::{HashMap, HashSet};
 use decanter_ps::process::Job;
 use gpui::{Context, Entity};
 
+use crate::i18n::Text;
+
 #[derive(Clone, PartialEq)]
 pub enum InstallStatus {
     /// Enqueued, but no bytes have moved yet — the depot manifest is
@@ -19,7 +21,7 @@ pub enum InstallStatus {
         total_bytes: Option<u64>,
         bytes_per_second: f64,
     },
-    Failed(String),
+    Failed(Text),
 }
 
 impl InstallStatus {

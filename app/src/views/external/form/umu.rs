@@ -2,6 +2,7 @@ use gpui::{Context, Div, FontWeight, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::GameForm;
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
@@ -12,7 +13,7 @@ impl GameForm {
     pub(super) fn search_umu(&mut self, cx: &mut Context<Self>) {
         let name = self.name.read(cx).text().trim().to_owned();
         if name.is_empty() {
-            self.error = t!("external.form.errors.name_for_umu").into_owned();
+            self.error = Some(Text::new("external.form.errors.name_for_umu"));
             cx.notify();
             return;
         }
@@ -66,7 +67,7 @@ impl GameForm {
             .filter(|entry| !matches.iter().any(|found| &found.entry == entry));
         let status = match (&self.wine.umu_matches, self.wine.umu_searching) {
             (_, true) => Some(theme::muted(t!("external.form.umu.searching"))),
-            (Some(Err(err)), false) => Some(theme::error(err.clone())),
+            (Some(Err(err)), false) => Some(theme::error(err)),
             (Some(Ok(matches)), false) if matches.is_empty() => Some(theme::muted(t!("external.form.umu.not_found"))),
             (Some(Ok(_)) | None, false) => None,
         };

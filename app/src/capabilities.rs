@@ -2,6 +2,8 @@
 //! feature with, so each one is shown, marked as being tested or left out
 //! the same way everywhere.
 
+use std::borrow::Cow;
+
 use decanter_core::capabilities::{Capabilities, Feature, Reason, Source, Support};
 use decanter_ps::bbport::HostFeatures;
 use gpui::{AnyElement, App, Div, Global, IntoElement, ParentElement as _, SharedString, Styled as _, div};
@@ -9,6 +11,13 @@ use rust_i18n::t;
 
 use crate::self_update::{self, Availability};
 use crate::{platform, theme};
+
+// What decanter itself finds missing, in technical English for the log as
+// `Reason::NeedsSetup` asks; `setup_text` words them for the UI.
+const RELEASE_KEY: &str = "release key";
+const TRAY_HOST: &str = "StatusNotifier host";
+const PSPORT_MENU_BINDING: &str = "psport build listing port_menu_binding";
+const PSPORT_ONLINE: &str = "psport build listing online_module";
 
 pub struct Caps {
     /// decanter's table and its own checks, which a new report from psport
@@ -27,7 +36,7 @@ impl Caps {
         let mut capabilities = Capabilities::detect();
         match self_update::availability() {
             Availability::AppImage(_) => {}
-            Availability::NoKey => capabilities.restrict(Feature::SelfUpdate, Reason::NeedsSetup("release key")),
+            Availability::NoKey => capabilities.restrict(Feature::SelfUpdate, Reason::NeedsSetup(RELEASE_KEY)),
             Availability::Elsewhere => capabilities.restrict(Feature::SelfUpdate, Reason::NotOnThisSystem),
         }
         let ask_tray_host = capabilities.is_offered(Feature::Tray);
@@ -44,7 +53,7 @@ impl Caps {
                         Self::restrict(
                             app,
                             &[Feature::Tray, Feature::CloseToTray],
-                            &Reason::NeedsSetup("StatusNotifier host"),
+                            &Reason::NeedsSetup(TRAY_HOST),
                         );
                     });
                 }
@@ -124,14 +133,8 @@ impl Caps {
 /// What only a psport build's own report can offer stays off until one
 /// arrives, since builds from before a feature silently ignore it.
 fn without_psport_report(capabilities: &mut Capabilities) {
-    capabilities.restrict(
-        Feature::PsMenuBinding,
-        Reason::NeedsSetup("psport build listing port_menu_binding"),
-    );
-    capabilities.restrict(
-        Feature::PsOnline,
-        Reason::NeedsSetup("psport build listing online_module"),
-    );
+    capabilities.restrict(Feature::PsMenuBinding, Reason::NeedsSetup(PSPORT_MENU_BINDING));
+    capabilities.restrict(Feature::PsOnline, Reason::NeedsSetup(PSPORT_ONLINE));
 }
 
 /// For a row that has room for it beside its own label, such as a menu item.
@@ -152,8 +155,20 @@ fn with_testing_badge(element: impl IntoElement) -> AnyElement {
 fn reason_text(reason: &Reason) -> SharedString {
     match reason {
         Reason::NotOnThisSystem => t!("common.unavailable_here"),
-        Reason::NeedsSetup(what) => t!("common.needs_setup", what = what),
+        Reason::NeedsSetup(what) => t!("common.needs_setup", what = setup_text(what)),
         Reason::ReportedBy(Source::Psport, why) => t!("common.reported_by_ps", why = why),
     }
     .into()
+}
+
+/// `what` for the UI: decanter's own needs translated, while the names decanter-core gives (a
+/// program's own name) read the same in every language.
+fn setup_text(what: &'static str) -> Cow<'static, str> {
+    match what {
+        RELEASE_KEY => t!("common.setup.release_key"),
+        TRAY_HOST => t!("common.setup.tray_host"),
+        PSPORT_MENU_BINDING => t!("common.setup.psport_menu_binding"),
+        PSPORT_ONLINE => t!("common.setup.psport_online"),
+        _ => Cow::Borrowed(what),
+    }
 }

@@ -47,11 +47,16 @@ impl Render for GeneralTab {
                 },
             ))
             .when(!external, |table| {
-                table.child(row("Product ID", target.product_id.clone()))
+                table.child(row(
+                    t!("library.properties.general.product_id"),
+                    target.product_id.clone(),
+                ))
             });
         if let Some(installed) = &self.installed {
             table = table
-                .when(!external, |table| table.child(row("Build", installed.build_id.clone())))
+                .when(!external, |table| {
+                    table.child(row(t!("library.properties.general.build"), installed.build_id.clone()))
+                })
                 .children(
                     installed
                         .size_on_disk

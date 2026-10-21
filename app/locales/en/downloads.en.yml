@@ -1,0 +1,4 @@
+downloads.title: Downloads
+downloads.empty: No downloads in progress.
+downloads.eta: '%{left} left'
+downloads.dismiss: Dismiss

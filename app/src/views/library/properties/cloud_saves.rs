@@ -14,6 +14,7 @@ use gpui::{Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
+use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::fmt;
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
@@ -24,7 +25,7 @@ pub(super) struct CloudSavesTab {
     path_input: Entity<TextInput>,
     syncing: bool,
     last_outcome: Option<SyncAction>,
-    error: String,
+    error: Option<Text>,
     detecting: bool,
     detected: Option<Vec<SaveLocation>>,
     auto_detect_attempted: bool,
@@ -32,7 +33,7 @@ pub(super) struct CloudSavesTab {
 
 impl CloudSavesTab {
     pub(super) fn new(target: Rc<Target>, _: &mut Window, cx: &mut Context<Self>) -> Self {
-        let path_input = cx.new(|cx| TextInput::new(t!("library.properties.saves.folder_placeholder"), cx));
+        let path_input = cx.new(|cx| TextInput::new(Text::new("library.properties.saves.folder_placeholder"), cx));
         cx.subscribe(&path_input, |this, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 this.refill_path(cx);
@@ -46,7 +47,7 @@ impl CloudSavesTab {
             path_input,
             syncing: false,
             last_outcome: None,
-            error: String::new(),
+            error: None,
             detecting: false,
             detected: None,
             auto_detect_attempted: false,
@@ -110,7 +111,7 @@ impl CloudSavesTab {
         let target = Rc::clone(&self.target);
         self.detecting = true;
         if report_errors {
-            self.error.clear();
+            self.error = None;
         }
         tracing::debug!(
             account_id = target.account_id,
@@ -137,7 +138,7 @@ impl CloudSavesTab {
 
     fn finish_detection(
         &mut self,
-        outcome: Result<Vec<SaveLocation>, String>,
+        outcome: Result<Vec<SaveLocation>, Text>,
         report_errors: bool,
         cx: &mut Context<Self>,
     ) {
@@ -147,7 +148,7 @@ impl CloudSavesTab {
             Ok(locations) if locations.is_empty() => {
                 tracing::debug!(account_id, product_id = game_id, "gog reports no cloud save location");
                 if report_errors {
-                    self.error = t!("library.properties.saves.none_reported").into_owned();
+                    self.error = Some(Text::new("library.properties.saves.none_reported"));
                 }
                 self.detected = None;
             }
@@ -159,7 +160,7 @@ impl CloudSavesTab {
             }
             Err(err) if report_errors => {
                 tracing::error!(account_id, product_id = game_id, error = %err, "cloud save location detection failed");
-                self.error = err;
+                self.error = Some(err);
             }
             Err(err) => {
                 tracing::debug!(account_id, product_id = game_id, error = %err, "cloud save location detection failed, not reported to user");
@@ -188,7 +189,7 @@ impl CloudSavesTab {
             }
             Err(err) if report_errors => {
                 tracing::error!(account_id, product_id = game_id, error = %err, "failed to save auto-detected cloud save path");
-                self.error = err.localized();
+                self.error = Some(err.localized());
             }
             Err(err) => {
                 tracing::warn!(account_id, product_id = game_id, error = %err, "failed to save auto-detected cloud save path, not reported to user");
@@ -234,12 +235,12 @@ impl CloudSavesTab {
         match crate::core::set_cloud_save_path(account_id, product_id, Some(&value)) {
             Ok(()) => {
                 tracing::info!(account_id, product_id, path = value, "cloud save path set");
-                self.error.clear();
+                self.error = None;
                 self.reload(cx);
             }
             Err(err) => {
                 tracing::error!(account_id, product_id, path = value, error = %err, "failed to save cloud save path");
-                self.error = err.localized();
+                self.error = Some(err.localized());
                 cx.notify();
             }
         }
@@ -255,7 +256,7 @@ impl CloudSavesTab {
         let last_sync = installed.cloud_save_last_sync;
         let target = Rc::clone(&self.target);
         self.syncing = true;
-        self.error.clear();
+        self.error = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let outcome = run_cloud_sync(
@@ -272,7 +273,7 @@ impl CloudSavesTab {
                         this.last_outcome = Some(outcome.action);
                         this.reload(cx);
                     }
-                    Err(err) => this.error = err,
+                    Err(err) => this.error = Some(err),
                 }
                 this.syncing = false;
                 cx.notify();
@@ -385,7 +386,7 @@ impl Render for CloudSavesTab {
             .child(path_row)
             .child(sync_row)
             .children(conflict_row)
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
     }
 }
 
@@ -407,7 +408,7 @@ async fn run_cloud_sync(
     local_root: String,
     last_sync: Option<i64>,
     force: Option<ForceDirection>,
-) -> Result<SyncOutcome, String> {
+) -> Result<SyncOutcome, Text> {
     tracing::info!(account_id, product_id, local_root, force = ?force, "cloud save sync started");
     let outcome = crate::achv_try!(
         decanter_gog::cloud_saves::sync(
@@ -418,7 +419,7 @@ async fn run_cloud_sync(
             force
         )
         .await
-        .map_err(|err| err.to_string())
+        .map_err(Text::verbatim)
         // Bubbles up to the properties tab's red error text.
         .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "cloud save sync failed"))
     );

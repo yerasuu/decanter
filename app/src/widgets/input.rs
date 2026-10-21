@@ -13,6 +13,7 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
+use crate::i18n::Text;
 use crate::theme;
 
 actions!(
@@ -58,6 +59,34 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
+/// What an empty input shows: translated each time it's drawn, or the same
+/// in every language (an example URL).
+pub enum Placeholder {
+    Text(Text),
+    Verbatim(SharedString),
+}
+
+impl From<Text> for Placeholder {
+    fn from(text: Text) -> Self {
+        Self::Text(text)
+    }
+}
+
+impl From<&'static str> for Placeholder {
+    fn from(text: &'static str) -> Self {
+        Self::Verbatim(text.into())
+    }
+}
+
+impl Placeholder {
+    fn shown(&self) -> SharedString {
+        match self {
+            Self::Text(text) => text.into(),
+            Self::Verbatim(text) => text.clone(),
+        }
+    }
+}
+
 pub enum InputEvent {
     Changed,
     /// Enter.
@@ -69,7 +98,7 @@ pub enum InputEvent {
 pub struct TextInput {
     focus_handle: FocusHandle,
     content: SharedString,
-    placeholder: SharedString,
+    placeholder: Placeholder,
     read_only: bool,
     /// What a secret shows for each character, [`MASK`]; never copied out.
     mask: Option<char>,
@@ -91,7 +120,7 @@ pub struct TextInput {
 impl EventEmitter<InputEvent> for TextInput {}
 
 impl TextInput {
-    pub fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
+    pub fn new(placeholder: impl Into<Placeholder>, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             content: SharedString::default(),
@@ -130,7 +159,7 @@ impl TextInput {
         self
     }
 
-    pub fn set_placeholder(&mut self, placeholder: impl Into<SharedString>, cx: &mut Context<Self>) {
+    pub fn set_placeholder(&mut self, placeholder: impl Into<Placeholder>, cx: &mut Context<Self>) {
         self.placeholder = placeholder.into();
         cx.notify();
     }
@@ -577,7 +606,7 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), rgb(theme::TEXT_DIM).into())
+            (input.placeholder.shown(), rgb(theme::TEXT_DIM).into())
         } else {
             (content, style.color)
         };

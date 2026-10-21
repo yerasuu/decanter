@@ -1,0 +1,12 @@
+messages.errors.not_installed: el juego ya no figura como instalado
+messages.errors.create_dir: 'creando %{path}: %{error}'
+messages.errors.prefix: no se pudo resolver el prefijo del juego
+messages.errors.user_folders: no se pudieron localizar las carpetas de tu usuario de Windows
+messages.errors.no_prefix: no hay prefijo para este juego
+messages.errors.delete_prefix: 'borrando el prefijo: %{error}'
+messages.errors.db_open: 'abriendo la base de datos: %{error}'
+messages.errors.no_library: todavía no hay ninguna biblioteca
+messages.errors.library_unavailable: la biblioteca de %{path} no está disponible
+messages.errors.save_libraries: 'guardando la lista de bibliotecas: %{error}'
+messages.errors.save_manifest: 'guardando el manifiesto: %{error}'
+messages.errors.install_dir: directorio de instalación inválido

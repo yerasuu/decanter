@@ -12,7 +12,7 @@ use rust_i18n::t;
 use super::debug::DebugSection;
 use super::{column, field_row, inline};
 use crate::capabilities::Caps;
-use crate::i18n::{self, Language};
+use crate::i18n::{self, Language, Text};
 use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::theme;
@@ -26,7 +26,7 @@ pub struct GeneralTab {
     steam_pending: bool,
     restarting_steam: bool,
     steam_needs_close_confirmation: bool,
-    restart_error: Option<String>,
+    restart_error: Option<Text>,
     checking_release: bool,
     /// `None` until the user checks; never checked on its own.
     release: Option<Result<Standing, ReleaseError>>,
@@ -399,7 +399,7 @@ impl Render for GeneralTab {
                         b.on_click(cx.listener(move |this, _, _, cx| this.restart_steam(confirming, cx)))
                     }),
                 ))
-                .children(self.restart_error.clone().map(theme::error))
+                .children(self.restart_error.as_ref().map(theme::error))
         });
 
         column()

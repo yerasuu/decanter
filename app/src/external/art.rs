@@ -10,8 +10,9 @@
 use std::sync::LazyLock;
 
 use decanter_core::Storefront;
-use rust_i18n::t;
 use serde::Deserialize;
+
+use crate::i18n::Text;
 
 static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
@@ -54,7 +55,7 @@ pub struct Candidates {
     pub icons: Vec<Candidate>,
     /// One line per source that failed, shown under the results: a bad
     /// SteamGridDB key shouldn't hide what Steam did find.
-    pub problems: Vec<String>,
+    pub problems: Vec<Text>,
 }
 
 impl Candidates {
@@ -72,7 +73,7 @@ pub fn api_key() -> Option<String> {
 }
 
 /// Saves the key, or forgets it when `key` is empty. Blocking.
-pub fn set_api_key(key: &str) -> Result<(), String> {
+pub fn set_api_key(key: &str) -> Result<(), Text> {
     let result = if key.is_empty() {
         decanter_core::delete_session(SGDB_KEYRING_ACCOUNT, Storefront::Unspecified)
     } else {
@@ -80,7 +81,7 @@ pub fn set_api_key(key: &str) -> Result<(), String> {
     };
     result
         .inspect(|()| tracing::info!(cleared = key.is_empty(), "steamgriddb key updated"))
-        .map_err(|err| t!("external.sources.errors.keyring", error = err).into_owned())
+        .map_err(|err| Text::new("external.sources.errors.keyring").arg("error", err))
 }
 
 /// Searches every source for `name`. Never fails as a whole: whatever a
@@ -99,10 +100,10 @@ pub async fn search(name: &str) -> Candidates {
     let mut found = Candidates::default();
     match sgdb {
         Some(Ok(sgdb)) => found = sgdb,
-        Some(Err(err)) => found.problems.push(format!("SteamGridDB: {err}")),
+        Some(Err(err)) => found.problems.push(problem("SteamGridDB", err)),
         None => found
             .problems
-            .push(format!("SteamGridDB: {}", t!("external.art.no_key"))),
+            .push(problem("SteamGridDB", Text::new("external.art.no_key"))),
     }
     match steam {
         Ok(steam) => {
@@ -110,7 +111,7 @@ pub async fn search(name: &str) -> Candidates {
             found.heroes.extend(steam.heroes);
             found.icons.extend(steam.icons);
         }
-        Err(err) => found.problems.push(format!("Steam: {err}")),
+        Err(err) => found.problems.push(problem("Steam", err)),
     }
     tracing::debug!(
         name,
@@ -121,6 +122,12 @@ pub async fn search(name: &str) -> Candidates {
         "external art search finished"
     );
     found
+}
+
+fn problem(source: &str, problem: Text) -> Text {
+    Text::new("external.art.problem")
+        .arg("source", source)
+        .text("problem", problem)
 }
 
 #[derive(Deserialize)]
@@ -140,39 +147,41 @@ struct SgdbImage {
     url: String,
 }
 
-async fn get_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder) -> Result<T, String> {
+async fn get_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder) -> Result<T, Text> {
     let response = request
         .send()
         .await
-        .map_err(|err| t!("external.art.errors.offline", error = err).into_owned())?;
+        .map_err(|err| Text::new("external.art.errors.offline").arg("error", err))?;
     let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err(t!("external.art.errors.bad_key").into_owned());
+        return Err(Text::new("external.art.errors.bad_key"));
     }
-    let response = response
-        .error_for_status()
-        .map_err(|err| t!("external.art.errors.status", status = status, error = err).into_owned())?;
+    let response = response.error_for_status().map_err(|err| {
+        Text::new("external.art.errors.status")
+            .arg("status", status)
+            .arg("error", err)
+    })?;
     let bytes = response
         .bytes()
         .await
-        .map_err(|err| t!("external.art.errors.truncated", error = err).into_owned())?;
-    serde_json::from_slice(&bytes).map_err(|err| t!("external.art.errors.unexpected", error = err).into_owned())
+        .map_err(|err| Text::new("external.art.errors.truncated").arg("error", err))?;
+    serde_json::from_slice(&bytes).map_err(|err| Text::new("external.art.errors.unexpected").arg("error", err))
 }
 
-fn sgdb_url(segments: &[&str], query: &[(&str, &str)]) -> Result<reqwest::Url, String> {
-    let mut url = reqwest::Url::parse(SGDB_API).map_err(|err| err.to_string())?;
+fn sgdb_url(segments: &[&str], query: &[(&str, &str)]) -> Result<reqwest::Url, Text> {
+    let mut url = reqwest::Url::parse(SGDB_API).map_err(Text::verbatim)?;
     url.path_segments_mut()
-        .map_err(|()| t!("external.art.errors.base_url").into_owned())?
+        .map_err(|()| Text::new("external.art.errors.base_url"))?
         .extend(segments);
     url.query_pairs_mut().extend_pairs(query);
     Ok(url)
 }
 
-async fn search_sgdb(key: &str, name: &str) -> Result<Candidates, String> {
+async fn search_sgdb(key: &str, name: &str) -> Result<Candidates, Text> {
     let request = |url: reqwest::Url| CLIENT.get(url).bearer_auth(key);
     let games: SgdbResponse<SgdbGame> = get_json(request(sgdb_url(&["search", "autocomplete", name], &[])?)).await?;
     let Some(game) = games.data.first() else {
-        return Err(t!("external.art.errors.unknown_game", name = name).into_owned());
+        return Err(Text::new("external.art.errors.unknown_game").arg("name", name));
     };
     let id = game.id.to_string();
     // Without `nsfw`/`humor` set, SteamGridDB includes both.
@@ -185,7 +194,7 @@ async fn search_sgdb(key: &str, name: &str) -> Result<Candidates, String> {
         get_json::<SgdbResponse<SgdbImage>>(request(sgdb_url(&["heroes", "game", &id], &safe)?)),
         get_json::<SgdbResponse<SgdbImage>>(request(sgdb_url(&["icons", "game", &id], &safe)?)),
     );
-    let candidates = |images: Result<SgdbResponse<SgdbImage>, String>| -> Result<Vec<Candidate>, String> {
+    let candidates = |images: Result<SgdbResponse<SgdbImage>, Text>| -> Result<Vec<Candidate>, Text> {
         Ok(images?
             .data
             .into_iter()
@@ -215,12 +224,12 @@ struct SteamSearchItem {
     id: u64,
 }
 
-async fn search_steam(name: &str) -> Result<Candidates, String> {
+async fn search_steam(name: &str) -> Result<Candidates, Text> {
     let url = reqwest::Url::parse_with_params(STEAM_SEARCH, &[("term", name), ("cc", "us"), ("l", "english")])
-        .map_err(|err| err.to_string())?;
+        .map_err(Text::verbatim)?;
     let search: SteamSearch = get_json(CLIENT.get(url)).await?;
     if search.items.is_empty() {
-        return Err(t!("external.art.errors.no_game", name = name).into_owned());
+        return Err(Text::new("external.art.errors.no_game").arg("name", name));
     }
     let apps = futures::future::join_all(search.items.iter().take(STEAM_APPS).map(|item| steam_app(item.id))).await;
     let mut found = Candidates::default();
@@ -247,7 +256,7 @@ struct SteamApp {
 /// The art Steam's library itself shows for `appid`, read from its app
 /// info — since 2024 the paths carry a content hash, so they can't be
 /// guessed from the id alone.
-async fn steam_app(appid: u64) -> Result<SteamApp, String> {
+async fn steam_app(appid: u64) -> Result<SteamApp, Text> {
     let info: serde_json::Value = get_json(CLIENT.get(format!("{STEAM_APP_INFO}/{appid}"))).await?;
     let common = &info["data"][appid.to_string()]["common"];
     let asset = |kind: &str, size: &str| {

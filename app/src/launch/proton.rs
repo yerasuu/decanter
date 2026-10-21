@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
 use decanter_runtime::{Launch, Prefix, Prepared};
-use rust_i18n::t;
+
+use crate::i18n::Text;
 
 /// What a run that never started couldn't start, for its log.
 pub(super) const LAUNCHER: &str = "umu-run";
@@ -130,9 +131,9 @@ pub(super) async fn stop(account_id: &str, game_id: &str) {
 /// The escape hatch for a prefix a game has wrecked — the reason each
 /// game gets its own. Saves a game keeps inside its prefix go with it,
 /// which is why this is never automatic.
-pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), String> {
+pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), Text> {
     let Some(prefix) = crate::core::prefix_for(&account_id, &game_id) else {
-        return Err(t!("messages.errors.no_prefix").into_owned());
+        return Err(Text::new("messages.errors.no_prefix"));
     };
     // Nothing may be running in it: deleting a live prefix out from under
     // Wine corrupts whatever it was writing.
@@ -143,7 +144,7 @@ pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), Str
             .inspect_err(
                 |err| tracing::error!(account_id, game_id, %err, "failed to stop game before resetting its prefix")
             )
-            .map_err(|err| err.to_string())
+            .map_err(Text::verbatim)
     );
     match tokio::fs::remove_dir_all(prefix.path()).await {
         Ok(()) => {
@@ -156,7 +157,7 @@ pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), Str
         }
         Err(err) => {
             tracing::error!(account_id, game_id, %err, "failed to remove prefix directory");
-            Err(t!("messages.errors.delete_prefix", error = err).into_owned())
+            Err(Text::new("messages.errors.delete_prefix").arg("error", err))
         }
     }
 }

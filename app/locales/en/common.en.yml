@@ -1,0 +1,30 @@
+common.errors.internal_task: 'the internal task failed: %{error}'
+common.errors.verbatim: '%{error}'
+common.cancel: Cancel
+common.loading: Loading...
+common.queued: Queued…
+common.running: Running
+common.duration.hours_minutes: '%{hours}h %{minutes}m'
+common.duration.minutes: '%{minutes}m'
+common.duration.minutes_seconds: '%{minutes}m %{seconds}s'
+common.duration.seconds: '%{seconds}s'
+common.unavailable_here: Not available on this system
+common.needs_setup: 'Missing on this system: %{what}'
+common.setup.release_key: the key that verifies updates
+common.setup.tray_host: a system tray (StatusNotifier host)
+common.setup.psport_menu_binding: a psport build that lists port_menu_binding
+common.setup.psport_online: a psport build that lists online_module
+common.reported_by_ps: 'The PS port doesn''t support it: %{why}'
+common.testing: Testing
+game_tools.title: Game tools
+game_tools.intro: They apply the next time you start the game.
+game_tools.default_on: As in Settings (on)
+game_tools.default_off: As in Settings (off)
+game_tools.on: true
+game_tools.off: false
+game_tools.mangohud_missing: MangoHud isn't installed (its Vulkan layer wasn't found).
+game_tools.gamemode_missing: GameMode isn't installed (gamemoded or its D-Bus service is missing).
+common.pick_profile: Pick a profile above.
+common.date.months: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+common.date.format: '%{month} %{day}, %{year}'
+common.date.time: '%{hour12}:%{minute} %{meridiem}'

@@ -129,7 +129,7 @@ struct BarState {
 struct Uninstall {
     confirming: bool,
     busy: bool,
-    error: Option<String>,
+    error: Option<crate::i18n::Text>,
 }
 
 /// UI state that belongs to one game and starts over when the selection

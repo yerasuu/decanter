@@ -5,6 +5,7 @@ use gpui::{Context, Window, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane};
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
@@ -14,7 +15,7 @@ pub(super) struct LocalFilesTab {
     verifying: bool,
     report: Option<VerifyReport>,
     repairing: bool,
-    error: String,
+    error: Option<Text>,
 }
 
 impl LocalFilesTab {
@@ -26,7 +27,7 @@ impl LocalFilesTab {
             verifying: false,
             report: None,
             repairing: false,
-            error: String::new(),
+            error: None,
         }
     }
 
@@ -37,7 +38,7 @@ impl LocalFilesTab {
     fn verify(&mut self, cx: &mut Context<Self>) {
         let target = Rc::clone(&self.target);
         self.verifying = true;
-        self.error.clear();
+        self.error = None;
         self.report = None;
         tracing::info!(
             account_id = target.account_id,
@@ -55,7 +56,7 @@ impl LocalFilesTab {
                     "could not resolve library, verification aborted"
                 );
                 let _ = this.update(cx, |this, cx| {
-                    this.error = t!("library.install.no_library").into_owned();
+                    this.error = Some(Text::new("library.install.no_library"));
                     this.verifying = false;
                     cx.notify();
                 });
@@ -76,7 +77,7 @@ impl LocalFilesTab {
                     }
                     Err(err) => {
                         tracing::error!(account_id, product_id, error = %err, "file verification failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 this.verifying = false;
@@ -93,7 +94,7 @@ impl LocalFilesTab {
         };
         let target = Rc::clone(&self.target);
         self.repairing = true;
-        self.error.clear();
+        self.error = None;
         tracing::info!(
             account_id = target.account_id,
             product_id = target.product_id,
@@ -104,21 +105,21 @@ impl LocalFilesTab {
         cx.spawn(async move |this, cx| {
             let account_id = target.account_id.as_str();
             let product_id = target.product_id.as_str();
-            let fail = |error: String, cx: &mut gpui::AsyncApp| {
+            let fail = |error: Text, cx: &mut gpui::AsyncApp| {
                 let _ = this.update(cx, |this, cx| {
-                    this.error = error;
+                    this.error = Some(error);
                     this.repairing = false;
                     cx.notify();
                 });
             };
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
                 tracing::error!(account_id, product_id, "could not resolve library, repair aborted");
-                fail(t!("library.install.no_library").into_owned(), cx);
+                fail(Text::new("library.install.no_library"), cx);
                 return;
             };
             if let Err(err) = decanter_gog::repair(&core_library, account_id, product_id, &broken).await {
                 tracing::error!(account_id, product_id, error = %err, "file repair failed");
-                fail(err.to_string(), cx);
+                fail(Text::verbatim(err), cx);
                 return;
             }
             tracing::info!(account_id, product_id, "file repair finished");
@@ -128,7 +129,7 @@ impl LocalFilesTab {
                     Ok(outcome) => this.report = Some(outcome),
                     Err(err) => {
                         tracing::error!(account_id, product_id, error = %err, "re-verify after repair failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 this.repairing = false;
@@ -191,6 +192,6 @@ impl Render for LocalFilesTab {
         pane()
             .child(theme::muted(t!("library.properties.local_files.note")))
             .child(actions)
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
     }
 }

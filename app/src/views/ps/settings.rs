@@ -11,6 +11,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude:
 use rust_i18n::t;
 
 use super::online::OnlineView;
+use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
@@ -25,7 +26,7 @@ pub struct SettingsView {
     sys_modules: Option<String>,
     channel: Option<Channel>,
     online: Entity<OnlineView>,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl SettingsView {
@@ -79,7 +80,7 @@ impl SettingsView {
                     this.refresh(cx);
                 }
                 Err(err) => {
-                    this.error = Some(t!("ps.settings.save_error", error = err).into_owned());
+                    this.error = Some(Text::new("ps.settings.save_error").arg("error", err));
                     cx.notify();
                 }
             });
@@ -105,7 +106,7 @@ impl SettingsView {
                 }
                 Err(err) => {
                     tracing::warn!(?channel, %err, "could not save the psport channel");
-                    this.error = Some(t!("ps.settings.channel.save_error", error = err).into_owned());
+                    this.error = Some(Text::new("ps.settings.channel.save_error").arg("error", err));
                     cx.notify();
                 }
             });
@@ -242,7 +243,7 @@ impl Render for SettingsView {
                         .child(self.channel_row(Channel::Testing, true, cx)),
                 )
                 .child(self.online.clone())
-                .children(self.error.clone().map(theme::error)),
+                .children(self.error.as_ref().map(theme::error)),
         )
     }
 }

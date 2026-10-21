@@ -14,6 +14,7 @@ use gpui::{Context, Div, Entity, EventEmitter, ScrollHandle, Task, Window, div, 
 use rust_i18n::t;
 
 use crate::external::art::Candidates;
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, TextInput, button};
 
@@ -45,7 +46,7 @@ pub struct GameForm {
     executable: Entity<TextInput>,
     art: GameArt,
     search: Search,
-    error: String,
+    error: Option<Text>,
     _work: Option<Task<()>>,
     /// One per [`KINDS`](art::KINDS) row: the candidates scroll sideways and are paged
     /// by the arrows, which need the row's offset and width.
@@ -71,8 +72,8 @@ impl EventEmitter<FormEvent> for GameForm {}
 
 impl GameForm {
     pub fn new(profile_id: String, editing: Option<InstalledGame>, cx: &mut Context<Self>) -> Self {
-        let name = cx.new(|cx| TextInput::new(t!("external.form.name"), cx));
-        let executable = cx.new(|cx| TextInput::new(t!("external.form.executable"), cx));
+        let name = cx.new(|cx| TextInput::new(Text::new("external.form.name"), cx));
+        let executable = cx.new(|cx| TextInput::new(Text::new("external.form.executable"), cx));
         let Some(game) = editing else {
             return Self {
                 #[cfg(proton)]
@@ -88,7 +89,7 @@ impl GameForm {
                 executable,
                 art: GameArt::default(),
                 search: Search::Idle,
-                error: String::new(),
+                error: None,
                 _work: None,
                 scrolls: Default::default(),
                 paging: None,
@@ -116,7 +117,7 @@ impl GameForm {
             executable,
             art: game.art,
             search: Search::Idle,
-            error: String::new(),
+            error: None,
             _work: None,
             scrolls: Default::default(),
             paging: None,
@@ -191,11 +192,11 @@ impl GameForm {
         let executable = std::path::PathBuf::from(self.executable.read(cx).text().trim());
         cx.notify();
         if name.is_empty() || executable.as_os_str().is_empty() {
-            self.error = t!("external.form.errors.missing").into_owned();
+            self.error = Some(Text::new("external.form.errors.missing"));
             return;
         }
         if !executable.is_file() {
-            self.error = t!("external.form.errors.no_executable").into_owned();
+            self.error = Some(Text::new("external.form.errors.no_executable"));
             return;
         }
         let draft = crate::external::Draft {
@@ -212,7 +213,7 @@ impl GameForm {
         };
         match crate::external::save(&self.profile_id, &self.id, draft) {
             Ok(()) => cx.emit(FormEvent::Saved),
-            Err(err) => self.error = err,
+            Err(err) => self.error = Some(err),
         }
     }
 }
@@ -265,8 +266,8 @@ impl Render for GameForm {
             .child(self.art_section(cx))
             .children(rows.umu)
             .children(rows.progress)
-            .when(!self.error.is_empty(), |form| {
-                form.child(div().mt_3().child(theme::error(self.error.clone())))
+            .when_some(self.error.as_ref(), |form, error| {
+                form.child(div().mt_3().child(theme::error(error)))
             })
             .child(
                 div().flex().mt_4().child(

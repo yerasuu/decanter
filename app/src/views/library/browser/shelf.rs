@@ -332,7 +332,7 @@ fn auto_badge() -> Div {
         .border_color(rgb(theme::ACCENT_BLUE_DIM))
         .rounded(px(8.))
         .px(px(4.))
-        .child("AUTO")
+        .child(t!("library.shelves.auto"))
 }
 
 fn visible_cards(count: usize, viewport: f32, scrolled: f32) -> (usize, usize) {

@@ -24,6 +24,7 @@ use rust_i18n::t;
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{Filters, KindSelection, PlayState, SavedFilter, Sort};
 use super::{LibraryModel, LibraryPopup};
+use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::select::SelectStyle;
@@ -100,14 +101,14 @@ impl SidebarView {
         cx.observe(&state.session, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
         cx.observe(&model, |_, _, cx| cx.notify()).detach();
-        let search = cx.new(|cx| TextInput::new(t!("library.sidebar.search"), cx).text_size(12.));
+        let search = cx.new(|cx| TextInput::new(Text::new("library.sidebar.search"), cx).text_size(12.));
         cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Changed) {
                 cx.notify();
             }
         })
         .detach();
-        let save_name = cx.new(|cx| TextInput::new(t!("library.collections.name_placeholder"), cx));
+        let save_name = cx.new(|cx| TextInput::new(Text::new("library.collections.name_placeholder"), cx));
         cx.subscribe(&save_name, |this, input, event: &InputEvent, cx| match event {
             InputEvent::Submit => this.save_dynamic_collection(&input, cx),
             InputEvent::Cancel => {

@@ -11,7 +11,8 @@ use std::sync::OnceLock;
 
 use chrono::Utc;
 use decanter_core::bootstrap::{self, Location};
-use rust_i18n::t;
+
+use crate::i18n::Text;
 
 /// The PS launch settings' key of a game's own debug switch (`titles.<TITLE_ID>.debug`).
 pub const TITLE_KEY: &str = "debug";
@@ -28,10 +29,10 @@ pub fn enabled() -> bool {
         .unwrap_or(false)
 }
 
-pub fn set_enabled(enabled: bool) -> Result<(), String> {
+pub fn set_enabled(enabled: bool) -> Result<(), Text> {
     let db = crate::achv_try!(crate::core::db());
     db.set_debug_mode(enabled)
-        .map_err(|err| t!("settings.general.debug.errors.save", error = err).into_owned())
+        .map_err(|err| Text::new("settings.general.debug.errors.save").arg("error", err))
 }
 
 /// The folder whether the mode is on or not, and whether the user picked it; `None` before
@@ -100,31 +101,28 @@ fn sanitise_host(name: &str) -> String {
 
 /// Points the debug logs at `picked`, or back at the default with `None`. `picked` comes from a
 /// folder dialog, so it is checked here, once: an absolute, writable directory.
-pub fn set_folder(picked: Option<&Path>) -> Result<(), String> {
+pub fn set_folder(picked: Option<&Path>) -> Result<(), Text> {
     let db = crate::achv_try!(crate::core::db());
     let save = |dir: Option<&str>| {
         db.set_debug_log_dir(dir)
-            .map_err(|err| t!("settings.general.debug.errors.save", error = err).into_owned())
+            .map_err(|err| Text::new("settings.general.debug.errors.save").arg("error", err))
     };
     let Some(picked) = picked else {
         return save(None);
     };
     if !picked.is_absolute() || !picked.is_dir() {
-        return Err(t!("settings.general.debug.errors.not_dir", path = picked.display()).into_owned());
+        return Err(Text::new("settings.general.debug.errors.not_dir").arg("path", picked.display()));
     }
     crate::achv_try!(crate::platform::check_writable(picked).map_err(|err| {
-        t!(
-            "settings.general.debug.errors.not_writable",
-            path = picked.display(),
-            error = err
-        )
-        .into_owned()
+        Text::new("settings.general.debug.errors.not_writable")
+            .arg("path", picked.display())
+            .arg("error", err)
     }));
     if default_folder().as_deref() == Some(picked) {
         return save(None);
     }
     let Some(text) = picked.to_str() else {
-        return Err(t!("settings.general.debug.errors.not_utf8", path = picked.display()).into_owned());
+        return Err(Text::new("settings.general.debug.errors.not_utf8").arg("path", picked.display()));
     };
     save(Some(text))
 }

@@ -32,6 +32,7 @@ use decanter_core::{Game, Storefront};
 use gpui::{AnyView, App, AppContext as _, Context, Div, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::theme;
 use crate::views::chrome;
 
@@ -100,7 +101,7 @@ const EXTERNAL_TABS: &[Tab] = &[
 /// Nothing stops a second click from opening a second window on the same
 /// game; Steam's own dialog doesn't either.
 pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
-    let title = t!("library.properties.window_title", title = game.title);
+    let title = t!("library.properties.window_title", title = game.title).into_owned();
     let target = Rc::new(Target {
         account_id,
         product_id: game.id,
@@ -109,7 +110,7 @@ pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
     });
     let options = chrome::window_options(&title, 640., 560., 480., 360., cx);
     if let Err(err) = cx.open_window(options, |window, cx| {
-        cx.new(|cx| PropertiesWindow::new(target, window, cx))
+        cx.new(|cx| PropertiesWindow::new(target, title, window, cx))
     }) {
         tracing::error!(%err, "cannot open the properties window");
     }
@@ -117,15 +118,18 @@ pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
 
 struct PropertiesWindow {
     target: Rc<Target>,
+    /// The title the window has, so it's only set again when the language changes.
+    title: String,
     tab: Tab,
     pane: AnyView,
 }
 
 impl PropertiesWindow {
-    fn new(target: Rc<Target>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(target: Rc<Target>, title: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let pane = build_pane(Tab::General, &target, window, cx);
         Self {
             target,
+            title,
             tab: Tab::General,
             pane,
         }
@@ -209,8 +213,13 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
 }
 
 impl Render for PropertiesWindow {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let on_close: Rc<dyn Fn(&mut Window, &mut App)> = Rc::new(|window, _| window.remove_window());
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = t!("library.properties.window_title", title = self.target.title);
+        if title != self.title {
+            window.set_window_title(&title);
+            self.title = title.into_owned();
+        }
+        let on_close: Rc<dyn Fn(&mut Window, &mut App)> = Rc::new(|this_window, _| this_window.remove_window());
         let topbar = div()
             .flex()
             .flex_none()
@@ -306,6 +315,6 @@ fn not_installed() -> Div {
     pane().child(theme::muted(t!("library.properties.not_installed")))
 }
 
-fn error_line(error: &str) -> Option<Div> {
-    (!error.is_empty()).then(|| theme::error(error.to_owned()))
+fn error_line(error: Option<&Text>) -> Option<Div> {
+    error.map(theme::error)
 }

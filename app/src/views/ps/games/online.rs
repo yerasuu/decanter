@@ -10,6 +10,7 @@ use gpui::{Context, Entity, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{Select, checkbox, select::SelectStyle};
@@ -27,7 +28,7 @@ pub struct OnlineTitleView {
     is_online: bool,
     is_bbsc: bool,
     local_server: LocalServer,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl OnlineTitleView {
@@ -101,7 +102,7 @@ impl OnlineTitleView {
             let _ = this.update(cx, |this, cx| {
                 this.error = saved
                     .err()
-                    .map(|err| t!("ps.online.save_error", error = err).into_owned());
+                    .map(|err| Text::new("ps.online.save_error").arg("error", err));
                 cx.notify();
             });
         })
@@ -193,7 +194,7 @@ impl Render for OnlineTitleView {
                 column.child(theme::muted(t!("ps.online.off_in_settings")))
             })
             .child(body)
-            .children(self.error.clone().map(theme::error))
+            .children(self.error.as_ref().map(theme::error))
             .into_any_element()
     }
 }

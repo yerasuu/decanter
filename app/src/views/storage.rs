@@ -11,6 +11,7 @@ use gpui::{AnyElement, Context, SharedString, Task, Window, div, prelude::*, px,
 use rust_i18n::t;
 
 use crate::external::transfer::Progress;
+use crate::i18n::Text;
 use crate::state::{AppState, Ps};
 use crate::theme;
 use crate::widgets::select::Select;
@@ -165,7 +166,7 @@ fn scan(profile_id: &str) -> Vec<Folder> {
 pub struct StorageView {
     /// `None` until the first scan for this profile lands.
     folders: Option<Vec<Folder>>,
-    error: String,
+    error: Option<Text>,
     scan: Option<Task<()>>,
     /// The game being moved between folders (a GOG or external game's id,
     /// or a PS dump's folder), and how far it's got.
@@ -186,7 +187,7 @@ impl StorageView {
         cx.observe(&session, |this, _, cx| this.rescan(cx)).detach();
         let mut this = Self {
             folders: None,
-            error: String::new(),
+            error: None,
             scan: None,
             moving: None,
             _move: None,
@@ -246,10 +247,10 @@ impl StorageView {
                 match result {
                     Ok(root) => {
                         tracing::info!(profile_id, root = %root.display(), "library folder added");
-                        this.error.clear();
+                        this.error = None;
                         this.folders_changed(cx);
                     }
-                    Err(err) => this.error = err,
+                    Err(err) => this.error = Some(err),
                 }
                 cx.notify();
             });
@@ -282,10 +283,10 @@ impl StorageView {
             let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(()) => {
-                        this.error.clear();
+                        this.error = None;
                         this.rescan(cx);
                     }
-                    Err(err) => this.error = err,
+                    Err(err) => this.error = Some(err),
                 }
                 cx.notify();
             });
@@ -361,10 +362,10 @@ impl StorageView {
         };
         match crate::core::remove_library_folder(&profile_id, root) {
             Ok(()) => {
-                self.error.clear();
+                self.error = None;
                 self.folders_changed(cx);
             }
-            Err(err) => self.error = err,
+            Err(err) => self.error = Some(err),
         }
         cx.notify();
     }
@@ -396,13 +397,13 @@ impl StorageView {
             let result = removal.await;
             let _ = this.update(cx, |this, cx| {
                 match result {
-                    Ok(()) => this.error.clear(),
+                    Ok(()) => this.error = None,
                     Err(decanter_core::migrate::Error::Busy) => {
-                        this.error = t!("storage.errors.legacy_busy").into_owned();
+                        this.error = Some(Text::new("storage.errors.legacy_busy"));
                     }
                     Err(err) => {
                         tracing::error!(%err, "cannot remove the old data folder");
-                        this.error = t!("storage.errors.legacy", error = err).into_owned();
+                        this.error = Some(Text::new("storage.errors.legacy").arg("error", err));
                     }
                 }
                 this.legacy = decanter_core::migrate::legacy_leftover();
@@ -461,7 +462,7 @@ impl StorageView {
             async move {
                 tokio::task::spawn_blocking(move || crate::relocate::move_game(&account_id, &game_id, &to, &progress))
                     .await
-                    .unwrap_or_else(|err| Err(err.to_string()))
+                    .unwrap_or_else(|err| Err(Text::verbatim(err)))
             }
         };
         self.track_move(game.game_id.clone(), progress, work, cx);
@@ -483,11 +484,11 @@ impl StorageView {
         &mut self,
         key: String,
         progress: Arc<Progress>,
-        work: impl Future<Output = Result<(), String>> + 'static,
+        work: impl Future<Output = Result<(), Text>> + 'static,
         cx: &mut Context<Self>,
     ) {
         self.moving = Some((key, progress));
-        self.error.clear();
+        self.error = None;
         self._ticker = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(250)).await;
@@ -505,7 +506,7 @@ impl StorageView {
             let _ = this.update(cx, |this, cx| {
                 this.moving = None;
                 if let Err(err) = result {
-                    this.error = err;
+                    this.error = Some(err);
                 }
                 this.folders_changed(cx);
             });
@@ -756,9 +757,7 @@ impl Render for StorageView {
                             .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
                     ),
                 )
-                .when(!self.error.is_empty(), |column| {
-                    column.child(div().mt_3().child(theme::error(self.error.clone())))
-                })
+                .children(self.error.as_ref().map(|error| div().mt_3().child(theme::error(error))))
                 .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx))),
         )
     }

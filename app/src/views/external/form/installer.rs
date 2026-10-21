@@ -4,6 +4,7 @@ use gpui::{Div, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::GameForm;
+use crate::i18n::Text;
 #[cfg(not(proton))]
 use crate::theme;
 #[cfg(not(proton))]
@@ -14,7 +15,7 @@ pub(super) enum Installer {
     Running,
     /// Finished: the executable picker starts where it most likely put the game.
     Done,
-    Failed(String),
+    Failed(Text),
 }
 
 #[cfg(proton)]
@@ -43,7 +44,7 @@ impl GameForm {
             let installer = file.path().to_path_buf();
             let _ = this.update(cx, |this, cx| {
                 this.installer = Installer::Running;
-                this.error.clear();
+                this.error = None;
                 cx.notify();
             });
             #[cfg(proton)]
@@ -81,7 +82,7 @@ impl GameForm {
             Installer::Idle => theme::muted(t!("external.form.installer.hint_native")),
             Installer::Running => theme::muted(t!("external.form.installer.running")),
             Installer::Done => theme::muted(t!("external.form.installer.done")),
-            Installer::Failed(err) => theme::error(err.clone()),
+            Installer::Failed(err) => theme::error(err),
         };
         div()
             .flex()

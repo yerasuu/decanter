@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use gpui::{Context, Window, div, prelude::*, px, relative};
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
@@ -15,7 +16,7 @@ pub struct Unavailable {
     root: PathBuf,
     /// Known libraries whose disk is there, to switch to.
     others: Vec<PathBuf>,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl Unavailable {
@@ -34,7 +35,7 @@ impl Unavailable {
     fn switch(&mut self, root: &Path, cx: &mut Context<Self>) {
         if let Err(err) = decanter_core::bootstrap::activate(root) {
             tracing::error!(root = %root.display(), %err, "cannot switch library");
-            self.error = Some(t!("messages.errors.save_libraries", error = err).into_owned());
+            self.error = Some(Text::new("messages.errors.save_libraries").arg("error", err));
             cx.notify();
             return;
         }
@@ -65,8 +66,11 @@ impl Unavailable {
             let _ = this.update(cx, |this, cx| match created {
                 Ok(()) => this.switch(&root, cx),
                 Err(err) => {
-                    this.error =
-                        Some(t!("messages.errors.create_dir", path = root.display(), error = err).into_owned());
+                    this.error = Some(
+                        Text::new("messages.errors.create_dir")
+                            .arg("path", root.display())
+                            .arg("error", err),
+                    );
                     cx.notify();
                 }
             });
@@ -107,7 +111,7 @@ impl Render for Unavailable {
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.pick(cx))),
                 )
-                .children(self.error.clone().map(theme::error)),
+                .children(self.error.as_ref().map(theme::error)),
         )
     }
 }

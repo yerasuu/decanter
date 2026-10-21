@@ -1,47 +1,141 @@
 //! The UI language: the one saved in Ajustes, or the system locale's when
 //! none is.
 
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
 use decanter_core::capabilities::Feature;
 use gpui::AppContext as _;
+use rust_i18n::t;
+
+/// Every language with a folder in `locales/`, so adding one is adding its
+/// files.
+static AVAILABLE: LazyLock<Vec<Cow<'static, str>>> = LazyLock::new(|| rust_i18n::available_locales!());
+
+/// What a system locale none of `AVAILABLE` matches gets.
+const OTHER_SYSTEMS: &str = "en";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Language {
-    Es,
-    En,
-}
+pub struct Language(&'static str);
 
 impl Language {
-    pub const ALL: [Self; 2] = [Self::Es, Self::En];
+    pub fn all() -> impl Iterator<Item = Self> {
+        AVAILABLE.iter().map(|code| Self(code))
+    }
 
     pub const fn code(self) -> &'static str {
-        match self {
-            Self::Es => "es",
-            Self::En => "en",
-        }
+        self.0
     }
 
     pub fn from_code(code: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|language| language.code() == code)
+        Self::all().find(|language| language.0 == code)
     }
 
     /// Written in the language itself, never translated, so it can be found
     /// from a UI in a language the reader doesn't know.
-    pub const fn native_name(self) -> &'static str {
-        match self {
-            Self::Es => "Español",
-            Self::En => "English",
-        }
+    pub fn native_name(self) -> Cow<'static, str> {
+        t!("language.native_name", locale = self.0)
     }
 
     /// The first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set, in
-    /// POSIX's order of precedence.
+    /// POSIX's order of precedence: its region's language (`pt_BR` as
+    /// `pt-BR`) when there is one, else its language's.
     fn system() -> Self {
         let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
             .into_iter()
             .filter_map(|name| std::env::var(name).ok())
             .find(|value| !value.is_empty())
             .unwrap_or_default();
-        if locale.starts_with("es") { Self::Es } else { Self::En }
+        let tag = locale.split(['.', '@']).next().unwrap_or_default().replace('_', "-");
+        Self::from_code(&tag)
+            .or_else(|| tag.split('-').next().and_then(Self::from_code))
+            .unwrap_or(Self(OTHER_SYSTEMS))
+    }
+}
+
+/// "Language" in every language, the current one first, for the first-run
+/// screen: whoever reads it may not know the one it started in.
+pub fn label_in_all() -> String {
+    let current = rust_i18n::locale();
+    let is_current = |language: &Language| language.code() == &*current;
+    Language::all()
+        .filter(is_current)
+        .chain(Language::all().filter(|language| !is_current(language)))
+        .map(|language| t!("language.label", locale = language.code()))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// UI text kept to be shown later: its key and arguments, translated each time
+/// it's shown, so a view that holds one follows a language switch instead of
+/// keeping the words of the language it was built in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Text {
+    key: &'static str,
+    args: Vec<(&'static str, Arg)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Arg {
+    Verbatim(String),
+    Text(Text),
+}
+
+impl Text {
+    pub const fn new(key: &'static str) -> Self {
+        Self { key, args: Vec::new() }
+    }
+
+    /// Nothing but `value`, the same in every language: an error worded
+    /// outside decanter, where a translated one is expected.
+    pub fn verbatim(value: impl std::fmt::Display) -> Self {
+        Self::new("common.errors.verbatim").arg("error", value)
+    }
+
+    /// `value` as it is in every language: a path, a number, a name, an error
+    /// worded outside decanter.
+    #[must_use]
+    pub fn arg(mut self, name: &'static str, value: impl std::fmt::Display) -> Self {
+        self.args.push((name, Arg::Verbatim(value.to_string())));
+        self
+    }
+
+    /// `value` translated along with this text.
+    #[must_use]
+    pub fn text(mut self, name: &'static str, value: Self) -> Self {
+        self.args.push((name, Arg::Text(value)));
+        self
+    }
+}
+
+impl std::fmt::Display for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let template = t!(self.key);
+        if self.args.is_empty() {
+            return f.write_str(&template);
+        }
+        let mut names = Vec::with_capacity(self.args.len());
+        let mut values = Vec::with_capacity(self.args.len());
+        for (name, arg) in &self.args {
+            names.push(*name);
+            values.push(match arg {
+                Arg::Verbatim(value) => value.clone(),
+                Arg::Text(text) => text.to_string(),
+            });
+        }
+        f.write_str(&rust_i18n::replace_patterns(&template, &names, &values))
+    }
+}
+
+impl From<&Text> for gpui::SharedString {
+    fn from(text: &Text) -> Self {
+        text.to_string().into()
+    }
+}
+
+impl From<Text> for gpui::SharedString {
+    fn from(text: Text) -> Self {
+        (&text).into()
     }
 }
 
@@ -62,9 +156,9 @@ pub fn init() {
 
 /// Saves `language` (`None` follows the system) and switches to it right
 /// away, bbport's in-game menu included from its next run. Refreshing every
-/// window re-renders even the cached views, but text a view already built
-/// and kept (an error message, say) stays in the old language until it's
-/// built again.
+/// window re-renders even the cached views, and text a view keeps is a
+/// [`Text`], translated as it's drawn; only the lines already in a job's log
+/// stay in the language they were written in.
 ///
 /// Switches even when it can't be saved, since the first-run screen picks a
 /// language before any library holds a database; that screen saves it again
@@ -79,6 +173,7 @@ pub fn set(language: Option<Language>, cx: &mut gpui::App) {
     }
     tracing::info!(language = language.map(Language::code), "language setting changed");
     rust_i18n::set_locale(language.unwrap_or_else(Language::system).code());
+    crate::platform::refresh_tray();
     if crate::capabilities::Caps::get(cx).is_offered(Feature::PsSection) {
         cx.background_spawn(async {
             let root = decanter_ps::paths::active();

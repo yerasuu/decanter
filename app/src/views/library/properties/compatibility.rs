@@ -11,6 +11,7 @@ use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::theme;
 use crate::views::game_tools::GameToolsPanel;
 use crate::widgets::{ButtonKind, Select, button, tooltip};
@@ -21,7 +22,7 @@ pub(super) struct CompatibilityTab {
     runners: Vec<String>,
     created: bool,
     busy: bool,
-    error: String,
+    error: Option<Text>,
     tools: Entity<GameToolsPanel>,
 }
 
@@ -35,7 +36,7 @@ impl CompatibilityTab {
             runners: Vec::new(),
             created: false,
             busy: false,
-            error: String::new(),
+            error: None,
         };
         this.reload();
         this
@@ -55,10 +56,10 @@ impl CompatibilityTab {
         let chosen = (!chosen.is_empty()).then_some(chosen);
         match set_proton(&self.target.account_id, &self.target.product_id, chosen) {
             Ok(()) => {
-                self.error.clear();
+                self.error = None;
                 self.reload();
             }
-            Err(err) => self.error = err,
+            Err(err) => self.error = Some(err),
         }
         cx.notify();
     }
@@ -75,12 +76,12 @@ impl CompatibilityTab {
                 match outcome {
                     Ok(()) => {
                         tracing::info!(account_id, product_id = %game_id, "proton prefix reset");
-                        this.error.clear();
+                        this.error = None;
                         this.reload();
                     }
                     Err(err) => {
                         tracing::error!(account_id, product_id = %game_id, error = %err, "failed to reset proton prefix");
-                        this.error = err;
+                        this.error = Some(err);
                     }
                 }
                 this.busy = false;
@@ -146,22 +147,21 @@ impl Render for CompatibilityTab {
                 },
             )))
             .child(field_row().child(proton).child(reset))
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
             .child(self.tools.clone())
     }
 }
 
 /// Pins (or unpins) a game's Proton by rewriting its manifest — the
 /// manifests are the record, so there's nowhere else to put it.
-fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Result<(), String> {
+fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Result<(), Text> {
     let library = crate::achv_try!(crate::core::library_for_account(account_id).inspect_err(
         |err| tracing::error!(account_id, product_id, error = %err, "failed to resolve library, proton pin not changed")
     ));
     // Re-read rather than editing the copy this tab rendered from, so a
     // change made elsewhere since isn't clobbered.
     let mut current = crate::achv_try!(
-        crate::core::installed_game(account_id, product_id)
-            .ok_or_else(|| t!("messages.errors.not_installed").into_owned())
+        crate::core::installed_game(account_id, product_id).ok_or_else(|| Text::new("messages.errors.not_installed"))
     );
     current.proton = proton.map(str::to_string);
     match library.write_manifest(&current) {
@@ -171,7 +171,7 @@ fn set_proton(account_id: &str, product_id: &str, proton: Option<&str>) -> Resul
         }
         Err(err) => {
             tracing::error!(account_id, product_id, proton, error = %err, "failed to save proton pin");
-            Err(t!("messages.errors.save_manifest", error = err).into_owned())
+            Err(Text::new("messages.errors.save_manifest").arg("error", err))
         }
     }
 }

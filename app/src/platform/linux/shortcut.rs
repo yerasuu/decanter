@@ -25,6 +25,9 @@ const IS_DEFAULT: u32 = 8;
 pub struct Shortcut {
     kglobalaccel: Proxy<'static>,
     pressed: SignalStream<'static>,
+    /// The name it was registered under: releasing it under another, after
+    /// a language switch, would leave it active.
+    name: String,
 }
 
 impl Shortcut {
@@ -44,7 +47,7 @@ impl Shortcut {
     }
 
     async fn try_register(bus: &Connection) -> zbus::Result<Self> {
-        let name = t!("closing.shortcut_name");
+        let name = t!("closing.shortcut_name").into_owned();
         let id = action_id(&name);
         // Always four ints, unused ones 0: KGlobalAccel reads a key sequence
         // as exactly four (QKeySequence's longest) and aborts on fewer,
@@ -65,13 +68,16 @@ impl Shortcut {
         let path: OwnedObjectPath = crate::achv_try!(kglobalaccel.call("getComponent", &(COMPONENT,)).await);
         let component = crate::achv_try!(Proxy::new(bus, SERVICE, path, "org.kde.kglobalaccel.Component").await);
         let pressed = crate::achv_try!(component.receive_signal("globalShortcutPressed").await);
-        Ok(Self { kglobalaccel, pressed })
+        Ok(Self {
+            kglobalaccel,
+            pressed,
+            name,
+        })
     }
 
     /// Hands the key back to the rest of the desktop while no game runs.
     pub async fn release(self) {
-        let name = t!("closing.shortcut_name");
-        let id = action_id(&name);
+        let id = action_id(&self.name);
         if let Err(err) = self.kglobalaccel.call_method("setInactive", &(id.as_slice(),)).await {
             tracing::warn!(error = %err, "could not release the close-game shortcut");
         }

@@ -10,11 +10,11 @@ use decanter_ps::process::JobKind;
 use decanter_ps::toolchain::Toolchain;
 use decanter_ps::toolchain::validation::{self, Unavailable};
 use gpui::{AsyncApp, WeakEntity};
-use rust_i18n::t;
 use tokio::process::Command;
 
 use super::Ps;
 use super::jobs::{self, JobKey};
+use crate::i18n::Text;
 
 enum Outcome {
     NotAsked,
@@ -35,10 +35,10 @@ pub async fn apply(
     root: &Root,
     toolchain: &Toolchain,
     game_dir: &Path,
-    command: Result<Command, String>,
+    command: Result<Command, Text>,
     mut facts: Vec<(&'static str, String)>,
     cx: &mut AsyncApp,
-) -> (Result<Command, String>, Vec<(&'static str, String)>) {
+) -> (Result<Command, Text>, Vec<(&'static str, String)>) {
     let mut command = match command {
         Ok(command) => command,
         Err(err) => return (Err(err), facts),
@@ -46,7 +46,7 @@ pub async fn apply(
     match give(this, root, toolchain, game_dir, &mut command, cx).await {
         Outcome::NotAsked => {}
         Outcome::Fact(fact) => facts.push(("vk_validation_layer", fact)),
-        Outcome::Stopped => return (Err(t!("ps.vk_layer.stopped").into_owned()), facts),
+        Outcome::Stopped => return (Err(Text::new("ps.vk_layer.stopped")), facts),
     }
     (Ok(command), facts)
 }
@@ -108,7 +108,7 @@ async fn layer(
     if let Some(dir) = validation::cached(root, &realiser).await {
         return Ok(Some(dir));
     }
-    set_notice(this, Some(t!("ps.vk_layer.preparing").into_owned()), cx);
+    set_notice(this, Some(Text::new("ps.vk_layer.preparing")), cx);
     let command = match validation::realise_command(root, &realiser).await {
         Ok(command) => command,
         Err(err) => {
@@ -134,7 +134,7 @@ async fn layer(
     if stopped { Ok(None) } else { Err(Unavailable::Build) }
 }
 
-fn set_notice(this: &WeakEntity<Ps>, text: Option<String>, cx: &mut AsyncApp) {
+fn set_notice(this: &WeakEntity<Ps>, text: Option<Text>, cx: &mut AsyncApp) {
     let _ = this.update(cx, |this, cx| {
         this.notice = text.map(|text| (text, false));
         cx.notify();
@@ -142,11 +142,11 @@ fn set_notice(this: &WeakEntity<Ps>, text: Option<String>, cx: &mut AsyncApp) {
 }
 
 /// For the launch's notice and the setting's note.
-pub fn unavailable_text(why: Unavailable) -> String {
+pub fn unavailable_text(why: Unavailable) -> Text {
     let reason = match why {
-        Unavailable::NoNix => t!("ps.vk_layer.reasons.no_nix"),
-        Unavailable::Setup => t!("ps.vk_layer.reasons.setup"),
-        Unavailable::Build => t!("ps.vk_layer.reasons.build"),
+        Unavailable::NoNix => Text::new("ps.vk_layer.reasons.no_nix"),
+        Unavailable::Setup => Text::new("ps.vk_layer.reasons.setup"),
+        Unavailable::Build => Text::new("ps.vk_layer.reasons.build"),
     };
-    t!("ps.vk_layer.unavailable", reason = reason).into_owned()
+    Text::new("ps.vk_layer.unavailable").text("reason", reason)
 }

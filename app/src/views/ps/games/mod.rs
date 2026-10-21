@@ -24,6 +24,7 @@ use gpui::{
 };
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::{AppState, JobKey, Ps};
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, sidebar_title, tooltip};
@@ -57,7 +58,7 @@ impl GamesView {
         cx.observe(&detail, |_, _, cx| cx.notify()).detach();
         let games = cx.entity().downgrade();
         let browser = cx.new(|cx| BrowserView::new(ps.clone(), detail.clone(), games, cx));
-        let search = cx.new(|cx| TextInput::new(t!("ps.games.search"), cx));
+        let search = cx.new(|cx| TextInput::new(Text::new("ps.games.search"), cx));
         cx.subscribe(&search, |_, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 cx.notify();
@@ -251,7 +252,7 @@ fn header(platform: Platform, count: usize) -> AnyElement {
 
 impl Render for GamesView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let error = self.ps.read(cx).error().map(str::to_owned);
+        let error = self.ps.read(cx).error().cloned();
         let pane = if self.detail.read(cx).selected().is_some() {
             div()
                 .id("ps-detail-pane")

@@ -2,13 +2,14 @@ use std::borrow::Cow;
 
 use decanter_core::GameArt;
 use gpui::{
-    AnyElement, Context, Div, FontWeight, MouseButton, ObjectFit, div, img, linear_color_stop, linear_gradient, point,
-    prelude::*, px, relative, rgb,
+    AnyElement, Context, Div, FontWeight, MouseButton, ObjectFit, SharedString, div, img, linear_color_stop,
+    linear_gradient, point, prelude::*, px, relative, rgb,
 };
 use rust_i18n::t;
 
 use super::{GameForm, Search};
 use crate::external::art::{Candidate, Candidates, Source};
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, tooltip};
 
@@ -62,12 +63,12 @@ impl GameForm {
     pub(super) fn search_art(&mut self, cx: &mut Context<Self>) {
         let name = self.name.read(cx).text().trim().to_owned();
         if name.is_empty() {
-            self.error = t!("external.form.errors.name_for_art").into_owned();
+            self.error = Some(Text::new("external.form.errors.name_for_art"));
             cx.notify();
             return;
         }
         self.search = Search::Searching;
-        self.error.clear();
+        self.error = None;
         // The same name finds its protonfixes entry too.
         #[cfg(proton)]
         self.search_umu(cx);
@@ -150,7 +151,7 @@ impl GameForm {
                         div()
                             .text_size(px(12.))
                             .text_color(rgb(theme::TEXT_MUTED))
-                            .child(problem.clone())
+                            .child(SharedString::from(problem))
                     }))
             }))
             .children(KINDS.map(|kind| self.art_row(kind, found, cx)))

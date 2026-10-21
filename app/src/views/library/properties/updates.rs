@@ -5,6 +5,7 @@ use gpui::{Context, Window, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
@@ -16,7 +17,7 @@ pub(super) struct UpdatesTab {
     /// inside for "already up to date".
     result: Option<Option<String>>,
     updating: bool,
-    error: String,
+    error: Option<Text>,
 }
 
 impl UpdatesTab {
@@ -28,7 +29,7 @@ impl UpdatesTab {
             checking: false,
             result: None,
             updating: false,
-            error: String::new(),
+            error: None,
         }
     }
 
@@ -42,7 +43,7 @@ impl UpdatesTab {
         };
         let account_id = self.target.account_id.clone();
         self.checking = true;
-        self.error.clear();
+        self.error = None;
         tracing::debug!(account_id, product_id = %installed.game_id, "checking gog for a newer build");
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -52,7 +53,7 @@ impl UpdatesTab {
                     Ok(update) => this.result = Some(update),
                     Err(err) => {
                         tracing::error!(account_id, product_id = %installed.game_id, error = %err, "update check failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 this.checking = false;
@@ -66,7 +67,7 @@ impl UpdatesTab {
     fn install_update(&mut self, cx: &mut Context<Self>) {
         let target = Rc::clone(&self.target);
         self.updating = true;
-        self.error.clear();
+        self.error = None;
         tracing::info!(
             account_id = target.account_id,
             product_id = target.product_id,
@@ -83,7 +84,7 @@ impl UpdatesTab {
                     "could not resolve library, update install aborted"
                 );
                 let _ = this.update(cx, |this, cx| {
-                    this.error = t!("library.install.no_library").into_owned();
+                    this.error = Some(Text::new("library.install.no_library"));
                     this.updating = false;
                     cx.notify();
                 });
@@ -108,7 +109,7 @@ impl UpdatesTab {
                     }
                     Err(err) => {
                         tracing::error!(account_id, product_id, error = %err, "update install failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 this.updating = false;
@@ -172,6 +173,6 @@ impl Render for UpdatesTab {
                     )),
             )
             .child(actions)
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
     }
 }

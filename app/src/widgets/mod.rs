@@ -344,7 +344,7 @@ pub fn language_select(
 ) -> Select {
     const SYSTEM_LANGUAGE: &str = "system";
     let options = std::iter::once((SYSTEM_LANGUAGE.into(), t!("settings.general.language.system").into()))
-        .chain(Language::ALL.map(|language| (language.code().into(), language.native_name().into())));
+        .chain(Language::all().map(|language| (language.code().into(), language.native_name().into())));
     Select::new("language", options, selected.map_or(SYSTEM_LANGUAGE, Language::code))
         .on_change(move |value, window, cx| on_change(Language::from_code(value), window, cx))
 }

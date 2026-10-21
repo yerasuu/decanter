@@ -77,7 +77,7 @@ impl DetailView {
                 .into_any_element(),
         ];
         if let Some(err) = &uninstall.error {
-            elements.push(theme::error(err.clone()).into_any_element());
+            elements.push(theme::error(err).into_any_element());
         }
         elements
     }

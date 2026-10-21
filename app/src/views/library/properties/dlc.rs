@@ -12,6 +12,7 @@ use gpui::{Context, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, not_installed, pane};
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::checkbox;
 
@@ -21,7 +22,7 @@ pub(super) struct DlcTab {
     dlcs: Vec<CachedGame>,
     goodies: Vec<CachedGame>,
     busy: Option<String>,
-    error: String,
+    error: Option<Text>,
 }
 
 impl DlcTab {
@@ -32,7 +33,7 @@ impl DlcTab {
             dlcs: Vec::new(),
             goodies: Vec::new(),
             busy: None,
-            error: String::new(),
+            error: None,
         };
         this.reload();
         this
@@ -68,7 +69,7 @@ impl DlcTab {
         let target = Rc::clone(&self.target);
         let dlc_id = dlc.product_id.clone();
         let title = dlc.title.clone();
-        self.error.clear();
+        self.error = None;
         self.busy = Some(dlc_id.clone());
         tracing::info!(
             account_id = target.account_id,
@@ -89,7 +90,7 @@ impl DlcTab {
                     "could not resolve library, dlc toggle aborted"
                 );
                 let _ = this.update(cx, |this, cx| {
-                    this.error = t!("library.install.no_library").into_owned();
+                    this.error = Some(Text::new("library.install.no_library"));
                     this.busy = None;
                     cx.notify();
                 });
@@ -116,7 +117,7 @@ impl DlcTab {
                     Ok(()) => this.reload(),
                     Err(err) => {
                         tracing::error!(account_id, dlc_id, on, error = %err, "dlc install state change failed");
-                        this.error = err.to_string();
+                        this.error = Some(Text::verbatim(err));
                     }
                 }
                 cx.notify();
@@ -171,7 +172,7 @@ impl Render for DlcTab {
 
         pane()
             .children(dlc_card)
-            .children(error_line(&self.error))
+            .children(error_line(self.error.as_ref()))
             .children(extras)
     }
 }

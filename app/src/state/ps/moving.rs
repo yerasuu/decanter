@@ -6,11 +6,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{Context, Task};
-use rust_i18n::t;
 
 use super::Ps;
 use super::jobs::JobKey;
 use crate::external::transfer::Progress;
+use crate::i18n::Text;
 
 impl Ps {
     /// Moves the dump in `dir` into `library_root`'s games folder. Refused
@@ -22,9 +22,9 @@ impl Ps {
         library_root: PathBuf,
         progress: Arc<Progress>,
         cx: &Context<Self>,
-    ) -> Task<Result<(), String>> {
+    ) -> Task<Result<(), Text>> {
         if self.launching.contains(&dir) || self.is_running(&JobKey::Game(dir.clone()), cx) {
-            return Task::ready(Err(t!("storage.errors.running").into_owned()));
+            return Task::ready(Err(Text::new("storage.errors.running")));
         }
         self.moving.insert(dir.clone());
         cx.spawn(async move |this, cx| {
@@ -33,7 +33,7 @@ impl Ps {
                 move || crate::relocate::move_dump(&dir, &library_root, &progress)
             })
             .await
-            .unwrap_or_else(|err| Err(err.to_string()));
+            .unwrap_or_else(|err| Err(Text::verbatim(err)));
             let _ = this.update(cx, |this, cx| {
                 this.moving.remove(&dir);
                 this.rescan(cx);

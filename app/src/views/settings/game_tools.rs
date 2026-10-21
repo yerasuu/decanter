@@ -8,6 +8,7 @@ use rust_i18n::t;
 
 use super::{column, field_row};
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::checkbox;
 
@@ -15,7 +16,7 @@ pub struct GameToolDefaults {
     mangohud: bool,
     mangohud_autostart_log: bool,
     gamemode: bool,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl GameToolDefaults {
@@ -39,7 +40,7 @@ impl GameToolDefaults {
                     db.game_tool_default(GameTool::GameMode)?,
                 ))
             };
-            read().map_err(|err| err.to_string())
+            read().map_err(Text::verbatim)
         });
         match read {
             Ok((mangohud, log, gamemode)) => {
@@ -58,7 +59,7 @@ impl GameToolDefaults {
     fn save(&mut self, setting: &'static str, change: impl FnOnce(&decanter_core::Db) -> decanter_core::Result<()>) {
         let saved = crate::core::db()
             .map_err(|err| err.localized())
-            .and_then(|db| change(&db).map_err(|err| err.to_string()));
+            .and_then(|db| change(&db).map_err(Text::verbatim));
         match saved {
             Ok(()) => {
                 tracing::info!(setting, "game tool default changed");
@@ -138,6 +139,6 @@ impl Render for GameToolDefaults {
         section
             .child(caps.gate_or(Feature::MangoHud, mangohud, t!("game_tools.mangohud_missing")))
             .child(caps.gate_or(Feature::GameMode, gamemode, t!("game_tools.gamemode_missing")))
-            .children(self.error.clone().map(theme::error))
+            .children(self.error.as_ref().map(theme::error))
     }
 }

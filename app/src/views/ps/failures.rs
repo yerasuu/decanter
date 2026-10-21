@@ -8,6 +8,7 @@ use decanter_ps::failures::{self, Call, CallReport, Failure, Kind, Log};
 use gpui::{ClipboardItem, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::{Ps, failure_message};
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
@@ -22,7 +23,7 @@ pub struct FailuresView {
     confirm_clear: bool,
     /// Shows "Copiado" until the record changes.
     copied: bool,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl FailuresView {
@@ -92,7 +93,7 @@ impl FailuresView {
             let _ = this.update(cx, |this, cx| {
                 this.error = result
                     .err()
-                    .map(|err| t!("ps.failures.clear_error", error = err).into_owned());
+                    .map(|err| Text::new("ps.failures.clear_error").arg("error", err));
                 this.ps.update(cx, Ps::failures_changed);
             });
         })
@@ -140,7 +141,7 @@ impl FailuresView {
                             .truncate()
                             .text_size(px(12.))
                             .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child(failure_message(failure).into_owned()),
+                            .child(SharedString::from(failure_message(failure))),
                     )
                     .when(failure.count > 1, |row| {
                         row.child(theme::muted(format!("×{}", failure.count)))
@@ -219,7 +220,7 @@ impl Render for FailuresView {
                         }),
                 )
                 .child(theme::muted(t!("ps.failures.description")))
-                .children(self.error.clone().map(theme::error))
+                .children(self.error.as_ref().map(theme::error))
                 .child(if empty {
                     theme::empty(t!("ps.failures.empty")).into_any_element()
                 } else {

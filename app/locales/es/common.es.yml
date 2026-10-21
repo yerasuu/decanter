@@ -1,0 +1,30 @@
+common.errors.internal_task: 'la tarea interna falló: %{error}'
+common.errors.verbatim: '%{error}'
+common.cancel: Cancelar
+common.loading: Cargando...
+common.queued: En cola…
+common.running: En ejecución
+common.duration.hours_minutes: '%{hours} h %{minutes} min'
+common.duration.minutes: '%{minutes} min'
+common.duration.minutes_seconds: '%{minutes} min %{seconds} s'
+common.duration.seconds: '%{seconds} s'
+common.unavailable_here: No disponible en este sistema
+common.needs_setup: 'Falta en este sistema: %{what}'
+common.setup.release_key: la clave que verifica las actualizaciones
+common.setup.tray_host: una bandeja del sistema (servicio StatusNotifier)
+common.setup.psport_menu_binding: una compilación de psport que incluya port_menu_binding
+common.setup.psport_online: una compilación de psport que incluya online_module
+common.reported_by_ps: 'El port de PS no lo admite: %{why}'
+common.testing: En pruebas
+game_tools.title: Herramientas de juego
+game_tools.intro: Se aplican la próxima vez que inicies el juego.
+game_tools.default_on: Según el ajuste general (activado)
+game_tools.default_off: Según el ajuste general (desactivado)
+game_tools.on: Activado
+game_tools.off: Desactivado
+game_tools.mangohud_missing: MangoHud no está instalado (no se encontró su capa Vulkan).
+game_tools.gamemode_missing: GameMode no está instalado (falta gamemoded o su servicio de D-Bus).
+common.pick_profile: Elige un perfil arriba.
+common.date.months: ene feb mar abr may jun jul ago sept oct nov dic
+common.date.format: '%{day} %{month} %{year}'
+common.date.time: '%{hour24}:%{minute}'

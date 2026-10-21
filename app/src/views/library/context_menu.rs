@@ -22,6 +22,7 @@ use super::install::InstallRequest;
 use super::shelf_popups;
 use super::{LibraryModel, LibraryPopup, LibraryView};
 use crate::capabilities::{Caps, testing_badge};
+use crate::i18n::Text;
 use crate::state::{AppState, InstallStatus};
 use crate::widgets::{InputEvent, TextInput, menu, tooltip};
 
@@ -71,7 +72,7 @@ impl PopupState {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        let name = cx.new(|cx| TextInput::new(t!("library.menu.name_placeholder"), cx).text_size(12.));
+        let name = cx.new(|cx| TextInput::new(Text::new("library.menu.name_placeholder"), cx).text_size(12.));
         cx.subscribe(&name, |this, input, event: &InputEvent, cx| match event {
             InputEvent::Submit => {
                 let text = input.read(cx).text().trim().to_owned();

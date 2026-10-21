@@ -3,10 +3,11 @@
 
 use std::path::PathBuf;
 
-use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
+use gpui::{Context, IntoElement, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{column, field_row};
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
 
@@ -14,7 +15,7 @@ pub struct DebugSection {
     enabled: bool,
     /// The folder and whether the user picked it; `None` without a library for the default.
     folder: Option<(PathBuf, bool)>,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl DebugSection {
@@ -91,7 +92,7 @@ impl DebugSection {
             if let Err(err) = opened {
                 tracing::warn!(folder = %folder.display(), %err, "could not open the debug log folder");
                 let _ = this.update(cx, |this, cx| {
-                    this.error = Some(t!("settings.general.debug.errors.open", error = err).into_owned());
+                    this.error = Some(Text::new("settings.general.debug.errors.open").arg("error", err));
                     cx.notify();
                 });
             }
@@ -169,6 +170,6 @@ impl Render for DebugSection {
             .child(theme::muted(t!("settings.general.debug.hint")))
             .children(pending)
             .children(folder)
-            .children(self.error.clone().map(|error| theme::error(SharedString::from(error))))
+            .children(self.error.as_ref().map(theme::error))
     }
 }

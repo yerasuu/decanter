@@ -20,6 +20,7 @@ use decanter_ps::mapping::{Action, Mapping, MouseButton, Refusal, Source, Target
 
 use super::layout_name;
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
 
@@ -135,17 +136,18 @@ fn source_label(source: &Source) -> String {
         Source::Mouse(MouseButton::Left) => t!("ps.keyboard.sources.mouse_left").into_owned(),
         Source::Mouse(MouseButton::Middle) => t!("ps.keyboard.sources.mouse_middle").into_owned(),
         Source::Mouse(MouseButton::Right) => t!("ps.keyboard.sources.mouse_right").into_owned(),
-        Source::Mouse(button) => t!("ps.keyboard.sources.mouse", button = format!("{button:?}")).into_owned(),
+        Source::Mouse(MouseButton::X1) => t!("ps.keyboard.sources.mouse_x1").into_owned(),
+        Source::Mouse(MouseButton::X2) => t!("ps.keyboard.sources.mouse_x2").into_owned(),
         Source::Wheel(Wheel::Up) => t!("ps.keyboard.sources.wheel_up").into_owned(),
         Source::Wheel(Wheel::Down) => t!("ps.keyboard.sources.wheel_down").into_owned(),
     }
 }
 
-fn refusal_text(refusal: Refusal) -> Cow<'static, str> {
+const fn refusal_text(refusal: Refusal) -> Text {
     match refusal {
-        Refusal::KeysOnly => t!("ps.keyboard.refusals.keys_only"),
-        Refusal::FullscreenNeedsKey => t!("ps.keyboard.refusals.fullscreen_needs_key"),
-        Refusal::WheelNeedsButton => t!("ps.keyboard.refusals.wheel_needs_button"),
+        Refusal::KeysOnly => Text::new("ps.keyboard.refusals.keys_only"),
+        Refusal::FullscreenNeedsKey => Text::new("ps.keyboard.refusals.fullscreen_needs_key"),
+        Refusal::WheelNeedsButton => Text::new("ps.keyboard.refusals.wheel_needs_button"),
     }
 }
 
@@ -164,14 +166,14 @@ pub struct KeyboardView {
     name: Entity<TextInput>,
     /// The action waiting for its next key, mouse button or wheel step.
     capturing: Option<Action>,
-    status: Option<(SharedString, bool)>,
+    status: Option<(Text, bool)>,
     focus: FocusHandle,
 }
 
 impl KeyboardView {
     pub fn new(target: Target, path: PathBuf, mapping: Mapping, store: Store, cx: &mut Context<Self>) -> Self {
         let current = layouts::current_keys(target, &mapping, &store.key_layouts(target));
-        let name = cx.new(|cx| TextInput::new(t!("ps.layouts.name_placeholder"), cx));
+        let name = cx.new(|cx| TextInput::new(Text::new("ps.layouts.name_placeholder"), cx));
         cx.subscribe(&name, |this, name, event, cx| {
             if matches!(event, InputEvent::Submit) {
                 let text = name.read(cx).text().trim().to_owned();
@@ -233,10 +235,12 @@ impl KeyboardView {
                 this.status = Some(match result {
                     Ok(saved) => {
                         this.saved = saved;
-                        (t!("ps.keyboard.saved").into(), false)
+                        (Text::new("ps.keyboard.saved"), false)
                     }
                     Err(err) => (
-                        t!("ps.keyboard.save_error", path = this.path.display(), error = err).into(),
+                        Text::new("ps.keyboard.save_error")
+                            .arg("path", this.path.display())
+                            .arg("error", err),
                         true,
                     ),
                 });
@@ -308,7 +312,7 @@ impl KeyboardView {
                 self.mapping.add(action, source);
                 self.status = None;
             }
-            Err(refusal) => self.status = Some((refusal_text(refusal).into(), true)),
+            Err(refusal) => self.status = Some((refusal_text(refusal), true)),
         }
         cx.notify();
     }
@@ -321,7 +325,7 @@ impl KeyboardView {
             Some(name) => self.capture(Source::Key(name), cx),
             None => {
                 let key = &event.keystroke.key;
-                self.status = Some((t!("ps.keyboard.unknown_key", key = key).into(), true));
+                self.status = Some((Text::new("ps.keyboard.unknown_key").arg("key", key), true));
                 cx.notify();
             }
         }
@@ -567,14 +571,14 @@ impl KeyboardView {
                             .child(self.path.display().to_string()),
                     ),
             )
-            .children(self.status.clone().map(|(text, is_error)| {
+            .children(self.status.as_ref().map(|(text, is_error)| {
                 div()
-                    .text_color(rgb(if is_error {
+                    .text_color(rgb(if *is_error {
                         theme::ERROR_TEXT
                     } else {
                         theme::ACCENT_GREEN
                     }))
-                    .child(text)
+                    .child(SharedString::from(text))
             }))
             .when(editable, |header| {
                 header

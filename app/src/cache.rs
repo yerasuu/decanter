@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rust_i18n::t;
+use crate::i18n::Text;
 
 /// `folder`'s cache location, and whether the user picked it rather than
 /// it being the default inside the folder.
@@ -61,15 +61,15 @@ pub fn launch_env(game: &decanter_core::InstalledGame) -> Vec<(String, String)> 
 /// `picked` comes from a folder dialog, so it is checked here, once: an
 /// absolute, writable directory outside any game's files. Picking one of
 /// the profile's library folders means that folder's own cache location.
-pub fn set(profile_id: &str, folder: &Path, picked: Option<&Path>) -> Result<(), String> {
+pub fn set(profile_id: &str, folder: &Path, picked: Option<&Path>) -> Result<(), Text> {
     let db = crate::achv_try!(crate::core::db());
     let Some(picked) = picked else {
         return db
             .set_library_cache(folder, None)
-            .map_err(|err| t!("storage.cache.errors.save", error = err).into_owned());
+            .map_err(|err| Text::new("storage.cache.errors.save").arg("error", err));
     };
     if !picked.is_absolute() || !picked.is_dir() {
-        return Err(t!("storage.cache.errors.not_dir", path = picked.display()).into_owned());
+        return Err(Text::new("storage.cache.errors.not_dir").arg("path", picked.display()));
     }
     let roots: Vec<PathBuf> = crate::core::library_for_profile(profile_id)
         .map(|library| library.roots())
@@ -93,27 +93,26 @@ pub fn set(profile_id: &str, folder: &Path, picked: Option<&Path>) -> Result<(),
         .any(|games| picked.starts_with(games))
     });
     if inside_games {
-        return Err(t!("storage.cache.errors.inside_games", path = picked.display()).into_owned());
+        return Err(Text::new("storage.cache.errors.inside_games").arg("path", picked.display()));
     }
     let cache = roots
         .iter()
         .find(|root| root.as_path() == picked)
         .map_or_else(|| picked.to_path_buf(), |root| decanter_core::default_cache_root(root));
-    crate::achv_try!(
-        std::fs::create_dir_all(&cache).map_err(|err| t!(
-            "messages.errors.create_dir",
-            path = cache.display(),
-            error = err
-        )
-        .into_owned())
-    );
+    crate::achv_try!(std::fs::create_dir_all(&cache).map_err(|err| {
+        Text::new("messages.errors.create_dir")
+            .arg("path", cache.display())
+            .arg("error", err)
+    }));
     let probe = cache.join(".decanter-write-check");
     crate::achv_try!(
         std::fs::write(&probe, b"")
             .and_then(|()| std::fs::remove_file(&probe))
-            .map_err(|err| t!("storage.cache.errors.not_writable", path = cache.display(), error = err).into_owned())
+            .map_err(|err| Text::new("storage.cache.errors.not_writable")
+                .arg("path", cache.display())
+                .arg("error", err))
     );
     let chosen = (cache != decanter_core::default_cache_root(folder)).then_some(cache.as_path());
     db.set_library_cache(folder, chosen)
-        .map_err(|err| t!("storage.cache.errors.save", error = err).into_owned())
+        .map_err(|err| Text::new("storage.cache.errors.save").arg("error", err))
 }

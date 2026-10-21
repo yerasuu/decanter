@@ -19,7 +19,8 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use decanter_core::MoveProgress;
-use rust_i18n::t;
+
+use crate::i18n::Text;
 
 /// How far a copy has got, written from the import's blocking thread and
 /// read by the UI on its own timer —
@@ -46,7 +47,7 @@ impl Progress {
 }
 
 /// Why a prefix could not be brought across: logged as it is, worded for the UI by
-/// [`Error::localized`], which is also what it becomes as a view's `String` error.
+/// [`Error::localized`], which is also what it becomes as a view's [`Text`] error.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{} is not empty: {err}", path.display())]
@@ -64,22 +65,25 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn localized(&self) -> String {
+    pub fn localized(&self) -> Text {
         match self {
-            Self::NotEmpty { path, err } => {
-                t!("external.transfer.errors.not_empty", path = path.display(), error = err)
-            }
-            Self::Place(err) => t!("external.transfer.errors.place", error = err),
-            Self::Measure { path, err } => t!("external.transfer.errors.measure", path = path.display(), error = err),
-            Self::Clean { path, err } => t!("external.transfer.errors.clean", path = path.display(), error = err),
-            Self::Copy(err) => t!("external.transfer.errors.copy", error = err),
-            Self::Rsync(err) => t!("external.transfer.errors.rsync", error = err),
+            Self::NotEmpty { path, err } => Text::new("external.transfer.errors.not_empty")
+                .arg("path", path.display())
+                .arg("error", err),
+            Self::Place(err) => Text::new("external.transfer.errors.place").arg("error", err),
+            Self::Measure { path, err } => Text::new("external.transfer.errors.measure")
+                .arg("path", path.display())
+                .arg("error", err),
+            Self::Clean { path, err } => Text::new("external.transfer.errors.clean")
+                .arg("path", path.display())
+                .arg("error", err),
+            Self::Copy(err) => Text::new("external.transfer.errors.copy").arg("error", err),
+            Self::Rsync(err) => Text::new("external.transfer.errors.rsync").arg("error", err),
         }
-        .into_owned()
     }
 }
 
-impl From<Error> for String {
+impl From<Error> for Text {
     fn from(err: Error) -> Self {
         err.localized()
     }

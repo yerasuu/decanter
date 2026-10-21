@@ -1,0 +1,127 @@
+settings.title: Ajustes
+settings.tabs.general: General
+settings.tabs.account: Cuenta
+settings.tabs.compatibility: Compatibilidad
+settings.storage_error: 'Error al abrir el almacenamiento: %{error}'
+settings.general.language.title: Idioma
+settings.general.language.system: El del sistema
+settings.general.close.title: Al cerrar la ventana
+settings.general.close.to_tray: Mantener Decanter en ejecución en la bandeja en vez de cerrarlo
+settings.general.close.restart_hint: Requiere reiniciar Decanter para que el cambio tenga efecto.
+settings.general.close_game.title: Cerrar un juego
+settings.general.close_game.enabled: Cerrar el juego en marcha desde el mando o el teclado
+settings.general.close_game.hint: Mantén Select + Start %{hold} segundos en cualquier mando, o pulsa Ctrl+Mayús+F4 en Plasma (se cambia en Preferencias del sistema > Atajos > Decanter). Decanter avisa antes de cerrarlo; si repites la combinación en los %{grace} segundos siguientes, lo cancela. En los juegos de PS4, el botón Guide abre además el aviso de cierre del propio juego.
+settings.general.steam.title: Exportar a Steam
+settings.general.steam.add: Añadir cada juego instalado a la biblioteca real de Steam, con su portada y su banner
+settings.general.steam.restart_hint: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.
+settings.general.steam.pending: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se añadieron, así que su propia copia en memoria todavía no los ha sobrescrito.
+settings.general.steam.restarting: Reiniciando Steam...
+settings.general.steam.restart_now: Reiniciar Steam ahora
+settings.general.steam.close_first: decanter no puede saber desde aquí si Steam está abierto. Cierra Steam y confírmalo para aplicar los cambios; decanter lo volverá a abrir después.
+settings.general.steam.apply_closed: Steam está cerrado, aplicar
+settings.general.steam.no_install: no se encontró una instalación de Steam
+settings.general.steam.no_user: no se pudo resolver el usuario local de Steam
+settings.account.intro: Las cuentas de este perfil. Todas aportan a la Biblioteca a la vez — no hace falta elegir una activa.
+settings.account.empty: Todavía no hay ninguna cuenta en este perfil.
+settings.account.no_store: Sin tienda
+settings.account.log_out: Cerrar sesión
+settings.account.session.checking: Comprobando sesión…
+settings.account.session.revoked: la sesión se cerró en GOG
+settings.account.session.invalid: 'sesión inválida: %{error}'
+settings.account.add.button: + Añadir cuenta GOG
+settings.account.add.hint: Abre GOG, inicia sesión y pega aquí la dirección de la página a la que llegues.
+settings.account.add.open: Abrir GOG
+settings.account.add.connect: Conectar
+settings.account.library.title: Ubicación de la biblioteca
+settings.account.library.unknown: desconocida
+settings.account.library.pick_title: Elige la nueva ubicación de la biblioteca
+settings.account.library.change: Cambiar ubicación
+settings.account.library.moving: Moviendo...
+settings.account.library.moving_progress: Moviendo... %{done} de %{total}
+settings.account.library.active_title: Biblioteca activa
+settings.account.library.active_hint: Decanter trabaja con una biblioteca a la vez. Al cambiar, se abre con la última persona que la usó.
+settings.account.library.busy: cierra antes los juegos y las instalaciones para cambiar de biblioteca
+settings.account.library.no_profiles: esa biblioteca todavía no tiene ninguna persona
+settings.account.errors.browser: 'no se pudo abrir el navegador: %{error}'
+settings.account.errors.db: no se pudo abrir la base de datos
+settings.account.errors.accounts: no se pudieron leer las cuentas del perfil
+settings.account.errors.library: no se pudo resolver la biblioteca actual
+settings.account.errors.locked: hay otra ventana de Decanter abierta — ciérrala antes de mover la biblioteca
+settings.account.errors.busy: hay un juego de este perfil en ejecución o instalándose — ciérralo antes de mover la biblioteca
+settings.account.errors.save_path: 'se movió, pero no se pudo guardar la nueva ruta: %{error}'
+settings.account.people.title: Personas
+settings.account.people.hint: Cada persona tiene sus propias cuentas, colecciones, partidas y trofeos. Cuando hay más de una, cambias de persona desde la barra superior.
+settings.account.people.add: + Añadir persona
+settings.compatibility.intro: Cada juego se ejecuta en su propio prefijo, creado la primera vez que lo abres. Para fijar un Proton distinto o restablecer el prefijo de un juego concreto, abre sus Propiedades desde la biblioteca.
+settings.compatibility.default: Proton por defecto
+settings.compatibility.automatic: Automático (lo resuelve umu)
+settings.compatibility.none_installed: No hay Proton instalado en Steam (compatibilitytools.d). umu descargará uno la primera vez.
+settings.compatibility.game_tools.title: Herramientas de juego
+settings.compatibility.game_tools.intro: Se aplican a los juegos de PC y de PS que no tienen una elección propia; cada juego puede cambiarla en sus Propiedades (PC) o en su Resumen (PS).
+settings.compatibility.game_tools.mangohud: Mostrar MangoHud (FPS, tiempos de fotograma, uso de CPU y GPU)
+settings.compatibility.game_tools.mangohud_log: Registrar el rendimiento desde el inicio de cada partida con MangoHud
+settings.compatibility.game_tools.mangohud_log_hint: Los registros se guardan en decanter/logs/mangohud dentro de la biblioteca. Sin esta opción, empiezan y terminan con el atajo de MangoHud (Mayús izquierda + F2).
+settings.compatibility.game_tools.gamemode: Activar GameMode mientras se juega
+settings.compatibility.game_tools.gamemode_hint: GameMode pone la CPU en modo rendimiento y aplica el resto de ajustes de tu gamemode.ini hasta que el juego se cierra.
+settings.general.updates.title: Actualizaciones
+settings.general.updates.installed: 'Versión instalada: %{version}'
+settings.general.updates.check: Buscar actualizaciones
+settings.general.updates.checking: Comprobando…
+settings.general.updates.up_to_date: Tienes la última versión publicada (%{tag}).
+settings.general.updates.ahead: Esta compilación es más reciente que la última versión publicada (%{tag}).
+settings.general.updates.available: 'Hay una versión nueva: %{tag}. Por ahora se descarga a mano desde su página en GitHub.'
+settings.general.updates.available_install: 'Hay una versión nueva: %{tag}.'
+settings.general.updates.install: Descargar e instalar
+settings.general.updates.no_key: Esta compilación no trae clave de firma, así que no puede comprobar ni instalar versiones nuevas por sí misma. Descárgala a mano desde su página en GitHub.
+settings.general.updates.downloading: Descargando… %{done}
+settings.general.updates.downloading_of: Descargando… %{done} de %{total}
+settings.general.updates.installed_update: '%{tag} está instalada y su firma, comprobada. Se usará la próxima vez que abras Decanter.'
+settings.general.updates.restart_now: Reiniciar ahora
+settings.general.updates.none: Todavía no hay ninguna versión publicada en GitHub.
+settings.general.updates.notes: Notas de la versión
+settings.updates.errors.offline: No hay conexión con GitHub.
+settings.updates.errors.rate_limited: GitHub ha limitado las consultas desde esta red; vuelve a intentarlo dentro de un rato.
+settings.updates.errors.invalid: 'GitHub ha respondido algo que no es una versión válida: %{error}'
+settings.updates.errors.failed: 'La consulta a GitHub ha fallado: %{error}'
+settings.compatibility.tools.title: Herramientas
+settings.compatibility.tools.intro: Decanter descarga su propia copia de umu-run y de nix-portable, en versiones fijas que solo cambia tras probarlas; umu descarga UMU-Proton por su cuenta cuando el Proton es automático.
+settings.compatibility.tools.check: Buscar actualizaciones
+settings.compatibility.tools.checking: Comprobando…
+settings.compatibility.tools.pinned: '%{tool} %{version}'
+settings.compatibility.tools.current: '%{tool} %{version} · es la última publicada'
+settings.compatibility.tools.newer: '%{tool} %{version} · se ha publicado la %{latest}; Decanter la adoptará cuando esté probada'
+settings.compatibility.tools.unpublished: '%{tool} %{version} · el proyecto no tiene ninguna versión publicada'
+settings.compatibility.tools.error: '%{tool} %{version} · %{error}'
+settings.compatibility.tools.proton.unchecked: UMU-Proton · umu descarga la última al lanzar un juego con Proton automático
+settings.compatibility.tools.proton.installed: UMU-Proton · %{tag} es la última y ya está descargada
+settings.compatibility.tools.proton.pending: UMU-Proton · la última es %{tag}; umu la descargará al lanzar un juego con Proton automático
+settings.compatibility.tools.proton.unpublished: UMU-Proton · el proyecto no tiene ninguna versión publicada
+settings.compatibility.tools.proton.error: UMU-Proton · %{error}
+settings.updates.install_errors.missing_appimage: La versión %{tag} todavía no tiene AppImage en GitHub; vuelve a intentarlo dentro de un rato.
+settings.updates.install_errors.unsigned: La versión %{tag} todavía no está firmada; vuelve a intentarlo más tarde o descárgala a mano.
+settings.updates.install_errors.download: 'La descarga ha fallado: %{error}'
+settings.updates.install_errors.too_large: La descarga supera los %{size}, más de lo que puede ocupar Decanter; no se ha instalado.
+settings.updates.install_errors.bad_signature: La firma no corresponde a lo descargado. No se ha instalado nada y tu versión sigue igual.
+settings.updates.install_errors.wrong_key: La versión está firmada con una clave distinta de la de esta compilación. No se ha instalado nada.
+settings.updates.install_errors.wrong_release: La firma es de otra versión («%{found}»). No se ha instalado nada.
+settings.updates.install_errors.no_permission: No hay permiso para escribir en %{dir}. Mueve el AppImage a una carpeta tuya o descárgalo a mano.
+settings.updates.install_errors.disk_full: No queda espacio en %{dir}. Libera espacio y vuelve a intentarlo; tu versión sigue igual.
+settings.updates.install_errors.io: 'No se ha podido escribir %{path}: %{error}'
+settings.updates.install_errors.broken_key: 'La clave de firma de esta compilación no es válida: %{error}'
+settings.general.debug.title: Depuración
+settings.general.debug.enabled: Modo depuración
+settings.general.debug.hint: 'Decanter y psport guardan sus registros completos en la carpeta de abajo, dentro de una subcarpeta con el nombre de este equipo, para que puedas sincronizarla con tus otros equipos. Cada fichero aparece cuando está completo. Los juegos no cambian: solo dónde y cuánto se registra.'
+settings.general.debug.app_log_next_start: Las partidas y los trabajos ya se guardan ahí; el registro de la propia aplicación empieza la próxima vez que abras Decanter.
+settings.general.debug.app_log_until_exit: El registro de esta sesión de la aplicación sigue guardándose ahí hasta que cierres Decanter.
+settings.general.debug.folder: Carpeta de logs de depuración
+settings.general.debug.folder_default: Dentro de la biblioteca
+settings.general.debug.folder_chosen: Elegida por ti
+settings.general.debug.change: Cambiar…
+settings.general.debug.reset: Restablecer
+settings.general.debug.open: Abrir carpeta
+settings.general.debug.pick_title: Elige dónde se guardan los logs de depuración
+settings.general.debug.errors.save: 'No se pudo guardar el ajuste de depuración: %{error}'
+settings.general.debug.errors.not_dir: '%{path} no es una carpeta.'
+settings.general.debug.errors.not_writable: 'No se puede escribir en %{path}: %{error}'
+settings.general.debug.errors.not_utf8: 'La ruta %{path} tiene caracteres que no se pueden guardar: elige otra carpeta.'
+settings.general.debug.errors.open: 'No se pudo abrir la carpeta: %{error}'

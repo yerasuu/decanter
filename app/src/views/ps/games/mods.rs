@@ -10,6 +10,7 @@ use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
@@ -25,8 +26,8 @@ struct Found {
 
 pub struct ModsView {
     ps: Entity<Ps>,
-    found: Option<Result<Found, String>>,
-    error: Option<String>,
+    found: Option<Result<Found, Text>>,
+    error: Option<Text>,
 }
 
 impl ModsView {
@@ -48,7 +49,7 @@ impl ModsView {
                 Ok(toolchain) => toolchain,
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
-                        this.found = Some(Err(t!("ps.errors.bbport_not_ready", error = err).into_owned()));
+                        this.found = Some(Err(Text::new("ps.errors.bbport_not_ready").text("error", err)));
                         cx.notify();
                     });
                     return;
@@ -112,7 +113,7 @@ impl ModsView {
             let _ = this.update(cx, |this, cx| {
                 this.error = result
                     .err()
-                    .map(|err| t!("ps.mods.save_error", file = file, error = err).into_owned());
+                    .map(|err| Text::new("ps.mods.save_error").arg("file", file).arg("error", err));
                 cx.notify();
             });
         })
@@ -175,7 +176,7 @@ impl ModsView {
             let _ = this.update(cx, |this, cx| match saved {
                 Ok(()) => this.refresh(cx),
                 Err(err) => {
-                    this.error = Some(t!("ps.mods.folder_error", error = err).into_owned());
+                    this.error = Some(Text::new("ps.mods.folder_error").arg("error", err));
                     cx.notify();
                 }
             });
@@ -324,7 +325,7 @@ impl Render for ModsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let found = match &self.found {
             None => return theme::muted(t!("ps.mods.loading")).into_any_element(),
-            Some(Err(err)) => return theme::error(err.clone()).into_any_element(),
+            Some(Err(err)) => return theme::error(err).into_any_element(),
             Some(Ok(found)) => found,
         };
         let mods = self.mods_rows(found, cx);
@@ -351,7 +352,7 @@ impl Render for ModsView {
                             .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
                     ),
             )
-            .children(self.error.clone().map(theme::error))
+            .children(self.error.as_ref().map(theme::error))
             .child(
                 div()
                     .flex()

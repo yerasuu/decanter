@@ -1,0 +1,5 @@
+closing.shortcut_name: Close the running game
+closing.notice.title: '%{name} is about to close'
+closing.notice.body: It will close in %{seconds} seconds. To cancel, hold Select + Start again or press the keyboard shortcut again.
+closing.notice.body_pad: It will close in %{seconds} seconds. To cancel, hold Select + Start again.
+closing.notice.cancelled: 'Close cancelled: %{name} stays open'

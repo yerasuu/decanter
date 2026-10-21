@@ -2,7 +2,6 @@
 //! then the game run with its output scanned for failures, which go to the
 //! profile's own record.
 
-use std::borrow::Cow;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -20,13 +19,13 @@ use decanter_ps::port::Port;
 use decanter_ps::process::{self, JobKind};
 use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
-use rust_i18n::t;
 use tokio::process::Command;
 
 use super::Ps;
 use super::jobs::{self, JobKey};
 use super::vk_layer;
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 
 impl Ps {
     pub fn is_running(&self, key: &JobKey, cx: &gpui::App) -> bool {
@@ -39,7 +38,7 @@ impl Ps {
             return;
         }
         if self.moving.contains(dir) {
-            self.notice = Some((t!("ps.play.moving").into_owned(), true));
+            self.notice = Some((Text::new("ps.play.moving"), true));
             cx.notify();
             return;
         }
@@ -82,7 +81,7 @@ impl Ps {
                     vk_layer::apply(&this, &root, &toolchain, &game.dir, command, facts, cx).await
                 }
                 Err(err) => (
-                    Err(t!("ps.play.prepare_error", name = port.name(), error = err).into_owned()),
+                    Err(Text::new("ps.play.prepare_error").arg("name", port.name()).text("error", err)),
                     Vec::new(),
                 ),
             };
@@ -149,19 +148,19 @@ impl Ps {
     /// Builds `<base>-01.09` beside the base dump, then shows it.
     pub fn merge(&mut self, base: PathBuf, update: PathBuf, cx: &mut Context<Self>) {
         if self.moving.contains(&base) || self.moving.contains(&update) {
-            self.notice = Some((t!("ps.play.moving").into_owned(), true));
+            self.notice = Some((Text::new("ps.play.moving"), true));
             cx.notify();
             return;
         }
-        self.notice = Some((t!("ps.play.merging").into_owned(), false));
+        self.notice = Some((Text::new("ps.play.merging"), false));
         cx.notify();
         let task = cx.background_spawn(async move { bbport::merge_update(&base, &update, bbport::SUPPORTED_VERSION) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.notice = Some(match result {
-                    Ok(merged) => (t!("ps.play.merged", dir = merged.display()).into_owned(), false),
-                    Err(err) => (t!("ps.play.merge_error", error = err).into_owned(), true),
+                    Ok(merged) => (Text::new("ps.play.merged").arg("dir", merged.display()), false),
+                    Err(err) => (Text::new("ps.play.merge_error").arg("error", err), true),
                 });
                 this.rescan(cx);
             });
@@ -196,23 +195,26 @@ enum LaunchError {
 }
 
 impl LaunchError {
-    fn localized(&self) -> String {
+    fn localized(&self) -> Text {
         match self {
-            Self::Mods(err) => t!("ps.play.mods_error", error = err),
-            Self::CreateDir { dir, err } => t!("ps.errors.create_dir", dir = dir.display(), error = err),
-            Self::Environment(err) => t!("ps.errors.environment", error = err),
-            Self::ConvertPrepare(err) => t!("ps.play.convert_prepare_error", error = err),
-            Self::ConvertFailed => t!("ps.play.convert_failed"),
-            Self::RunDir { dir, err } => t!("ps.play.prepare_error", name = dir.display(), error = err),
-            Self::Online(err) => t!("ps.play.online_error", error = online_error(err)),
-            Self::Keyring(err) => t!("ps.play.online_keyring_error", error = err),
-            Self::NoPassword(npid) => t!("ps.play.online_no_password", npid = npid),
+            Self::Mods(err) => Text::new("ps.play.mods_error").arg("error", err),
+            Self::CreateDir { dir, err } => Text::new("ps.errors.create_dir")
+                .arg("dir", dir.display())
+                .arg("error", err),
+            Self::Environment(err) => Text::new("ps.errors.environment").arg("error", err),
+            Self::ConvertPrepare(err) => Text::new("ps.play.convert_prepare_error").arg("error", err),
+            Self::ConvertFailed => Text::new("ps.play.convert_failed"),
+            Self::RunDir { dir, err } => Text::new("ps.play.prepare_error")
+                .arg("name", dir.display())
+                .arg("error", err),
+            Self::Online(err) => Text::new("ps.play.online_error").text("error", online_error(err)),
+            Self::Keyring(err) => Text::new("ps.play.online_keyring_error").arg("error", err),
+            Self::NoPassword(npid) => Text::new("ps.play.online_no_password").arg("npid", npid),
         }
-        .into_owned()
     }
 }
 
-fn notify(this: &WeakEntity<Ps>, text: String, error: bool, cx: &mut AsyncApp) {
+fn notify(this: &WeakEntity<Ps>, text: Text, error: bool, cx: &mut AsyncApp) {
     let _ = this.update(cx, |this, cx| {
         this.notice = Some((text, error));
         cx.notify();
@@ -463,7 +465,7 @@ async fn record_frame_overlap_off(this: &WeakEntity<Ps>, root: &Root, title_id: 
         }
         Err(err) => {
             tracing::warn!(title_id, %err, "could not record that frame overlap is off for the title");
-            notify(this, t!("ps.learned.save_error", error = err).into_owned(), true, cx);
+            notify(this, Text::new("ps.learned.save_error").arg("error", err), true, cx);
         }
     }
 }
@@ -480,7 +482,7 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
                 failures::Kind::Crash | failures::Kind::Stop | failures::Kind::Exit
             )
         })
-        .map(|failure| failure_message(failure).into_owned());
+        .map(failure_message);
     let count = found
         .iter()
         .filter(|failure| failure.kind == failures::Kind::Error)
@@ -488,7 +490,7 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
     let missing = found
         .iter()
         .find(|failure| failure.kind == failures::Kind::Missing)
-        .map(|failure| failure_message(failure).into_owned());
+        .map(failure_message);
     let saved = cx
         .background_spawn(async move {
             let mut log = failures::Log::load(path);
@@ -496,31 +498,26 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
         })
         .await;
     let (text, error) = match (saved, fatal) {
-        (Err(err), _) => (t!("ps.failures.notice.save_error", error = err), true),
-        (Ok(()), Some(message)) => (t!("ps.failures.notice.crashed", message = message), true),
+        (Err(err), _) => (Text::new("ps.failures.notice.save_error").arg("error", err), true),
+        (Ok(()), Some(message)) => (Text::new("ps.failures.notice.crashed").text("message", message), true),
         (Ok(()), None) => match missing {
-            Some(missing) if count == 0 => (t!("ps.failures.notice.missing", missing = missing), false),
+            Some(missing) if count == 0 => (Text::new("ps.failures.notice.missing").text("missing", missing), false),
             Some(missing) if count == 1 => (
-                t!(
-                    "ps.failures.notice.errors_and_missing.one",
-                    count = count,
-                    missing = missing
-                ),
+                Text::new("ps.failures.notice.errors_and_missing.one")
+                    .arg("count", count)
+                    .text("missing", missing),
                 false,
             ),
             Some(missing) => (
-                t!(
-                    "ps.failures.notice.errors_and_missing.other",
-                    count = count,
-                    missing = missing
-                ),
+                Text::new("ps.failures.notice.errors_and_missing.other")
+                    .arg("count", count)
+                    .text("missing", missing),
                 false,
             ),
-            None if count == 1 => (t!("ps.failures.notice.errors.one", count = count), false),
-            None => (t!("ps.failures.notice.errors.other", count = count), false),
+            None if count == 1 => (Text::new("ps.failures.notice.errors.one").arg("count", count), false),
+            None => (Text::new("ps.failures.notice.errors.other").arg("count", count), false),
         },
     };
-    let text = text.into_owned();
     let _ = this.update(cx, |this, cx| {
         this.notice = Some((text, error));
         this.failures_changed(cx);
@@ -528,38 +525,39 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
 }
 
 /// Why an online setting can't be used, in the UI's language.
-pub fn online_error(err: &OnlineError) -> String {
+pub fn online_error(err: &OnlineError) -> Text {
     match err {
-        OnlineError::Server(value) => t!("ps.online.errors.server", value = value),
-        OnlineError::Community(value) => t!("ps.online.errors.community", value = value),
-        OnlineError::Webapi(value) => t!("ps.online.errors.webapi", value = value),
-        OnlineError::NpidEmail => t!("ps.online.errors.npid_email"),
-        OnlineError::Npid(value) => t!("ps.online.errors.npid", value = value),
-        OnlineError::Secret => t!("ps.online.errors.secret"),
+        OnlineError::Server(value) => Text::new("ps.online.errors.server").arg("value", value),
+        OnlineError::Community(value) => Text::new("ps.online.errors.community").arg("value", value),
+        OnlineError::Webapi(value) => Text::new("ps.online.errors.webapi").arg("value", value),
+        OnlineError::NpidEmail => Text::new("ps.online.errors.npid_email"),
+        OnlineError::Npid(value) => Text::new("ps.online.errors.npid").arg("value", value),
+        OnlineError::Secret => Text::new("ps.online.errors.secret"),
     }
-    .into_owned()
 }
 
 /// A failure's message in the UI's language when decanter worded it, as the port printed it
 /// otherwise.
-pub fn failure_message(failure: &Failure) -> Cow<'_, str> {
+pub fn failure_message(failure: &Failure) -> Text {
     match failure.summary {
-        Some(Summary::Missing { total: 1, called }) => t!("ps.failures.missing.one", total = 1, called = called),
-        Some(Summary::Missing { total, called }) => t!("ps.failures.missing.other", total = total, called = called),
+        Some(Summary::Missing { total: 1, called }) => Text::new("ps.failures.missing.one")
+            .arg("total", 1)
+            .arg("called", called),
+        Some(Summary::Missing { total, called }) => Text::new("ps.failures.missing.other")
+            .arg("total", total)
+            .arg("called", called),
         Some(Summary::Calls {
             unimplemented,
             stubs,
             failed,
             status,
-        }) => t!(
-            "ps.failures.calls.summary",
-            unimplemented = unimplemented,
-            stubs = stubs,
-            failed = failed,
-            status = status
-        ),
-        Some(Summary::Exit(Some(code))) => t!("ps.failures.exit_code", code = code),
-        Some(Summary::Exit(None)) => t!("ps.failures.exit_signal"),
-        None => Cow::Borrowed(&failure.message),
+        }) => Text::new("ps.failures.calls.summary")
+            .arg("unimplemented", unimplemented)
+            .arg("stubs", stubs)
+            .arg("failed", failed)
+            .arg("status", status),
+        Some(Summary::Exit(Some(code))) => Text::new("ps.failures.exit_code").arg("code", code),
+        Some(Summary::Exit(None)) => Text::new("ps.failures.exit_signal"),
+        None => Text::verbatim(&failure.message),
     }
 }

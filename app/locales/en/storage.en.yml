@@ -1,0 +1,47 @@
+storage.title: Storage
+storage.add: Add library folder
+storage.add_title: Choose where to keep games
+storage.stats.used.one: used by 1 game
+storage.stats.used.other: used by %{count} games
+storage.stats.folders.one: library folder
+storage.stats.folders.other: library folders
+storage.folder.primary: Main
+storage.folder.extra: Extra
+storage.folder.offline: Drive not connected
+storage.folder.used.one: '%{used} used by 1 game'
+storage.folder.used.other: '%{used} used by %{count} games'
+storage.folder.free: '%{free} free of %{total}'
+storage.folder.remove: Remove
+storage.folder.remove_hint: Stops using this folder; whatever is on the drive stays there
+storage.folder.remove_blocked: 'It has games: uninstall or move them first'
+storage.move_to: Move to…
+storage.moving.started: Moving...
+storage.moving.progress: Moving %{done} of %{total}
+storage.errors.nested: '%{path} is already part of the library (%{folder})'
+storage.errors.add: 'saving the folder: %{error}'
+storage.errors.remove: 'removing the folder: %{error}'
+storage.errors.hosted: 'This game lives in its launcher''s prefix: move the launcher and it comes along.'
+storage.errors.running: 'The game is running: close it before moving it.'
+storage.errors.shared: 'Another account shares these files: they can''t be moved on their own.'
+storage.errors.exists: '%{path} already exists in the destination folder.'
+storage.errors.dump_root: '%{path} is the whole games folder: put the dump in a subfolder to move it.'
+storage.errors.manifest: 'moving the record of %{game}: %{error}'
+storage.legacy.title: Old Decanter data
+storage.legacy.body: Decanter now keeps its data in the library; %{path} is only left as a copy of how things were.
+storage.legacy.remove: Remove old data
+storage.legacy.confirm: Remove? This can't be undone
+storage.errors.legacy_busy: 'Another Decanter or a game that may be using them is running: close them first.'
+storage.errors.legacy: 'removing the old data: %{error}'
+storage.cache.title: Cache
+storage.cache.pick_title: Choose where this folder keeps its cache
+storage.cache.empty: empty
+storage.cache.default: Inside the folder · %{size}
+storage.cache.custom: Chosen by you · %{size}
+storage.cache.reset: Reset
+storage.cache.reset_hint: Keep the cache inside this folder again.
+storage.cache.change: Change…
+storage.cache.change_hint: The shader caches of this folder's games, PC and PS, go here. On a fast disk, games load sooner.
+storage.cache.errors.save: 'Couldn''t save the cache location: %{error}'
+storage.cache.errors.not_dir: '%{path} is not a folder.'
+storage.cache.errors.inside_games: '%{path} is inside the games'' files: choose another folder.'
+storage.cache.errors.not_writable: 'Can''t write to %{path}: %{error}'

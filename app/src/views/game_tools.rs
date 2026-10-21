@@ -7,6 +7,7 @@ use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::Select;
 
@@ -14,7 +15,7 @@ pub struct GameToolsPanel {
     game_key: String,
     mangohud: Choice,
     gamemode: Choice,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 /// What a game has for one tool: its override, and the default it follows
@@ -52,7 +53,7 @@ impl GameToolsPanel {
                 .and_then(|mangohud| {
                     Choice::read(&db, &self.game_key, GameTool::GameMode).map(|gamemode| (mangohud, gamemode))
                 })
-                .map_err(|err| err.to_string())
+                .map_err(Text::verbatim)
         });
         match read {
             Ok((mangohud, gamemode)) => {
@@ -75,7 +76,7 @@ impl GameToolsPanel {
         };
         let saved = crate::core::db().map_err(|err| err.localized()).and_then(|db| {
             db.set_game_tool_override(&self.game_key, tool, chosen)
-                .map_err(|err| err.to_string())
+                .map_err(Text::verbatim)
         });
         match saved {
             Ok(()) => self.reload(),
@@ -146,6 +147,6 @@ impl Render for GameToolsPanel {
         column
             .child(line("MangoHud", mangohud))
             .child(line("GameMode", gamemode))
-            .children(self.error.clone().map(theme::error))
+            .children(self.error.as_ref().map(theme::error))
     }
 }

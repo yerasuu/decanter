@@ -1,0 +1,601 @@
+ps.tabs.games: Games
+ps.tabs.ports: Ports
+ps.tabs.failures: Failures
+ps.tabs.settings: Settings
+ps.log.running: '%{label}: running'
+ps.log.finished: '%{label}: finished'
+ps.log.exited: '%{label}: exited with code %{code}'
+ps.log.stopped: '%{label}: stopped'
+ps.log.interrupted: '%{label}: interrupted'
+ps.log.copy: Copy log
+ps.log.copied: Copied
+ps.log.full: Full log
+ps.jobs.clone: clone
+ps.jobs.build: build
+ps.jobs.update: update
+ps.jobs.reset: reset
+ps.jobs.rollback: roll back
+ps.errors.environment: 'Couldn''t set up the environment: %{error}'
+ps.ports.title: Ports
+ps.ports.description: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't. A stable release published as a bundle runs without either.
+ps.ports.stage.idle: Set up the first time it's needed
+ps.ports.stage.resolving: Looking for tools…
+ps.ports.stage.downloading: 'Downloading nix-portable: %{size}'
+ps.ports.stage.downloading_bundle: 'Downloading the port''s bundle: %{size}'
+ps.ports.stage.cloning: Cloning…
+ps.ports.stage.updating: Updating…
+ps.ports.stage.fetching: Downloading the prebuilt port…
+ps.ports.stage.building: Building…
+ps.ports.stage.rolling_back: Going back to the last commit that built…
+ps.ports.stage.ready: Ready
+ps.ports.toolchain: 'Environment: %{name}'
+ps.ports.origin.local: Built on this machine
+ps.ports.origin.cache: Built by the port's CI, downloaded from its nix cache
+ps.ports.origin.bundle: Prebuilt, downloaded as the release's bundle, without nix
+ps.ports.channel.release: 'Channel: stable release'
+ps.ports.channel.release_at: 'Channel: stable release · %{tag}'
+ps.ports.channel.behind: 'Channel: stable release · %{tag} published, the checkout isn''t on it yet'
+ps.ports.channel.no_release: 'Channel: stable release · none published yet: following master and building on this machine'
+ps.ports.channel.unknown: 'Channel: stable release · couldn''t check the latest release: %{error}'
+ps.ports.channel.testing: 'Channel: testing'
+ps.ports.channel.testing_at: 'Channel: testing · commit %{commit}'
+ps.ports.channel.fell_back: 'The prebuilt stable release wasn''t available: it was built on this machine'
+ps.ports.toolchains.host: system tools
+ps.ports.toolchains.system_nix: system nix
+ps.ports.toolchains.portable: decanter's nix-portable
+ps.ports.toolchains.bundle: the port's bundle, without nix
+ps.ports.upstream.up_to_date: '%{head} · up to date with %{branch}'
+ps.ports.upstream.behind.one: '%{head} · %{count} new commit on %{branch}'
+ps.ports.upstream.behind.other: '%{head} · %{count} new commits on %{branch}'
+ps.ports.upstream.switching: '%{head} · moving to %{branch}'
+ps.ports.upstream.rewritten: '%{head} · upstream rewrote its history'
+ps.ports.upstream.local.one: '%{head} · %{count} local commit upstream doesn''t have'
+ps.ports.upstream.local.other: '%{head} · %{count} local commits upstream doesn''t have'
+ps.ports.upstream.error: 'Couldn''t check upstream: %{error}'
+ps.ports.check: Check for updates
+ps.ports.checking: Checking…
+ps.ports.checked_at: Checked at %{time}
+ps.ports.remote.offline: no connection to the remote
+ps.ports.remote.rate_limited: the remote is rate limiting requests; try again in a while
+ps.ports.remote.missing: the remote repository is gone or has moved
+ps.ports.prepare: Prepare
+ps.ports.reset.start: Back up and update
+ps.ports.reset.confirm: 'Confirm: save local changes and reset'
+ps.ports.errors.clone: Couldn't clone %{port}
+ps.ports.errors.cmake_cache: 'Couldn''t check the CMake cache: %{error}'
+ps.ports.errors.build: Building %{port} failed; see its log
+ps.ports.errors.build_local: Building %{port} failed; see its log. It wasn't put back on %{commit}, the last commit that built, because the checkout has local changes
+ps.ports.errors.rollback: Building %{port} failed and it couldn't go back to %{commit}, the last commit that built; see its log
+ps.ports.fallback.text: Running on %{good} because %{failed} failed to build; automatic updates won't move to %{failed} again
+ps.ports.fallback.log: Failed build's log
+ps.ports.fallback.retry: Retry the update
+ps.ports.errors.record_build: 'Couldn''t record the build: %{error}'
+ps.ports.errors.download: 'Couldn''t download nix-portable: %{error}'
+ps.ports.errors.checksum: The nix-portable download doesn't match its pinned checksum
+ps.failures.title: Failures
+ps.failures.description: Crashes, STOPs, errors and failed exits from every run in this profile, with the output around them and the port's commit. Kept across sessions.
+ps.failures.empty: No failures recorded.
+ps.failures.copy_all: Copy all
+ps.failures.copied: Copied
+ps.failures.copy_report: Copy report
+ps.failures.clear.start: Clear record
+ps.failures.clear.confirm: 'Confirm: clear the whole record'
+ps.failures.clear_error: 'Couldn''t clear the record: %{error}'
+ps.failures.kinds.crash: Crash
+ps.failures.kinds.stop: STOP
+ps.failures.kinds.error: Error
+ps.failures.kinds.exit: Exit
+ps.failures.kinds.missing: Missing
+ps.failures.missing.one: '%{total} thing unimplemented; the game called %{called}'
+ps.failures.missing.other: '%{total} things unimplemented; the game called %{called}'
+ps.failures.calls.summary: 'calls: %{unimplemented} unimplemented, %{stubs} stubbed, %{failed} failing, %{status} with an expected status'
+ps.failures.calls.unimplemented: Unimplemented (%{count})
+ps.failures.calls.stubs: Stubbed, doing nothing (%{count})
+ps.failures.calls.failed: Failing (%{count})
+ps.failures.calls.status: 'Expected statuses: no event, timeout, busy (%{count})'
+ps.failures.exit_code: exited with code %{code}
+ps.failures.exit_signal: killed by a signal
+ps.failures.notice.save_error: 'Couldn''t save the failure record: %{error}'
+ps.failures.notice.crashed: 'The game failed: %{message} (see Failures)'
+ps.failures.notice.missing: '%{missing} (see Failures)'
+ps.failures.notice.errors_and_missing.one: '%{count} error and %{missing} (see Failures)'
+ps.failures.notice.errors_and_missing.other: '%{count} errors and %{missing} (see Failures)'
+ps.failures.notice.errors.one: '%{count} error recorded in Failures'
+ps.failures.notice.errors.other: '%{count} errors recorded in Failures'
+ps.settings.games.title: Games folder
+ps.settings.games.description: 'Next to each of the profile''s library folders, on the same disk. Copy or move your dumps there and they show up on their own: each folder and its direct subfolders are read as they are. Saves and settings always stay in the main one; the cache goes to the cache location of each game''s folder. To move a game between folders, or choose where its cache goes, use Storage.'
+ps.settings.sys_modules.title: System modules (optional)
+ps.settings.sys_modules.none: No folder
+ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder with your own dump of the console''s modules (*.sprx, like libSceNgs2.sprx), only to compare against the port''s own libraries (PS_LLE) or for a game that still needs a console module. decanter neither ships nor copies any.'
+ps.settings.channel.title: psport channel
+ps.settings.channel.release.title: Stable release
+ps.settings.channel.release.description: psport's latest published release, downloaded prebuilt.
+ps.settings.channel.testing.title: Testing
+ps.settings.channel.testing.description: 'Every new psport change as soon as it lands: downloaded once CI has built it, otherwise built on this machine.'
+ps.settings.channel.save_error: 'Couldn''t save the channel: %{error}'
+ps.settings.open: Open
+ps.settings.pick: Choose
+ps.settings.forget: Remove
+ps.settings.save_error: 'Couldn''t save the folder: %{error}'
+ps.games.search: Search
+ps.games.scanning: Looking for games…
+ps.games.no_dumps: 'No dumps yet: copy them to the games folder (Settings).'
+ps.games.no_match: Nothing matches the search.
+ps.games.rescan: Refresh library
+ps.games.browser_empty: 'No games yet: copy your dumps to the games folder (see Settings).'
+ps.status.ready: Ready
+ps.status.needs_convert: Converted on play
+ps.status.needs_merge: 1.09 not merged yet
+ps.status.has_playable: Use the 1.09 copy
+ps.status.other_edition: Other edition
+ps.status.experimental: Experimental
+ps.status.needs_vr: Needs PS VR
+ps.status.needs_update: Needs 1.09
+ps.status.encrypted: Encrypted eboot
+ps.status.no_eboot: No eboot.bin
+ps.menu.stop: Stop
+ps.menu.play: Play
+ps.menu.details: View details
+ps.menu.merge: Merge 1.09 update
+ps.menu.log: Open full log
+ps.menu.folder: Open dump folder
+ps.menu.title_id: Copy Title ID
+ps.jobs.game: game
+ps.jobs.convert: conversion
+ps.jobs.log_error: 'Couldn''t save the full log: %{error}'
+ps.jobs.start_error: 'Couldn''t start: %{error}'
+ps.errors.create_dir: 'Couldn''t create %{dir}: %{error}'
+ps.games.library_error: 'Couldn''t use the library folder: %{error}'
+ps.layouts.read_error: 'Couldn''t read the layouts: %{error}'
+ps.play.prepare_error: 'Couldn''t prepare %{name}: %{error}'
+ps.play.mods_error: 'Couldn''t prepare the mods and icons: %{error}'
+ps.play.convert_prepare_error: 'Couldn''t prepare the conversion: %{error}'
+ps.play.convert_failed: The conversion failed; see its log
+ps.play.merging: Merging the update…
+ps.play.merged: Created %{dir}
+ps.play.merge_error: 'Couldn''t merge: %{error}'
+ps.play.moving: 'The game is being moved to another folder: wait until it''s done.'
+ps.detail.tabs.overview: Overview
+ps.detail.tabs.keyboard: Keyboard
+ps.detail.tabs.gamepad: Controller
+ps.detail.tabs.graphics: Graphics
+ps.detail.tabs.mods: Mods
+ps.detail.tabs.log: Log
+ps.detail.hero.version: VERSION
+ps.detail.hero.status: STATUS
+ps.detail.stop: STOP
+ps.detail.play: PLAY
+ps.detail.preparing: PREPARING…
+ps.detail.open_folder: Open folder
+ps.detail.open_folder_tooltip: Open the dump folder
+ps.detail.merge: Merge 1.09
+ps.detail.facts.title_id: Title ID
+ps.detail.facts.version: Version
+ps.detail.facts.folder: Folder
+ps.detail.facts.library: Library
+ps.detail.pick_game: Pick a game from the list.
+ps.detail.no_runs: Nothing has run for this game yet.
+ps.learned.frame_overlap_off: 'Frame overlap off: the game rewrote frames in flight (detected on %{date}).'
+ps.learned.forget: Forget
+ps.learned.forget_tooltip: The next run overlaps frames again; if the game rewrites them, the port will catch it again.
+ps.learned.save_error: 'Couldn''t save what was learned about the game: %{error}'
+ps.learned.forget_error: 'Couldn''t forget it: %{error}'
+ps.detail.reading_keyboard: Reading the keyboard…
+ps.detail.explain.needs_convert: The first time, it's converted with AnyPS5 before starting.
+ps.detail.explain.needs_merge: 'There''s a 1.09 update next to this dump. Merging it creates a playable copy alongside, with hard links: it takes no extra space and the original dump stays unchanged.'
+ps.detail.explain.has_playable: You already have the 1.09 copy at %{dir}; play that one.
+ps.detail.explain.other_edition: bbport only runs the CUSA03173 edition of Bloodborne at version 1.09.
+ps.detail.explain.needs_update: 'bbport needs version 1.09: add its update to one of your folders.'
+ps.detail.explain.experimental: 'bbport is only made for Bloodborne. This game starts with whatever the port lacks stubbed out, without patches or mods: see how far it gets in Log.'
+ps.detail.explain.needs_vr: This game only starts with a PS VR headset, and the port has none.
+ps.detail.explain.encrypted: The eboot.bin is still encrypted; it has to be decrypted on the console.
+ps.detail.explain.no_eboot: This dump has no eboot.bin.
+ps.layouts.default: Default
+ps.layouts.custom: Custom
+ps.layouts.copy_name: '%{name} (copy)'
+ps.layouts.name_placeholder: Layout name
+ps.layouts.layout: Layout
+ps.layouts.copy: Copy as new
+ps.layouts.remove: Delete layout
+ps.layouts.hint_builtin: 'Built-in layouts can''t be edited: copy it as new to change it.'
+ps.keyboard.groups.buttons: Buttons
+ps.keyboard.groups.dpad: D-pad
+ps.keyboard.groups.left_stick: Left stick
+ps.keyboard.groups.right_stick: Right stick
+ps.keyboard.groups.touch_window: Touchpad and window
+ps.keyboard.game_actions.move: Move
+ps.keyboard.game_actions.camera: Move the camera
+ps.keyboard.game_actions.menu_builtin: Insert opens it too
+ps.keyboard.actions.cross: ✕  Cross
+ps.keyboard.actions.circle: ○  Circle
+ps.keyboard.actions.square: □  Square
+ps.keyboard.actions.triangle: △  Triangle
+ps.keyboard.actions.up: Up
+ps.keyboard.actions.down: Down
+ps.keyboard.actions.left: Left
+ps.keyboard.actions.right: Right
+ps.keyboard.actions.touch_left: Touchpad left
+ps.keyboard.actions.touch_right: Touchpad right
+ps.keyboard.actions.toggle_mouse: Capture mouse
+ps.keyboard.actions.toggle_fullscreen: Fullscreen
+ps.keyboard.actions.open_menu: Open the port's menu
+ps.keyboard.sources.mouse_left: Left mouse button
+ps.keyboard.sources.mouse_middle: Middle mouse button
+ps.keyboard.sources.mouse_right: Right mouse button
+ps.keyboard.sources.mouse_x1: Back mouse button
+ps.keyboard.sources.mouse_x2: Forward mouse button
+ps.keyboard.sources.wheel_up: Wheel ↑
+ps.keyboard.sources.wheel_down: Wheel ↓
+ps.keyboard.refusals.keys_only: bbport only takes keyboard keys
+ps.keyboard.refusals.fullscreen_needs_key: Fullscreen can only use a keyboard key
+ps.keyboard.refusals.wheel_needs_button: The mouse wheel can only map to a controller button
+ps.keyboard.unknown_key: The key '%{key}' has no reliable SDL name; try another
+ps.keyboard.save_error: 'Couldn''t save %{path}: %{error}'
+ps.keyboard.save: Save
+ps.keyboard.saved: Saved
+ps.keyboard.unbound: Unbound
+ps.keyboard.assign: + Assign
+ps.keyboard.reset_all: Reset all
+ps.keyboard.hint.own: 'Your layout: + Assign and press the key; Save writes it. Enter saves the name.'
+ps.keyboard.hint.custom: The file has hand-edited keys; copy them as new to save them as a layout.
+ps.keyboard.description.bbport: Keyboard for bbport (key. lines in bbport.ini). Removing every key from an action leaves it unbound.
+ps.keyboard.description.anyps5: Keyboard and mouse for AnyPS5. The controller always works without setup.
+ps.keyboard.capture: Press a key or a mouse button, or move the wheel
+ps.gamepad.inputs.cross.label: ✕
+ps.gamepad.inputs.cross.action: Interact
+ps.gamepad.inputs.circle.label: ○
+ps.gamepad.inputs.circle.action: Dodge · run (hold)
+ps.gamepad.inputs.square.label: □
+ps.gamepad.inputs.square.action: Use item
+ps.gamepad.inputs.triangle.label: △
+ps.gamepad.inputs.triangle.action: Blood vial
+ps.gamepad.inputs.l1.label: L1
+ps.gamepad.inputs.l1.action: Transform weapon
+ps.gamepad.inputs.r1.label: R1
+ps.gamepad.inputs.r1.action: Attack
+ps.gamepad.inputs.l2.label: L2
+ps.gamepad.inputs.l2.action: Shoot · parry
+ps.gamepad.inputs.r2.label: R2
+ps.gamepad.inputs.r2.action: Strong · charged attack
+ps.gamepad.inputs.l3.label: L3
+ps.gamepad.inputs.l3.action: L3
+ps.gamepad.inputs.r3.label: R3
+ps.gamepad.inputs.r3.action: Lock on
+ps.gamepad.inputs.options.label: Options
+ps.gamepad.inputs.options.action: Menu
+ps.gamepad.inputs.touchpad.label: Touchpad
+ps.gamepad.inputs.touchpad.action: Gestures
+ps.gamepad.inputs.up.label: D-pad ↑
+ps.gamepad.inputs.up.action: Switch quick item
+ps.gamepad.inputs.down.label: D-pad ↓
+ps.gamepad.inputs.down.action: D-pad down
+ps.gamepad.inputs.left.label: D-pad ←
+ps.gamepad.inputs.left.action: Switch left weapon
+ps.gamepad.inputs.right.label: D-pad →
+ps.gamepad.inputs.right.action: Switch right weapon
+ps.gamepad.inputs.menu.label: Menu
+ps.gamepad.inputs.menu.action: Open the port's menu (L3 + R3 always opens it)
+ps.gamepad.buttons.a: A / ✕
+ps.gamepad.buttons.b: B / ○
+ps.gamepad.buttons.x: X / □
+ps.gamepad.buttons.y: Y / △
+ps.gamepad.buttons.leftshoulder: LB / L1
+ps.gamepad.buttons.rightshoulder: RB / R1
+ps.gamepad.buttons.lefttrigger: LT / L2
+ps.gamepad.buttons.righttrigger: RT / R2
+ps.gamepad.buttons.leftstick: Left stick click
+ps.gamepad.buttons.rightstick: Right stick click
+ps.gamepad.buttons.l3_r3: L3 + R3
+ps.gamepad.buttons.back: Select / Back
+ps.gamepad.buttons.start: Start
+ps.gamepad.buttons.touchpad: Touchpad
+ps.gamepad.buttons.dpup: D-pad ↑
+ps.gamepad.buttons.dpdown: D-pad ↓
+ps.gamepad.buttons.dpleft: D-pad ←
+ps.gamepad.buttons.dpright: D-pad →
+ps.gamepad.buttons.misc1: Misc
+ps.gamepad.buttons.paddle1: Paddle 1
+ps.gamepad.buttons.paddle2: Paddle 2
+ps.gamepad.buttons.paddle3: Paddle 3
+ps.layouts.code_vein: Code Vein style
+ps.gamepad.description: bbport settings, shared by all your Bloodborne copies. They apply on the next start. The sticks move the character and the camera in any layout.
+ps.gamepad.reading: Reading the controller setup…
+ps.gamepad.save_error: 'Couldn''t save: %{error}'
+ps.gamepad.controller.title: Controller
+ps.gamepad.controller.note: With several connected, which one the game uses
+ps.gamepad.automatic: Automatic (the first one)
+ps.gamepad.unplugged: '%{name} (disconnected)'
+ps.gamepad.icons.title: Button icons
+ps.gamepad.icons.note: In menus and prompts; they follow the chosen layout
+ps.gamepad.icons.pad: Controller (A/B/X/Y)
+ps.gamepad.icons.original: The game's originals
+ps.gamepad.hint.own: 'Your layout: pick each input''s button; if another input already used it, they swap. Enter saves the name.'
+ps.gamepad.hint.custom: bbport.ini has hand-edited pad. lines; copy them as new to save them as a layout.
+ps.gamepad.mode.list: List
+ps.gamepad.mode.visual: Visual
+ps.gamepad.visual.pick: Click a row or a button on the drawing to choose which button on your controller triggers it.
+ps.gamepad.visual.button: Controller button
+ps.gamepad.visual.title: Control settings
+ps.gamepad.visual.restore: Restore default settings
+ps.gamepad.visual.apply: Apply
+ps.gamepad.visual.cancel: Cancel
+ps.gamepad.visual.pending: There are unapplied changes. They stay even if you switch tabs, until you apply or cancel them.
+ps.gamepad.visual.hint_template: This is a template and isn't modified; applying your changes saves them as a new configuration of your own. If another input already used a button, they swap.
+ps.gamepad.visual.hint_own: Your configuration. Changes are saved when you click Apply; if another input already used a button, they swap. In gold, what differs from the default layout.
+ps.gamepad.visual.locked: Apply or cancel the drawing's changes first.
+ps.gamepad.visual.left_stick: Move
+ps.gamepad.visual.right_stick: Move the camera
+ps.gamepad.visual.stick_fixed: The sticks can't be remapped; they do the same in any configuration.
+ps.gamepad.scope.game: Game
+ps.gamepad.scope.port: Port
+ps.gamepad.config.template: '%{name} (template)'
+ps.gamepad.config.duplicate: Duplicate
+ps.gamepad.config.rename: Rename
+ps.graphics.groups.game: Game
+ps.graphics.language.label: Game language
+ps.graphics.language.options.english: English
+ps.graphics.language.options.spanish: Spanish
+ps.graphics.language.options.french: French
+ps.graphics.language.options.german: German
+ps.graphics.language.options.italian: Italian
+ps.graphics.language.options.russian: Russian
+ps.graphics.language.options.japanese: Japanese
+ps.graphics.mods_enabled.label: Load mods
+ps.graphics.mods_enabled.note: The mod list and order are managed in the Mods tab
+ps.graphics.groups.mode: Operating mode
+ps.graphics.pc_model.label: New memory and translation model
+ps.graphics.pc_model.note: The GPU uses the game's memory directly and graphics commands are translated instead of emulated. Always used on AMD GPUs; turn it on to force it on other GPUs (experimental outside AMD)
+ps.graphics.groups.display: Display
+ps.graphics.output_res.label: Output resolution
+ps.graphics.output_res.note: Upscaling fills in the frame; on Steam Deck, 720p
+ps.graphics.output_res.options.r720: 1280×720 (Steam Deck)
+ps.graphics.output_res.options.r1080: 1920×1080
+ps.graphics.output_res.options.r1440: 2560×1440
+ps.graphics.output_res.options.r2160: 3840×2160
+ps.graphics.aspect_ratio.label: Aspect ratio
+ps.graphics.aspect_ratio.note: Your display's when Automatic; pick another if the game looks stretched
+ps.graphics.aspect_ratio.options.auto: Automatic (by display)
+ps.graphics.aspect_ratio.options.r4_3: '4:3'
+ps.graphics.aspect_ratio.options.r16_10: 16:10 (Steam Deck)
+ps.graphics.aspect_ratio.options.r16_9: '16:9'
+ps.graphics.aspect_ratio.options.r21_9: 21:9 (ultrawide)
+ps.graphics.aspect_ratio.options.r32_9: 32:9 (super ultrawide)
+ps.graphics.live_resolution.label: Live resolution change
+ps.graphics.live_resolution.note: No restart, but slower on Steam Deck and older GPUs
+ps.graphics.live_resolution.options.auto: Automatic (by GPU)
+ps.graphics.live_resolution.options.off: Off (faster)
+ps.graphics.live_resolution.options.on: 'On'
+ps.graphics.fullscreen.label: Fullscreen
+ps.graphics.present_mode.label: Presentation mode
+ps.graphics.present_mode.options.mailbox: Mailbox
+ps.graphics.present_mode.options.fifo: FIFO (VSync)
+ps.graphics.present_mode.options.fifo_relaxed: FIFO Relaxed
+ps.graphics.present_mode.options.immediate: Immediate
+ps.graphics.hdr.label: Allow HDR
+ps.graphics.groups.gamepad: Controller
+ps.graphics.gamepad.label: Controller
+ps.graphics.gamepad.note: With several connected, which one the game uses; the list refreshes when this tab opens
+ps.graphics.groups.mouse: Mouse
+ps.graphics.groups.mouse_note: Saved in bbport.ini, applied the next time the game starts
+ps.graphics.game_mouse_sensitivity.label: In-game mouse sensitivity
+ps.graphics.game_mouse_sensitivity.note: Pointer speed in games that use the mouse (1 = the system's)
+ps.graphics.mouse_look.label: Mouse look
+ps.graphics.mouse_look.note: Clicking the window makes the mouse move the camera (the right stick); F1 releases it
+ps.graphics.mouse_sensitivity.label: Mouse look sensitivity
+ps.graphics.mouse_sensitivity.note: At 1, about 1000 pixels per second turn the camera at full speed
+ps.graphics.mouse_invert_y.label: Invert the camera's vertical axis
+ps.graphics.groups.upscaling: Upscaling
+ps.graphics.groups.upscaling_note: Saved in bbport.ini; in game it's changed from the menu (Insert or L3+R3)
+ps.graphics.upscaler.label: Upscaler
+ps.graphics.upscaler.options.fsr4: FSR 4
+ps.graphics.upscaler.options.fsr411: FSR 4.1.1
+ps.graphics.upscaler.options.fsr3: FSR 3
+ps.graphics.upscaler.options.taa: TAA
+ps.graphics.upscaler.options.taa_note: Antialiasing at the output resolution, without an FSR model
+ps.graphics.upscaler.options.off: 'Off'
+ps.graphics.preset.label: Preset
+ps.graphics.preset.options.native: Native AA
+ps.graphics.preset.options.quality: Quality (x1.5)
+ps.graphics.preset.options.balanced: Balanced (x1.7)
+ps.graphics.preset.options.performance: Performance (x2)
+ps.graphics.preset.options.ultra_performance: Ultra Performance (x3)
+ps.graphics.sharpen.label: Sharpening (RCAS)
+ps.graphics.sharpness.label: Sharpening strength
+ps.graphics.object_motion.label: Object motion vectors
+ps.graphics.object_motion.note: Less ghosting on characters; costs about 10% FPS
+ps.graphics.show_fps.label: Show FPS
+ps.graphics.groups.effects: Game effects
+ps.graphics.groups.effects_note: Game patches, applied at start
+ps.graphics.model_lod.label: Model detail
+ps.graphics.model_lod.options.game: As in the game
+ps.graphics.model_lod.options.max: Maximum (-2)
+ps.graphics.model_lod.options.lower: Lower (1)
+ps.graphics.model_lod.options.min: Minimum (2)
+ps.graphics.effect_chromatic_aberration.label: Chromatic aberration
+ps.graphics.effect_dof.label: Depth of field
+ps.graphics.effect_motion_blur.label: Motion blur
+ps.graphics.effect_ssao.label: SSAO
+ps.graphics.effect_game_aa.label: The game's antialiasing
+ps.graphics.effect_dynamic_shadows.label: Dynamic light shadows
+ps.graphics.effect_ssr.label: SSR reflections (not in the original game)
+ps.graphics.skip_intro.label: Skip intro videos
+ps.graphics.debug_camera.label: Free camera (Cross + L3 / Space + Z)
+ps.graphics.debug_menu.label: Debug menu (touchpad left / Tab)
+ps.graphics.debug_menu.note: Needs DbgFont14h.ccm and DbgFont14h.tpf in the game's dvdroot_ps4/font
+ps.graphics.groups.frames: Frame rate
+ps.graphics.fps_mode.label: Mode
+ps.graphics.fps_mode.note: Which frame rate patch the game gets
+ps.graphics.fps_mode.options.uncap: Uncapped (patch)
+ps.graphics.fps_mode.options.fps60: '60'
+ps.graphics.fps_mode.options.fps90: '90'
+ps.graphics.fps_mode.options.fps30: 30 (as on PS4)
+ps.graphics.fps_limit.label: FPS limit
+ps.graphics.fps_limit.note: '0: no limit'
+ps.graphics.groups.performance: Performance
+ps.graphics.draw_pipe.label: Two-stage GPU pipeline
+ps.graphics.draw_pipe.note: 20–30% faster; turn it off if things get unstable
+ps.graphics.draw_pipe.options.auto: Automatic
+ps.graphics.draw_pipe.options.auto_note: On with 8 or more CPU threads
+ps.graphics.draw_pipe.options.on: 'On'
+ps.graphics.draw_pipe.options.off: 'Off'
+ps.graphics.draw_pipe.options.off_note: More stable, but slower
+ps.graphics.readbacks.label: GPU data readbacks
+ps.graphics.readbacks.options.relaxed: Relaxed
+ps.graphics.readbacks.options.relaxed_note: Default
+ps.graphics.readbacks.options.off: 'Off'
+ps.graphics.readbacks.options.precise: Precise
+ps.graphics.preupload.label: Video memory preloading
+ps.graphics.preupload.note: Less stutter when loading areas
+ps.graphics.preupload.options.normal: Normal
+ps.graphics.preupload.options.normal_note: No extra video memory
+ps.graphics.preupload.options.full: Full
+ps.graphics.preupload.options.full_note: About 3 GB more video memory
+ps.graphics.preupload.options.off: 'Off'
+ps.graphics.groups.development: Development
+ps.graphics.save_log.label: Save log and stats to a file
+ps.graphics.save_log.note: 'In bbport''s logs folder: for looking into stutter and crashes'
+ps.graphics.crash_diag.label: Crash diagnostics
+ps.graphics.crash_diag.note: Checks the game's heap and logs writes to its memory; somewhat slower
+ps.graphics.as_0_3.label: Synchronization as in 0.3
+ps.graphics.as_0_3.note: 'For hunting regressions: memory model and copy waits as in 0.3'
+ps.graphics.frame_stats.label: Frame stats in the log
+ps.graphics.frame_stats.note: PS_FRAME_STATS
+ps.graphics.gpu_profile.label: GPU profile in the log
+ps.graphics.gpu_profile.note: PS_GPU_PROFILE
+ps.graphics.vk_validation.label: Vulkan validation layers
+ps.graphics.vk_validation.note: Slows things down a lot
+ps.graphics.description: bbport settings, shared by all your Bloodborne copies. They apply on the next start.
+ps.graphics.reading: Reading the settings…
+ps.graphics.no_limit: No limit
+ps.graphics.save_error: 'Couldn''t save: %{error}'
+ps.errors.bbport_not_ready: 'bbport isn''t ready: %{error}'
+ps.jobs.fsr411: FSR 4.1.1 build
+ps.jobs.vk_layer: Vulkan validation layer
+ps.vk_layer.preparing: Getting the Vulkan validation layer ready…
+ps.vk_layer.unavailable: The Vulkan validation layer isn't available; the game starts without validation. %{reason}
+ps.vk_layer.stopped: Start cancelled while the Vulkan validation layer was being prepared.
+ps.vk_layer.reasons.no_nix: This port runs outside nix, so it needs nix installed on the system.
+ps.vk_layer.reasons.setup: Couldn't set up its nix environment; see decanter's log.
+ps.vk_layer.reasons.build: nix couldn't download or build it (offline?); see its log.
+ps.fsr.checking: Checking the DLL…
+ps.fsr.check_error: 'Couldn''t check the DLL: %{error}'
+ps.fsr.built: FSR 4.1.1 built and chosen as the upscaler
+ps.fsr.built_not_chosen: 'FSR 4.1.1 built, but couldn''t be chosen: %{error}'
+ps.fsr.cancelled: FSR 4.1.1 build cancelled
+ps.fsr.unsupported.fsr40: '%{name}: FSR %{version}, AMD''s official FSR 4.0.x, which only works on RDNA4 and can''t be recorded under Proton on other GPUs. FSR 4.1.x is needed (OptiScaler''s FSR4_LATEST or the DLL from a game with FSR 4.1)'
+ps.fsr.unsupported.not_fsr4: '%{name}: has no FSR 4; amd_fidelityfx_upscaler_dx12.dll 4.1.x is needed'
+ps.fsr.unsupported.other: '%{name}: version %{version}. bbport only replays AMD''s official FSR 4.1.x (model v07_fp8_no_scale); community builds aren''t supported yet'
+ps.fsr.bad_loader.is_upscaler: that's the upscaler DLL; the loader is amd_fidelityfx_loader_dx12.dll (or amd_fidelityfx_dx12.dll with OptiScaler), in the same game folder
+ps.fsr.bad_loader.wrong_version: '%{loader}: version %{version}; the FidelityFX 2.x loader from the same game is needed'
+ps.fsr.failures.bad_dll: 'The DLL won''t work: details in the log'
+ps.fsr.failures.no_proton: 'No suitable Proton: install GE-Proton 10 or later, Proton Experimental or Proton-CachyOS, and open any game with it in Steam so it installs its runtime'
+ps.fsr.failures.missing_tools: 'Build tools are missing: the list is in the log'
+ps.fsr.failures.no_proton_ran: 'No Proton ran FSR 4.1 with that DLL: they''re too old or the DLL doesn''t enable FSR 4.1 on this GPU'
+ps.fsr.failures.mismatch: 'The recorded passes don''t match what bbport replays (another DLL version or a new GPU): details in the log'
+ps.fsr.failures.no_loader: The FidelityFX 2.x loader wasn't found
+ps.fsr.failures.nixos: On NixOS, recording needs umu-launcher or Nix on the system
+ps.fsr.failures.failed: 'The build failed (code %{code}): details in the log'
+ps.fsr.failures.stopped: The build stopped
+ps.extras.title: Extras
+ps.extras.env.title: Extra variables
+ps.extras.env.hint: Enter saves
+ps.extras.env.placeholder: NAME=value separated by spaces
+ps.extras.env.saved: Variables saved; they apply on the next start
+ps.extras.env.save_error: 'Couldn''t save the variables: %{error}'
+ps.extras.fsr.title: FSR 4.1.1 from your AMD DLL
+ps.extras.fsr.pick: Choose DLL…
+ps.extras.fsr.pick_upscaler: AMD upscaler DLL (amd_fidelityfx_upscaler_dx12.dll)
+ps.extras.fsr.pick_loader: FidelityFX loader (amd_fidelityfx_loader_dx12.dll)
+ps.extras.fsr.needs_loader: 'There''s no loader next to the DLL: choose amd_fidelityfx_loader_dx12.dll from the game folder'
+ps.extras.fsr.checking: Checking…
+ps.extras.fsr.ready: Assets ready for this resolution and preset
+ps.extras.fsr.missing_file: '%{file} is missing or damaged'
+ps.extras.fsr.missing: No assets (%{problem}). They're built from amd_fidelityfx_upscaler_dx12.dll 4.1.x (OptiScaler's FSR4_LATEST or from a game with FSR 4.1); needs GE-Proton 10+, Proton Experimental or Proton-CachyOS and takes 2–5 minutes
+ps.extras.fsr.progress.preparing: Preparing…
+ps.extras.fsr.progress.recording: 'Recording the passes under Proton: %{done} of %{total}'
+ps.extras.fsr.progress.translating: Translating the passes to SPIR-V…
+ps.mods.description: They apply on the next start; "Load mods" is in Graphics.
+ps.mods.loading: Preparing bbport and looking for mods…
+ps.mods.refresh: Refresh
+ps.mods.open: Open
+ps.mods.change: Change
+ps.mods.save_error: 'Couldn''t save %{file}: %{error}'
+ps.mods.folder_error: 'Couldn''t save the folder: %{error}'
+ps.mods.mods.title: Mods
+ps.mods.mods.note: Folders with dvdroot_ps4/ or the game's files; the ones below load later and win on conflict.
+ps.mods.mods.folder: Mods folder
+ps.mods.mods.read_error: 'Couldn''t read the mods: %{error}'
+ps.mods.mods.empty: No mods in the folder
+ps.mods.patches.title: External patches
+ps.mods.patches.note: XML patches in shadPS4 format for version 01.09.
+ps.mods.patches.folder: Patches folder
+ps.mods.patches.read_error: 'Couldn''t read the patches: %{error}'
+ps.mods.patches.empty: No patches in the folder
+ps.runs.measure: Measure performance
+ps.runs.measure_note: This game's next runs start with PS_FRAME_STATS=1; their figures show here once they end.
+ps.runs.debug: Debug mode for this game
+ps.runs.debug_note: This game's next runs start with PS_DEBUG=1 even with the general debug mode off; their logs go to the debug log folder (Settings › General).
+ps.runs.reading: Reading the measured runs…
+ps.runs.none: No measured runs of this game yet.
+ps.runs.read_error: 'Couldn''t read the runs'' logs: %{error}'
+ps.runs.save_error: 'Couldn''t save the setting: %{error}'
+ps.runs.samples: '%{count} 5 s samples'
+ps.runs.delta: '%{delta}% FPS against the previous run'
+ps.runs.average: Average FPS
+ps.runs.low: 1% low (FPS)
+ps.runs.frame_time: Frame time min–max
+ps.runs.compiles: Compiles on the GPU thread
+ps.runs.pipelines: 'Pipelines compiled in the background: %{background}; draws that waited for theirs: %{waited}; draws skipped meanwhile: %{skipped}'
+ps.runs.method: psport measures in windows of about 5 s, not frame by frame. The 1% low is estimated from each window's worst frame (somewhat pessimistic above 30 FPS); the minimum is the best window's mean frame time and the maximum the run's worst frame. The dashed line is the average.
+ps.detail.tabs.online: Online
+ps.play.online_error: 'Couldn''t set up online play: %{error}. Fix it in the PS section''s Settings or turn online play off.'
+ps.play.online_keyring_error: Online play needs the shadNet password from the system keyring, which isn't available (%{error}). Open or unlock the keyring, or turn online play off in the PS section's Settings to play offline.
+ps.online.title: Online play
+ps.online.play: Play online
+ps.online.upnp: UPnP (open the port on the router automatically)
+ps.online.description: Off by default. When on, psport connects the game to the community server (messages, bloodstains, ghosts) and to a shadNet server (bells and summons). It applies on the next start.
+ps.online.server: shadNet server
+ps.online.webapi: shadNet WebAPI
+ps.online.webapi_placeholder: 'Empty: the shadNet server''s own (port 31315)'
+ps.online.community: Community server
+ps.online.npid: Online ID (NPID)
+ps.online.npid_placeholder: Your account name on the server, not your email
+ps.online.password: Password
+ps.online.password_saved: Saved in the keyring; type another to change it
+ps.online.password_none: No password saved
+ps.online.password_unavailable: Keyring unavailable
+ps.online.token: Token (optional)
+ps.online.token_placeholder: Only if your server gave you one
+ps.online.account_description: A shadNet account registered on that server; decanter doesn't create accounts. The password and token are kept in the system keyring, never in the library. Without an Online ID the game plays without shadNet.
+ps.online.keyring_unavailable: 'Can''t read the system keyring: %{error}. Without it, online play won''t start with an account.'
+ps.online.save: Save
+ps.online.saved: Saved. It applies on the next start.
+ps.online.save_error: 'Couldn''t save: %{error}'
+ps.online.keyring_error: 'Couldn''t use the keyring: %{error}'
+ps.online.forget: Forget password and token
+ps.online.check: Test connection
+ps.online.checking: Testing the servers…
+ps.online.answers: answers
+ps.online.targets.game: Game server
+ps.online.targets.shadnet: shadNet server
+ps.online.targets.webapi: WebAPI
+ps.online.errors.server: the shadNet server "%{value}" isn't host:port
+ps.online.errors.community: the community server "%{value}" isn't a valid http(s) address
+ps.online.errors.webapi: the WebAPI "%{value}" isn't a valid http(s) address
+ps.online.errors.npid_email: the Online ID is the account name (NPID) registered on the server, not an email address
+ps.online.errors.npid: the Online ID "%{value}" must be 3 to 16 letters, digits, '-' or '_'
+ps.online.errors.secret: the saved password or token can't be passed to the game
+ps.online.errors.secret_without_npid: 'Type the Online ID first: the password and token are saved with it.'
+ps.online.title_querying: Reading the game's online data…
+ps.online.no_extension: 'This game has no co-op extension of its own in psport: online play is set up in the PS section''s Settings.'
+ps.online.off_in_settings: Online play is off in the PS section's Settings; this only applies when it's on.
+ps.online.bbsc.label: Seamless co-op (BBSC)
+ps.online.bbsc.note: Off by default. Every player in the session needs it on, and the community server must run BBSC's game server (Seamless Hunt's does).
+ps.online.bbsc.local.label: BBSC game server on this PC
+ps.online.bbsc.local.off: Never
+ps.online.bbsc.local.on: Always
+ps.online.bbsc.local.auto: If the community one doesn't answer
+ps.online.bbsc.local.note: With the server on this PC, messages and bloodstains are this PC's only; summons still go through the shadNet WebAPI.
+ps.online.no_password: 'There''s an Online ID saved with no password in the keyring: type it and press Save, or clear the Online ID to play without shadNet. Until then, online play won''t start.'
+ps.online.kept_existing: Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten.
+ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.

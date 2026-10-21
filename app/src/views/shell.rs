@@ -20,6 +20,7 @@ use super::ps::PsView;
 use super::settings::SettingsView;
 use super::storage::StorageView;
 use crate::capabilities::Caps;
+use crate::i18n::Text;
 use crate::state::{AppState, InstallStatus};
 use crate::theme;
 use crate::widgets::{Select, progress_bar, select::SelectStyle};
@@ -464,10 +465,10 @@ pub(crate) fn busy(cx: &App) -> bool {
 /// # Errors
 /// Refused while [`busy`], and fails when either library's records can't be
 /// written; the message is ready to show.
-pub(crate) fn switch_library(root: &Path, profile_id: &str, cx: &mut App) -> Result<(), String> {
+pub(crate) fn switch_library(root: &Path, profile_id: &str, cx: &mut App) -> Result<(), Text> {
     if busy(cx) {
         tracing::info!(profile_id, "not switching library while a game runs or installs");
-        return Err(t!("settings.account.library.busy").into_owned());
+        return Err(Text::new("settings.account.library.busy"));
     }
     crate::achv_try!(
         crate::core::switch_library(root, profile_id)

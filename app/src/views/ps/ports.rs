@@ -228,7 +228,7 @@ fn stage_status(stage: &Stage) -> (Cow<'static, str>, Option<f64>) {
         Stage::Building => (t!("ps.ports.stage.building"), None),
         Stage::RollingBack => (t!("ps.ports.stage.rolling_back"), None),
         Stage::Ready => (t!("ps.ports.stage.ready"), None),
-        Stage::Failed(message) => (message.clone().into(), None),
+        Stage::Failed(message) => (message.to_string().into(), None),
     }
 }
 

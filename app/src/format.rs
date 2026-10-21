@@ -2,6 +2,8 @@
 //! the per-game install progress, which have to agree on how a number is
 //! written or the same download reads as two different things.
 
+use rust_i18n::t;
+
 const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
 
 /// Scales to the largest unit that leaves a number below 1024, so a size
@@ -37,11 +39,14 @@ pub fn eta(remaining_bytes: u64, bytes_per_second: f64) -> Option<String> {
     }
     let seconds = (remaining_bytes as f64 / bytes_per_second).round() as i64;
     let (hours, minutes, secs) = (seconds / 3600, (seconds % 3600) / 60, seconds % 60);
-    Some(if hours > 0 {
-        format!("{hours}h {minutes}m")
-    } else if minutes > 0 {
-        format!("{minutes}m {secs}s")
-    } else {
-        format!("{secs}s")
-    })
+    Some(
+        if hours > 0 {
+            t!("common.duration.hours_minutes", hours = hours, minutes = minutes)
+        } else if minutes > 0 {
+            t!("common.duration.minutes_seconds", minutes = minutes, seconds = secs)
+        } else {
+            t!("common.duration.seconds", seconds = secs)
+        }
+        .into_owned(),
+    )
 }

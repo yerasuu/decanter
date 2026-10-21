@@ -1,0 +1,4 @@
+downloads.title: Descargas
+downloads.empty: No hay descargas en curso.
+downloads.eta: faltan %{left}
+downloads.dismiss: Descartar

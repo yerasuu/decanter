@@ -17,6 +17,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude
 use rust_i18n::t;
 
 use super::extras::ExtrasView;
+use crate::i18n::Text;
 use crate::state::{Ps, vk_layer_unavailable_text};
 use crate::theme;
 use crate::widgets::{Select, checkbox, select::SelectStyle};
@@ -38,7 +39,7 @@ pub struct GraphicsView {
     single_memory_model: bool,
     /// Why the last launch that asked for the validation layer got none, for its setting's note.
     vk_layer_unavailable: Option<Unavailable>,
-    error: Option<String>,
+    error: Option<Text>,
     extras: Entity<ExtrasView>,
     title_id: Option<String>,
     /// By `TITLE_ID`, so going back to a game doesn't run the port again until it is rebuilt.
@@ -142,7 +143,7 @@ impl GraphicsView {
             let _ = this.update(cx, |this, cx| {
                 this.error = result
                     .err()
-                    .map(|err| t!("ps.graphics.save_error", error = err).into_owned());
+                    .map(|err| Text::new("ps.graphics.save_error").arg("error", err));
                 cx.notify();
             });
         })
@@ -259,7 +260,7 @@ impl GraphicsView {
     ) -> (String, Option<String>, AnyElement) {
         let (control, note) = self.control(values, setting, cx);
         let note = match self.vk_layer_unavailable {
-            Some(why) if setting.key == "vk_validation" => Some(vk_layer_unavailable_text(why)),
+            Some(why) if setting.key == "vk_validation" => Some(vk_layer_unavailable_text(why).to_string()),
             _ => note.map(|note| t!(note).into_owned()),
         };
         (t!(setting.label).into_owned(), note, control)
@@ -379,7 +380,7 @@ impl Render for GraphicsView {
             .flex_col()
             .gap_5()
             .child(theme::muted(t!("ps.graphics.description")))
-            .children(self.error.clone().map(theme::error))
+            .children(self.error.as_ref().map(theme::error))
             .children(groups)
             .child(self.extras.clone())
             .into_any_element()

@@ -8,9 +8,8 @@
 
 use std::path::PathBuf;
 
-use rust_i18n::t;
-
 use super::UmuEntry;
+use crate::i18n::Text;
 
 const REMOTE: &str = "https://raw.githubusercontent.com/Open-Wine-Components/umu-database/main/umu-database.csv";
 /// Matches offered for one name: the database lists a game once per store,
@@ -28,7 +27,7 @@ pub struct Match {
 
 /// Rows whose title (or common acronym) matches `name`, best first: exact,
 /// then one title starting with the other, then one containing the other.
-pub async fn search(name: &str) -> Result<Vec<Match>, String> {
+pub async fn search(name: &str) -> Result<Vec<Match>, Text> {
     let csv = crate::achv_try!(database().await);
     let query = normalize(name);
     if query.is_empty() {
@@ -96,7 +95,7 @@ fn normalize(text: &str) -> String {
         .join(" ")
 }
 
-async fn database() -> Result<String, String> {
+async fn database() -> Result<String, Text> {
     if let Some(local) = newest_local() {
         match tokio::fs::read_to_string(&local).await {
             Ok(text) => {
@@ -111,12 +110,12 @@ async fn database() -> Result<String, String> {
         reqwest::get(REMOTE)
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(|err| t!("external.umu.errors.download", error = err).into_owned())
+            .map_err(|err| Text::new("external.umu.errors.download").arg("error", err))
     );
     response
         .text()
         .await
-        .map_err(|err| t!("external.umu.errors.read", error = err).into_owned())
+        .map_err(|err| Text::new("external.umu.errors.read").arg("error", err))
 }
 
 /// The most recently updated copy among the Proton builds Steam can see.

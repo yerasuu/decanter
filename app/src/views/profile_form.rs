@@ -11,7 +11,7 @@ use gpui::{Context, Entity, EventEmitter, Focusable as _, FontWeight, Window, di
 use rust_i18n::t;
 
 use crate::capabilities::Caps;
-use crate::i18n::{self, Language};
+use crate::i18n::{self, Language, Text};
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button, language_select};
@@ -41,7 +41,7 @@ pub struct ProfileForm {
     /// Picked on the first-run screen, where there may be no database to
     /// keep it in yet: saved again once creating the profile made one.
     language_picked: bool,
-    error: Option<String>,
+    error: Option<Text>,
 }
 
 impl EventEmitter<Done> for ProfileForm {}
@@ -72,7 +72,7 @@ impl ProfileForm {
     }
 
     fn name_input(layout: Layout, cx: &mut Context<Self>) -> Entity<TextInput> {
-        let name = cx.new(|cx| TextInput::new(t!("chrome.profile_form.name"), cx));
+        let name = cx.new(|cx| TextInput::new(Text::new("chrome.profile_form.name"), cx));
         cx.subscribe(&name, move |this, _, event, cx| match event {
             InputEvent::Changed => cx.notify(),
             InputEvent::Submit => this.submit(cx),
@@ -165,11 +165,9 @@ impl ProfileForm {
     }
 
     fn error_line(&self) -> Option<gpui::Div> {
-        self.error.as_ref().map(|message| theme::error(message.clone()))
+        self.error.as_ref().map(theme::error)
     }
 
-    /// Labelled in both languages, since whoever reads it may not know the
-    /// one the screen started in.
     fn language_picker(&self, cx: &Context<Self>) -> gpui::Div {
         let entity = cx.entity();
         div()
@@ -179,7 +177,7 @@ impl ProfileForm {
             .flex()
             .items_center()
             .gap_2()
-            .child(theme::muted(t!("chrome.onboarding.language")))
+            .child(theme::muted(i18n::label_in_all()))
             .child(language_select(self.language, move |language, window, cx| {
                 entity.update(cx, |this, cx| this.set_language(language, window, cx));
             }))
