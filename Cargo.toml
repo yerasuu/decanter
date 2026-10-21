@@ -73,6 +73,9 @@ tracing-subscriber = "0.3.23"
 unicode-segmentation = "1.13.3"
 url = "2"
 uuid = "1.27.0"
+# Job Objects for native Windows game sessions, through a safe API since the
+# workspace forbids `unsafe`.
+win32job = "2.0.3"
 # Already in the graph through ksni, GPUI and the keyring; decanter talks to
 # KGlobalAccel and the notification server with it, on the tokio runtime.
 zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }

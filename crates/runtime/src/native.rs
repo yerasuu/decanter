@@ -3,8 +3,15 @@
 //!
 //! Sessions are named by a caller's key rather than by anything on disk,
 //! since there is no prefix to scan for what a game left running: the
-//! session is the process decanter started, and stopping it ends that
-//! process's tree.
+//! session is a Job Object holding the process decanter started and every
+//! process started from it, so it lasts until the last of them exits (a
+//! launcher that starts the game and leaves doesn't end it), and stopping
+//! it ends all of them.
+
+#![expect(
+    clippy::single_call_fn,
+    reason = "helpers are split out to name a step of a session, not because they're reused"
+)]
 
 use core::time::Duration;
 use std::collections::HashMap;
@@ -17,9 +24,14 @@ use anyhow::{Context as _, bail};
 use futures_util::future::join_all;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::time::sleep;
+use win32job::Job;
 
-/// How often [`stop`] asks a session's process tree to close again.
+/// How often [`stop`] asks a session's processes to close again.
 const STOP_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// How often a session whose own process has exited checks whether anything
+/// it started still runs.
+const JOB_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Polite requests [`stop`] makes before ending the tree outright, so a
 /// game gets a few seconds to write what it hadn't yet.
@@ -73,7 +85,7 @@ impl Launch {
 pub struct Session {
     /// The game's own process.
     child: Child,
-    /// Taken out of the live set once the process exits.
+    /// Taken out of the live set once the session ends.
     key: String,
     /// When the child was spawned, for the exit's log line.
     started_at: Instant,
@@ -115,6 +127,9 @@ impl Session {
     /// [`Session::wait`] for a caller that records how the game ended
     /// rather than treating a non-zero exit as its own failure.
     ///
+    /// Returns once every process the game started has exited too; the
+    /// status is that of the process decanter started.
+    ///
     /// # Errors
     ///
     /// Returns an error if the process can't be waited on.
@@ -122,14 +137,16 @@ impl Session {
     pub async fn wait_status(mut self) -> anyhow::Result<ExitStatus> {
         let pid = self.child.id();
         let waited = self.child.wait().await.context("waiting for the game");
-        live_lock().remove(&self.key);
         let status = match waited {
             Ok(status) => status,
             Err(err) => {
+                live_lock().remove(&self.key);
                 tracing::error!(pid, key = %self.key, "failed to wait for the game");
                 return Err(err);
             }
         };
+        outlive_launcher(&self.key, status).await;
+        live_lock().remove(&self.key);
         let elapsed = self.started_at.elapsed();
         if status.success() {
             tracing::info!(pid, exit_code = status.code(), elapsed = ?elapsed, "game exited");
@@ -178,13 +195,43 @@ impl Prepared {
         let spawned = child.id();
         tracing::info!(pid = spawned, key = %self.launch.key, "launched game process");
         if let Some(pid) = spawned {
-            live_lock().insert(self.launch.key.clone(), pid);
+            let tracked = Tracked {
+                job: join_job(&child, &self.launch.key),
+                pid,
+            };
+            live_lock().insert(self.launch.key.clone(), tracked);
         }
         Ok(Session {
             child,
             key: self.launch.key,
             started_at: Instant::now(),
         })
+    }
+}
+
+/// What a live session's processes are found by.
+struct Tracked {
+    /// `None` when the game couldn't be put in one: the session is then
+    /// `pid` and its tree, as `taskkill /T` finds it.
+    job: Option<Job>,
+    /// The process decanter started.
+    pid: u32,
+}
+
+impl Tracked {
+    /// The session's processes now, or the one decanter started when the
+    /// job can't be listed, so a stop still reaches the tree it heads.
+    fn pids(&self) -> Vec<u32> {
+        let Some(job) = self.job.as_ref() else {
+            return vec![self.pid];
+        };
+        match job.query_process_id_list() {
+            Ok(pids) => pids.into_iter().filter_map(|pid| u32::try_from(pid).ok()).collect(),
+            Err(err) => {
+                tracing::warn!(pid = self.pid, error = ?err, "cannot list the session's processes");
+                vec![self.pid]
+            }
+        }
     }
 }
 
@@ -250,18 +297,82 @@ pub fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     Ok(Prepared { command, launch })
 }
 
-/// The sessions started and not yet seen exit, by key, with the pid of the
-/// process each started.
-fn live() -> &'static Mutex<HashMap<String, u32>> {
-    static LIVE: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+/// The sessions started and not yet seen end, by key.
+fn live() -> &'static Mutex<HashMap<String, Tracked>> {
+    static LIVE: OnceLock<Mutex<HashMap<String, Tracked>>> = OnceLock::new();
     LIVE.get_or_init(Default::default)
 }
 
 /// Locks [`live`], recovering a poisoned lock rather than discarding its
 /// contents: a panic while holding it must not make [`stop_all`] believe no
 /// games are running and leave them alive.
-fn live_lock() -> MutexGuard<'static, HashMap<String, u32>> {
+fn live_lock() -> MutexGuard<'static, HashMap<String, Tracked>> {
     live().lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A job holding `child` and, from then on, every process it starts, or
+/// `None` to follow `child` alone when Windows won't make one.
+///
+/// The job doesn't kill on close, so that a game outlives a decanter that
+/// crashed, as it does on Linux.
+// NOTE: `child` runs for a moment before it joins, and a process it starts
+// in that window escapes the job; closing it needs the child created
+// suspended and its thread resumed, which std's `Command` has no safe way to do.
+fn join_job(child: &Child, key: &str) -> Option<Job> {
+    let Some(handle) = child
+        .raw_handle()
+        .and_then(|handle| isize::try_from(handle.addr()).ok())
+    else {
+        tracing::warn!(
+            key,
+            "the game has no process handle; following the launched process alone"
+        );
+        return None;
+    };
+    let job = match Job::create() {
+        Ok(job) => job,
+        Err(err) => {
+            tracing::warn!(key, error = ?err, "cannot create a job object; following the launched process alone");
+            return None;
+        }
+    };
+    if let Err(err) = job.assign_process(handle) {
+        tracing::warn!(key, error = ?err, "cannot assign the game to its job object; following the launched process alone");
+        return None;
+    }
+    Some(job)
+}
+
+/// Waits until nothing in the job of the session named `key` runs any more,
+/// because a launcher that started the game and exited hasn't ended it.
+async fn outlive_launcher(key: &str, launcher_status: ExitStatus) {
+    let mut is_announced = false;
+    loop {
+        let listed = live_lock()
+            .get(key)
+            .and_then(|tracked| tracked.job.as_ref())
+            .map(Job::query_process_id_list);
+        match listed {
+            None => return,
+            Some(Ok(pids)) if pids.is_empty() => return,
+            Some(Ok(pids)) => {
+                if !is_announced {
+                    tracing::info!(
+                        key,
+                        launcher_exit_code = launcher_status.code(),
+                        remaining = pids.len(),
+                        "launched process exited; following the processes it started"
+                    );
+                    is_announced = true;
+                }
+            }
+            Some(Err(err)) => {
+                tracing::warn!(key, error = ?err, "cannot list the session's processes; ending the session");
+                return;
+            }
+        }
+        sleep(JOB_POLL_INTERVAL).await;
+    }
 }
 
 /// Whether the session named `key` is still running.
@@ -273,20 +384,21 @@ pub fn is_live(key: &str) -> bool {
 
 /// Asks the session named `key` to close, then ends it if it won't.
 ///
-/// The whole tree, because a game's launcher often starts the game proper
-/// as its child. Asked politely first (`taskkill` without `/F` sends the
-/// windows a close), so a game gets to save, and forced only after
-/// [`POLITE_STOP_ATTEMPTS`]. Returns once the process has exited, or at
-/// once when nothing runs under `key`.
+/// Every process in its job, because a game's launcher often starts the
+/// game proper and exits. Asked politely first (`taskkill` without `/F`
+/// sends the windows a close), so a game gets to save, and forced only
+/// after [`POLITE_STOP_ATTEMPTS`]. Returns once the session has ended, or
+/// at once when nothing runs under `key`.
 #[inline]
 pub async fn stop(key: &str) {
     tracing::debug!(key, "stopping session");
     for attempt in 0..=POLITE_STOP_ATTEMPTS {
-        let Some(pid) = live_lock().get(key).copied() else {
+        let Some(pids) = live_lock().get(key).map(Tracked::pids) else {
             tracing::debug!(key, "session has exited");
             return;
         };
-        taskkill(pid, attempt == POLITE_STOP_ATTEMPTS).await;
+        let force = attempt == POLITE_STOP_ATTEMPTS;
+        join_all(pids.into_iter().map(|pid| taskkill(pid, force))).await;
         sleep(STOP_POLL_INTERVAL).await;
     }
     if is_live(key) {
