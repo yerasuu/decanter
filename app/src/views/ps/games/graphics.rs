@@ -193,12 +193,16 @@ impl GraphicsView {
                     });
                 (select.into_any_element(), note)
             }
-            Control::Number { default, decimals, .. } => {
+            Control::Number {
+                default,
+                decimals,
+                zero,
+                ..
+            } => {
                 let now = current.and_then(|value| value.parse::<f64>().ok()).unwrap_or(*default);
-                let shown = if *decimals == 0 && now == 0.0 {
-                    t!("ps.graphics.no_limit").into_owned()
-                } else {
-                    format!("{now:.decimals$}")
+                let shown = match zero {
+                    Some(label) if now == 0.0 => t!(*label).into_owned(),
+                    _ => format!("{now:.decimals$}"),
                 };
                 let (down, up) = (values.stepped(setting, -1, &[]), values.stepped(setting, 1, &[]));
                 (self.stepper(setting, shown, down, up, cx), setting.note)

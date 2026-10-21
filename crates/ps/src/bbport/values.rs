@@ -77,6 +77,7 @@ impl Values {
                 step,
                 default,
                 decimals,
+                ..
             } => {
                 let now = current.and_then(|value| value.parse::<f64>().ok()).unwrap_or(*default);
                 #[expect(clippy::cast_precision_loss, reason = "delta is ±1")]

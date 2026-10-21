@@ -398,6 +398,16 @@ ps.graphics.mouse_look.note: Al hacer clic en la ventana el ratón mueve la cám
 ps.graphics.mouse_sensitivity.label: Sensibilidad de la cámara con el ratón
 ps.graphics.mouse_sensitivity.note: Con 1, unos 1000 píxeles por segundo giran la cámara a toda velocidad
 ps.graphics.mouse_invert_y.label: Invertir el eje vertical de la cámara
+ps.graphics.groups.keyboard: Teclado
+ps.graphics.groups.keyboard_note: Las teclas de movimiento y de cámara como stick; se guarda en bbport.ini y se aplica en la siguiente partida
+ps.graphics.key_stick_opposite.label: Dos teclas opuestas pulsadas
+ps.graphics.key_stick_opposite.options.last: Gana la última
+ps.graphics.key_stick_opposite.options.last_note: El stick va hacia la última que pulsaste, así cambiar de dirección no corta la carrera
+ps.graphics.key_stick_opposite.options.neutral: Se anulan
+ps.graphics.key_stick_opposite.options.neutral_note: El stick vuelve al centro mientras mantienes las dos
+ps.graphics.key_stick_hold_ms.label: Retención del stick de movimiento (ms)
+ps.graphics.key_stick_hold_ms.note: Cuánto mantiene el stick su dirección al soltar las teclas, para que cambiar de tecla no sea una parada
+ps.graphics.key_stick_hold_ms.zero: Sin retención
 ps.graphics.groups.upscaling: Reescalado
 ps.graphics.groups.upscaling_note: Se guarda en bbport.ini; en el juego se cambia desde el menú (Insert o L3+R3)
 ps.graphics.upscaler.label: Reescalado

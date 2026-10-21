@@ -20,13 +20,15 @@ pub enum Control {
     Toggle {
         default: bool,
     },
-    /// Stepped with ‹ ›; `decimals` is how the ini writes it (`sharpness=0.50`).
+    /// Stepped with ‹ ›; `decimals` is how the ini writes it (`sharpness=0.50`). `zero` is the
+    /// label 0 shows when it stands for no quantity (no limit, nothing held).
     Number {
         min: f64,
         max: f64,
         step: f64,
         default: f64,
         decimals: usize,
+        zero: Option<&'static str>,
     },
     /// The controller list from the port's GPU tool, `--gamepads` (key `gamepad`, a GUID).
     Gamepad,
@@ -258,6 +260,7 @@ pub const GROUPS: &[Group] = &[
                     step: 0.1,
                     default: 1.0,
                     decimals: 2,
+                    zero: None,
                 },
             },
             toggle(
@@ -278,6 +281,7 @@ pub const GROUPS: &[Group] = &[
                     step: 0.1,
                     default: 1.0,
                     decimals: 2,
+                    zero: None,
                 },
             },
             toggle(
@@ -287,6 +291,47 @@ pub const GROUPS: &[Group] = &[
                 Store::Ini,
                 false,
             ),
+        ],
+    },
+    Group {
+        title: "ps.graphics.groups.keyboard",
+        note: Some("ps.graphics.groups.keyboard_note"),
+        settings: &[
+            Setting {
+                key: "key_stick_opposite",
+                label: "ps.graphics.key_stick_opposite.label",
+                note: None,
+                store: Store::Ini,
+                control: Control::Choice {
+                    options: &[
+                        (
+                            "ps.graphics.key_stick_opposite.options.last",
+                            "last",
+                            Some("ps.graphics.key_stick_opposite.options.last_note"),
+                        ),
+                        (
+                            "ps.graphics.key_stick_opposite.options.neutral",
+                            "neutral",
+                            Some("ps.graphics.key_stick_opposite.options.neutral_note"),
+                        ),
+                    ],
+                    default: "last",
+                },
+            },
+            Setting {
+                key: "key_stick_hold_ms",
+                label: "ps.graphics.key_stick_hold_ms.label",
+                note: Some("ps.graphics.key_stick_hold_ms.note"),
+                store: Store::Ini,
+                control: Control::Number {
+                    min: 0.0,
+                    max: 200.0,
+                    step: 10.0,
+                    default: 60.0,
+                    decimals: 0,
+                    zero: Some("ps.graphics.key_stick_hold_ms.zero"),
+                },
+            },
         ],
     },
     Group {
@@ -346,6 +391,7 @@ pub const GROUPS: &[Group] = &[
                     step: 0.05,
                     default: 0.3,
                     decimals: 2,
+                    zero: None,
                 },
             },
             toggle(
@@ -470,6 +516,7 @@ pub const GROUPS: &[Group] = &[
                     step: 10.0,
                     default: 0.0,
                     decimals: 0,
+                    zero: Some("ps.graphics.no_limit"),
                 },
             },
         ],
@@ -564,6 +611,7 @@ pub const GROUPS: &[Group] = &[
                     step: 10.0,
                     default: 30.0,
                     decimals: 0,
+                    zero: Some("ps.graphics.no_limit"),
                 },
             },
             toggle(
