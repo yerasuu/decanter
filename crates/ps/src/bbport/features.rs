@@ -26,6 +26,8 @@ const MAX_REASON: usize = 512;
 const ONLINE_AREA: &str = "net";
 /// psport's row for `key.menu` and `pad.menu`, which a game runs without.
 const MENU_BINDING: &str = "port_menu_binding";
+/// psport's row for `key_stick_opposite` and `key_stick_hold_ms`, which a game runs without.
+const KEY_STICK: &str = "key_stick";
 /// psport's row for its online module, without which online play has nothing to load.
 const ONLINE_MODULE: &str = "online_module";
 /// Areas whose rows say whether one setting or option suits this machine (an upscaler, a CPU's
@@ -77,8 +79,8 @@ impl HostFeatures {
     /// Playing goes when a feature a game needs is unavailable here, with
     /// psport's own reason for the first one, and is marked as being tested
     /// when one is only experimental. The `net` rows decide online play
-    /// alone, which a game runs without. The menu binding and online play are
-    /// offered only when the build lists them, since older ones ignore them.
+    /// alone, which a game runs without. The menu binding, the keyboard stick
+    /// settings and online play are offered only when the build lists them, since older ones ignore them.
     #[inline]
     pub fn merge_into(&self, capabilities: &mut Capabilities) {
         self.merge_listed(
@@ -87,6 +89,7 @@ impl HostFeatures {
             |row| row.id == MENU_BINDING,
             MENU_BINDING,
         );
+        self.merge_listed(capabilities, Feature::PsKeyStick, |row| row.id == KEY_STICK, KEY_STICK);
         self.merge_listed(
             capabilities,
             Feature::PsOnline,
@@ -94,7 +97,10 @@ impl HostFeatures {
             ONLINE_MODULE,
         );
         let needed = self.rows.iter().filter(|row| {
-            row.area != ONLINE_AREA && row.id != MENU_BINDING && !OPTION_AREAS.contains(&row.area.as_str())
+            row.area != ONLINE_AREA
+                && row.id != MENU_BINDING
+                && row.id != KEY_STICK
+                && !OPTION_AREAS.contains(&row.area.as_str())
         });
         let missing = needed.clone().find(|row| matches!(row.state, State::Unavailable));
         match missing {

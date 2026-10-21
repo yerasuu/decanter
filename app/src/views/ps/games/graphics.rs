@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::io;
 
+use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::effects::{self, Section};
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{
@@ -25,6 +26,8 @@ use crate::widgets::{Select, checkbox, select::SelectStyle};
 
 /// The group of [`GROUPS`] the port's own list of the title's effects replaces.
 const EFFECTS_GROUP: &str = "ps.graphics.groups.effects";
+/// The group of [`GROUPS`] only psport builds listing `key_stick` read.
+const KEY_STICK_GROUP: &str = "ps.graphics.groups.keyboard";
 
 /// The port's answer for one title, with the build that gave it.
 struct PortEffects {
@@ -373,8 +376,12 @@ impl Render for GraphicsView {
             return theme::muted(t!("ps.graphics.reading")).into_any_element();
         };
         let hidden = Caps::get(cx).ps_hidden_options();
+        let key_stick_offered = Caps::get(cx).is_offered(Feature::PsKeyStick);
         let mut groups = Vec::with_capacity(GROUPS.len());
         for fallback in GROUPS {
+            if fallback.title == KEY_STICK_GROUP && !key_stick_offered {
+                continue;
+            }
             if fallback.title == EFFECTS_GROUP
                 && let Some(port_groups) = self.port_effects(&values, fallback, &hidden, cx)
             {

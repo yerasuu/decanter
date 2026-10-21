@@ -17,6 +17,7 @@ use crate::{platform, theme};
 const RELEASE_KEY: &str = "release key";
 const TRAY_HOST: &str = "StatusNotifier host";
 const PSPORT_MENU_BINDING: &str = "psport build listing port_menu_binding";
+const PSPORT_KEY_STICK: &str = "psport build listing key_stick";
 const PSPORT_ONLINE: &str = "psport build listing online_module";
 
 pub struct Caps {
@@ -148,6 +149,7 @@ impl Caps {
 /// arrives, since builds from before a feature silently ignore it.
 fn without_psport_report(capabilities: &mut Capabilities) {
     capabilities.restrict(Feature::PsMenuBinding, Reason::NeedsSetup(PSPORT_MENU_BINDING));
+    capabilities.restrict(Feature::PsKeyStick, Reason::NeedsSetup(PSPORT_KEY_STICK));
     capabilities.restrict(Feature::PsOnline, Reason::NeedsSetup(PSPORT_ONLINE));
 }
 
@@ -182,6 +184,7 @@ fn setup_text(what: &'static str) -> Cow<'static, str> {
         RELEASE_KEY => t!("common.setup.release_key"),
         TRAY_HOST => t!("common.setup.tray_host"),
         PSPORT_MENU_BINDING => t!("common.setup.psport_menu_binding"),
+        PSPORT_KEY_STICK => t!("common.setup.psport_key_stick"),
         PSPORT_ONLINE => t!("common.setup.psport_online"),
         _ => Cow::Borrowed(what),
     }
