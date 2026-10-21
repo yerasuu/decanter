@@ -211,3 +211,11 @@ library.properties.compatibility.prefix: Prefix
 library.properties.compatibility.prefix_created: created
 library.properties.compatibility.prefix_missing: no prefix (created on first launch)
 library.run.dx7_hint: This game uses DirectX 7 (DirectDraw) and closed with an error. It may need a DirectDraw wrapper (such as cnc-ddraw or dgVoodoo2) next to its executable.
+library.session_renewal.window_title: Renew GOG session
+library.session_renewal.closed: '%{name}''s session was closed on GOG. Your games are still here and you can play them; renew it to download, sync saves and track achievements.'
+library.session_renewal.renew: Renew session
+library.session_renewal.renewing: Renewing…
+library.session_renewal.later: Later
+library.session_renewal.unreachable: GOG isn't answering right now; try again later.
+library.session_renewal.login: 'GOG no longer accepts this session: log in again with %{name}''s account.'
+library.session_renewal.other_account: You logged in as %{other}, not %{name}. Log in with %{name}'s account.

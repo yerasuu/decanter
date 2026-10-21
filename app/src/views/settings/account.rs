@@ -21,9 +21,10 @@ use super::{column, field_row, inline, storefront_label};
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
+use crate::views::gog_login::{GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
-use crate::views::shell;
-use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button};
+use crate::views::{session_renewal, shell};
+use crate::widgets::{ButtonKind, Select, button};
 
 #[derive(Clone, PartialEq)]
 enum AccountStatus {
@@ -36,7 +37,8 @@ enum AccountStatus {
 enum SessionCheck {
     Pending,
     Valid(String),
-    Revoked,
+    Closed,
+    Unreachable,
     Failed(String),
 }
 
@@ -58,19 +60,14 @@ pub struct AccountTab {
     new_profile: Option<(Entity<ProfileForm>, Subscription)>,
     rows: Vec<AccountRow>,
     adding: bool,
-    pasted: Entity<TextInput>,
-    add_status: AccountStatus,
+    login: Entity<GogLogin>,
 }
 
 impl AccountTab {
     pub fn new(profile_id: String, cx: &mut Context<Self>) -> Self {
-        let pasted = cx.new(|cx| TextInput::new("https://embed.gog.com/on_login_success?…&code=…", cx));
-        cx.subscribe(&pasted, |_, _, event, cx| {
-            if matches!(event, InputEvent::Changed) {
-                cx.notify();
-            }
-        })
-        .detach();
+        let login = cx.new(GogLogin::new);
+        cx.subscribe(&login, |this, _, LoggedIn(account), cx| this.connect(account, cx))
+            .detach();
         let mut this = Self {
             profile_id,
             library_path: None,
@@ -83,8 +80,7 @@ impl AccountTab {
             new_profile: None,
             rows: Vec::new(),
             adding: false,
-            pasted,
-            add_status: AccountStatus::Idle,
+            login,
         };
         this.reload_library_path();
         this.reload_accounts(cx);
@@ -145,19 +141,21 @@ impl AccountTab {
     }
 
     /// Re-checked when the row first appears, so a session GOG has since
-    /// revoked shows as such instead of a dead "connected" state.
+    /// closed shows as such instead of a dead "connected" state.
     fn check_session(account: &Account, cx: &mut Context<Self>) {
         let account_id = account.id.clone();
         let storefront = account.storefront;
         cx.spawn(async move |this, cx| {
             tracing::debug!(account_id, "checking gog session status");
-            let check = match decanter_gog::session(&account_id).await {
-                Ok(Some(session)) => SessionCheck::Valid(session.display_name),
-                Ok(None) => {
-                    // Rendered as a red "la sesión se cerró en GOG" —
-                    // visible to the user, not just a cache miss.
-                    tracing::error!(account_id, "gog session no longer valid, revoked upstream");
-                    SessionCheck::Revoked
+            let check = match decanter_gog::check_session(&account_id).await {
+                Ok(decanter_gog::SessionState::Valid(session)) => SessionCheck::Valid(session.display_name),
+                Ok(decanter_gog::SessionState::Closed) => {
+                    tracing::info!(account_id, "gog session closed upstream");
+                    SessionCheck::Closed
+                }
+                Ok(decanter_gog::SessionState::Unreachable(reason)) => {
+                    tracing::info!(account_id, reason, "gog session could not be checked");
+                    SessionCheck::Unreachable
                 }
                 Err(err) => {
                     tracing::error!(account_id, error = %err, "gog session check failed");
@@ -240,72 +238,45 @@ impl AccountTab {
         .detach();
     }
 
-    fn open_gog(&mut self, cx: &mut Context<Self>) {
-        if let Err(err) = crate::desktop::open(decanter_gog::auth_url()) {
-            tracing::error!(error = %err, "failed to open browser for gog login");
-            self.add_status = AccountStatus::Failed(Text::new("settings.account.errors.browser").arg("error", err));
-            cx.notify();
+    /// No account id went into the login — which account this is is only
+    /// known once GOG answers, so `profile_id` (already known) is what ties
+    /// the *result* to this profile, via `upsert_account`.
+    fn connect(&mut self, account: &decanter_gog::Account, cx: &mut Context<Self>) {
+        let profile_id = self.profile_id.as_str();
+        match session_renewal::save_account(account, profile_id) {
+            Ok(()) => {
+                tracing::info!(profile_id, account_id = %account.account_id, "gog account added");
+                AppState::get(cx)
+                    .library
+                    .clone()
+                    .update(cx, |library, cx| library.refresh(cx));
+                self.login.update(cx, GogLogin::reset);
+                self.adding = false;
+                self.reload_accounts(cx);
+            }
+            Err(err) => self.login.update(cx, |login, cx| login.fail(err, cx)),
         }
     }
 
-    /// GOG's OAuth has no loopback or device flow: the only way through is
-    /// a browser login that lands on a page whose URL carries a one-shot
-    /// code. So the user opens the page, logs in, and pastes the URL they
-    /// end up on back here. No account id goes into `decanter_gog::log_in`
-    /// — which account this becomes is only known once GOG answers, so
-    /// `profile_id` (already known) is what ties the *result* to this
-    /// profile, via `upsert_account`.
-    fn connect(&mut self, cx: &mut Context<Self>) {
-        let profile_id = self.profile_id.clone();
-        let code = self.pasted.read(cx).text().to_owned();
-        self.add_status = AccountStatus::Working;
-        cx.notify();
-        tracing::info!(profile_id, "logging in to gog");
-        let library = AppState::get(cx).library.clone();
-        cx.spawn(async move |this, cx| {
-            let outcome = match decanter_gog::log_in(&code).await {
-                Ok(account) => {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_or(0, |since| since.as_secs() as i64);
-                    crate::core::db()
-                        .and_then(|db| {
-                            db.upsert_account(
-                                &account.account_id,
-                                Storefront::Gog,
-                                &profile_id,
-                                &account.display_name,
-                                now,
-                            )
-                            .map_err(crate::core::StoreError::Query)
-                        })
-                        .map(|_| account.account_id)
-                        .inspect_err(|err| tracing::error!(profile_id, error = %err, "failed to save gog account"))
-                        .map_err(Text::from)
-                }
-                Err(err) => {
-                    tracing::error!(profile_id, error = %err, "gog login failed");
-                    Err(Text::verbatim(err))
-                }
-            };
-            match outcome {
-                Ok(account_id) => {
-                    tracing::info!(profile_id, account_id, "gog account added");
-                    library.update(cx, |library, cx| library.refresh(cx));
-                    let _ = this.update(cx, |this, cx| {
-                        this.pasted.update(cx, |input, cx| input.set_text("", cx));
-                        this.add_status = AccountStatus::Idle;
-                        this.adding = false;
-                        this.reload_accounts(cx);
-                    });
-                }
-                Err(err) => {
-                    let _ = this.update(cx, |this, cx| {
-                        this.add_status = AccountStatus::Failed(err);
-                        cx.notify();
-                    });
-                }
+    /// Runs the renewal window's flow for this row, starting straight at the
+    /// silent refresh since the user already asked for it here.
+    fn renew(&self, account_id: &str, storefront: Storefront, cx: &mut Context<Self>) {
+        let Some(row) = self
+            .rows
+            .iter()
+            .find(|row| row.account.id == account_id && row.account.storefront == storefront)
+        else {
+            return;
+        };
+        let Some(view) = session_renewal::open(row.account.clone(), true, cx) else {
+            return;
+        };
+        let account_id = account_id.to_owned();
+        cx.subscribe(&view, move |this, _, session_renewal::Renewed(name), cx| {
+            if let Some(renewed) = this.row_mut(&account_id, storefront) {
+                renewed.session = SessionCheck::Valid(name.clone());
             }
+            this.reload_accounts(cx);
         })
         .detach();
     }
@@ -559,18 +530,31 @@ impl AccountTab {
             let label = match &row.session {
                 SessionCheck::Pending => theme::muted(t!("settings.account.session.checking")),
                 SessionCheck::Valid(name) => div().font_weight(FontWeight::BOLD).child(name.clone()),
-                SessionCheck::Revoked => theme::error(t!("settings.account.session.revoked")),
+                SessionCheck::Closed => theme::error(t!("settings.account.session.revoked")),
+                SessionCheck::Unreachable => theme::muted(t!("settings.account.session.unreachable")),
                 SessionCheck::Failed(err) => theme::error(t!("settings.account.session.invalid", error = err)),
+            };
+            let renew_kind = match row.session {
+                SessionCheck::Closed => Some(ButtonKind::Primary),
+                SessionCheck::Unreachable => Some(ButtonKind::Secondary),
+                SessionCheck::Pending | SessionCheck::Valid(_) | SessionCheck::Failed(_) => None,
             };
             let working = row.status == AccountStatus::Working;
             let account_id = row.account.id.clone();
             let storefront = row.account.storefront;
+            let renew = renew_kind.map(|kind| {
+                let account_id = account_id.clone();
+                button(("renew", index), kind, t!("settings.account.renew"), working).when(!working, |b| {
+                    b.on_click(cx.listener(move |this, _, _, cx| this.renew(&account_id, storefront, cx)))
+                })
+            });
             // The error line follows the row inside the card, so the row
             // only counts as `:last-child` when there's none.
             let last = index + 1 == count && failed.is_none();
             let line = theme::list_row(("account-row", index), last)
                 .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
                 .child(div().flex_1().min_w_0().child(label))
+                .children(renew)
                 .child(
                     button(
                         ("log-out", index),
@@ -600,36 +584,7 @@ impl AccountTab {
                 )),
             );
         }
-        let disabled = self.add_status == AccountStatus::Working || self.pasted.read(cx).text().trim().is_empty();
-        // `.card` has no padding of its own; children keep their natural
-        // width instead of stretching, as inline buttons did in a block.
-        theme::card()
-            .items_start()
-            .child(theme::muted(t!("settings.account.add.hint")).w_full())
-            .child(
-                button("open-gog", ButtonKind::Primary, t!("settings.account.add.open"), false)
-                    .on_click(cx.listener(|this, _, _, cx| this.open_gog(cx))),
-            )
-            .child(
-                field_row()
-                    .w_full()
-                    .child(div().flex_1().min_w_0().child(self.pasted.clone()))
-                    .child(
-                        button(
-                            "connect-gog",
-                            ButtonKind::Primary,
-                            t!("settings.account.add.connect"),
-                            disabled,
-                        )
-                        .when(!disabled, |b| {
-                            b.on_click(cx.listener(|this, _, _, cx| this.connect(cx)))
-                        }),
-                    ),
-            )
-            .children(match &self.add_status {
-                AccountStatus::Failed(message) => Some(theme::error(message.clone()).w_full()),
-                AccountStatus::Idle | AccountStatus::Working => None,
-            })
+        div().child(self.login.clone())
     }
 }
 

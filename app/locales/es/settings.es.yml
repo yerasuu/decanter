@@ -26,7 +26,9 @@ settings.account.empty: Todavía no hay ninguna cuenta en este perfil.
 settings.account.no_store: Sin tienda
 settings.account.log_out: Cerrar sesión
 settings.account.session.checking: Comprobando sesión…
-settings.account.session.revoked: la sesión se cerró en GOG
+settings.account.session.revoked: La sesión se cerró en GOG
+settings.account.session.unreachable: GOG no responde; no se ha podido comprobar la sesión
+settings.account.renew: Renovar sesión
 settings.account.session.invalid: 'sesión inválida: %{error}'
 settings.account.add.button: + Añadir cuenta GOG
 settings.account.add.hint: Abre GOG, inicia sesión y pega aquí la dirección de la página a la que llegues.

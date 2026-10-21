@@ -211,3 +211,11 @@ library.properties.compatibility.prefix: Prefijo
 library.properties.compatibility.prefix_created: creado
 library.properties.compatibility.prefix_missing: sin prefijo (se crea al jugar)
 library.run.dx7_hint: Este juego usa DirectX 7 (DirectDraw) y se ha cerrado con un error. Puede necesitar un envoltorio de DirectDraw (por ejemplo cnc-ddraw o dgVoodoo2) junto a su ejecutable.
+library.session_renewal.window_title: Renovar sesión de GOG
+library.session_renewal.closed: La sesión de %{name} se cerró en GOG. Tus juegos siguen aquí y puedes jugarlos; renuévala para descargar, sincronizar partidas y registrar logros.
+library.session_renewal.renew: Renovar sesión
+library.session_renewal.renewing: Renovando…
+library.session_renewal.later: Más tarde
+library.session_renewal.unreachable: GOG no responde ahora mismo; inténtalo más tarde.
+library.session_renewal.login: 'GOG ya no acepta esta sesión: vuelve a iniciar sesión con la cuenta de %{name}.'
+library.session_renewal.other_account: Has iniciado sesión como %{other}, no como %{name}. Inicia sesión con la cuenta de %{name}.

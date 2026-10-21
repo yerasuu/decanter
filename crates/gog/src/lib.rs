@@ -27,16 +27,18 @@ mod library;
 mod orders;
 mod product;
 pub mod save_location;
+mod session;
 mod steam_export;
 mod updates;
 
-pub use auth::{Account, auth_url, extract_code, log_in, log_out, session};
+pub use auth::{Account, auth_url, extract_code, log_in, log_out};
 pub use depot::Build;
 pub use install::{
     BrokenFile, BrokenReason, Progress, VerifyReport, cancel, install, repair, uninstall, uninstall_dlc, verify,
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
 pub use orders::purchase_dates;
+pub use session::{SessionState, check_session, renew_session};
 pub use steam_export::{remove_steam_shortcut, sync_steam_shortcut};
 pub use updates::{Branch, check_all_updates, check_update, list_branches, list_builds};
 
@@ -156,7 +158,9 @@ fn session_lock(account_id: &str) -> Arc<AsyncMutex<()>> {
 /// Runs `f` against a live, authenticated `gog::Gog` client built from the
 /// stored session, then persists whatever `f` leaves in `client.token` —
 /// any authenticated call may have refreshed it, and a caller that skipped
-/// this would silently log itself out one token rotation later.
+/// this would silently log itself out one token rotation later. That holds
+/// when `f` fails too: the `gog` crate refreshes before the request that then
+/// fails, and GOG may have spent the old refresh token by then.
 ///
 /// `f` runs inside `spawn_blocking`: `gog::Gog` holds its token in a
 /// `RefCell`, so it isn't `Send` across an `.await` the way an async
@@ -174,24 +178,28 @@ where
         tracing::debug!(account_id, "no GOG session stored for this account");
     }
     let stored = stored.context("no GOG session for this account — log in first")?;
-    let account_id = account_id.to_owned();
-    let (result, token) = achv_try!(achv_try!(
-        tokio::task::spawn_blocking(move || -> anyhow::Result<(T, gog::token::Token)> {
-            let token: gog::token::Token =
-                achv_try!(serde_json::from_str(&stored).context("stored GOG session is corrupt"));
-            let client = gog::Gog::new(token);
-            let result = achv_try!(f(&client));
-            Ok((result, client.token.borrow().clone()))
+    let started: gog::token::Token = achv_try!(serde_json::from_str(&stored).context("stored GOG session is corrupt"));
+    let (result, token) = achv_try!(
+        tokio::task::spawn_blocking(move || {
+            let client = gog::Gog::new(started);
+            let result = f(&client);
+            (result, client.token.into_inner())
         })
         .await
         .context("GOG worker task panicked")
-    ));
+    );
 
-    let refreshed = achv_try!(serde_json::to_string(&token).context("serializing the refreshed GOG session"));
-    write_session(&account_id, refreshed).await?;
-    tracing::debug!(%account_id, "completed authenticated GOG call and persisted refreshed session");
+    let ended = achv_try!(serde_json::to_string(&token).context("serializing the refreshed GOG session"));
+    if ended != stored {
+        write_session(account_id, ended).await?;
+        tracing::debug!(
+            account_id,
+            succeeded = result.is_ok(),
+            "persisted refreshed GOG session"
+        );
+    }
 
-    Ok(result)
+    result
 }
 
 /// Polls GOG, updates the local cache, and returns whichever achievements

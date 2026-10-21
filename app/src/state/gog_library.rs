@@ -68,7 +68,6 @@ pub enum LibraryState {
     Idle,
     Loading,
     Loaded,
-    Failed(String),
 }
 
 pub struct GogLibrary {
@@ -99,6 +98,10 @@ pub struct GogLibrary {
     /// The profile's external games (see `crate::external`), read from
     /// their manifests and appended after every account's GOG games.
     external: Vec<LibraryEntry>,
+    /// Accounts whose session GOG closed, so the renewal window opens once
+    /// per closing rather than on every failed listing after it — renewed
+    /// or put off with "Más tarde" alike. Cleared once a listing works again.
+    closed_sessions: HashSet<String>,
 }
 
 impl GogLibrary {
@@ -122,6 +125,7 @@ impl GogLibrary {
             by_account: HashMap::new(),
             tasks: HashMap::new(),
             external: Vec::new(),
+            closed_sessions: HashSet::new(),
         };
         this.reconcile(cx);
         cx.spawn(async move |this, cx| watch_library_folders(this, cx).await)
@@ -135,6 +139,45 @@ impl GogLibrary {
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         tracing::debug!("gog library refresh requested");
         self.reconcile(cx);
+    }
+
+    /// A renewed session: its loop starts over at once instead of waiting out
+    /// the interval after the listing that failed.
+    pub fn session_renewed(&mut self, account_id: &str, cx: &mut Context<Self>) {
+        self.closed_sessions.remove(account_id);
+        if self.tasks.remove(account_id).is_some() {
+            tracing::debug!(account_id, "restarting gog library fetch loop after session renewal");
+        }
+        self.refresh(cx);
+    }
+
+    fn session_closed(&mut self, account_id: &str, cx: &mut Context<Self>) {
+        if !self.closed_sessions.insert(account_id.to_owned()) {
+            tracing::debug!(account_id, "gog session still closed, renewal already offered");
+            return;
+        }
+        let account = self
+            .profile
+            .as_deref()
+            .and_then(|profile_id| crate::core::db().ok().map(|db| (db, profile_id)))
+            .and_then(|(db, profile_id)| {
+                db.accounts_in_profile(profile_id)
+                    .inspect_err(|err| tracing::warn!(profile_id, %err, "could not list accounts for session renewal"))
+                    .ok()
+            })
+            .and_then(|accounts| {
+                accounts
+                    .into_iter()
+                    .find(|account| account.id == account_id && account.storefront == decanter_core::Storefront::Gog)
+            });
+        let Some(account) = account else {
+            tracing::warn!(account_id, "gog session closed for an account no longer in the profile");
+            return;
+        };
+        tracing::info!(account_id, "gog session closed, offering renewal");
+        cx.defer(move |cx| {
+            crate::views::session_renewal::open(account, false, cx);
+        });
     }
 
     /// Re-reads one game's local install state after an install or
@@ -209,6 +252,7 @@ impl GogLibrary {
             tracing::debug!(account_id, "cancelling gog library fetch loop on logout");
         }
         self.by_account.remove(account_id);
+        self.closed_sessions.remove(account_id);
         self.wanted.retain(|wanted| wanted != account_id);
         self.games = merge(&self.by_account, &self.wanted, &self.external);
         self.revision = self.revision.wrapping_add(1);
@@ -264,16 +308,21 @@ impl GogLibrary {
             return;
         }
         // Only a genuinely empty cache (a fresh login, nothing synced yet
-        // for that account) has to wait behind the loading screen —
-        // re-checked on every reconcile, so a later refresh() doesn't
-        // re-flash it once every wanted account has real data. The loop
-        // still moves a fresh account to `Loaded` itself once its first
-        // full fetch (list + catalog enrichment) actually lands.
-        let all_seeded = self.wanted.iter().all(|id| has_synced_before(id));
-        self.state = if all_seeded {
-            LibraryState::Loaded
-        } else {
+        // for that account) has to wait behind the loading screen, and only
+        // while its loop's first cycle runs: an account whose first listing
+        // failed stays unsynced, and a later refresh() mustn't put it back
+        // behind the splash until a cycle that may be a whole interval away.
+        // The loop moves a fresh account to `Loaded` itself once its first
+        // cycle ends.
+        let starting_unseeded = self
+            .wanted
+            .iter()
+            .any(|id| !self.tasks.contains_key(id) && !has_synced_before(id));
+        let still_loading = self.state == LibraryState::Loading && !self.wanted.iter().all(|id| has_synced_before(id));
+        self.state = if starting_unseeded || still_loading {
             LibraryState::Loading
+        } else {
+            LibraryState::Loaded
         };
 
         for account_id in self.wanted.clone() {
@@ -378,7 +427,8 @@ enum Update {
     /// The account's whole list as it now stands.
     Shown(Vec<LibraryEntry>),
     Progress(usize, usize),
-    Failed(String),
+    /// The listing failed because GOG closed the session.
+    SessionClosed,
     /// A cycle finished; `listed` says whether pass one succeeded.
     CycleDone {
         listed: bool,
@@ -415,15 +465,18 @@ async fn watch_games(account_id: String, this: WeakEntity<GogLibrary>, cx: &mut 
                 match update {
                     Update::Shown(shown) => latest = Some(shown),
                     Update::Progress(done, total) => library.enrich_progress = Some((done, total)),
-                    Update::Failed(err) => library.state = LibraryState::Failed(err),
+                    Update::SessionClosed => library.session_closed(&account_id, cx),
                     Update::CycleDone { listed } => {
                         library.enrich_progress = None;
                         // `state` starts as `Loading` for a fresh account
                         // (see `reconcile`) and this is the one place that
-                        // ever moves it to `Loaded`.
+                        // ever moves it to `Loaded` — a failed first listing
+                        // included, since the library works offline and
+                        // there's nothing more to wait for.
+                        library.state = LibraryState::Loaded;
                         if listed {
                             tracing::info!(account_id, "gog library ready");
-                            library.state = LibraryState::Loaded;
+                            library.closed_sessions.remove(&account_id);
                         }
                     }
                 }
@@ -465,6 +518,9 @@ async fn fetch_loop(
             let Some(collected) = settle_listing(&account_id, &mut shown, listed, &send) else {
                 return None;
             };
+            if !listed_ok && session_closed(&account_id).await && !send(Update::SessionClosed) {
+                return None;
+            }
 
             let full = enriched_at.is_none_or(|at| at.elapsed() >= FULL_ENRICH_INTERVAL);
             let to_enrich: Vec<LibraryEntry> = collected
@@ -590,10 +646,32 @@ fn settle_listing(
             // browse, and a partial listing is no evidence of a
             // dropped entitlement.
             tracing::warn!(account_id, %err, "gog library listing failed, keeping what was cached");
-            if !send(Update::Failed(err.to_string())) {
-                return None;
-            }
             Some(Vec::new())
+        }
+    }
+}
+
+/// Whether a failed listing was GOG closing the session. Anything else —
+/// GOG down, no network, a local error — only gets a log line: the library
+/// shows its cache the same either way.
+async fn session_closed(account_id: &str) -> bool {
+    match decanter_gog::check_session(account_id).await {
+        Ok(decanter_gog::SessionState::Closed) => true,
+        Ok(decanter_gog::SessionState::Valid(_)) => {
+            tracing::info!(account_id, "gog listing failed but the session is valid");
+            false
+        }
+        Ok(decanter_gog::SessionState::Unreachable(reason)) => {
+            tracing::info!(
+                account_id,
+                reason,
+                "gog listing failed and the session could not be checked"
+            );
+            false
+        }
+        Err(err) => {
+            tracing::warn!(account_id, %err, "gog session check failed locally");
+            false
         }
     }
 }

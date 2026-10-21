@@ -48,7 +48,6 @@ pub(super) struct ShelfHead {
 /// on screen are laid out — and only their icons fetched.
 pub(super) enum Row {
     Message(SharedString),
-    Error(String),
     Rename,
     Head(ShelfHead),
     /// `shelf` is the owning collection, so a dragged shelf dims whole.
@@ -150,7 +149,6 @@ impl SidebarView {
         let mut rows = Vec::new();
         match &key.state {
             LibraryState::Idle => rows.push(Row::Message(t!("common.pick_profile").into())),
-            LibraryState::Failed(err) => rows.push(Row::Error(err.clone())),
             // `Loading` never reaches here — the library page shows its own
             // full-screen splash for that.
             LibraryState::Loading | LibraryState::Loaded => {
@@ -235,7 +233,6 @@ impl SidebarView {
                 .text_color(rgb(theme::TEXT_MUTED))
                 .child(text.clone())
                 .into_any_element(),
-            Row::Error(err) => div().mx(px(14.)).child(theme::error(err.clone())).into_any_element(),
             Row::Rename => match &self.rename {
                 Some((_, input, _)) => div()
                     .mx(px(14.))

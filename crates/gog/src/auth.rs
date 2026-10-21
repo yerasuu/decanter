@@ -15,7 +15,12 @@ use anyhow::Context as _;
 /// GOG Galaxy's public client ID, used by every third-party GOG client
 /// (Heroic, Minigalaxy, Lutris, ...) since GOG has no per-application
 /// client registration for this flow.
-const GOG_CLIENT_ID: &str = "46899977096215655";
+pub(crate) const GOG_CLIENT_ID: &str = "46899977096215655";
+
+/// GOG Galaxy's public client secret, paired with [`GOG_CLIENT_ID`] and just
+/// as shared: it ships inside every Galaxy install, so it guards nothing, but
+/// it still stays out of logs and errors along with the URLs that carry it.
+pub(crate) const GOG_CLIENT_SECRET: &str = "9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9";
 
 /// Where GOG redirects after a successful login, carrying the
 /// authorization `code` as a query parameter. Not an endpoint anyone
@@ -102,33 +107,8 @@ pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
     })
 }
 
-/// Verifies the stored session still works, refreshing it in passing.
-/// `None` means nobody is logged in on this account; an error means there
-/// is a session but GOG wouldn't accept it.
-pub async fn session(account_id: &str) -> anyhow::Result<Option<Account>> {
-    if crate::achv_try!(crate::read_session(account_id).await).is_none() {
-        tracing::debug!(account_id, "no stored GOG session for this account");
-        return Ok(None);
-    }
-
-    let user = crate::achv_try!(
-        crate::with_session(account_id, |client| {
-            client
-                .get_user_data()
-                .map_err(|err| anyhow::anyhow!("GOG session is no longer valid: {}", crate::without_secrets(err)))
-        })
-        .await
-    );
-    tracing::debug!(account_id, "verified GOG session is still valid");
-
-    Ok(Some(Account {
-        account_id: user.user_id,
-        display_name: user.username,
-    }))
-}
-
 /// Drops the stored session. Who the account belonged to isn't recorded
-/// anywhere else — [`session`] answers that by asking GOG — so forgetting
+/// anywhere else — [`crate::check_session`] answers that by asking GOG — so forgetting
 /// the credentials is the whole of logging out.
 pub async fn log_out(account_id: &str) -> anyhow::Result<()> {
     crate::clear_session(account_id).await?;
