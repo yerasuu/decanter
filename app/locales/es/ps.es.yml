@@ -434,6 +434,7 @@ ps.graphics.effect_ssao.label: SSAO
 ps.graphics.effect_game_aa.label: Antialiasing del juego
 ps.graphics.effect_dynamic_shadows.label: Sombras de luces dinámicas
 ps.graphics.effect_ssr.label: Reflejos SSR (no estaban en el juego)
+ps.graphics.effect_bloom.label: Resplandor (bloom)
 ps.graphics.skip_intro.label: Saltar vídeos de inicio
 ps.graphics.debug_camera.label: Cámara libre (Cruz + L3 / Space + Z)
 ps.graphics.debug_menu.label: Menú de depuración (táctil izquierdo / Tab)

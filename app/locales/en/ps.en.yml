@@ -434,6 +434,7 @@ ps.graphics.effect_ssao.label: SSAO
 ps.graphics.effect_game_aa.label: The game's antialiasing
 ps.graphics.effect_dynamic_shadows.label: Dynamic light shadows
 ps.graphics.effect_ssr.label: SSR reflections (not in the original game)
+ps.graphics.effect_bloom.label: Bloom
 ps.graphics.skip_intro.label: Skip intro videos
 ps.graphics.debug_camera.label: Free camera (Cross + L3 / Space + Z)
 ps.graphics.debug_menu.label: Debug menu (touchpad left / Tab)

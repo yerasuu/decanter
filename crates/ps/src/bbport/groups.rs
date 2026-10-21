@@ -408,6 +408,7 @@ pub const GROUPS: &[Group] = &[
                 true,
             ),
             toggle("effect_ssr", "ps.graphics.effect_ssr.label", None, Store::Ini, false),
+            toggle("effect_bloom", "ps.graphics.effect_bloom.label", None, Store::Ini, true),
             toggle("skip_intro", "ps.graphics.skip_intro.label", None, Store::Ini, false),
             toggle(
                 "debug_camera",
