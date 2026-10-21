@@ -62,8 +62,10 @@ const fn toggle(
     }
 }
 
-/// The settings page, grouped and valued as in bbport 0.4's launcher
-/// (`launcher/psport_launcher.py`: `build_settings_page`, `DEFAULTS`, `INI_DEFAULTS`).
+/// The settings page, grouped as in bbport 0.4's launcher (`launcher/psport_launcher.py`:
+/// `build_settings_page`). Defaults are what the port assumes when a key is absent
+/// (`gpu/port/psport_settings.h`), not the launcher's `INI_DEFAULTS`: that launcher writes every
+/// key on save, decanter only the ones the user changed.
 /// Mods, external patches, the FSR 4.1.1 build and the free-form environment have views of
 /// their own.
 pub const GROUPS: &[Group] = &[
@@ -264,7 +266,7 @@ pub const GROUPS: &[Group] = &[
                         ),
                         ("ps.graphics.upscaler.options.off", "off", None),
                     ],
-                    default: "fsr4",
+                    default: "fsr3",
                 },
             },
             Setting {
@@ -280,7 +282,7 @@ pub const GROUPS: &[Group] = &[
                         ("ps.graphics.preset.options.performance", "3", None),
                         ("ps.graphics.preset.options.ultra_performance", "4", None),
                     ],
-                    default: "4",
+                    default: "0",
                 },
             },
             toggle("sharpen", "ps.graphics.sharpen.label", None, Store::Ini, true),
@@ -293,7 +295,7 @@ pub const GROUPS: &[Group] = &[
                     min: 0.0,
                     max: 2.0,
                     step: 0.05,
-                    default: 0.5,
+                    default: 0.3,
                     decimals: 2,
                 },
             },
@@ -304,7 +306,7 @@ pub const GROUPS: &[Group] = &[
                 Store::Ini,
                 true,
             ),
-            toggle("show_fps", "ps.graphics.show_fps.label", None, Store::Ini, true),
+            toggle("show_fps", "ps.graphics.show_fps.label", None, Store::Ini, false),
         ],
     },
     Group {
@@ -487,6 +489,19 @@ pub const GROUPS: &[Group] = &[
                 Store::Launcher,
                 false,
             ),
+            Setting {
+                key: "keep_logs",
+                label: "ps.graphics.keep_logs.label",
+                note: Some("ps.graphics.keep_logs.note"),
+                store: Store::Launcher,
+                control: Control::Number {
+                    min: 0.0,
+                    max: 200.0,
+                    step: 10.0,
+                    default: 30.0,
+                    decimals: 0,
+                },
+            },
             toggle(
                 "crash_diag",
                 "ps.graphics.crash_diag.label",
@@ -521,6 +536,20 @@ pub const GROUPS: &[Group] = &[
                 Some("ps.graphics.vk_validation.note"),
                 Store::Launcher,
                 false,
+            ),
+            toggle(
+                "camera_cuts",
+                "ps.graphics.camera_cuts.label",
+                Some("ps.graphics.camera_cuts.note"),
+                Store::Launcher,
+                true,
+            ),
+            toggle(
+                "image_traps",
+                "ps.graphics.image_traps.label",
+                Some("ps.graphics.image_traps.note"),
+                Store::Launcher,
+                true,
             ),
         ],
     },

@@ -456,6 +456,12 @@ ps.graphics.save_log.label: Save log and stats to a file
 ps.graphics.save_log.note: 'In bbport''s logs folder: for looking into stutter and crashes'
 ps.graphics.crash_diag.label: Crash diagnostics
 ps.graphics.crash_diag.note: Checks the game's heap and logs writes to its memory; somewhat slower
+ps.graphics.keep_logs.label: Saved runs to keep
+ps.graphics.keep_logs.note: 'When the log is saved, the oldest runs are deleted; 0: keep them all'
+ps.graphics.camera_cuts.label: Reset the upscaler on camera cuts
+ps.graphics.camera_cuts.note: Avoids flashes of the previous shot in cutscenes; turn off only to compare
+ps.graphics.image_traps.label: Watch writes over textures
+ps.graphics.image_traps.note: 'Catches the game writing into a texture without notice; off: announced writes only (for testing stutter)'
 ps.graphics.as_0_3.label: Synchronization as in 0.3
 ps.graphics.as_0_3.note: 'For hunting regressions: memory model and copy waits as in 0.3'
 ps.graphics.frame_stats.label: Frame stats in the log

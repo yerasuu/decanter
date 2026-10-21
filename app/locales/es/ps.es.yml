@@ -456,6 +456,12 @@ ps.graphics.save_log.label: Guardar registro y estadísticas en archivo
 ps.graphics.save_log.note: 'En la carpeta logs de bbport: para analizar tirones y cierres'
 ps.graphics.crash_diag.label: Diagnóstico de cierres
 ps.graphics.crash_diag.note: Comprueba el heap del juego y registra escrituras en su memoria; algo más lento
+ps.graphics.keep_logs.label: Partidas guardadas que se conservan
+ps.graphics.keep_logs.note: 'Al guardar el registro, se borran las más antiguas; 0: se conservan todas'
+ps.graphics.camera_cuts.label: Reiniciar el upscaler en los cortes de cámara
+ps.graphics.camera_cuts.note: Evita destellos del plano anterior en las cinemáticas; desactívalo solo para comparar
+ps.graphics.image_traps.label: Vigilar escrituras sobre texturas
+ps.graphics.image_traps.note: 'Detecta cuando el juego escribe en una textura sin avisar; desactivado: solo las escrituras avisadas (para probar tirones)'
 ps.graphics.as_0_3.label: Sincronización como en la 0.3
 ps.graphics.as_0_3.note: 'Para buscar regresiones: modelo de memoria y esperas de copia como en la 0.3'
 ps.graphics.frame_stats.label: Estadísticas de fotogramas en el registro

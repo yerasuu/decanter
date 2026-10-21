@@ -383,17 +383,7 @@ impl Bbport {
                 command.env(var(suffix), value);
             }
         }
-        for (key, suffix) in [
-            ("frame_stats", "FRAME_STATS"),
-            ("save_log", "SAVE_LOG"),
-            ("as_0_3", "AS_0_3"),
-            ("gpu_profile", "GPU_PROFILE"),
-            ("vk_validation", "VK_VALIDATION"),
-        ] {
-            if port_reads(key) && (settings.flag(key, false) || settings.title_flag(&game.title_id, key)) {
-                command.env(var(suffix), "1");
-            }
-        }
+        command.envs(development_env(names, settings, &game.title_id, port_reads));
         let fsr411 = self.root.fsr411();
         if tokio::fs::metadata(&fsr411).await.is_ok_and(|meta| meta.is_dir()) {
             command.env(var("FSR411_DIR"), fsr411);
@@ -480,6 +470,35 @@ async fn query_port(mut command: Command, max: usize) -> io::Result<(ExitStatus,
     tokio::time::timeout(QUERY_TIMEOUT, answer)
         .await
         .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "port query timed out")))
+}
+
+/// The development group's settings: switches that are off in the port unless set (for all
+/// titles or this one), and those on in the port unless told otherwise (camera cuts, image
+/// traps), for which only off is passed.
+fn development_env<'settings>(
+    names: Names,
+    settings: &'settings LauncherSettings,
+    title_id: &'settings str,
+    port_reads: impl Fn(&str) -> bool + 'settings,
+) -> impl Iterator<Item = (String, String)> + 'settings {
+    let on = [
+        ("frame_stats", "FRAME_STATS"),
+        ("save_log", "SAVE_LOG"),
+        ("as_0_3", "AS_0_3"),
+        ("gpu_profile", "GPU_PROFILE"),
+        ("vk_validation", "VK_VALIDATION"),
+    ]
+    .into_iter()
+    .filter(move |&(key, _)| port_reads(key) && (settings.flag(key, false) || settings.title_flag(title_id, key)))
+    .map(move |(_, suffix)| (names.var(suffix), String::from("1")));
+    let off = [("camera_cuts", "CAMERA_CUTS"), ("image_traps", "IMAGE_TRAPS")]
+        .into_iter()
+        .filter(|&(key, _)| !settings.flag(key, true))
+        .map(move |(_, suffix)| (names.var(suffix), String::from("0")));
+    let keep = settings
+        .number("keep_logs")
+        .map(|keep| (names.var("KEEP_LOGS"), format!("{keep:.0}")));
+    on.chain(off).chain(keep)
 }
 
 /// The port's debug mode, each run's logs gathered in `dir` under the port's own folder per host.
