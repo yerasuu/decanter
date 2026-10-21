@@ -432,9 +432,9 @@ impl Bbport {
 /// How long a query of the port's binary may take, a first start through nix-portable included.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// A query of the port's binary (`--list-features`, `--online-overrides`): its status and what it
-/// printed, refused past `max` bytes, read as they come, or past [`QUERY_TIMEOUT`]. The process
-/// is killed then.
+/// A query of the port's binary (`--list-features`, `--list-effects`, `--online-overrides`): its
+/// status and what it printed, refused past `max` bytes, read as they come, or past
+/// [`QUERY_TIMEOUT`]. The process is killed then.
 async fn query_port(mut command: Command, max: usize) -> io::Result<(ExitStatus, Vec<u8>)> {
     command
         .stdin(Stdio::null())

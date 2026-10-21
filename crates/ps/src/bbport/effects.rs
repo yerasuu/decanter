@@ -11,6 +11,10 @@ use super::{Bbport, Names};
 use crate::port::Port;
 use crate::toolchain::Toolchain;
 
+/// What the answer may hold before it's taken for something else: a title's switches with
+/// their texts in a few languages come to a few kilobytes.
+const MAX_ANSWER: usize = 64 * 1024;
+
 /// One of the overlay's sections of the title's effects, in the overlay's order.
 #[derive(Clone, Deserialize)]
 pub struct Section {
@@ -73,24 +77,19 @@ pub async fn list(bbport: &Bbport, toolchain: &Toolchain, title_id: &str) -> Opt
     command
         .env("DECANTER_PORT_DIR", bbport.port_dir().await)
         .env("DECANTER_TITLE", title_id);
-    let output = match command.output().await {
-        Ok(output) => output,
+    let (status, stdout) = match super::query_port(command, MAX_ANSWER).await {
+        Ok(answer) => answer,
         Err(err) => {
             tracing::warn!(%err, "port effects not queried");
             return None;
         }
     };
     // A psport from before the query takes it for an unknown option and exits with 1.
-    if !output.status.success() {
-        tracing::debug!(
-            title_id,
-            status = %output.status,
-            stderr = %String::from_utf8_lossy(&output.stderr).trim(),
-            "port lists no effects, using the built-in table"
-        );
+    if !status.success() {
+        tracing::debug!(title_id, %status, "port lists no effects, using the built-in table");
         return None;
     }
-    match parse(&output.stdout) {
+    match parse(&stdout) {
         Ok(sections) => {
             tracing::debug!(
                 title_id,
