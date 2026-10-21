@@ -25,6 +25,8 @@ pub struct Caps {
     own: Capabilities,
     /// `own` with what psport last reported about itself.
     current: Capabilities,
+    /// The setting options psport last reported unsuitable for this machine, by feature row id.
+    ps_unavailable_options: Vec<String>,
 }
 
 impl Global for Caps {}
@@ -45,6 +47,7 @@ impl Caps {
         cx.set_global(Self {
             current,
             own: capabilities,
+            ps_unavailable_options: Vec::new(),
         });
         if ask_tray_host {
             cx.spawn(async |async_cx| {
@@ -82,11 +85,22 @@ impl Caps {
     pub fn take_psport_report(cx: &mut App, report: Option<&HostFeatures>) {
         let caps = cx.global_mut::<Self>();
         caps.current = caps.own.clone();
+        caps.ps_unavailable_options = report.map(HostFeatures::unavailable_options).unwrap_or_default();
         match report {
             Some(report) => report.merge_into(&mut caps.current),
             None => without_psport_report(&mut caps.current),
         }
         cx.refresh_windows();
+    }
+
+    /// The PS settings, or with an option value single options of them, that psport last reported
+    /// unsuitable for this machine ([`decanter_ps::bbport::OPTION_FEATURES`]); none without a report.
+    pub fn ps_hidden_options(&self) -> Vec<(&'static str, Option<&'static str>)> {
+        decanter_ps::bbport::OPTION_FEATURES
+            .iter()
+            .filter(|&&(_, _, row)| self.ps_unavailable_options.iter().any(|id| id == row))
+            .map(|&(key, value, _)| (key, value))
+            .collect()
     }
 
     pub fn is_offered(&self, feature: Feature) -> bool {

@@ -9,7 +9,7 @@ use std::io;
 use decanter_ps::bbport::effects::{self, Section};
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{
-    Bbport, Control, GROUPS, Group, MEMORY_MODEL_SETTINGS, Setting, single_memory_model_blocking,
+    Bbport, Control, GROUPS, Group, MEMORY_MODEL_SETTINGS, Setting, Store, single_memory_model_blocking,
 };
 use decanter_ps::port::Port;
 use decanter_ps::toolchain::validation::{self, Unavailable};
@@ -17,6 +17,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude
 use rust_i18n::t;
 
 use super::extras::ExtrasView;
+use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{Ps, vk_layer_unavailable_text};
 use crate::theme;
@@ -178,18 +179,18 @@ impl GraphicsView {
                     .and_then(|option| option.2)
                     .or(setting.note);
                 let entity = cx.entity();
-                let select = Select::new(
-                    SharedString::from(setting.key),
-                    options
-                        .iter()
-                        .map(|option| (SharedString::from(option.1), SharedString::from(t!(option.0)))),
-                    selected,
-                )
-                .style(SelectStyle::Compact)
-                .on_change(move |value, _, cx| {
-                    let value = value.to_string();
-                    entity.update(cx, |this, cx| this.change(setting, value, cx));
-                });
+                // The chosen one stays even when unsuitable, so the list never shows another as chosen.
+                let hidden = Caps::get(cx).ps_hidden_options();
+                let offered = options
+                    .iter()
+                    .filter(|option| option.1 == selected || !hidden.contains(&(setting.key, Some(option.1))))
+                    .map(|option| (SharedString::from(option.1), SharedString::from(t!(option.0))));
+                let select = Select::new(SharedString::from(setting.key), offered, selected.clone())
+                    .style(SelectStyle::Compact)
+                    .on_change(move |value, _, cx| {
+                        let value = value.to_string();
+                        entity.update(cx, |this, cx| this.change(setting, value, cx));
+                    });
                 (select.into_any_element(), note)
             }
             Control::Number { default, decimals, .. } => {
@@ -268,10 +269,13 @@ impl GraphicsView {
 
     /// The port's sections for the selected title instead of `fallback`, the Bloodborne table,
     /// with its `model_lod` row where a section asks for it.
+    /// The port's own sections in place of `fallback`'s table; its launcher settings (not the
+    /// title's patches the port lists) go with the first section. `hidden`: [`Caps::ps_hidden_options`].
     fn port_effects(
         &self,
         values: &Values,
         fallback: &'static Group,
+        hidden: &[(&'static str, Option<&'static str>)],
         cx: &mut Context<Self>,
     ) -> Option<Vec<AnyElement>> {
         let title_id = self.title_id.as_ref()?;
@@ -283,12 +287,23 @@ impl GraphicsView {
         let locale = rust_i18n::locale();
         let groups = sections
             .iter()
-            .filter_map(|section| {
-                let mut rows = Vec::with_capacity(section.effects.len() + 1);
+            .enumerate()
+            .filter_map(|(index, section)| {
+                let mut rows = Vec::with_capacity(section.effects.len() + 2);
                 if section.model_detail
                     && let Some(setting) = model_lod
                 {
                     rows.push(self.setting_row(values, setting, cx));
+                }
+                if index == 0 {
+                    for setting in fallback
+                        .settings
+                        .iter()
+                        .filter(|setting| matches!(setting.store, Store::Launcher))
+                        .filter(|setting| !hidden.contains(&(setting.key, None)))
+                    {
+                        rows.push(self.setting_row(values, setting, cx));
+                    }
                 }
                 for effect in &section.effects {
                     let on = values.ini(&effect.key).map_or(effect.default, |value| value == "1");
@@ -353,10 +368,11 @@ impl Render for GraphicsView {
         let Some(values) = self.values.clone() else {
             return theme::muted(t!("ps.graphics.reading")).into_any_element();
         };
+        let hidden = Caps::get(cx).ps_hidden_options();
         let mut groups = Vec::with_capacity(GROUPS.len());
         for fallback in GROUPS {
             if fallback.title == EFFECTS_GROUP
-                && let Some(port_groups) = self.port_effects(&values, fallback, cx)
+                && let Some(port_groups) = self.port_effects(&values, fallback, &hidden, cx)
             {
                 groups.extend(port_groups);
                 continue;
@@ -367,6 +383,7 @@ impl Render for GraphicsView {
                 .iter()
                 .filter(|setting| !matches!(setting.control, Control::Gamepad))
                 .filter(|setting| !(self.single_memory_model && MEMORY_MODEL_SETTINGS.contains(&setting.key)))
+                .filter(|setting| !hidden.contains(&(setting.key, None)))
                 .map(|setting| self.setting_row(&values, setting, cx))
                 .collect();
             if rows.is_empty() {

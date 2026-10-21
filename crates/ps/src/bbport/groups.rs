@@ -62,6 +62,18 @@ const fn toggle(
     }
 }
 
+/// The feature table row each machine-dependent setting or option needs.
+///
+/// `(setting key, option value or None for the whole setting, row id)`, rows of psport's
+/// `--list-features` in the areas `upscaler` and `cpu`: the settings view leaves out what psport
+/// marks unavailable on this machine.
+pub const OPTION_FEATURES: [(&str, Option<&str>, &str); 4] = [
+    ("upscaler", Some("fsr4"), "upscaler_fsr4"),
+    ("upscaler", Some("fsr411"), "upscaler_fsr411"),
+    ("upscaler", Some("dlss"), "upscaler_dlss"),
+    ("intel_tonemap", None, "intel_tonemap_fix"),
+];
+
 /// The settings page, grouped as in bbport 0.4's launcher (`launcher/psport_launcher.py`:
 /// `build_settings_page`). Defaults are what the port assumes when a key is absent
 /// (`gpu/port/psport_settings.h`), not the launcher's `INI_DEFAULTS`: that launcher writes every

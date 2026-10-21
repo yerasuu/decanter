@@ -28,6 +28,9 @@ const ONLINE_AREA: &str = "net";
 const MENU_BINDING: &str = "port_menu_binding";
 /// psport's row for its online module, without which online play has nothing to load.
 const ONLINE_MODULE: &str = "online_module";
+/// Areas whose rows say whether one setting or option suits this machine (an upscaler, a CPU's
+/// fix): a game runs without any of them, so they only decide what the settings view offers.
+const OPTION_AREAS: [&str; 2] = ["upscaler", "cpu"];
 
 /// A feature's state on this host, as psport spells it.
 #[derive(Deserialize)]
@@ -90,10 +93,9 @@ impl HostFeatures {
             |row| row.area == ONLINE_AREA,
             ONLINE_MODULE,
         );
-        let needed = self
-            .rows
-            .iter()
-            .filter(|row| row.area != ONLINE_AREA && row.id != MENU_BINDING);
+        let needed = self.rows.iter().filter(|row| {
+            row.area != ONLINE_AREA && row.id != MENU_BINDING && !OPTION_AREAS.contains(&row.area.as_str())
+        });
         let missing = needed.clone().find(|row| matches!(row.state, State::Unavailable));
         match missing {
             Some(row) => capabilities.merge_reported(
@@ -158,6 +160,18 @@ impl HostFeatures {
             return Err(format!("malformed feature row {:?}", bad.id));
         }
         Ok(Self { rows: answer.features })
+    }
+
+    /// The option rows psport marks unavailable here, by id ([`crate::bbport::OPTION_FEATURES`]):
+    /// a build that doesn't list a row leaves its option shown.
+    #[inline]
+    #[must_use]
+    pub fn unavailable_options(&self) -> Vec<String> {
+        self.rows
+            .iter()
+            .filter(|row| OPTION_AREAS.contains(&row.area.as_str()) && matches!(row.state, State::Unavailable))
+            .map(|row| row.id.clone())
+            .collect()
     }
 }
 

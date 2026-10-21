@@ -30,7 +30,7 @@ use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 
 pub use features::{HostFeatures, host_features};
-pub use groups::{Control, GROUPS, Group, Setting, Store};
+pub use groups::{Control, GROUPS, Group, OPTION_FEATURES, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
 pub use names::{MEMORY_MODEL_SETTINGS, Names, single_memory_model_blocking};
 pub use settings::LauncherSettings;
