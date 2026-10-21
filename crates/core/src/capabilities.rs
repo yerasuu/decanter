@@ -41,12 +41,15 @@ pub enum Feature {
     /// A key or pad button bound to the port's own menu: only psport
     /// builds that list it among their features read the binding.
     PsMenuBinding,
+    /// Online play through psport's online module: only builds that list
+    /// it among their features have one.
+    PsOnline,
     MangoHud,
     GameMode,
 }
 
 impl Feature {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::Play,
         Self::Proton,
         Self::Prefixes,
@@ -63,6 +66,7 @@ impl Feature {
         Self::PsDownloads,
         Self::PsPlay,
         Self::PsMenuBinding,
+        Self::PsOnline,
         Self::MangoHud,
         Self::GameMode,
     ];

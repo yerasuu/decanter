@@ -6,8 +6,11 @@ use std::borrow::Cow;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use decanter_core::capabilities::Feature;
+use decanter_core::{KeyringError, ShadnetSecret};
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::icons::IconStyle;
+use decanter_ps::bbport::online::{self, Online, OnlineError};
 use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner, Summary};
 use decanter_ps::learned;
@@ -23,6 +26,7 @@ use tokio::process::Command;
 use super::Ps;
 use super::jobs::{self, JobKey};
 use super::vk_layer;
+use crate::capabilities::Caps;
 
 impl Ps {
     pub fn is_running(&self, key: &JobKey, cx: &gpui::App) -> bool {
@@ -182,6 +186,13 @@ enum LaunchError {
     ConvertFailed,
     #[error("run directory setup failed at {}: {err}", dir.display())]
     RunDir { dir: PathBuf, err: io::Error },
+    #[error("online settings unusable: {0}")]
+    Online(OnlineError),
+    /// Asking for the password at each launch instead is left for later: the launch refuses.
+    #[error("shadNet secrets unreadable: {0}")]
+    Keyring(String),
+    #[error("no shadNet password in the keyring for {0}")]
+    NoPassword(String),
 }
 
 impl LaunchError {
@@ -193,6 +204,9 @@ impl LaunchError {
             Self::ConvertPrepare(err) => t!("ps.play.convert_prepare_error", error = err),
             Self::ConvertFailed => t!("ps.play.convert_failed"),
             Self::RunDir { dir, err } => t!("ps.play.prepare_error", name = dir.display(), error = err),
+            Self::Online(err) => t!("ps.play.online_error", error = online_error(err)),
+            Self::Keyring(err) => t!("ps.play.online_keyring_error", error = err),
+            Self::NoPassword(npid) => t!("ps.play.online_no_password", npid = npid),
         }
         .into_owned()
     }
@@ -263,6 +277,10 @@ async fn bbport_command(
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
         return Err(LaunchError::CreateDir { dir: user_dir, err });
     }
+    let online = match online_play(&settings, cx).await {
+        Ok(online) => online,
+        Err(err) => return Err(err),
+    };
     bbport
         .launch_command(
             toolchain,
@@ -275,9 +293,49 @@ async fn bbport_command(
             &rust_i18n::locale(),
             &learned,
             aspect_ratio,
+            online.as_ref(),
         )
         .await
         .map_err(LaunchError::Environment)
+}
+
+/// Online play when it is on and the build has it, with the account's secrets from the keyring.
+async fn online_play(settings: &LauncherSettings, cx: &AsyncApp) -> Result<Option<Online>, LaunchError> {
+    if !settings.flag(online::ONLINE, false) {
+        return Ok(None);
+    }
+    if !cx.update(|cx| Caps::get(cx).is_offered(Feature::PsOnline)) {
+        tracing::warn!("online play is on, but this psport build has no online module: playing offline");
+        return Ok(None);
+    }
+    let mut online = match Online::from_settings(settings) {
+        Ok(Some(online)) => online,
+        Ok(None) => return Ok(None),
+        Err(err) => return Err(LaunchError::Online(err)),
+    };
+    let Some(npid) = online.npid().map(str::to_owned) else {
+        tracing::info!("online play without a shadNet account");
+        return Ok(Some(online));
+    };
+    let secrets = tokio::task::spawn_blocking(move || {
+        let password = decanter_core::load_shadnet(&npid, ShadnetSecret::Password)?;
+        let token = decanter_core::load_shadnet(&npid, ShadnetSecret::Token)?;
+        Ok::<_, KeyringError>((password, token))
+    })
+    .await;
+    let (password, token) = match secrets {
+        Ok(Ok(secrets)) => secrets,
+        Ok(Err(err)) => return Err(LaunchError::Keyring(err.to_string())),
+        Err(err) => return Err(LaunchError::Keyring(err.to_string())),
+    };
+    if password.is_none() {
+        tracing::warn!("online play with a shadNet NPID but no password in the keyring, not starting");
+        return Err(LaunchError::NoPassword(online.npid().unwrap_or_default().to_owned()));
+    }
+    match online.set_secrets(password, token) {
+        Ok(()) => Ok(Some(online)),
+        Err(err) => Err(LaunchError::Online(err)),
+    }
 }
 
 /// The ratio of the display the game opens on. decanter sets no `PS_DISPLAY`, so the port takes
@@ -467,6 +525,19 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
         this.notice = Some((text, error));
         this.failures_changed(cx);
     });
+}
+
+/// Why an online setting can't be used, in the UI's language.
+pub fn online_error(err: &OnlineError) -> String {
+    match err {
+        OnlineError::Server(value) => t!("ps.online.errors.server", value = value),
+        OnlineError::Community(value) => t!("ps.online.errors.community", value = value),
+        OnlineError::Webapi(value) => t!("ps.online.errors.webapi", value = value),
+        OnlineError::NpidEmail => t!("ps.online.errors.npid_email"),
+        OnlineError::Npid(value) => t!("ps.online.errors.npid", value = value),
+        OnlineError::Secret => t!("ps.online.errors.secret"),
+    }
+    .into_owned()
 }
 
 /// A failure's message in the UI's language when decanter worded it, as the port printed it

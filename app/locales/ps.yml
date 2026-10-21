@@ -1640,3 +1640,159 @@ ps.runs.pipelines:
 ps.runs.method:
   es: "psport mide en intervalos de unos 5 s, no fotograma a fotograma. El 1 % bajo se estima con el peor fotograma de cada intervalo (algo pesimista a más de 30 FPS); el mínimo es el tiempo medio del mejor intervalo y el máximo, el peor fotograma de la partida. La línea discontinua es la media."
   en: "psport measures in windows of about 5 s, not frame by frame. The 1% low is estimated from each window's worst frame (somewhat pessimistic above 30 FPS); the minimum is the best window's mean frame time and the maximum the run's worst frame. The dashed line is the average."
+ps.detail.tabs.online:
+  es: Online
+  en: Online
+ps.play.online_error:
+  es: "No se pudo preparar el juego online: %{error}. Corrígelo en Ajustes de PS o desactiva el juego online."
+  en: "Couldn't set up online play: %{error}. Fix it in the PS section's Settings or turn online play off."
+ps.play.online_keyring_error:
+  es: "El juego online necesita la contraseña de shadNet del llavero del sistema, que no está disponible (%{error}). Abre o desbloquea el llavero, o desactiva el juego online en Ajustes de PS para jugar sin conexión."
+  en: "Online play needs the shadNet password from the system keyring, which isn't available (%{error}). Open or unlock the keyring, or turn online play off in the PS section's Settings to play offline."
+ps.online.title:
+  es: Juego online
+  en: Online play
+ps.online.play:
+  es: Jugar online
+  en: Play online
+ps.online.upnp:
+  es: UPnP (abrir el puerto en el router automáticamente)
+  en: UPnP (open the port on the router automatically)
+ps.online.description:
+  es: Desactivado por defecto. Con él activo, psport conecta el juego con el servidor de la comunidad (mensajes, manchas de sangre, fantasmas) y con un servidor shadNet (campanas e invocaciones). Se aplica en el siguiente arranque.
+  en: Off by default. When on, psport connects the game to the community server (messages, bloodstains, ghosts) and to a shadNet server (bells and summons). It applies on the next start.
+ps.online.server:
+  es: Servidor shadNet
+  en: shadNet server
+ps.online.webapi:
+  es: WebAPI de shadNet
+  en: shadNet WebAPI
+ps.online.webapi_placeholder:
+  es: "Vacío: la del servidor shadNet (puerto 31315)"
+  en: "Empty: the shadNet server's own (port 31315)"
+ps.online.community:
+  es: Servidor de la comunidad
+  en: Community server
+ps.online.npid:
+  es: Online ID (NPID)
+  en: Online ID (NPID)
+ps.online.npid_placeholder:
+  es: El nombre de tu cuenta en el servidor, no tu correo
+  en: Your account name on the server, not your email
+ps.online.password:
+  es: Contraseña
+  en: Password
+ps.online.password_saved:
+  es: Guardada en el llavero; escribe otra para cambiarla
+  en: Saved in the keyring; type another to change it
+ps.online.password_none:
+  es: Sin contraseña guardada
+  en: No password saved
+ps.online.password_unavailable:
+  es: Llavero no disponible
+  en: Keyring unavailable
+ps.online.token:
+  es: Token (opcional)
+  en: Token (optional)
+ps.online.token_placeholder:
+  es: Solo si tu servidor te ha dado uno
+  en: Only if your server gave you one
+ps.online.account_description:
+  es: Una cuenta shadNet registrada en ese servidor; decanter no crea cuentas. La contraseña y el token se guardan en el llavero del sistema, nunca en la biblioteca. Sin Online ID se juega sin shadNet.
+  en: "A shadNet account registered on that server; decanter doesn't create accounts. The password and token are kept in the system keyring, never in the library. Without an Online ID the game plays without shadNet."
+ps.online.keyring_unavailable:
+  es: "No se puede leer el llavero del sistema: %{error}. Sin él, el juego online no arranca con cuenta."
+  en: "Can't read the system keyring: %{error}. Without it, online play won't start with an account."
+ps.online.save:
+  es: Guardar
+  en: Save
+ps.online.saved:
+  es: Guardado. Se aplica en el siguiente arranque.
+  en: Saved. It applies on the next start.
+ps.online.save_error:
+  es: "No se pudo guardar: %{error}"
+  en: "Couldn't save: %{error}"
+ps.online.keyring_error:
+  es: "No se pudo usar el llavero: %{error}"
+  en: "Couldn't use the keyring: %{error}"
+ps.online.forget:
+  es: Olvidar contraseña y token
+  en: Forget password and token
+ps.online.check:
+  es: Probar conexión
+  en: Test connection
+ps.online.checking:
+  es: Probando los servidores…
+  en: Testing the servers…
+ps.online.answers:
+  es: responde
+  en: answers
+ps.online.targets.game:
+  es: Servidor de juego
+  en: Game server
+ps.online.targets.shadnet:
+  es: Servidor shadNet
+  en: shadNet server
+ps.online.targets.webapi:
+  es: WebAPI
+  en: WebAPI
+ps.online.errors.server:
+  es: "el servidor shadNet «%{value}» no es host:puerto"
+  en: "the shadNet server \"%{value}\" isn't host:port"
+ps.online.errors.community:
+  es: "el servidor de la comunidad «%{value}» no es una dirección http(s) válida"
+  en: "the community server \"%{value}\" isn't a valid http(s) address"
+ps.online.errors.webapi:
+  es: "la WebAPI «%{value}» no es una dirección http(s) válida"
+  en: "the WebAPI \"%{value}\" isn't a valid http(s) address"
+ps.online.errors.npid_email:
+  es: el Online ID es el nombre de la cuenta (NPID) registrado en el servidor, no una dirección de correo
+  en: the Online ID is the account name (NPID) registered on the server, not an email address
+ps.online.errors.npid:
+  es: "el Online ID «%{value}» debe tener de 3 a 16 letras, cifras, «-» o «_»"
+  en: "the Online ID \"%{value}\" must be 3 to 16 letters, digits, '-' or '_'"
+ps.online.errors.secret:
+  es: la contraseña o el token guardados no se pueden pasar al juego
+  en: "the saved password or token can't be passed to the game"
+ps.online.errors.secret_without_npid:
+  es: "Escribe primero el Online ID: la contraseña y el token se guardan con él."
+  en: "Type the Online ID first: the password and token are saved with it."
+ps.online.title_querying:
+  es: Consultando los datos online del juego…
+  en: "Reading the game's online data…"
+ps.online.no_extension:
+  es: "Este juego no tiene un cooperativo propio en psport: el juego online se ajusta en Ajustes de PS."
+  en: "This game has no co-op extension of its own in psport: online play is set up in the PS section's Settings."
+ps.online.off_in_settings:
+  es: El juego online está desactivado en Ajustes de PS; esto solo se aplica con él activo.
+  en: "Online play is off in the PS section's Settings; this only applies when it's on."
+ps.online.bbsc.label:
+  es: Cooperativo sin cortes (BBSC)
+  en: Seamless co-op (BBSC)
+ps.online.bbsc.note:
+  es: Desactivado por defecto. Todos los jugadores de la partida tienen que activarlo, y el servidor de la comunidad tiene que tener el servidor de juego de BBSC (el de Seamless Hunt lo tiene).
+  en: "Off by default. Every player in the session needs it on, and the community server must run BBSC's game server (Seamless Hunt's does)."
+ps.online.bbsc.local.label:
+  es: Servidor de juego de BBSC en este equipo
+  en: BBSC game server on this PC
+ps.online.bbsc.local.off:
+  es: Nunca
+  en: Never
+ps.online.bbsc.local.on:
+  es: Siempre
+  en: Always
+ps.online.bbsc.local.auto:
+  es: Si el de la comunidad no responde
+  en: "If the community one doesn't answer"
+ps.online.bbsc.local.note:
+  es: Con el servidor en este equipo, los mensajes y las manchas de sangre son solo de este equipo; las invocaciones siguen pasando por la WebAPI de shadNet.
+  en: "With the server on this PC, messages and bloodstains are this PC's only; summons still go through the shadNet WebAPI."
+ps.online.no_password:
+  es: "Hay un Online ID guardado sin contraseña en el llavero: escríbela y pulsa Guardar, o borra el Online ID para jugar sin shadNet. Mientras tanto, el juego online no arranca."
+  en: "There's an Online ID saved with no password in the keyring: type it and press Save, or clear the Online ID to play without shadNet. Until then, online play won't start."
+ps.online.kept_existing:
+  es: "Guardado. %{previous} conserva su contraseña y su token en el llavero, porque el nuevo Online ID ya tenía los suyos y no se han sobrescrito."
+  en: "Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten."
+ps.play.online_no_password:
+  es: "El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online."
+  en: "The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off."

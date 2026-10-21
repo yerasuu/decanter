@@ -13,6 +13,7 @@ pub mod icons;
 mod ini;
 pub mod mods;
 mod names;
+pub mod online;
 pub mod pad;
 mod settings;
 pub mod tools;
@@ -22,7 +23,10 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::{ExitStatus, Stdio};
+use std::time::Duration;
 
+use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 
 pub use features::{HostFeatures, host_features};
@@ -281,7 +285,8 @@ impl Bbport {
     /// ([`nearest_aspect_ratio`]). `cache_dir` is the game's own cache folder, in the location of
     /// the library folder holding its dump; without one the port keeps its caches in `user_dir`.
     /// `debug_dir` turns the port's debug mode on, each run's logs gathered there under the port's
-    /// own folder per host.
+    /// own folder per host. `online` is online play, with its secrets, when it is on and the build
+    /// has it.
     #[expect(
         clippy::too_many_arguments,
         reason = "each one is a different source of the environment"
@@ -298,6 +303,7 @@ impl Bbport {
         menu_language: &str,
         learned: &learned::Title,
         aspect_ratio: Option<&str>,
+        online: Option<&online::Online>,
     ) -> io::Result<Command> {
         let mut command = match toolchain
             .command(&self.root, Port::Bbport, r#"bash "$DECANTER_PORT_DIR/run.sh""#)
@@ -402,6 +408,7 @@ impl Bbport {
         if learned.frame_overlap_off.is_some() {
             command.env(var("SUBMIT_AHEAD"), "0");
         }
+        command.envs(online.into_iter().flat_map(|online| online.env(names)));
         for item in settings.text("extra_env").unwrap_or_default().split_whitespace() {
             if let Some((key, value)) = item.split_once('=') {
                 command.env(key, value);
@@ -440,6 +447,39 @@ impl Bbport {
             })
             .unwrap_or_default()
     }
+}
+
+/// How long a query of the port's binary may take, a first start through nix-portable included.
+const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A query of the port's binary (`--list-features`, `--online-overrides`): its status and what it
+/// printed, refused past `max` bytes, read as they come, or past [`QUERY_TIMEOUT`]. The process
+/// is killed then.
+async fn query_port(mut command: Command, max: usize) -> io::Result<(ExitStatus, Vec<u8>)> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let mut child = command.spawn()?;
+    let Some(stdout) = child.stdout.take() else {
+        return Err(io::Error::other("port query without stdout"));
+    };
+    let limit = u64::try_from(max).unwrap_or(u64::MAX).saturating_add(1);
+    let answer = async {
+        let mut out = Vec::new();
+        stdout.take(limit).read_to_end(&mut out).await?;
+        if out.len() > max {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("answer larger than {max} bytes"),
+            ));
+        }
+        child.wait().await.map(|status| (status, out))
+    };
+    tokio::time::timeout(QUERY_TIMEOUT, answer)
+        .await
+        .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "port query timed out")))
 }
 
 /// The port's debug mode, each run's logs gathered in `dir` under the port's own folder per host.

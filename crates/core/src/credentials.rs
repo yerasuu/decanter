@@ -1,9 +1,11 @@
-//! Storefront sessions, in the OS keyring.
+//! Storefront sessions and shadNet secrets, in the OS keyring.
 //!
 //! One entry per `(account, storefront)`, holding whatever that
 //! storefront's client needs to resume a session — for GOG, a serialized
 //! `gog::token::Token`. Never on disk in the clear: these are live
-//! credentials to someone's game library and payment account.
+//! credentials to someone's game library and payment account. psport's
+//! online play signs in to a shadNet server, which no storefront owns: its
+//! password and token are filed under `shadnet/<NPID>/…` (decision #715).
 //!
 //! Blocking on purpose. The Secret Service is a D-Bus round trip, called
 //! a handful of times per session; async callers wrap these in
@@ -110,6 +112,70 @@ pub fn delete(account_id: &str, storefront: Storefront) -> Result<()> {
         }
         Err(err) => {
             tracing::error!(account_id, ?storefront, error = %err, "failed to delete session from keyring");
+            Err(err.into())
+        }
+    }
+}
+
+/// A secret of a shadNet account, filed apart from the NPID that names it.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum ShadnetSecret {
+    Password,
+    Token,
+}
+
+impl ShadnetSecret {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Password => "password",
+            Self::Token => "token",
+        }
+    }
+}
+
+fn shadnet_account(npid: &str, secret: ShadnetSecret) -> String {
+    format!("shadnet/{npid}/{}", secret.name())
+}
+
+/// `None` when nothing was saved for this NPID. The caller checked `npid`.
+#[inline]
+pub fn load_shadnet(npid: &str, secret: ShadnetSecret) -> Result<Option<String>> {
+    let result = read(&shadnet_account(npid, secret));
+    match &result {
+        Ok(found) => tracing::debug!(
+            npid,
+            ?secret,
+            found = found.is_some(),
+            "read shadNet secret from keyring"
+        ),
+        Err(err) => tracing::error!(npid, ?secret, error = %err, "failed to read shadNet secret from keyring"),
+    }
+    result
+}
+
+#[inline]
+pub fn save_shadnet(npid: &str, secret: ShadnetSecret, value: &str) -> Result<()> {
+    let result = Entry::new(SERVICE, &shadnet_account(npid, secret)).and_then(|entry| entry.set_password(value));
+    match &result {
+        Ok(()) => tracing::info!(npid, ?secret, "saved shadNet secret to keyring"),
+        Err(err) => tracing::error!(npid, ?secret, error = %err, "failed to save shadNet secret to keyring"),
+    }
+    result.map_err(KeyringError::from)
+}
+
+/// Forgetting a secret that was never saved is a success, as for a session.
+#[inline]
+pub fn delete_shadnet(npid: &str, secret: ShadnetSecret) -> Result<()> {
+    let result = Entry::new(SERVICE, &shadnet_account(npid, secret)).and_then(|entry| entry.delete_credential());
+    match result {
+        Ok(()) => {
+            tracing::info!(npid, ?secret, "deleted shadNet secret from keyring");
+            Ok(())
+        }
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(err) => {
+            tracing::error!(npid, ?secret, error = %err, "failed to delete shadNet secret from keyring");
             Err(err.into())
         }
     }

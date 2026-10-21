@@ -10,6 +10,7 @@ use decanter_ps::port::Port;
 use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
+use super::online::OnlineView;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
@@ -23,6 +24,7 @@ pub struct SettingsView {
     /// whenever `Ps` changes.
     sys_modules: Option<String>,
     channel: Option<Channel>,
+    online: Entity<OnlineView>,
     error: Option<String>,
 }
 
@@ -35,6 +37,7 @@ impl SettingsView {
             ps,
             sys_modules: None,
             channel: None,
+            online: cx.new(OnlineView::new),
             error: None,
         };
         this.refresh(cx);
@@ -238,6 +241,7 @@ impl Render for SettingsView {
                         .child(self.channel_row(Channel::Release, false, cx))
                         .child(self.channel_row(Channel::Testing, true, cx)),
                 )
+                .child(self.online.clone())
                 .children(self.error.clone().map(theme::error)),
         )
     }

@@ -68,8 +68,8 @@ a newer release.
 What the host needs:
 
 - A Vulkan driver for the GPU. Without one, rendering falls back to GL.
-- A D-Bus Secret Service (KWallet or GNOME Keyring), where GOG tokens and
-  the SteamGridDB key are kept.
+- A D-Bus Secret Service (KWallet or GNOME Keyring), where GOG tokens,
+  the SteamGridDB key and the shadNet password for PS online play are kept.
 - Optional: a systemd user session (each game gets its own scope; without
   one games start as decanter's children), KDE Plasma for the global
   close-game shortcut, and Steam for the Steam export.
@@ -140,6 +140,24 @@ back to decanter's own Nix toolchain (nix-portable when the system has no
 Nix) when they can't. A folder with your own dump of the console's system
 modules can be set in Ajustes, but no title needs it today: it is only for
 comparing against the port's own libraries.
+
+Online play is off by default and set up in the same Ajustes, on psport
+builds whose `--list-features` lists `online_module`: the shadNet server
+(default `play.seamlesshunt.com:31313`), its WebAPI (empty: the server's
+own on port 31315), the community server (default
+`http://play.seamlesshunt.com`), the account's Online ID (NPID) and UPnP.
+decanter creates no accounts. The password and the optional token go to the
+keyring under `shadnet/<NPID>/…`, never to the library. With an Online ID
+set, a launch with online play on refuses to start, and says why, when the
+keyring can't be read or holds no password for it; without an Online ID the
+game plays online without shadNet and needs no keyring. **Probar
+conexión** checks the three servers as psport's `scripts/online.py check`
+does, only when clicked. Bloodborne's Online tab (Bloodborne only; other
+PS4 titles have none) adds BBSC, its seamless
+co-op (`PS_BBSC`), and whether BBSC's game server runs on this PC (never,
+always, or when the community one doesn't answer: `PS_BBSC_LOCAL_SERVER`),
+shown when psport's `--online-overrides` declares the extension. psport's
+`run.sh` does the rest: certificates, host overrides and the local server.
 
 Per-title progress and what psport adds: [docs/ps4-ports.md](docs/ps4-ports.md).
 What each title imports and what the port still lacks:

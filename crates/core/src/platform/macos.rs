@@ -120,6 +120,7 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PsDownloads
         | Feature::PsPlay
         | Feature::PsMenuBinding
+        | Feature::PsOnline
         | Feature::MangoHud
         | Feature::GameMode => Support::Unavailable(Reason::NotOnThisSystem),
     }

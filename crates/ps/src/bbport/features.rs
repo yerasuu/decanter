@@ -26,6 +26,8 @@ const MAX_REASON: usize = 512;
 const ONLINE_AREA: &str = "net";
 /// psport's row for `key.menu` and `pad.menu`, which a game runs without.
 const MENU_BINDING: &str = "port_menu_binding";
+/// psport's row for its online module, without which online play has nothing to load.
+const ONLINE_MODULE: &str = "online_module";
 
 /// A feature's state on this host, as psport spells it.
 #[derive(Deserialize)]
@@ -71,25 +73,23 @@ pub struct HostFeatures {
 impl HostFeatures {
     /// Playing goes when a feature a game needs is unavailable here, with
     /// psport's own reason for the first one, and is marked as being tested
-    /// when one is only experimental. Online play has no feature of its own
-    /// in decanter yet, so its rows change nothing. The menu binding is
-    /// offered only when the build lists it, since older ones ignore it.
+    /// when one is only experimental. The `net` rows decide online play
+    /// alone, which a game runs without. The menu binding and online play are
+    /// offered only when the build lists them, since older ones ignore them.
     #[inline]
     pub fn merge_into(&self, capabilities: &mut Capabilities) {
-        match self.rows.iter().find(|row| row.id == MENU_BINDING) {
-            Some(row) => match row.state {
-                State::Implemented => {}
-                State::Experimental => capabilities.mark_testing(Feature::PsMenuBinding),
-                State::Unavailable => capabilities.merge_reported(
-                    Source::Psport,
-                    [(Feature::PsMenuBinding, format!("{}: {}", row.id, row.reason))],
-                ),
-            },
-            None => capabilities.merge_reported(
-                Source::Psport,
-                [(Feature::PsMenuBinding, format!("{MENU_BINDING}: not in this build"))],
-            ),
-        }
+        self.merge_listed(
+            capabilities,
+            Feature::PsMenuBinding,
+            |row| row.id == MENU_BINDING,
+            MENU_BINDING,
+        );
+        self.merge_listed(
+            capabilities,
+            Feature::PsOnline,
+            |row| row.area == ONLINE_AREA,
+            ONLINE_MODULE,
+        );
         let needed = self
             .rows
             .iter()
@@ -103,6 +103,29 @@ impl HostFeatures {
             None if needed.clone().any(|row| matches!(row.state, State::Experimental)) => {
                 capabilities.mark_testing(Feature::PsPlay);
             }
+            None => {}
+        }
+    }
+
+    /// `feature` from the rows `belongs` picks: gone with the first unavailable one's reason,
+    /// marked as being tested when one is experimental, gone as well when `required` isn't listed.
+    fn merge_listed(
+        &self,
+        capabilities: &mut Capabilities,
+        feature: Feature,
+        belongs: impl Fn(&Row) -> bool,
+        required: &str,
+    ) {
+        if !self.rows.iter().any(|row| row.id == required) {
+            capabilities.merge_reported(Source::Psport, [(feature, format!("{required}: not in this build"))]);
+            return;
+        }
+        let mut rows = self.rows.iter().filter(|row| belongs(row));
+        match rows.clone().find(|row| matches!(row.state, State::Unavailable)) {
+            Some(row) => {
+                capabilities.merge_reported(Source::Psport, [(feature, format!("{}: {}", row.id, row.reason))]);
+            }
+            None if rows.any(|row| matches!(row.state, State::Experimental)) => capabilities.mark_testing(feature),
             None => {}
         }
     }
@@ -164,13 +187,16 @@ async fn list_features(bbport: &Bbport, toolchain: &Toolchain) -> Option<Vec<u8>
     }
     let script = format!(r#"exec "$DECANTER_PORT_DIR/{}" --list-features"#, Names::Psport.probe());
     let answered = match toolchain.command(&bbport.root, Port::Bbport, &script).await {
-        Ok(mut command) => command.env("DECANTER_PORT_DIR", port_dir).output().await,
+        Ok(mut command) => {
+            command.env("DECANTER_PORT_DIR", port_dir);
+            super::query_port(command, MAX_ANSWER).await
+        }
         Err(err) => Err(err),
     };
     match answered {
-        Ok(done) if done.status.success() => Some(done.stdout),
-        Ok(done) => {
-            tracing::info!(status = %done.status, "psport doesn't list its features, keeping decanter's table");
+        Ok((status, stdout)) if status.success() => Some(stdout),
+        Ok((status, _)) => {
+            tracing::info!(%status, "psport doesn't list its features, keeping decanter's table");
             None
         }
         Err(err) => {

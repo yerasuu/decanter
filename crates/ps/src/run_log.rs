@@ -187,6 +187,9 @@ fn header(
     let mut envs: Vec<_> = std.get_envs().collect();
     envs.sort();
     lines.extend(envs.into_iter().map(|(key, value)| match value {
+        Some(_) if crate::bbport::online::is_secret_var(&key.to_string_lossy()) => {
+            format!("env: {}=<hidden>", key.to_string_lossy())
+        }
         Some(set) => format!("env: {}={}", key.to_string_lossy(), set.to_string_lossy()),
         None => format!("env_removed: {}", key.to_string_lossy()),
     }));

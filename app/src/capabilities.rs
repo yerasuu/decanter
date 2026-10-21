@@ -128,6 +128,10 @@ fn without_psport_report(capabilities: &mut Capabilities) {
         Feature::PsMenuBinding,
         Reason::NeedsSetup("psport build listing port_menu_binding"),
     );
+    capabilities.restrict(
+        Feature::PsOnline,
+        Reason::NeedsSetup("psport build listing online_module"),
+    );
 }
 
 /// For a row that has room for it beside its own label, such as a menu item.

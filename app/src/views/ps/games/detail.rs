@@ -17,6 +17,7 @@ use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
 use super::keyboard::KeyboardView;
 use super::mods::ModsView;
+use super::online::OnlineTitleView;
 use super::runs::RunsView;
 use super::{art_url, display_title, platform_label, status_text};
 use crate::state::{JobKey, Ps};
@@ -32,6 +33,7 @@ enum Tab {
     Gamepad,
     Graphics,
     Mods,
+    Online,
     Log,
 }
 
@@ -43,6 +45,7 @@ impl Tab {
             Self::Gamepad => t!("ps.detail.tabs.gamepad"),
             Self::Graphics => t!("ps.detail.tabs.graphics"),
             Self::Mods => t!("ps.detail.tabs.mods"),
+            Self::Online => t!("ps.detail.tabs.online"),
             Self::Log => t!("ps.detail.tabs.log"),
         }
     }
@@ -52,12 +55,13 @@ const TABS: [Tab; 3] = [Tab::Overview, Tab::Keyboard, Tab::Log];
 
 /// bbport has settings and gamepad layouts of its own; AnyPS5 reads the
 /// controller as it is and takes no settings.
-const BBPORT_TABS: [Tab; 6] = [
+const BBPORT_TABS: [Tab; 7] = [
     Tab::Overview,
     Tab::Keyboard,
     Tab::Gamepad,
     Tab::Graphics,
     Tab::Mods,
+    Tab::Online,
     Tab::Log,
 ];
 
@@ -84,6 +88,7 @@ pub struct DetailView {
     /// for its effects.
     graphics: Option<Entity<GraphicsView>>,
     mods: Option<Entity<ModsView>>,
+    online: Option<Entity<OnlineTitleView>>,
     /// What earlier runs of `selected` taught, and the revision it was read at.
     learned: Option<FrameOverlap>,
     learned_read_at: Option<u32>,
@@ -110,6 +115,7 @@ impl DetailView {
             gamepad: None,
             graphics: None,
             mods: None,
+            online: None,
             learned: None,
             learned_read_at: None,
             learned_error: None,
@@ -169,6 +175,14 @@ impl DetailView {
         if tab == Tab::Mods && self.mods.is_none() {
             let ps = self.ps.clone();
             self.mods = Some(cx.new(|cx| ModsView::new(ps, cx)));
+        }
+        if tab == Tab::Online
+            && let Some((Port::Bbport, title_id)) = &entry
+        {
+            let ps = self.ps.clone();
+            self.online
+                .get_or_insert_with(|| cx.new(|cx| OnlineTitleView::new(ps, cx)))
+                .update(cx, |online, cx| online.show_title(title_id, cx));
         }
         if tab == Tab::Keyboard
             && self.controls.is_none()
@@ -567,6 +581,10 @@ impl Render for DetailView {
                 .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
             Tab::Mods => self
                 .mods
+                .clone()
+                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Online => self
+                .online
                 .clone()
                 .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
             Tab::Overview => self.overview(&entry, cx),

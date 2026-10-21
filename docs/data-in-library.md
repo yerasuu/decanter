@@ -35,8 +35,10 @@ implemented.
   libraries, active library and profile), to be added.
 - `~/.local/share/applications/decanter/`: one symlink per game; Plasma
   only reads its application folders.
-- Keyring (`dev.decanter.Decanter`): GOG tokens and the SteamGridDB key;
-  secrets don't belong in a folder that gets copied around.
+- Keyring (`dev.decanter.Decanter`): GOG tokens, the SteamGridDB key and
+  the shadNet password and token of PS online play (`shadnet/<NPID>/…`;
+  the server addresses, NPID and switches stay in the port's
+  `settings.json`); secrets don't belong in a folder that gets copied around.
 - Steam's own files: `shortcuts.vdf`, `grid/`, `compatibilitytools.d`.
 - umu's runtime and caches (`~/.local/share/umu`, `~/.cache/umu-protonfixes`):
   shared with Steam, Heroic and Lutris.

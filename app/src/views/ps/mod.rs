@@ -5,6 +5,7 @@
 mod failures;
 mod games;
 pub mod log;
+mod online;
 mod ports;
 mod settings;
 

@@ -13,7 +13,7 @@ pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
 pub use ps::{
     BuildOrigin, DllOutcome, Fallback, JobKey, PortState, Ps, Stage, Track, failure_message, job_label, job_target,
-    vk_layer_unavailable_text,
+    online_error, vk_layer_unavailable_text,
 };
 
 /// Whether storage came up, and which profile is active.

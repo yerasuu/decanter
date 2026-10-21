@@ -9,6 +9,7 @@ use crate::paths::Root;
 use crate::port::Port;
 
 const TITLES: &str = "titles";
+const LAUNCHER_PASSWORD: &str = "online_password";
 
 fn path(root: &Root) -> PathBuf {
     root.bbport_data().join("settings.json")
@@ -23,12 +24,23 @@ pub struct LauncherSettings(serde_json::Map<String, serde_json::Value>);
 
 impl LauncherSettings {
     /// A missing or unreadable file gives the defaults. File I/O: off the UI thread.
+    /// A plaintext shadNet password imported from psport's launcher is dropped and the file
+    /// written again at once, so it doesn't wait on disk for the next save.
     pub fn load(root: &Root) -> LauncherSettings {
-        fs::read(path(root))
+        let mut settings: Self = fs::read(path(root))
             .ok()
             .and_then(|data| serde_json::from_slice(&data).ok())
             .map(LauncherSettings)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if settings.0.remove(LAUNCHER_PASSWORD).is_some() {
+            match settings.clone().save(root) {
+                Ok(()) => tracing::info!("dropped the launcher's plaintext shadNet password from the port settings"),
+                Err(err) => {
+                    tracing::warn!(%err, "could not drop the launcher's plaintext shadNet password from the port settings");
+                }
+            }
+        }
+        settings
     }
 
     /// One change against the file as it is now, for edits made outside
@@ -51,6 +63,9 @@ impl LauncherSettings {
         if single_memory_model_blocking(&Port::Bbport.checkout(root)) {
             self.0.retain(|key, _| !MEMORY_MODEL_SETTINGS.contains(&key.as_str()));
         }
+        // psport's launcher keeps the shadNet password here in the clear; decanter keeps it in the
+        // keyring only, so an imported file loses it on the first save.
+        self.0.remove(LAUNCHER_PASSWORD);
         let text = serde_json::to_string_pretty(&self.0).map_err(std::io::Error::other)?;
         crate::files::write_atomic(&path(root), text.as_bytes())
     }

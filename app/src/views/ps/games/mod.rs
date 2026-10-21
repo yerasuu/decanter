@@ -9,6 +9,7 @@ mod gamepad;
 mod graphics;
 mod keyboard;
 mod mods;
+mod online;
 mod runs;
 
 use decanter_ps::library::{Game, Platform};
