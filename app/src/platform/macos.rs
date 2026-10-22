@@ -3,9 +3,7 @@ use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
 
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-
-use crate::tray::TrayCommand;
+pub use super::system_tray::{refresh_tray, spawn_tray};
 
 /// Closing a game from a pad or a global shortcut, and the notice about
 /// it, are a Linux desktop session's (evdev, D-Bus): here nothing asks.
@@ -53,19 +51,9 @@ impl Notices {
     pub async fn close(self, _id: Option<u32>) {}
 }
 
-/// No tray here yet: the capability table leaves it off, so nothing asks;
-/// the channel is closed from the start.
-pub fn spawn_tray() -> UnboundedReceiver<TrayCommand> {
-    tracing::warn!("asked for a tray, which this system doesn't have");
-    unbounded_channel().1
-}
-
-/// No tray here to redraw.
-pub const fn refresh_tray() {}
-
-/// Nothing answers for a tray here yet; see the capability table.
+/// The menu bar always takes status items.
 pub async fn status_notifier_host() -> bool {
-    false
+    true
 }
 
 /// Only the owner's mode bits are checked, without `access(2)`: decanter

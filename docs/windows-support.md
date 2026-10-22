@@ -15,14 +15,15 @@ the platform layer (see below):
   lock in the local app data folder, free space through `fs4`, the keyring's
   native store (Credential Manager, Keychain).
 - Linux-only, and said so in the UI ("not available on this system"):
-  playing (Proton through `umu-run`), per-game Proton and prefixes, the
-  tray, closing a game from a pad or shortcut, Steam export.
+  playing (Proton through `umu-run`), per-game Proton and prefixes,
+  closing a game from a pad or shortcut, Steam export. The tray came to
+  Windows and macOS in phase 2 (`tray-icon`).
 - Hidden or skipped: the PS section, desktop entries for the task bar,
   systemd scopes, and the Galaxy64 hook (not built, not deployed; see
   phase 2).
 
 Next: native launching on Windows (Job Objects instead of scopes, the hook
-DLL built natively), a tray, and macOS launching (no Proton there).
+DLL built natively) and macOS launching (no Proton there).
 
 ## Phase 2: games launch natively on Windows
 
@@ -72,7 +73,9 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     (`NATIVE_FRAME_CONTROLS`: Windows, with its caption dropped), exit
     signals (SIGTERM/SIGINT, Ctrl+C on Windows), detached spawns and the
     self-update's file calls. `nix`, `zbus` and `ksni` are Linux-only
-    dependencies of the app.
+    dependencies of the app; `tray-icon` is the tray on Windows and macOS
+    (`platform/system_tray.rs`, shared by both), made on GPUI's main thread
+    since its backends there need the thread running the event loop.
 - **The launch backend** is named once per crate by its `build.rs`:
   `cfg(proton)` for code that only exists with Proton, `umu-run` and
   prefixes (`decanter-runtime`, `decanter-gog`, the app), `not(proton)` for
@@ -119,7 +122,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 |---|---|---|---|
 | Play, ExternalInstaller | available | available | no |
 | GalaxyHook | available | available (x86_64) | no |
-| Proton, Prefixes, Tray, CloseToTray, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
+| Tray, CloseToTray | available | testing | testing |
+| Proton, Prefixes, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
 | PsSection, PsPlay, MangoHud, GameMode | available | no | no |
 | PsMenuBinding, PsOnline | once psport lists it | no | no |
 | PsDownloads | available on x86_64 | no | no |
@@ -138,7 +142,7 @@ equivalents:
 | Per-game `.desktop` + symlink for the Plasma taskbar | shortcuts with a per-game AppUserModelID |
 | `flock` runtime lock in `$XDG_RUNTIME_DIR` | `LockFileEx` |
 | Keyring | Windows Credential Manager (the keyring crate supports it) |
-| Tray via ksni | a cross-platform tray crate |
+| Tray via ksni | `tray-icon` (done) |
 | `~/.config/decanter/libraries.toml` | `%APPDATA%\decanter\libraries.toml` |
 
 The data-in-library layout and the Steam export carry over as they are.

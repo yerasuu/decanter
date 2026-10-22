@@ -45,3 +45,6 @@ minisign-verify.workspace = true
 ksni.workspace = true
 nix = { workspace = true, features = ["fs", "inotify"] }
 zbus.workspace = true
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tray-icon.workspace = true

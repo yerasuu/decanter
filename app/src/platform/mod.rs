@@ -6,6 +6,8 @@
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(not(target_os = "linux"))]
+mod system_tray;
 #[cfg(windows)]
 mod windows;
 

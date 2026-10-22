@@ -108,17 +108,17 @@ pub const fn executable_permissions() -> Option<Permissions> {
 }
 
 /// Games run natively, so Proton and everything around it isn't here; the
-/// tray, the PS section and the Linux desktop's pieces aren't ported yet.
+/// PS section and the Linux desktop's pieces aren't ported yet, and the
+/// tray waits for a run on a real Windows.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {
     match feature {
         Feature::GalaxyHook if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
         Feature::Play | Feature::ExternalInstaller | Feature::GalaxyHook => Support::Available,
+        Feature::Tray | Feature::CloseToTray => Support::Testing,
         Feature::Proton
         | Feature::Prefixes
-        | Feature::Tray
-        | Feature::CloseToTray
         | Feature::PadClose
         | Feature::DesktopEntries
         | Feature::Scopes

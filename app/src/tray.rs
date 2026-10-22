@@ -5,10 +5,6 @@
 use gpui::App;
 
 /// What the user asked for by clicking the icon or one of its menu items.
-#[allow(
-    dead_code,
-    reason = "only the Linux tray sends these; elsewhere the capability table leaves the tray off"
-)]
 pub enum TrayCommand {
     Show,
     Quit,

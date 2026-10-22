@@ -74,6 +74,8 @@ tokio = "1.53.2"
 toml = "1.1.5"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
+# The tray on Windows and macOS; Linux keeps ksni (see app/src/platform/linux/tray.rs).
+tray-icon = { version = "0.26.1", default-features = false }
 unicode-segmentation = "1.13.3"
 url = "2"
 uuid = "1.27.0"
