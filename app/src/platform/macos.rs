@@ -73,6 +73,9 @@ pub async fn exit_signal() -> bool {
     true
 }
 
+/// The bundle's identifier is the identity here; GPUI has none to set.
+pub const fn set_app_identity(_cx: &gpui::App) {}
+
 /// The window takes its icon from the executable here.
 pub const fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
     options

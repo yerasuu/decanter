@@ -70,7 +70,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
   - `decanter_ps::platform`: process groups, SIGTERM and exit signals.
   - the app's: the close-game watch (pads, the Plasma shortcut and notices
     over D-Bus), the tray (ksni) and the tray host query, the X11 window
-    icon, whether the OS hit-tests the topbar's frame controls
+    icon, the task bar identity (Windows' AppUserModelID, through GPUI's
+    `set_app_identity`, so without `unsafe` of decanter's own), whether the OS hit-tests the topbar's frame controls
     (`NATIVE_FRAME_CONTROLS`: Windows, with its caption dropped), exit
     signals (SIGTERM/SIGINT, Ctrl+C on Windows), detached spawns and the
     self-update's file calls. `nix`, `zbus` and `ksni` are Linux-only
@@ -144,7 +145,7 @@ equivalents:
 | Proton / `umu-run` for GOG and external games | not needed: they run natively, which simplifies launching |
 | Galaxy64 hook under Wine | works natively |
 | One systemd scope per game | Job Objects |
-| Per-game `.desktop` + symlink for the Plasma taskbar | shortcuts with a per-game AppUserModelID |
+| Per-game `.desktop` + symlink for the Plasma taskbar | shortcuts with a per-game AppUserModelID (decanter's own, `decanter`, is set through GPUI's `set_app_identity`) |
 | `flock` runtime lock in `$XDG_RUNTIME_DIR` | `LockFileEx` |
 | Keyring | Windows Credential Manager (the keyring crate supports it) |
 | Tray via ksni | `tray-icon` (done) |

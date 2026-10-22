@@ -54,6 +54,14 @@ pub async fn exit_signal() -> bool {
     }
 }
 
+/// So the task bar groups and pins decanter's windows under a name of its
+/// own rather than one Windows derives from the executable's path, which
+/// changes when decanter.exe moves. Also what GPUI's notifications need
+/// outside an MSIX package.
+pub fn set_app_identity(cx: &gpui::App) {
+    cx.set_app_identity("decanter", "Decanter");
+}
+
 /// The window takes its icon from the executable here.
 pub const fn with_window_icon(options: gpui::WindowOptions) -> gpui::WindowOptions {
     options

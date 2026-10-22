@@ -171,6 +171,7 @@ fn main() {
     gpui_platform::application()
         .with_quit_mode(gpui::QuitMode::Explicit)
         .run(move |cx| {
+            platform::set_app_identity(cx);
             if let Err(err) = theme::load_fonts(cx) {
                 tracing::error!(%err, "cannot load bundled fonts");
             }
