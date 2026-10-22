@@ -109,6 +109,17 @@ fn same_data_home(process: &Path, data_home: Option<&Path>) -> bool {
     theirs.is_none_or(|theirs| Some(theirs.as_path()) == data_home)
 }
 
+/// The first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set, in
+/// POSIX's order of precedence, as it's written there (`pt_BR.UTF-8`).
+#[must_use]
+#[inline]
+pub fn system_locale() -> Option<String> {
+    ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .into_iter()
+        .filter_map(|name| env::var(name).ok())
+        .find(|value| !value.is_empty())
+}
+
 /// Native installs first, Flatpak last since it's the least common on a Deck.
 #[inline]
 pub fn steam_root_candidates() -> impl Iterator<Item = PathBuf> {

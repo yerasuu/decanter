@@ -31,3 +31,4 @@ nix = { workspace = true, features = ["fs"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 fs4.workspace = true
+sys-locale.workspace = true

@@ -72,6 +72,14 @@ pub const fn others_running() -> bool {
     false
 }
 
+/// The user's default UI locale as a BCP 47 tag (`pt-BR`): no POSIX
+/// locale variable is set for a program started from the desktop here.
+#[must_use]
+#[inline]
+pub fn system_locale() -> Option<String> {
+    sys_locale::get_locale()
+}
+
 /// Exported shortcuts start decanter's Proton launch, which only Linux has.
 #[inline]
 pub fn steam_root_candidates() -> impl Iterator<Item = PathBuf> {

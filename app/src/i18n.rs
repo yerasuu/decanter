@@ -37,15 +37,10 @@ impl Language {
         t!("language.native_name", locale = self.0)
     }
 
-    /// The first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set, in
-    /// POSIX's order of precedence: its region's language (`pt_BR` as
-    /// `pt-BR`) when there is one, else its language's.
+    /// The system locale's region's language (`pt_BR` as `pt-BR`) when
+    /// there is one, else its language's.
     fn system() -> Self {
-        let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
-            .into_iter()
-            .filter_map(|name| std::env::var(name).ok())
-            .find(|value| !value.is_empty())
-            .unwrap_or_default();
+        let locale = decanter_core::platform::system_locale().unwrap_or_default();
         let tag = locale.split(['.', '@']).next().unwrap_or_default().replace('_', "-");
         Self::from_code(&tag)
             .or_else(|| tag.split('-').next().and_then(Self::from_code))

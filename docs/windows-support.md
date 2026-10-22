@@ -62,7 +62,9 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     folders, the runtime lock's folder, disk space (`statvfs` on Linux,
     `fs4` elsewhere), folder identity and the `/proc` check for the
     migration, Steam's roots, file and directory links, the executable mode,
-    and each OS's capability table (`support`).
+    the system locale (`LC_ALL`, `LC_MESSAGES`, `LANG` on Linux; `sys-locale`
+    on Windows and macOS, where a program started from the desktop has no
+    such variable), and each OS's capability table (`support`).
   - `decanter_ps::platform`: process groups, SIGTERM and exit signals.
   - the app's: the close-game watch (pads, the Plasma shortcut and notices
     over D-Bus), the tray (ksni) and the tray host query, the X11 window
