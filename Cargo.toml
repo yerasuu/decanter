@@ -14,7 +14,7 @@ default-members = ["app"]
 exclude = ["crates/hook"]
 
 [workspace.package]
-version = "0.3.2"
+version = "0.3.3"
 authors = []
 edition = "2024"
 # gpui at the pinned zed rev calls `std::hint::cold_path`, stable since 1.95.
