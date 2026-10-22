@@ -2,6 +2,43 @@
 
 Grouped by area. Each version's technical record is in `tag-changelog/vX.Y.Z.md`.
 
+## v0.3.3
+
+### Windows (testing)
+
+- Playing, external installers and the GOG achievements hook are no longer marked as being tested on Windows; the tray, close-to-tray and the close-game shortcut are.
+- decanter draws its own window frame on Windows, keeping the system's drag, maximize and snap layouts.
+- A game's session lasts until every process it started has exited, so a launcher that starts the game and quits no longer ends it; stopping closes them all.
+- The tray works on Windows and macOS. Ctrl+Shift+F4 closes the running game on Windows.
+- The UI language follows the system's on Windows and macOS; the task bar groups decanter under its own identity.
+- Tag releases attach `decanter.exe` when CI built it.
+
+### app
+
+- Debug mode in Ajustes > General gathers decanter's and psport's logs in one folder (by default inside the library), a subfolder per computer, written whole before a sync tool can take them; also switchable per PS game.
+- Each library folder chooses where its games' shader caches go; PS games can live in extra folders and move between them; external games and PS dumps show their size, measured again only when they change.
+- Notices and errors change language with the UI, and a language is now only a folder of files.
+- Issues and comments that ask to run code from an untrusted source are hidden or closed automatically.
+
+### desktop
+
+- Steam is detected through its `steam.pipe` when `/proc` hides it (Flatpak, containers), so shortcuts are no longer written under a running client.
+
+### gog
+
+- A session GOG closes keeps the library offline on its cache, with no error; decanter offers to renew it (silent refresh, then browser login), also from Ajustes > Cuentas.
+- A token refreshed by a call that then fails is no longer lost.
+
+### ps
+
+- Online play from the PS section: shadNet server, WebAPI, community server, NPID and UPnP, plus Bloodborne's BBSC with its local server; the password and token stay in the keyring. Offered when the port lists its online module.
+- New psport settings: Bloom switch, saved runs kept, camera cuts, image traps, DLSS, controller motion, toy pad, anisotropic filtering, Intel tone mapping fix, system fonts folder and keyboard stick behaviour (only when the port supports it). Shown defaults match psport's.
+- Upscalers and fixes the machine can't run are hidden, following the port's own report.
+- Testing takes the port's CI builds of each commit and builds locally only what is missing.
+- The Vulkan validation layer is fetched on demand when the setting is on; without it the game starts and says why.
+- The effects query has a 30 s limit, so a hung port no longer leaves the graphics tab waiting.
+- Saving settings drops the 0.3 memory model keys once the port ignores them.
+
 ## v0.3.2
 
 ### Windows (testing)
