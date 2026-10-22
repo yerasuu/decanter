@@ -11,6 +11,8 @@ settings.general.close.restart_hint: Requiere reiniciar Decanter para que el cam
 settings.general.close_game.title: Cerrar un juego
 settings.general.close_game.enabled: Cerrar el juego en marcha desde el mando o el teclado
 settings.general.close_game.hint: Mantén Select + Start %{hold} segundos en cualquier mando, o pulsa Ctrl+Mayús+F4 en Plasma (se cambia en Preferencias del sistema > Atajos > Decanter). Decanter avisa antes de cerrarlo; si repites la combinación en los %{grace} segundos siguientes, lo cancela. En los juegos de PS4, el botón Guide abre además el aviso de cierre del propio juego.
+settings.general.close_game.enabled_keyboard: Cerrar el juego en marcha con un atajo de teclado
+settings.general.close_game.hint_keyboard: Pulsa Ctrl+Mayús+F4 mientras juegas. Decanter cierra el juego %{grace} segundos después; si vuelves a pulsarlo antes, lo cancela.
 settings.general.steam.title: Exportar a Steam
 settings.general.steam.add: Añadir cada juego instalado a la biblioteca real de Steam, con su portada y su banner
 settings.general.steam.restart_hint: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.

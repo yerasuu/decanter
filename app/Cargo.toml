@@ -47,4 +47,5 @@ nix = { workspace = true, features = ["fs", "inotify"] }
 zbus.workspace = true
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
+global-hotkey.workspace = true
 tray-icon.workspace = true

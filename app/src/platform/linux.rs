@@ -12,6 +12,11 @@ use std::sync::{Arc, LazyLock};
 use nix::unistd::{AccessFlags, access};
 pub use tray::{refresh_tray, spawn_tray};
 
+/// What Ajustes says the switch for closing a game listens to: the pads
+/// and the Plasma shortcut.
+pub const CLOSE_GAME_LABEL: &str = "settings.general.close_game.enabled";
+pub const CLOSE_GAME_HINT: &str = "settings.general.close_game.hint";
+
 /// What a running game can be asked to close from, and where the notice
 /// about it shows: the session bus (notifications, the Plasma shortcut)
 /// and the gamepads' evdev nodes.

@@ -107,7 +107,8 @@ pub fn executable_permissions() -> Option<Permissions> {
 }
 
 /// Browsing the library, GOG and achievements only: no launch backend
-/// exists here yet. The tray waits for a run on a real Mac.
+/// exists here yet, so no game to close with the shortcut either. The tray
+/// waits for a run on a real Mac.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {

@@ -13,6 +13,7 @@ use super::debug::DebugSection;
 use super::{column, field_row, inline};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
+use crate::platform;
 use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::theme;
@@ -426,12 +427,12 @@ impl Render for GeneralTab {
                     .child(Self::checkbox_row(
                         "close-game-shortcut",
                         self.close_game_shortcut,
-                        t!("settings.general.close_game.enabled"),
+                        t!(platform::CLOSE_GAME_LABEL),
                         Self::set_close_game_shortcut,
                         cx,
                     ))
                     .child(theme::muted(t!(
-                        "settings.general.close_game.hint",
+                        platform::CLOSE_GAME_HINT,
                         hold = crate::closing::HOLD.as_secs(),
                         grace = crate::closing::GRACE.as_secs()
                     ))),

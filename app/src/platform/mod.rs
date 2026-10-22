@@ -2,6 +2,8 @@
 //! crate that asks which OS it was built for; everything else calls what
 //! the OS's file exports, under the same names on every OS.
 
+#[cfg(not(target_os = "linux"))]
+mod close_hotkey;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -19,6 +21,7 @@ use macos as os;
 use windows as os;
 
 pub use os::{
-    CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, exit_signal, hostname, own_process_group, refresh_tray,
-    replace_process, restrict_to_owner, spawn_tray, status_notifier_host, with_window_icon,
+    CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, exit_signal, hostname,
+    own_process_group, refresh_tray, replace_process, restrict_to_owner, spawn_tray, status_notifier_host,
+    with_window_icon,
 };

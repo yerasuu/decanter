@@ -2,53 +2,8 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
+pub use super::close_hotkey::{CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch};
 pub use super::system_tray::{refresh_tray, spawn_tray};
-
-/// Closing a game from a pad or a global shortcut, and the notice about
-/// it, are a Linux desktop session's (evdev, D-Bus): here nothing asks.
-pub struct CloseWatch;
-
-#[expect(
-    clippy::unused_async,
-    clippy::unused_async_trait_impl,
-    clippy::unused_self,
-    clippy::needless_pass_by_ref_mut,
-    reason = "the same signatures as the Linux watch, which awaits the bus and the pads"
-)]
-impl CloseWatch {
-    pub async fn open() -> Self {
-        tracing::info!("no gamepad chord, shortcut or notice to close a game with on this system");
-        Self
-    }
-
-    pub async fn asked(&mut self) -> &'static str {
-        std::future::pending().await
-    }
-
-    pub const fn notices(&self) -> Notices {
-        Notices
-    }
-
-    pub async fn release(self) {}
-}
-
-#[derive(Clone, Copy)]
-pub struct Notices;
-
-#[expect(
-    clippy::unused_async,
-    clippy::unused_async_trait_impl,
-    reason = "the same signatures as the Linux notices, which await the bus"
-)]
-impl Notices {
-    pub async fn closing(self, _name: &str) -> Option<u32> {
-        None
-    }
-
-    pub async fn cancelled(self, _replaces: Option<u32>, _name: &str) {}
-
-    pub async fn close(self, _id: Option<u32>) {}
-}
 
 /// The taskbar's notification area is always there.
 pub async fn status_notifier_host() -> bool {

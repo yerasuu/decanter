@@ -16,8 +16,9 @@ the platform layer (see below):
   native store (Credential Manager, Keychain).
 - Linux-only, and said so in the UI ("not available on this system"):
   playing (Proton through `umu-run`), per-game Proton and prefixes,
-  closing a game from a pad or shortcut, Steam export. The tray came to
-  Windows and macOS in phase 2 (`tray-icon`).
+  closing a game from a pad, Steam export. The tray came to Windows and
+  macOS in phase 2 (`tray-icon`), and the close-game shortcut to Windows
+  (`global-hotkey`).
 - Hidden or skipped: the PS section, desktop entries for the task bar,
   systemd scopes, and the Galaxy64 hook (not built, not deployed; see
   phase 2).
@@ -75,7 +76,10 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     self-update's file calls. `nix`, `zbus` and `ksni` are Linux-only
     dependencies of the app; `tray-icon` is the tray on Windows and macOS
     (`platform/system_tray.rs`, shared by both), made on GPUI's main thread
-    since its backends there need the thread running the event loop.
+    since its backends there need the thread running the event loop, and
+    `global-hotkey` the close-game shortcut there (`platform/close_hotkey.rs`,
+    Ctrl+Shift+F4 while a game runs, no pads and no notice yet), on the same
+    thread for the same reason.
 - **The launch backend** is named once per crate by its `build.rs`:
   `cfg(proton)` for code that only exists with Proton, `umu-run` and
   prefixes (`decanter-runtime`, `decanter-gog`, the app), `not(proton)` for
@@ -123,7 +127,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | Play, ExternalInstaller | available | available | no |
 | GalaxyHook | available | available (x86_64) | no |
 | Tray, CloseToTray | available | testing | testing |
-| Proton, Prefixes, PadClose, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
+| PadClose | available | testing (keyboard only) | no |
+| Proton, Prefixes, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
 | PsSection, PsPlay, MangoHud, GameMode | available | no | no |
 | PsMenuBinding, PsOnline | once psport lists it | no | no |
 | PsDownloads | available on x86_64 | no | no |
