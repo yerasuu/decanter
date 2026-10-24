@@ -2,6 +2,29 @@
 
 Grouped by area. Each version's technical record is in `tag-changelog/vX.Y.Z.md`.
 
+## v0.3.4
+
+### macOS (testing)
+
+- macOS plays the native macOS builds of GOG games, with no compatibility layer: installed from GOG's `osx` builds, started from their app bundle, stopped as a process group. A game with no macOS build says so instead of offering Instalar.
+- Cloud saves look in Documents and Application Support on macOS.
+- Nothing has run on a Mac yet.
+
+### Windows (testing)
+
+- Closing a game with Ctrl+Shift+F4 shows a notification with the countdown and its cancellation.
+- Exporting to Steam works on Windows: Steam's folder comes from the registry or its default folders, and a running client is detected.
+- The PS section plays with a `psport.exe` folder picked in its Ajustes, started directly with no Nix or bash; ports, builds and channels say why they are off.
+- Nothing has run on a real Windows yet.
+
+### library
+
+- GOG's product record says whether a game has a macOS build; the answer is cached in a new `games_cache` column that older databases gain on opening.
+
+### app
+
+- The PS section shows on every system; where psport doesn't run, its page says why (macOS: not supported yet).
+
 ## v0.3.3
 
 ### Windows (testing)
