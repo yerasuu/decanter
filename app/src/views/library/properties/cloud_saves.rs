@@ -202,7 +202,7 @@ impl CloudSavesTab {
         expect(clippy::unused_self, reason = "only a prefix gives the picker a folder to open in")
     )]
     fn pick_folder(&self, cx: &Context<Self>) {
-        // Saves under Proton live in the game's prefix; on Windows the dialog
+        // Saves under Proton live in the game's prefix; natively the dialog
         // opens wherever the system's last pick was.
         #[cfg(proton)]
         let starting = crate::core::prefix_for(&self.target.account_id, &self.target.product_id)

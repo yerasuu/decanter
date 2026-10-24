@@ -1,5 +1,6 @@
-//! Games run as the Windows programs they are: their own executable,
-//! started directly from its folder.
+//! Games run as the programs they are on this system (Windows programs on
+//! Windows, macOS ones on macOS): their own executable, started directly
+//! from its folder.
 
 use std::collections::HashMap;
 use std::io;
@@ -8,7 +9,7 @@ use std::process::ExitStatus;
 use std::sync::{OnceLock, PoisonError, RwLock};
 use std::time::SystemTime;
 
-use decanter_core::InstalledGame;
+use decanter_core::{GameSystem, InstalledGame, platform};
 use decanter_ps::process::Job;
 use decanter_ps::run_log::RunLog;
 use decanter_runtime::{Launch, Prepared};
@@ -53,7 +54,10 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
     let mut launch = Launch::new(executable, session_key(account_id, &game.game_id));
     launch.working_directory = Some(working_directory);
     launch.capture_output = true;
-    let achievement_log = (game.storefront == decanter_core::Storefront::Gog)
+    // decanter-hook is a Windows DLL: a macOS build has nothing that would
+    // read these variables or write the log.
+    let achievement_log = (game.storefront == decanter_core::Storefront::Gog
+        && platform::game_system() == GameSystem::Windows)
         .then(|| achievement_log(account_id, game, &mut launch))
         .flatten();
     Some(Planned {
@@ -126,6 +130,10 @@ pub(super) async fn hint_after_failure(
     game_id: &str,
     cx: &mut AsyncApp,
 ) -> Option<RunLog> {
+    // Only a Windows build is a PE image with DLL imports to read.
+    if platform::game_system() != GameSystem::Windows {
+        return log;
+    }
     let Some(status) = exit.filter(|status| !status.success()) else {
         return log;
     };

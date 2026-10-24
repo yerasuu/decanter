@@ -89,5 +89,5 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(not(proton))]
 fn main() {
-    tracing::error!("launch_game drives Proton, which games don't run under on Windows");
+    tracing::error!("launch_game drives Proton, which games only run under on Linux");
 }

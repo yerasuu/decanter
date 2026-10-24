@@ -7,7 +7,8 @@
 //! started it out of existence.
 //!
 //! How a game is started and stopped is the backend's: Proton in a prefix
-//! of its own (`proton`), or the executable itself on Windows (`native`).
+//! of its own (`proton`), or the executable itself on Windows and macOS
+//! (`native`).
 
 #[cfg(not(proton))]
 mod native;

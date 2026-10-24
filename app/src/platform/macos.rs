@@ -38,6 +38,9 @@ pub fn restrict_to_owner(options: &mut tokio::fs::OpenOptions) {
     options.mode(0o600);
 }
 
+/// A console program opens no window of its own here.
+pub const fn without_console(_command: &mut tokio::process::Command) {}
+
 /// So the opened app doesn't share decanter's terminal signals.
 pub fn own_process_group(command: &mut Command) {
     command.process_group(0);

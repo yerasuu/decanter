@@ -31,6 +31,14 @@ pub fn hostname() -> Option<String> {
 
 pub const fn restrict_to_owner(_options: &mut tokio::fs::OpenOptions) {}
 
+/// `CREATE_NO_WINDOW`, so a console program decanter runs doesn't flash a
+/// console window over everything.
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+pub fn without_console(command: &mut tokio::process::Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
 /// Process groups are a Unix job-control idea: an opened app shares
 /// nothing with decanter's console here to begin with.
 pub const fn own_process_group(_command: &mut Command) {}

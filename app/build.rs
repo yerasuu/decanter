@@ -7,8 +7,8 @@
 //! goes on without one and the updater says so.
 //!
 //! `cfg(proton)` names the launch backend once for the crate, as in
-//! `decanter-runtime`'s build script: Proton through `umu-run`, or native
-//! Windows programs where it's off.
+//! `decanter-runtime`'s build script: Proton through `umu-run` on Linux, or
+//! native programs (Windows, macOS) where it's off.
 
 #![expect(
     clippy::print_stdout,
@@ -21,9 +21,7 @@ fn main() -> Result<(), String> {
     println!("cargo::rerun-if-changed=locales");
     println!("cargo::rerun-if-changed=../keys/release.pub");
     println!("cargo::rustc-check-cfg=cfg(proton)");
-    // Linux is the Proton backend's home; macOS compiles it too only until it
-    // has a backend of its own, and its capability table leaves Play off.
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
         println!("cargo::rustc-cfg=proton");
     }
 

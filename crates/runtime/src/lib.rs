@@ -1,7 +1,8 @@
-//! Running Windows games.
+//! Running games.
 //!
-//! On Windows they run as the plain programs they are (`native`); everywhere
-//! else, under Proton through `umu-run`, which the rest of this explains.
+//! On Windows and macOS they run as the plain programs they are (`native`);
+//! on Linux, Windows games run under Proton through `umu-run`, which the
+//! rest of this explains.
 //!
 //! umu is the launcher Valve's own Proton expects around it: it resolves
 //! (and downloads) a Proton build, sets up the Steam Linux Runtime

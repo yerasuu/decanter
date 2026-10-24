@@ -257,11 +257,6 @@ pub async fn run_installer(
     Ok(())
 }
 
-/// `CREATE_NO_WINDOW`, so the `powershell.exe` that starts the installer
-/// doesn't flash a console over it.
-#[cfg(not(proton))]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
 /// Runs a setup program (`.exe`, or `.msi` through `msiexec /i`) and waits
 /// for it to finish.
 ///
@@ -295,13 +290,16 @@ pub async fn run_installer(installer: &Path) -> Result<(), Text> {
         format!("$ErrorActionPreference = 'Stop'; {start} -WorkingDirectory $env:DECANTER_INSTALLER_DIR -Wait");
     let directory = installer.parent().unwrap_or(installer);
     tracing::info!(installer = %installer.display(), is_msi, "running external game installer");
+    let mut command = tokio::process::Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .env("DECANTER_INSTALLER", installer)
+        .env("DECANTER_INSTALLER_DIR", directory)
+        .stdin(std::process::Stdio::null());
+    // So the `powershell.exe` that starts the installer doesn't flash a console over it.
+    crate::platform::without_console(&mut command);
     let output = crate::achv_try!(
-        tokio::process::Command::new("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .env("DECANTER_INSTALLER", installer)
-            .env("DECANTER_INSTALLER_DIR", directory)
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdin(std::process::Stdio::null())
+        command
             .output()
             .await
             .inspect_err(|err| tracing::error!(%err, "installer failed to start"))

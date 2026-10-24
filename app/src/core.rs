@@ -409,7 +409,7 @@ fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_lo
         .ok_or_else(|| Text::new("messages.errors.prefix"))
 }
 
-/// The account folders a game sees: the user's own on Windows.
+/// The account folders a game sees: the user's own on Windows and macOS.
 #[cfg(not(proton))]
 fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, Text> {
     decanter_gog::save_location::UserFolders::native().ok_or_else(|| {

@@ -25,7 +25,7 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(proton)");
     println!("cargo::rustc-check-cfg=cfg(galaxy_hook)");
     // The launch backend, named as in decanter-runtime's build script.
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
         println!("cargo::rustc-cfg=proton");
     }
     // Games are x86_64 Windows programs, under Proton on Linux and natively
