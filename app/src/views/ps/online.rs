@@ -384,6 +384,7 @@ impl Render for OnlineView {
                     .map(|(index, probe)| Self::probe_row(probe, index + 1 == probes.len())),
             )
         });
+        let is_offered = caps.is_offered(Feature::PsOnline);
         div()
             .flex()
             .flex_col()
@@ -391,25 +392,28 @@ impl Render for OnlineView {
             .child(theme::h2(t!("ps.online.title")))
             .child(
                 theme::card()
-                    .child(theme::compact_row(false).child(play))
-                    .child(theme::compact_row(true).child(upnp)),
+                    .child(theme::compact_row(!is_offered).child(play))
+                    .when(is_offered, |card| card.child(theme::compact_row(true).child(upnp))),
             )
-            .child(theme::muted(t!("ps.online.description")))
-            .child(theme::card().child(account))
-            .child(theme::muted(t!("ps.online.account_description")))
-            .when(lacks_password, |column| {
-                column.child(theme::error(t!("ps.online.no_password")))
+            .when(is_offered, |column| {
+                column
+                    .child(theme::muted(t!("ps.online.description")))
+                    .child(theme::card().child(account))
+                    .child(theme::muted(t!("ps.online.account_description")))
+                    .when(lacks_password, |column| {
+                        column.child(theme::error(t!("ps.online.no_password")))
+                    })
+                    .children(keyring_error.map(|err| theme::error(t!("ps.online.keyring_unavailable", error = err))))
+                    .child(actions)
+                    .children(self.message.as_ref().map(|(text, is_error)| {
+                        if *is_error {
+                            theme::error(text)
+                        } else {
+                            theme::muted(text)
+                        }
+                    }))
+                    .children(probes)
             })
-            .children(keyring_error.map(|err| theme::error(t!("ps.online.keyring_unavailable", error = err))))
-            .child(actions)
-            .children(self.message.as_ref().map(|(text, is_error)| {
-                if *is_error {
-                    theme::error(text)
-                } else {
-                    theme::muted(text)
-                }
-            }))
-            .children(probes)
     }
 }
 
