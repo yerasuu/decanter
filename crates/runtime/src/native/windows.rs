@@ -98,6 +98,13 @@ pub(super) fn command(executable: &Path) -> Command {
     Command::new(executable)
 }
 
+/// Keeps a console-subsystem game from opening a console window of its own
+/// when decanter reads its output instead, since Windows Terminal would
+/// show it as a tab over decanter.
+pub(super) fn hide_console(command: &mut Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
 /// Asks the processes and their children to close (`taskkill` without
 /// `/F` sends their windows a close), or ends them when `force`d.
 pub(super) async fn close(targets: Targets, force: bool) {

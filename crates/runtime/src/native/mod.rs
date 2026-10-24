@@ -270,6 +270,8 @@ pub fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
         .stdin(Stdio::null());
     if launch.capture_output {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(windows)]
+        os::hide_console(&mut command);
     }
 
     // `launch.env` isn't logged: it has no fixed shape, so nothing rules out
