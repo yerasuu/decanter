@@ -27,7 +27,7 @@ pub struct CloseWatch {
 }
 
 impl CloseWatch {
-    pub async fn open() -> Self {
+    pub async fn open(_cx: &gpui::AsyncApp) -> Self {
         let bus = zbus::Connection::session()
             .await
             .inspect_err(|err| tracing::warn!(error = %err, "no session bus, closing a game has no shortcut or notice"))

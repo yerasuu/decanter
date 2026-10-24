@@ -1,13 +1,17 @@
 //! Windows: the known folders `dirs` knows, `fs4` for disk space, file
 //! and directory links told apart, no modes, and what it supports so far.
 
-use core::iter;
 use std::fs::{self, Permissions};
-use std::io;
 use std::os::windows::fs as windows_fs;
+use std::os::windows::process::CommandExt as _;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::{env, io};
 
 use crate::capabilities::{Feature, Reason, Support};
+
+/// `CREATE_NO_WINDOW`, so `reg` doesn't flash a console over decanter.
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// The canonical path: the same folder reached through two paths compares equal.
 pub type FolderIdentity = PathBuf;
@@ -80,10 +84,32 @@ pub fn system_locale() -> Option<String> {
     sys_locale::get_locale()
 }
 
-/// Exported shortcuts start decanter's Proton launch, which only Linux has.
+/// What Steam's installer records first, then its default folders.
 #[inline]
 pub fn steam_root_candidates() -> impl Iterator<Item = PathBuf> {
-    iter::empty()
+    let default_folders = ["ProgramFiles(x86)", "ProgramFiles"]
+        .into_iter()
+        .filter_map(env::var_os)
+        .map(|dir| PathBuf::from(dir).join("Steam"));
+    registered_steam_path().into_iter().chain(default_folders)
+}
+
+/// `SteamPath` under `HKEY_CURRENT_USER\Software\Valve\Steam`, read with
+/// `reg` because the registry has no safe binding in the dependencies.
+/// Only an absolute path is taken, since it ends up under `userdata`.
+fn registered_steam_path() -> Option<PathBuf> {
+    let output = Command::new("reg")
+        .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .inspect_err(|err| tracing::debug!(%err, "could not ask the registry for Steam's folder"))
+        .ok()?;
+    let listing = String::from_utf8_lossy(&output.stdout);
+    let path = PathBuf::from(listing.lines().find_map(|line| {
+        let (name, rest) = line.trim().split_once("REG_SZ")?;
+        (name.trim() == "SteamPath").then(|| rest.trim())
+    })?);
+    path.is_absolute().then_some(path)
 }
 
 /// # Errors
@@ -110,20 +136,19 @@ pub const fn executable_permissions() -> Option<Permissions> {
 /// Games run natively, so Proton and everything around it isn't here; the
 /// PS section and the Linux desktop's pieces aren't ported yet.
 ///
-/// The tray and the close-game shortcut wait for a run on a real Windows.
+/// The tray, the close-game shortcut and the Steam export wait for a run on a real Windows.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {
     match feature {
         Feature::GalaxyHook if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
         Feature::Play | Feature::ExternalInstaller | Feature::GalaxyHook => Support::Available,
-        Feature::Tray | Feature::CloseToTray | Feature::PadClose => Support::Testing,
+        Feature::Tray | Feature::CloseToTray | Feature::PadClose | Feature::SteamExport => Support::Testing,
         Feature::Proton
         | Feature::Prefixes
         | Feature::DesktopEntries
         | Feature::Scopes
         | Feature::SelfUpdate
-        | Feature::SteamExport
         | Feature::PsSection
         | Feature::PsDownloads
         | Feature::PsPlay

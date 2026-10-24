@@ -2,4 +2,5 @@ closing.shortcut_name: Cerrar el juego en marcha
 closing.notice.title: '%{name} se va a cerrar'
 closing.notice.body: Se cerrará en %{seconds} segundos. Para cancelarlo, vuelve a mantener Select + Start o pulsa otra vez el atajo de teclado.
 closing.notice.body_pad: Se cerrará en %{seconds} segundos. Para cancelarlo, vuelve a mantener Select + Start.
+closing.notice.body_keyboard: Se cerrará en %{seconds} segundos. Para cancelarlo, vuelve a pulsar el atajo de teclado.
 closing.notice.cancelled: 'Cierre cancelado: %{name} sigue abierto'

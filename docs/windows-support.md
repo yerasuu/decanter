@@ -16,9 +16,9 @@ the platform layer (see below):
   native store (Credential Manager, Keychain).
 - Linux-only, and said so in the UI ("not available on this system"):
   playing (Proton through `umu-run`), per-game Proton and prefixes,
-  closing a game from a pad, Steam export. The tray came to Windows and
+  closing a game from a pad. The tray came to Windows and
   macOS in phase 2 (`tray-icon`), and the close-game shortcut to Windows
-  (`global-hotkey`).
+  (`global-hotkey`); the Steam export came to Windows later (see below).
 - Hidden or skipped: the PS section, desktop entries for the task bar,
   systemd scopes, and the Galaxy64 hook (not built, not deployed; see
   phase 2).
@@ -79,8 +79,15 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     (`platform/system_tray.rs`, shared by both), made on GPUI's main thread
     since its backends there need the thread running the event loop, and
     `global-hotkey` the close-game shortcut there (`platform/close_hotkey.rs`,
-    Ctrl+Shift+F4 while a game runs, no pads and no notice yet), on the same
-    thread for the same reason.
+    Ctrl+Shift+F4 while a game runs, no pads), on the same thread for the
+    same reason. The press and the cancellation post a GPUI system
+    notification (`App::show_system_notification`, one tag,
+    `decanter-close-game`, so the cancellation replaces the warning and the
+    stop dismisses it); `CloseWatch::open` takes the `AsyncApp` for that,
+    since the notification center is the main thread's. Windows delivers
+    it because of the AppUserModelID above (`set_app_identity`). The text
+    is `closing.notice.*` in the locales, `body_keyboard` for the
+    keyboard-only body.
 - **The launch backend** is named once per crate by its `build.rs`:
   `cfg(proton)` for code that only exists with Proton, `umu-run` and
   prefixes (`decanter-runtime`, `decanter-gog`, the app), `not(proton)` for
@@ -129,7 +136,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | GalaxyHook | available | available (x86_64) | no |
 | Tray, CloseToTray | available | testing | testing |
 | PadClose | available | testing (keyboard only) | no |
-| Proton, Prefixes, DesktopEntries, Scopes, SelfUpdate, SteamExport | available | no | no |
+| SteamExport | available | testing | no |
+| Proton, Prefixes, DesktopEntries, Scopes, SelfUpdate | available | no | no |
 | PsSection, PsPlay, MangoHud, GameMode | available | no | no |
 | PsMenuBinding, PsOnline | once psport lists it | no | no |
 | PsDownloads | available on x86_64 | no | no |
@@ -151,8 +159,39 @@ equivalents:
 | Tray via ksni | `tray-icon` (done) |
 | `~/.config/decanter/libraries.toml` | `%APPDATA%\decanter\libraries.toml` |
 
-The data-in-library layout and the Steam export carry over as they are.
-Decanter has almost no `cfg(windows)` code today.
+The data-in-library layout carries over as it is. Decanter has almost no
+`cfg(windows)` code today.
+
+## Steam export on Windows
+
+`decanter_core::steam` writes `shortcuts.vdf` and the grid art the same way
+as on Linux (the shortcut's `Exe` is the game's own executable, which runs
+natively here); only how Steam is found and driven differs, behind
+`cfg(windows)`:
+
+- `platform::steam_root_candidates`: `SteamPath` under
+  `HKCU\Software\Valve\Steam` (read with `reg query`, since the registry
+  has no safe binding among the dependencies; only an absolute path is
+  taken), then `%ProgramFiles(x86)%\Steam` and `%ProgramFiles%\Steam`. A
+  candidate counts once it has `userdata`, as before.
+- `steam::process::state`: `tasklist /FI "IMAGENAME eq steam.exe"` instead
+  of `/proc` and `steam.pipe`; a failure to run it is `Unknown`, which
+  asks the user to confirm Steam is closed, as in a container.
+- `shutdown` and `launch` run `steam -shutdown` / `steam` and fall back to
+  `<root>\steam.exe` (`steam.sh` on Linux).
+- The staged `shortcuts.vdf.pending` and the restart button work as on
+  Linux: Steam rewrites its in-memory copy while it runs.
+
+`SteamExport` is `Testing` on Windows. Nothing here was run on Windows.
+
+## Closing a game from a pad on Windows: not done
+
+There's no safe way to read a pad from the background with what the
+workspace has. XInput (`XInputGetState`) is a C function, so calling it
+needs `unsafe` (forbidden) or a binding crate not in the workspace;
+`Windows.Gaming.Input` is safe through the `windows` crate but its
+documentation doesn't say it reports input while another window has focus,
+which a running game does. Kept as a question for the owner.
 
 ## psport: high effort, with prior art
 

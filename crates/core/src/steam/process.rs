@@ -10,10 +10,18 @@
     reason = "directly contradicts needless_return from clippy::all, also enabled"
 )]
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
-use std::{fs, io, thread};
+use std::{io, thread};
+
+#[cfg(not(windows))]
+use std::fs;
+
+/// What starts the client when `steam` isn't on `PATH`.
+const LAUNCHER: &str = if cfg!(windows) { "steam.exe" } else { "steam.sh" };
 
 /// How long [`wait_for_exit`] waits for Steam's main process to disappear
 /// from `/proc` after asking it to shut down, before giving up. Measured
@@ -44,6 +52,7 @@ pub enum SteamState {
 /// `.steam/steam.pid` (left behind on exit, and naming a pid the
 /// container can't see) nor `registry.vdf`'s `SteamPID` (left set after a
 /// crash) can answer that.
+#[cfg(not(windows))]
 #[must_use]
 #[inline]
 pub fn state(steam_root: &Path) -> SteamState {
@@ -53,9 +62,44 @@ pub fn state(steam_root: &Path) -> SteamState {
     probe_pipe(steam_root)
 }
 
+/// Whether a `steam.exe` is running, asked of `tasklist`, which lists the
+/// image names of every process in any language: the client's own, not its
+/// `steamwebhelper.exe` children.
+#[cfg(windows)]
+#[must_use]
+#[inline]
+pub fn state(_steam_root: &Path) -> SteamState {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let listing = Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq steam.exe", "/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    match listing {
+        Ok(output) if output.status.success() => {
+            if String::from_utf8_lossy(&output.stdout)
+                .to_ascii_lowercase()
+                .contains("\"steam.exe\"")
+            {
+                SteamState::Running
+            } else {
+                SteamState::NotRunning
+            }
+        }
+        Ok(output) => {
+            tracing::warn!(status = %output.status, "tasklist failed, cannot tell whether steam is running");
+            SteamState::Unknown
+        }
+        Err(err) => {
+            tracing::warn!(%err, "could not run tasklist, cannot tell whether steam is running");
+            SteamState::Unknown
+        }
+    }
+}
+
 /// Scans `/proc/*/exe` for a binary named exactly `steam` living under
 /// `steam_root` — Steam's own client, not one of its many
 /// `steamwebhelper`/zygote children.
+#[cfg(not(windows))]
 fn has_steam_process(steam_root: &Path) -> bool {
     let Ok(entries) = fs::read_dir("/proc") else {
         return false;
@@ -121,7 +165,7 @@ fn probe_pipe(steam_root: &Path) -> SteamState {
 }
 
 /// Outside Linux `/proc` is all this ever looked at; nothing changes there.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 const fn probe_pipe(_steam_root: &Path) -> SteamState {
     SteamState::NotRunning
 }
@@ -151,7 +195,7 @@ pub fn launch(steam_root: &Path) -> io::Result<()> {
 }
 
 /// Runs `steam <arg>` (skipping the arg if empty), falling back to
-/// `steam_root`'s own `steam.sh` launcher when `steam` isn't on `PATH` —
+/// `steam_root`'s own [`LAUNCHER`] when `steam` isn't on `PATH` —
 /// the same binary Steam Deck's own desktop entry resolves to, but not
 /// guaranteed to be there in every environment this runs in.
 fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
@@ -168,7 +212,7 @@ fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
         return Ok(());
     }
 
-    let mut fallback = Command::new(steam_root.join("steam.sh"));
+    let mut fallback = Command::new(steam_root.join(LAUNCHER));
     crate::strip_launcher_env(&mut fallback);
     if !arg.is_empty() {
         fallback.arg(arg);

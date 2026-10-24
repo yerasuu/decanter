@@ -1,6 +1,7 @@
 //! Closing a game on Windows and macOS: a global shortcut through
 //! `global-hotkey`, registered only while a game runs, as the Plasma one
-//! is. No pads and no notice yet.
+//! is, with a system notification between the press and the stop. No pads
+//! yet.
 //!
 //! The manager must be made, and its keys registered, on the thread that
 //! runs the event loop: `closing::listen` runs on GPUI's main thread, so
@@ -10,6 +11,8 @@ use std::sync::{LazyLock, Once};
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use gpui::{AsyncApp, SystemNotification};
+use rust_i18n::t;
 use tokio::sync::watch;
 
 /// What Ajustes says the switch for it does: there's only the keyboard here.
@@ -27,9 +30,14 @@ fn close_game() -> HotKey {
 static PRESSES: LazyLock<watch::Sender<()>> = LazyLock::new(|| watch::channel(()).0);
 static HANDLER: Once = Once::new();
 
+/// One tag for every close notice, so the cancellation replaces the warning
+/// and the stop takes whichever is up away.
+const NOTICE_TAG: &str = "decanter-close-game";
+
 pub struct CloseWatch {
     shortcut: Option<(GlobalHotKeyManager, HotKey)>,
     presses: watch::Receiver<()>,
+    cx: AsyncApp,
 }
 
 #[expect(
@@ -43,7 +51,7 @@ pub struct CloseWatch {
     reason = "the manager stays on the main thread that made it, as Win32 and AppKit require"
 )]
 impl CloseWatch {
-    pub async fn open() -> Self {
+    pub async fn open(cx: &AsyncApp) -> Self {
         HANDLER.call_once(|| {
             let id = close_game().id();
             GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
@@ -59,7 +67,11 @@ impl CloseWatch {
             .inspect(|_| tracing::info!(hotkey = %hotkey.into_string(), "close-game shortcut registered"))
             .inspect_err(|err| tracing::warn!(error = %err, "no close-game shortcut, it could not be registered"))
             .ok();
-        Self { shortcut, presses }
+        Self {
+            shortcut,
+            presses,
+            cx: cx.clone(),
+        }
     }
 
     /// Never resolves without a shortcut. Cancel-safe.
@@ -70,8 +82,8 @@ impl CloseWatch {
         std::future::pending().await
     }
 
-    pub const fn notices(&self) -> Notices {
-        Notices
+    pub fn notices(&self) -> Notices {
+        Notices { cx: self.cx.clone() }
     }
 
     /// Hands the key back to the rest of the desktop while no game runs.
@@ -84,21 +96,48 @@ impl CloseWatch {
     }
 }
 
-/// Nothing to show a notice with here yet.
-#[derive(Clone, Copy)]
-pub struct Notices;
+/// The notification between asking to close the game and its stop, posted
+/// from GPUI's main thread, which the platform's notification center needs.
+#[derive(Clone)]
+pub struct Notices {
+    cx: AsyncApp,
+}
 
 #[expect(
     clippy::unused_async,
     clippy::unused_async_trait_impl,
     reason = "the same signatures as the Linux notices, which await the bus"
 )]
+#[expect(
+    clippy::future_not_send,
+    reason = "the app handle stays on the main thread, which the notification center needs"
+)]
 impl Notices {
-    pub async fn closing(self, _name: &str) -> Option<u32> {
+    /// The tag names the notification, so there is no id to hand back.
+    pub async fn closing(self, name: &str) -> Option<u32> {
+        let seconds = crate::closing::GRACE.as_secs();
+        self.show(
+            &t!("closing.notice.title", name = name),
+            &t!("closing.notice.body_keyboard", seconds = seconds),
+        );
         None
     }
 
-    pub async fn cancelled(self, _replaces: Option<u32>, _name: &str) {}
+    pub async fn cancelled(self, _replaces: Option<u32>, name: &str) {
+        self.show(&t!("closing.notice.cancelled", name = name), "");
+    }
 
-    pub async fn close(self, _id: Option<u32>) {}
+    pub async fn close(self, _id: Option<u32>) {
+        self.cx.update(|cx| cx.dismiss_system_notification(NOTICE_TAG));
+    }
+
+    fn show(&self, title: &str, body: &str) {
+        let notification = SystemNotification {
+            tag: NOTICE_TAG.into(),
+            title: title.to_owned().into(),
+            body: body.to_owned().into(),
+            actions: Vec::new(),
+        };
+        self.cx.update(|cx| cx.show_system_notification(notification));
+    }
 }

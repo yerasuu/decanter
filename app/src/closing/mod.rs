@@ -99,7 +99,7 @@ enum Event {
 
 async fn listen(mut listening: watch::Receiver<bool>, cx: &AsyncApp) {
     while listening.wait_for(|listening| *listening).await.is_ok() {
-        let mut watch = Watch::open().await;
+        let mut watch = Watch::open(cx).await;
         loop {
             let deadline = watch.pending.as_ref().map(|pending| pending.deadline);
             let event = tokio::select! {
@@ -129,10 +129,10 @@ struct Watch {
 }
 
 impl Watch {
-    async fn open() -> Self {
+    async fn open(cx: &AsyncApp) -> Self {
         tracing::info!("listening for the close-game chord and shortcut");
         Self {
-            system: CloseWatch::open().await,
+            system: CloseWatch::open(cx).await,
             pending: None,
         }
     }
