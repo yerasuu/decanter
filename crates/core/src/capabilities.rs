@@ -110,6 +110,9 @@ pub enum Reason {
     /// A component that hasn't been ported to this system yet: what needs
     /// it is shown with this, rather than left out.
     NotPortedYet(Source),
+    /// Not compiled on this system yet: the component's published release is downloaded ready-made
+    /// instead.
+    DownloadsInstead(Source),
 }
 
 #[derive(Clone, Copy, Debug)]

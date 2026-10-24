@@ -109,6 +109,9 @@ impl SettingsView {
             let _ = this.update(cx, |this, cx| match saved {
                 Ok(()) => {
                     this.error = None;
+                    if key == direct::FOLDER_KEY {
+                        this.ps.update(cx, Ps::package_reload);
+                    }
                     this.refresh(cx);
                 }
                 Err(err) => {

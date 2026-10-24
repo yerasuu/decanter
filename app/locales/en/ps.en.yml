@@ -17,7 +17,7 @@ ps.jobs.update: update
 ps.jobs.reset: reset
 ps.jobs.rollback: roll back
 ps.errors.environment: 'Couldn''t set up the environment: %{error}'
-ps.errors.builds_unavailable: decanter doesn't fetch or build PS ports on this system
+ps.errors.builds_unavailable: decanter doesn't build PS ports on this system
 ps.ports.title: Ports
 ps.ports.description: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't. A stable release published as a bundle runs without either.
 ps.ports.stage.idle: Set up the first time it's needed
@@ -74,6 +74,32 @@ ps.ports.fallback.retry: Retry the update
 ps.ports.errors.record_build: 'Couldn''t record the build: %{error}'
 ps.ports.errors.download: 'Couldn''t download nix-portable: %{error}'
 ps.ports.errors.checksum: The nix-portable download doesn't match its pinned checksum
+ps.package.title: psport for Windows
+ps.package.description: 'Each tagged psport release carries its Windows package: decanter downloads it, checks it against the release''s checksum and size, and keeps it in the library. Jugar runs the version in use, which follows the newest release unless you choose another.'
+ps.package.in_use: 'In use: %{tag}'
+ps.package.in_use_pinned: 'In use: %{tag}, chosen by you: updates leave it'
+ps.package.in_use_folder: 'In use: the psport.exe folder chosen in Settings, %{dir}'
+ps.package.none_in_use: None in the library yet; Jugar downloads the newest release first
+ps.package.downloading: 'Downloading %{tag}: %{size}'
+ps.package.list_error: 'Couldn''t list the releases: %{error}'
+ps.package.no_releases: No psport release carries a Windows package yet
+ps.package.published: 'published %{date}'
+ps.package.downloaded: 'downloaded %{date}'
+ps.package.badge_in_use: In use
+ps.package.badge_downloaded: Downloaded
+ps.package.download: Download
+ps.package.use: Use
+ps.package.delete: Delete
+ps.package.errors.not_published: psport publishes no Windows package for this system
+ps.package.errors.offline: no connection to GitHub
+ps.package.errors.rate_limited: GitHub is limiting anonymous requests; try again in a while
+ps.package.errors.no_checksum: The release %{tag} has no checksum for its Windows package, so it isn't used
+ps.package.errors.checksum: 'The download doesn''t match its release: %{error}'
+ps.package.errors.layout: 'The package isn''t used: it holds %{what}'
+ps.package.errors.failed: 'Couldn''t get the package: %{error}'
+ps.package.errors.busy: '%{tag} is downloading; try again when it ends'
+ps.package.errors.delete_in_use: The version in use, or any while a game runs, can't be deleted
+ps.package.errors.delete: 'Couldn''t delete the version: %{error}'
 ps.failures.title: Failures
 ps.failures.description: Crashes, STOPs, errors and failed exits from every run in this profile, with the output around them and the port's commit. Kept across sessions.
 ps.failures.empty: No failures recorded.
@@ -112,7 +138,7 @@ ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder
 ps.settings.psport_folder.title: psport.exe folder
 ps.settings.psport_folder.none: No folder
 ps.settings.psport_folder.pick_title: Folder holding psport.exe
-ps.settings.psport_folder.description: 'The folder where you unpacked psport''s Windows build: it must hold psport.exe and libpsport-gpu.dll. decanter starts psport.exe from it directly, with nothing in between.'
+ps.settings.psport_folder.description: 'Optional: a folder where you unpacked a psport build for Windows yourself, holding psport.exe and libpsport-gpu.dll. While one is chosen, Jugar starts its psport.exe directly instead of the version downloaded in Ports; forget it to go back to that one.'
 ps.settings.psport_folder.errors.relative: '%{dir} isn''t a full path without ..'
 ps.settings.psport_folder.errors.not_local: '%{dir} isn''t on a drive of this computer'
 ps.settings.psport_folder.errors.not_a_folder: '%{dir} isn''t a folder: %{error}'
@@ -163,8 +189,10 @@ ps.games.library_error: 'Couldn''t use the library folder: %{error}'
 ps.layouts.read_error: 'Couldn''t read the layouts: %{error}'
 ps.play.prepare_error: 'Couldn''t prepare %{name}: %{error}'
 ps.play.direct.port_unavailable: '%{name} only runs with its build tools, which this system doesn''t have'
-ps.play.direct.no_folder: Choose the psport.exe folder in PS › Settings first
 ps.play.direct.bad_folder: 'The psport.exe folder can''t be used: %{error}'
+ps.play.package.downloading: 'Downloading psport %{tag} for Windows before the game starts…'
+ps.play.package.none: No psport release carries a Windows package yet; choose a psport.exe folder in PS › Settings
+ps.play.package.unavailable: 'No psport to play with: %{error}'
 ps.play.mods_error: 'Couldn''t prepare the mods and icons: %{error}'
 ps.play.convert_prepare_error: 'Couldn''t prepare the conversion: %{error}'
 ps.play.convert_failed: The conversion failed; see its log

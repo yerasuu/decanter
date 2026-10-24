@@ -101,8 +101,10 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 - **Capabilities**: `decanter_core::capabilities` is the one source of what
   the UI offers and how. Each `Feature` is `Available`, `Testing` (shown
   with an "en pruebas" badge) or `Unavailable(Reason)`, the reason being
-  `NotOnThisSystem`, `NeedsSetup(what)`, `ReportedBy(source, message)` or
-  `NotPortedYet(source)` (a component not ported to this system yet).
+  `NotOnThisSystem`, `NeedsSetup(what)`, `ReportedBy(source, message)`,
+  `NotPortedYet(source)` (a component not ported to this system yet) or
+  `DownloadsInstead(source)` (not compiled on this system yet: its published
+  release is downloaded ready-made instead).
   - `platform::support` is each OS's static table; code without a GPUI
     context (task bar entries, scopes, game tools, the hook, PS downloads,
     `decanter_runtime::available`) reads it directly.
@@ -148,20 +150,22 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | SteamExport | available | testing | no |
 | Proton, Prefixes, DesktopEntries, Scopes, SelfUpdate | available | no | no |
 | PsSection | available | testing | no (page says psport isn't ported) |
-| PsPlay | available | testing (psport.exe folder) | no |
-| PsBuilds | available | no | no |
+| PsPlay | available | testing (Windows package or psport.exe folder) | no |
+| PsBuilds | available | no (`DownloadsInstead`: Release downloads the package) | no |
 | MangoHud, GameMode | available | no | no |
 | PsMenuBinding, PsOnline | once psport lists it | no | no |
-| PsDownloads | available on x86_64 | no | no |
+| PsDownloads | available on x86_64 | testing (the release's Windows package) | no |
 
 ## The PS section on Windows (first slice)
 
 Done on `feat/902-ps-windows-slice` (design note #901, decision #898).
-decanter neither builds nor downloads psport here (`PsBuilds` and
-`PsDownloads` are off: the Ports tab and the channel choice in Ajustes
-say so, and mods and patches discovery and FSR 4.1.1's recording stop
-at `prepare` with `ps.errors.builds_unavailable`); it runs a
-psport build the user unpacked:
+decanter doesn't build psport here (`PsBuilds` is off with
+`Reason::DownloadsInstead`: the Ports tab and the channel choice in Ajustes
+say that Release downloads the package and compiling isn't available yet,
+and mods and patches discovery and FSR 4.1.1's recording stop at
+`prepare` with `ps.errors.builds_unavailable`). Since #917 it downloads
+the release's Windows package (next section); a psport build the user
+unpacked still works as the manual alternative:
 
 1. Unpack the `psport-windows-<commit>` package (psport's Windows CI
    artifact, or #899's test package) into any folder. It must hold
@@ -201,8 +205,8 @@ conversion toolchain).
 Not done here yet: what `run.sh` computes in Bash (the scaled output's
 render size, `PS_SAVE_LOG`'s own log files, MangoHud, the HOST quirk
 environment, online play's helpers), asking `psport.exe --list-features`
-for its table, downloads of the package, and the Vulkan validation layer
-(only a system-wide one is found). Bloodborne's mods are linked with
+for its table, and the Vulkan validation layer (only a system-wide one is
+found). Bloodborne's mods are linked with
 symbolic links, which need Developer Mode on Windows.
 
 Only a real Windows can test it (#440): picking the folder (a folder
@@ -212,6 +216,97 @@ library's `psport/logs`), Detener and the close shortcut ending
 `psport.exe` and anything it started, a crash landing in Fallos, the Ports
 tab and the channel choice showing their reason, and SmartScreen's prompt
 on a downloaded `psport.exe`.
+
+## psport's Windows package (download, check, update)
+
+Done on `feat/917-windows-psport-download` (decisions #918, #919, #921;
+the owner's rule of 2026-10-24: versions are published only by tag).
+Only the Release channel exists here: psport's CI attaches
+`psport-windows-vX.Y.Z-x86_64.zip` and `psport-windows-vX.Y.Z-x86_64.zip.sha256`
+(`<sha256>  <name>`, as the Linux bundle's) to each tag's release (#920).
+Testing builds will be compiled locally later with an encapsulated
+toolchain (#922); nothing per commit is downloaded.
+
+`decanter_ps::package` (compiled everywhere, offered where `PsDownloads`
+is):
+
+- **Listing**: `offers` asks the [releases API](https://docs.github.com/en/rest/releases/releases#list-releases)
+  of `Port::github_repo` anonymously (`yerasuu/psport`, 30 per page, the
+  `X-GitHub-Api-Version: 2022-11-28` header, a 8 MiB cap, 403 with
+  `x-ratelimit-remaining: 0` or 429 read as the rate limit). A release
+  counts when its tag is `vX.Y.Z` as Linux accepts it
+  (`prebuilt::valid_tag`, no pre-release suffix) without leading zeros,
+  it is neither a draft nor marked as a pre-release, and it
+  lists both assets by their exact names, the zip between 1 byte and
+  `bundle::MAX_BYTES` (512 MiB). Newest first by version number.
+- **Download**: the `.sha256` comes from `<release downloads>/<tag>/` (the
+  same URL and `DECANTER_PS_BUNDLES` override as the Linux bundles) and
+  must be one `<64 lowercase hex>  <asset>` line; the zip is streamed to
+  `psport-windows/.<tag>.<pid>.zip` with the size the release lists checked
+  against `Content-Length`, while it arrives and at the end, then the
+  SHA-256 (`bundle::download`, shared with Linux, which passes no size).
+  Redirects are followed only over HTTPS to `github.com`,
+  `objects.githubusercontent.com` and `release-assets.githubusercontent.com`
+  ([where release assets are served from](https://docs.github.com/en/actions/reference/runners/self-hosted-runners)),
+  at most five; Linux keeps reqwest's default policy. An install holds a
+  lock file, `.<tag>.<pid>.lock`, and starts by removing what other
+  processes' installs left unless their lock is still held.
+- **Names before extracting**: `tar -t -f` and `tar -t -v -f` list the
+  archive (the same entries in the same order); every kind must be `-` or
+  `d` (no links or special files), every name one top folder plus
+  components of ASCII letters, digits and `._+-` (so no `..`, absolute
+  paths, drive letters, `\`, `:` or streams), no trailing dot, none of
+  Windows' device names (`CON`, `PRN`, `AUX`, `NUL`, `COM0`–`COM9`,
+  `LPT0`–`LPT9`, with any extension;
+  [naming files](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file)),
+  no name twice regardless of case, at most 4096 entries; the size column of
+  `tar -tv` gives each file's size, at most 256 MiB each and 1 GiB together.
+- **Extraction**: Windows' own `%SystemRoot%\System32\tar.exe` (libarchive's
+  bsdtar, which reads zip: [tar](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/tar),
+  [bsdtar](https://man.freebsd.org/cgi/man.cgi?query=bsdtar)), by full path
+  so Git's GNU tar on `PATH` is never taken, without a console window
+  (`CREATE_NO_WINDOW`), into `psport-windows/.<tag>.<pid>/`. What lands
+  there must be the listed files exactly, of their listed sizes, plain
+  files and folders (a link or junction is refused), and: `.exe` only `psport.exe`,
+  `psport-gpu-capabilities.exe` and `psport-windows-probe.exe`; `.dll`
+  only `libpsport-gpu.dll` and those `BUILD-INFO.txt` lists under
+  `DLLs included (N):` (N of them, each present); both `.exe` and `.dll`
+  beside `psport.exe`; `psport-probe.bat` and `psport-probe.ps1` the only
+  scripts; everything else `.txt`, `.md`, `.json` or `.ini`. The DLL list
+  is trusted from the release itself: what vouches for those DLLs is
+  psport's CI, which builds and lists them, and the release's SHA-256,
+  not an independent list in decanter. Then the folder is renamed to `<library>\psport\psport-windows\<tag>\` and
+  `<tag>.json` beside it records the tag, asset, SHA-256, size and
+  download time; only a folder with a record that reads back is used,
+  and one is never replaced: an install finding it there keeps it.
+  Nothing from the package runs during any of this.
+- Linux and macOS run the same checks with `bsdtar` and `/usr/bin/tar`
+  (both libarchive), though only Windows installs packages.
+
+In the app (`state/ps/package.rs`, `views/ps/package.rs`): PS › Ports shows
+the reason `PsBuilds` is off and a *psport para Windows* card: the version
+in use, the releases with their date and size and the versions in the
+library, to download, use (`psport_windows_version` in the port settings)
+or delete (never the one in use, nor any while a game runs). From the
+first time the section opens, and every 30 minutes or with *Buscar
+actualizaciones*, it lists the releases and downloads and uses the newest
+unless the user chose another version (`psport_windows_pinned`) or a
+psport.exe folder, both read again from the settings once the download
+ends. A release whose automatic install failed is left alone by the
+periodic check until a newer one appears or the user checks by hand. Jugar runs the chosen psport.exe folder when there is
+one, else the version in use, downloading the newest release first when
+the library has none.
+
+To try a package before CI publishes one: serve a folder laid out as
+`<tag>/<asset>` (the zip and its `.sha256`) and point
+`DECANTER_PS_BUNDLES` at it (`http://` or `file://`); listing still asks
+GitHub, so the tag must also be a published release.
+
+Only a real Windows can test it, once a release carries the package:
+the Ports card listing it, the download with its progress, the folder and
+record in the library, Jugar from it, *Usar* and *Borrar* on two versions,
+a failed check (offline) showing its message, and SmartScreen on the
+downloaded `psport.exe`.
 
 ## Decanter: medium effort
 

@@ -17,6 +17,7 @@ common.setup.psport_key_stick: a psport build that lists key_stick
 common.setup.psport_online: a psport build that lists online_module
 common.reported_by_ps: 'The PS port doesn''t support it: %{why}'
 common.not_ported_yet_ps: 'psport doesn''t support %{system} yet'
+common.downloads_instead_ps: 'psport isn''t compiled on %{system} yet: the stable release channel downloads its ready-made package instead'
 common.testing: Testing
 game_tools.title: Game tools
 game_tools.intro: They apply the next time you start the game.

@@ -75,7 +75,16 @@ impl Ps {
                     through_toolchain(&this, &root, port, &game, &profile_id, cache_dir, prepared, cx).await
                 }
                 #[cfg(windows)]
-                None => super::direct::launch(&root, port, &game, &profile_id, cache_dir.as_deref(), cx).await,
+                None => {
+                    let request = super::direct::Request {
+                        root: &root,
+                        port,
+                        game: &game,
+                        profile_id: &profile_id,
+                        cache_dir: cache_dir.as_deref(),
+                    };
+                    super::direct::launch(&this, request, cx).await
+                }
                 #[cfg(not(windows))]
                 None => Err(Text::new("ps.errors.builds_unavailable")),
             };

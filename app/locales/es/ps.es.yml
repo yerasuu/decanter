@@ -17,7 +17,7 @@ ps.jobs.update: actualizar
 ps.jobs.reset: restablecer
 ps.jobs.rollback: volver atrás
 ps.errors.environment: 'No se pudo preparar el entorno: %{error}'
-ps.errors.builds_unavailable: En este sistema decanter no descarga ni compila ports de PS
+ps.errors.builds_unavailable: En este sistema decanter no compila ports de PS
 ps.ports.title: Ports
 ps.ports.description: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando bastan y con nix cuando no. Una versión estable publicada como paquete funciona sin ninguno de los dos.
 ps.ports.stage.idle: Se prepara la primera vez que haga falta
@@ -74,6 +74,32 @@ ps.ports.fallback.retry: Reintentar la actualización
 ps.ports.errors.record_build: 'No se pudo registrar la compilación: %{error}'
 ps.ports.errors.download: 'No se pudo descargar nix-portable: %{error}'
 ps.ports.errors.checksum: La descarga de nix-portable no coincide con su suma fijada
+ps.package.title: psport para Windows
+ps.package.description: 'Cada versión etiquetada de psport trae su paquete para Windows: decanter lo descarga, lo comprueba con la suma y el tamaño de la versión y lo guarda en la biblioteca. Jugar usa la versión en uso, que sigue a la más reciente salvo que elijas otra.'
+ps.package.in_use: 'En uso: %{tag}'
+ps.package.in_use_pinned: 'En uso: %{tag}, elegida por ti: las actualizaciones no la cambian'
+ps.package.in_use_folder: 'En uso: la carpeta de psport.exe elegida en Ajustes, %{dir}'
+ps.package.none_in_use: Aún no hay ninguna en la biblioteca; Jugar descarga antes la versión más reciente
+ps.package.downloading: 'Descargando %{tag}: %{size}'
+ps.package.list_error: 'No se pudieron consultar las versiones: %{error}'
+ps.package.no_releases: Ninguna versión de psport trae todavía paquete para Windows
+ps.package.published: 'publicada el %{date}'
+ps.package.downloaded: 'descargada el %{date}'
+ps.package.badge_in_use: En uso
+ps.package.badge_downloaded: Descargada
+ps.package.download: Descargar
+ps.package.use: Usar
+ps.package.delete: Borrar
+ps.package.errors.not_published: psport no publica paquete para Windows en este sistema
+ps.package.errors.offline: no hay conexión con GitHub
+ps.package.errors.rate_limited: GitHub está limitando las consultas anónimas; vuelve a intentarlo en un rato
+ps.package.errors.no_checksum: La versión %{tag} no trae suma de comprobación para su paquete de Windows, así que no se usa
+ps.package.errors.checksum: 'La descarga no coincide con su versión: %{error}'
+ps.package.errors.layout: 'No se usa el paquete: contiene %{what}'
+ps.package.errors.failed: 'No se pudo obtener el paquete: %{error}'
+ps.package.errors.busy: 'Se está descargando %{tag}; vuelve a intentarlo cuando termine'
+ps.package.errors.delete_in_use: No se puede borrar la versión en uso, ni ninguna mientras haya un juego abierto
+ps.package.errors.delete: 'No se pudo borrar la versión: %{error}'
 ps.failures.title: Fallos
 ps.failures.description: Cierres, STOP, errores y salidas fallidas de cada partida de este perfil, con la salida de alrededor y el commit del port. Se guardan entre sesiones.
 ps.failures.empty: Sin fallos registrados.
@@ -112,7 +138,7 @@ ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. U
 ps.settings.psport_folder.title: Carpeta de psport.exe
 ps.settings.psport_folder.none: Sin carpeta
 ps.settings.psport_folder.pick_title: Carpeta con psport.exe
-ps.settings.psport_folder.description: 'La carpeta donde descomprimiste la compilación de psport para Windows: tiene que contener psport.exe y libpsport-gpu.dll. decanter arranca psport.exe desde ahí, sin nada en medio.'
+ps.settings.psport_folder.description: 'Opcional: una carpeta donde descomprimiste tú una compilación de psport para Windows, con psport.exe y libpsport-gpu.dll. Mientras haya una elegida, Jugar arranca su psport.exe directamente en vez de la versión descargada en Ports; olvídala para volver a esa.'
 ps.settings.psport_folder.errors.relative: '%{dir} no es una ruta completa sin ..'
 ps.settings.psport_folder.errors.not_local: '%{dir} no está en una unidad de este equipo'
 ps.settings.psport_folder.errors.not_a_folder: '%{dir} no es una carpeta: %{error}'
@@ -163,8 +189,10 @@ ps.games.library_error: 'No se pudo usar la carpeta de la biblioteca: %{error}'
 ps.layouts.read_error: 'No se pudieron leer los esquemas: %{error}'
 ps.play.prepare_error: 'No se pudo preparar %{name}: %{error}'
 ps.play.direct.port_unavailable: '%{name} solo funciona con sus herramientas de compilación, y este sistema no las tiene'
-ps.play.direct.no_folder: Elige antes la carpeta de psport.exe en PS › Ajustes
 ps.play.direct.bad_folder: 'No se puede usar la carpeta de psport.exe: %{error}'
+ps.play.package.downloading: 'Descargando psport %{tag} para Windows antes de abrir el juego…'
+ps.play.package.none: Ninguna versión de psport trae todavía paquete para Windows; elige una carpeta de psport.exe en PS › Ajustes
+ps.play.package.unavailable: 'No hay psport con el que jugar: %{error}'
 ps.play.mods_error: 'No se pudieron preparar los mods y los iconos: %{error}'
 ps.play.convert_prepare_error: 'No se pudo preparar la conversión: %{error}'
 ps.play.convert_failed: La conversión ha fallado; mira su registro

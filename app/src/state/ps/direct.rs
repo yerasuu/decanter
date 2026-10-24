@@ -1,5 +1,6 @@
-//! Playing on Windows: the `psport.exe` of the folder picked in the section's Ajustes, started
-//! directly in a session of its own (a Job Object), with no toolchain, bash or `run.sh`.
+//! Playing on Windows: the `psport.exe` of the folder picked in the section's Ajustes, else of the
+//! Windows package in use ([`super::package`]), started directly in a session of its own (a Job
+//! Object), with no toolchain, bash or `run.sh`.
 
 use std::path::{Path, PathBuf};
 
@@ -10,23 +11,36 @@ use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::Job;
 use decanter_runtime::Launch;
-use gpui::{AppContext as _, AsyncApp, Context, Entity};
+use gpui::{AppContext as _, AsyncApp, Context, Entity, WeakEntity};
 
 use super::Ps;
 use super::jobs::Launcher;
 use super::play::launch_inputs;
 use crate::i18n::Text;
 
+/// What a direct launch is for: the game, whose profile plays it, and where its caches go.
+pub(super) struct Request<'launch> {
+    pub(super) root: &'launch Root,
+    pub(super) port: Port,
+    pub(super) game: &'launch Game,
+    pub(super) profile_id: &'launch str,
+    pub(super) cache_dir: Option<&'launch Path>,
+}
+
 /// `psport.exe` with the game's environment and `run.sh`'s arguments, ready to spawn, and the
-/// facts for its log's header.
+/// facts for its log's header. `this` hears of a first download of the package.
 pub(super) async fn launch(
-    root: &Root,
-    port: Port,
-    game: &Game,
-    profile_id: &str,
-    cache_dir: Option<&Path>,
+    this: &WeakEntity<Ps>,
+    request: Request<'_>,
     cx: &mut AsyncApp,
 ) -> Result<(Launcher, Vec<(&'static str, String)>), Text> {
+    let Request {
+        root,
+        port,
+        game,
+        profile_id,
+        cache_dir,
+    } = request;
     // AnyPS5 converts a game with its own tools first, which only its toolchain has.
     if port != Port::Bbport {
         tracing::warn!(port = port.name(), title_id = %game.title_id, "this port does not run without its toolchain here");
@@ -39,9 +53,12 @@ pub(super) async fn launch(
             return Err(err.localized());
         }
     };
-    let Some(dir) = inputs.settings.text(FOLDER_KEY).map(PathBuf::from) else {
-        tracing::info!(title_id = %game.title_id, "no psport.exe folder picked");
-        return Err(Text::new("ps.play.direct.no_folder"));
+    let dir = match inputs.settings.text(FOLDER_KEY) {
+        Some(dir) => PathBuf::from(dir),
+        None => match super::package::for_play(this, root, &inputs.settings, cx).await {
+            Ok(dir) => dir,
+            Err(err) => return Err(err),
+        },
     };
     // Checked again at each launch: the folder may have been moved or emptied since it was picked.
     let folder = match cx.background_spawn(async move { Folder::try_new(dir) }).await {

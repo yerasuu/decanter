@@ -174,6 +174,7 @@ fn reason_text(reason: &Reason) -> SharedString {
         Reason::NeedsSetup(what) => t!("common.needs_setup", what = setup_text(what)),
         Reason::ReportedBy(Source::Psport, why) => t!("common.reported_by_ps", why = why),
         Reason::NotPortedYet(Source::Psport) => t!("common.not_ported_yet_ps", system = system_name()),
+        Reason::DownloadsInstead(Source::Psport) => t!("common.downloads_instead_ps", system = system_name()),
     }
     .into()
 }

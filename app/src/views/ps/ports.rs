@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 use decanter_core::capabilities::Feature;
+use decanter_ps::bbport::direct;
 use decanter_ps::channel::Channel;
 use decanter_ps::paths;
 use decanter_ps::port::Port;
@@ -36,6 +37,9 @@ impl PortsView {
             cx.notify();
         })
         .detach();
+        if direct::IN_USE {
+            ps.update(cx, Ps::package_reload);
+        }
         let mut this = Self {
             ps,
             logs: Vec::new(),
@@ -198,7 +202,9 @@ impl Render for PortsView {
         let page = div().flex().flex_col().gap_4().child(theme::h2(t!("ps.ports.title")));
         // Where decanter doesn't build ports, its checkouts and builds have nothing to show.
         let page = if let Some(reason) = Caps::get(cx).reason(Feature::PsBuilds) {
-            page.child(theme::muted(reason))
+            let package = (direct::IN_USE && Caps::get(cx).is_offered(Feature::PsDownloads))
+                .then(|| Caps::get(cx).mark(Feature::PsDownloads, super::package::card(&self.ps, cx)));
+            page.child(theme::muted(reason)).children(package)
         } else {
             let cards: Vec<AnyElement> = Port::ALL.into_iter().map(|port| self.card(port, cx)).collect();
             page.child(theme::muted(t!("ps.ports.description"))).children(cards)

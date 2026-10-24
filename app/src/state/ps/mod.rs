@@ -13,6 +13,7 @@ mod fallback;
 mod fsr;
 mod jobs;
 mod moving;
+mod package;
 mod play;
 mod ports;
 mod vk_layer;
@@ -32,6 +33,7 @@ pub use channel::Track;
 pub use fallback::Fallback;
 pub use fsr::DllOutcome;
 pub use jobs::{JobKey, label as job_label, target_name as job_target};
+use package::PackageState;
 pub use play::{failure_message, online_error};
 pub use ports::{BuildOrigin, PortState, Stage};
 pub use vk_layer::unavailable_text as vk_layer_unavailable_text;
@@ -69,6 +71,8 @@ pub struct Ps {
     /// until they land.
     moving: HashSet<PathBuf>,
     ports: HashMap<Port, PortState>,
+    /// Where `psport.exe` runs directly ([`decanter_ps::bbport::direct::IN_USE`]).
+    package: PackageState,
 }
 
 struct PsGlobal(Entity<Ps>);
@@ -99,10 +103,14 @@ impl Ps {
                 launching: HashSet::new(),
                 moving: HashSet::new(),
                 ports: HashMap::new(),
+                package: PackageState::default(),
             };
             this.sync_profile(cx);
             if Caps::get(cx).is_offered(Feature::PsBuilds) {
                 Self::start_update_loop(cx);
+            }
+            if decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsDownloads) {
+                Self::start_package_loop(cx);
             }
             this
         });
