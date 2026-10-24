@@ -98,6 +98,8 @@ pub fn steam_root_candidates() -> impl Iterator<Item = PathBuf> {
 /// `SteamPath` under `HKEY_CURRENT_USER\Software\Valve\Steam`, read with
 /// `reg` because the registry has no safe binding in the dependencies.
 /// Only an absolute path is taken, since it ends up under `userdata`.
+/// Steam stores it with forward slashes; they become backslashes so that
+/// paths joined onto it (shortcut icon, grid art) don't mix separators.
 fn registered_steam_path() -> Option<PathBuf> {
     let output = Command::new("reg")
         .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
@@ -108,7 +110,7 @@ fn registered_steam_path() -> Option<PathBuf> {
     let listing = String::from_utf8_lossy(&output.stdout);
     let path = PathBuf::from(listing.lines().find_map(|line| {
         let (name, rest) = line.trim().split_once("REG_SZ")?;
-        (name.trim() == "SteamPath").then(|| rest.trim())
+        (name.trim() == "SteamPath").then(|| rest.trim().replace('/', "\\"))
     })?);
     path.is_absolute().then_some(path)
 }
