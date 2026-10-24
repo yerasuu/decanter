@@ -1,12 +1,13 @@
 //! Windows: a session is a Job Object holding the process decanter started
-//! and every process started from it, and a stop is `taskkill` over them.
+//! and every process started from it, and a stop is `taskkill` over them,
+//! ending with the job itself.
 
 use std::path::Path;
 use std::process::Stdio;
 
 use futures_util::future::join_all;
 use tokio::process::{Child, Command};
-use win32job::Job;
+use win32job::{ExtendedLimitInfo, Job};
 
 use super::Remaining;
 
@@ -22,8 +23,13 @@ pub(super) struct Tracked {
     pid: u32,
 }
 
-/// The processes a stop asks to close.
-pub(super) type Targets = Vec<u32>;
+/// What a stop reaches.
+pub(super) struct Targets {
+    /// Only on the forced stop, which closes it to end everything in it.
+    job: Option<Job>,
+    /// The processes asked to close, or ended when forced.
+    pids: Vec<u32>,
+}
 
 impl Tracked {
     /// Puts `child` in a job of its own, or follows it alone when Windows won't.
@@ -31,6 +37,33 @@ impl Tracked {
         Self {
             job: join_job(child, key),
             pid,
+        }
+    }
+
+    /// The session's processes now, or the one decanter started when the
+    /// job can't be listed, so a stop still reaches the tree it heads.
+    fn pids(&self) -> Vec<u32> {
+        let Some(job) = self.job.as_ref() else {
+            return vec![self.pid];
+        };
+        match job.query_process_id_list() {
+            Ok(pids) => pids.into_iter().filter_map(|pid| u32::try_from(pid).ok()).collect(),
+            Err(err) => {
+                tracing::warn!(pid = self.pid, error = ?err, "cannot list the session's processes");
+                vec![self.pid]
+            }
+        }
+    }
+
+    /// [`Tracked::targets`] for the forced stop, with the job handed over so
+    /// closing it ends the session whatever `taskkill` manages. The session
+    /// is no longer followed past the process decanter started, since nothing
+    /// is left in a job once it is closed.
+    pub(super) fn release(&mut self) -> Targets {
+        let pids = self.pids();
+        Targets {
+            job: self.job.take(),
+            pids,
         }
     }
 
@@ -50,18 +83,11 @@ impl Tracked {
         }
     }
 
-    /// The session's processes now, or the one decanter started when the
-    /// job can't be listed, so a stop still reaches the tree it heads.
+    /// The session's processes now, for a stop that asks them to close.
     pub(super) fn targets(&self) -> Targets {
-        let Some(job) = self.job.as_ref() else {
-            return vec![self.pid];
-        };
-        match job.query_process_id_list() {
-            Ok(pids) => pids.into_iter().filter_map(|pid| u32::try_from(pid).ok()).collect(),
-            Err(err) => {
-                tracing::warn!(pid = self.pid, error = ?err, "cannot list the session's processes");
-                vec![self.pid]
-            }
+        Targets {
+            job: None,
+            pids: self.pids(),
         }
     }
 }
@@ -75,7 +101,26 @@ pub(super) fn command(executable: &Path) -> Command {
 /// Asks the processes and their children to close (`taskkill` without
 /// `/F` sends their windows a close), or ends them when `force`d.
 pub(super) async fn close(targets: Targets, force: bool) {
-    join_all(targets.into_iter().map(|pid| taskkill(pid, force))).await;
+    if let Some(job) = targets.job {
+        terminate(job);
+    }
+    join_all(targets.pids.into_iter().map(|pid| taskkill(pid, force))).await;
+}
+
+/// Ends every process in `job` by closing decanter's only handle to it once
+/// it kills on close
+/// ([`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information)),
+/// because a forced `taskkill` was seen leaving a game running (#943).
+fn terminate(job: Job) {
+    let mut limits = ExtendedLimitInfo::new();
+    limits.limit_kill_on_job_close();
+    match job.set_extended_limit_info(&limits) {
+        Ok(()) => tracing::debug!("ending the session's job"),
+        Err(err) => {
+            tracing::warn!(error = ?err, "cannot make the session's job end its processes; relying on taskkill");
+        }
+    }
+    drop(job);
 }
 
 /// A job holding `child` and, from then on, every process it starts, or

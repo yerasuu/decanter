@@ -60,6 +60,12 @@ impl Tracked {
         Self { group }
     }
 
+    /// The group for the forced stop too: SIGKILL to it already ends the
+    /// whole session.
+    pub(super) const fn release(&mut self) -> Targets {
+        self.group
+    }
+
     /// Whether anything is left in the group once the process decanter
     /// started has exited: signal 0 checks for members without sending
     /// anything ([POSIX `kill`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/kill.html)).

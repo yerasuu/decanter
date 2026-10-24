@@ -338,11 +338,19 @@ pub fn is_live(key: &str) -> bool {
 pub async fn stop(key: &str) {
     tracing::debug!(key, "stopping session");
     for attempt in 0..=POLITE_STOP_ATTEMPTS {
-        let Some(targets) = live_lock().get(key).map(Tracked::targets) else {
+        let is_forced = attempt == POLITE_STOP_ATTEMPTS;
+        let reached = live_lock().get_mut(key).map(|tracked| {
+            if is_forced {
+                tracked.release()
+            } else {
+                tracked.targets()
+            }
+        });
+        let Some(targets) = reached else {
             tracing::debug!(key, "session has exited");
             return;
         };
-        os::close(targets, attempt == POLITE_STOP_ATTEMPTS).await;
+        os::close(targets, is_forced).await;
         sleep(STOP_POLL_INTERVAL).await;
     }
     if is_live(key) {
