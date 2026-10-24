@@ -2,6 +2,7 @@ ps.tabs.games: Juegos
 ps.tabs.ports: Ports
 ps.tabs.failures: Fallos
 ps.tabs.settings: Ajustes
+ps.unsupported.title: 'PS: no soportado en este sistema por ahora'
 ps.log.running: '%{label}: en curso'
 ps.log.finished: '%{label}: terminado'
 ps.log.exited: '%{label}: terminó con código %{code}'

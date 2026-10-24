@@ -101,6 +101,9 @@ pub enum Reason {
     NeedsSetup(&'static str),
     /// What a component said about itself, in its own words.
     ReportedBy(Source, String),
+    /// A component that hasn't been ported to this system yet: what needs
+    /// it is shown with this, rather than left out.
+    NotPortedYet(Source),
 }
 
 #[derive(Clone, Copy, Debug)]

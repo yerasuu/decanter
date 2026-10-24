@@ -123,6 +123,8 @@ impl Shell {
             Page::Downloads => {
                 self.downloads.get_or_insert_with(|| cx.new(DownloadsView::new));
             }
+            // Where psport doesn't run the page says so, and nothing PS is loaded behind it.
+            Page::Ps if !Caps::get(cx).is_offered(Feature::PsSection) => {}
             Page::Ps => {
                 self.ps.get_or_insert_with(|| cx.new(PsView::new));
                 let session = AppState::get(cx).session.clone();
@@ -340,7 +342,7 @@ impl Shell {
         )
     }
 
-    fn page_body(&self) -> AnyElement {
+    fn page_body(&self, cx: &App) -> AnyElement {
         // Cached: a page re-renders when it notifies, not every time a
         // hover or a tick elsewhere in the window redraws the shell.
         let page = || StyleRefinement::default().size_full();
@@ -355,7 +357,7 @@ impl Shell {
                 |view| view.cached(page()).into_any_element(),
             ),
             Page::Ps => self.ps.clone().map_or_else(
-                || div().into_any_element(),
+                || super::ps::unsupported(cx),
                 |view| view.cached(page()).into_any_element(),
             ),
             Page::Settings => self.settings.clone().map_or_else(
@@ -382,7 +384,8 @@ impl Render for Shell {
             .is_some();
         let installing = AppState::get(cx).background.read(cx).installing.len();
         let ps_link = self.nav_link("nav-ps", "PS", Page::Ps, cx);
-        let ps_link = Caps::get(cx).gate(Feature::PsSection, ps_link);
+        // Every system shows the section, marked while it is being tested there.
+        let ps_link = Caps::get(cx).mark(Feature::PsSection, ps_link);
         let downloads_link = self
             .nav_link("nav-downloads", t!("chrome.nav.downloads"), Page::Downloads, cx)
             .when(installing > 0, |link| {
@@ -415,7 +418,7 @@ impl Render for Shell {
                     .flex_none()
                     .gap_1()
                     .child(self.nav_link("nav-library", t!("chrome.nav.library"), Page::Library, cx))
-                    .children(ps_link)
+                    .child(ps_link)
                     .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
                     .child(downloads_link)
                     .child(self.nav_link("nav-settings", t!("settings.title"), Page::Settings, cx)),
@@ -433,7 +436,7 @@ impl Render for Shell {
                     .child(chrome::window_controls(Rc::clone(&self.on_close))),
             );
 
-        let body = self.page_body();
+        let body = self.page_body(cx);
 
         div()
             .size_full()

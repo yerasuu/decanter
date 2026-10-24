@@ -121,21 +121,21 @@ impl Caps {
         }
     }
 
-    /// `element`, marked when it is being tested; nothing when unavailable.
-    pub fn gate(&self, feature: Feature, element: impl IntoElement) -> Option<AnyElement> {
+    /// `element` whatever the support, marked when it is being tested: for what stays shown and
+    /// says why itself when unavailable.
+    pub fn mark(&self, feature: Feature, element: impl IntoElement) -> AnyElement {
         match self.support(feature) {
-            Support::Available => Some(element.into_any_element()),
-            Support::Testing => Some(with_testing_badge(element)),
-            Support::Unavailable(_) => None,
+            Support::Testing => with_testing_badge(element),
+            Support::Available | Support::Unavailable(_) => element.into_any_element(),
         }
     }
 
-    /// [`Self::gate`], with why it's unavailable in its place, muted.
+    /// `element`, marked when it is being tested, with why it's unavailable in its place, muted.
     pub fn gate_or_reason(&self, feature: Feature, element: impl IntoElement) -> AnyElement {
         self.gate_or(feature, element, self.reason(feature).unwrap_or_default())
     }
 
-    /// [`Self::gate`], with `instead` in its place, muted, when unavailable.
+    /// `element`, marked when it is being tested, with `instead` in its place, muted, when unavailable.
     pub fn gate_or(&self, feature: Feature, element: impl IntoElement, instead: impl Into<SharedString>) -> AnyElement {
         match self.support(feature) {
             Support::Available => element.into_any_element(),
@@ -173,8 +173,19 @@ fn reason_text(reason: &Reason) -> SharedString {
         Reason::NotOnThisSystem => t!("common.unavailable_here"),
         Reason::NeedsSetup(what) => t!("common.needs_setup", what = setup_text(what)),
         Reason::ReportedBy(Source::Psport, why) => t!("common.reported_by_ps", why = why),
+        Reason::NotPortedYet(Source::Psport) => t!("common.not_ported_yet_ps", system = system_name()),
     }
     .into()
+}
+
+/// This system's name as its users know it.
+fn system_name() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    }
 }
 
 /// `what` for the UI: decanter's own needs translated, while the names decanter-core gives (a

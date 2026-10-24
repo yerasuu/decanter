@@ -132,7 +132,6 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::Scopes
         | Feature::SelfUpdate
         | Feature::SteamExport
-        | Feature::PsSection
         | Feature::PsDownloads
         | Feature::PsPlay
         | Feature::PsMenuBinding
@@ -140,5 +139,6 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PsOnline
         | Feature::MangoHud
         | Feature::GameMode => Support::Unavailable(Reason::NotOnThisSystem),
+        Feature::PsSection => Support::Unavailable(Reason::NotPortedYet(crate::capabilities::Source::Psport)),
     }
 }

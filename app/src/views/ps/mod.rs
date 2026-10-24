@@ -9,10 +9,13 @@ mod online;
 mod ports;
 mod settings;
 
-use gpui::{AnyElement, Context, Entity, IntoElement, Window, div, prelude::*, px};
+use decanter_core::capabilities::Feature;
+use gpui::{AnyElement, App, Context, Entity, IntoElement, Window, div, prelude::*, px, relative};
 use rust_i18n::t;
 
+use crate::capabilities::Caps;
 use crate::state::Ps;
+use crate::theme;
 use failures::FailuresView;
 use games::GamesView;
 use ports::PortsView;
@@ -96,4 +99,26 @@ impl Render for PsView {
             .child(tabs)
             .child(div().flex_1().min_h_0().child(body))
     }
+}
+
+/// The section where psport doesn't run yet: the same page, saying why, rather than no section.
+pub fn unsupported(cx: &App) -> AnyElement {
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .w(px(480.))
+                .max_w(relative(0.8))
+                .flex()
+                .flex_col()
+                .items_center()
+                .text_center()
+                .gap_3()
+                .child(theme::h1(t!("ps.unsupported.title")))
+                .children(Caps::get(cx).reason(Feature::PsSection).map(theme::muted)),
+        )
+        .into_any_element()
 }
