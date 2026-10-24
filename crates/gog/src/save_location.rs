@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use decanter_core::GameSystem;
 use serde::Deserialize;
 
 use crate::cloud_saves::Result;
@@ -26,60 +27,94 @@ pub struct SaveLocation {
     pub path: PathBuf,
 }
 
-/// The Windows account folders GOG's save templates are relative to.
+/// The account folders GOG's save templates are relative to, for the
+/// system whose build the game is.
 pub struct UserFolders {
-    /// `<?DOCUMENTS?>`.
-    documents: PathBuf,
-    /// `<?APPLICATION_DATA_LOCAL?>`.
-    local: PathBuf,
-    /// `<?APPLICATION_DATA_LOCAL_LOW?>`.
-    local_low: PathBuf,
-    /// `<?APPLICATION_DATA_ROAMING?>`.
-    roaming: PathBuf,
-    /// `<?SAVED_GAMES?>`.
-    saved_games: PathBuf,
+    /// Each `<?VAR?>` but `INSTALL`, and where it points.
+    folders: Vec<(&'static str, PathBuf)>,
+    /// Where Galaxy keeps a client's default storage, under
+    /// `GOG.com/Galaxy/Applications/<client id>/Storage`.
+    galaxy_storage: PathBuf,
+    /// Whose section of remote-config applies.
+    system: GameSystem,
 }
 
 impl UserFolders {
+    /// A Windows account's folders, by their template names.
+    fn windows(documents: PathBuf, local: PathBuf, local_low: PathBuf, roaming: PathBuf, saved_games: PathBuf) -> Self {
+        Self {
+            galaxy_storage: local.clone(),
+            folders: vec![
+                ("DOCUMENTS", documents),
+                ("APPLICATION_DATA_ROAMING", roaming),
+                ("APPLICATION_DATA_LOCAL", local),
+                ("APPLICATION_DATA_LOCAL_LOW", local_low),
+                ("SAVED_GAMES", saved_games),
+            ],
+            system: GameSystem::Windows,
+        }
+    }
+
     /// Wine's layout for `steamuser`, the account Proton runs every game as.
     #[cfg(proton)]
     #[inline]
     #[must_use]
     pub fn in_prefix(drive_c: &Path) -> Self {
         let users = drive_c.join("users").join("steamuser");
-        Self {
-            documents: users.join("Documents"),
-            local: users.join("AppData/Local"),
-            local_low: users.join("AppData/LocalLow"),
-            roaming: users.join("AppData/Roaming"),
-            saved_games: users.join("Saved Games"),
-        }
+        Self::windows(
+            users.join("Documents"),
+            users.join("AppData/Local"),
+            users.join("AppData/LocalLow"),
+            users.join("AppData/Roaming"),
+            users.join("Saved Games"),
+        )
     }
 
-    /// The signed-in user's own folders, where Windows says they are: a
+    /// The signed-in user's own folders, where the system says they are: a
     /// Documents folder the user moved is followed, not assumed. `None`
-    /// when Windows can't name one of them.
+    /// when the system can't name one of them.
+    ///
+    /// On macOS that's Documents and `~/Library/Application Support`
+    /// ([`dirs::data_dir`]), where GOG puts Galaxy's storage too
+    /// ([Storage](https://docs.gog.com/sdk-storage/)); GOG documents no
+    /// template names, so `APPLICATION_SUPPORT` is the one Heroic reads
+    /// ([save_sync.ts](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/main/src/backend/save_sync.ts)).
     #[cfg(not(proton))]
     #[inline]
     #[must_use]
     pub fn native() -> Option<Self> {
-        let (Some(documents), Some(local), Some(roaming), Some(home)) = (
-            dirs::document_dir(),
-            dirs::data_local_dir(),
-            dirs::data_dir(),
-            dirs::home_dir(),
-        ) else {
-            return None;
-        };
-        Some(Self {
-            documents,
-            // `dirs` has no getter for LocalLow or Saved Games, so both are
-            // taken at Windows' default places; one the user moved isn't followed.
-            local_low: local.with_file_name("LocalLow"),
-            local,
-            roaming,
-            saved_games: home.join("Saved Games"),
-        })
+        match decanter_core::platform::game_system() {
+            GameSystem::MacOs => {
+                let (Some(documents), Some(support)) = (dirs::document_dir(), dirs::data_dir()) else {
+                    return None;
+                };
+                Some(Self {
+                    galaxy_storage: support.clone(),
+                    folders: vec![("DOCUMENTS", documents), ("APPLICATION_SUPPORT", support)],
+                    system: GameSystem::MacOs,
+                })
+            }
+            GameSystem::Windows => {
+                let (Some(documents), Some(local), Some(roaming), Some(home)) = (
+                    dirs::document_dir(),
+                    dirs::data_local_dir(),
+                    dirs::data_dir(),
+                    dirs::home_dir(),
+                ) else {
+                    return None;
+                };
+                // `dirs` has no getter for LocalLow or Saved Games, so both are
+                // taken at Windows' default places; one the user moved isn't followed.
+                let local_low = local.with_file_name("LocalLow");
+                Some(Self::windows(
+                    documents,
+                    local,
+                    local_low,
+                    roaming,
+                    home.join("Saved Games"),
+                ))
+            }
+        }
     }
 }
 
@@ -88,10 +123,15 @@ struct RemoteConfig {
     content: RemoteConfigContent,
 }
 
+/// Heroic reads the macOS section as `MacOS`
+/// ([gog.ts](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/main/src/common/types/gog.ts));
+/// a build without a section for a system has no cloud saves there.
 #[derive(Deserialize)]
 struct RemoteConfigContent {
-    #[serde(rename = "Windows")]
-    windows: PlatformConfig,
+    #[serde(rename = "Windows", default)]
+    windows: Option<PlatformConfig>,
+    #[serde(rename = "MacOS", default)]
+    macos: Option<PlatformConfig>,
 }
 
 #[derive(Deserialize)]
@@ -115,8 +155,9 @@ struct LocationEntry {
 
 /// Resolves this game's save locations against `install_dir` (its folder
 /// under `common/`) and `folders`, the account folders the game sees.
-/// Empty means Windows cloud saves are switched off for this build — there
-/// is nothing to auto-detect, and the caller falls back to asking the user.
+/// Empty means cloud saves are switched off for this build on the folders'
+/// system — there is nothing to auto-detect, and the caller falls back to
+/// asking the user.
 pub async fn detect(
     account_id: &str,
     product_id: &str,
@@ -154,20 +195,25 @@ pub async fn detect(
     let config: RemoteConfig = crate::achv_try!(response.json().await);
     tracing::debug!(product_id, "fetched gog remote-config");
 
-    let cloud_storage = config.content.windows.cloud_storage;
+    let platform_config = match folders.system {
+        GameSystem::Windows => config.content.windows,
+        GameSystem::MacOs => config.content.macos,
+    };
+    let Some(cloud_storage) = platform_config.map(|platform| platform.cloud_storage) else {
+        tracing::debug!(product_id, system = %folders.system, "gog remote-config has no section for this system");
+        return Ok(Vec::new());
+    };
     if !cloud_storage.enabled {
         tracing::debug!(product_id, "gog cloud saves disabled for this build");
         return Ok(Vec::new());
     }
 
-    let vars: HashMap<&str, &Path> = HashMap::from([
-        ("INSTALL", install_dir),
-        ("DOCUMENTS", folders.documents.as_path()),
-        ("APPLICATION_DATA_ROAMING", folders.roaming.as_path()),
-        ("APPLICATION_DATA_LOCAL", folders.local.as_path()),
-        ("APPLICATION_DATA_LOCAL_LOW", folders.local_low.as_path()),
-        ("SAVED_GAMES", folders.saved_games.as_path()),
-    ]);
+    let vars: HashMap<&str, &Path> = folders
+        .folders
+        .iter()
+        .map(|folder| (folder.0, folder.1.as_path()))
+        .chain([("INSTALL", install_dir)])
+        .collect();
 
     if cloud_storage.locations.is_empty() {
         // No explicit location declared: Galaxy falls back to this
@@ -176,7 +222,7 @@ pub async fn detect(
         return Ok(vec![SaveLocation {
             name: "default".to_string(),
             path: folders
-                .local
+                .galaxy_storage
                 .join("GOG.com/Galaxy/Applications")
                 .join(&build_client.client_id)
                 .join("Storage"),
