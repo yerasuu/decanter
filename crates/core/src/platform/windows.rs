@@ -1,10 +1,11 @@
 //! Windows: the known folders `dirs` knows, `fs4` for disk space, file
 //! and directory links told apart, no modes, and what it supports so far.
 
+use std::ffi::OsString;
 use std::fs::{self, Permissions};
 use std::os::windows::fs as windows_fs;
 use std::os::windows::process::CommandExt as _;
-use std::path::{Path, PathBuf};
+use std::path::{self, Path, PathBuf};
 use std::process::Command;
 use std::{env, io};
 
@@ -127,6 +128,49 @@ pub fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
     windows_fs::symlink_file(target, link)
+}
+
+/// A folder that stays the same as `target`, for a view built of others.
+///
+/// A directory junction rather than a symbolic link, since a junction needs
+/// neither Developer Mode nor elevation; it holds an absolute path and
+/// reaches only local volumes.
+///
+/// # Errors
+/// A path `cmd` would expand (one with `%`), or `mklink` failing.
+#[inline]
+pub fn link_dir(target: &Path, link: &Path) -> io::Result<()> {
+    let (to, at) = (path::absolute(target)?, path::absolute(link)?);
+    if [&to, &at]
+        .iter()
+        .any(|path| path.as_os_str().to_string_lossy().contains('%'))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("cmd would expand the % in {} or {}", at.display(), to.display()),
+        ));
+    }
+    // mklink is a cmd builtin; Windows paths can't hold a quote, so quoting
+    // each one by hand is enough, and std's own quoting doesn't suit cmd.
+    let mut command = OsString::from("/D /C mklink /J \"");
+    command.push(&at);
+    command.push("\" \"");
+    command.push(&to);
+    command.push("\"");
+    let output = Command::new("cmd")
+        .raw_arg(command)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "mklink /J {} {} failed ({}): {}",
+        at.display(),
+        to.display(),
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    )))
 }
 
 /// Games run as the Windows programs they are.

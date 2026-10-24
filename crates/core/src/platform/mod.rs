@@ -25,6 +25,6 @@ use windows as os;
 
 pub use os::{
     FolderIdentity, config_dir, default_library_dir, disk_space, executable_permissions, folder_identity, game_system,
-    legacy_data_dir, lock_dir, others_running, steam_root_candidates, support, symlink_dir, symlink_file,
+    legacy_data_dir, link_dir, lock_dir, others_running, steam_root_candidates, support, symlink_dir, symlink_file,
     system_locale,
 };

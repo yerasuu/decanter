@@ -143,6 +143,16 @@ pub fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
     symlink(target, link)
 }
 
+/// A folder that stays the same as `target`, for a view built of other
+/// folders; a symbolic link here.
+///
+/// # Errors
+/// Creating the link.
+#[inline]
+pub fn link_dir(target: &Path, link: &Path) -> io::Result<()> {
+    symlink(target, link)
+}
+
 /// # Errors
 /// Creating the link.
 #[inline]
