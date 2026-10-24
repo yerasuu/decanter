@@ -48,6 +48,15 @@ impl Port {
         }
     }
 
+    /// Its repository as `owner/name` on github.com, whose API lists the releases that carry its
+    /// Windows package ([`crate::package`]).
+    pub const fn github_repo(self) -> Option<&'static str> {
+        match self {
+            Self::Bbport => Some("yerasuu/psport"),
+            Self::AnyPs5 => None,
+        }
+    }
+
     pub fn checkout(self, root: &Root) -> PathBuf {
         let dir = match self {
             Self::Bbport => "bbport",

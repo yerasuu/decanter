@@ -1,6 +1,7 @@
 //! macOS: process groups and signals.
 
 use std::os::unix::process::ExitStatusExt as _;
+use std::path::PathBuf;
 use std::process::ExitStatus;
 
 use nix::sys::signal::{Signal, killpg};
@@ -32,3 +33,11 @@ pub fn terminate_group(pid: u32, kind: JobKind) {
 pub fn signal_of(status: ExitStatus) -> Option<(i32, bool)> {
     status.signal().map(|signal| (signal, status.core_dumped()))
 }
+
+/// The system's `tar` is libarchive's bsdtar, which reads zip archives.
+pub fn zip_tar() -> PathBuf {
+    PathBuf::from("/usr/bin/tar")
+}
+
+/// Only Windows opens a console for a console program started from a window.
+pub const fn without_console(_command: &mut Command) {}

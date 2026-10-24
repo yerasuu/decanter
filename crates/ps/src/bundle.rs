@@ -27,9 +27,9 @@ use crate::port::Port;
 const DOWNLOADS_OVERRIDE: &str = "DECANTER_PS_BUNDLES";
 
 /// About 50 MB today: the cap only stops a wrong or runaway download.
-const MAX_BYTES: u64 = 512 << 20;
+pub(crate) const MAX_BYTES: u64 = 512 << 20;
 
-const MAX_CHECKSUM_BYTES: usize = 4096;
+pub(crate) const MAX_CHECKSUM_BYTES: usize = 4096;
 
 /// What `run.sh` and decanter run, without which the folder is no bundle.
 const REQUIRED: [&str; 5] = [
@@ -50,6 +50,8 @@ pub enum Error {
     MalformedChecksum { expected: String, found: String },
     #[error("the bundle does not match its published checksum")]
     Checksum,
+    #[error("the download is {found} bytes, not the {expected} published")]
+    Size { expected: u64, found: u64 },
     #[error("tar could not extract the bundle: {0}")]
     Extract(String),
     #[error("the bundle holds {0}")]
@@ -65,7 +67,7 @@ fn asset(tag: &str) -> String {
 }
 
 /// Where the published bundles of `port` are, when its CI publishes any for this machine.
-fn downloads(port: Port) -> Option<String> {
+pub(crate) fn downloads(port: Port) -> Option<String> {
     if !platform::support(Feature::PsDownloads).is_offered() {
         return None;
     }
@@ -85,8 +87,13 @@ pub fn dir(root: &Root, port: Port, tag: &str) -> PathBuf {
     bundles(root, port).join(tag)
 }
 
-/// The file at `url`, `None` when there is none, and an error past `cap` bytes.
-async fn fetch_small(url: &str, cap: usize) -> Result<Option<Vec<u8>>, Error> {
+/// The file at `url`, `None` when there is none, and an error past `cap` bytes, following the
+/// redirects `redirect` allows.
+pub(crate) async fn fetch_small(
+    url: &str,
+    cap: usize,
+    redirect: reqwest::redirect::Policy,
+) -> Result<Option<Vec<u8>>, Error> {
     if let Some(path) = url.strip_prefix("file://") {
         return match tokio::fs::read(path).await {
             Ok(bytes) if bytes.len() > cap => Err(Error::TooLarge(bytes.len() as u64)),
@@ -96,7 +103,11 @@ async fn fetch_small(url: &str, cap: usize) -> Result<Option<Vec<u8>>, Error> {
         };
     }
     // Bounded, since every preparation of the port on Release waits on it.
-    let client = match reqwest::Client::builder().timeout(Duration::from_secs(20)).build() {
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(redirect)
+        .build()
+    {
         Ok(client) => client,
         Err(err) => return Err(err.into()),
     };
@@ -129,27 +140,41 @@ pub async fn published(port: Port, tag: &str) -> Result<Option<Published>, Error
         return Ok(None);
     };
     let expected = asset(tag);
-    let text = match fetch_small(&format!("{downloads}/{tag}/{expected}.sha256"), MAX_CHECKSUM_BYTES).await {
+    let text = match fetch_small(
+        &format!("{downloads}/{tag}/{expected}.sha256"),
+        MAX_CHECKSUM_BYTES,
+        reqwest::redirect::Policy::default(),
+    )
+    .await
+    {
         Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
         Ok(None) => return Ok(None),
         Err(err) => return Err(err),
     };
+    match checksum_of(&text, &expected) {
+        Some(sha256) => Ok(Some(Published {
+            url: format!("{downloads}/{tag}/{expected}"),
+            sha256,
+        })),
+        None => Err(Error::MalformedChecksum {
+            expected,
+            found: text.chars().take(200).collect(),
+        }),
+    }
+}
+
+/// The SHA-256 a `sha256sum` line gives for `asset`: `<sha256>  <asset>`, nothing else.
+pub(crate) fn checksum_of(text: &str, asset: &str) -> Option<String> {
     let mut parts = text.split_whitespace();
     match (parts.next(), parts.next(), parts.next()) {
         (Some(sum), Some(name), None)
             if sum.len() == 64
                 && sum.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-                && name.strip_prefix('*').unwrap_or(name) == expected =>
+                && name.strip_prefix('*').unwrap_or(name) == asset =>
         {
-            Ok(Some(Published {
-                url: format!("{downloads}/{tag}/{expected}"),
-                sha256: sum.to_owned(),
-            }))
+            Some(sum.to_owned())
         }
-        _ => Err(Error::MalformedChecksum {
-            expected,
-            found: text.chars().take(200).collect(),
-        }),
+        _ => None,
     }
 }
 
@@ -194,7 +219,16 @@ pub async fn install(
         url = published.url,
         "downloading the port's bundle"
     );
-    let installed = match download(&published.url, &archive, &published.sha256, on_download).await {
+    let installed = match download(
+        &published.url,
+        &archive,
+        &published.sha256,
+        None,
+        reqwest::redirect::Policy::default(),
+        on_download,
+    )
+    .await
+    {
         Ok(()) => unpack(&archive, &staging, tag, &target).await,
         Err(err) => Err(err),
     };
@@ -209,20 +243,27 @@ pub async fn install(
     }
 }
 
-async fn download(
+/// `size`, when the publisher gives one, is checked as the bytes arrive, before the checksum.
+pub(crate) async fn download(
     url: &str,
     archive: &Path,
     sha256: &str,
+    size: Option<u64>,
+    redirect: reqwest::redirect::Policy,
     mut on_download: impl FnMut(u64, Option<u64>),
 ) -> Result<(), Error> {
     if let Some(path) = url.strip_prefix("file://") {
-        let size = match tokio::fs::metadata(path).await {
+        let found = match tokio::fs::metadata(path).await {
             Ok(meta) => meta.len(),
             Err(err) => return Err(err.into()),
         };
-        if size > MAX_BYTES {
-            return Err(Error::TooLarge(size));
+        if found > MAX_BYTES {
+            return Err(Error::TooLarge(found));
         }
+        if let Some(expected) = size.filter(|&expected| expected != found) {
+            return Err(Error::Size { expected, found });
+        }
+        let size = found;
         let bytes = match tokio::fs::read(path).await {
             Ok(bytes) => bytes,
             Err(err) => return Err(err.into()),
@@ -239,6 +280,7 @@ async fn download(
     let client = match reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(20))
         .read_timeout(Duration::from_secs(60))
+        .redirect(redirect)
         .build()
     {
         Ok(client) => client,
@@ -257,6 +299,11 @@ async fn download(
     if let Some(total) = total.filter(|&total| total > MAX_BYTES) {
         return Err(Error::TooLarge(total));
     }
+    if let (Some(expected), Some(found)) = (size, total)
+        && expected != found
+    {
+        return Err(Error::Size { expected, found });
+    }
     let mut file = match tokio::fs::File::create(archive).await {
         Ok(file) => file,
         Err(err) => return Err(err.into()),
@@ -273,6 +320,12 @@ async fn download(
         if received > MAX_BYTES {
             return Err(Error::TooLarge(received));
         }
+        if let Some(expected) = size.filter(|&expected| received > expected) {
+            return Err(Error::Size {
+                expected,
+                found: received,
+            });
+        }
         hasher.update(&chunk);
         if let Err(err) = file.write_all(&chunk).await {
             return Err(err.into());
@@ -281,6 +334,12 @@ async fn download(
     }
     if let Err(err) = file.flush().await {
         return Err(err.into());
+    }
+    if let Some(expected) = size.filter(|&expected| received != expected) {
+        return Err(Error::Size {
+            expected,
+            found: received,
+        });
     }
     if format!("{:x}", hasher.finalize()) != sha256 {
         return Err(Error::Checksum);

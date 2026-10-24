@@ -31,6 +31,7 @@ pub mod layouts;
 pub mod learned;
 pub mod library;
 pub mod mapping;
+pub mod package;
 pub mod paths;
 mod platform;
 pub mod port;
