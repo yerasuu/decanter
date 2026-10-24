@@ -26,11 +26,11 @@ const MAX_IMAGE_BYTES: u64 = 512 << 20;
 const MAX_DLLS: usize = 256;
 /// psport's `install_dir` (`src/main/game_info.c`) takes the nearest folder above the executable
 /// holding it as the one its titles' patch files are relative to.
-const PATCHES: &str = "patches";
+pub(crate) const PATCHES: &str = "patches";
 /// Files in [`PATCHES`]; psport's checkout holds one.
-const MAX_PATCHES: usize = 64;
+pub(crate) const MAX_PATCHES: usize = 64;
 /// Any one of them.
-const MAX_PATCH_BYTES: u64 = 16 << 20;
+pub(crate) const MAX_PATCH_BYTES: u64 = 16 << 20;
 
 /// The [`PATCHES`] of the checkout in `sources` copied into `staging`, before [`folder`] fills and
 /// checks it. Blocking file I/O.

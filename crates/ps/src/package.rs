@@ -28,6 +28,7 @@ use crate::bundle;
 use crate::paths::Root;
 use crate::port::Port;
 use crate::prebuilt;
+use crate::winbuild::assemble::{MAX_PATCH_BYTES, MAX_PATCHES, PATCHES};
 
 /// The [`crate::bbport::LauncherSettings`] key the version Jugar runs is kept under.
 pub const SELECTED_KEY: &str = "psport_windows_version";
@@ -571,7 +572,8 @@ pub(crate) fn lock_install(path: &Path) -> io::Result<File> {
 
 /// The programs are the known four ([`PROGRAMS`] and [`GPU_LIBRARY`]), the DLLs the ones its
 /// `BUILD-INFO.txt` lists, every one of those there and beside `psport.exe`, the testers' scripts
-/// ([`SCRIPTS`]) the only other runnable files, and the rest texts. Blocking file I/O.
+/// ([`SCRIPTS`]) the only other runnable files, and the rest texts, besides an optional [`PATCHES`]
+/// folder of plain `.xml` files (older packages have none). Blocking file I/O.
 pub(crate) fn check_programs(top: &Path, files: &BTreeMap<String, u64>) -> Result<(), Error> {
     if !files.contains_key(BUILD_INFO) {
         return Err(Error::Layout(format!("no {BUILD_INFO}")));
@@ -583,7 +585,21 @@ pub(crate) fn check_programs(top: &Path, files: &BTreeMap<String, u64>) -> Resul
     let Some(listed) = listed else {
         return Err(Error::Layout(format!("a {BUILD_INFO} without its list of DLLs")));
     };
-    for file in files.keys() {
+    let mut patches = 0;
+    for (file, &size) in files {
+        if let Some(name) = file.strip_prefix(PATCHES).and_then(|rest| rest.strip_prefix('/')) {
+            let is_patch = !name.contains('/')
+                && name.len() > ".xml".len()
+                && name.to_ascii_lowercase().ends_with(".xml")
+                && size <= MAX_PATCH_BYTES;
+            patches += 1;
+            if !is_patch || patches > MAX_PATCHES {
+                return Err(Error::Layout(format!(
+                    "{file}, which isn't a plain .xml file of at most {MAX_PATCH_BYTES} bytes among {MAX_PATCHES} at most in {PATCHES}"
+                )));
+            }
+            continue;
+        }
         let extension = file
             .rsplit_once('.')
             .map(|(_, extension)| extension.to_ascii_lowercase())
