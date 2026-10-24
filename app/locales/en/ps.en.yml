@@ -211,6 +211,7 @@ ps.detail.tabs.log: Log
 ps.detail.hero.version: VERSION
 ps.detail.hero.status: STATUS
 ps.detail.stop: STOP
+ps.detail.stopping: STOPPING…
 ps.detail.play: PLAY
 ps.detail.preparing: PREPARING…
 ps.detail.open_folder: Open folder

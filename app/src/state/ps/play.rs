@@ -122,19 +122,34 @@ impl Ps {
         .detach();
     }
 
+    pub fn is_stopping(&self, dir: &Path) -> bool {
+        self.stopping.contains(dir)
+    }
+
     pub fn stop(&mut self, key: &JobKey, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        if let JobKey::Game(dir) = key {
+            super::direct::stop(self, dir, super::direct::Ending::Polite, cx);
+            return;
+        }
         let Some(job) = self.jobs.get(key) else {
             return;
         };
-        #[cfg(windows)]
-        if let JobKey::Game(dir) = key {
-            super::direct::stop(job, dir, cx);
-            return;
-        }
         job.update(cx, |job, cx| {
             job.stop();
             cx.notify();
         });
+    }
+
+    /// DETENER: where `psport.exe` runs in a session of its own, the session is ended at once instead of
+    /// asked to close; elsewhere the same as [`Ps::stop`].
+    pub fn end(&mut self, key: &JobKey, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        if let JobKey::Game(dir) = key {
+            super::direct::stop(self, dir, super::direct::Ending::Now, cx);
+            return;
+        }
+        self.stop(key, cx);
     }
 
     /// Builds `<base>-01.09` beside the base dump, then shows it.

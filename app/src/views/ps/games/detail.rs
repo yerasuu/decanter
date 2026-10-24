@@ -383,11 +383,13 @@ impl DetailView {
             .and_then(|port| ps.port(port))
             .is_some_and(|state| state.is_busy());
         let playable = entry.status.playable();
-        let action = if running {
+        let action = if running && ps.is_stopping(&game.dir) {
+            button("ps-stop", ButtonKind::PlaySecondary, t!("ps.detail.stopping"), true).into_any_element()
+        } else if running {
             button("ps-stop", ButtonKind::PlaySecondary, t!("ps.detail.stop"), false)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let key = key.clone();
-                    this.ps.update(cx, |ps, cx| ps.stop(&key, cx));
+                    this.ps.update(cx, |ps, cx| ps.end(&key, cx));
                 }))
                 .into_any_element()
         } else {

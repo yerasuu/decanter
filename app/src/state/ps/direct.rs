@@ -9,12 +9,11 @@ use decanter_ps::bbport::direct::{FOLDER_KEY, Folder};
 use decanter_ps::library::Game;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::process::Job;
 use decanter_runtime::Launch;
-use gpui::{AppContext as _, AsyncApp, Context, Entity, WeakEntity};
+use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 
 use super::Ps;
-use super::jobs::Launcher;
+use super::jobs::{JobKey, Launcher};
 use super::play::launch_inputs;
 use crate::i18n::Text;
 
@@ -93,17 +92,39 @@ pub(super) async fn launch(
     Ok((Launcher::Session(prepared), facts))
 }
 
-/// Asks the game's session to close, then ends it if it won't; the exit it causes reads as a stop.
-pub(super) fn stop(job: &Entity<Job>, dir: &Path, cx: &mut Context<Ps>) {
-    if !job.read(cx).is_running() {
+/// How [`stop`] ends a game's session.
+#[derive(Clone, Copy)]
+pub(super) enum Ending {
+    /// Asked to close first, so the game can save, and ended if it won't.
+    Polite,
+    /// Ended at once.
+    Now,
+}
+
+/// Stops the game's session unless a stop of it is already under way; the exit it causes reads as a
+/// stop.
+pub(super) fn stop(ps: &mut Ps, dir: &Path, ending: Ending, cx: &mut Context<Ps>) {
+    let Some(job) = ps.jobs.get(&JobKey::Game(dir.to_owned())) else {
+        return;
+    };
+    if !job.read(cx).is_running() || !ps.stopping.insert(dir.to_owned()) {
         return;
     }
-    job.update(cx, |job, cx| {
-        job.stop_requested = true;
-        cx.notify();
-    });
+    job.update(cx, |job, _| job.stop_requested = true);
+    cx.notify();
     let key = session_key(dir);
-    cx.spawn(async move |_, _| decanter_runtime::stop(&key).await).detach();
+    let dir = dir.to_owned();
+    cx.spawn(async move |this, cx| {
+        match ending {
+            Ending::Polite => decanter_runtime::stop(&key).await,
+            Ending::Now => decanter_runtime::end(&key).await,
+        }
+        let _ = this.update(cx, |this, cx| {
+            this.stopping.remove(&dir);
+            cx.notify();
+        });
+    })
+    .detach();
 }
 
 /// One session per dump folder, as one job per game.

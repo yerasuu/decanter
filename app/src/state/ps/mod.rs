@@ -72,6 +72,8 @@ pub struct Ps {
     /// Games being moved to another library folder, which can't start
     /// until they land.
     moving: HashSet<PathBuf>,
+    /// Games whose session is being stopped, so DETENER can't start a second stop meanwhile.
+    stopping: HashSet<PathBuf>,
     ports: HashMap<Port, PortState>,
     /// Where `psport.exe` runs directly ([`decanter_ps::bbport::direct::IN_USE`]).
     package: PackageState,
@@ -106,6 +108,7 @@ impl Ps {
                 jobs: HashMap::new(),
                 launching: HashSet::new(),
                 moving: HashSet::new(),
+                stopping: HashSet::new(),
                 ports: HashMap::new(),
                 package: PackageState::default(),
                 branch: BranchState::default(),

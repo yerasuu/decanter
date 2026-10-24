@@ -46,7 +46,7 @@ mod umu;
 #[cfg(proton)]
 pub use launch::{Launch, Prepared, Session, prepare, start};
 #[cfg(not(proton))]
-pub use native::{Launch, Prepared, Session, is_live, prepare, start, stop, stop_all};
+pub use native::{Launch, Prepared, Session, end, is_live, prepare, start, stop, stop_all};
 pub use path::sanitize_relative_path;
 #[cfg(proton)]
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};

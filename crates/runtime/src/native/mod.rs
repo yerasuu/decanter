@@ -338,9 +338,22 @@ pub fn is_live(key: &str) -> bool {
 /// has ended, or at once when nothing runs under `key`.
 #[inline]
 pub async fn stop(key: &str) {
-    tracing::debug!(key, "stopping session");
-    for attempt in 0..=POLITE_STOP_ATTEMPTS {
-        let is_forced = attempt == POLITE_STOP_ATTEMPTS;
+    end_after(key, POLITE_STOP_ATTEMPTS).await;
+}
+
+/// [`stop`] without the polite requests: the session is ended at once, for
+/// a player who asked for the game to go now rather than to close.
+#[inline]
+pub async fn end(key: &str) {
+    end_after(key, 0).await;
+}
+
+/// Ends the session after `polite_attempts` requests to close, each a
+/// [`STOP_POLL_INTERVAL`] apart.
+async fn end_after(key: &str, polite_attempts: u32) {
+    tracing::debug!(key, polite_attempts, "stopping session");
+    for attempt in 0..=polite_attempts {
+        let is_forced = attempt == polite_attempts;
         let reached = live_lock().get_mut(key).map(|tracked| {
             if is_forced {
                 tracked.release()

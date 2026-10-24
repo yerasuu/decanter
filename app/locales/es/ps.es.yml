@@ -211,6 +211,7 @@ ps.detail.tabs.log: Registro
 ps.detail.hero.version: VERSIÓN
 ps.detail.hero.status: ESTADO
 ps.detail.stop: DETENER
+ps.detail.stopping: DETENIENDO…
 ps.detail.play: JUGAR
 ps.detail.preparing: PREPARANDO…
 ps.detail.open_folder: Abrir carpeta
