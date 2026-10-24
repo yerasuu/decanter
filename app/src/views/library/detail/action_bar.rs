@@ -98,6 +98,9 @@ impl DetailView {
         if !installable {
             return vec![theme::muted(t!("library.detail.install.unavailable")).into_any_element()];
         }
+        if let Some(reason) = actions::missing_build(game) {
+            return vec![theme::muted(reason).into_any_element()];
+        }
         let account_id = game.account_id.clone();
         let product_id = game.id.clone();
         match status {
@@ -223,7 +226,8 @@ impl DetailView {
 
 fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool, cx: &Context<DetailView>) -> AnyElement {
     let Some(installed) = launch else {
-        return theme::muted(t!("library.detail.no_executable")).into_any_element();
+        let reason = actions::missing_build(game).unwrap_or_else(|| t!("library.detail.no_executable"));
+        return theme::muted(reason).into_any_element();
     };
     let account_id = game.account_id.clone();
     let product_id = game.id.clone();

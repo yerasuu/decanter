@@ -16,7 +16,7 @@
 //! everything here is parsed loosely and a miss costs metadata rather than
 //! the entry.
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 const PRODUCTS_URL: &str = "https://api.gog.com/products";
 
@@ -53,6 +53,21 @@ pub struct Product {
     /// id and would need resolving separately.
     #[serde(default)]
     pub expanded_dlcs: Vec<Dlc>,
+    /// Which systems the product's Galaxy builds are for, part of the
+    /// default response ([gogapidocs](https://gogapidocs.readthedocs.io/en/latest/galaxy.html),
+    /// unofficial like the endpoint itself).
+    #[serde(default)]
+    pub content_system_compatibility: Option<ContentSystems>,
+}
+
+/// The systems a product has Galaxy builds for; only macOS is read.
+#[derive(Debug, Default, Deserialize)]
+pub struct ContentSystems {
+    /// A macOS build exists.
+    // `default` stays because `deserialize_with` drops the implicit `None`
+    // for a missing field ([serde: field attributes](https://serde.rs/field-attrs.html#deserialize_with)).
+    #[serde(default, deserialize_with = "bool_or_none")]
+    pub osx: Option<bool>,
 }
 
 /// One DLC, as listed on the product it belongs to.
@@ -181,4 +196,13 @@ pub fn html_to_text(html: &str) -> String {
 
     // Collapse the whitespace the tag stripping just introduced.
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A flag in any other shape reads as unknown, so that one odd field in an
+/// undocumented response doesn't cost the whole product.
+fn bool_or_none<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    serde_json::Value::deserialize(deserializer).map(|value| value.as_bool())
 }

@@ -61,6 +61,7 @@ pub fn entry(game: &InstalledGame) -> LibraryEntry {
             description: None,
             developer: None,
             genres: Vec::new(),
+            has_macos_build: None,
             icon_url: game.art.icon.clone(),
             id: game.game_id.clone(),
             install_state: Some(InstallState {

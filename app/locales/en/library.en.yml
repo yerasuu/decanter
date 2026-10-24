@@ -95,6 +95,7 @@ library.detail.external: External
 library.detail.play: PLAY
 library.detail.stop: STOP
 library.detail.play_unavailable: Playing isn't available on this system yet
+library.detail.no_build: This game has no %{system} version
 library.detail.no_executable: Installed, but no executable was found
 library.detail.uninstall.busy: Uninstalling...
 library.detail.uninstall.uninstall: Uninstall

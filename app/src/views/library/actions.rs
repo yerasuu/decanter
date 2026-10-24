@@ -4,12 +4,22 @@
 //! it, since that button is swapped out the moment the action's own state
 //! (running, installing) changes.
 
-use decanter_core::{Game, InstalledGame};
+use std::borrow::Cow;
+
+use decanter_core::{Game, InstalledGame, platform};
 use gpui::App;
+use rust_i18n::t;
 
 use super::data;
 use super::install::{self, InstallRequest};
 use crate::state::{AppState, InstallStatus};
+
+/// Why `game` can't be installed or played here, when this system has no
+/// build of it: shown in place of Instalar and Jugar.
+pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
+    let system = platform::game_system();
+    (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
+}
 
 /// The installed game behind a catalog entry, or `None` if this profile
 /// doesn't have it. One manifest read — the manifest names the files, the

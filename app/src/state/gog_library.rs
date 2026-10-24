@@ -769,6 +769,7 @@ fn keep_known(mut entry: LibraryEntry, previous: &LibraryEntry) -> LibraryEntry 
     keep(&mut game.publisher, old.publisher.as_ref());
     keep(&mut game.rating, old.rating.as_ref());
     keep(&mut game.release_date, old.release_date.as_ref());
+    keep(&mut game.has_macos_build, old.has_macos_build.as_ref());
     if game.genres.is_empty() {
         game.genres.clone_from(&old.genres);
     }

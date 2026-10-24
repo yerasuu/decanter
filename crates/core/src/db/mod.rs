@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS games_cache (
     library_rank    INTEGER,
     parent_id       TEXT,
     installable     INTEGER NOT NULL DEFAULT 1,
+    has_macos_build INTEGER,
     first_seen      INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
@@ -280,6 +281,13 @@ impl Db {
         if profiles_has_library_path == 0 {
             tracing::info!(table = "profiles", "adding library_path column");
             conn.execute_batch("ALTER TABLE profiles ADD COLUMN library_path TEXT;")?;
+        }
+
+        // Additive, so a database an older decanter still opens keeps its
+        // cached library: that one names its columns and never reads this.
+        if !has_column(&conn, "games_cache", "has_macos_build")? {
+            tracing::info!(table = "games_cache", "adding has_macos_build column");
+            conn.execute_batch("ALTER TABLE games_cache ADD COLUMN has_macos_build INTEGER;")?;
         }
 
         let db = Self { conn };

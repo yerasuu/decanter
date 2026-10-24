@@ -475,6 +475,17 @@ fn game_action_item(
             .into_any_element();
     }
 
+    if launch_target.is_none()
+        && let Some(reason) = super::actions::missing_build(&entry.game)
+    {
+        return menu::item("menu-action", false)
+            .opacity(0.5)
+            .cursor_default()
+            .hover(|item| item)
+            .child(reason)
+            .into_any_element();
+    }
+
     if !is_installed {
         // Failed sits here too: whatever partial state it left behaves the
         // same as never having started — retrying is just installing again.

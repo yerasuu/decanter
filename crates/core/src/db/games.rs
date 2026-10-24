@@ -27,6 +27,9 @@ pub struct CachedGame {
     /// The base game's product id, for DLC. `None` for a base game.
     pub parent_id: Option<String>,
     pub installable: bool,
+    /// `None` when this fetch didn't carry it — same "leave it alone" rule
+    /// as `genres`.
+    pub has_macos_build: Option<bool>,
 }
 
 /// Unit separator, not a comma: a genre name is free text from the store
@@ -54,7 +57,7 @@ impl Db {
     /// never touches `first_seen` again, confirmed or not.
     ///
     /// A `None`/empty optional field (`purchased_at`, `release_date`,
-    /// `rating`, `genres`, `library_rank`, `parent_id`) means "this fetch
+    /// `rating`, `genres`, `library_rank`, `parent_id`, `has_macos_build`) means "this fetch
     /// didn't carry it", not "clear it" — a refresh where the per-game
     /// lookup failed must not blank out catalog data an earlier, successful
     /// one found.
@@ -69,9 +72,9 @@ impl Db {
                 "INSERT INTO games_cache (
                     account_id, storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable, first_seen, updated_at
+                    parent_id, installable, has_macos_build, first_seen, updated_at
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, {first_seen_if_new}, strftime('%s','now'))
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, {first_seen_if_new}, strftime('%s','now'))
                  ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
                     title = excluded.title,
                     icon_url = excluded.icon_url,
@@ -85,6 +88,7 @@ impl Db {
                     library_rank = COALESCE(excluded.library_rank, library_rank),
                     parent_id = COALESCE(excluded.parent_id, parent_id),
                     installable = excluded.installable,
+                    has_macos_build = COALESCE(excluded.has_macos_build, has_macos_build),
                     updated_at = excluded.updated_at"
             ),
             params![
@@ -103,6 +107,7 @@ impl Db {
                 game.library_rank,
                 game.parent_id,
                 game.installable,
+                game.has_macos_build,
             ],
         )?;
         tracing::debug!(
@@ -175,7 +180,7 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable
+                    parent_id, installable, has_macos_build
              FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
         )?;
         let rows = stmt.query_map(params![account_id], |row| {
@@ -202,6 +207,7 @@ impl Db {
                 library_rank: row.get(11)?,
                 parent_id: row.get(12)?,
                 installable: row.get(13)?,
+                has_macos_build: row.get(14)?,
             })
         })?;
         let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;

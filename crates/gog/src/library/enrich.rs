@@ -321,9 +321,9 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> 
     changed
 }
 
-/// Applies the two facts only GOG's product record carries — what kind of
-/// product this is, and whether it has anything to install — returning
-/// whether either actually changed.
+/// Applies the facts only GOG's product record carries — what kind of
+/// product this is, whether it has anything to install, and whether a
+/// macOS build of it exists — returning whether any actually changed.
 ///
 /// The category correction matters most: the owned-products listing
 /// reports bundles, and a fair number of plain games, as `isGame: false`,
@@ -346,6 +346,16 @@ fn apply_product_facts(entry: &mut LibraryEntry, product: &crate::product::Produ
     } && entry.kind != corrected
     {
         entry.kind = corrected;
+        changed = true;
+    }
+
+    if let Some(has_macos_build) = product
+        .content_system_compatibility
+        .as_ref()
+        .and_then(|systems| systems.osx)
+        && entry.game.has_macos_build != Some(has_macos_build)
+    {
+        entry.game.has_macos_build = Some(has_macos_build);
         changed = true;
     }
 

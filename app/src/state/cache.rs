@@ -40,6 +40,7 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
         library_rank: entry.library_rank,
         parent_id: entry.parent_id.clone(),
         installable: entry.installable,
+        has_macos_build: entry.game.has_macos_build,
     }
 }
 
@@ -65,6 +66,7 @@ fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
             release_date: cached.release_date,
             rating: cached.rating,
             genres: cached.genres,
+            has_macos_build: cached.has_macos_build,
             ..Default::default()
         },
     }

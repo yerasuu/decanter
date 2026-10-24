@@ -133,6 +133,10 @@ pub struct Game {
     /// non-genre stand-in (Epic's "categories" are store taxonomy, not
     /// genres).
     pub genres: Vec<String>,
+    /// Whether the store has a macOS build to install: what macOS offers
+    /// to install and play, since it runs no Windows ones (decision #836).
+    /// `None` until the store said.
+    pub has_macos_build: Option<bool>,
     pub icon_url: Option<String>,
     /// The storefront's own product id.
     pub id: String,
@@ -149,6 +153,21 @@ pub struct Game {
     pub release_date: Option<i64>,
     pub storefront: Storefront,
     pub title: String,
+}
+
+impl Game {
+    /// Whether `system` has a build of this game to install and play.
+    /// Windows builds are what every GOG game has; macOS needs one of its
+    /// own, and one not known yet counts as there, so the install itself
+    /// answers rather than a guess hiding the button.
+    #[must_use]
+    #[inline]
+    pub fn has_build_for(&self, system: GameSystem) -> bool {
+        match system {
+            GameSystem::MacOs => self.has_macos_build != Some(false),
+            GameSystem::Windows => true,
+        }
+    }
 }
 
 /// Local install status for a [`Game`] — not catalog data.

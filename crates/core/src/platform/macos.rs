@@ -115,16 +115,15 @@ pub fn executable_permissions() -> Option<Permissions> {
     Some(Permissions::from_mode(0o755))
 }
 
-/// Browsing the library, GOG and achievements only: no launch backend
-/// exists here yet, so no game to close with the shortcut either. The tray
-/// waits for a run on a real Mac.
+/// The library, GOG and achievements, and playing the games that have a
+/// macOS build (decision #836), natively and untried on a real Mac yet, as
+/// is the tray. No close-game shortcut yet.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {
     match feature {
-        Feature::Tray | Feature::CloseToTray => Support::Testing,
-        Feature::Play
-        | Feature::Proton
+        Feature::Play | Feature::Tray | Feature::CloseToTray => Support::Testing,
+        Feature::Proton
         | Feature::Prefixes
         | Feature::ExternalInstaller
         | Feature::GalaxyHook

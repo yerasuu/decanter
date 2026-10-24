@@ -95,6 +95,7 @@ library.detail.external: Externo
 library.detail.play: JUGAR
 library.detail.stop: DETENER
 library.detail.play_unavailable: Jugar aún no está disponible en este sistema
+library.detail.no_build: Este juego no tiene versión para %{system}
 library.detail.no_executable: Instalado, pero sin ejecutable detectado
 library.detail.uninstall.busy: Desinstalando...
 library.detail.uninstall.uninstall: Desinstalar
