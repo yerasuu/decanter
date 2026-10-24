@@ -24,7 +24,8 @@ the platform layer (see below):
   phase 2).
 
 Next: native launching on Windows (Job Objects instead of scopes, the hook
-DLL built natively) and macOS launching (no Proton there).
+DLL built natively) and macOS launching (no Proton there; see
+[macos-support.md](macos-support.md)).
 
 ## Phase 2: games launch natively on Windows
 
@@ -91,9 +92,11 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 - **The launch backend** is named once per crate by its `build.rs`:
   `cfg(proton)` for code that only exists with Proton, `umu-run` and
   prefixes (`decanter-runtime`, `decanter-gog`, the app), `not(proton)` for
-  the native Windows backend. It is set everywhere but Windows: macOS still
-  compiles the Proton code, having no backend of its own, and its table
-  leaves Play off. `decanter-gog` also sets `cfg(galaxy_hook)` when its build
+  the native backend, which Windows and macOS share (sessions per OS in
+  `decanter_runtime::native`: a Job Object, a process group). It is set on
+  Linux only. Which system's builds a game installs from is
+  `decanter_core::platform::game_system` (Windows builds on Linux and
+  Windows, macOS builds on macOS). `decanter-gog` also sets `cfg(galaxy_hook)` when its build
   script built `Galaxy64.dll` (Linux, x86_64 Windows).
 - **Capabilities**: `decanter_core::capabilities` is the one source of what
   the UI offers and how. Each `Feature` is `Available`, `Testing` (shown
@@ -132,7 +135,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 
 | Feature | Linux | Windows | macOS |
 |---|---|---|---|
-| Play, ExternalInstaller | available | available | no |
+| Play | available | available | testing (macOS builds only) |
+| ExternalInstaller | available | available | no |
 | GalaxyHook | available | available (x86_64) | no |
 | Tray, CloseToTray | available | testing | testing |
 | PadClose | available | testing (keyboard only) | no |
