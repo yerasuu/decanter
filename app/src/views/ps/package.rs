@@ -22,11 +22,12 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
     let selected = state.selected();
     let downloading = state.downloading();
     let checking = state.is_checking();
-    let in_use = match (state.manual_folder(), selected) {
-        (Some(dir), _) => t!("ps.package.in_use_folder", dir = dir),
-        (None, Some(version)) if state.is_pinned() => t!("ps.package.in_use_pinned", tag = version.tag()),
-        (None, Some(version)) => t!("ps.package.in_use", tag = version.tag()),
-        (None, None) => t!("ps.package.none_in_use"),
+    let in_use = match (state.manual_folder(), state.selected_build(), selected) {
+        (Some(dir), _, _) => t!("ps.package.in_use_folder", dir = dir),
+        (None, Some(commit), _) => t!("ps.package.in_use_build", commit = commit.short()),
+        (None, None, Some(version)) if state.is_pinned() => t!("ps.package.in_use_pinned", tag = version.tag()),
+        (None, None, Some(version)) => t!("ps.package.in_use", tag = version.tag()),
+        (None, None, None) => t!("ps.package.none_in_use"),
     };
     let progress = downloading.map(|(version, received, total)| {
         div()

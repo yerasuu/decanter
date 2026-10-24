@@ -19,6 +19,7 @@ const TRAY_HOST: &str = "StatusNotifier host";
 const PSPORT_MENU_BINDING: &str = "psport build listing port_menu_binding";
 const PSPORT_KEY_STICK: &str = "psport build listing key_stick";
 const PSPORT_ONLINE: &str = "psport build listing online_module";
+const GIT: &str = "git on PATH";
 
 pub struct Caps {
     /// decanter's table and its own checks, which a new report from psport
@@ -41,6 +42,10 @@ impl Caps {
             Availability::AppImage(_) => {}
             Availability::NoKey => capabilities.restrict(Feature::SelfUpdate, Reason::NeedsSetup(RELEASE_KEY)),
             Availability::Elsewhere => capabilities.restrict(Feature::SelfUpdate, Reason::NotOnThisSystem),
+        }
+        // A branch is fetched with the user's own git; decanter downloads none.
+        if decanter_ps::bbport::direct::IN_USE && decanter_ps::winbuild::git::program().is_none() {
+            capabilities.restrict(Feature::PsBuilds, Reason::NeedsSetup(GIT));
         }
         let ask_tray_host = capabilities.is_offered(Feature::Tray);
         let mut current = capabilities.clone();
@@ -198,6 +203,7 @@ fn setup_text(what: &'static str) -> Cow<'static, str> {
         PSPORT_MENU_BINDING => t!("common.setup.psport_menu_binding"),
         PSPORT_KEY_STICK => t!("common.setup.psport_key_stick"),
         PSPORT_ONLINE => t!("common.setup.psport_online"),
+        GIT => t!("common.setup.git"),
         _ => Cow::Borrowed(what),
     }
 }

@@ -10,6 +10,7 @@ use decanter_ps::bundle;
 use decanter_ps::package::{self, Installed, Offer, PINNED_KEY, SELECTED_KEY, Version};
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
+use decanter_ps::winbuild::Commit;
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
@@ -28,6 +29,8 @@ pub struct PackageState {
     offers: Option<Result<Vec<Offer>, Text>>,
     installed: Vec<Installed>,
     selected: Option<Version>,
+    /// A build of psport's branch ([`super::branch`]) chosen instead of a release.
+    selected_build: Option<Commit>,
     pinned: bool,
     /// The `psport.exe` folder picked in Ajustes, which Jugar runs instead.
     manual_folder: Option<String>,
@@ -55,6 +58,15 @@ impl PackageState {
 
     pub const fn selected(&self) -> Option<&Version> {
         self.selected.as_ref()
+    }
+
+    pub const fn selected_build(&self) -> Option<&Commit> {
+        self.selected_build.as_ref()
+    }
+
+    /// A choice of version or build is being saved.
+    pub(super) const fn is_selecting(&self) -> bool {
+        self.selecting > 0
     }
 
     pub const fn is_pinned(&self) -> bool {
@@ -151,7 +163,7 @@ impl Ps {
         let pinned = self.package.newest() != Some(version);
         let (root, version) = (paths::active(), version.clone());
         cx.spawn(async move |this, cx| {
-            if let Err(err) = select(&this, &root, &version, pinned, cx).await {
+            if let Err(err) = select(&this, &root, version.tag(), pinned, cx).await {
                 set_error(&this, Some(err), cx);
             }
         })
@@ -229,27 +241,32 @@ enum Asked {
 
 /// What the port settings say about the package now, read from disk rather than from the state,
 /// which a save under way may not have reached yet.
-struct Choice {
-    selected: Option<Version>,
-    pinned: bool,
-    manual_folder: Option<String>,
+pub(super) struct Choice {
+    pub(super) selected: Option<Version>,
+    pub(super) selected_build: Option<Commit>,
+    pub(super) pinned: bool,
+    pub(super) manual_folder: Option<String>,
 }
 
-async fn settings_now(root: &Root, cx: &AsyncApp) -> Choice {
+pub(super) async fn settings_now(root: &Root, cx: &AsyncApp) -> Choice {
     let settings = {
         let root = root.clone();
         cx.background_spawn(async move { LauncherSettings::load(&root) }).await
     };
     Choice {
         selected: settings.text(SELECTED_KEY).and_then(|tag| tag.parse::<Version>().ok()),
+        selected_build: settings
+            .text(SELECTED_KEY)
+            .and_then(|commit| commit.parse::<Commit>().ok()),
         pinned: settings.flag(PINNED_KEY, false),
         manual_folder: settings.text(FOLDER_KEY).map(str::to_owned),
     }
 }
 
-async fn reload(this: &WeakEntity<Ps>, root: &Root, cx: &mut AsyncApp) {
+pub(super) async fn reload(this: &WeakEntity<Ps>, root: &Root, cx: &mut AsyncApp) {
     let Choice {
         selected,
+        selected_build,
         pinned,
         manual_folder,
     } = settings_now(root, cx).await;
@@ -258,6 +275,7 @@ async fn reload(this: &WeakEntity<Ps>, root: &Root, cx: &mut AsyncApp) {
         let state = &mut this.package;
         state.installed = installed;
         state.selected = selected;
+        state.selected_build = selected_build;
         state.pinned = pinned;
         state.manual_folder = manual_folder;
         cx.notify();
@@ -338,15 +356,16 @@ async fn follow_newest(this: &WeakEntity<Ps>, root: &Root, newest: Offer, cx: &m
         );
         return reload(this, root, cx).await;
     }
-    if let Err(err) = select(this, root, &installed.version, false, cx).await {
+    if let Err(err) = select(this, root, installed.version.tag(), false, cx).await {
         set_error(this, Some(err), cx);
     }
 }
 
-async fn select(
+/// Jugar runs `tag`, a release's tag or a build's commit, from now on.
+pub(super) async fn select(
     this: &WeakEntity<Ps>,
     root: &Root,
-    version: &Version,
+    tag: &str,
     pinned: bool,
     cx: &mut AsyncApp,
 ) -> Result<(), Text> {
@@ -354,7 +373,7 @@ async fn select(
         this.package.selecting = this.package.selecting.saturating_add(1);
     });
     let saved = {
-        let (root, tag) = (root.clone(), version.tag().to_owned());
+        let (root, tag) = (root.clone(), tag.to_owned());
         cx.background_spawn(async move {
             LauncherSettings::edit(&root, |settings| {
                 settings.set_text(SELECTED_KEY, &tag);
@@ -369,11 +388,11 @@ async fn select(
     };
     let result = match saved {
         Ok(()) => {
-            tracing::info!(tag = version.tag(), pinned, "psport Windows package in use");
+            tracing::info!(tag, pinned, "psport Windows package in use");
             Ok(())
         }
         Err(err) => {
-            tracing::warn!(tag = version.tag(), %err, "could not save which psport Windows package is in use");
+            tracing::warn!(tag, %err, "could not save which psport Windows package is in use");
             Err(Text::new("ps.settings.save_error").arg("error", err))
         }
     };
@@ -439,8 +458,8 @@ async fn run_install(this: &WeakEntity<Ps>, root: &Root, offer: Offer, cx: &mut 
     result
 }
 
-/// The folder of the version Jugar runs, downloading the newest release first when none is in the
-/// library yet.
+/// The folder of the build or version Jugar runs, downloading the newest release first when neither
+/// is in the library yet.
 #[cfg(windows)]
 pub(super) async fn for_play(
     this: &WeakEntity<Ps>,
@@ -448,6 +467,13 @@ pub(super) async fn for_play(
     settings: &LauncherSettings,
     cx: &mut AsyncApp,
 ) -> Result<std::path::PathBuf, Text> {
+    if let Some(commit) = settings
+        .text(SELECTED_KEY)
+        .and_then(|commit| commit.parse::<Commit>().ok())
+        && decanter_ps::winbuild::built_commit(root, &commit).await.is_some()
+    {
+        return Ok(decanter_ps::winbuild::dir(root, &commit));
+    }
     let selected = settings.text(SELECTED_KEY).and_then(|tag| tag.parse::<Version>().ok());
     if let Some(version) = selected
         && package::installed_version(root, &version).await.is_some()
@@ -487,7 +513,7 @@ pub(super) async fn for_play(
     {
         return Ok(package::dir(root, &chosen));
     }
-    if let Err(err) = select(this, root, &installed.version, false, cx).await {
+    if let Err(err) = select(this, root, installed.version.tag(), false, cx).await {
         return Err(err);
     }
     Ok(package::dir(root, &installed.version))

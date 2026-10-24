@@ -79,6 +79,7 @@ ps.package.description: 'Cada versión etiquetada de psport trae su paquete para
 ps.package.in_use: 'En uso: %{tag}'
 ps.package.in_use_pinned: 'En uso: %{tag}, elegida por ti: las actualizaciones no la cambian'
 ps.package.in_use_folder: 'En uso: la carpeta de psport.exe elegida en Ajustes, %{dir}'
+ps.package.in_use_build: 'En uso: la compilación del commit %{commit} hecha en este PC (Pruebas)'
 ps.package.none_in_use: Aún no hay ninguna en la biblioteca; Jugar descarga antes la versión más reciente
 ps.package.downloading: 'Descargando %{tag}: %{size}'
 ps.package.list_error: 'No se pudieron consultar las versiones: %{error}'
@@ -153,6 +154,7 @@ ps.settings.channel.release.description: La última versión publicada de psport
 ps.settings.channel.testing.title: Pruebas
 ps.settings.channel.testing.description: 'Cada cambio nuevo de psport en cuanto llega: descargado si la CI ya lo ha compilado y, si no, compilado en este equipo.'
 ps.settings.channel.save_error: 'No se pudo guardar el canal: %{error}'
+ps.settings.channel.direct: 'En este sistema la versión que usa Jugar se elige en Ports: el paquete de una versión publicada o una compilación de la rama.'
 ps.settings.open: Abrir
 ps.settings.pick: Elegir
 ps.settings.forget: Quitar
@@ -679,3 +681,42 @@ ps.online.bbsc.local.note: Con el servidor en este equipo, los mensajes y las ma
 ps.online.no_password: 'Hay un Online ID guardado sin contraseña en el llavero: escríbela y pulsa Guardar, o borra el Online ID para jugar sin shadNet. Mientras tanto, el juego online no arranca.'
 ps.online.kept_existing: Guardado. %{previous} conserva su contraseña y su token en el llavero, porque el nuevo Online ID ya tenía los suyos y no se han sobrescrito.
 ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online.
+ps.branch.title: Rama de psport, compilada en este PC (Pruebas)
+ps.branch.description: 'decanter obtiene el commit más reciente de la rama de psport con tu git, descarga la toolchain que fija (llvm-mingw, CMake, Ninja y el paquete de toolchain de psport, cada uno comprobado con su SHA-256) y la compila aquí, sin ejecutar nada más de lo que descarga. Compilar ejecuta los scripts de la propia rama con tus permisos, así que cada commit nuevo te pide confirmación antes.'
+ps.branch.toolchain.not_pinned: Esta versión de decanter aún no fija ningún paquete de toolchain, así que no puede compilar; lo hará una posterior.
+ps.branch.toolchain.installed: 'Toolchain: toolchain-win32-%{number}, descargada y comprobada'
+ps.branch.toolchain.missing: 'Toolchain: toolchain-win32-%{number}, aún sin descargar (unos 560 MB la primera vez, 2 GB en disco)'
+ps.branch.head: 'Commit más reciente de %{branch}: %{commit} (%{remote})'
+ps.branch.check_error: 'No se pudo consultar la rama: %{error}'
+ps.branch.check: Consultar la rama
+ps.branch.build: Compilar %{commit}
+ps.branch.stop: Detener
+ps.branch.stopped: Compilación detenida; no queda nada de lo que inició
+ps.branch.delete_toolchain: Borrar la toolchain
+ps.branch.building: 'Compilando %{commit}: %{stage}'
+ps.branch.built: '%{branch} · compilada el %{date} · toolchain-win32-%{number}'
+ps.branch.stage.starting: empezando
+ps.branch.stage.downloading: 'descargando %{name}: %{size}'
+ps.branch.stage.unpacking: comprobando y descomprimiendo %{name}
+ps.branch.stage.sources: obteniendo las fuentes
+ps.branch.stage.configuring: configurando con CMake
+ps.branch.stage.compiling: compilando con Ninja
+ps.branch.stage.assembling: montando la carpeta
+ps.branch.confirm.title: ¿Compilar este commit?
+ps.branch.confirm.remote: 'Remoto: %{remote}'
+ps.branch.confirm.branch: 'Rama: %{branch}'
+ps.branch.confirm.commit: 'Commit: %{commit}'
+ps.branch.confirm.text: 'Compilar ejecuta los scripts de CMake de este commit en tu PC con tus permisos, dentro de un Job Object y sin tus variables de entorno, y nada les impide acceder a la red. Confirma solo commits de psport en los que confíes; el mismo commit no se vuelve a preguntar.'
+ps.branch.confirm.yes: Confirmar y compilar %{commit}
+ps.branch.confirm.no: Cancelar
+ps.branch.errors.not_pinned: esta versión de decanter aún no fija ningún paquete de toolchain
+ps.branch.errors.no_git: git no está en el PATH; instala Git for Windows
+ps.branch.errors.tampered: 'el archivo %{file} de la toolchain ha cambiado desde que se instaló y comprobó, así que no se usa: borra la toolchain para descargarla de nuevo'
+ps.branch.errors.path_too_long: 'la compilación quedaría en %{path}, de %{length} caracteres, y en Windows no puede pasar de %{max}: mueve la biblioteca a una ruta más corta'
+ps.branch.errors.raw: '%{error}'
+ps.branch.errors.failed: 'La compilación ha fallado: %{error}. Su registro: %{log}'
+ps.branch.errors.confirm: 'No se pudo guardar la confirmación: %{error}'
+ps.branch.errors.busy: Hay una compilación o un borrado en curso; vuelve a intentarlo cuando termine
+ps.branch.errors.delete_in_use: No se puede borrar la compilación en uso, ni ninguna mientras haya un juego o una compilación en marcha
+ps.branch.errors.delete_toolchain_busy: No se puede borrar la toolchain mientras haya un juego o una compilación en marcha
+ps.branch.errors.delete: 'No se pudo borrar: %{error}'

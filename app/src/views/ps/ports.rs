@@ -39,6 +39,7 @@ impl PortsView {
         .detach();
         if direct::IN_USE {
             ps.update(cx, Ps::package_reload);
+            ps.update(cx, Ps::branch_reload);
         }
         let mut this = Self {
             ps,
@@ -200,11 +201,15 @@ impl PortsView {
 impl Render for PortsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let page = div().flex().flex_col().gap_4().child(theme::h2(t!("ps.ports.title")));
-        // Where decanter doesn't build ports, its checkouts and builds have nothing to show.
-        let page = if let Some(reason) = Caps::get(cx).reason(Feature::PsBuilds) {
-            let package = (direct::IN_USE && Caps::get(cx).is_offered(Feature::PsDownloads))
+        // Where psport.exe runs directly there are no checkouts: its packages and its branch's builds.
+        let page = if direct::IN_USE {
+            let package = Caps::get(cx)
+                .is_offered(Feature::PsDownloads)
                 .then(|| Caps::get(cx).mark(Feature::PsDownloads, super::package::card(&self.ps, cx)));
-            page.child(theme::muted(reason)).children(package)
+            let branch = Caps::get(cx).gate_or_reason(Feature::PsBuilds, super::branch::card(&self.ps, cx));
+            page.children(package).child(branch)
+        } else if let Some(reason) = Caps::get(cx).reason(Feature::PsBuilds) {
+            page.child(theme::muted(reason))
         } else {
             let cards: Vec<AnyElement> = Port::ALL.into_iter().map(|port| self.card(port, cx)).collect();
             page.child(theme::muted(t!("ps.ports.description"))).children(cards)

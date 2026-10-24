@@ -39,7 +39,8 @@ pub enum Feature {
     /// Getting, building and updating a port in the library: its checkout,
     /// the toolchain (nix or the host's tools), its prebuilt and released
     /// builds, and what runs inside them (the Vulkan validation layer, FSR
-    /// 4.1.1's recording).
+    /// 4.1.1's recording). Where psport.exe runs directly (Windows), building
+    /// psport's branch with the toolchain decanter pins instead.
     PsBuilds,
     PsDownloads,
     PsPlay,

@@ -77,7 +77,7 @@ async fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
 /// The branch name comes from the remote and ends up in git arguments and
 /// a shell script's parameters, so it is held to what branch names look
 /// like in practice before anything uses it.
-fn valid_branch(name: &str) -> bool {
+pub(crate) fn valid_branch(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('-')
         && !name.contains("..")

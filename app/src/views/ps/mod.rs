@@ -2,6 +2,7 @@
 //! the ports that run them, and its settings — in one place rather than
 //! spread over Ajustes.
 
+mod branch;
 mod failures;
 mod games;
 pub mod log;

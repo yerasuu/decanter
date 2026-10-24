@@ -5,6 +5,7 @@
 //! profile never pays for it; kept after that, so jobs started from the
 //! section outlive switching to another one.
 
+mod branch;
 mod bundle;
 mod channel;
 #[cfg(windows)]
@@ -29,6 +30,7 @@ use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
 
+use branch::BranchState;
 pub use channel::Track;
 pub use fallback::Fallback;
 pub use fsr::DllOutcome;
@@ -73,6 +75,8 @@ pub struct Ps {
     ports: HashMap<Port, PortState>,
     /// Where `psport.exe` runs directly ([`decanter_ps::bbport::direct::IN_USE`]).
     package: PackageState,
+    /// psport's branch built here where `psport.exe` runs directly.
+    branch: BranchState,
 }
 
 struct PsGlobal(Entity<Ps>);
@@ -104,9 +108,11 @@ impl Ps {
                 moving: HashSet::new(),
                 ports: HashMap::new(),
                 package: PackageState::default(),
+                branch: BranchState::default(),
             };
             this.sync_profile(cx);
-            if Caps::get(cx).is_offered(Feature::PsBuilds) {
+            // Where psport.exe runs directly, builds are the branch's (`branch`), not the checkouts'.
+            if !decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsBuilds) {
                 Self::start_update_loop(cx);
             }
             if decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsDownloads) {

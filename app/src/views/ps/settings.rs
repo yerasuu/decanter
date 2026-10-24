@@ -324,12 +324,17 @@ impl Render for SettingsView {
             roots.iter().map(|root| decanter_ps::paths::games_in(root)).collect()
         };
         let count = folders.len();
-        let channels = Caps::get(cx).gate_or_reason(
-            Feature::PsBuilds,
-            theme::card()
-                .child(self.channel_row(Channel::Release, false, cx))
-                .child(self.channel_row(Channel::Testing, true, cx)),
-        );
+        // Where psport.exe runs directly, Ports chooses between a release's package and a build.
+        let channels = if direct::IN_USE {
+            theme::muted(t!("ps.settings.channel.direct")).into_any_element()
+        } else {
+            Caps::get(cx).gate_or_reason(
+                Feature::PsBuilds,
+                theme::card()
+                    .child(self.channel_row(Channel::Release, false, cx))
+                    .child(self.channel_row(Channel::Testing, true, cx)),
+            )
+        };
         theme::page(
             "ps-settings",
             div()

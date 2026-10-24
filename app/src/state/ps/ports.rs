@@ -163,7 +163,7 @@ impl Ps {
     /// Callers that arrive while it is being prepared there wait on the same
     /// preparation; one for another library waits for it to end first.
     pub fn prepare(&mut self, port: Port, root: &Root, cx: &mut Context<Self>) -> Shared<Task<Prepared>> {
-        if !Caps::get(cx).is_offered(Feature::PsBuilds) {
+        if decanter_ps::bbport::direct::IN_USE || !Caps::get(cx).is_offered(Feature::PsBuilds) {
             tracing::info!(port = port.name(), "ports are not fetched or built on this system");
             return Task::ready(Err(Text::new("ps.errors.builds_unavailable"))).shared();
         }

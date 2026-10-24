@@ -79,6 +79,7 @@ ps.package.description: 'Each tagged psport release carries its Windows package:
 ps.package.in_use: 'In use: %{tag}'
 ps.package.in_use_pinned: 'In use: %{tag}, chosen by you: updates leave it'
 ps.package.in_use_folder: 'In use: the psport.exe folder chosen in Settings, %{dir}'
+ps.package.in_use_build: 'In use: the build of commit %{commit} made on this PC (Testing)'
 ps.package.none_in_use: None in the library yet; Jugar downloads the newest release first
 ps.package.downloading: 'Downloading %{tag}: %{size}'
 ps.package.list_error: 'Couldn''t list the releases: %{error}'
@@ -153,6 +154,7 @@ ps.settings.channel.release.description: psport's latest published release, down
 ps.settings.channel.testing.title: Testing
 ps.settings.channel.testing.description: 'Every new psport change as soon as it lands: downloaded once CI has built it, otherwise built on this machine.'
 ps.settings.channel.save_error: 'Couldn''t save the channel: %{error}'
+ps.settings.channel.direct: 'On this system the version Jugar runs is chosen in Ports: a release''s package or a build of the branch.'
 ps.settings.open: Open
 ps.settings.pick: Choose
 ps.settings.forget: Remove
@@ -679,3 +681,42 @@ ps.online.bbsc.local.note: With the server on this PC, messages and bloodstains 
 ps.online.no_password: 'There''s an Online ID saved with no password in the keyring: type it and press Save, or clear the Online ID to play without shadNet. Until then, online play won''t start.'
 ps.online.kept_existing: Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten.
 ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.
+ps.branch.title: psport's branch, built on this PC (Testing)
+ps.branch.description: 'decanter fetches the newest commit of psport''s branch with your git, downloads the toolchain it pins (llvm-mingw, CMake, Ninja and psport''s toolchain package, each checked against its SHA-256) and builds it here, with nothing else running from what it downloads. Building runs the branch''s own scripts with your rights, so each new commit asks for your confirmation first.'
+ps.branch.toolchain.not_pinned: This decanter pins no toolchain package yet, so it can't build; a later version will.
+ps.branch.toolchain.installed: 'Toolchain: toolchain-win32-%{number}, downloaded and checked'
+ps.branch.toolchain.missing: 'Toolchain: toolchain-win32-%{number}, not downloaded yet (about 560 MB the first time, 2 GB on disk)'
+ps.branch.head: 'Newest commit of %{branch}: %{commit} (%{remote})'
+ps.branch.check_error: 'Couldn''t ask for the branch: %{error}'
+ps.branch.check: Check the branch
+ps.branch.build: Build %{commit}
+ps.branch.stop: Stop
+ps.branch.stopped: Build stopped; nothing it started is left running
+ps.branch.delete_toolchain: Delete the toolchain
+ps.branch.building: 'Building %{commit}: %{stage}'
+ps.branch.built: '%{branch} · built %{date} · toolchain-win32-%{number}'
+ps.branch.stage.starting: starting
+ps.branch.stage.downloading: 'downloading %{name}: %{size}'
+ps.branch.stage.unpacking: checking and unpacking %{name}
+ps.branch.stage.sources: fetching the sources
+ps.branch.stage.configuring: configuring with CMake
+ps.branch.stage.compiling: compiling with Ninja
+ps.branch.stage.assembling: putting the folder together
+ps.branch.confirm.title: Build this commit?
+ps.branch.confirm.remote: 'Remote: %{remote}'
+ps.branch.confirm.branch: 'Branch: %{branch}'
+ps.branch.confirm.commit: 'Commit: %{commit}'
+ps.branch.confirm.text: 'Building runs this commit''s CMake scripts on your PC with your rights, inside a Job Object with no variables of yours, and nothing stops them from reaching the network. Only confirm commits of psport you trust; the same commit isn''t asked about again.'
+ps.branch.confirm.yes: Confirm and build %{commit}
+ps.branch.confirm.no: Cancel
+ps.branch.errors.not_pinned: this decanter pins no toolchain package yet
+ps.branch.errors.no_git: git isn't on PATH; install Git for Windows
+ps.branch.errors.tampered: 'the toolchain''s %{file} changed after it was installed and checked, so it isn''t used: delete the toolchain to download it again'
+ps.branch.errors.path_too_long: 'the build would be at %{path}, %{length} characters, and Windows builds need at most %{max}: move the library to a shorter path'
+ps.branch.errors.raw: '%{error}'
+ps.branch.errors.failed: 'The build failed: %{error}. Its log: %{log}'
+ps.branch.errors.confirm: 'Couldn''t record the confirmation: %{error}'
+ps.branch.errors.busy: A build or a delete is under way; try again when it ends
+ps.branch.errors.delete_in_use: The build in use, or any while a game or a build runs, can't be deleted
+ps.branch.errors.delete_toolchain_busy: The toolchain can't be deleted while a game or a build runs
+ps.branch.errors.delete: 'Couldn''t delete: %{error}'

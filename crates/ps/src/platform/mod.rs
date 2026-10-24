@@ -15,4 +15,7 @@ use macos as os;
 #[cfg(windows)]
 use windows as os;
 
-pub use os::{DIRECT_LAUNCH, own_process_group, signal_of, terminate_group, without_console, zip_tar};
+pub use os::{
+    Confined, DIRECT_LAUNCH, build_env, confine, own_process_group, signal_of, terminate_group, without_console,
+    zip_tar,
+};

@@ -17,6 +17,7 @@
 )]
 
 pub mod anyps5;
+pub mod archive;
 pub mod bbport;
 pub mod binds;
 pub mod builds;
@@ -42,3 +43,4 @@ pub mod run_log;
 pub mod status;
 pub mod toolchain;
 pub mod updater;
+pub mod winbuild;

@@ -9,7 +9,7 @@ use std::process::Command;
 use std::{env, io};
 
 use crate::GameSystem;
-use crate::capabilities::{Feature, Reason, Source, Support};
+use crate::capabilities::{Feature, Reason, Support};
 
 /// `CREATE_NO_WINDOW`, so `reg` doesn't flash a console over decanter.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -147,9 +147,10 @@ pub const fn executable_permissions() -> Option<Permissions> {
 /// Linux desktop's pieces aren't ported yet.
 ///
 /// The PS section plays psport's Windows package, downloaded from its releases,
-/// or a psport.exe from a folder the user picks: nothing is compiled here yet,
-/// and no online play. It, the tray, the close-game
-/// shortcut and the Steam export wait for a run on a real Windows.
+/// a build of psport's branch made here with the toolchain decanter pins
+/// (`decanter_ps::winbuild`, git needed), or a psport.exe from a folder the
+/// user picks; no online play. It, the tray, the close-game shortcut and the
+/// Steam export wait for a run on a real Windows.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {
@@ -161,9 +162,9 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PadClose
         | Feature::SteamExport
         | Feature::PsSection
+        | Feature::PsBuilds
         | Feature::PsDownloads
         | Feature::PsPlay => Support::Testing,
-        Feature::PsBuilds => Support::Unavailable(Reason::DownloadsInstead(Source::Psport)),
         Feature::Proton
         | Feature::Prefixes
         | Feature::DesktopEntries

@@ -15,6 +15,7 @@ common.setup.tray_host: a system tray (StatusNotifier host)
 common.setup.psport_menu_binding: a psport build that lists port_menu_binding
 common.setup.psport_key_stick: a psport build that lists key_stick
 common.setup.psport_online: a psport build that lists online_module
+common.setup.git: git on PATH (Git for Windows)
 common.reported_by_ps: 'The PS port doesn''t support it: %{why}'
 common.not_ported_yet_ps: 'psport doesn''t support %{system} yet'
 common.downloads_instead_ps: 'psport isn''t compiled on %{system} yet: the stable release channel downloads its ready-made package instead'

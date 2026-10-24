@@ -61,9 +61,9 @@ impl Ps {
             .library_of(dir)
             .map_or_else(|| root.library().to_owned(), |(folder, _)| folder.to_owned());
         let failures_path = root.profile(&profile_id).join("failures.jsonl");
-        // Without the toolchain's builds a port runs only from a folder the user picked.
-        let prepared = Caps::get(cx)
-            .is_offered(Feature::PsBuilds)
+        // Where psport.exe runs directly, or without the checkouts' builds, a port runs from a folder,
+        // a package or a Windows build.
+        let prepared = (!decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsBuilds))
             .then(|| self.prepare(port, &root, cx));
         self.notice = None;
         cx.notify();
