@@ -211,7 +211,10 @@ remove it. Details: [docs/data-in-library.md](docs/data-in-library.md).
 A library that does not exist is reported, never created.
 
 Without a subcommand `decanter` opens the window. The same binary also
-runs headless, one GOG account at a time (`--account-id`):
+runs headless, one GOG account at a time (`--account-id`). On Windows
+`decanter.exe` has no console, so run the subcommands through
+`decanter-cli.exe`, shipped next to it (it starts `decanter.exe` with the same
+arguments and prints its output in the terminal):
 
 | Subcommand | Does |
 |---|---|
@@ -268,7 +271,7 @@ turned off in Ajustes > General.
 
 | Path | What |
 |---|---|
-| `app` | The `decanter` binary: GPUI views, CLI, tray, desktop integration |
+| `app` | The `decanter` binary: GPUI views, CLI, tray, desktop integration; `decanter-cli` (Windows), its console front end |
 | `crates/core` | Local state: database, libraries, profiles, accounts, credentials, migration |
 | `crates/gog` | GOG client: auth, library, installs, cloud saves, achievements, Steam export |
 | `crates/runtime` | Proton launches through `umu-run` |

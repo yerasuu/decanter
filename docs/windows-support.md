@@ -52,6 +52,20 @@ after a few seconds if it won't.
   launcher re-executing the game) ends the session early; Job Objects
   would follow it. No DirectX DLL drop-ins yet.
 
+## No console window: `decanter.exe` and `decanter-cli.exe`
+
+Release builds of `decanter.exe` use the GUI subsystem (`windows_subsystem` in `app/src/main.rs`),
+so starting it from Explorer opens no console; debug builds keep one for the log. A GUI-subsystem
+program has no console of its own, and attaching to the parent's needs `unsafe` or a dependency, so
+the CLI subcommands are run through `decanter-cli.exe` (`app/src/cli_shim.rs`): a console program
+that starts the sibling `decanter.exe` with the same arguments and the terminal's standard handles,
+and exits with its status. It ships next to `decanter.exe` and never needs updating, since the CLI
+lives only in `decanter`.
+
+Cargo can't gate a `[[bin]]` by target, so the bin has `required-features = ["windows-cli"]` and the
+Windows build passes `--features windows-cli` (CI's Windows build does). Every process decanter
+starts on Windows is created with `CREATE_NO_WINDOW` through `without_console`, except games.
+
 ## Platform layer and capabilities
 
 Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.

@@ -107,12 +107,14 @@ jobs:
       # The Windows build: a CI artifact on every push, attached to a tag's release when it built.
       - name: Windows build
         if: matrix.os == 'windows-latest' && github.event_name == 'push'
-        run: cargo build --release -p decanter --target "${{ matrix.target }}"
+        run: cargo build --release -p decanter --features windows-cli --target "${{ matrix.target }}"
       - if: matrix.os == 'windows-latest' && github.event_name == 'push'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: decanter-windows-x86_64
-          path: target/${{ matrix.target }}/release/decanter.exe
+          path: |
+            target/${{ matrix.target }}/release/decanter.exe
+            target/${{ matrix.target }}/release/decanter-cli.exe
           if-no-files-found: error
 
   # The one release build per architecture: every later job tests or ships
@@ -262,8 +264,9 @@ jobs:
           [[ "$GITHUB_REF_NAME" == "v$version" ]] || { echo "::error::tag $GITHUB_REF_NAME isn't v$version"; exit 1; }
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$notes"
-          if [[ -f windows/decanter.exe ]]; then
+          if [[ -f windows/decanter.exe && -f windows/decanter-cli.exe ]]; then
             cp windows/decanter.exe "dist/decanter-$version-windows-x86_64.exe"
+            cp windows/decanter-cli.exe "dist/decanter-cli-$version-windows-x86_64.exe"
           else
             echo "::warning::no Windows build to attach"
           fi

@@ -1,3 +1,5 @@
+// Release builds on Windows are GUI-subsystem so Explorer opens no console; debug builds keep one for the log.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 #![expect(
     clippy::implicit_return,
     reason = "directly contradicts needless_return from clippy::all, also enabled"

@@ -49,3 +49,13 @@ zbus.workspace = true
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 global-hotkey.workspace = true
 tray-icon.workspace = true
+
+# `decanter-cli.exe`, built only on Windows: Cargo can't gate a `[[bin]]` by target, so the
+# Windows build asks for it with `--features decanter/windows-cli`.
+[features]
+windows-cli = []
+
+[[bin]]
+name = "decanter-cli"
+path = "src/cli_shim.rs"
+required-features = ["windows-cli"]
