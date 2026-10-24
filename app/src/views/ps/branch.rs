@@ -17,6 +17,7 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
     let selected = ps.read(cx).package().selected_build();
     let building = state.building();
     let busy = building.is_some();
+    let deleting = state.is_deleting();
     let checking = state.is_checking();
     let toolchain = if winbuild::pins::package().is_none() {
         t!("ps.branch.toolchain.not_pinned")
@@ -58,7 +59,7 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .built()
         .iter()
         .enumerate()
-        .map(|(index, built)| build_row(ps, index, built, selected, busy, index + 1 == count));
+        .map(|(index, built)| build_row(ps, index, built, selected, busy || deleting, index + 1 == count));
 
     theme::card()
         .p_4()
@@ -70,13 +71,14 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .children(state.confirming().map(|head| confirmation(ps, head)))
         .children(progress)
         .children(lines)
+        .when(deleting, |card| card.child(theme::muted(t!("ps.branch.deleting"))))
         .children(state.error().map(theme::error))
         .child(actions(
             ps,
             checking,
-            can_build.filter(|_| !busy),
+            can_build.filter(|_| !busy && !deleting),
             busy,
-            state.is_toolchain_installed(),
+            state.is_toolchain_installed() && !deleting,
         ))
         .when(count > 0, |card| card.child(theme::card().mt_2().children(list)))
         .into_any_element()

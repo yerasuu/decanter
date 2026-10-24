@@ -70,6 +70,10 @@ impl BranchState {
     pub const fn is_toolchain_installed(&self) -> bool {
         self.toolchain_installed
     }
+
+    pub const fn is_deleting(&self) -> bool {
+        self.deleting
+    }
 }
 
 impl Ps {
@@ -197,6 +201,7 @@ impl Ps {
             return;
         }
         self.branch.deleting = true;
+        cx.notify();
         let (root, commit) = (paths::active(), commit.clone());
         cx.spawn(async move |this, cx| {
             let result = if package::settings_now(&root, cx).await.selected_build.as_ref() == Some(&commit) {
@@ -223,6 +228,8 @@ impl Ps {
             return;
         }
         self.branch.deleting = true;
+        cx.notify();
+        tracing::info!("removing the Windows toolchain");
         let root = paths::active();
         cx.spawn(async move |this, cx| {
             let result = winbuild::toolchain::remove(&root).await.map_err(|err| {

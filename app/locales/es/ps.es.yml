@@ -694,6 +694,7 @@ ps.branch.build: Compilar %{commit}
 ps.branch.stop: Detener
 ps.branch.stopped: Compilación detenida; no queda nada de lo que inició
 ps.branch.delete_toolchain: Borrar la toolchain
+ps.branch.deleting: Borrando…
 ps.branch.building: 'Compilando %{commit}: %{stage}'
 ps.branch.built: '%{branch} · compilada el %{date} · toolchain-win32-%{number}'
 ps.branch.stage.starting: empezando
