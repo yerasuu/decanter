@@ -4,9 +4,15 @@
 //! Runs entirely in-process: no plugin, no external registry. Protocol
 //! details (CDN sharding, zlib'd manifests, secure-link templating)
 //! mirror gogdl, which is what GOG's own tooling agrees with.
+//!
+//! GOG documents none of `content-system.gog.com` officially (its
+//! [developer docs](https://docs.gog.com/) cover the publisher side only);
+//! the community's [gogapidocs](https://gogapidocs.readthedocs.io/en/latest/galaxy.html)
+//! lists the builds endpoint with `windows` and `osx` as its systems.
 
 use std::io::Read;
 
+use decanter_core::GameSystem;
 use serde::Deserialize;
 
 const CONTENT_SYSTEM: &str = "https://content-system.gog.com";
@@ -22,8 +28,8 @@ pub enum Error {
     Decompress(#[from] std::io::Error),
     #[error("failed to parse response: {0}")]
     Parse(#[from] serde_json::Error),
-    #[error("no builds available for this product")]
-    NoBuilds,
+    #[error("no {0} builds available for this product")]
+    NoBuilds(GameSystem),
 }
 
 /// GOG's CDN shards content by the first 4 hex chars of its hash:
@@ -61,17 +67,33 @@ pub struct Build {
     pub date_published: Option<String>,
 }
 
-/// Lists available Windows builds for `game_id`, newest/mainline first per
+/// The content system's name for `system`.
+const fn os_segment(system: GameSystem) -> &'static str {
+    match system {
+        GameSystem::Windows => "windows",
+        GameSystem::MacOs => "osx",
+    }
+}
+
+/// Lists available `system` builds for `game_id`, newest/mainline first per
 /// GOG's own ordering.
-pub async fn get_builds(http: &reqwest::Client, access_token: &str, game_id: i64) -> Result<Vec<Build>> {
-    let url = format!("{CONTENT_SYSTEM}/products/{game_id}/os/windows/builds?generation=2");
+pub async fn get_builds(
+    http: &reqwest::Client,
+    access_token: &str,
+    game_id: i64,
+    system: GameSystem,
+) -> Result<Vec<Build>> {
+    let url = format!(
+        "{CONTENT_SYSTEM}/products/{game_id}/os/{}/builds?generation=2",
+        os_segment(system)
+    );
     let sent = crate::achv_try!(http.get(&url).bearer_auth(access_token).send().await);
     let response = crate::achv_try!(sent.error_for_status());
     let parsed: BuildsResponse = crate::achv_try!(response.json().await);
     if parsed.total_count == 0 {
-        return Err(Error::NoBuilds);
+        return Err(Error::NoBuilds(system));
     }
-    tracing::debug!(game_id, build_count = parsed.items.len(), "fetched gog builds");
+    tracing::debug!(game_id, %system, build_count = parsed.items.len(), "fetched gog builds");
     Ok(parsed.items)
 }
 
@@ -139,10 +161,16 @@ pub struct DepotMeta {
 }
 
 impl DepotMeta {
-    fn is_windows_compatible(&self) -> bool {
-        self.os_bitness
-            .as_ref()
-            .is_none_or(|bitness| bitness.iter().any(|b| b == "64" || b == "32"))
+    /// A build lists only its own system's depots, so only Windows', which
+    /// can be marked by bitness, are told apart.
+    fn is_compatible(&self, system: GameSystem) -> bool {
+        match system {
+            GameSystem::Windows => self
+                .os_bitness
+                .as_ref()
+                .is_none_or(|bitness| bitness.iter().any(|b| b == "64" || b == "32")),
+            GameSystem::MacOs => true,
+        }
     }
 }
 
@@ -165,11 +193,11 @@ pub async fn get_build_meta(http: &reqwest::Client, access_token: &str, link: &s
 /// fraction of the game. And only its own — a build for a game with DLC
 /// lists the DLC's depots too, and those belong to whoever installs the
 /// DLC, not to the base game.
-pub fn select_depots(meta: &BuildMeta, product_id: i64) -> Vec<&DepotMeta> {
+pub fn select_depots(meta: &BuildMeta, product_id: i64, system: GameSystem) -> Vec<&DepotMeta> {
     let wanted = product_id.to_string();
     meta.depots
         .iter()
-        .filter(|depot| depot.is_windows_compatible())
+        .filter(|depot| depot.is_compatible(system))
         .filter(|depot| depot.product_id.as_deref() == Some(wanted.as_str()))
         .collect()
 }

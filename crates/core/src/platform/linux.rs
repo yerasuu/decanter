@@ -11,6 +11,7 @@ use std::{env, process};
 
 use nix::sys::statvfs::statvfs;
 
+use crate::GameSystem;
 use crate::capabilities::{Feature, Reason, Support};
 
 /// Device and inode: the same folder reached through two paths compares equal.
@@ -147,6 +148,13 @@ pub fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
     symlink(target, link)
+}
+
+/// Proton runs Windows builds: the only ones decanter installs here.
+#[must_use]
+#[inline]
+pub const fn game_system() -> GameSystem {
+    GameSystem::Windows
 }
 
 /// What a downloaded program's file needs before it can run, if anything.

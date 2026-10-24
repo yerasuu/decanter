@@ -3,6 +3,7 @@
 //! needs before a single byte moves.
 
 use anyhow::Context;
+use decanter_core::GameSystem;
 use decanter_runtime::sanitize_relative_path;
 
 use super::download::ChunkSource;
@@ -36,17 +37,20 @@ pub(super) fn manifest_relative_path(path: &str) -> Option<std::path::PathBuf> {
 /// `build_owner` is whose build to read and `content` is whose depots to
 /// take out of it. They differ for a DLC: a DLC has no build of its own —
 /// its content ships inside the base game's build, as depots tagged with
-/// the DLC's product id.
+/// the DLC's product id. `system` is whose build that is: a game's Windows
+/// and macOS builds are separate, with depots of their own.
 pub(super) async fn plan(
     access_token: &str,
     build_owner: i64,
     content: i64,
     branch: Option<&str>,
     build_id: Option<&str>,
+    system: GameSystem,
 ) -> anyhow::Result<Plan> {
     let http = crate::http_client();
-    let (install_directory, version, depot_files) =
-        crate::achv_try!(resolve_depot_files(&http, access_token, build_owner, content, branch, build_id).await);
+    let (install_directory, version, depot_files) = crate::achv_try!(
+        resolve_depot_files(&http, access_token, build_owner, content, branch, build_id, system).await
+    );
     // Signed for the content's own product: its chunks live under that
     // product's path, and a link signed for the build's owner is refused.
     let secure_link = crate::achv_try!(
@@ -110,6 +114,10 @@ pub(super) async fn plan(
 ///
 /// Split out because removing a DLC needs the file list and nothing else:
 /// no secure link, no chunk URLs, no download.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each names a different part of which build and depots to read"
+)]
 pub(super) async fn resolve_depot_files(
     http: &reqwest::Client,
     access_token: &str,
@@ -117,11 +125,14 @@ pub(super) async fn resolve_depot_files(
     content: i64,
     branch: Option<&str>,
     build_id: Option<&str>,
+    system: GameSystem,
 ) -> anyhow::Result<(String, String, Vec<crate::depot::DepotFile>)> {
     let builds = crate::achv_try!(
-        crate::depot::get_builds(http, access_token, build_owner)
+        crate::depot::get_builds(http, access_token, build_owner, system)
             .await
-            .inspect_err(|err| tracing::error!(build_owner, error = %err, "gog builds lookup failed, aborting plan"))
+            .inspect_err(
+                |err| tracing::error!(build_owner, %system, error = %err, "gog builds lookup failed, aborting plan")
+            )
             .context("GOG builds lookup failed")
     );
     // An explicit build id is a manual pin -- a rollback to a specific
@@ -135,7 +146,7 @@ pub(super) async fn resolve_depot_files(
         None => crate::achv_try!(crate::depot::select_build_for_branch(&builds, branch).with_context(
             || match branch {
                 Some(name) => format!("branch {name:?} is not offered for GOG game {build_owner}"),
-                None => format!("no builds available for GOG game {build_owner}"),
+                None => format!("no {system} builds available for GOG game {build_owner}"),
             }
         )),
     };
@@ -146,14 +157,15 @@ pub(super) async fn resolve_depot_files(
             .inspect_err(|err| tracing::error!(build_id = build.build_id, error = %err, "gog build manifest fetch failed, aborting plan"))
             .context("GOG build manifest fetch failed")
     );
-    let depots = crate::depot::select_depots(&meta, content);
+    let depots = crate::depot::select_depots(&meta, content, system);
     if depots.is_empty() {
         tracing::error!(
             content,
+            %system,
             build_id = build.build_id,
-            "no windows-compatible depot, aborting plan"
+            "no compatible depot, aborting plan"
         );
-        anyhow::bail!("no Windows-compatible depot for GOG product {content}");
+        anyhow::bail!("no {system}-compatible depot for GOG product {content}");
     }
 
     let mut depot_files = Vec::new();
@@ -180,11 +192,13 @@ pub(super) async fn dlc_only_files(
     parent: i64,
     dlc: i64,
     branch: Option<&str>,
+    system: GameSystem,
 ) -> anyhow::Result<Vec<std::path::PathBuf>> {
     let http = crate::http_client();
-    let (_, _, dlc_files) = crate::achv_try!(resolve_depot_files(&http, access_token, parent, dlc, branch, None).await);
+    let (_, _, dlc_files) =
+        crate::achv_try!(resolve_depot_files(&http, access_token, parent, dlc, branch, None, system).await);
     let (_, _, base_files) =
-        crate::achv_try!(resolve_depot_files(&http, access_token, parent, parent, branch, None).await);
+        crate::achv_try!(resolve_depot_files(&http, access_token, parent, parent, branch, None, system).await);
 
     let shared: std::collections::HashSet<String> = base_files.into_iter().map(|file| file.path).collect();
     Ok(dlc_files

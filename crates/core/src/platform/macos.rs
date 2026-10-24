@@ -7,6 +7,7 @@ use std::io;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
 use std::path::{Path, PathBuf};
 
+use crate::GameSystem;
 use crate::capabilities::{Feature, Reason, Support};
 
 /// Device and inode: the same folder reached through two paths compares equal.
@@ -97,6 +98,14 @@ pub fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
     symlink(target, link)
+}
+
+/// Only macOS builds, natively: no compatibility layer runs Windows ones
+/// here (decision #836).
+#[must_use]
+#[inline]
+pub const fn game_system() -> GameSystem {
+    GameSystem::MacOs
 }
 
 /// What a downloaded program's file needs before it can run, if anything.

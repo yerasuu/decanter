@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::Context;
-use decanter_core::Storefront;
+use decanter_core::{Storefront, platform};
 
 use super::plan::{manifest_relative_path, resolve_depot_files};
 use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
@@ -151,10 +151,18 @@ async fn verify_content(
     report: &mut VerifyReport,
 ) -> anyhow::Result<()> {
     let (_, _, files) = crate::achv_try!(
-        resolve_depot_files(http, access_token, build_owner, content, branch, build_id)
-            .await
-            .inspect_err(|err| tracing::error!(content, error = %err, "depot manifest fetch failed, aborting verify"))
-            .with_context(|| format!("fetching the depot manifest for {content}"))
+        resolve_depot_files(
+            http,
+            access_token,
+            build_owner,
+            content,
+            branch,
+            build_id,
+            platform::game_system()
+        )
+        .await
+        .inspect_err(|err| tracing::error!(content, error = %err, "depot manifest fetch failed, aborting verify"))
+        .with_context(|| format!("fetching the depot manifest for {content}"))
     );
 
     // Hashing every installed file is real disk I/O over potentially
@@ -336,6 +344,7 @@ pub async fn repair(
                 owner_id,
                 game.branch.as_deref(),
                 Some(game.build_id.as_str()),
+                platform::game_system(),
             )
             .await
         );

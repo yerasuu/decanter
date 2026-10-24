@@ -28,6 +28,7 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, SecondsFormat, Utc};
+use decanter_core::platform;
 
 use crate::depot;
 
@@ -110,7 +111,7 @@ pub(crate) async fn resolve_build_client(
     access_token: &str,
     game_id: i64,
 ) -> Result<BuildClient> {
-    let builds = match depot::get_builds(http, access_token, game_id).await {
+    let builds = match depot::get_builds(http, access_token, game_id, platform::game_system()).await {
         Ok(builds) => builds,
         Err(err) => {
             tracing::error!(game_id, error = %err, "gog builds lookup failed, aborting cloud saves client resolution");

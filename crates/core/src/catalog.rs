@@ -14,6 +14,8 @@
     reason = "Game's Debug/Clone derive over this many Option<String> fields exceeds the 512-byte threshold by design"
 )]
 
+use core::fmt;
+
 /// Which store a game came from.
 ///
 /// The discriminants are persisted (the `storefront` column, and the
@@ -73,6 +75,28 @@ impl TryFrom<i32> for Storefront {
             7 => Ok(Self::BattleNet),
             _ => Err(UnknownStorefront(value)),
         }
+    }
+}
+
+/// Which system's builds of a game decanter installs and runs here: Windows
+/// builds (under Proton on Linux), or macOS builds on macOS.
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "crates/gog matches on it exhaustively to name the store's own systems"
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameSystem {
+    MacOs,
+    Windows,
+}
+
+impl fmt::Display for GameSystem {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match *self {
+            Self::MacOs => "macOS",
+            Self::Windows => "Windows",
+        })
     }
 }
 

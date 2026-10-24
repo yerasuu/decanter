@@ -16,7 +16,7 @@
 use std::path::Path;
 
 use anyhow::Context;
-use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront};
+use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront, platform};
 
 mod download;
 mod plan;
@@ -147,6 +147,7 @@ pub async fn install(
             game_id,
             effective_branch.as_deref(),
             effective_build_id,
+            platform::game_system(),
         )
         .await
         .inspect_err(
@@ -487,7 +488,13 @@ pub async fn uninstall_dlc(
     );
 
     let files = crate::achv_try!(
-        plan::dlc_only_files(&access_token, parent_numeric, dlc, parent.branch.as_deref())
+        plan::dlc_only_files(
+            &access_token,
+            parent_numeric,
+            dlc,
+            parent.branch.as_deref(),
+            platform::game_system(),
+        )
             .await
             .inspect_err(|err| tracing::error!(product_id, parent_id, error = %err, "resolving dlc files failed, aborting dlc uninstall"))
     );

@@ -5,7 +5,7 @@
 //! to for installing; nothing here downloads anything.
 
 use anyhow::Context;
-use decanter_core::{InstalledGame, Storefront};
+use decanter_core::{InstalledGame, Storefront, platform};
 
 use crate::depot::{Build, get_builds, select_build_for_branch};
 
@@ -81,7 +81,7 @@ async fn fetch_builds(account_id: &str, game_id: i64) -> anyhow::Result<Vec<Buil
         .await
     );
     let http = crate::http_client();
-    let builds = get_builds(&http, &access_token, game_id)
+    let builds = get_builds(&http, &access_token, game_id, platform::game_system())
         .await
         .context("GOG builds lookup failed")?;
     tracing::debug!(game_id, build_count = builds.len(), "fetched GOG build list");

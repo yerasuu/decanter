@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, io};
 
+use crate::GameSystem;
 use crate::capabilities::{Feature, Reason, Support};
 
 /// `CREATE_NO_WINDOW`, so `reg` doesn't flash a console over decanter.
@@ -124,6 +125,13 @@ pub fn symlink_dir(target: &Path, link: &Path) -> io::Result<()> {
 #[inline]
 pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
     windows_fs::symlink_file(target, link)
+}
+
+/// Games run as the Windows programs they are.
+#[must_use]
+#[inline]
+pub const fn game_system() -> GameSystem {
+    GameSystem::Windows
 }
 
 /// None: Windows runs a file by its extension, not a mode.

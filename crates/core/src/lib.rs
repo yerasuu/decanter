@@ -24,7 +24,7 @@ mod vdf;
 
 pub use accounts::Account;
 pub use cache::{cache_group, default_cache_root, game_cache_dir, shader_cache_env};
-pub use catalog::{Game, InstallState, Storefront, UnknownStorefront};
+pub use catalog::{Game, GameSystem, InstallState, Storefront, UnknownStorefront};
 pub use collections::Collection;
 pub use credentials::{
     KeyringError, ShadnetSecret, delete as delete_session, delete_shadnet, load as load_session, load_shadnet,
