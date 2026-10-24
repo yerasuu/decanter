@@ -23,6 +23,7 @@ thiserror.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 md5.workspace = true
 flate2.workspace = true
+plist.workspace = true
 url.workspace = true
 futures-util.workspace = true
 tracing.workspace = true

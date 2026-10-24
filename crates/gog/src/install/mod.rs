@@ -268,8 +268,13 @@ async fn install_into(
         return record_dlc(library, parent, product_id, dlc, downloaded, file_count);
     }
 
-    let launch_executable =
-        program::find_launch_executable(&destination_root, &relative_paths, &plan.install_directory, product_id);
+    let launch_executable = program::find_launch_executable(
+        &destination_root,
+        &relative_paths,
+        &plan.install_directory,
+        product_id,
+        plan.system,
+    );
 
     // A reinstall (an update, a branch switch) must not drop what only
     // lives on the previous record: the DLC already sitting in the
@@ -330,6 +335,7 @@ async fn download_into_staging(
         .map(|file| PlannedDownload {
             relative_path: file.relative_path.clone(),
             chunks: file.chunks.clone(),
+            is_executable: file.is_executable,
         })
         .collect();
 

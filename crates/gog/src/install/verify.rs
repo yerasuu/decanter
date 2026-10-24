@@ -332,6 +332,8 @@ pub async fn repair(
         }
     }
 
+    let system = platform::game_system();
+    let bundle_program = super::program::bundle_program(&game, system);
     for (owner, wanted) in by_owner {
         let owner_id: i64 = crate::achv_try!(owner.parse().context("GOG product id must be numeric"));
         // Same build the game is actually on, not the branch's latest --
@@ -344,7 +346,7 @@ pub async fn repair(
                 owner_id,
                 game.branch.as_deref(),
                 Some(game.build_id.as_str()),
-                platform::game_system(),
+                system,
             )
             .await
         );
@@ -362,6 +364,7 @@ pub async fn repair(
             .map(|file| super::download::PlannedDownload {
                 relative_path: file.relative_path.clone(),
                 chunks: file.chunks.clone(),
+                is_executable: file.is_executable || bundle_program == Some(file.relative_path.as_str()),
             })
             .collect();
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);

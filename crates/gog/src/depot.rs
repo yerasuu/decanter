@@ -226,6 +226,11 @@ pub struct DepotFile {
     pub path: String,
     #[serde(default)]
     pub chunks: Vec<DepotChunk>,
+    /// `executable` marks a file that needs its mode to run, as
+    /// [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl/blob/main/gogdl/dl/managers/task_executor.py)
+    /// reads it; GOG doesn't document the field.
+    #[serde(default)]
+    pub flags: Vec<String>,
 }
 
 /// The uncompressed size and MD5 are what let a file be verified against

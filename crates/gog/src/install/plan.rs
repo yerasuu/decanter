@@ -12,9 +12,14 @@ use super::download::ChunkSource;
 pub(super) struct PlannedFile {
     pub(super) relative_path: String,
     pub(super) chunks: Vec<ChunkSource>,
+    /// Needs the executable mode once it lands: only a macOS build's files
+    /// say so, since a Windows build runs by extension, under Proton or
+    /// natively.
+    pub(super) is_executable: bool,
 }
 
 pub(super) struct Plan {
+    pub(super) system: GameSystem,
     pub(super) version: String,
     pub(super) install_directory: String,
     pub(super) install_size_bytes: Option<u64>,
@@ -93,7 +98,12 @@ pub(super) async fn plan(
         }
 
         install_size_bytes = install_size_bytes.zip(file_size).map(|(a, b)| a + b);
-        files.push(PlannedFile { relative_path, chunks });
+        let is_executable = system == GameSystem::MacOs && depot_file.flags.iter().any(|flag| flag == "executable");
+        files.push(PlannedFile {
+            relative_path,
+            chunks,
+            is_executable,
+        });
     }
 
     tracing::debug!(
@@ -103,6 +113,7 @@ pub(super) async fn plan(
         "resolved gog install plan"
     );
     Ok(Plan {
+        system,
         version,
         install_directory,
         install_size_bytes,

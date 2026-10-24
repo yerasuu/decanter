@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+use decanter_core::platform;
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use url::Url;
@@ -99,6 +100,9 @@ fn client() -> anyhow::Result<&'static reqwest::Client> {
 pub(super) struct PlannedDownload {
     pub(super) relative_path: String,
     pub(super) chunks: Vec<ChunkSource>,
+    /// Given the mode a program needs to run once written, where this
+    /// system has one; the move into the library keeps it.
+    pub(super) is_executable: bool,
 }
 
 /// Downloads every file into `staging`, at most [`CONCURRENT_FILES`] at a
@@ -209,6 +213,15 @@ async fn download_file(
             .await
             .with_context(|| format!("flushing {}", destination.display()))
     );
+    if file.is_executable
+        && let Some(permissions) = platform::executable_permissions()
+    {
+        crate::achv_try!(
+            tokio::fs::set_permissions(destination, permissions)
+                .await
+                .with_context(|| format!("making {} executable", destination.display()))
+        );
+    }
     tracing::debug!(
         relative_path = file.relative_path,
         bytes = written,

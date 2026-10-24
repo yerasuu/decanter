@@ -57,6 +57,9 @@ md5 = "0.8.1"
 minisign-verify = "=0.3.0"
 nix = { version = "0.31.3", default-features = false }
 open = "5.4.4"
+# A macOS build's Info.plist, which names the app bundle's executable; XML or
+# binary, both of which bundles ship (decision #892).
+plist = { version = "1.10.3", default-features = false }
 # `default-tls` pulls in native-tls, which links the system's OpenSSL —
 # rustls is pure Rust, no system TLS library to find at build or link time.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
