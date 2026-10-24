@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
     tags: ['v*']
-  pull_request:
 
 permissions:
   contents: read
@@ -104,7 +102,7 @@ jobs:
       # As on Linux, the pedantic warnings stay warnings; only errors fail.
       - name: Clippy
         run: cargo clippy --workspace --all-targets --target "${{ matrix.target }}"
-      # The Windows build: a CI artifact on every push, attached to a tag's release when it built.
+      # The Windows build: a CI artifact of the tag's run, attached to the release when it built.
       - name: Windows build
         if: matrix.os == 'windows-latest' && github.event_name == 'push'
         run: cargo build --release -p decanter --features windows-cli --target "${{ matrix.target }}"
