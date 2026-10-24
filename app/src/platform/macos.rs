@@ -3,7 +3,7 @@ use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
 
-pub use super::close_hotkey::{CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch};
+pub use super::close_hotkey::{CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch, keep_platform};
 pub use super::system_tray::{refresh_tray, spawn_tray};
 
 /// The menu bar always takes status items.

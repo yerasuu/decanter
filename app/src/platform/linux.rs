@@ -174,6 +174,9 @@ pub async fn exit_signal() -> bool {
 /// desktop entry, and GPUI would only rename its notifications.
 pub const fn set_app_identity(_cx: &gpui::App) {}
 
+/// The close notices go over the session bus here, not through GPUI.
+pub const fn keep_platform(_platform: &std::rc::Rc<dyn gpui::Platform>, _cx: &mut gpui::App) {}
+
 /// The window icon, for X11 only: Wayland has no per-window icon, and takes
 /// it from the `.desktop` file matching the `app_id` instead.
 static WINDOW_ICON: LazyLock<Option<Arc<image::RgbaImage>>> = LazyLock::new(|| {

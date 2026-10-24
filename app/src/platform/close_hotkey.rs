@@ -7,11 +7,12 @@
 //! runs the event loop: `closing::listen` runs on GPUI's main thread, so
 //! everything here does.
 
+use std::rc::Rc;
 use std::sync::{LazyLock, Once};
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
-use gpui::{AsyncApp, SystemNotification};
+use gpui::{App, AsyncApp, Global, Platform, SystemNotification};
 use rust_i18n::t;
 use tokio::sync::watch;
 
@@ -34,10 +35,21 @@ static HANDLER: Once = Once::new();
 /// and the stop takes whichever is up away.
 const NOTICE_TAG: &str = "decanter-close-game";
 
+/// The notices post through the platform itself, not through `App`: its
+/// borrow would last across the toast's COM call, whose nested message pump
+/// runs the window's frame callbacks, and those then fail to borrow `App`.
+struct NoticeCenter(Rc<dyn Platform>);
+
+impl Global for NoticeCenter {}
+
+pub fn keep_platform(platform: &Rc<dyn Platform>, cx: &mut App) {
+    cx.set_global(NoticeCenter(Rc::clone(platform)));
+}
+
 pub struct CloseWatch {
     shortcut: Option<(GlobalHotKeyManager, HotKey)>,
     presses: watch::Receiver<()>,
-    cx: AsyncApp,
+    platform: Option<Rc<dyn Platform>>,
 }
 
 #[expect(
@@ -67,10 +79,14 @@ impl CloseWatch {
             .inspect(|_| tracing::info!(hotkey = %hotkey.into_string(), "close-game shortcut registered"))
             .inspect_err(|err| tracing::warn!(error = %err, "no close-game shortcut, it could not be registered"))
             .ok();
+        let platform = cx.try_read_global(|center: &NoticeCenter, _| Rc::clone(&center.0));
+        if platform.is_none() {
+            tracing::warn!("no platform to post the close-game notices through, they won't show");
+        }
         Self {
             shortcut,
             presses,
-            cx: cx.clone(),
+            platform,
         }
     }
 
@@ -83,7 +99,9 @@ impl CloseWatch {
     }
 
     pub fn notices(&self) -> Notices {
-        Notices { cx: self.cx.clone() }
+        Notices {
+            platform: self.platform.clone(),
+        }
     }
 
     /// Hands the key back to the rest of the desktop while no game runs.
@@ -100,7 +118,7 @@ impl CloseWatch {
 /// from GPUI's main thread, which the platform's notification center needs.
 #[derive(Clone)]
 pub struct Notices {
-    cx: AsyncApp,
+    platform: Option<Rc<dyn Platform>>,
 }
 
 #[expect(
@@ -110,7 +128,7 @@ pub struct Notices {
 )]
 #[expect(
     clippy::future_not_send,
-    reason = "the app handle stays on the main thread, which the notification center needs"
+    reason = "the platform stays on the main thread, which the notification center needs"
 )]
 impl Notices {
     /// The tag names the notification, so there is no id to hand back.
@@ -128,7 +146,9 @@ impl Notices {
     }
 
     pub async fn close(self, _id: Option<u32>) {
-        self.cx.update(|cx| cx.dismiss_system_notification(NOTICE_TAG));
+        if let Some(platform) = &self.platform {
+            platform.dismiss_system_notification(NOTICE_TAG);
+        }
     }
 
     fn show(&self, title: &str, body: &str) {
@@ -138,6 +158,8 @@ impl Notices {
             body: body.to_owned().into(),
             actions: Vec::new(),
         };
-        self.cx.update(|cx| cx.show_system_notification(notification));
+        if let Some(platform) = &self.platform {
+            platform.show_system_notification(notification);
+        }
     }
 }

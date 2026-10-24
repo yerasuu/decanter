@@ -168,10 +168,12 @@ fn main() {
     // a library brought from elsewhere may still have the setting on.
     let close_to_tray = close_to_tray();
     i18n::init();
-    gpui_platform::application()
+    let host_platform = gpui_platform::current_platform(false);
+    gpui::Application::with_platform(std::rc::Rc::clone(&host_platform))
         .with_quit_mode(gpui::QuitMode::Explicit)
         .run(move |cx| {
             platform::set_app_identity(cx);
+            platform::keep_platform(&host_platform, cx);
             if let Err(err) = theme::load_fonts(cx) {
                 tracing::error!(%err, "cannot load bundled fonts");
             }

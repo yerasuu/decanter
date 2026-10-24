@@ -24,6 +24,6 @@ use windows as os;
 pub use os::without_console;
 pub use os::{
     CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, exit_signal, hostname,
-    own_process_group, refresh_tray, replace_process, restrict_to_owner, set_app_identity, spawn_tray,
+    keep_platform, own_process_group, refresh_tray, replace_process, restrict_to_owner, set_app_identity, spawn_tray,
     status_notifier_host, with_window_icon,
 };
