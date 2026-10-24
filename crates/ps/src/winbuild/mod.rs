@@ -621,7 +621,7 @@ async fn steps(
         return Err(err);
     }
     on_stage(Stage::Assembling);
-    install(root, head, &tools, &out).await
+    install(root, head, &tools, &sources, &out).await
 }
 
 /// CMake reads `\` in a path as an escape in some places; `/` means the same to Windows.
@@ -631,11 +631,17 @@ fn cmake_path(path: &Path) -> String {
 
 /// The build in `out` made into [`dir`], then recorded: only a folder that passed
 /// [`assemble::check`] ever gets there.
-async fn install(root: &Root, head: &Head, tools: &toolchain::Tools, out: &Path) -> Result<Built, Error> {
+async fn install(
+    root: &Root,
+    head: &Head,
+    tools: &toolchain::Tools,
+    sources: &Path,
+    out: &Path,
+) -> Result<Built, Error> {
     let staging = staging(root, &head.commit);
     let _ = tokio::fs::remove_dir_all(&staging).await;
     let assembled = {
-        let (out, staging, head) = (out.to_owned(), staging.clone(), head.clone());
+        let (sources, out, staging, head) = (sources.to_owned(), out.to_owned(), staging.clone(), head.clone());
         let sysroot_bin = tools.package.join("clang64").join("bin");
         let toolchain = format!(
             "toolchain-win32-{} ({})",
@@ -643,8 +649,9 @@ async fn install(root: &Root, head: &Head, tools: &toolchain::Tools, out: &Path)
             pins::TOOLCHAIN.sha256
         );
         let expected = tools.sysroot_bin.clone();
-        tokio::task::spawn_blocking(move || {
-            assemble::folder(&out, &sysroot_bin, &expected, &staging, &head, &toolchain)
+        tokio::task::spawn_blocking(move || match assemble::patches(&sources, &staging) {
+            Ok(()) => assemble::folder(&out, &sysroot_bin, &expected, &staging, &head, &toolchain),
+            Err(err) => Err(err),
         })
         .await
     };
