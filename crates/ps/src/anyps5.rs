@@ -15,7 +15,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use decanter_core::platform::symlink_dir;
+use decanter_core::platform::link_dir;
 use tokio::process::Command;
 
 use crate::library::Game;
@@ -190,7 +190,8 @@ pub fn prepare_run_dir(anyps5: &AnyPs5, title_id: &str, run_dir: &Path) -> io::R
 
 fn replace_symlink(target: &Path, link: &Path) -> io::Result<()> {
     if link.symlink_metadata().is_ok() {
-        fs::remove_file(link)?;
+        // remove_dir_all unlinks a symlink or junction without following it, which remove_file can't on Windows.
+        fs::remove_dir_all(link)?;
     }
-    symlink_dir(target, link)
+    link_dir(target, link)
 }
