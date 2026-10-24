@@ -295,6 +295,8 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
             .text("error", error_text(err))
             .arg("log", winbuild::log_path(root, &head.commit).display())
     });
+    // Reloaded before `building` is cleared: dropping that task is dropping this one, so nothing after would run.
+    reload(this, root, cx).await;
     let _ = this.update(cx, |this, cx| {
         let state = &mut this.branch;
         state.building = None;
@@ -302,7 +304,6 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
         state.error = error;
         cx.notify();
     });
-    reload(this, root, cx).await;
 }
 
 /// Why a build or check failed, in the UI's language where the owner can act on it.
