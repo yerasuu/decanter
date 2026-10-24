@@ -9,6 +9,8 @@ use std::path::Path;
 
 use tokio::process::Command;
 
+use crate::platform;
+
 #[derive(Clone, Copy)]
 pub enum Names {
     Psport,
@@ -34,8 +36,10 @@ impl Names {
         Self::of_script(std::fs::read_to_string(port_dir.join("run.sh")).ok().as_deref())
     }
 
+    /// A direct launch has no `run.sh` to tell by: its builds all come after both renames.
     fn of_script(script: Option<&str>) -> Self {
         match script {
+            _ if platform::DIRECT_LAUNCH => Self::Psport,
             Some(script) if script.contains("psport.ini") => Self::Psport,
             Some(script) if script.contains("PS_PROBE") => Self::EarlyPsport,
             _ => Self::Bbport,
@@ -92,16 +96,15 @@ pub const MEMORY_MODEL_SETTINGS: [&str; 3] = ["pc_model", "preupload", "as_0_3"]
 /// Whether the port at `port_dir` has only the PC memory model, told by `run.sh` as [`Names::of`]
 /// tells the generation: from the removal on, it warns that it ignores the variables of the old one.
 pub async fn single_memory_model(port_dir: &Path) -> bool {
-    tokio::fs::read_to_string(port_dir.join("run.sh"))
-        .await
-        .is_ok_and(|script| is_single_memory_model(&script))
+    is_single_memory_model(tokio::fs::read_to_string(port_dir.join("run.sh")).await.ok().as_deref())
 }
 
 /// [`single_memory_model`] for callers already doing file I/O off the UI thread.
 pub fn single_memory_model_blocking(port_dir: &Path) -> bool {
-    std::fs::read_to_string(port_dir.join("run.sh")).is_ok_and(|script| is_single_memory_model(&script))
+    is_single_memory_model(std::fs::read_to_string(port_dir.join("run.sh")).ok().as_deref())
 }
 
-fn is_single_memory_model(script: &str) -> bool {
-    script.contains("Memory model: the PC one, the only one now")
+/// A direct launch's builds all come after the removal, with no `run.sh` to tell by.
+fn is_single_memory_model(script: Option<&str>) -> bool {
+    platform::DIRECT_LAUNCH || script.is_some_and(|text| text.contains("Memory model: the PC one, the only one now"))
 }

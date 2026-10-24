@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use decanter_core::capabilities::Feature;
 use decanter_core::{KeyringError, ShadnetSecret};
 use decanter_ps::anyps5::{self, AnyPs5};
+use decanter_ps::bbport::GameLaunch;
 use decanter_ps::bbport::icons::IconStyle;
+use decanter_ps::bbport::mods::Mods;
 use decanter_ps::bbport::online::{self, Online, OnlineError};
 use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner, Summary};
@@ -18,11 +20,13 @@ use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, JobKind};
 use decanter_ps::toolchain::Toolchain;
-use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
+use futures::future::Shared;
+use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
 use tokio::process::Command;
 
 use super::Ps;
-use super::jobs::{self, JobKey};
+use super::jobs::{self, JobKey, Launcher};
+use super::ports::Prepared;
 use super::vk_layer;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
@@ -57,53 +61,26 @@ impl Ps {
             .library_of(dir)
             .map_or_else(|| root.library().to_owned(), |(folder, _)| folder.to_owned());
         let failures_path = root.profile(&profile_id).join("failures.jsonl");
-        let prepared = self.prepare(port, &root, cx);
+        // Without the toolchain's builds a port runs only from a folder the user picked.
+        let prepared = Caps::get(cx)
+            .is_offered(Feature::PsBuilds)
+            .then(|| self.prepare(port, &root, cx));
         self.notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let cache_dir = game_cache_dir(folder, &game.title_id, cx).await;
-            let (command, facts) = match prepared.await {
-                Ok(toolchain) => {
-                    let command = match port {
-                        Port::Bbport => {
-                            bbport_command(&root, &toolchain, &game, &profile_id, cache_dir.as_deref(), cx).await
-                        }
-                        Port::AnyPs5 => {
-                            let cache_dir = cache_dir.as_deref();
-                            anyps5_command(&this, &root, &toolchain, &game, &profile_id, cache_dir, cx).await
-                        }
-                    };
-                    let command = command.map_err(|err| {
-                        tracing::warn!(port = port.name(), title_id = %game.title_id, error = %err, "could not start game");
-                        err.localized()
-                    });
-                    let facts = jobs::port_facts(&root, port, Some(&toolchain)).await;
-                    vk_layer::apply(&this, &root, &toolchain, &game.dir, command, facts, cx).await
+            let started = match prepared {
+                Some(prepared) => {
+                    let cache_dir = cache_dir.as_deref();
+                    through_toolchain(&this, &root, port, &game, &profile_id, cache_dir, prepared, cx).await
                 }
-                Err(err) => (
-                    Err(Text::new("ps.play.prepare_error").arg("name", port.name()).text("error", err)),
-                    Vec::new(),
-                ),
+                #[cfg(windows)]
+                None => super::direct::launch(&root, port, &game, &profile_id, cache_dir.as_deref(), cx).await,
+                #[cfg(not(windows))]
+                None => Err(Text::new("ps.errors.builds_unavailable")),
             };
-            let command = match command {
-                Ok(mut command) => {
-                    let key = game.key();
-                    let (mangohud, gamemoded) = crate::core::db()
-                        .map(|db| {
-                            (
-                                crate::game_tools::mangohud(&db, &key),
-                                crate::game_tools::gamemoded(&db, &key),
-                            )
-                        })
-                        .unwrap_or_default();
-                    if let Some(autostart_log) = mangohud {
-                        command.envs(crate::game_tools::mangohud_env(&key, root.library(), autostart_log).await);
-                    }
-                    if let Some(gamemoded) = gamemoded {
-                        command = process::through_gamemode(command, &gamemoded);
-                    }
-                    process::in_own_scope(command, &key, &game.title)
-                }
+            let (launcher, facts) = match started {
+                Ok(started) => started,
                 Err(err) => {
                     let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
                     return notify(&this, err, true, cx);
@@ -115,13 +92,13 @@ impl Ps {
             let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit);
             let target = crate::closing::Target::Ps(game.dir.clone());
             cx.update(|cx| crate::closing::started(target.clone(), game.title.clone(), cx));
-            let finished = jobs::run(
+            let finished = jobs::run_launcher(
                 &this,
                 &root,
                 JobKey::Game(game.dir.clone()),
                 JobKind::Game,
                 facts,
-                command,
+                launcher,
                 Some(scanner),
                 cx,
             )
@@ -137,12 +114,18 @@ impl Ps {
     }
 
     pub fn stop(&mut self, key: &JobKey, cx: &mut Context<Self>) {
-        if let Some(job) = self.jobs.get(key) {
-            job.update(cx, |job, cx| {
-                job.stop();
-                cx.notify();
-            });
+        let Some(job) = self.jobs.get(key) else {
+            return;
+        };
+        #[cfg(windows)]
+        if let JobKey::Game(dir) = key {
+            super::direct::stop(job, dir, cx);
+            return;
         }
+        job.update(cx, |job, cx| {
+            job.stop();
+            cx.notify();
+        });
     }
 
     /// Builds `<base>-01.09` beside the base dump, then shows it.
@@ -169,10 +152,69 @@ impl Ps {
     }
 }
 
+/// The port prepared in its toolchain, then the game's command in it with what a run of the port
+/// adds around it: the validation layer, MangoHud, GameMode and a scope of its own.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the launch's own inputs plus the preparation already under way"
+)]
+async fn through_toolchain(
+    this: &WeakEntity<Ps>,
+    root: &Root,
+    port: Port,
+    game: &Game,
+    profile_id: &str,
+    cache_dir: Option<&Path>,
+    prepared: Shared<Task<Prepared>>,
+    cx: &mut AsyncApp,
+) -> Result<(Launcher, Vec<(&'static str, String)>), Text> {
+    let toolchain = match prepared.await {
+        Ok(toolchain) => toolchain,
+        Err(err) => {
+            return Err(Text::new("ps.play.prepare_error")
+                .arg("name", port.name())
+                .text("error", err));
+        }
+    };
+    let command = match port {
+        Port::Bbport => bbport_command(root, &toolchain, game, profile_id, cache_dir, cx).await,
+        Port::AnyPs5 => anyps5_command(this, root, &toolchain, game, profile_id, cache_dir, cx).await,
+    };
+    let command = command.map_err(|err| {
+        tracing::warn!(port = port.name(), title_id = %game.title_id, error = %err, "could not start game");
+        err.localized()
+    });
+    let facts = jobs::port_facts(root, port, Some(&toolchain)).await;
+    let (command, facts) = vk_layer::apply(this, root, &toolchain, &game.dir, command, facts, cx).await;
+    let mut command = match command {
+        Ok(command) => command,
+        Err(err) => return Err(err),
+    };
+    let key = game.key();
+    let (mangohud, gamemoded) = crate::core::db()
+        .map(|db| {
+            (
+                crate::game_tools::mangohud(&db, &key),
+                crate::game_tools::gamemoded(&db, &key),
+            )
+        })
+        .unwrap_or_default();
+    if let Some(autostart_log) = mangohud {
+        command.envs(crate::game_tools::mangohud_env(&key, root.library(), autostart_log).await);
+    }
+    if let Some(gamemoded) = gamemoded {
+        command = process::through_gamemode(command, &gamemoded);
+    }
+    Ok((
+        Launcher::Command(process::in_own_scope(command, &key, &game.title)),
+        facts,
+    ))
+}
+
 /// Why a game could not be started: logged as it is, worded for the UI by
 /// [`LaunchError::localized`].
 #[derive(Debug, thiserror::Error)]
-enum LaunchError {
+pub(super) enum LaunchError {
     #[error("mods setup failed: {0}")]
     Mods(io::Error),
     #[error("could not create {}: {err}", dir.display())]
@@ -195,7 +237,7 @@ enum LaunchError {
 }
 
 impl LaunchError {
-    fn localized(&self) -> Text {
+    pub(super) fn localized(&self) -> Text {
         match self {
             Self::Mods(err) => Text::new("ps.play.mods_error").arg("error", err),
             Self::CreateDir { dir, err } => Text::new("ps.errors.create_dir")
@@ -221,14 +263,49 @@ fn notify(this: &WeakEntity<Ps>, text: Text, error: bool, cx: &mut AsyncApp) {
     });
 }
 
-async fn bbport_command(
+/// Everything a bbport launch reads besides the game and its cache folder, gathered before the
+/// launch borrows it ([`LaunchInputs::game_launch`]).
+pub(super) struct LaunchInputs {
+    pub(super) settings: LauncherSettings,
+    learned: learned::Title,
+    aspect_ratio: Option<&'static str>,
+    mods: Mods,
+    debug_dir: Option<PathBuf>,
+    user_dir: PathBuf,
+    online: Option<Online>,
+    menu_language: String,
+}
+
+impl LaunchInputs {
+    pub(super) fn game_launch<'inputs>(
+        &'inputs self,
+        game: &'inputs Game,
+        cache_dir: Option<&'inputs Path>,
+    ) -> GameLaunch<'inputs> {
+        GameLaunch {
+            game,
+            user_dir: &self.user_dir,
+            cache_dir,
+            debug_dir: self.debug_dir.as_deref(),
+            settings: &self.settings,
+            mods: &self.mods,
+            menu_language: &self.menu_language,
+            learned: &self.learned,
+            aspect_ratio: self.aspect_ratio,
+            online: self.online.as_ref(),
+        }
+    }
+}
+
+/// `toolchain` only tells the connected pads apart for the layout's button icons; without one the
+/// icons take their automatic style's default.
+pub(super) async fn launch_inputs(
     root: &Root,
-    toolchain: &Toolchain,
+    toolchain: Option<&Toolchain>,
     game: &Game,
     profile_id: &str,
-    cache_dir: Option<&Path>,
     cx: &mut AsyncApp,
-) -> Result<Command, LaunchError> {
+) -> Result<LaunchInputs, LaunchError> {
     let (settings, learned, chosen_ratio) = {
         let root = root.clone();
         let title_id = game.title_id.clone();
@@ -247,17 +324,19 @@ async fn bbport_command(
         None | Some("auto") => display_aspect_ratio(cx),
         Some(_) => None,
     };
-    let bbport = Bbport::new(root.clone());
     let mods = if bbport::is_bloodborne(game) {
         // The automatic icon style follows the pad bbport will read: the one
         // picked in Mando, else the first connected.
-        let detected = {
-            let pads = bbport.connected_gamepads(toolchain).await;
-            let chosen = settings.text("gamepad");
-            pads.iter()
-                .find(|(guid, _)| Some(guid.as_str()) == chosen)
-                .or_else(|| pads.first())
-                .map(|(guid, name)| IconStyle::for_gamepad(guid, name))
+        let detected = match toolchain {
+            Some(toolchain) => {
+                let pads = Bbport::new(root.clone()).connected_gamepads(toolchain).await;
+                let chosen = settings.text("gamepad");
+                pads.iter()
+                    .find(|(guid, _)| Some(guid.as_str()) == chosen)
+                    .or_else(|| pads.first())
+                    .map(|(guid, name)| IconStyle::for_gamepad(guid, name))
+            }
+            None => None,
         };
         let game_dir = game.dir.clone();
         let for_mods = settings.clone();
@@ -272,7 +351,7 @@ async fn bbport_command(
             Err(err) => return Err(LaunchError::Mods(err)),
         }
     } else {
-        bbport::mods::Mods::off(root, &settings)
+        Mods::off(root, &settings)
     };
     let debug_dir = crate::debug_logs::ps_folder(settings.title_flag(&game.title_id, crate::debug_logs::TITLE_KEY));
     let user_dir = root.profile(profile_id).join("bbport/user");
@@ -283,20 +362,32 @@ async fn bbport_command(
         Ok(online) => online,
         Err(err) => return Err(err),
     };
-    bbport
-        .launch_command(
-            toolchain,
-            game,
-            &user_dir,
-            cache_dir,
-            debug_dir.as_deref(),
-            &settings,
-            &mods,
-            &rust_i18n::locale(),
-            &learned,
-            aspect_ratio,
-            online.as_ref(),
-        )
+    Ok(LaunchInputs {
+        settings,
+        learned,
+        aspect_ratio,
+        mods,
+        debug_dir,
+        user_dir,
+        online,
+        menu_language: rust_i18n::locale().to_string(),
+    })
+}
+
+async fn bbport_command(
+    root: &Root,
+    toolchain: &Toolchain,
+    game: &Game,
+    profile_id: &str,
+    cache_dir: Option<&Path>,
+    cx: &mut AsyncApp,
+) -> Result<Command, LaunchError> {
+    let inputs = match launch_inputs(root, Some(toolchain), game, profile_id, cx).await {
+        Ok(inputs) => inputs,
+        Err(err) => return Err(err),
+    };
+    Bbport::new(root.clone())
+        .launch_command(toolchain, &inputs.game_launch(game, cache_dir))
         .await
         .map_err(LaunchError::Environment)
 }

@@ -14,8 +14,8 @@ use crate::i18n::Text;
 pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
 pub use ps::{
-    BuildOrigin, DllOutcome, Fallback, JobKey, PortState, Ps, Stage, Track, failure_message, job_label, job_target,
-    online_error, vk_layer_unavailable_text,
+    BuildOrigin, DllOutcome, Fallback, JobKey, PortState, Ps, Stage, Track, failure_message,
+    folder_error as ps_folder_error, job_label, job_target, online_error, vk_layer_unavailable_text,
 };
 
 /// Whether storage came up, and which profile is active.

@@ -6,6 +6,7 @@
 //! port update or reset never touches it; saves go to the profile's own
 //! directory.
 
+pub mod direct;
 pub mod effects;
 mod features;
 mod groups;
@@ -19,6 +20,7 @@ mod settings;
 pub mod tools;
 pub mod values;
 
+use core::iter;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -127,6 +129,29 @@ pub fn merge_update(base: &Path, update: &Path, version: &str) -> io::Result<Pat
     walk(base, &target, true)?;
     walk(update, &target, false)?;
     Ok(target)
+}
+
+/// One game's launch, as both [`Bbport::launch_command`] and [`Bbport::direct_command`] take it.
+/// `user_dir` holds the profile's saves; `mods` comes from [`mods::prepare`], or [`mods::Mods::off`]
+/// for a title other than Bloodborne. `menu_language` is the in-game menu's until one is picked in
+/// the menu itself. `learned` is what earlier runs of this title taught ([`learned::Store`]).
+/// `aspect_ratio` is the display's, when the setting is automatic ([`nearest_aspect_ratio`]).
+/// `cache_dir` is the game's own cache folder, in the location of the library folder holding its
+/// dump; without one the port keeps its caches in `user_dir`. `debug_dir` turns the port's debug
+/// mode on, each run's logs gathered there under the port's own folder per host. `online` is online
+/// play, with its secrets, when it is on and the build has it.
+#[derive(Clone, Copy)]
+pub struct GameLaunch<'launch> {
+    pub game: &'launch Game,
+    pub user_dir: &'launch Path,
+    pub cache_dir: Option<&'launch Path>,
+    pub debug_dir: Option<&'launch Path>,
+    pub settings: &'launch LauncherSettings,
+    pub mods: &'launch mods::Mods,
+    pub menu_language: &'launch str,
+    pub learned: &'launch learned::Title,
+    pub aspect_ratio: Option<&'launch str>,
+    pub online: Option<&'launch online::Online>,
 }
 
 /// A bbport checkout. The toolchain that builds it must be the one that
@@ -274,37 +299,9 @@ impl Bbport {
         probe && marker.is_ok_and(|built| built.lines().next() == Some(stamp.as_str()))
     }
 
-    /// The same environment bbport's own launcher built (`game_environment`
-    /// in `launcher/psport_launcher.py`), for the settings decanter knows,
-    /// plus what keeps `run.sh` from building and from writing into the
-    /// checkout. `user_dir` holds the profile's saves; `mods` comes from
-    /// [`mods::prepare`], or [`mods::Mods::off`] for a title other than
-    /// Bloodborne. `menu_language` is the in-game menu's until one is picked
-    /// in the menu itself. `learned` is what earlier runs of this title taught
-    /// ([`learned::Store`]). `aspect_ratio` is the display's, when the setting is automatic
-    /// ([`nearest_aspect_ratio`]). `cache_dir` is the game's own cache folder, in the location of
-    /// the library folder holding its dump; without one the port keeps its caches in `user_dir`.
-    /// `debug_dir` turns the port's debug mode on, each run's logs gathered there under the port's
-    /// own folder per host. `online` is online play, with its secrets, when it is on and the build
-    /// has it.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "each one is a different source of the environment"
-    )]
-    pub async fn launch_command(
-        &self,
-        toolchain: &Toolchain,
-        game: &Game,
-        user_dir: &Path,
-        cache_dir: Option<&Path>,
-        debug_dir: Option<&Path>,
-        settings: &LauncherSettings,
-        mods: &mods::Mods,
-        menu_language: &str,
-        learned: &learned::Title,
-        aspect_ratio: Option<&str>,
-        online: Option<&online::Online>,
-    ) -> io::Result<Command> {
+    /// `run.sh` in `toolchain`, with [`Self::game_env`] plus what keeps it from building and from
+    /// writing into the checkout.
+    pub async fn launch_command(&self, toolchain: &Toolchain, launch: &GameLaunch<'_>) -> io::Result<Command> {
         let mut command = match toolchain
             .command(&self.root, Port::Bbport, r#"bash "$DECANTER_PORT_DIR/run.sh""#)
             .await
@@ -315,15 +312,67 @@ impl Bbport {
         let port_dir = self.port_dir().await;
         let host_port_dir = self.host_port_dir(toolchain).await;
         let names = Names::of(&host_port_dir).await;
-        let var = |suffix: &str| names.var(suffix);
         let old_memory_model = !single_memory_model(&host_port_dir).await;
+        command
+            .env(names.var("PREBUILT"), "1")
+            .env(names.var("PROBE"), port_dir.join(names.probe()))
+            .env("DECANTER_PORT_DIR", port_dir);
+        self.game_env(&mut command, names, old_memory_model, launch).await;
+        Ok(command)
+    }
+
+    /// `folder`'s `psport.exe` started as `command` with no `run.sh` in between: the environment
+    /// of [`Self::game_env`], the defaults `run.sh` would add to it, and the arguments `run.sh`
+    /// builds from all of it ([`direct::arguments`]).
+    ///
+    /// # Errors
+    /// Creating the folder the port links the game's mods in, or the game's cache folder.
+    pub async fn direct_command(
+        &self,
+        command: &mut Command,
+        folder: &direct::Folder,
+        launch: &GameLaunch<'_>,
+    ) -> io::Result<()> {
+        let names = Names::Psport;
+        let data = self.root.bbport_data();
+        let out = data.join("out");
+        for dir in iter::once(out.as_path()).chain(launch.cache_dir) {
+            if let Err(err) = tokio::fs::create_dir_all(dir).await {
+                return Err(err);
+            }
+        }
+        // `run.sh` names the program it runs here; `psport.exe` ignores it, while the run's log
+        // tells the port's variable spelling by it.
+        command
+            .env(names.var("PREBUILT"), "1")
+            .env(names.var("PROBE"), folder.executable());
+        self.game_env(command, names, false, launch).await;
+        direct::run_sh_defaults(command, &data.join(names.ini()), &data);
+        command.args(direct::arguments(command, &data, &out));
+        Ok(())
+    }
+
+    /// The same environment bbport's own launcher built (`game_environment` in
+    /// `launcher/psport_launcher.py`), for the settings decanter knows; `names` and
+    /// `old_memory_model` are those of the port that reads it.
+    async fn game_env(&self, command: &mut Command, names: Names, old_memory_model: bool, launch: &GameLaunch<'_>) {
+        let GameLaunch {
+            game,
+            user_dir,
+            cache_dir,
+            debug_dir,
+            settings,
+            mods,
+            menu_language,
+            learned,
+            aspect_ratio,
+            online,
+        } = *launch;
+        let var = |suffix: &str| names.var(suffix);
         let port_reads = |key: &str| old_memory_model || !MEMORY_MODEL_SETTINGS.contains(&key);
         let data = self.root.bbport_data();
         let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
-            .env(var("PREBUILT"), "1")
-            .env(var("PROBE"), port_dir.join(names.probe()))
-            .env("DECANTER_PORT_DIR", port_dir)
             .env(var("DATA_DIR"), &data)
             .env(var("USER_DIR"), user_dir)
             .env(var("GAME_DIR"), &game.dir)
@@ -394,7 +443,6 @@ impl Bbport {
                 command.env(key, value);
             }
         }
-        Ok(command)
     }
 
     /// Connected controllers as `(GUID, name)`, from the tool bbport builds

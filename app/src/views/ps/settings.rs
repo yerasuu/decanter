@@ -1,16 +1,20 @@
 //! Ajustes of the PS section: where this profile's dumps are read from, the
 //! folders of the user's own system module and font dumps, and which psport
-//! builds the library runs.
+//! builds the library runs, or where its `psport.exe` is where decanter
+//! doesn't build ports.
 
 use std::path::PathBuf;
 
+use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::LauncherSettings;
+use decanter_ps::bbport::direct::{self, Folder};
 use decanter_ps::channel::Channel;
 use decanter_ps::port::Port;
 use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::online::OnlineView;
+use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
@@ -46,6 +50,8 @@ pub struct SettingsView {
     /// One per `DUMP_FOLDERS`, read off the UI thread when the view opens,
     /// after each change and whenever `Ps` changes.
     dump_folders: [Option<String>; 2],
+    /// [`direct::FOLDER_KEY`], read with `dump_folders`.
+    psport_folder: Option<String>,
     channel: Option<Channel>,
     online: Entity<OnlineView>,
     error: Option<Text>,
@@ -59,6 +65,7 @@ impl SettingsView {
         let this = Self {
             ps,
             dump_folders: [None, None],
+            psport_folder: None,
             channel: None,
             online: cx.new(OnlineView::new),
             error: None,
@@ -69,16 +76,18 @@ impl SettingsView {
 
     fn refresh(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let (dirs, channel) = cx
+            let (dirs, psport_folder, channel) = cx
                 .background_spawn(async {
                     let root = decanter_ps::paths::active();
                     let settings = LauncherSettings::load(&root);
                     let dirs = DUMP_FOLDERS.map(|folder| settings.text(folder.key).map(str::to_owned));
-                    (dirs, Channel::of(&root, Port::Bbport))
+                    let psport_folder = settings.text(direct::FOLDER_KEY).map(str::to_owned);
+                    (dirs, psport_folder, Channel::of(&root, Port::Bbport))
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.dump_folders = dirs;
+                this.psport_folder = psport_folder;
                 this.channel = Some(channel);
                 cx.notify();
             });
@@ -109,6 +118,78 @@ impl SettingsView {
             });
         })
         .detach();
+    }
+
+    /// Taken only when it holds what psport needs to start, so a launch never finds out first.
+    fn pick_psport_folder(&self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let Some(picked) = rfd::AsyncFileDialog::new()
+                .set_title(t!("ps.settings.psport_folder.pick_title"))
+                .pick_folder()
+                .await
+            else {
+                return;
+            };
+            let dir = picked.path().to_path_buf();
+            let checked = cx.background_spawn(async move { Folder::try_new(dir) }).await;
+            let _ = this.update(cx, |this, cx| match checked {
+                Ok(folder) => {
+                    tracing::info!(dir = %folder.path().display(), "psport.exe folder picked");
+                    let kept = folder.path().to_string_lossy().into_owned();
+                    this.set_dump_folder(direct::FOLDER_KEY, Some(kept), cx);
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "picked folder can't run psport");
+                    this.error = Some(crate::state::ps_folder_error(&err));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn psport_folder_section(&self, cx: &Context<Self>) -> impl IntoElement {
+        let has_dir = self.psport_folder.is_some();
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(theme::h2(t!("ps.settings.psport_folder.title")))
+            .child(
+                theme::card().child(
+                    theme::list_row("ps-psport-folder", true)
+                        .child(
+                            theme::mono().flex_1().min_w_0().truncate().child(
+                                self.psport_folder
+                                    .clone()
+                                    .unwrap_or_else(|| t!("ps.settings.psport_folder.none").into_owned()),
+                            ),
+                        )
+                        .child(
+                            button(
+                                "ps-psport-folder-pick",
+                                ButtonKind::Secondary,
+                                t!("ps.settings.pick"),
+                                false,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.pick_psport_folder(cx))),
+                        )
+                        .when(has_dir, |row| {
+                            row.child(
+                                button(
+                                    "ps-psport-folder-forget",
+                                    ButtonKind::Secondary,
+                                    t!("ps.settings.forget"),
+                                    false,
+                                )
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.set_dump_folder(direct::FOLDER_KEY, None, cx)),
+                                ),
+                            )
+                        }),
+                ),
+            )
+            .child(theme::muted(t!("ps.settings.psport_folder.description")))
     }
 
     fn set_channel(&self, channel: Channel, cx: &mut Context<Self>) {
@@ -234,6 +315,12 @@ impl Render for SettingsView {
             roots.iter().map(|root| decanter_ps::paths::games_in(root)).collect()
         };
         let count = folders.len();
+        let channels = Caps::get(cx).gate_or_reason(
+            Feature::PsBuilds,
+            theme::card()
+                .child(self.channel_row(Channel::Release, false, cx))
+                .child(self.channel_row(Channel::Testing, true, cx)),
+        );
         theme::page(
             "ps-settings",
             div()
@@ -274,6 +361,7 @@ impl Render for SettingsView {
                     })),
                 )
                 .child(theme::muted(t!("ps.settings.games.description")))
+                .when(direct::IN_USE, |page| page.child(self.psport_folder_section(cx)))
                 .children(
                     DUMP_FOLDERS
                         .iter()
@@ -282,11 +370,7 @@ impl Render for SettingsView {
                         .map(|(index, (folder, dir))| Self::dump_folder_section(index, folder, dir, cx)),
                 )
                 .child(theme::h2(t!("ps.settings.channel.title")))
-                .child(
-                    theme::card()
-                        .child(self.channel_row(Channel::Release, false, cx))
-                        .child(self.channel_row(Channel::Testing, true, cx)),
-                )
+                .child(channels)
                 .child(self.online.clone())
                 .children(self.error.as_ref().map(theme::error)),
         )

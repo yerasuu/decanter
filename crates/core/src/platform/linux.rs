@@ -184,6 +184,7 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::SelfUpdate
         | Feature::SteamExport
         | Feature::PsSection
+        | Feature::PsBuilds
         | Feature::PsDownloads
         | Feature::PsPlay
         | Feature::PsMenuBinding

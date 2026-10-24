@@ -6,6 +6,7 @@
 use std::io;
 use std::time::Duration;
 
+use decanter_core::capabilities::Feature;
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport};
 use decanter_ps::channel::Channel;
@@ -162,6 +163,10 @@ impl Ps {
     /// Callers that arrive while it is being prepared there wait on the same
     /// preparation; one for another library waits for it to end first.
     pub fn prepare(&mut self, port: Port, root: &Root, cx: &mut Context<Self>) -> Shared<Task<Prepared>> {
+        if !Caps::get(cx).is_offered(Feature::PsBuilds) {
+            tracing::info!(port = port.name(), "ports are not fetched or built on this system");
+            return Task::ready(Err(Text::new("ps.errors.builds_unavailable"))).shared();
+        }
         let state = self.ports.entry(port).or_insert_with(PortState::new);
         let before = match &state.preparing {
             Some((preparing_root, preparing)) if preparing_root == root => return preparing.clone(),

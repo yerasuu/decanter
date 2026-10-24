@@ -9,6 +9,9 @@ use tokio::process::Command;
 
 use crate::process::JobKind;
 
+/// The port runs from a checkout, a fetched build or a bundle, through `run.sh`.
+pub const DIRECT_LAUNCH: bool = false;
+
 /// So a stop reaches everything the job started: `run.sh` and the game,
 /// nix-shell and what runs inside it, or a build's tools.
 pub fn own_process_group(command: &mut Command) {

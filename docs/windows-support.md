@@ -19,7 +19,7 @@ the platform layer (see below):
   closing a game from a pad. The tray came to Windows and
   macOS in phase 2 (`tray-icon`), and the close-game shortcut to Windows
   (`global-hotkey`); the Steam export came to Windows later (see below).
-- Hidden or skipped: the PS section, desktop entries for the task bar,
+- Hidden or skipped: desktop entries for the task bar,
   systemd scopes, and the Galaxy64 hook (not built, not deployed; see
   phase 2).
 
@@ -101,7 +101,8 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 - **Capabilities**: `decanter_core::capabilities` is the one source of what
   the UI offers and how. Each `Feature` is `Available`, `Testing` (shown
   with an "en pruebas" badge) or `Unavailable(Reason)`, the reason being
-  `NotOnThisSystem`, `NeedsSetup(what)` or `ReportedBy(source, message)`.
+  `NotOnThisSystem`, `NeedsSetup(what)`, `ReportedBy(source, message)` or
+  `NotPortedYet(source)` (a component not ported to this system yet).
   - `platform::support` is each OS's static table; code without a GPUI
     context (task bar entries, scopes, game tools, the hook, PS downloads,
     `decanter_runtime::available`) reads it directly.
@@ -127,9 +128,13 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     until a report lists `online_module`, and follows the `net` rows alone:
     an unavailable one takes it away with its reason, an experimental one
     marks it as being tested.
-- Views gate with `Caps::gate` (hidden when unavailable), `gate_or_reason`
-  (the reason, muted), `gate_or` (their own text) and `reason` (a whole
-  pane); `testing_badge` marks a menu item. The window closes into the tray
+- Views gate with `gate_or_reason` (the reason, muted), `gate_or` (their
+  own text) and `reason` (a whole pane); `mark` badges what stays shown
+  either way (the PS link) and `testing_badge` marks a menu item. No top
+  bar section hides on any system (owner's rule, 2026-10-24): Library,
+  Storage, Downloads and Settings never depended on a capability, and the
+  PS section now shows on every system too, its page saying why where
+  psport doesn't run (macOS: `NotPortedYet(Psport)`). The window closes into the tray
   only while `CloseToTray` is offered, so a missing tray host agrees with
   Ajustes.
 
@@ -142,9 +147,71 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | PadClose | available | testing (keyboard only) | no |
 | SteamExport | available | testing | no |
 | Proton, Prefixes, DesktopEntries, Scopes, SelfUpdate | available | no | no |
-| PsSection, PsPlay, MangoHud, GameMode | available | no | no |
+| PsSection | available | testing | no (page says psport isn't ported) |
+| PsPlay | available | testing (psport.exe folder) | no |
+| PsBuilds | available | no | no |
+| MangoHud, GameMode | available | no | no |
 | PsMenuBinding, PsOnline | once psport lists it | no | no |
 | PsDownloads | available on x86_64 | no | no |
+
+## The PS section on Windows (first slice)
+
+Done on `feat/902-ps-windows-slice` (design note #901, decision #898).
+decanter neither builds nor downloads psport here (`PsBuilds` and
+`PsDownloads` are off: the Ports tab and the channel choice in Ajustes
+say so, and mods and patches discovery and FSR 4.1.1's recording stop
+at `prepare` with `ps.errors.builds_unavailable`); it runs a
+psport build the user unpacked:
+
+1. Unpack the `psport-windows-<commit>` package (psport's Windows CI
+   artifact, or #899's test package) into any folder. It must hold
+   `psport.exe` and `libpsport-gpu.dll` side by side, with the CLANG64
+   DLLs the package carries; anything else in it (the report scripts) is
+   ignored.
+2. In decanter: PS › Ajustes › *Carpeta de psport.exe* › Elegir. The folder
+   is taken only if it is an absolute path without `..` on a drive letter
+   (no network share or device path, also once links, junctions and
+   mapped drives are resolved with `fs::canonicalize`) holding both files
+   as files of its own, not symbolic links
+   (`decanter_ps::bbport::direct::Folder::try_new`), and kept as
+   `psport_exe_dir` in the port settings (`psport/bbport/settings.json` in
+   the library), beside the other PS folders. It is checked again at each
+   launch.
+3. Drop the game's dump in the library's PS games folder as on Linux and
+   press Jugar.
+
+How it starts: `Bbport::direct_command` gives `psport.exe` the same
+`PS_*` environment `Bbport::launch_command` gives `run.sh` on Linux (one
+shared `game_env`), plus what `run.sh` itself adds around the program
+(`PS_CONFIG` pointing at the library's `psport.ini`, `PS_GPU_USER_DIR`
+from the final `PS_USER_DIR`,
+`PS_COPY_GPU_BUFFERS=1`, `PS_GPU_WRITE_TWINS=1`,
+`PS_GPU_WRITE_TWINS_MAX=65536`, unless already set) and the arguments
+`run.sh` builds from that environment (`--game`, `--system-modules`/
+`--hle`/`--lle` with `PS_SYS_MODULES`, `--mods`/`--mods-config`/`--out`
+unless mods are off, `--patches-dir`, `--patches-config`, `--app0`,
+`--user`, `--timeout 0`; a path value starting with `-` goes as `.\-…`
+so psport can't take it for an option). The process starts through
+`decanter_runtime::native` in a Job Object session keyed by the dump
+folder; its stdout and stderr feed the run log and the failures scanner
+through `process::follow`, and Detener (or the close shortcut) ends it with
+`native::stop`. AnyPS5 games aren't offered a launch (they need their
+conversion toolchain).
+
+Not done here yet: what `run.sh` computes in Bash (the scaled output's
+render size, `PS_SAVE_LOG`'s own log files, MangoHud, the HOST quirk
+environment, online play's helpers), asking `psport.exe --list-features`
+for its table, downloads of the package, and the Vulkan validation layer
+(only a system-wide one is found). Bloodborne's mods are linked with
+symbolic links, which need Developer Mode on Windows.
+
+Only a real Windows can test it (#440): picking the folder (a folder
+without either file must be refused with its reason), Jugar on a dump
+(game window, output in the Registro tab and the run's log file under the
+library's `psport/logs`), Detener and the close shortcut ending
+`psport.exe` and anything it started, a crash landing in Fallos, the Ports
+tab and the channel choice showing their reason, and SmartScreen's prompt
+on a downloaded `psport.exe`.
 
 ## Decanter: medium effort
 

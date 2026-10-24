@@ -36,6 +36,11 @@ pub enum Feature {
     SelfUpdate,
     SteamExport,
     PsSection,
+    /// Getting, building and updating a port in the library: its checkout,
+    /// the toolchain (nix or the host's tools), its prebuilt and released
+    /// builds, and what runs inside them (the Vulkan validation layer, FSR
+    /// 4.1.1's recording).
+    PsBuilds,
     PsDownloads,
     PsPlay,
     /// A key or pad button bound to the port's own menu: only psport
@@ -52,7 +57,7 @@ pub enum Feature {
 }
 
 impl Feature {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Play,
         Self::Proton,
         Self::Prefixes,
@@ -66,6 +71,7 @@ impl Feature {
         Self::SelfUpdate,
         Self::SteamExport,
         Self::PsSection,
+        Self::PsBuilds,
         Self::PsDownloads,
         Self::PsPlay,
         Self::PsMenuBinding,

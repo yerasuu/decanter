@@ -17,6 +17,7 @@ ps.jobs.update: update
 ps.jobs.reset: reset
 ps.jobs.rollback: roll back
 ps.errors.environment: 'Couldn''t set up the environment: %{error}'
+ps.errors.builds_unavailable: decanter doesn't fetch or build PS ports on this system
 ps.ports.title: Ports
 ps.ports.description: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't. A stable release published as a bundle runs without either.
 ps.ports.stage.idle: Set up the first time it's needed
@@ -108,6 +109,15 @@ ps.settings.games.description: 'Next to each of the profile''s library folders, 
 ps.settings.sys_modules.title: System modules (optional)
 ps.settings.sys_modules.none: No folder
 ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder with your own dump of the console''s modules (*.sprx, like libSceNgs2.sprx), only to compare against the port''s own libraries (PS_LLE) or for a game that still needs a console module. decanter neither ships nor copies any.'
+ps.settings.psport_folder.title: psport.exe folder
+ps.settings.psport_folder.none: No folder
+ps.settings.psport_folder.pick_title: Folder holding psport.exe
+ps.settings.psport_folder.description: 'The folder where you unpacked psport''s Windows build: it must hold psport.exe and libpsport-gpu.dll. decanter starts psport.exe from it directly, with nothing in between.'
+ps.settings.psport_folder.errors.relative: '%{dir} isn''t a full path without ..'
+ps.settings.psport_folder.errors.not_local: '%{dir} isn''t on a drive of this computer'
+ps.settings.psport_folder.errors.not_a_folder: '%{dir} isn''t a folder: %{error}'
+ps.settings.psport_folder.errors.missing: '%{dir} has no %{file}'
+ps.settings.psport_folder.errors.linked: '%{file} in %{dir} is a link, not the file itself'
 ps.settings.sys_fonts.title: System fonts (optional)
 ps.settings.sys_fonts.none: No folder
 ps.settings.sys_fonts.description: 'Optional: a folder with your own dump of the console''s fonts. Without it, games that use the system fonts show their text in fallback fonts and it may not look as on the console. decanter neither ships nor copies any.'
@@ -152,6 +162,9 @@ ps.errors.create_dir: 'Couldn''t create %{dir}: %{error}'
 ps.games.library_error: 'Couldn''t use the library folder: %{error}'
 ps.layouts.read_error: 'Couldn''t read the layouts: %{error}'
 ps.play.prepare_error: 'Couldn''t prepare %{name}: %{error}'
+ps.play.direct.port_unavailable: '%{name} only runs with its build tools, which this system doesn''t have'
+ps.play.direct.no_folder: Choose the psport.exe folder in PS › Settings first
+ps.play.direct.bad_folder: 'The psport.exe folder can''t be used: %{error}'
 ps.play.mods_error: 'Couldn''t prepare the mods and icons: %{error}'
 ps.play.convert_prepare_error: 'Couldn''t prepare the conversion: %{error}'
 ps.play.convert_failed: The conversion failed; see its log

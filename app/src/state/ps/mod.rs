@@ -7,6 +7,8 @@
 
 mod bundle;
 mod channel;
+#[cfg(windows)]
+mod direct;
 mod fallback;
 mod fsr;
 mod jobs;
@@ -18,6 +20,8 @@ mod vk_layer;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use decanter_core::capabilities::Feature;
+use decanter_ps::bbport::direct::FolderError;
 use decanter_ps::library;
 use decanter_ps::port::Port;
 use decanter_ps::process::Job;
@@ -33,6 +37,7 @@ pub use ports::{BuildOrigin, PortState, Stage};
 pub use vk_layer::unavailable_text as vk_layer_unavailable_text;
 
 use super::AppState;
+use crate::capabilities::Caps;
 use crate::i18n::Text;
 
 pub struct Ps {
@@ -96,7 +101,9 @@ impl Ps {
                 ports: HashMap::new(),
             };
             this.sync_profile(cx);
-            Self::start_update_loop(cx);
+            if Caps::get(cx).is_offered(Feature::PsBuilds) {
+                Self::start_update_loop(cx);
+            }
             this
         });
         cx.set_global(PsGlobal(ps.clone()));
@@ -287,5 +294,22 @@ impl Ps {
             });
         })
         .detach();
+    }
+}
+
+/// Why a folder picked for `psport.exe` can't be used, in the UI's language.
+pub fn folder_error(err: &FolderError) -> Text {
+    let (key, dir) = match err {
+        FolderError::Linked { dir, .. } => ("ps.settings.psport_folder.errors.linked", dir),
+        FolderError::Missing { dir, .. } => ("ps.settings.psport_folder.errors.missing", dir),
+        FolderError::NotAFolder { dir, .. } => ("ps.settings.psport_folder.errors.not_a_folder", dir),
+        FolderError::NotLocal(dir) => ("ps.settings.psport_folder.errors.not_local", dir),
+        FolderError::Relative(dir) => ("ps.settings.psport_folder.errors.relative", dir),
+    };
+    let text = Text::new(key).arg("dir", dir.display());
+    match err {
+        FolderError::Linked { file, .. } | FolderError::Missing { file, .. } => text.arg("file", file),
+        FolderError::NotAFolder { err: cause, .. } => text.arg("error", cause),
+        FolderError::NotLocal(_) | FolderError::Relative(_) => text,
     }
 }

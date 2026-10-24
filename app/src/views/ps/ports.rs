@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use decanter_core::capabilities::Feature;
 use decanter_ps::channel::Channel;
 use decanter_ps::paths;
 use decanter_ps::port::Port;
@@ -16,6 +17,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, p
 use rust_i18n::t;
 
 use super::log::LogView;
+use crate::capabilities::Caps;
 use crate::state::{BuildOrigin, Fallback, JobKey, PortState, Ps, Stage, Track};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
@@ -193,17 +195,15 @@ impl PortsView {
 
 impl Render for PortsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let cards: Vec<AnyElement> = Port::ALL.into_iter().map(|port| self.card(port, cx)).collect();
-        theme::page(
-            "ps-ports",
-            div()
-                .flex()
-                .flex_col()
-                .gap_4()
-                .child(theme::h2(t!("ps.ports.title")))
-                .child(theme::muted(t!("ps.ports.description")))
-                .children(cards),
-        )
+        let page = div().flex().flex_col().gap_4().child(theme::h2(t!("ps.ports.title")));
+        // Where decanter doesn't build ports, its checkouts and builds have nothing to show.
+        let page = if let Some(reason) = Caps::get(cx).reason(Feature::PsBuilds) {
+            page.child(theme::muted(reason))
+        } else {
+            let cards: Vec<AnyElement> = Port::ALL.into_iter().map(|port| self.card(port, cx)).collect();
+            page.child(theme::muted(t!("ps.ports.description"))).children(cards)
+        };
+        theme::page("ps-ports", page)
     }
 }
 

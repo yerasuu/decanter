@@ -17,6 +17,7 @@ ps.jobs.update: actualizar
 ps.jobs.reset: restablecer
 ps.jobs.rollback: volver atrás
 ps.errors.environment: 'No se pudo preparar el entorno: %{error}'
+ps.errors.builds_unavailable: En este sistema decanter no descarga ni compila ports de PS
 ps.ports.title: Ports
 ps.ports.description: Cada port se clona, se compila y se actualiza solo, con las herramientas del sistema cuando bastan y con nix cuando no. Una versión estable publicada como paquete funciona sin ninguno de los dos.
 ps.ports.stage.idle: Se prepara la primera vez que haga falta
@@ -108,6 +109,15 @@ ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, e
 ps.settings.sys_modules.title: Módulos del sistema (opcional)
 ps.settings.sys_modules.none: Sin carpeta
 ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno.'
+ps.settings.psport_folder.title: Carpeta de psport.exe
+ps.settings.psport_folder.none: Sin carpeta
+ps.settings.psport_folder.pick_title: Carpeta con psport.exe
+ps.settings.psport_folder.description: 'La carpeta donde descomprimiste la compilación de psport para Windows: tiene que contener psport.exe y libpsport-gpu.dll. decanter arranca psport.exe desde ahí, sin nada en medio.'
+ps.settings.psport_folder.errors.relative: '%{dir} no es una ruta completa sin ..'
+ps.settings.psport_folder.errors.not_local: '%{dir} no está en una unidad de este equipo'
+ps.settings.psport_folder.errors.not_a_folder: '%{dir} no es una carpeta: %{error}'
+ps.settings.psport_folder.errors.missing: 'En %{dir} falta %{file}'
+ps.settings.psport_folder.errors.linked: '%{file} en %{dir} es un enlace, no el propio archivo'
 ps.settings.sys_fonts.title: Fuentes del sistema (opcional)
 ps.settings.sys_fonts.none: Sin carpeta
 ps.settings.sys_fonts.description: 'Opcional: una carpeta con tu propio volcado de las fuentes de la consola. Sin ella, los juegos que usan las fuentes del sistema muestran el texto con fuentes de sustitución y puede no verse como en la consola. decanter no incluye ni copia ninguna.'
@@ -152,6 +162,9 @@ ps.errors.create_dir: 'No se pudo crear %{dir}: %{error}'
 ps.games.library_error: 'No se pudo usar la carpeta de la biblioteca: %{error}'
 ps.layouts.read_error: 'No se pudieron leer los esquemas: %{error}'
 ps.play.prepare_error: 'No se pudo preparar %{name}: %{error}'
+ps.play.direct.port_unavailable: '%{name} solo funciona con sus herramientas de compilación, y este sistema no las tiene'
+ps.play.direct.no_folder: Elige antes la carpeta de psport.exe en PS › Ajustes
+ps.play.direct.bad_folder: 'No se puede usar la carpeta de psport.exe: %{error}'
 ps.play.mods_error: 'No se pudieron preparar los mods y los iconos: %{error}'
 ps.play.convert_prepare_error: 'No se pudo preparar la conversión: %{error}'
 ps.play.convert_failed: La conversión ha fallado; mira su registro
