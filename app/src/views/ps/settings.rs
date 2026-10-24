@@ -54,6 +54,9 @@ pub struct SettingsView {
     psport_folder: Option<String>,
     channel: Option<Channel>,
     online: Entity<OnlineView>,
+    /// Why the last folder picked for psport.exe was refused, shown in its own section since the
+    /// page's `error` sits below the whole page.
+    psport_folder_error: Option<Text>,
     error: Option<Text>,
 }
 
@@ -68,6 +71,7 @@ impl SettingsView {
             psport_folder: None,
             channel: None,
             online: cx.new(OnlineView::new),
+            psport_folder_error: None,
             error: None,
         };
         this.refresh(cx);
@@ -110,6 +114,7 @@ impl SettingsView {
                 Ok(()) => {
                     this.error = None;
                     if key == direct::FOLDER_KEY {
+                        this.psport_folder_error = None;
                         this.ps.update(cx, Ps::package_reload);
                     }
                     this.refresh(cx);
@@ -143,7 +148,7 @@ impl SettingsView {
                 }
                 Err(err) => {
                     tracing::warn!(error = %err, "picked folder can't run psport");
-                    this.error = Some(crate::state::ps_folder_error(&err));
+                    this.psport_folder_error = Some(crate::state::ps_folder_error(&err));
                     cx.notify();
                 }
             });
@@ -192,6 +197,7 @@ impl SettingsView {
                         }),
                 ),
             )
+            .children(self.psport_folder_error.as_ref().map(theme::error))
             .child(theme::muted(t!("ps.settings.psport_folder.description")))
     }
 
