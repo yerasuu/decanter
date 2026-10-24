@@ -40,7 +40,7 @@ pub fn render(
         let (ps, key, close) = (ps.clone(), key, Rc::clone(&dismiss));
         panel = panel.child(menu::item("ps-menu-stop", false).child(t!("ps.menu.stop")).on_click(
             move |_, window, cx| {
-                ps.update(cx, |ps, cx| ps.stop(&key, cx));
+                ps.update(cx, |ps, cx| ps.end(&key, cx));
                 close(window, cx);
             },
         ));
