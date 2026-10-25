@@ -400,9 +400,6 @@ pub struct Scanner {
     /// No online play in this run, so the call report's offline answers are set apart
     /// ([`CallReport::set_aside_offline`]).
     is_offline: bool,
-    /// When decanter killed the process and the exit code it records for that, so the process' own
-    /// code is not taken for the game's.
-    killed: Option<(u64, u32)>,
 }
 
 impl Scanner {
@@ -418,12 +415,7 @@ impl Scanner {
             missing: Vec::new(),
             frame_overlap_off: None,
             is_offline,
-            killed: None,
         }
-    }
-
-    pub fn set_killed(&mut self, at: Option<SystemTime>, code: u32) {
-        self.killed = at.map(|at| (unix_secs(at), code));
     }
 
     /// What a run's log header records about the game.
@@ -564,23 +556,7 @@ impl Scanner {
             });
         }
         let fatal = self.found.iter().any(|f| matches!(f.kind, Kind::Crash | Kind::Stop));
-        if let Some((at, code)) = self.killed {
-            self.found.push(Failure {
-                time: now(),
-                game_dir: self.game_dir.clone(),
-                title_id: self.title_id.clone(),
-                version: self.version.clone(),
-                commit: self.commit.clone(),
-                kind: Kind::Exit,
-                message: describe_killed(at, code),
-                summary: None,
-                count: 1,
-                before: self.recent.iter().cloned().collect(),
-                after: Vec::new(),
-                log: None,
-                calls: None,
-            });
-        } else if !stop_requested && code != Some(0) && !fatal {
+        if !stop_requested && code != Some(0) && !fatal {
             self.found.push(Failure {
                 time: now(),
                 game_dir: self.game_dir.clone(),

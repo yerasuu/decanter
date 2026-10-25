@@ -262,9 +262,6 @@ pub async fn run_launcher(
     let killed_at = session_key.as_deref().and_then(decanter_runtime::take_killed);
     #[cfg(not(windows))]
     let killed_at: Option<std::time::SystemTime> = None;
-    if let Some(scanner) = scanner.as_mut() {
-        scanner.set_killed(killed_at, decanter_runtime::KILLED_EXIT_CODE);
-    }
     if let Some(mut file) = log {
         file.set_killed(killed_at, decanter_runtime::KILLED_EXIT_CODE);
         finish_log(file, exit, report.as_ref(), calls_path, kind, &target).await;
