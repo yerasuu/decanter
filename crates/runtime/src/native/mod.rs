@@ -168,10 +168,11 @@ impl Session {
         if let Some(killed_at) = killed_at {
             tracing::warn!(
                 pid,
-                exit_code = status.code(),
+                exit_code = %format_args!("{:#010X}", crate::KILLED_EXIT_CODE),
+                process_exit_code = status.code(),
                 elapsed = ?elapsed,
                 stop_requested_at = ?killed_at,
-                "game ended by decanter killing it; the exit code is not the game's own"
+                "game ended by decanter killing it; its exit code is not the game's own"
             );
         } else if status.success() {
             tracing::info!(pid, exit_code = status.code(), elapsed = ?elapsed, "game exited");

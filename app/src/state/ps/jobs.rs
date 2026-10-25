@@ -263,10 +263,10 @@ pub async fn run_launcher(
     #[cfg(not(windows))]
     let killed_at: Option<std::time::SystemTime> = None;
     if let Some(scanner) = scanner.as_mut() {
-        scanner.set_killed(killed_at);
+        scanner.set_killed(killed_at, decanter_runtime::KILLED_EXIT_CODE);
     }
     if let Some(mut file) = log {
-        file.set_killed(killed_at);
+        file.set_killed(killed_at, decanter_runtime::KILLED_EXIT_CODE);
         finish_log(file, exit, report.as_ref(), calls_path, kind, &target).await;
     }
     let stopped = job.read_with(cx, |job, _| job.stop_requested);
@@ -352,7 +352,14 @@ fn trace_end(
 ) {
     let duration_ms = started.elapsed().as_millis();
     let succeeded = exit.is_some_and(|status| status.success());
-    let exit = describe_exit(exit);
+    let exit = if is_killed {
+        format!(
+            "killed by decanter, exit code {:#010X}",
+            decanter_runtime::KILLED_EXIT_CODE
+        )
+    } else {
+        describe_exit(exit)
+    };
     let log = log.map(|path| tracing::field::display(path.display()));
     if is_killed {
         tracing::warn!(

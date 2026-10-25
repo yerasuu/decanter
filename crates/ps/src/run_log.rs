@@ -54,7 +54,7 @@ pub struct RunLog {
     file: BufWriter<tokio::fs::File>,
     calls: Option<PathBuf>,
     started: Instant,
-    killed_at: Option<u64>,
+    killed: Option<(u64, u32)>,
 }
 
 impl RunLog {
@@ -103,14 +103,14 @@ impl RunLog {
             file,
             calls,
             started: Instant::now(),
-            killed_at: None,
+            killed: None,
         })
     }
 
     /// Makes the footer say decanter killed the process, since its status then reads like the
     /// game's own exit.
-    pub fn set_killed(&mut self, at: Option<SystemTime>) {
-        self.killed_at = at.map(crate::failures::unix_secs);
+    pub fn set_killed(&mut self, at: Option<SystemTime>, code: u32) {
+        self.killed = at.map(|at| (crate::failures::unix_secs(at), code));
     }
 
     pub fn path(&self) -> &Path {
@@ -135,15 +135,9 @@ impl RunLog {
             "---".to_owned(),
             format!("ended: {}", iso_time(now())),
             format!("duration: {:.3}s", self.started.elapsed().as_secs_f64()),
-            self.killed_at.map_or_else(
+            self.killed.map_or_else(
                 || format!("exit: {}", describe_exit(exit)),
-                |at| {
-                    format!(
-                        "exit: {} (process {})",
-                        crate::failures::describe_killed(at),
-                        describe_exit(exit)
-                    )
-                },
+                |(at, code)| format!("exit: {}", crate::failures::describe_killed(at, code)),
             ),
         ];
         if let Some(path) = &self.calls {

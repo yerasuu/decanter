@@ -48,6 +48,12 @@ pub use launch::{Launch, Prepared, Session, prepare, start};
 #[cfg(not(proton))]
 pub use native::{Launch, Prepared, Session, end, is_live, prepare, start, stop, stop_all, take_killed};
 pub use path::sanitize_relative_path;
+
+/// Exit code decanter records for a run it killed on a stop request, because the dead process' own
+/// status is 0 after a Job Object kill and reads like a clean exit. `0xDEC0` marks decanter in the
+/// high half, which no psport code (139 and the like) and no Windows status (`0xC000_xxxx` NTSTATUS,
+/// `0x8007_xxxx` HRESULT) uses, and the low half is decanter's own kind of exit (1: killed on stop).
+pub const KILLED_EXIT_CODE: u32 = 0xDEC0_0001;
 #[cfg(proton)]
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};
 #[cfg(proton)]
