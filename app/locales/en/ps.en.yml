@@ -724,3 +724,14 @@ ps.branch.errors.busy: A build or a delete is under way; try again when it ends
 ps.branch.errors.delete_in_use: The build in use, or any while a game or a build runs, can't be deleted
 ps.branch.errors.delete_toolchain_busy: The toolchain can't be deleted while a game or a build runs
 ps.branch.errors.delete: 'Couldn''t delete: %{error}'
+ps.report.saved: 'Report saved to %{path}'
+ps.report.what.run_log: the run's log
+ps.report.what.day_log: the day's log
+ps.report.what.log_folder: the log folder
+ps.report.errors.no_failure: There is no failure to report
+ps.report.errors.no_profile: There is no active profile
+ps.report.errors.rejected: 'The report breaks the rules (field: rule): %{fields}'
+ps.report.errors.read: 'Couldn''t read %{what}: %{error}'
+ps.report.errors.serialize: 'Couldn''t write the report: %{error}'
+ps.report.errors.exists: '%{path} already exists; it is not overwritten'
+ps.report.errors.write: 'Couldn''t save %{path}: %{error}'

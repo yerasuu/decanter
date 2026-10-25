@@ -86,6 +86,39 @@ pub fn local_user_id(steam_root: &Path) -> Option<String> {
     Some(account_id.to_string())
 }
 
+/// `PersonaName` and `AccountName` of every user in `config/loginusers.vdf`: the names a client
+/// that publishes text from this machine has to keep out of it.
+///
+/// Empty when the file is missing or unreadable.
+#[must_use]
+#[inline]
+pub fn login_names(steam_root: &Path) -> Vec<String> {
+    let path = steam_root.join("config").join("loginusers.vdf");
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(err) => {
+            tracing::debug!(path = %path.display(), %err, "no loginusers.vdf to read");
+            return Vec::new();
+        }
+    };
+    let (_root_key, root) = match vdf::from_str(&content) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            tracing::warn!(path = %path.display(), %err, "failed to parse loginusers.vdf");
+            return Vec::new();
+        }
+    };
+    let Some(users) = root.as_block() else {
+        return Vec::new();
+    };
+    users
+        .values()
+        .flat_map(|entry| [entry.get("PersonaName"), entry.get("AccountName")])
+        .flatten()
+        .map(str::to_owned)
+        .collect()
+}
+
 #[must_use]
 #[inline]
 pub fn shortcuts_vdf_path(steam_root: &Path, user_id: &str) -> PathBuf {

@@ -16,6 +16,7 @@ gpui_platform = { workspace = true, features = ["wayland", "x11"] }
 decanter-core.workspace = true
 decanter-gog.workspace = true
 decanter-ps.workspace = true
+decanter-report.workspace = true
 decanter-runtime.workspace = true
 dirs.workspace = true
 uuid = { workspace = true, features = ["v4"] }

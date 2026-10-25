@@ -724,3 +724,14 @@ ps.branch.errors.busy: Hay una compilación o un borrado en curso; vuelve a inte
 ps.branch.errors.delete_in_use: No se puede borrar la compilación en uso, ni ninguna mientras haya un juego o una compilación en marcha
 ps.branch.errors.delete_toolchain_busy: No se puede borrar la toolchain mientras haya un juego o una compilación en marcha
 ps.branch.errors.delete: 'No se pudo borrar: %{error}'
+ps.report.saved: 'Informe guardado en %{path}'
+ps.report.what.run_log: el registro de la partida
+ps.report.what.day_log: el registro del día
+ps.report.what.log_folder: la carpeta de registros
+ps.report.errors.no_failure: No hay ningún fallo que informar
+ps.report.errors.no_profile: No hay ningún perfil activo
+ps.report.errors.rejected: 'El informe no cumple las reglas (campo: regla): %{fields}'
+ps.report.errors.read: 'No se pudo leer %{what}: %{error}'
+ps.report.errors.serialize: 'No se pudo escribir el informe: %{error}'
+ps.report.errors.exists: 'Ya existe %{path}; no se sobrescribe'
+ps.report.errors.write: 'No se pudo guardar %{path}: %{error}'

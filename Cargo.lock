@@ -1570,6 +1570,7 @@ dependencies = [
  "decanter-core",
  "decanter-gog",
  "decanter-ps",
+ "decanter-report",
  "decanter-runtime",
  "dirs 7.0.0",
  "futures",

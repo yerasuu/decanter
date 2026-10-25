@@ -19,6 +19,7 @@ use decanter_core::Db;
 
 mod install;
 mod launch;
+mod ps;
 
 #[derive(Parser)]
 #[command(name = "decanter")]
@@ -101,6 +102,11 @@ pub enum Cmd {
         #[arg(long)]
         product_id: String,
     },
+    /// The PS section's headless commands.
+    Ps {
+        #[command(subcommand)]
+        cmd: ps::PsCmd,
+    },
 }
 
 /// Runs one CLI command to completion and exits the process. Called from
@@ -134,6 +140,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
     tracing::debug!("opened db for cli command");
 
     match cmd {
+        Cmd::Ps { cmd } => ps::run(&db, cmd)?,
         Cmd::Library { account_id } => {
             tracing::debug!(account_id, "listing gog library");
             let library = crate::core::library_for_account(&account_id).map_err(|err| anyhow::anyhow!(err))?;
