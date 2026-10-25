@@ -117,11 +117,12 @@ ps.failures.kinds.exit: Salida
 ps.failures.kinds.missing: Falta
 ps.failures.missing.one: '%{total} cosa sin implementar; el juego llamó a %{called}'
 ps.failures.missing.other: '%{total} cosas sin implementar; el juego llamó a %{called}'
-ps.failures.calls.summary: 'llamadas: %{unimplemented} sin implementar, %{stubs} stub, %{failed} con error, %{status} con estado esperado'
+ps.failures.calls.summary: 'llamadas: %{unimplemented} sin implementar, %{stubs} stub, %{failed} con error, %{status} con estado esperado, %{offline} esperadas sin conexión'
 ps.failures.calls.unimplemented: Sin implementar (%{count})
 ps.failures.calls.stubs: Stub, sin hacer nada (%{count})
 ps.failures.calls.failed: Con error (%{count})
 ps.failures.calls.status: 'Estados esperados: sin evento, tiempo agotado, ocupado (%{count})'
+ps.failures.calls.offline: 'Esperadas sin conexión: sin red ni cuenta de PSN (%{count})'
 ps.failures.exit_code: terminó con código %{code}
 ps.failures.exit_signal: terminado por una señal
 ps.failures.notice.save_error: 'No se pudo guardar el registro de fallos: %{error}'

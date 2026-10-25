@@ -117,11 +117,12 @@ ps.failures.kinds.exit: Exit
 ps.failures.kinds.missing: Missing
 ps.failures.missing.one: '%{total} thing unimplemented; the game called %{called}'
 ps.failures.missing.other: '%{total} things unimplemented; the game called %{called}'
-ps.failures.calls.summary: 'calls: %{unimplemented} unimplemented, %{stubs} stubbed, %{failed} failing, %{status} with an expected status'
+ps.failures.calls.summary: 'calls: %{unimplemented} unimplemented, %{stubs} stubbed, %{failed} failing, %{status} with an expected status, %{offline} expected offline'
 ps.failures.calls.unimplemented: Unimplemented (%{count})
 ps.failures.calls.stubs: Stubbed, doing nothing (%{count})
 ps.failures.calls.failed: Failing (%{count})
 ps.failures.calls.status: 'Expected statuses: no event, timeout, busy (%{count})'
+ps.failures.calls.offline: 'Expected offline: no network or PSN account (%{count})'
 ps.failures.exit_code: exited with code %{code}
 ps.failures.exit_signal: killed by a signal
 ps.failures.notice.save_error: 'Couldn''t save the failure record: %{error}'

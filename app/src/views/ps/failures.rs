@@ -316,6 +316,10 @@ fn calls_lists(calls: &CallReport) -> Div {
             t!("ps.failures.calls.status", count = calls.status.len()),
             &calls.status,
         ),
+        (
+            t!("ps.failures.calls.offline", count = calls.offline.len()),
+            &calls.offline,
+        ),
     ];
     div()
         .flex()

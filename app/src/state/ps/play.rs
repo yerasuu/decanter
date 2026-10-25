@@ -99,7 +99,12 @@ impl Ps {
             // Before the window can appear, so the task bar already knows it.
             crate::taskbar::sync_ps(root.library(), &game).await;
             let commit = failures::commit_of(&port.checkout(&root)).await;
-            let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit);
+            let is_online = {
+                let root = root.clone();
+                cx.background_spawn(async move { LauncherSettings::load(&root).flag(online::ONLINE, false) })
+                    .await
+            } && cx.update(|cx| Caps::get(cx).is_offered(Feature::PsOnline));
+            let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit, !is_online);
             let target = crate::closing::Target::Ps(game.dir.clone());
             cx.update(|cx| crate::closing::started(target.clone(), game.title.clone(), cx));
             let finished = jobs::run_launcher(
@@ -667,11 +672,13 @@ pub fn failure_message(failure: &Failure) -> Text {
             stubs,
             failed,
             status,
+            offline,
         }) => Text::new("ps.failures.calls.summary")
             .arg("unimplemented", unimplemented)
             .arg("stubs", stubs)
             .arg("failed", failed)
-            .arg("status", status),
+            .arg("status", status)
+            .arg("offline", offline),
         Some(Summary::Exit(Some(code))) => Text::new("ps.failures.exit_code").arg("code", code),
         Some(Summary::Exit(None)) => Text::new("ps.failures.exit_signal"),
         None => Text::verbatim(&failure.message),

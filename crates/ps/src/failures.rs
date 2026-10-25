@@ -2,6 +2,7 @@
 //! across sessions in a profile's `failures.jsonl` with the output around them and the port
 //! commit, so each one can be reported upstream as it happened.
 
+use core::mem;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fmt;
@@ -20,6 +21,32 @@ const CONTEXT_BEFORE: usize = 15;
 const CONTEXT_AFTER: usize = 25;
 /// Oldest records are dropped past this, so the file and the list stay small.
 const MAX_RECORDS: usize = 500;
+/// Error codes an import answers offline as the console does, each with why. By code alone, since
+/// each belongs to one library and means the same whatever import of it returns it.
+const OFFLINE_ERRORS: &[(u32, &str)] = &[
+    (
+        0x8041_0133,
+        "SCE_NET_ERROR_ENETUNREACH: psport's sockets and resolver refuse every peer but loopback offline",
+    ),
+    (
+        0x8055_0006,
+        "SCE_NP_ERROR_SIGNED_OUT: no PSN account is signed in offline",
+    ),
+];
+/// Stubbed imports whose doing nothing is all they would amount to offline, each with why. By
+/// import name, never by title.
+const OFFLINE_STUBS: &[(&str, &str)] = &[
+    ("sceNpAbortRequest", "no NP request can be in flight offline"),
+    ("sceNpSetNpTitleId", "the NP title ID is only presented to PSN servers"),
+    (
+        "sceNpSetContentRestriction",
+        "content restriction is only enforced by PSN servers",
+    ),
+    ("sceNpMatching2Initialize", "matchmaking needs PSN"),
+    ("sceHttpSetNonblock", "no HTTP request reaches a server offline"),
+    ("sceHttpsEnableOption", "no HTTPS request reaches a server offline"),
+    ("sceHttpAddRequestHeader", "no HTTP request reaches a server offline"),
+];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Kind {
@@ -59,6 +86,8 @@ pub enum Summary {
         unimplemented: usize,
         stubs: usize,
         failed: usize,
+        #[serde(default)]
+        offline: usize,
         #[serde(default)]
         status: usize,
     },
@@ -100,6 +129,11 @@ pub struct CallReport {
     pub unimplemented: Vec<Call>,
     pub stubs: Vec<Call>,
     pub failed: Vec<Call>,
+    /// What a run without online play gets as a console without network or PSN account would
+    /// ([`OFFLINE_ERRORS`], [`OFFLINE_STUBS`]), set apart from `failed` and `stubs` by
+    /// [`CallReport::set_aside_offline`]: the port's own summary still counts them there.
+    #[serde(default)]
+    pub offline: Vec<Call>,
     #[serde(default)]
     pub status: Vec<Call>,
 }
@@ -184,9 +218,26 @@ impl CallReport {
         found.then_some(report)
     }
 
-    /// Expected statuses alone don't make a run's report worth a failure record.
+    /// Expected statuses and offline answers alone don't make a run's report worth a failure record.
     pub const fn is_empty(&self) -> bool {
         self.unimplemented.is_empty() && self.stubs.is_empty() && self.failed.is_empty()
+    }
+
+    /// Only for a run without online play: with it, a signed-out or unreachable answer is a real
+    /// failure of the online path.
+    #[inline]
+    pub fn set_aside_offline(&mut self) {
+        let is_offline_answer = |call: &Call| match call.error {
+            Some(CallError::Sce(code)) => OFFLINE_ERRORS.iter().any(|&(offline, _)| offline == code),
+            Some(CallError::Errno(_)) => false,
+            None => call.nid.is_some() && OFFLINE_STUBS.iter().any(|&(name, _)| call.name == name),
+        };
+        for list in [&mut self.failed, &mut self.stubs] {
+            let (offline, kept): (Vec<_>, Vec<_>) = mem::take(list).into_iter().partition(is_offline_answer);
+            *list = kept;
+            self.offline.extend(offline);
+        }
+        self.offline.sort_by_key(|call| Reverse(call.count));
     }
 }
 
@@ -248,6 +299,7 @@ impl Failure {
                 ("stub", &calls.stubs),
                 ("failed", &calls.failed),
                 ("status", &calls.status),
+                ("offline", &calls.offline),
             ] {
                 if !list.is_empty() {
                     text.push_str(&format!("\n{title}:\n"));
@@ -345,12 +397,15 @@ pub struct Scanner {
     missing: Vec<(u8, String)>,
     /// The port's line turning frame overlap off for the session ([`crate::learned`]).
     frame_overlap_off: Option<String>,
+    /// No online play in this run, so the call report's offline answers are set apart
+    /// ([`CallReport::set_aside_offline`]).
+    is_offline: bool,
     /// When decanter killed the process, so its exit code is not taken for the game's own.
     killed_at: Option<u64>,
 }
 
 impl Scanner {
-    pub fn new(game_dir: &Path, title_id: &str, version: &str, commit: String) -> Self {
+    pub fn new(game_dir: &Path, title_id: &str, version: &str, commit: String, is_offline: bool) -> Self {
         Self {
             game_dir: game_dir.to_owned(),
             title_id: title_id.to_owned(),
@@ -361,6 +416,7 @@ impl Scanner {
             found: Vec::new(),
             missing: Vec::new(),
             frame_overlap_off: None,
+            is_offline,
             killed_at: None,
         }
     }
@@ -451,7 +507,14 @@ impl Scanner {
     ) -> Vec<Failure> {
         self.finish_pending();
         let code = exit.and_then(|status| status.code());
-        let calls = calls.filter(|calls| !calls.is_empty());
+        let calls = calls
+            .map(|mut report| {
+                if self.is_offline {
+                    report.set_aside_offline();
+                }
+                report
+            })
+            .filter(|calls| !calls.is_empty());
         if calls.is_some() {
             self.missing.retain(|(rank, _)| *rank == 2);
         }
@@ -460,17 +523,19 @@ impl Scanner {
             let (message, summary) = if let Some(calls) = &calls {
                 (
                     format!(
-                        "{} unimplemented, {} stub, {} failed, {} status",
+                        "{} unimplemented, {} stub, {} failed, {} status, {} offline",
                         calls.unimplemented.len(),
                         calls.stubs.len(),
                         calls.failed.len(),
-                        calls.status.len()
+                        calls.status.len(),
+                        calls.offline.len()
                     ),
                     Summary::Calls {
                         unimplemented: calls.unimplemented.len(),
                         stubs: calls.stubs.len(),
                         failed: calls.failed.len(),
                         status: calls.status.len(),
+                        offline: calls.offline.len(),
                     },
                 )
             } else {
