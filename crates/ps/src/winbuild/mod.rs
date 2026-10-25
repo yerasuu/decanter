@@ -168,6 +168,11 @@ pub enum Stage {
         total: Option<u64>,
     },
     Unpacking(String),
+    /// The installed toolchain's files hashed again; `total` is 0 until their lists are read.
+    Verifying {
+        checked: u32,
+        total: u32,
+    },
     Sources,
     Configuring,
     Compiling,
@@ -552,13 +557,16 @@ async fn steps(
         Err(err) => return Err(err),
     };
     let (sources, out, temp) = (folder.join("s"), folder.join("b"), folder.join("t"));
+    on_stage(Stage::Sources);
+    if tokio::fs::symlink_metadata(folder).await.is_ok() {
+        tracing::info!(dir = %folder.display(), "removing the work folder an earlier build left");
+    }
     let _ = tokio::fs::remove_dir_all(folder).await;
     for made in [&sources, &out, &temp] {
         if let Err(err) = tokio::fs::create_dir_all(made).await {
             return Err(err.into());
         }
     }
-    on_stage(Stage::Sources);
     if let Err(err) = git::checkout(program, &work(root), &sources, head, log).await {
         return Err(err);
     }

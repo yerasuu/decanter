@@ -193,6 +193,10 @@ fn progress(head: &Head, stage: Option<&Stage>) -> AnyElement {
             total.map(|total| *received as f64 / total.max(1) as f64),
         ),
         Some(Stage::Unpacking(name)) => (t!("ps.branch.stage.unpacking", name = name), None),
+        Some(Stage::Verifying { checked, total }) => (
+            t!("ps.branch.stage.verifying", checked = checked, total = total),
+            (*total > 0).then(|| f64::from(*checked) / f64::from(*total)),
+        ),
         Some(Stage::Sources) => (t!("ps.branch.stage.sources"), None),
         Some(Stage::Configuring) => (t!("ps.branch.stage.configuring"), None),
         Some(Stage::Compiling) => (t!("ps.branch.stage.compiling"), None),

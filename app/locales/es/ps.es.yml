@@ -701,6 +701,7 @@ ps.branch.built: '%{branch} · compilada el %{date} · toolchain-win32-%{number}
 ps.branch.stage.starting: empezando
 ps.branch.stage.downloading: 'descargando %{name}: %{size}'
 ps.branch.stage.unpacking: comprobando y descomprimiendo %{name}
+ps.branch.stage.verifying: 'comprobando los archivos de la toolchain: %{checked} de %{total}'
 ps.branch.stage.sources: obteniendo las fuentes
 ps.branch.stage.configuring: configurando con CMake
 ps.branch.stage.compiling: compilando con Ninja

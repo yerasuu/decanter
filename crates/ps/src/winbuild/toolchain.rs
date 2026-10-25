@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -26,6 +28,12 @@ const MAX_RECORD_BYTES: u64 = 4096;
 /// A piece's list of file hashes: about 110 bytes a line, 52k lines for the package.
 const MAX_LIST_BYTES: u64 = 32 << 20;
 const MAX_MANIFEST_BYTES: u64 = 1 << 20;
+/// Hashing the whole toolchain again (about 2 GB in 52k files) takes seconds from a warm disk cache,
+/// but can take minutes on the first build after decanter starts, from a cold cache with the
+/// antivirus scanning every file it opens (#1003); a disk that stops answering ends the build here.
+const VERIFY_TIMEOUT: Duration = Duration::from_mins(20);
+const VERIFY_TICK: Duration = Duration::from_secs(1);
+const VERIFY_LOG_EVERY: Duration = Duration::from_secs(30);
 
 /// The absolute paths a build runs and passes.
 #[derive(Debug, Clone)]
@@ -38,6 +46,24 @@ pub struct Tools {
     /// The SHA-256 each file of `clang64/bin` had when the package was installed, by its name in
     /// lowercase, which the DLLs copied into a build must still have.
     pub sysroot_bin: BTreeMap<String, String>,
+}
+
+/// How far [`verify`] went, read by the build while it runs on a thread of its own.
+#[derive(Default)]
+struct Checked {
+    files: AtomicU32,
+    total: AtomicU32,
+    stop: AtomicBool,
+}
+
+/// Stops [`verify`] once the build that waits for it ends, Detener and the timeout included, since a
+/// blocking thread outlives the future that started it.
+struct StopOnDrop(Arc<Checked>);
+
+impl Drop for StopOnDrop {
+    fn drop(&mut self) {
+        self.0.stop.store(true, Ordering::Relaxed);
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -109,22 +135,73 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
         Ok(folders) => folders,
         Err(_) => return Err(Error::Manifest("a toolchain piece went missing".to_owned())),
     };
-    let checked = {
-        let (cache, package_dir) = (cache.clone(), package_dir.clone());
+    let checked = Arc::new(Checked::default());
+    let _stop = StopOnDrop(Arc::clone(&checked));
+    let mut task = {
+        let (cache, package_dir, checked) = (cache.clone(), package_dir.clone(), Arc::clone(&checked));
         tokio::task::spawn_blocking(move || {
-            for archive in [&llvm_mingw, &cmake, &ninja] {
-                if let Err(err) = verify(&cache, archive) {
-                    return Err(err);
+            let pieces = [&llvm_mingw, &cmake, &ninja, &package];
+            let mut lists = Vec::with_capacity(pieces.len());
+            for archive in pieces {
+                match expected(&cache, archive) {
+                    Ok(list) => lists.push(list),
+                    Err(err) => return Err(err),
                 }
             }
-            match verify(&cache, &package) {
-                Ok(files) => check_manifest(&package_dir).map(|()| files),
-                Err(err) => Err(err),
+            let total = lists.iter().map(BTreeMap::len).sum::<usize>();
+            checked
+                .total
+                .store(u32::try_from(total).unwrap_or(u32::MAX), Ordering::Relaxed);
+            let mut files = BTreeMap::new();
+            for (archive, list) in pieces.into_iter().zip(lists) {
+                match verify(&cache, archive, list, &checked) {
+                    Ok(verified) => files = verified,
+                    Err(err) => return Err(err),
+                }
             }
+            check_manifest(&package_dir).map(|()| files)
         })
-        .await
     };
-    let package_files = match checked {
+    let started = Instant::now();
+    let mut logged = started;
+    tracing::info!("checking the Windows toolchain's files before the build");
+    on_stage(Stage::Verifying { checked: 0, total: 0 });
+    let outcome = loop {
+        if let Ok(result) = tokio::time::timeout(VERIFY_TICK, &mut task).await {
+            break result;
+        }
+        let (files, total) = (
+            checked.files.load(Ordering::Relaxed),
+            checked.total.load(Ordering::Relaxed),
+        );
+        if started.elapsed() > VERIFY_TIMEOUT {
+            tracing::warn!(
+                files,
+                total,
+                "checking the Windows toolchain's files ran past its limit"
+            );
+            return Err(Error::TimedOut {
+                step: "toolchain check",
+                seconds: VERIFY_TIMEOUT.as_secs(),
+            });
+        }
+        if logged.elapsed() >= VERIFY_LOG_EVERY {
+            logged = Instant::now();
+            tracing::info!(
+                files,
+                total,
+                seconds = started.elapsed().as_secs(),
+                "still checking the Windows toolchain's files"
+            );
+        }
+        on_stage(Stage::Verifying { checked: files, total });
+    };
+    tracing::info!(
+        files = checked.files.load(Ordering::Relaxed),
+        ms = started.elapsed().as_millis(),
+        "Windows toolchain files checked"
+    );
+    let package_files = match outcome {
         Ok(Ok(files)) => files,
         Ok(Err(err)) => return Err(err),
         Err(err) => return Err(io::Error::other(err).into()),
@@ -372,22 +449,20 @@ pub(super) fn sha256_of(path: &Path) -> io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// Every file of `archive`'s installed folder exactly as its list recorded it at install: the same
-/// files, no others and no links, each with its recorded SHA-256. The list, by path. Blocking file
-/// I/O.
+/// `archive`'s list of hashes as its install wrote it, by path. Blocking file I/O.
 ///
 /// # Errors
-/// [`Error::Tampered`] naming the first file that differs.
-pub fn verify(cache: &Path, archive: &Archive) -> Result<BTreeMap<String, String>, Error> {
-    let tampered = |what: &str| Error::Tampered(format!("{}/{what}", archive.key));
+/// [`Error::Tampered`] when the list is missing, too large or malformed.
+fn expected(cache: &Path, archive: &Archive) -> Result<BTreeMap<String, String>, Error> {
+    let tampered = || Error::Tampered(format!("{}/list of hashes", archive.key));
     let list = match std::fs::symlink_metadata(list_path(cache, archive)) {
         Ok(meta) if meta.is_file() && meta.len() <= MAX_LIST_BYTES => {
             std::fs::read_to_string(list_path(cache, archive))
         }
-        Ok(_) | Err(_) => return Err(tampered("list of hashes")),
+        Ok(_) | Err(_) => return Err(tampered()),
     };
     let Ok(list) = list else {
-        return Err(tampered("list of hashes"));
+        return Err(tampered());
     };
     let mut expected = BTreeMap::new();
     for line in list.lines() {
@@ -395,9 +470,25 @@ pub fn verify(cache: &Path, archive: &Archive) -> Result<BTreeMap<String, String
             Some((sha256, path)) if pins::is_sha256(sha256) => {
                 expected.insert(path.to_owned(), sha256.to_owned());
             }
-            Some(_) | None => return Err(tampered("list of hashes")),
+            Some(_) | None => return Err(tampered()),
         }
     }
+    Ok(expected)
+}
+
+/// Every file of `archive`'s installed folder exactly as `expected` recorded it at install: the
+/// same files, no others and no links, each with its recorded SHA-256. Each file is counted in
+/// `checked` as it passes, and `checked.stop` ends the walk early. Blocking file I/O.
+///
+/// # Errors
+/// [`Error::Tampered`] naming the first file that differs.
+fn verify(
+    cache: &Path,
+    archive: &Archive,
+    expected: BTreeMap<String, String>,
+    checked: &Checked,
+) -> Result<BTreeMap<String, String>, Error> {
+    let tampered = |what: &str| Error::Tampered(format!("{}/{what}", archive.key));
     let root = cache.join(&archive.key);
     let mut found: usize = 0;
     let mut pending = vec![(root, String::new())];
@@ -425,11 +516,17 @@ pub fn verify(cache: &Path, archive: &Archive) -> Result<BTreeMap<String, String
                 pending.push((entry.path(), relative));
                 continue;
             }
+            if checked.stop.load(Ordering::Relaxed) {
+                return Err(io::Error::from(io::ErrorKind::Interrupted).into());
+            }
             let Some(sha256) = expected.get(&relative).filter(|_| kind.is_file()) else {
                 return Err(tampered(&relative));
             };
             match sha256_of(&entry.path()) {
-                Ok(found_sha256) if &found_sha256 == sha256 => found += 1,
+                Ok(found_sha256) if &found_sha256 == sha256 => {
+                    found += 1;
+                    checked.files.fetch_add(1, Ordering::Relaxed);
+                }
                 Ok(_) | Err(_) => return Err(tampered(&relative)),
             }
         }
