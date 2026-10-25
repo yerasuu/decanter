@@ -9,8 +9,10 @@ mod shapes;
 
 use serde::Serialize;
 
-use shapes::is_path_like;
-pub use shapes::{classify, is_image, is_word};
+pub use shapes::{
+    classify, has_secret_prefix, is_driver, is_gpu_model_tail, is_image, is_os_version, is_pre_release, is_word,
+};
+use shapes::{classify_in, has_markup, is_label_word, is_path_like, strip_markup};
 
 /// Why a token cannot stay; serialized as the rule a rejection names, never with the token.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -45,8 +47,8 @@ impl Private {
     }
 }
 
-/// A message may hold no proper name; a label (an OS release, a GPU or a driver) is one and stays
-/// ASCII; a game's name is one and may be Unicode.
+/// A message may hold no proper name; a label (an OS release, a GPU or a driver) is made of
+/// hardware and system words and stays ASCII; a game's name is a proper name and may be Unicode.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Message,
@@ -132,14 +134,16 @@ const TECHNICAL_WORDS: &[&str] = &[
     "Unsupported",
 ];
 
-/// `Dell`, `Inc`, `Wireless`: a capital, then lowercase letters only.
-fn is_name_word(token: &str) -> bool {
+/// `Dell`, `Inc`, `Wireless`: a capital, then lowercase letters only. In a label the hardware and
+/// system words (`Radeon Graphics`, `Arch Linux`) are not names.
+fn is_name_word(token: &str, mode: Mode) -> bool {
     let token = core(token);
     let mut bytes = token.bytes();
     token.len() >= 2
         && bytes.next().is_some_and(|b| b.is_ascii_uppercase())
         && bytes.all(|b| b.is_ascii_lowercase())
         && !TECHNICAL_WORDS.contains(&token)
+        && !(mode == Mode::Label && is_label_word(token))
 }
 
 /// `DELL`, `S2522HG`: the brand and model a device name goes on with.
@@ -158,13 +162,13 @@ fn is_space(sep: &str) -> bool {
 /// a device, a person or a window, which a failure line never needs; the capitals and model
 /// that follow such a run (`DELL S2522HG`) belong to it. A label ending in `:` ends a run, so
 /// `Window: Call` is not one.
-fn name_runs(pieces: &[Piece<'_>]) -> Vec<bool> {
+fn name_runs(pieces: &[Piece<'_>], mode: Mode) -> Vec<bool> {
     let mut marked = vec![false; pieces.len()];
     let mut previous = None;
     let mut extending = false;
     for (index, piece) in pieces.iter().enumerate() {
         match piece {
-            Piece::Token(token) if is_name_word(token) => {
+            Piece::Token(token) if is_name_word(token, mode) => {
                 if let Some(before) = previous {
                     marked[before] = true;
                     marked[index] = true;
@@ -186,23 +190,58 @@ fn name_runs(pieces: &[Piece<'_>]) -> Vec<bool> {
     marked
 }
 
+/// Which tokens follow the word `code` or `offset`, where eight hex digits are not an address.
+fn after_code(pieces: &[Piece<'_>]) -> Vec<bool> {
+    let mut previous = "";
+    pieces
+        .iter()
+        .map(|piece| match piece {
+            Piece::Token(token) => {
+                let after = ["code", "offset"]
+                    .iter()
+                    .any(|word| core(previous).eq_ignore_ascii_case(word));
+                previous = token;
+                after
+            }
+            Piece::Sep(_) => false,
+        })
+        .collect()
+}
+
+/// A quote or `=` is a separator between words; at either end of the text it opens or closes
+/// something the reader never sees the other half of.
+fn has_loose_quote(pieces: &[Piece<'_>]) -> bool {
+    let loose = |piece: Option<&Piece<'_>>| matches!(piece, Some(Piece::Sep(sep)) if sep.contains(['"', '\'', '=']));
+    loose(pieces.first()) || loose(pieces.last())
+}
+
 /// Every reason `text` cannot be published as it is, each once, in order of appearance.
 pub fn check(text: &str, mode: Mode) -> Vec<Private> {
     let pieces = pieces(text);
-    let runs = if mode == Mode::Message {
-        name_runs(&pieces)
-    } else {
+    let runs = if mode == Mode::Name {
         vec![false; pieces.len()]
+    } else {
+        name_runs(&pieces, mode)
     };
+    let codes = after_code(&pieces);
     let mut found = Vec::new();
     if mode != Mode::Name && !text.is_ascii() {
         found.push(Private::NonAscii);
     }
-    for (piece, in_run) in pieces.iter().zip(runs) {
+    if has_markup(text) || has_loose_quote(&pieces) {
+        found.push(Private::Unrecognized);
+    }
+    for (index, (piece, in_run)) in pieces.iter().zip(runs).enumerate() {
         let verdict = match piece {
             Piece::Token(_) if in_run => Err(Private::ProperName),
-            Piece::Token(token) => classify(token, mode),
-            Piece::Sep(sep) if sep.chars().any(|c| c.is_control() && c != ' ') => Err(Private::Unrecognized),
+            Piece::Token(token) => classify_in(token, mode, codes[index]),
+            Piece::Sep(sep)
+                if sep
+                    .chars()
+                    .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')) =>
+            {
+                Err(Private::Unrecognized)
+            }
             Piece::Sep(_) => Ok(()),
         };
         if let Err(reason) = verdict
@@ -214,6 +253,29 @@ pub fn check(text: &str, mode: Mode) -> Vec<Private> {
     found
 }
 
+/// The start of a line, at most `max` bytes cut on a character boundary: `pieces` scans the rest
+/// of the line again for every token, so a megabyte with no spaces must never reach it.
+pub(crate) fn cap_line(text: &str, max: usize) -> &str {
+    text.get(..text.floor_char_boundary(max)).unwrap_or(text)
+}
+
+/// `text` without the quotes and `=` at its two ends, which [`check`] refuses there.
+fn trim_edges(text: &str) -> String {
+    let pieces = pieces(text);
+    let last = pieces.len().saturating_sub(1);
+    let joined: String = pieces
+        .iter()
+        .enumerate()
+        .map(|(index, piece)| match piece {
+            Piece::Sep(sep) if index == 0 || index == last => {
+                sep.chars().filter(|c| !matches!(c, '"' | '\'' | '=')).collect()
+            }
+            Piece::Sep(piece) | Piece::Token(piece) => (*piece).to_owned(),
+        })
+        .collect();
+    joined.trim().to_owned()
+}
+
 /// The message as a report may carry it.
 ///
 /// Every token [`check`] would refuse is replaced by its placeholder, and the text is cut at
@@ -221,13 +283,13 @@ pub fn check(text: &str, mode: Mode) -> Vec<Private> {
 /// since the image tells where a fault was and the folders around it are the private part.
 #[must_use]
 pub fn normalize_message(text: &str, max: usize) -> String {
-    let flat: String = text
-        .trim()
+    let flat: String = strip_markup(cap_line(text, max.saturating_mul(4)).trim())
         .chars()
         .map(|c| if c.is_whitespace() { ' ' } else { c })
         .collect();
     let pieces = pieces(&flat);
-    let runs = name_runs(&pieces);
+    let runs = name_runs(&pieces, Mode::Message);
+    let codes = after_code(&pieces);
     let mut out = String::with_capacity(flat.len().min(max));
     let mut index = 0;
     while let Some(piece) = pieces.get(index) {
@@ -245,7 +307,7 @@ pub fn normalize_message(text: &str, max: usize) -> String {
                 };
                 format!("{}{trailing}", Private::ProperName.placeholder())
             }
-            Piece::Token(token) => replace(token),
+            Piece::Token(token) => replace(token, codes[index]),
         };
         if out.len() + kept.len() > max {
             break;
@@ -253,13 +315,13 @@ pub fn normalize_message(text: &str, max: usize) -> String {
         out.push_str(&kept);
         index += 1;
     }
-    out.trim_end().to_owned()
+    trim_edges(out.trim_end())
 }
 
-fn replace(token: &str) -> String {
+fn replace(token: &str, after_code: bool) -> String {
     let trimmed = core(token);
     let trailing = token.get(trimmed.len()..).unwrap_or_default();
-    match classify(trimmed, Mode::Message) {
+    match classify_in(trimmed, Mode::Message, after_code) {
         Ok(()) => token.to_owned(),
         Err(Private::Path) => {
             let name = trimmed.rsplit(['/', '\\']).next().unwrap_or_default();

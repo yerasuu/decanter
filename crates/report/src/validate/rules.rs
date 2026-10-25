@@ -6,12 +6,13 @@ use crate::schema::{
     Build, Calls, DecanterReport, Failure, FailureKind, Fault, Game, Gpu, GpuVendor, Perf, Product, PsportReport,
     Report, SCHEMA, Setting, System,
 };
-use crate::text::{Mode, is_image};
+use crate::text::{Mode, has_secret_prefix, is_driver, is_gpu_model_tail, is_image, is_os_version, is_pre_release};
 
 pub const MAX_MESSAGE: usize = 300;
 pub const MAX_CALLS: usize = 64;
 pub const MAX_FRAMES: usize = 32;
 pub const MAX_COUNT: u32 = 1_000_000;
+pub const MAX_CALL_COUNT: u64 = 1_000_000_000;
 
 fn digits(text: &str, len: usize) -> bool {
     text.len() == len && text.bytes().all(|b| b.is_ascii_digit())
@@ -28,7 +29,21 @@ pub fn is_day(text: &str) -> bool {
         && digits(day, 2)
         && year.parse().is_ok_and(|y: u16| (2020..2200).contains(&y))
         && month.parse().is_ok_and(|m: u8| (1..=12).contains(&m))
-        && day.parse().is_ok_and(|d: u8| (1..=31).contains(&d))
+        && day
+            .parse()
+            .is_ok_and(|d: u8| (1..=days_in_month(year, month)).contains(&d))
+}
+
+fn days_in_month(year: &str, month: &str) -> u8 {
+    let leap = year
+        .parse::<u16>()
+        .is_ok_and(|y| y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
+    match month {
+        "02" if leap => 29,
+        "02" => 28,
+        "04" | "06" | "09" | "11" => 30,
+        _ => 31,
+    }
 }
 
 /// `CUSA03173`, `PPSA01234`: four capitals and five digits, the id `param.sfo` gives a title.
@@ -50,7 +65,9 @@ pub fn is_commit(text: &str) -> bool {
 
 /// `0.3.4`, `0.1.4-rc.1`.
 pub fn is_version(text: &str) -> bool {
-    let (core, pre) = text.split_once('-').unwrap_or((text, ""));
+    let (core, pre) = text
+        .split_once('-')
+        .map_or((text, None), |(core, pre)| (core, Some(pre)));
     let mut parts = core.split('.');
     text.len() <= 32
         && (0..3).all(|_| {
@@ -59,12 +76,13 @@ pub fn is_version(text: &str) -> bool {
                 .is_some_and(|p| !p.is_empty() && p.len() <= 5 && p.bytes().all(|b| b.is_ascii_digit()))
         })
         && parts.next().is_none()
-        && pre.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
+        && pre.is_none_or(is_pre_release)
 }
 
 /// A C symbol or an Itanium-mangled one (`sceKernelOpen`, `_ZN11PsFrameRate10IsUnlockedEv`).
 pub fn is_symbol(text: &str, max: usize) -> bool {
     text.len() <= max
+        && !has_secret_prefix(text)
         && text
             .bytes()
             .next()
@@ -80,7 +98,7 @@ pub fn is_gpu_model(vendor: GpuVendor, model: &str) -> bool {
         GpuVendor::Intel => "Intel",
         GpuVendor::Apple => "Apple ",
     };
-    model.len() <= 96 && model.starts_with(brand)
+    model.len() <= 96 && model.strip_prefix(brand).is_some_and(is_gpu_model_tail)
 }
 
 /// The values each setting takes; a free-form value has no place here.
@@ -117,8 +135,13 @@ pub fn is_setting_value(setting: Setting, value: &str) -> bool {
     }
 }
 
+/// Perf values keep one decimal: a longer fraction could carry a number of someone's choosing.
+pub fn round_perf(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
+}
+
 pub fn is_perf_value(value: f64) -> bool {
-    value.is_finite() && (0.0..=10_000.0).contains(&value)
+    value.is_finite() && (0.0..=10_000.0).contains(&value) && value.to_bits() == round_perf(value).to_bits()
 }
 
 /// Every field rule over a report that already has the schema's shape.
@@ -204,9 +227,18 @@ fn bounded(path: &str, value: &str, max: usize, mode: Mode, out: &mut Vec<Reject
     }
 }
 
+/// A label made of words from a closed list and release numbers: the table is the whole rule.
+fn closed(path: &str, value: &str, fits: fn(&str) -> bool, out: &mut Vec<Rejection>) {
+    if value.len() > 48 {
+        out.push(Rejection::new(path, Rule::TooLong));
+    } else if !fits(value) {
+        out.push(Rejection::new(path, Rule::Pattern));
+    }
+}
+
 fn system(system: &System, out: &mut Vec<Rejection>) {
     if let Some(version) = &system.os_version {
-        bounded("system.os_version", version, 48, Mode::Label, out);
+        closed("system.os_version", version, is_os_version, out);
     }
     if let Some(gpu) = &system.gpu {
         self::gpu(gpu, out);
@@ -219,7 +251,7 @@ fn gpu(gpu: &Gpu, out: &mut Vec<Rejection>) {
         out.push(Rejection::new("system.gpu.model", Rule::Pattern));
     }
     if let Some(driver) = &gpu.driver {
-        bounded("system.gpu.driver", driver, 48, Mode::Label, out);
+        closed("system.gpu.driver", driver, is_driver, out);
     }
 }
 
@@ -256,7 +288,7 @@ fn calls(calls: &Calls, out: &mut Vec<Rejection>) {
             if !is_symbol(&call.name, 96) {
                 out.push(Rejection::new(format!("calls.{list}[{index}].name"), Rule::Pattern));
             }
-            if call.count == 0 {
+            if !(1..=MAX_CALL_COUNT).contains(&call.count) {
                 out.push(Rejection::new(format!("calls.{list}[{index}].count"), Rule::OutOfRange));
             }
         }

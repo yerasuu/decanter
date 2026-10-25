@@ -5,6 +5,8 @@
 //! ids, paths and targets in the other fields are never looked at.
 
 use crate::schema::Action;
+use crate::text::cap_line;
+use crate::validate::rules::MAX_MESSAGE;
 
 #[derive(Debug, Default)]
 pub struct DayLog {
@@ -36,6 +38,7 @@ fn split(line: &str) -> Option<Line<'_>> {
     let (time, rest) = line.trim_start_matches('\u{feff}').split_once(' ')?;
     let (level, rest) = rest.trim_start().split_once(' ')?;
     let (target, rest) = rest.split_once(": ")?;
+    let rest = cap_line(rest, MAX_MESSAGE * 4);
     let fields_at = field_starts(rest).next().unwrap_or(rest.len());
     let (message, fields) = rest.split_at(fields_at);
     Some(Line {

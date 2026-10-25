@@ -14,8 +14,8 @@ use crate::sources::failures::{FailureRecord, RecordCall, RecordCalls};
 use crate::sources::game_log::GameLog;
 use crate::text::{self, Mode, is_image, normalize_message};
 use crate::validate::rules::{
-    MAX_CALLS, MAX_COUNT, MAX_FRAMES, MAX_MESSAGE, is_commit, is_day, is_game_version, is_gpu_model, is_perf_value,
-    is_setting_value, is_symbol, is_version,
+    MAX_CALL_COUNT, MAX_CALLS, MAX_COUNT, MAX_FRAMES, MAX_MESSAGE, is_commit, is_day, is_game_version, is_gpu_model,
+    is_perf_value, is_setting_value, is_symbol, is_version, round_perf,
 };
 use crate::validate::{Rejection, Rule, check};
 
@@ -73,14 +73,14 @@ fn system(host: &Host, os: Option<Os>, gpu: Option<&Gpu>) -> System {
             vendor: gpu.vendor,
             model: gpu.model.clone(),
             driver: keep("system.gpu.driver", gpu.driver.as_deref(), |d| {
-                d.len() <= 48 && text::check(d, Mode::Label).is_empty()
+                d.len() <= 48 && text::is_driver(d)
             }),
         })
     });
     System {
         os: os.unwrap_or(host.os),
         os_version: keep("system.os_version", host.os_version.as_deref(), |v| {
-            v.len() <= 48 && text::check(v, Mode::Label).is_empty()
+            v.len() <= 48 && text::is_os_version(v)
         }),
         gpu,
     }
@@ -105,6 +105,10 @@ fn fit_calls(calls: impl Iterator<Item = Call>) -> Vec<Call> {
             fits
         })
         .take(MAX_CALLS)
+        .map(|call| Call {
+            count: call.count.min(MAX_CALL_COUNT),
+            ..call
+        })
         .collect()
 }
 
@@ -159,14 +163,13 @@ fn fault(fault: &Fault) -> Option<Fault> {
 }
 
 fn perf(perf: &Perf) -> Option<Perf> {
-    let fits = [perf.fps_mean, perf.fps_min, perf.worst_frame_ms]
-        .into_iter()
-        .all(is_perf_value);
+    let [fps_mean, fps_min, worst_frame_ms] = [perf.fps_mean, perf.fps_min, perf.worst_frame_ms].map(round_perf);
+    let fits = [fps_mean, fps_min, worst_frame_ms].into_iter().all(is_perf_value);
     (fits && (1..=100_000).contains(&perf.samples)).then_some(Perf {
         samples: perf.samples,
-        fps_mean: (perf.fps_mean * 10.0).round() / 10.0,
-        fps_min: perf.fps_min,
-        worst_frame_ms: perf.worst_frame_ms,
+        fps_mean,
+        fps_min,
+        worst_frame_ms,
     })
 }
 
