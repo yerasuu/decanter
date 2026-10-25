@@ -7,12 +7,14 @@ use crate::schema::{
     Report, SCHEMA, Setting, System,
 };
 use crate::text::{Mode, has_secret_prefix, is_driver, is_gpu_model_tail, is_image, is_os_version, is_pre_release};
+use crate::vocab::{self, Family};
 
-pub const MAX_MESSAGE: usize = 300;
 pub const MAX_CALLS: usize = 64;
 pub const MAX_FRAMES: usize = 32;
 pub const MAX_COUNT: u32 = 1_000_000;
 pub const MAX_CALL_COUNT: u64 = 1_000_000_000;
+/// Longest raw message the builders read before matching a template; the report keeps no text.
+pub const MAX_MESSAGE: usize = 300;
 
 fn digits(text: &str, len: usize) -> bool {
     text.len() == len && text.bytes().all(|b| b.is_ascii_digit())
@@ -165,7 +167,7 @@ fn decanter(report: &DecanterReport, out: &mut Vec<Rejection>) {
     }
     build("decanter", &report.decanter, out);
     system(&report.system, out);
-    failure(&report.failure, out);
+    failure(&report.failure, Family::Decanter, out);
     if matches!(report.failure.kind, FailureKind::Stop | FailureKind::Missing) {
         out.push(Rejection::new("failure.kind", Rule::Product));
     }
@@ -187,7 +189,7 @@ fn psport(report: &PsportReport, out: &mut Vec<Rejection>) {
             out.push(Rejection::new(format!("settings.{name}"), Rule::Pattern));
         }
     }
-    failure(&report.failure, out);
+    failure(&report.failure, Family::Psport, out);
     if let Some(calls) = &report.calls {
         self::calls(calls, out);
     }
@@ -267,8 +269,10 @@ fn game(game: &Game, out: &mut Vec<Rejection>) {
     }
 }
 
-fn failure(failure: &Failure, out: &mut Vec<Rejection>) {
-    bounded("failure.message", &failure.message, MAX_MESSAGE, Mode::Message, out);
+fn failure(failure: &Failure, family: Family, out: &mut Vec<Rejection>) {
+    if let Some(message) = &failure.message {
+        vocab::check(message, family, out);
+    }
     if !(1..=MAX_COUNT).contains(&failure.count) {
         out.push(Rejection::new("failure.count", Rule::OutOfRange));
     }

@@ -45,6 +45,12 @@ pub enum Rule {
     /// The value does not have the one shape its field allows (`CUSA00000`, `YYYY-MM-DD`).
     Pattern,
     Text(Private),
+    /// A message template the product's vocabulary does not list.
+    UnknownTemplate,
+    /// A message slot of the wrong count, type or value for its template.
+    BadSlot,
+    /// Text that holds a string of the sender's own identity; only the builder can raise it.
+    Identity,
 }
 
 impl Rejection {

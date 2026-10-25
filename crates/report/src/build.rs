@@ -4,6 +4,7 @@
 //! left out (and logged), free text is normalized, and the finished report passes [`check`]
 //! before it is returned, so the client never sends what the server would refuse.
 
+use crate::identity::{Guard, Identity};
 use crate::schema::{
     Action, Build, Call, Calls, DecanterReport, Failure, FailureKind, Fault, Gpu, Os, Perf, Product, PsportReport,
     Report, SCHEMA, System,
@@ -12,12 +13,13 @@ use crate::sources::day_log::DayFailure;
 use crate::sources::day_of;
 use crate::sources::failures::{FailureRecord, RecordCall, RecordCalls};
 use crate::sources::game_log::GameLog;
-use crate::text::{self, Mode, is_image, normalize_message};
+use crate::text::{self, Mode, is_image};
 use crate::validate::rules::{
-    MAX_CALL_COUNT, MAX_CALLS, MAX_COUNT, MAX_FRAMES, MAX_MESSAGE, is_commit, is_day, is_game_version, is_gpu_model,
-    is_perf_value, is_setting_value, is_symbol, is_version, round_perf,
+    MAX_CALL_COUNT, MAX_CALLS, MAX_COUNT, MAX_FRAMES, is_commit, is_day, is_game_version, is_gpu_model, is_perf_value,
+    is_setting_value, is_symbol, is_version, round_perf,
 };
 use crate::validate::{Rejection, Rule, check};
+use crate::vocab::{self, Family};
 
 const TARGET: &str = "decanter_report::build";
 
@@ -53,15 +55,10 @@ fn keep(field: &'static str, value: Option<&str>, fits: impl Fn(&str) -> bool) -
     None
 }
 
-fn failure(kind: FailureKind, raw: &str, count: u32) -> Failure {
-    let message = normalize_message(raw, MAX_MESSAGE);
+fn failure(kind: FailureKind, raw: &str, count: u32, family: Family, guard: &Guard) -> Failure {
     Failure {
         kind,
-        message: if message.is_empty() {
-            "<text>".to_owned()
-        } else {
-            message
-        },
+        message: vocab::normalize(&guard.scrub(raw), family),
         count: count.clamp(1, MAX_COUNT),
     }
 }
@@ -175,12 +172,12 @@ fn perf(perf: &Perf) -> Option<Perf> {
 
 /// The log's own failure when no record is given: its fault, else its first stop or error line,
 /// else its call report.
-fn log_failure(log: &GameLog) -> Option<Failure> {
+fn log_failure(log: &GameLog, guard: &Guard) -> Option<Failure> {
     if let Some((line, _)) = &log.fault {
-        return Some(failure(FailureKind::Crash, line, 1));
+        return Some(failure(FailureKind::Crash, line, 1, Family::Psport, guard));
     }
     if let Some((kind, line, count)) = &log.error {
-        return Some(failure(*kind, line, *count));
+        return Some(failure(*kind, line, *count, Family::Psport, guard));
     }
     let calls = log.calls.as_ref()?;
     let raw = format!(
@@ -190,13 +187,19 @@ fn log_failure(log: &GameLog) -> Option<Failure> {
         calls.failed.len(),
         calls.status.len()
     );
-    Some(failure(FailureKind::Missing, &raw, 1))
+    Some(failure(FailureKind::Missing, &raw, 1, Family::Psport, guard))
 }
 
+/// `identity` is applied here and nowhere else, since the server has no such list: input text
+/// that holds one of its strings is replaced before matching, and an optional field that holds
+/// one is dropped.
+///
 /// # Errors
 ///
-/// The rejections of [`check`], or a `failure` one when neither source holds a failure.
-pub fn psport_report(input: &PsportInput<'_>, host: &Host) -> Result<Report, Vec<Rejection>> {
+/// The rejections of [`check`], a `failure` one when neither source holds a failure, or an
+/// identity one naming a required field (`date`, `game.title_id`) that holds an identity string.
+pub fn psport_report(input: &PsportInput<'_>, host: &Host, identity: &Identity) -> Result<Report, Vec<Rejection>> {
+    let guard = Guard::new(identity);
     let PsportInput {
         record,
         log,
@@ -205,8 +208,16 @@ pub fn psport_report(input: &PsportInput<'_>, host: &Host) -> Result<Report, Vec
     } = *input;
     let failure = record
         .map_or_else(
-            || log.and_then(log_failure),
-            |record| Some(failure(record.kind.into(), &record.message, record.count)),
+            || log.and_then(|log| log_failure(log, &guard)),
+            |record| {
+                Some(failure(
+                    record.kind.into(),
+                    &record.message,
+                    record.count,
+                    Family::Psport,
+                    &guard,
+                ))
+            },
         )
         .ok_or_else(|| vec![Rejection::new("failure", Rule::MissingField)])?;
     let date = record
@@ -230,7 +241,7 @@ pub fn psport_report(input: &PsportInput<'_>, host: &Host) -> Result<Report, Vec
         record.and_then(|record| record.calls.as_ref()),
         log.and_then(|log| log.calls.as_ref()),
     );
-    let report = Report::Psport(Box::new(PsportReport {
+    let mut report = Report::Psport(Box::new(PsportReport {
         schema: SCHEMA,
         product: Product::Psport,
         date,
@@ -266,20 +277,25 @@ pub fn psport_report(input: &PsportInput<'_>, host: &Host) -> Result<Report, Vec
         fault: log.and_then(|log| log.fault.as_ref()).and_then(|(_, f)| fault(f)),
         perf: log.and_then(|log| log.perf.as_ref()).and_then(perf),
     }));
+    let leaks = guard.purge(&mut report);
+    if !leaks.is_empty() {
+        return Err(leaks);
+    }
     check(&report)?;
     Ok(report)
 }
 
 /// # Errors
 ///
-/// The rejections of [`check`].
-pub fn decanter_report(failure_entry: &DayFailure, host: &Host) -> Result<Report, Vec<Rejection>> {
+/// The rejections of [`check`], or those of the identity guard (see [`psport_report`]).
+pub fn decanter_report(failure_entry: &DayFailure, host: &Host, identity: &Identity) -> Result<Report, Vec<Rejection>> {
+    let guard = Guard::new(identity);
     let kind = if failure_entry.action == Action::Launch && failure_entry.message.contains(" exit=") {
         FailureKind::Exit
     } else {
         FailureKind::Error
     };
-    let report = Report::Decanter(DecanterReport {
+    let mut report = Report::Decanter(DecanterReport {
         schema: SCHEMA,
         product: Product::Decanter,
         date: if is_day(&failure_entry.day) {
@@ -290,8 +306,18 @@ pub fn decanter_report(failure_entry: &DayFailure, host: &Host) -> Result<Report
         decanter: decanter_build(host),
         system: system(host, None, None),
         action: failure_entry.action,
-        failure: failure(kind, &failure_entry.message, failure_entry.count),
+        failure: failure(
+            kind,
+            &failure_entry.message,
+            failure_entry.count,
+            Family::Decanter,
+            &guard,
+        ),
     });
+    let leaks = guard.purge(&mut report);
+    if !leaks.is_empty() {
+        return Err(leaks);
+    }
     check(&report)?;
     Ok(report)
 }

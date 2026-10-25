@@ -18,25 +18,28 @@
 )]
 
 mod build;
+mod identity;
 pub mod schema;
 pub mod sources;
 mod text;
 pub mod validate;
+mod vocab;
 
 use sha2::{Digest, Sha256};
 
 pub use build::{Host, PsportInput, decanter_report, psport_report};
+pub use identity::Identity;
 pub use schema::Report;
 pub use text::{Private, normalize_message};
 pub use validate::{Rejection, Rule, check, validate};
 
-use schema::FailureKind;
+use schema::{FailureKind, Slot};
 
 /// A short key that groups duplicates.
 ///
-/// The same kind of failure, with the same message, on the same commit. Standalone decimal
-/// numbers (counters, return codes, line numbers) are left out of the key so one failure
-/// repeating with a different count groups as one; hex offsets stay.
+/// The same kind of failure, with the same message template and named slots, on the same commit.
+/// Numeric slots (counters, return codes, offsets) are left out of the key so one failure
+/// repeating with a different count groups as one.
 #[must_use]
 pub fn fingerprint(report: &Report) -> String {
     let (failure, commit) = match report {
@@ -50,11 +53,7 @@ pub fn fingerprint(report: &Report) -> String {
         FailureKind::Exit => "exit",
         FailureKind::Missing => "missing",
     };
-    let key = format!(
-        "{kind}\n{}\n{}",
-        without_numbers(&failure.message),
-        commit.unwrap_or_default()
-    );
+    let key = format!("{kind}\n{}\n{}", message_key(failure), commit.unwrap_or_default());
     Sha256::digest(key)
         .iter()
         .take(8)
@@ -64,21 +63,30 @@ pub fn fingerprint(report: &Report) -> String {
         })
 }
 
-fn without_numbers(message: &str) -> String {
-    let mut out = String::with_capacity(message.len());
-    let mut rest = message;
-    let mut previous = ' ';
-    while let Some(c) = rest.chars().next() {
-        let run = if c.is_ascii_digit() {
-            rest.find(|d: char| !d.is_ascii_digit()).unwrap_or(rest.len())
-        } else {
-            c.len_utf8()
-        };
-        let (piece, tail) = rest.split_at(run);
-        let standalone = !previous.is_ascii_alphanumeric() && !tail.starts_with(|n: char| n.is_ascii_alphanumeric());
-        out.push_str(if c.is_ascii_digit() && standalone { "#" } else { piece });
-        previous = piece.chars().last().unwrap_or(c);
-        rest = tail;
-    }
-    out
+/// The template and the slots that name something (a call, an image, a class); the numbers are
+/// left out, so a failure repeating with another count or offset groups as one.
+fn message_key(failure: &schema::Failure) -> String {
+    let Some(message) = &failure.message else {
+        return String::new();
+    };
+    let named = |slots: &[Slot]| {
+        slots
+            .iter()
+            .filter_map(|slot| match slot {
+                Slot::Number(_) | Slot::Offset(_) | Slot::Code(_) => None,
+                Slot::Call(s)
+                | Slot::Version(s)
+                | Slot::Image(s)
+                | Slot::Vuid(s)
+                | Slot::Const(s)
+                | Slot::Class(s)
+                | Slot::Choice(s) => Some(s.as_str()),
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let cause = message.cause.as_ref().map_or_else(String::new, |cause| {
+        format!("{}[{}]", cause.template, named(&cause.slots))
+    });
+    format!("{}[{}]{cause}", message.template, named(&message.slots))
 }

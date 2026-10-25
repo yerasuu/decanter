@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Bumped when a field changes meaning, so the server can tell old clients apart.
-pub const SCHEMA: u32 = 1;
+/// Bumped when a field changes meaning, so the server can tell old clients apart. 2: `failure.message`
+/// went from free text to a template id with typed slots ([`Message`]).
+pub const SCHEMA: u32 = 2;
 
 /// One report, shaped by its product (decision #991). Serialized untagged because each shape
 /// carries its own `product` field; [`crate::validate`] reads that field first to pick the shape.
@@ -125,9 +126,52 @@ pub enum Action {
 #[serde(deny_unknown_fields)]
 pub struct Failure {
     pub kind: FailureKind,
-    /// Normalized: only token shapes [`crate::normalize_message`] keeps, placeholders for the rest.
-    pub message: String,
+    /// Absent when the line matches no template of the closed vocabulary: the kind is all that is said then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<Message>,
     pub count: u32,
+}
+
+/// A failure line as a template of [`crate::vocab`] and the values of its typed slots, in the
+/// template's order. The text of the line itself never travels.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Message {
+    pub template: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<Slot>,
+    /// What decanter's own lines append after a colon (`: database is locked`), as a template of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<Cause>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cause {
+    pub template: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<Slot>,
+}
+
+/// The only kinds of value a message carries; each is checked against its own shape and range.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum Slot {
+    Number(u32),
+    /// Relative to its image, never an address: at most 32 bits.
+    Offset(u32),
+    /// An SCE or errno code, signed 32 or unsigned 32 bits.
+    Code(i64),
+    Call(String),
+    Version(String),
+    /// The file name of an executable image, without folders.
+    Image(String),
+    Vuid(String),
+    Const(String),
+    /// One of the port's log classes (`Lib.Font`).
+    Class(String),
+    /// One of the alternatives the template lists.
+    Choice(String),
 }
 
 /// The kinds of `failures.jsonl` (`decanter_ps::failures::Kind`): Missing is what the UI lists as
