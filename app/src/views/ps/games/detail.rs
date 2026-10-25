@@ -539,7 +539,7 @@ impl Render for DetailView {
         let run_notice = entry
             .as_ref()
             .and_then(|entry| ps.run_notice(&entry.game.dir))
-            .map(|(_, text, error)| (text.clone(), *error));
+            .map(|(text, error)| (text.clone(), *error));
         let Some(entry) = entry else {
             return div()
                 .p_8()

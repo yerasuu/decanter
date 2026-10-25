@@ -66,7 +66,7 @@ impl Ps {
         let prepared = (!decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsBuilds))
             .then(|| self.prepare(port, &root, cx));
         self.notice = None;
-        self.run_notice = None;
+        self.run_notices.remove(dir);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let cache_dir = game_cache_dir(folder, &game.title_id, cx).await;
@@ -640,7 +640,7 @@ async fn record_failures(this: &WeakEntity<Ps>, dir: PathBuf, path: PathBuf, fou
         },
     };
     let _ = this.update(cx, |this, cx| {
-        this.run_notice = Some((dir, text, error));
+        this.run_notices.insert(dir, (text, error));
         this.failures_changed(cx);
     });
 }
