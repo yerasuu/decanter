@@ -66,6 +66,7 @@ impl Ps {
         let prepared = (!decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsBuilds))
             .then(|| self.prepare(port, &root, cx));
         self.notice = None;
+        self.run_notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let cache_dir = game_cache_dir(folder, &game.title_id, cx).await;
@@ -117,7 +118,7 @@ impl Ps {
             if let Some(line) = finished.frame_overlap_off {
                 record_frame_overlap_off(&this, &root, &game.title_id, line, cx).await;
             }
-            record_failures(&this, failures_path, finished.failures, cx).await;
+            record_failures(&this, game.dir.clone(), failures_path, finished.failures, cx).await;
         })
         .detach();
     }
@@ -585,7 +586,7 @@ async fn record_frame_overlap_off(this: &WeakEntity<Ps>, root: &Root, title_id: 
     }
 }
 
-async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failure>, cx: &mut AsyncApp) {
+async fn record_failures(this: &WeakEntity<Ps>, dir: PathBuf, path: PathBuf, found: Vec<Failure>, cx: &mut AsyncApp) {
     if found.is_empty() {
         return;
     }
@@ -634,7 +635,7 @@ async fn record_failures(this: &WeakEntity<Ps>, path: PathBuf, found: Vec<Failur
         },
     };
     let _ = this.update(cx, |this, cx| {
-        this.notice = Some((text, error));
+        this.run_notice = Some((dir, text, error));
         this.failures_changed(cx);
     });
 }

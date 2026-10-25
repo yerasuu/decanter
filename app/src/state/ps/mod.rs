@@ -53,6 +53,8 @@ pub struct Ps {
     error: Option<Text>,
     /// The latest outcome worth telling: `(text, is_error)`.
     notice: Option<(Text, bool)>,
+    /// The outcome of the last run, with the game folder it belongs to, so only that game's page shows it.
+    run_notice: Option<(PathBuf, Text, bool)>,
     /// Bumped whenever the profile's failure record changes, for the
     /// view that reads it to know when to read it again.
     failures_revision: u32,
@@ -99,6 +101,7 @@ impl Ps {
                 entries: Vec::new(),
                 library_roots: Vec::new(),
                 notice: None,
+                run_notice: None,
                 scanning: false,
                 error: None,
                 scan: 0,
@@ -147,6 +150,10 @@ impl Ps {
 
     pub const fn notice(&self) -> Option<&(Text, bool)> {
         self.notice.as_ref()
+    }
+
+    pub fn run_notice(&self, dir: &Path) -> Option<&(PathBuf, Text, bool)> {
+        self.run_notice.as_ref().filter(|(owner, ..)| owner == dir)
     }
 
     pub const fn scanning(&self) -> bool {
@@ -203,6 +210,7 @@ impl Ps {
         self.entries.clear();
         self.library_roots.clear();
         self.notice = None;
+        self.run_notice = None;
         self.scan = self.scan.wrapping_add(1);
         self.scanning = false;
         let Some(profile_id) = profile_id else {

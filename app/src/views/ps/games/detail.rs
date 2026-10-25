@@ -536,6 +536,10 @@ impl Render for DetailView {
                 port: entry.port,
                 status: entry.status.clone(),
             });
+        let run_notice = entry
+            .as_ref()
+            .and_then(|entry| ps.run_notice(&entry.game.dir))
+            .map(|(_, text, error)| (text.clone(), *error));
         let Some(entry) = entry else {
             return div()
                 .p_8()
@@ -599,7 +603,7 @@ impl Render for DetailView {
             .flex_col()
             .child(Self::hero(&entry))
             .child(self.action_bar(&entry, cx))
-            .children(notice.map(|(text, error)| {
+            .children(notice.or(run_notice).map(|(text, error)| {
                 div()
                     .mx(px(32.))
                     .mt(px(16.))
