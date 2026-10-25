@@ -735,3 +735,9 @@ ps.report.errors.read: 'Couldn''t read %{what}: %{error}'
 ps.report.errors.serialize: 'Couldn''t write the report: %{error}'
 ps.report.errors.exists: '%{path} already exists; it is not overwritten'
 ps.report.errors.write: 'Couldn''t save %{path}: %{error}'
+ps.report.open: Error report
+ps.report.title: Error report
+ps.report.note: This is exactly what the report contains. Nothing is sent, and the report holds no paths, names or accounts.
+ps.report.save: Save report
+ps.report.close: Close
+ps.report.building: Preparing the report…

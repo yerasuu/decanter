@@ -735,3 +735,9 @@ ps.report.errors.read: 'No se pudo leer %{what}: %{error}'
 ps.report.errors.serialize: 'No se pudo escribir el informe: %{error}'
 ps.report.errors.exists: 'Ya existe %{path}; no se sobrescribe'
 ps.report.errors.write: 'No se pudo guardar %{path}: %{error}'
+ps.report.open: Informe de errores
+ps.report.title: Informe de errores
+ps.report.note: Aquí ves exactamente lo que contiene el informe. No se envía nada, y el informe no lleva rutas, nombres ni cuentas.
+ps.report.save: Guardar informe
+ps.report.close: Cerrar
+ps.report.building: Preparando el informe…
