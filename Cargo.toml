@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/gog", "crates/ps", "crates/runtime", "app"]
+members = ["crates/core", "crates/gog", "crates/ps", "crates/report", "crates/runtime", "app"]
 # `app` is the workspace's only binary crate (decanter) — this is what lets
 # `cargo run`/`cargo build` from the workspace root pick it without an
 # explicit `-p`/`--package`.
@@ -27,6 +27,7 @@ license = "GPL-3.0-or-later"
 decanter-core = { path = "crates/core" }
 decanter-gog = { path = "crates/gog" }
 decanter-ps = { path = "crates/ps" }
+decanter-report = { path = "crates/report" }
 decanter-runtime = { path = "crates/runtime" }
 # Zed's repository at a pinned commit: the crates.io release of gpui no
 # longer builds.

@@ -1,0 +1,18 @@
+[package]
+name = "decanter-report"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# The receiving server builds this crate too, to validate with the same code: nothing here may
+# reach the network, GPUI or the filesystem.
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true

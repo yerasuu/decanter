@@ -1659,6 +1659,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "decanter-report"
+version = "0.3.4"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tracing",
+]
+
+[[package]]
 name = "decanter-runtime"
 version = "0.3.4"
 dependencies = [
