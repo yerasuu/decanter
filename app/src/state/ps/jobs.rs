@@ -99,6 +99,14 @@ impl Launcher {
         self.command_mut().as_std().get_program().to_string_lossy().into_owned()
     }
 
+    #[cfg(windows)]
+    fn session_key(&self) -> Option<String> {
+        match self {
+            Self::Command(_) => None,
+            Self::Session(prepared) => Some(prepared.key().to_owned()),
+        }
+    }
+
     /// Must be called inside the tokio runtime, as [`process::spawn`].
     fn spawn(self, kind: JobKind) -> io::Result<(Job, UnboundedReceiver<Event>)> {
         match self {
@@ -179,6 +187,8 @@ pub async fn run_launcher(
         }
     };
     let program = launcher.program();
+    #[cfg(windows)]
+    let session_key = launcher.session_key();
     let (mut job, mut events) = match launcher.spawn(kind) {
         Ok(spawned) => spawned,
         Err(err) => {
@@ -248,11 +258,27 @@ pub async fn run_launcher(
         });
     }
     let report = read_call_report(calls_path.as_deref()).await;
-    if let Some(file) = log {
+    #[cfg(windows)]
+    let killed_at = session_key.as_deref().and_then(decanter_runtime::take_killed);
+    #[cfg(not(windows))]
+    let killed_at: Option<std::time::SystemTime> = None;
+    if let Some(scanner) = scanner.as_mut() {
+        scanner.set_killed(killed_at);
+    }
+    if let Some(mut file) = log {
+        file.set_killed(killed_at);
         finish_log(file, exit, report.as_ref(), calls_path, kind, &target).await;
     }
     let stopped = job.read_with(cx, |job, _| job.stop_requested);
-    trace_end(kind, &target, exit, stopped, started, log_path.as_deref());
+    trace_end(
+        kind,
+        &target,
+        exit,
+        stopped,
+        killed_at.is_some(),
+        started,
+        log_path.as_deref(),
+    );
     let _ = ps.update(cx, |_, cx| cx.notify());
     finished(scanner, exit, stopped, log_path.as_deref(), report)
 }
@@ -320,6 +346,7 @@ fn trace_end(
     target: &str,
     exit: Option<ExitStatus>,
     stopped: bool,
+    is_killed: bool,
     started: Instant,
     log: Option<&Path>,
 ) {
@@ -327,7 +354,16 @@ fn trace_end(
     let succeeded = exit.is_some_and(|status| status.success());
     let exit = describe_exit(exit);
     let log = log.map(|path| tracing::field::display(path.display()));
-    if succeeded || stopped {
+    if is_killed {
+        tracing::warn!(
+            job = kind.name(),
+            target,
+            exit,
+            duration_ms,
+            log,
+            "job ended by decanter killing it after a stop request"
+        );
+    } else if succeeded || stopped {
         tracing::info!(
             job = kind.name(),
             target,

@@ -345,6 +345,8 @@ pub struct Scanner {
     missing: Vec<(u8, String)>,
     /// The port's line turning frame overlap off for the session ([`crate::learned`]).
     frame_overlap_off: Option<String>,
+    /// When decanter killed the process, so its exit code is not taken for the game's own.
+    killed_at: Option<u64>,
 }
 
 impl Scanner {
@@ -359,7 +361,12 @@ impl Scanner {
             found: Vec::new(),
             missing: Vec::new(),
             frame_overlap_off: None,
+            killed_at: None,
         }
+    }
+
+    pub fn set_killed(&mut self, at: Option<SystemTime>) {
+        self.killed_at = at.map(unix_secs);
     }
 
     /// What a run's log header records about the game.
@@ -491,7 +498,23 @@ impl Scanner {
             });
         }
         let fatal = self.found.iter().any(|f| matches!(f.kind, Kind::Crash | Kind::Stop));
-        if !stop_requested && code != Some(0) && !fatal {
+        if let Some(at) = self.killed_at {
+            self.found.push(Failure {
+                time: now(),
+                game_dir: self.game_dir.clone(),
+                title_id: self.title_id.clone(),
+                version: self.version.clone(),
+                commit: self.commit.clone(),
+                kind: Kind::Exit,
+                message: describe_killed(at),
+                summary: Some(Summary::Exit(None)),
+                count: 1,
+                before: self.recent.iter().cloned().collect(),
+                after: Vec::new(),
+                log: None,
+                calls: None,
+            });
+        } else if !stop_requested && code != Some(0) && !fatal {
             self.found.push(Failure {
                 time: now(),
                 game_dir: self.game_dir.clone(),
@@ -520,10 +543,21 @@ impl Scanner {
 }
 
 fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or_default()
+    unix_secs(SystemTime::now())
+}
+
+pub(crate) fn unix_secs(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default()
+}
+
+/// How a run that decanter had to kill reads in the log and in the Fallos list.
+pub(crate) fn describe_killed(at: u64) -> String {
+    format!(
+        "killed by decanter (stop requested at {:02}:{:02}:{:02} UTC)",
+        (at % 86_400) / 3600,
+        (at % 3600) / 60,
+        at % 60
+    )
 }
 
 /// `YYYY-MM-DD HH:MM UTC`, without a date library (days-from-civil inverse, H. Hinnant).

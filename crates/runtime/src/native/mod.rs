@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use anyhow::{Context as _, bail};
 use futures_util::future::join_all;
@@ -164,7 +164,16 @@ impl Session {
         outlive_launcher(&self.key, status).await;
         live_lock().remove(&self.key);
         let elapsed = self.started_at.elapsed();
-        if status.success() {
+        let killed_at = killed_lock().get(&self.key).copied();
+        if let Some(killed_at) = killed_at {
+            tracing::warn!(
+                pid,
+                exit_code = status.code(),
+                elapsed = ?elapsed,
+                stop_requested_at = ?killed_at,
+                "game ended by decanter killing it; the exit code is not the game's own"
+            );
+        } else if status.success() {
             tracing::info!(pid, exit_code = status.code(), elapsed = ?elapsed, "game exited");
         } else {
             tracing::error!(pid, exit_code = status.code(), elapsed = ?elapsed, "game exited with a failure status");
@@ -190,6 +199,13 @@ impl Prepared {
         &mut self.command
     }
 
+    /// The session's key, for [`take_killed`].
+    #[inline]
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.launch.key
+    }
+
     /// Starts the game, returning as soon as its process exists.
     ///
     /// # Errors
@@ -210,6 +226,7 @@ impl Prepared {
         };
         let spawned = child.id();
         tracing::info!(pid = spawned, key = %self.launch.key, "launched game process");
+        killed_lock().remove(&self.launch.key);
         if let Some(pid) = spawned {
             let tracked = Tracked::new(&child, pid, &self.launch.key);
             live_lock().insert(self.launch.key.clone(), tracked);
@@ -299,6 +316,25 @@ fn live_lock() -> MutexGuard<'static, HashMap<String, Tracked>> {
     live().lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// The sessions [`end_after`] had to kill, by key, with when it did; kept until [`take_killed`] reads it
+/// or the key's next launch, because the status of a killed process reads like the game's own exit.
+fn killed() -> &'static Mutex<HashMap<String, SystemTime>> {
+    static KILLED: OnceLock<Mutex<HashMap<String, SystemTime>>> = OnceLock::new();
+    KILLED.get_or_init(Default::default)
+}
+
+fn killed_lock() -> MutexGuard<'static, HashMap<String, SystemTime>> {
+    killed().lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// When decanter killed the session named `key`, if its last run ended that way rather than by
+/// itself; clears the record.
+#[inline]
+#[must_use]
+pub fn take_killed(key: &str) -> Option<SystemTime> {
+    killed_lock().remove(key)
+}
+
 /// Waits until nothing in the session named `key` runs any more, because a
 /// launcher that started the game and exited hasn't ended it.
 async fn outlive_launcher(key: &str, launcher_status: ExitStatus) {
@@ -365,6 +401,10 @@ async fn end_after(key: &str, polite_attempts: u32) {
             tracing::debug!(key, "session has exited");
             return;
         };
+        if is_forced {
+            killed_lock().insert(key.to_owned(), SystemTime::now());
+            tracing::warn!(key, "session did not close by itself; killing it");
+        }
         os::close(targets, is_forced).await;
         sleep(STOP_POLL_INTERVAL).await;
     }
