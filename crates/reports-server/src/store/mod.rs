@@ -3,6 +3,7 @@
 //! never drift from the reports they count, even when requests race.
 
 mod index;
+mod logs;
 mod maintain;
 mod model;
 mod partition;
@@ -18,6 +19,7 @@ use s3db::txn_update::{UpdateOp, run_update};
 use s3db::{Backend, Blob, Cipher, Singleton, bootstrap};
 use serde::Serialize;
 
+pub use logs::{LogFilter, LogRow};
 pub use model::Report;
 #[cfg(test)]
 pub use partition::test_stores;

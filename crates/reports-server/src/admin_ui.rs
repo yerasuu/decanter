@@ -163,6 +163,7 @@ fn render(filter: &AdminFilter, rows: &[AdminRow], page: u32, has_next: bool, cs
             escape_html(csrf)
         );
     }
+    body.push_str("<p><a href=\"/admin/logs\">Logs adjuntos</a>: ver, buscar y comparar los logs de los informes</p>");
     body.push_str(&filter_form(filter));
     if let Some(fingerprint) = &filter.fingerprint {
         let base = format!("/admin/groups/{fingerprint}");

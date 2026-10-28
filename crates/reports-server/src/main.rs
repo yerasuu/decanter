@@ -2,6 +2,9 @@
 //! and publishes the ones that pass. Plain HTTP on loopback; TLS and the public port belong to the tunnel.
 
 mod admin;
+mod admin_logs;
+#[cfg(test)]
+mod admin_logs_tests;
 #[cfg(test)]
 mod admin_tests;
 mod admin_ui;
@@ -14,6 +17,7 @@ mod html;
 mod ingest;
 mod inspect;
 mod limits;
+mod logtext;
 mod pages;
 mod perms;
 mod secrets;

@@ -74,6 +74,20 @@ pub struct AdminSessions {
     pub max_sessions: u32,
 }
 
+/// The private log viewer's bounds: what one page, one search and one comparison may cost.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct LogViewer {
+    /// Lines of a log shown per page.
+    pub page_lines: u32,
+}
+
+impl Default for LogViewer {
+    fn default() -> Self {
+        Self { page_lines: 2000 }
+    }
+}
+
 impl Default for AdminSessions {
     fn default() -> Self {
         Self {
@@ -198,6 +212,7 @@ pub struct Config {
     pub shutdown_grace_secs: u32,
     pub limits: Limits,
     pub admin: AdminSessions,
+    pub logs: LogViewer,
     pub storage: Storage,
 }
 
@@ -220,6 +235,7 @@ impl Default for Config {
             shutdown_grace_secs: 5,
             limits: Limits::default(),
             admin: AdminSessions::default(),
+            logs: LogViewer::default(),
             storage: Storage::default(),
         }
     }
@@ -323,6 +339,11 @@ impl Config {
         if let Some(v) = env("DECANTER_REPORTS_ADMIN_MAX_SESSIONS") {
             self.admin.max_sessions = parse("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", &v)?;
         }
+        for (name, slot) in [("DECANTER_REPORTS_LOGS_PAGE_LINES", &mut self.logs.page_lines)] {
+            if let Some(v) = env(name) {
+                *slot = parse(name, &v)?;
+            }
+        }
         self.storage.apply_env(env, parse::<bool>)
     }
 
@@ -369,6 +390,7 @@ impl Config {
         if !(1..=1024).contains(&admin.max_sessions) {
             return err("admin.max_sessions must be between 1 and 1024");
         }
+        self.logs.validate()?;
         if self.public_url.ends_with('/') {
             return err("public_url must not end with a slash");
         }
@@ -503,6 +525,20 @@ impl Config {
             passphrase,
             bucket_keys,
         })
+    }
+}
+
+impl LogViewer {
+    /// The upper bounds keep one maintainer request from holding the process for long: a page renders at most
+    /// 20000 lines, a search reads at most 1 GiB, a comparison runs its diff over at most 200000 lines.
+    fn validate(&self) -> Result<(), ConfigError> {
+        let checks = [("logs.page_lines", self.page_lines, 100, 20_000)];
+        for (name, value, min, max) in checks {
+            if !(min..=max).contains(&value) {
+                return err(format!("{name} must be between {min} and {max}"));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -801,6 +837,22 @@ mod tests {
             ..Config::default()
         };
         assert!(local.warnings().is_empty());
+    }
+
+    #[test]
+    fn log_viewer_bounds_come_from_the_environment_and_are_checked() {
+        let env = storage_env(&[("DECANTER_REPORTS_LOGS_PAGE_LINES", "500")]);
+        let logs = Config::load(None, &env).map(|config| config.logs).ok();
+        assert_eq!(logs.map(|l| (l.page_lines,)), Some((500,)));
+        for (name, value) in [
+            ("DECANTER_REPORTS_LOGS_PAGE_LINES", "0"),
+            ("DECANTER_REPORTS_LOGS_PAGE_LINES", "x"),
+        ] {
+            assert!(
+                Config::load(None, &storage_env(&[(name, value)])).is_err(),
+                "{name}={value}"
+            );
+        }
     }
 
     fn storage_env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
