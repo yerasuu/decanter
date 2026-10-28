@@ -19,15 +19,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, bail};
 use tokio::process::Command;
 
-/// The umu-launcher release [`ensure_umu_run`] downloads. Pinned and
-/// bumped deliberately after testing a real launch against it, rather
-/// than always fetching "latest" — a silent umu upgrade changing behavior
-/// under decanter with no chance to verify it first is worse than lagging
-/// a release behind.
-pub const UMU_LAUNCHER_VERSION: &str = "1.4.4";
-
-/// The GitHub repository whose releases [`UMU_LAUNCHER_VERSION`] names.
-pub const UMU_LAUNCHER_REPO: &str = "Open-Wine-Components/umu-launcher";
+use crate::umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
 /// Where the download in [`ensure_umu_run`] comes from — the portable
 /// zipapp asset, not a distro package, since it has to run identically
@@ -37,13 +29,6 @@ fn umu_run_download_url() -> String {
         "https://github.com/{UMU_LAUNCHER_REPO}/releases/download/\
          {UMU_LAUNCHER_VERSION}/umu-launcher-{UMU_LAUNCHER_VERSION}-zipapp.tar"
     )
-}
-
-/// Where decanter keeps its own copy of `umu-run` in a library's data
-/// folder. Named by version, so a version bump downloads the new one.
-#[must_use]
-pub fn umu_run_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("bin").join(format!("umu-run-{UMU_LAUNCHER_VERSION}"))
 }
 
 /// Downloads and extracts `umu-run` into [`umu_run_path`] the first time

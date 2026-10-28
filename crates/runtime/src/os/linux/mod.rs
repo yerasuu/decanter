@@ -16,10 +16,9 @@ use crate::session::live_lock;
 use crate::{Launch, Prefix, Prepared, Session};
 
 use prefix::SESSION_ENV;
-pub use prefix::{live_prefixes, processes_by_prefix};
-pub use proton::{UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
+pub(crate) use prefix::{live_prefixes, prefix_processes, processes_by_prefix, stop_prefix};
+pub(crate) use proton::steam_compat_dir;
 use umu::ensure_umu_run;
-pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
 /// script, `Session.init_session`).

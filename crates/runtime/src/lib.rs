@@ -1,6 +1,6 @@
 //! Running games.
 //!
-//! On Windows and macOS they run as the plain programs they are (`native`);
+//! On Windows and macOS they run as the plain programs they are;
 //! on Linux, Windows games run under Proton through `umu-run`, which the
 //! rest of this explains.
 //!
@@ -9,18 +9,22 @@
 //! container, and applies protonfixes for a known game id. decanter drives
 //! it as a plain subprocess — there is no daemon, no agent inside the
 //! prefix, and no state of umu's that decanter has to keep in sync. See
-//! [`umu`] for why `umu-run` itself is fetched by decanter rather than
-//! resolved off `PATH`.
+//! `os/linux/umu.rs` for why `umu-run` itself is fetched by decanter rather
+//! than resolved off `PATH`.
 //!
 //! What that buys over talking to a prefix directly: one process to spawn
 //! and one to wait on. Exit detection is the child's own exit plus a sweep
 //! for anything it left behind (see [`Prefix::processes`]), rather than
 //! polling an in-prefix service.
 //!
-//! Split by concern: [`prefix`] (a prefix and which ones are live),
-//! [`proton`] (which build to run, and finding Steam's own), [`launch`]
-//! (one game launch, spawning it, and the running result), [`umu`]
-//! (fetching decanter's own `umu-run`); [`path`] serves both.
+//! The interface is the same on every system: a [`Launch`] describes what
+//! to run, [`prepare`] and [`start`] run it as a [`Session`], and [`stop`],
+//! [`end`], [`is_live`], [`stop_all`] and [`take_killed`] reach it by its
+//! key. How each step is done is the system's own, under `os/`, which picks
+//! one by `cfg` and is the only place that does; what a system has no use
+//! for (a prefix or a Proton build off Linux) is plain data it ignores, and
+//! what it has nothing of (a prefix's processes, Steam's Proton builds)
+//! comes back empty.
 
 #![expect(
     clippy::implicit_return,
@@ -37,17 +41,14 @@ mod path;
 mod prefix;
 mod proton;
 mod session;
+mod umu;
 
 pub use launch::Launch;
-#[cfg(target_os = "linux")]
-pub use os::{
-    UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, UMU_PROTON_REPO, live_prefixes, processes_by_prefix, steam_compat_dir,
-    steam_runner_exists, steam_runners, umu_run_path,
-};
 pub use path::sanitize_relative_path;
-pub use prefix::Prefix;
-pub use proton::Proton;
+pub use prefix::{Prefix, live_prefixes, processes_by_prefix};
+pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
 pub use session::{Prepared, Session, end, is_live, prepare, start, stop, stop_all, take_killed};
+pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
 use decanter_core::capabilities::Feature;
 use decanter_core::platform;

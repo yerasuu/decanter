@@ -12,11 +12,6 @@ mod windows;
 
 #[cfg(target_os = "linux")]
 use linux as backend;
-#[cfg(target_os = "linux")]
-pub use linux::{
-    UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, UMU_PROTON_REPO, live_prefixes, processes_by_prefix, steam_compat_dir,
-    steam_runner_exists, steam_runners, umu_run_path,
-};
 #[cfg(target_os = "macos")]
 use macos as platform;
 #[cfg(not(target_os = "linux"))]
@@ -24,4 +19,7 @@ use native as backend;
 #[cfg(windows)]
 use windows as platform;
 
-pub(crate) use backend::{LAUNCHER, Tracked, end, prepare, spawn_failed, spawned, stop, wait_status};
+pub(crate) use backend::{
+    LAUNCHER, Tracked, end, live_prefixes, prefix_processes, prepare, processes_by_prefix, spawn_failed, spawned,
+    steam_compat_dir, stop, stop_prefix, wait_status,
+};

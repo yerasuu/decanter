@@ -15,7 +15,8 @@
 )]
 
 use core::time::Duration;
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::SystemTime;
 
@@ -25,7 +26,7 @@ use tokio::time::sleep;
 
 use super::platform as os;
 use crate::session::{killed_lock, live_lock};
-use crate::{Launch, Prepared, Session, is_live};
+use crate::{Launch, Prefix, Prepared, Session, is_live};
 pub(crate) use os::Tracked;
 
 /// How often [`crate::stop`] asks a session's processes to close again.
@@ -204,4 +205,29 @@ async fn end_after(key: &str, polite_attempts: u32) {
     if is_live(key) {
         tracing::warn!(key, "session still running after being ended");
     }
+}
+
+/// No prefix has anything running in it here: games run as themselves.
+pub(crate) const fn prefix_processes(_: &Prefix) -> Vec<u32> {
+    Vec::new()
+}
+
+/// Every prefix asked about, each with nothing running in it.
+pub(crate) fn processes_by_prefix(prefixes: &[Prefix]) -> HashMap<PathBuf, Vec<u32>> {
+    prefixes
+        .iter()
+        .map(|prefix| (prefix.path.clone(), Vec::new()))
+        .collect()
+}
+
+/// Nothing to stop: nothing runs in a prefix here.
+pub(crate) async fn stop_prefix(_: &Prefix) {}
+
+pub(crate) const fn live_prefixes() -> Vec<Prefix> {
+    Vec::new()
+}
+
+/// No Steam compatibility tools folder to look in: Proton runs only on Linux.
+pub(crate) const fn steam_compat_dir() -> Option<PathBuf> {
+    None
 }
