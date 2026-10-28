@@ -95,6 +95,7 @@ external.umu.errors.download: 'descargando la base de datos de UMU: %{error}'
 external.umu.errors.read: 'leyendo la base de datos de UMU: %{error}'
 external.errors.save: 'guardando el juego: %{error}'
 external.errors.remove: 'borrando el juego: %{error}'
+external.errors.exec_bit: 'decanter no ha podido dar a %{path} el permiso de ejecución: %{error}'
 external.errors.installer: 'no se pudo iniciar el instalador: %{error}'
 external.errors.not_an_installer: Eso no es un instalador de Windows (.exe o .msi).
 external.errors.not_a_prefix: Esa carpeta no es un prefijo de Wine (no tiene drive_c).
@@ -111,7 +112,6 @@ external.drop.hint: Suelta el ejecutable para añadir el juego
 external.drop.added.one: 'Añadido «%{name}».'
 external.drop.added.other: 'Añadidos %{count} juegos: %{names}.'
 external.drop.existing: '«%{name}» ya estaba en tu biblioteca.'
-external.drop.no_exec_bit: '«%{name}» no tiene permiso de ejecución: dáselo (chmod +x) antes de jugar.'
 external.drop.no_profile: Elige un perfil antes de añadir juegos.
 external.drop.refused.line: '%{file}: %{reason}.'
 external.drop.refused.missing: ya no existe

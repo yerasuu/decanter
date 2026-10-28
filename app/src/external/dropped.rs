@@ -22,8 +22,6 @@ pub struct Outcome {
 pub struct Registered {
     pub id: String,
     pub name: String,
-    /// See [`probe::Found::lacks_exec_bit`].
-    pub lacks_exec_bit: bool,
 }
 
 pub struct Refused {
@@ -63,7 +61,6 @@ pub fn register(profile_id: &str, paths: &[PathBuf]) -> Outcome {
             outcome.existing.push(Registered {
                 id: id.clone(),
                 name: name.clone(),
-                lacks_exec_bit: false,
             });
             continue;
         }
@@ -141,11 +138,7 @@ fn add(profile_id: &str, found: Found) -> Result<Registered, Text> {
         return Err(err);
     }
     tracing::info!(profile_id, id, name, "dropped program added as a game");
-    Ok(Registered {
-        id,
-        name,
-        lacks_exec_bit: found.lacks_exec_bit,
-    })
+    Ok(Registered { id, name })
 }
 
 /// Where the images read from a dropped program are kept: inside the

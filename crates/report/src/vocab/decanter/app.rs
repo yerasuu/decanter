@@ -89,6 +89,7 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.app.mod.cloud_saves_conflict_after_exit", "cloud saves conflict after exit, left unresolved"),
     t("decanter.app.mod.cloud_saves_sync_after_exit", "cloud saves sync after exit failed"),
     t("decanter.app.mod.could_not_record_last_played", "could not record last played"),
+    t("decanter.app.mod.could_not_give_the_program", "could not give the program the permission to run"),
     t("decanter.app.native.launch_executable_has_no_folder", "launch executable has no folder to run in"),
     t("decanter.app.native.no_library_for_the_achievement", "no library for the achievement hook log"),
     t("decanter.app.native.cannot_stop_no_running_session", "cannot stop, no running session"),

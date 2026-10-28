@@ -186,6 +186,9 @@ pub async fn start(
         return None;
     }
     let kind = Kind::of(&game, &executable);
+    if kind == Kind::LinuxNative && !allowed_to_run(&game.game_id, &executable, &background, cx) {
+        return None;
+    }
     let hinted = executable.clone();
     let Some(mut planned) = Planned::plan(kind, &account_id, &game, executable) else {
         return None;
@@ -265,11 +268,7 @@ async fn spawn(
             if let Some(log) = log {
                 crate::run_log::abandon(log, &game.game_id, launcher, &reason).await;
             }
-            let job = cx.new(|_| Job::failed(JobKind::Game, t!("ps.jobs.start_error", error = reason).into_owned()));
-            background.update(cx, |background, cx| {
-                background.runs.insert(game.game_id.clone(), job);
-                cx.notify();
-            });
+            show_failure(background, &game.game_id, &reason, cx);
             return None;
         }
     };
@@ -301,6 +300,26 @@ async fn spawn(
     });
 
     Some((job, events, log))
+}
+
+/// [`linux_native::allow_to_run`], with why it couldn't shown where the game's runs are.
+fn allowed_to_run(game_id: &str, executable: &Path, background: &Entity<Background>, cx: &mut AsyncApp) -> bool {
+    let Err(err) = linux_native::allow_to_run(executable) else {
+        return true;
+    };
+    tracing::error!(game_id, path = %executable.display(), %err, "could not give the program the permission to run");
+    let reason = t!("external.errors.exec_bit", path = executable.display(), error = err);
+    show_failure(background, game_id, &reason, cx);
+    false
+}
+
+/// Puts why `game_id` never started where its runs show, since no run of it began.
+fn show_failure(background: &Entity<Background>, game_id: &str, reason: &str, cx: &mut AsyncApp) {
+    let job = cx.new(|_| Job::failed(JobKind::Game, t!("ps.jobs.start_error", error = reason).into_owned()));
+    background.update(cx, |background, cx| {
+        background.runs.insert(game_id.to_owned(), job);
+        cx.notify();
+    });
 }
 
 /// Folds in whatever decanter-hook recorded this session: a locally

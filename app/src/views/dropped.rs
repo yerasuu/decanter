@@ -62,13 +62,6 @@ impl DropNotice {
         }
         lines.extend(
             outcome
-                .added
-                .iter()
-                .filter(|game| game.lacks_exec_bit)
-                .map(|game| Text::new("external.drop.no_exec_bit").arg("name", &game.name)),
-        );
-        lines.extend(
-            outcome
                 .existing
                 .iter()
                 .map(|game| Text::new("external.drop.existing").arg("name", &game.name)),

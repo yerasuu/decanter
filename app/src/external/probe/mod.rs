@@ -31,9 +31,6 @@ pub struct Found {
     /// Never empty.
     pub title: String,
     pub art: Art,
-    /// An AppImage without the permission to run, which the file's owner
-    /// has to give it: decanter never changes a dropped file.
-    pub lacks_exec_bit: bool,
 }
 
 #[derive(Default)]
@@ -123,7 +120,6 @@ pub fn probe(path: &Path) -> Result<Found, Refusal> {
                     executable,
                     kind: Kind::Windows,
                     art: Art { icon, ..Art::default() },
-                    lacks_exec_bit: false,
                 })
             }
             pe::Header::Library => Err(Refusal::Library),
@@ -134,12 +130,14 @@ pub fn probe(path: &Path) -> Result<Found, Refusal> {
     let is_appimage_name = executable
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("appimage"));
-    let lacks_exec_bit = if magic == b"\x7fELF" {
+    // An AppImage without the permission to run is still taken: the launch gives it that
+    // permission (see `launch::linux_native::allow_to_run`).
+    if magic == b"\x7fELF" {
         if is_shared_object_name(&executable) {
             return Err(Refusal::Library);
         }
         match elf::read(&mut source) {
-            Some(elf::Elf::Program { is_appimage }) if has_exec_bit || is_appimage || is_appimage_name => !has_exec_bit,
+            Some(elf::Elf::Program { is_appimage }) if has_exec_bit || is_appimage || is_appimage_name => {}
             Some(elf::Elf::Program { .. }) => return Err(Refusal::NotExecutable),
             Some(elf::Elf::Other) | None => return Err(Refusal::Unsupported),
         }
@@ -147,11 +145,10 @@ pub fn probe(path: &Path) -> Result<Found, Refusal> {
         if !has_exec_bit {
             return Err(Refusal::NotExecutable);
         }
-        false
     } else {
         return Err(Refusal::Unsupported);
-    };
-    Ok(linux(executable, lacks_exec_bit))
+    }
+    Ok(linux(executable))
 }
 
 /// `libfoo.so` or `libfoo.so.6`: a library, even with an interpreter and
@@ -164,7 +161,7 @@ fn is_shared_object_name(path: &Path) -> bool {
 
 /// A Linux program's title and art, from its `.desktop` file and the
 /// images beside it.
-fn linux(executable: PathBuf, lacks_exec_bit: bool) -> Found {
+fn linux(executable: PathBuf) -> Found {
     let folder = executable.parent().map(Path::to_path_buf).unwrap_or_default();
     let file_name = executable
         .file_name()
@@ -190,7 +187,6 @@ fn linux(executable: PathBuf, lacks_exec_bit: bool) -> Found {
         executable,
         kind: Kind::Linux,
         art,
-        lacks_exec_bit,
     }
 }
 
