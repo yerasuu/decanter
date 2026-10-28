@@ -130,7 +130,7 @@ pub fn folder(
             Err(err) => return Err(err),
         };
         let recorded = expected.get(&name.to_ascii_lowercase());
-        if recorded.is_none_or(|recorded| *recorded != format!("{:x}", Sha256::digest(&bytes))) {
+        if recorded.is_none_or(|recorded| *recorded != crate::bundle::hex_digest(&Sha256::digest(&bytes))) {
             return Err(Error::Tampered(format!("clang64/bin/{name}")));
         }
         if let Err(err) = std::fs::write(staging.join(name), bytes) {

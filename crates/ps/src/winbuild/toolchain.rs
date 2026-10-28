@@ -445,8 +445,15 @@ fn hash_list<'path>(dir: &Path, files: impl Iterator<Item = &'path String>) -> i
 pub(super) fn sha256_of(path: &Path) -> io::Result<String> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)?;
-    Ok(format!("{:x}", hasher.finalize()))
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = io::Read::read(&mut file, &mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(crate::bundle::hex_digest(&hasher.finalize()))
 }
 
 /// `archive`'s list of hashes as its install wrote it, by path. Blocking file I/O.

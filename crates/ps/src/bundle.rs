@@ -8,6 +8,7 @@
 //! files, folders and links that stay inside it. Only then is it renamed into place, so a folder
 //! at [`dir`] is trusted as is.
 
+use std::fmt::Write as _;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
@@ -21,6 +22,16 @@ use tokio::process::Command;
 
 use crate::paths::Root;
 use crate::port::Port;
+
+/// Lower-case hex of a digest, the form checksum files and the installed record carry.
+pub(crate) fn hex_digest(digest: &[u8]) -> String {
+    digest
+        .iter()
+        .fold(String::with_capacity(digest.len() * 2), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
+}
 
 /// Points every port's bundles somewhere else, a local `http://` server or a `file://` folder
 /// laid out as `<tag>/<asset>`, to try a bundle before CI publishes it.
@@ -269,7 +280,7 @@ pub(crate) async fn download(
             Err(err) => return Err(err.into()),
         };
         on_download(size, Some(size));
-        if format!("{:x}", Sha256::digest(&bytes)) != sha256 {
+        if hex_digest(&Sha256::digest(&bytes)) != sha256 {
             return Err(Error::Checksum);
         }
         return match tokio::fs::write(archive, &bytes).await {
@@ -341,7 +352,7 @@ pub(crate) async fn download(
             found: received,
         });
     }
-    if format!("{:x}", hasher.finalize()) != sha256 {
+    if hex_digest(&hasher.finalize()) != sha256 {
         return Err(Error::Checksum);
     }
     Ok(())
