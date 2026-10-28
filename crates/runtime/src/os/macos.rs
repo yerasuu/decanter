@@ -5,6 +5,11 @@
 //! group (`setsid`, `setpgid`) leaves the session too, the same gap
 //! crates/ps's jobs have on this system.
 
+#![expect(
+    clippy::single_call_fn,
+    reason = "helpers are split out to name a step of a session, not because they're reused"
+)]
+
 use std::path::Path;
 
 use nix::errno::Errno;
@@ -12,7 +17,7 @@ use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 use tokio::process::{Child, Command};
 
-use super::Remaining;
+use super::native::Remaining;
 
 /// init's pid, the highest a `killpg` group must stay above.
 const INIT_PID: i32 = 1;
@@ -98,6 +103,10 @@ pub(super) fn command(executable: &Path) -> Command {
     command.process_group(0);
     command
 }
+
+/// Nothing to hide: a console program started without a terminal opens no
+/// window of its own here.
+pub(super) const fn hide_console(_: &mut Command) {}
 
 /// SIGTERM to the whole group, so the game can save and quit on its own,
 /// or SIGKILL when `force`d. Racy by nature: the group may already be gone,

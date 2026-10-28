@@ -26,16 +26,8 @@ use futures_util::future::join_all;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::time::sleep;
 
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(windows)]
-mod windows;
-
-#[cfg(target_os = "macos")]
-use macos as os;
+use super::platform as os;
 use os::Tracked;
-#[cfg(windows)]
-use windows as os;
 
 /// How often [`stop`] asks a session's processes to close again.
 const STOP_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -49,7 +41,7 @@ const SESSION_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const POLITE_STOP_ATTEMPTS: u32 = 5;
 
 /// What is left of a session once the process decanter started has exited.
-enum Remaining {
+pub(super) enum Remaining {
     /// Nothing, or nothing decanter can still follow.
     Done,
     /// How many processes, where the system says.
@@ -288,7 +280,6 @@ pub fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
         .stdin(Stdio::null());
     if launch.capture_output {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(windows)]
         os::hide_console(&mut command);
     }
 

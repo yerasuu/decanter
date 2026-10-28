@@ -1,15 +1,15 @@
 //! Launches an installed game through the runtime, for hook testing.
 //! Proton only: on Windows the game runs natively and the hook isn't deployed.
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 use core::time::Duration;
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 use std::env;
 
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 use decanter_core::{Db, Library, Storefront};
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 use decanter_runtime::{Launch, Prefix, Proton};
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 use tokio::time::sleep;
 
 /// Split out from `main` so the `#[tokio::main]`-generated future stays a
@@ -27,7 +27,7 @@ use tokio::time::sleep;
     clippy::large_stack_frames,
     reason = "InstalledGame is inherently the largest local; not worth boxing in an example"
 )]
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 async fn run() -> anyhow::Result<()> {
     let game_id = env::args().nth(1).unwrap_or_else(|| "1854689188".into());
     let secs: u64 = env::args().nth(2).and_then(|value| value.parse().ok()).unwrap_or(60);
@@ -81,13 +81,13 @@ async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(proton)]
+#[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     run().await
 }
 
-#[cfg(not(proton))]
+#[cfg(not(target_os = "linux"))]
 fn main() {
     tracing::error!("launch_game drives Proton, which games only run under on Linux");
 }

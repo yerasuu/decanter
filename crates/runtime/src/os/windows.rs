@@ -2,6 +2,11 @@
 //! and every process started from it, and a stop is `taskkill` over them,
 //! ending with the job itself.
 
+#![expect(
+    clippy::single_call_fn,
+    reason = "helpers are split out to name a step of a session, not because they're reused"
+)]
+
 use std::path::Path;
 use std::process::Stdio;
 
@@ -9,7 +14,7 @@ use futures_util::future::join_all;
 use tokio::process::{Child, Command};
 use win32job::{ExtendedLimitInfo, Job};
 
-use super::Remaining;
+use super::native::Remaining;
 
 /// `CREATE_NO_WINDOW`, so `taskkill` doesn't flash a console over the game.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;

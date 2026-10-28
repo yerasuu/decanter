@@ -1,5 +1,10 @@
-//! One game launch: the parameters ([`Launch`]), spawning it ([`start`]),
-//! and the running result ([`Session`]).
+//! Linux: Windows games run under Proton through `umu-run`, each in a prefix
+//! of its own, and Linux programs run as themselves, with the prefix's path
+//! only naming their session.
+
+mod prefix;
+mod proton;
+mod umu;
 
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
@@ -8,9 +13,11 @@ use std::time::Instant;
 use anyhow::{Context as _, bail};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
-use crate::prefix::{Prefix, SESSION_ENV, live_lock};
-use crate::proton::Proton;
-use crate::umu::ensure_umu_run;
+pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};
+use prefix::{SESSION_ENV, live_lock};
+pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
+use umu::ensure_umu_run;
+pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
 /// script, `Session.init_session`).

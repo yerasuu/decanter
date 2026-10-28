@@ -15,9 +15,9 @@ use anyhow::Context as _;
 use futures_util::future::join_all;
 use tokio::time::sleep;
 
-use crate::launch::{Launch, start};
+use super::Proton;
+use super::{Launch, start};
 use crate::path::sanitize_relative_path;
-use crate::proton::Proton;
 
 /// How often [`Prefix::wait_until_idle`] re-checks for leftover processes.
 /// Only reached after the launcher already exited, so it costs one

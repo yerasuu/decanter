@@ -31,38 +31,20 @@
     reason = "most async fns here cost more than the 512-byte threshold by design"
 )]
 
-#[cfg(proton)]
-mod launch;
-#[cfg(not(proton))]
-mod native;
+mod os;
 mod path;
-#[cfg(proton)]
-mod prefix;
-#[cfg(proton)]
-mod proton;
-#[cfg(proton)]
-mod umu;
 
-#[cfg(proton)]
-pub use launch::{Launch, Prepared, Session, prepare, start};
-#[cfg(not(proton))]
-pub use native::{Launch, Prepared, Session, end, is_live, prepare, start, stop, stop_all, take_killed};
+pub use os::*;
 pub use path::sanitize_relative_path;
+
+use decanter_core::capabilities::Feature;
+use decanter_core::platform;
 
 /// Exit code decanter records for a run it killed on a stop request, because the dead process' own
 /// status is 0 after a Job Object kill and reads like a clean exit. `0xDEC0` marks decanter in the
 /// high half, which no psport code (139 and the like) and no Windows status (`0xC000_xxxx` NTSTATUS,
 /// `0x8007_xxxx` HRESULT) uses, and the low half is decanter's own kind of exit (1: killed on stop).
 pub const KILLED_EXIT_CODE: u32 = 0xDEC0_0001;
-#[cfg(proton)]
-pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};
-#[cfg(proton)]
-pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
-#[cfg(proton)]
-pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
-
-use decanter_core::capabilities::Feature;
-use decanter_core::platform;
 
 /// Whether games can launch here at all, as the capability table says:
 /// elsewhere every launch fails up front and the UI doesn't offer it.
