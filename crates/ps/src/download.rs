@@ -3,27 +3,17 @@
 //! Shared by the Linux bundles ([`crate::bundle`]), the Windows package ([`crate::package`]) and the
 //! Windows toolchain ([`crate::winbuild`]), so neither system's code depends on the other's.
 
-use std::fmt::Write as _;
 use std::io;
 use std::path::Path;
 use std::time::Duration;
 
 use decanter_core::capabilities::Feature;
 use decanter_core::platform;
+pub(crate) use decanter_runtime::download::hex_digest;
+use decanter_runtime::download::{self as fetched, Expected};
 use sha2::{Digest as _, Sha256};
-use tokio::io::AsyncWriteExt as _;
 
 use crate::port::Port;
-
-/// Lower-case hex of a digest, the form checksum files and the installed record carry.
-pub(crate) fn hex_digest(digest: &[u8]) -> String {
-    digest
-        .iter()
-        .fold(String::with_capacity(digest.len() * 2), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        })
-}
 
 /// Points every port's bundles somewhere else, a local `http://` server or a `file://` folder
 /// laid out as `<tag>/<asset>`, to try a bundle before CI publishes it.
@@ -154,72 +144,17 @@ pub(crate) async fn download(
             Err(err) => Err(err.into()),
         };
     }
-    let client = match reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(20))
-        .read_timeout(Duration::from_secs(60))
-        .redirect(redirect)
-        .build()
-    {
-        Ok(client) => client,
-        Err(err) => return Err(err.into()),
+    let pin = Expected {
+        digest: sha256,
+        size,
+        cap: MAX_BYTES,
     };
-    let mut response = match client
-        .get(url)
-        .send()
-        .await
-        .and_then(reqwest::Response::error_for_status)
-    {
-        Ok(response) => response,
-        Err(err) => return Err(err.into()),
-    };
-    let total = response.content_length();
-    if let Some(total) = total.filter(|&total| total > MAX_BYTES) {
-        return Err(Error::TooLarge(total));
+    match fetched::fetch::<Sha256>(url, archive, &pin, redirect, on_download).await {
+        Ok(()) => Ok(()),
+        Err(fetched::Error::Request(err)) => Err(Error::Download(err)),
+        Err(fetched::Error::TooLarge { found, .. }) => Err(Error::TooLarge(found)),
+        Err(fetched::Error::Size { expected, found }) => Err(Error::Size { expected, found }),
+        Err(fetched::Error::Checksum) => Err(Error::Checksum),
+        Err(fetched::Error::Io(err)) => Err(Error::Io(err)),
     }
-    if let (Some(expected), Some(found)) = (size, total)
-        && expected != found
-    {
-        return Err(Error::Size { expected, found });
-    }
-    let mut file = match tokio::fs::File::create(archive).await {
-        Ok(file) => file,
-        Err(err) => return Err(err.into()),
-    };
-    let mut hasher = Sha256::new();
-    let mut received = 0;
-    loop {
-        let chunk = match response.chunk().await {
-            Ok(Some(chunk)) => chunk,
-            Ok(None) => break,
-            Err(err) => return Err(err.into()),
-        };
-        received += chunk.len() as u64;
-        if received > MAX_BYTES {
-            return Err(Error::TooLarge(received));
-        }
-        if let Some(expected) = size.filter(|&expected| received > expected) {
-            return Err(Error::Size {
-                expected,
-                found: received,
-            });
-        }
-        hasher.update(&chunk);
-        if let Err(err) = file.write_all(&chunk).await {
-            return Err(err.into());
-        }
-        on_download(received, total);
-    }
-    if let Err(err) = file.flush().await {
-        return Err(err.into());
-    }
-    if let Some(expected) = size.filter(|&expected| received != expected) {
-        return Err(Error::Size {
-            expected,
-            found: received,
-        });
-    }
-    if hex_digest(&hasher.finalize()) != sha256 {
-        return Err(Error::Checksum);
-    }
-    Ok(())
 }

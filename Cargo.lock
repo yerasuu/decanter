@@ -1645,6 +1645,7 @@ name = "decanter-ps"
 version = "0.3.4"
 dependencies = [
  "decanter-core",
+ "decanter-runtime",
  "flate2",
  "image",
  "md5",

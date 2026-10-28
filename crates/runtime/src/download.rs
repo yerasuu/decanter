@@ -1,5 +1,6 @@
 //! Downloads checked against a pin as they arrive: a byte cap, the published size when there is
-//! one, and the digest once complete.
+//! one, and the digest once complete. Shared by the runners this crate installs and by psport's
+//! downloads (`decanter-ps`).
 
 use std::fmt::Write as _;
 use std::io;
