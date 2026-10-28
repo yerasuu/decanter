@@ -1,7 +1,8 @@
 //! The newest release a GitHub repository published, asked only when the
-//! user presses a check button: the tools decanter pins (umu-run,
-//! nix-portable), the Proton umu downloads, and decanter itself. Every part
-//! of GitHub's answer is validated here before it is shown or opened.
+//! user presses a check button: decanter itself, and for the runners
+//! ([`crate::runners::latest`]) and nix-portable, the repositories they come
+//! from. Every part of GitHub's answer is validated here before it is shown
+//! or opened.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;

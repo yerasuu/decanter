@@ -123,6 +123,7 @@ mod releases;
 mod relocate;
 mod report;
 mod run_log;
+mod runners;
 mod self_update;
 mod state;
 mod taskbar;

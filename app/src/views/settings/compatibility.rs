@@ -15,6 +15,7 @@ use super::game_tools::GameToolDefaults;
 use super::{column, field_row, inline};
 use crate::capabilities::Caps;
 use crate::releases::{self, Release, ReleaseError};
+use crate::runners;
 use crate::theme;
 use crate::widgets::{ButtonKind, Select, button};
 
@@ -90,9 +91,9 @@ impl CompatibilityTab {
         cx.notify();
         cx.spawn(async move |this, cx| {
             let (umu_run, nix_portable, umu_proton) = futures::join!(
-                releases::latest(decanter_runtime::UMU_LAUNCHER_REPO),
+                runners::latest(Runner::Umu),
                 releases::latest(decanter_nix::NIX_PORTABLE_REPO),
-                releases::latest(decanter_runtime::UMU_PROTON_REPO),
+                runners::latest(Runner::Proton),
             );
             for (tool, result) in [
                 ("umu-run", &umu_run),
