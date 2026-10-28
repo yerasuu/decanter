@@ -17,6 +17,7 @@ use crate::i18n::{self, Language, Text};
 use crate::platform;
 use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
+use crate::state::AppState;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox, language_select};
 
@@ -25,6 +26,7 @@ pub struct GeneralTab {
     close_to_tray: bool,
     close_game_shortcut: bool,
     steam_export_enabled: bool,
+    raven: bool,
     steam_pending: bool,
     restarting_steam: bool,
     steam_needs_close_confirmation: bool,
@@ -50,6 +52,7 @@ impl GeneralTab {
             close_to_tray: false,
             close_game_shortcut: true,
             steam_export_enabled: true,
+            raven: false,
             steam_pending: false,
             restarting_steam: false,
             steam_needs_close_confirmation: false,
@@ -80,6 +83,30 @@ impl GeneralTab {
             )
             .unwrap_or(true);
         self.steam_pending = crate::core::steam_shortcuts_pending();
+        self.raven = crate::core::db()
+            .and_then(|db| db.raven_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(
+                |err| tracing::warn!(error = %err, "failed to read raven_enabled setting, defaulting to false"),
+            )
+            .unwrap_or(false);
+    }
+
+    /// Shows or hides the Raven section; nothing is downloaded until the section's own Construir.
+    fn set_raven(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved =
+            crate::core::db().and_then(|db| db.set_raven_enabled(enabled).map_err(crate::core::StoreError::Query));
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save raven_enabled setting");
+            return;
+        }
+        tracing::info!(enabled, "Raven section switched");
+        let session = AppState::get(cx).session.clone();
+        session.update(cx, |session, cx| {
+            session.raven = enabled;
+            cx.notify();
+        });
+        self.reload();
+        cx.notify();
     }
 
     fn set_language(&mut self, language: Option<Language>, cx: &mut Context<Self>) {
@@ -460,6 +487,20 @@ impl Render for GeneralTab {
                     ))
                     .child(theme::muted(t!("settings.general.steam.restart_hint")))
                     .children(callout),
+                cx,
+            ))
+            .child(theme::h2(t!("settings.general.raven.title")))
+            .child(offered(
+                Feature::Raven,
+                column()
+                    .child(Self::checkbox_row(
+                        "raven-section",
+                        self.raven,
+                        t!("settings.general.raven.enable"),
+                        Self::set_raven,
+                        cx,
+                    ))
+                    .child(theme::muted(t!("settings.general.raven.hint"))),
                 cx,
             ))
             .child(theme::h2(t!("settings.general.updates.title")))

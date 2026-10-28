@@ -6,6 +6,7 @@ pub mod background;
 mod cache;
 pub mod gog_library;
 mod ps;
+mod raven;
 
 use gpui::{App, AppContext as _, Entity, Global};
 
@@ -17,6 +18,7 @@ pub use ps::{
     Adding as PsAdding, BuildOrigin, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track,
     failure_message, folder_error as ps_folder_error, job_label, job_target, online_error, vk_layer_unavailable_text,
 };
+pub use raven::Raven;
 
 /// Whether storage came up, and which profile is active.
 pub struct Session {
@@ -37,6 +39,9 @@ pub struct Session {
     pub external_request: u32,
     /// The external game that request is to edit, if any.
     pub external_edit: Option<String>,
+    /// Whether the player switched the Raven section on in Ajustes; it shows
+    /// only where Raven is offered too.
+    pub raven: bool,
 }
 
 impl Session {
@@ -46,6 +51,7 @@ impl Session {
         let fresh = Self::load();
         self.core = fresh.core;
         self.active_profile = fresh.active_profile;
+        self.raven = fresh.raven;
     }
 
     fn load() -> Self {
@@ -56,6 +62,10 @@ impl Session {
             .ok()
             .flatten()
             .map(|profile| profile.id);
+        let raven = crate::core::db()
+            .and_then(|db| db.raven_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(|err| tracing::warn!(%err, "could not read the Raven switch, leaving the section off"))
+            .unwrap_or(false);
         Self {
             core,
             active_profile,
@@ -63,6 +73,7 @@ impl Session {
             ps_home: 0,
             external_request: 0,
             external_edit: None,
+            raven,
         }
     }
 }

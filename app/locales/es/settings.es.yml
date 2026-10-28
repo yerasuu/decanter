@@ -16,6 +16,9 @@ settings.general.close_game.hint_keyboard: Pulsa Ctrl+Mayús+F4 mientras juegas.
 settings.general.steam.title: Exportar a Steam
 settings.general.steam.add: Añadir cada juego instalado a la biblioteca real de Steam, con su portada y su banner
 settings.general.steam.restart_hint: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.
+settings.general.raven.title: Raven (experimental)
+settings.general.raven.enable: Mostrar la sección Raven
+settings.general.raven.hint: 'Raven es un runtime de Windows en fase temprana. Con la sección activada puedes construirlo en tu biblioteca y probar con él programas de Windows; no se descarga nada hasta que pulses Construir en la sección.'
 settings.general.steam.pending: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se añadieron, así que su propia copia en memoria todavía no los ha sobrescrito.
 settings.general.steam.restarting: Reiniciando Steam...
 settings.general.steam.restart_now: Reiniciar Steam ahora

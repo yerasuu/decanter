@@ -74,6 +74,18 @@ impl Db {
         self.set_setting("psport_channel", if testing { "testing" } else { "release" })
     }
 
+    /// Whether the Raven section is shown — off by default, since Raven is an
+    /// experimental runtime that the player builds here only after asking for it.
+    pub fn raven_enabled(&self) -> Result<bool> {
+        let enabled = self.setting("raven_enabled")?.as_deref() == Some("1");
+        tracing::debug!(enabled, "read raven_enabled setting");
+        Ok(enabled)
+    }
+
+    pub fn set_raven_enabled(&self, enabled: bool) -> Result<()> {
+        self.set_setting("raven_enabled", if enabled { "1" } else { "0" })
+    }
+
     /// Whether decanter and psport gather their logs in the debug log folder.
     /// The app's own session log follows it from the next start, since the
     /// log is set up before the window.

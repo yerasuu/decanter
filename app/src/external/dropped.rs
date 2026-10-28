@@ -194,7 +194,7 @@ pub(super) fn remove_art(root: &Path, id: &str) {
     }
 }
 
-fn localized(refusal: &Refusal) -> Text {
+pub(crate) fn localized(refusal: &Refusal) -> Text {
     match refusal {
         Refusal::Missing => Text::new("external.drop.refused.missing"),
         Refusal::Directory => Text::new("external.drop.refused.directory"),

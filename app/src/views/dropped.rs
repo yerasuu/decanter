@@ -75,9 +75,10 @@ impl DropNotice {
     }
 }
 
-/// Over the whole window while files are dragged across it. It has no
-/// listeners, so it never takes the drop from the window's own handler.
-pub fn highlight() -> Div {
+/// Over the whole window while files are dragged across it, saying where
+/// they will go. It has no listeners, so it never takes the drop from the
+/// window's own handler.
+pub fn highlight(hint: impl Into<SharedString>) -> Div {
     div()
         .absolute()
         .inset_0()
@@ -95,7 +96,7 @@ pub fn highlight() -> Div {
                 .bg(rgb(theme::BG_PANEL))
                 .text_color(rgb(theme::TEXT_BRIGHT))
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(t!("external.drop.hint")),
+                .child(hint.into()),
         )
 }
 

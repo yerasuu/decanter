@@ -58,6 +58,7 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
         achievement_log,
         facts,
         mangohud: None,
+        is_raven: false,
     })
 }
 

@@ -1,0 +1,48 @@
+raven.experimental: Experimental
+raven.description: 'Raven es un runtime de Windows para Linux en una fase temprana (useraven.org). decanter lo construye en tu biblioteca a partir de un commit fijado y lo usa para los programas de Windows que añadas aquí. Muchos programas aún no arrancan: de momento sirve para probarlo.'
+raven.license: Raven es software libre (GPL-3.0 o posterior). No viene con decanter; su código se descarga de GitHub al construirlo.
+raven.build.title: Construcción
+raven.build.absent: Raven no está construido.
+raven.build.built: 'Construido en el commit %{commit} · %{size}'
+raven.build.built_measuring: 'Construido en el commit %{commit}'
+raven.build.build: Construir…
+raven.build.remove: Eliminar
+raven.build.removing: Eliminando Raven…
+raven.build.cancel: Cancelar
+raven.build.stopped: Construcción cancelada.
+raven.build.failed: 'La construcción ha fallado: %{error}'
+raven.build.open_log: Abrir el registro de la construcción
+raven.build.stage.starting: Empezando…
+raven.build.stage.sources: Descargando el código de Raven…
+raven.build.stage.downloading: 'Descargando las herramientas de compilación: %{received}'
+raven.build.stage.downloading_total: 'Descargando las herramientas de compilación: %{received} de %{total}'
+raven.build.stage.unpacking: Descomprimiendo…
+raven.build.stage.configuring: Preparando la compilación…
+raven.build.stage.compiling: 'Compilando: paso %{done} de %{total}'
+raven.confirm.title: ¿Construir Raven?
+raven.confirm.repo: 'Repositorio: %{repo}'
+raven.confirm.commit: 'Commit: %{commit}'
+raven.confirm.text: 'decanter descargará de GitHub el código de Raven en este commit (unos 18 MB), las bibliotecas que necesita para compilarse (desde Nix, si tu sistema no las tiene) y los datos que su compilación descarga, y lo compilará en tu biblioteca. Tarda unos minutos. La carpeta de construcción ocupa hasta unos 5 GB y el runtime unos 140 MB. Es código de terceros que decanter no revisa.'
+raven.confirm.yes: Descargar y construir
+raven.confirm.no: Cancelar
+raven.programs.title: Programas de Windows
+raven.programs.add: Añadir…
+raven.programs.pick_title: Elige un programa de Windows
+raven.programs.filter: Programas de Windows
+raven.programs.drop_hint: También puedes soltar un .exe sobre esta sección.
+raven.programs.drop_hover: Suelta para añadir el programa a Raven
+raven.programs.empty: Aún no has añadido ningún programa.
+raven.programs.added: 'Añadido: %{name}'
+raven.programs.run: Ejecutar
+raven.programs.stop: Detener
+raven.programs.remove: Quitar
+raven.programs.open_log: Registro
+raven.programs.needs_build: Construye Raven para ejecutarlo.
+raven.programs.failed: 'La última ejecución no terminó bien. Final de su registro:'
+raven.errors.not_windows: no es un programa de Windows
+raven.errors.no_library: La biblioteca activa no está disponible.
+raven.errors.save: 'No se ha podido añadir: %{error}'
+raven.errors.remove: 'No se ha podido quitar: %{error}'
+raven.errors.remove_running: Detén antes los programas de Raven.
+raven.errors.remove_build: 'No se ha podido eliminar Raven: %{error}'
+raven.errors.not_pinned: Esta versión de decanter no tiene un commit de Raven fijado.

@@ -1,0 +1,48 @@
+raven.experimental: Experimental
+raven.description: 'Raven is an early-stage Windows runtime for Linux (useraven.org). decanter builds it in your library from a pinned commit and uses it for the Windows programs you add here. Many programs do not start yet: for now it is here to try it out.'
+raven.license: Raven is free software (GPL-3.0 or later). It does not ship with decanter; its code is downloaded from GitHub when it is built.
+raven.build.title: Build
+raven.build.absent: Raven is not built.
+raven.build.built: 'Built at commit %{commit} · %{size}'
+raven.build.built_measuring: 'Built at commit %{commit}'
+raven.build.build: Build…
+raven.build.remove: Remove
+raven.build.removing: Removing Raven…
+raven.build.cancel: Cancel
+raven.build.stopped: Build cancelled.
+raven.build.failed: 'The build failed: %{error}'
+raven.build.open_log: Open the build log
+raven.build.stage.starting: Starting…
+raven.build.stage.sources: Downloading Raven's code…
+raven.build.stage.downloading: 'Downloading the build tools: %{received}'
+raven.build.stage.downloading_total: 'Downloading the build tools: %{received} of %{total}'
+raven.build.stage.unpacking: Unpacking…
+raven.build.stage.configuring: Preparing the build…
+raven.build.stage.compiling: 'Compiling: step %{done} of %{total}'
+raven.confirm.title: Build Raven?
+raven.confirm.repo: 'Repository: %{repo}'
+raven.confirm.commit: 'Commit: %{commit}'
+raven.confirm.text: 'decanter will download Raven''s code at this commit from GitHub (about 18 MB), the libraries it needs to build (from Nix, if your system lacks them) and the data its build downloads, and compile it in your library. It takes a few minutes. The build folder takes up to about 5 GB and the runtime about 140 MB. It is third-party code that decanter does not review.'
+raven.confirm.yes: Download and build
+raven.confirm.no: Cancel
+raven.programs.title: Windows programs
+raven.programs.add: Add…
+raven.programs.pick_title: Choose a Windows program
+raven.programs.filter: Windows programs
+raven.programs.drop_hint: You can also drop an .exe on this section.
+raven.programs.drop_hover: Drop to add the program to Raven
+raven.programs.empty: You have not added any program yet.
+raven.programs.added: 'Added: %{name}'
+raven.programs.run: Run
+raven.programs.stop: Stop
+raven.programs.remove: Remove
+raven.programs.open_log: Log
+raven.programs.needs_build: Build Raven to run it.
+raven.programs.failed: 'The last run did not end well. End of its log:'
+raven.errors.not_windows: is not a Windows program
+raven.errors.no_library: The active library is not available.
+raven.errors.save: 'Could not add it: %{error}'
+raven.errors.remove: 'Could not remove it: %{error}'
+raven.errors.remove_running: Stop Raven's programs first.
+raven.errors.remove_build: 'Could not remove Raven: %{error}'
+raven.errors.not_pinned: This version of decanter has no pinned Raven commit.

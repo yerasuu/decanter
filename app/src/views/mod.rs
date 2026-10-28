@@ -9,6 +9,7 @@ mod gog_login;
 pub mod library;
 mod profile_form;
 mod ps;
+mod raven;
 pub mod session_renewal;
 mod settings;
 mod shell;

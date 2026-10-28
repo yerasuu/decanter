@@ -1,7 +1,8 @@
 //! The main window's frame: topbar (logo, sections, profile switcher,
 //! window controls), the current section, and the download strip along
 //! the bottom. Files dropped anywhere on it are added as external games
-//! ([`super::dropped`]), and a PS dump's folder goes to the PS section's add.
+//! ([`super::dropped`]), a PS dump's folder goes to the PS section's add, and
+//! anything dropped while the Raven section is shown goes to Raven's programs.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -20,11 +21,12 @@ use super::dropped::{self, DropNotice};
 use super::external::ExternalView;
 use super::library::LibraryView;
 use super::ps::PsView;
+use super::raven::RavenView;
 use super::settings::SettingsView;
 use super::storage::StorageView;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
-use crate::state::{AppState, InstallStatus, Ps};
+use crate::state::{AppState, InstallStatus, Ps, Raven};
 use crate::theme;
 use crate::widgets::{Select, progress_bar, select::SelectStyle};
 
@@ -36,6 +38,7 @@ pub enum Page {
     Ps,
     Settings,
     External,
+    Raven,
 }
 
 /// Sentinel select value for a library whose disk isn't there: not a real
@@ -52,6 +55,7 @@ pub struct Shell {
     ps: Option<Entity<PsView>>,
     settings: Option<Entity<SettingsView>>,
     external: Option<Entity<ExternalView>>,
+    raven: Option<Entity<RavenView>>,
     profiles: Vec<(PathBuf, Option<Vec<Profile>>)>,
     on_close: Rc<dyn Fn(&mut Window, &mut App)>,
     /// Files are being dragged over the window.
@@ -65,6 +69,9 @@ impl Shell {
         let mut external_request = state.session.read(cx).external_request;
         cx.observe_in(&state.session, window, move |this, session, window, cx| {
             this.reload_profiles();
+            if this.page == Page::Raven && !raven_shown(cx) {
+                this.navigate(Page::Library, window, cx);
+            }
             let (request, editing) = {
                 let session = session.read(cx);
                 (session.external_request, session.external_edit.clone())
@@ -89,6 +96,7 @@ impl Shell {
             ps: None,
             settings: None,
             external: None,
+            raven: None,
             profiles: Vec::new(),
             on_close,
             drop_hover: false,
@@ -149,6 +157,11 @@ impl Shell {
             Page::External => {
                 self.external.get_or_insert_with(|| cx.new(ExternalView::new));
             }
+            Page::Raven if !raven_shown(cx) => return,
+            Page::Raven => {
+                self.raven.get_or_insert_with(|| cx.new(RavenView::new));
+                Raven::get(cx).update(cx, Raven::reload);
+            }
         }
         self.page = page;
         cx.notify();
@@ -164,6 +177,12 @@ impl Shell {
             cx.notify();
             return;
         };
+        if self.page == Page::Raven {
+            tracing::info!(profile_id, count = paths.len(), "files dropped on the Raven section");
+            Raven::get(cx).update(cx, |raven, cx| raven.add(paths, cx));
+            cx.notify();
+            return;
+        }
         tracing::info!(profile_id, count = paths.len(), "files dropped on the window");
         let ps_offered = Caps::get(cx).is_offered(Feature::PsSection);
         // Detached rather than kept: a second drop must not cancel the
@@ -506,6 +525,10 @@ impl Shell {
                 || div().into_any_element(),
                 |view| view.cached(page()).into_any_element(),
             ),
+            Page::Raven => self.raven.clone().map_or_else(
+                || div().into_any_element(),
+                |view| view.cached(page()).into_any_element(),
+            ),
         }
     }
 }
@@ -524,6 +547,10 @@ impl Render for Shell {
         let ps_link = self.nav_link("nav-ps", "PS", Page::Ps, cx);
         // Every system shows the section, marked while it is being tested there.
         let ps_link = Caps::get(cx).mark(Feature::PsSection, ps_link);
+        let raven_link = raven_shown(cx).then(|| {
+            let link = self.nav_link("nav-raven", "Raven", Page::Raven, cx);
+            Caps::get(cx).mark(Feature::Raven, link)
+        });
         let downloads_link = self
             .nav_link("nav-downloads", t!("chrome.nav.downloads"), Page::Downloads, cx)
             .when(installing > 0, |link| {
@@ -557,6 +584,7 @@ impl Render for Shell {
                     .gap_1()
                     .child(self.nav_link("nav-library", t!("chrome.nav.library"), Page::Library, cx))
                     .child(ps_link)
+                    .children(raven_link)
                     .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
                     .child(downloads_link)
                     .child(self.nav_link("nav-settings", t!("settings.title"), Page::Settings, cx)),
@@ -619,10 +647,19 @@ impl Render for Shell {
             // handler doesn't see it (on a popup) ends without resetting the
             // flag.
             .when(self.drop_hover && cx.has_active_drag(), |shell| {
-                shell.child(dropped::highlight())
+                shell.child(dropped::highlight(if self.page == Page::Raven {
+                    t!("raven.programs.drop_hover")
+                } else {
+                    t!("external.drop.hint")
+                }))
             })
             .children(chrome::resize_edges())
     }
+}
+
+/// The Raven section is offered here and the player switched it on in Ajustes.
+fn raven_shown(cx: &App) -> bool {
+    AppState::get(cx).session.read(cx).raven && Caps::get(cx).is_offered(Feature::Raven)
 }
 
 /// A game started from the active library writes its playtime and

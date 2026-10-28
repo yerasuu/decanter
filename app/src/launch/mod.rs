@@ -8,13 +8,15 @@
 //!
 //! How a game is started is its [`Kind`]'s, one module each with the same
 //! functions: Proton in a prefix of its own (`umu`), a Linux program run as
-//! itself (`linux_native`), or the system's own program on Windows and
-//! macOS (`native`). Every kind is built on every system; which one a game
-//! takes is decided when it launches, from the system and the game's file.
+//! itself (`linux_native`), the system's own program on Windows and macOS
+//! (`native`), or a program of the Raven section run by Raven (`raven`).
+//! Every kind is built on every system; which one a game takes is decided
+//! when it launches, from the system, where its manifest is filed and its file.
 
 mod linux_native;
 mod native;
 mod pe;
+mod raven;
 mod umu;
 
 use std::path::{Path, PathBuf};
@@ -41,6 +43,8 @@ enum Kind {
     LinuxNative,
     /// A program of the system's own (Windows, macOS), from its folder.
     Native,
+    /// A Windows program of the Raven section, run by Raven in its own prefix.
+    Raven,
 }
 
 impl Kind {
@@ -58,6 +62,9 @@ impl Kind {
     /// what the executable is now, and only an external game can be a Linux
     /// program.
     fn of(game: &InstalledGame, executable: &Path) -> Self {
+        if crate::raven::is_program(&game.account_id, &game.game_id) {
+            return Self::Raven;
+        }
         let host = Self::host();
         if host == Self::Umu
             && game.storefront == decanter_core::Storefront::Unspecified
@@ -89,6 +96,9 @@ struct Planned {
     /// The game's key, its library's root and whether MangoHud logs from
     /// the start, when it runs with MangoHud.
     mangohud: Option<(String, PathBuf, bool)>,
+    /// The launch is of the Windows program, which [`Planned::prepare`] turns
+    /// into Raven's own, since finding the toolchain that built Raven awaits.
+    is_raven: bool,
 }
 
 impl Planned {
@@ -97,6 +107,7 @@ impl Planned {
             Kind::Umu => umu::plan(account_id, game, executable),
             Kind::LinuxNative => linux_native::plan(account_id, game, executable),
             Kind::Native => native::plan(account_id, game, executable),
+            Kind::Raven => raven::plan(account_id, game, executable),
         }
     }
 
@@ -107,6 +118,9 @@ impl Planned {
                     .await
                     .map(|(name, value)| (name.to_owned(), value)),
             );
+        }
+        if self.is_raven {
+            self.launch = decanter_runtime::runner::raven_launch(self.launch).await?;
         }
         decanter_runtime::prepare(self.launch).await
     }
@@ -211,7 +225,7 @@ pub async fn start(
     let (exit, log) = crate::run_log::follow(&job, events, log, &game.game_id, cx).await;
     let log = match kind {
         Kind::Native => native::hint_after_failure(&hinted, exit, &job, log, &game.game_id, cx).await,
-        Kind::Umu | Kind::LinuxNative => log,
+        Kind::Umu | Kind::LinuxNative | Kind::Raven => log,
     };
     crate::run_log::finish(log, exit, &game.game_id).await;
     cx.update(|cx| crate::closing::ended(&target, cx));
@@ -225,7 +239,7 @@ pub async fn start(
     );
 
     sync_cloud_saves_after_exit(&account_id, &game, cloud_save_checkpoint).await;
-    record_last_played(&account_id, &game);
+    record_last_played(&account_id, &game, kind);
     apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)
 }
@@ -246,6 +260,7 @@ async fn spawn(
         Ok(prepared) => prepared,
         Err(err) => {
             tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
+            show_failure(background, &game.game_id, &format!("{err:#}"), cx);
             return None;
         }
     };
@@ -441,19 +456,28 @@ pub async fn stop(account_id: String, game_id: String, background: Entity<Backgr
         }
     });
     // By the system's kind, not the game's: a Linux program's session is named
-    // after its prefix, so the prefix's stop reaches it too.
+    // after its prefix, so the prefix's stop reaches it too. A Raven program's
+    // prefix is Raven's, not the one the system's kind would find.
+    if crate::raven::is_program(&account_id, &game_id) {
+        return raven::stop(&game_id).await;
+    }
     match Kind::host() {
         Kind::Umu | Kind::LinuxNative => umu::stop(&account_id, &game_id).await,
         Kind::Native => native::stop(&account_id, &game_id).await,
+        Kind::Raven => raven::stop(&game_id).await,
     }
 }
 
 /// Whether `game_id` of `account_id` is still running, which moving its
 /// files has to wait for.
 pub fn is_running(account_id: &str, game_id: &str) -> bool {
+    if crate::raven::is_program(account_id, game_id) {
+        return raven::is_running(game_id);
+    }
     match Kind::host() {
         Kind::Umu | Kind::LinuxNative => umu::is_running(account_id, game_id),
         Kind::Native => native::is_running(account_id, game_id),
+        Kind::Raven => raven::is_running(game_id),
     }
 }
 
@@ -493,10 +517,13 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
 
 /// Stamps the manifest with when the session ended. Best-effort: a failed
 /// write costs a sort order, not a game.
-fn record_last_played(account_id: &str, game: &InstalledGame) {
+fn record_last_played(account_id: &str, game: &InstalledGame, kind: Kind) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
+    if kind == Kind::Raven {
+        return crate::raven::record_last_played(game, now);
+    }
     let Ok(library) = crate::core::library_for_account(account_id) else {
         tracing::debug!(game_id = %game.game_id, "could not record last played, library unavailable");
         return;
