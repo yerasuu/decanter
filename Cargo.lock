@@ -1678,6 +1678,8 @@ dependencies = [
  "futures-util",
  "nix",
  "reqwest 0.13.5",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "win32job",

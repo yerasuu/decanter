@@ -10,6 +10,11 @@ use std::path::{Path, PathBuf};
 /// a release behind.
 pub const UMU_LAUNCHER_VERSION: &str = "1.4.4";
 
+/// Lower-case hex SHA-256 of [`UMU_LAUNCHER_VERSION`]'s `umu-launcher-<version>-zipapp.tar`, which
+/// its download must match: the asset's digest in GitHub's releases API. Until it is filled in,
+/// every download of `umu-run` refuses.
+pub const UMU_LAUNCHER_SHA256: &str = "";
+
 /// The GitHub repository whose releases [`UMU_LAUNCHER_VERSION`] names.
 pub const UMU_LAUNCHER_REPO: &str = "Open-Wine-Components/umu-launcher";
 

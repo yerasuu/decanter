@@ -19,9 +19,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, bail};
 use decanter_core::runner::{Installed, Origin, Pin, Progress, Stage, Status, Tag};
+use sha2::Sha256;
 use tokio::process::Command;
 
-use crate::umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
+use crate::download::{self, Expected};
+use crate::umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_SHA256, UMU_LAUNCHER_VERSION, umu_run_path};
 
 /// Where the download in [`umu_update`] comes from — the portable
 /// zipapp asset, not a distro package, since it has to run identically
@@ -35,6 +37,9 @@ fn umu_run_download_url() -> String {
 
 /// What [`umu_update`] keeps one version of in the library's `bin` folder.
 const FILE_PREFIX: &str = "umu-run-";
+
+/// The zipapp is well under a megabyte: the cap only stops a wrong or runaway download.
+const MAX_ARCHIVE_BYTES: u64 = 64 << 20;
 
 /// Every `umu-run` in the active library's `bin` folder, by version.
 pub(crate) fn umu_status() -> Status {
@@ -138,26 +143,15 @@ fn pinned_path() -> anyhow::Result<PathBuf> {
 }
 
 async fn install(path: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<()> {
+    if !download::is_hex_digest(UMU_LAUNCHER_SHA256, 32) {
+        bail!("umu-run {UMU_LAUNCHER_VERSION} has no pinned SHA-256");
+    }
     let url = umu_run_download_url();
     tracing::info!(url, "downloading umu-run");
     on_progress(Progress {
         stage: Stage::Downloading,
         received: 0,
         total: None,
-    });
-    let bytes = reqwest::get(&url)
-        .await
-        .context("requesting umu-run")?
-        .error_for_status()
-        .context("umu-run download returned an error status")?
-        .bytes()
-        .await
-        .context("reading umu-run download body")?;
-    let received = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
-    on_progress(Progress {
-        stage: Stage::Downloading,
-        received,
-        total: Some(received),
     });
 
     // A fresh temp dir per attempt rather than a fixed name: two decanter
@@ -169,9 +163,29 @@ async fn install(path: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) ->
         .await
         .context("creating temp dir for umu-run extraction")?;
     let archive_path = temp_dir.join("umu-launcher.tar");
-    tokio::fs::write(&archive_path, &bytes)
-        .await
-        .context("writing downloaded umu-run archive")?;
+    let expected = Expected {
+        digest: UMU_LAUNCHER_SHA256,
+        size: None,
+        cap: MAX_ARCHIVE_BYTES,
+    };
+    let downloaded = download::fetch::<Sha256>(
+        &url,
+        &archive_path,
+        &expected,
+        download::github_releases(),
+        |received, total| {
+            on_progress(Progress {
+                stage: Stage::Downloading,
+                received,
+                total,
+            });
+        },
+    )
+    .await;
+    if let Err(err) = downloaded {
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        return Err(err).context("downloading umu-run");
+    }
 
     on_progress(Progress {
         stage: Stage::Unpacking,
