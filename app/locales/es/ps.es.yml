@@ -91,6 +91,10 @@ ps.package.badge_downloaded: Descargada
 ps.package.download: Descargar
 ps.package.use: Usar
 ps.package.delete: Borrar
+ps.package.confirm_delete.title: ¿Borrar esta versión?
+ps.package.confirm_delete.body_size: 'El paquete %{tag} de psport se borrará de tu biblioteca y liberará %{size}. Se puede volver a descargar de las versiones publicadas.'
+ps.package.confirm_delete.body: 'El paquete %{tag} de psport se borrará de tu biblioteca. Se puede volver a descargar de las versiones publicadas.'
+ps.package.confirm_delete.confirm: Borrar la versión
 ps.package.errors.not_published: psport no publica paquete para Windows en este sistema
 ps.package.errors.offline: no hay conexión con GitHub
 ps.package.errors.rate_limited: GitHub está limitando las consultas anónimas; vuelve a intentarlo en un rato
@@ -727,6 +731,12 @@ ps.branch.build: Compilar %{commit}
 ps.branch.stop: Detener
 ps.branch.stopped: Compilación detenida; no queda nada de lo que inició
 ps.branch.delete_toolchain: Borrar la toolchain
+ps.branch.confirm_delete.title: ¿Borrar esta compilación?
+ps.branch.confirm_delete.body: 'La compilación del commit %{commit} hecha en este PC se borrará de tu biblioteca. Compilar ese commit de nuevo lo construye desde cero.'
+ps.branch.confirm_delete.confirm: Borrar la compilación %{commit}
+ps.branch.confirm_delete_toolchain.title: ¿Borrar la toolchain?
+ps.branch.confirm_delete_toolchain.body: 'La toolchain %{number} descargada (llvm-mingw, CMake, Ninja y el paquete de toolchain de psport) se borrará de tu biblioteca. La próxima compilación la descarga otra vez.'
+ps.branch.confirm_delete_toolchain.confirm: Borrar la toolchain
 ps.branch.redownload_toolchain: Descargar de nuevo
 ps.branch.deleting: Borrando…
 ps.branch.building: 'Compilando %{commit}: %{stage}'

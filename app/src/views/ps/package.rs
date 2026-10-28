@@ -8,7 +8,7 @@ use rust_i18n::t;
 
 use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, progress_bar};
+use crate::widgets::{ButtonKind, button, confirm_panel, progress_bar};
 
 /// One version, as the releases list it and the library holds it.
 struct Row<'state> {
@@ -95,6 +95,11 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .child(theme::muted(t!("ps.package.description")))
         .child(div().child(SharedString::from(in_use)))
         .children(progress)
+        .children(
+            state
+                .confirming_delete()
+                .map(|version| delete_confirmation(ps, version, state.installed())),
+        )
         .children(state.error().map(theme::error))
         .children(listing_error.map(theme::muted))
         .children(checked_at.map(theme::muted))
@@ -118,6 +123,28 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         )
         .when(count > 0, |card| card.child(theme::card().mt_2().children(list)))
         .into_any_element()
+}
+
+/// What deleting takes away, with the size of the version in the library.
+fn delete_confirmation(ps: &Entity<Ps>, version: &Version, installed: &[Installed]) -> AnyElement {
+    let (yes, no, target) = (ps.clone(), ps.clone(), version.clone());
+    let body = match installed.iter().find(|installed| installed.version == *version) {
+        Some(installed) => t!(
+            "ps.package.confirm_delete.body_size",
+            tag = version.tag(),
+            size = crate::format::bytes(installed.size)
+        ),
+        None => t!("ps.package.confirm_delete.body", tag = version.tag()),
+    };
+    confirm_panel(
+        "ps-package-confirm-delete",
+        t!("ps.package.confirm_delete.title"),
+        body,
+        t!("ps.package.confirm_delete.confirm"),
+        move |_, _, cx| yes.update(cx, |ps, cx| ps.package_delete(&target, cx)),
+        move |_, _, cx| no.update(cx, Ps::package_cancel_delete),
+    )
+    .into_any_element()
 }
 
 fn version_row(
@@ -194,7 +221,7 @@ fn version_row(
                 )
                 .on_click(move |_, _, cx| {
                     let (ps, version) = &for_delete;
-                    ps.update(cx, |ps, cx| ps.package_delete(version, cx));
+                    ps.update(cx, |ps, cx| ps.package_ask_delete(version, cx));
                 }),
             );
     }

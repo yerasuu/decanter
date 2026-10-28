@@ -91,6 +91,10 @@ ps.package.badge_downloaded: Downloaded
 ps.package.download: Download
 ps.package.use: Use
 ps.package.delete: Delete
+ps.package.confirm_delete.title: Delete this version?
+ps.package.confirm_delete.body_size: 'The psport package %{tag} will be deleted from your library, freeing %{size}. It can be downloaded again from the releases.'
+ps.package.confirm_delete.body: 'The psport package %{tag} will be deleted from your library. It can be downloaded again from the releases.'
+ps.package.confirm_delete.confirm: Delete the version
 ps.package.errors.not_published: psport publishes no Windows package for this system
 ps.package.errors.offline: no connection to GitHub
 ps.package.errors.rate_limited: GitHub is limiting anonymous requests; try again in a while
@@ -727,6 +731,12 @@ ps.branch.build: Build %{commit}
 ps.branch.stop: Stop
 ps.branch.stopped: Build stopped; nothing it started is left running
 ps.branch.delete_toolchain: Delete the toolchain
+ps.branch.confirm_delete.title: Delete this build?
+ps.branch.confirm_delete.body: 'The build of commit %{commit} made on this PC will be deleted from your library. Building that commit again compiles it from scratch.'
+ps.branch.confirm_delete.confirm: Delete build %{commit}
+ps.branch.confirm_delete_toolchain.title: Delete the toolchain?
+ps.branch.confirm_delete_toolchain.body: 'The downloaded toolchain %{number} (llvm-mingw, CMake, Ninja and psport''s toolchain package) will be deleted from your library. The next build downloads it again.'
+ps.branch.confirm_delete_toolchain.confirm: Delete the toolchain
 ps.branch.redownload_toolchain: Download again
 ps.branch.deleting: Deleting…
 ps.branch.building: 'Building %{commit}: %{stage}'

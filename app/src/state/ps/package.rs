@@ -48,6 +48,8 @@ pub struct PackageState {
     failed: Option<Version>,
     /// Selections being saved, which a delete waits out.
     selecting: u32,
+    /// The version whose delete waits for the confirmation.
+    confirming_delete: Option<Version>,
 }
 
 impl PackageState {
@@ -94,6 +96,10 @@ impl PackageState {
 
     pub const fn error(&self) -> Option<&Text> {
         self.error.as_ref()
+    }
+
+    pub const fn confirming_delete(&self) -> Option<&Version> {
+        self.confirming_delete.as_ref()
     }
 
     /// The newest release known: listed, else in the library when the releases couldn't be asked.
@@ -173,9 +179,21 @@ impl Ps {
         .detach();
     }
 
+    pub fn package_ask_delete(&mut self, version: &Version, cx: &mut Context<Self>) {
+        self.package.confirming_delete = Some(version.clone());
+        self.package.error = None;
+        cx.notify();
+    }
+
+    pub fn package_cancel_delete(&mut self, cx: &mut Context<Self>) {
+        self.package.confirming_delete = None;
+        cx.notify();
+    }
+
     /// Never the version in use as the settings hold it, nor any while a selection is being saved or
     /// a game runs, since it may run from it.
     pub fn package_delete(&mut self, version: &Version, cx: &mut Context<Self>) {
+        self.package.confirming_delete = None;
         let playing = self.jobs.values().any(|job| job.read(cx).is_running());
         if self.package.selected.as_ref() == Some(version) || self.package.selecting > 0 || playing {
             self.package.error = Some(Text::new("ps.package.errors.delete_in_use"));

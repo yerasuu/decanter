@@ -34,6 +34,9 @@ pub struct BranchState {
     toolchain_installed: bool,
     /// A delete under way, which a build or another delete waits out.
     deleting: bool,
+    /// The build whose delete waits for the confirmation.
+    confirming_delete: Option<Commit>,
+    confirming_delete_toolchain: bool,
 }
 
 impl BranchState {
@@ -75,6 +78,14 @@ impl BranchState {
 
     pub const fn is_deleting(&self) -> bool {
         self.deleting
+    }
+
+    pub const fn confirming_delete(&self) -> Option<&Commit> {
+        self.confirming_delete.as_ref()
+    }
+
+    pub const fn is_confirming_delete_toolchain(&self) -> bool {
+        self.confirming_delete_toolchain
     }
 }
 
@@ -197,8 +208,29 @@ impl Ps {
         .detach();
     }
 
+    pub fn branch_ask_delete(&mut self, commit: &Commit, cx: &mut Context<Self>) {
+        self.branch.confirming_delete = Some(commit.clone());
+        self.branch.confirming_delete_toolchain = false;
+        self.branch.error = None;
+        cx.notify();
+    }
+
+    pub fn branch_ask_delete_toolchain(&mut self, cx: &mut Context<Self>) {
+        self.branch.confirming_delete = None;
+        self.branch.confirming_delete_toolchain = true;
+        self.branch.error = None;
+        cx.notify();
+    }
+
+    pub fn branch_cancel_delete(&mut self, cx: &mut Context<Self>) {
+        self.branch.confirming_delete = None;
+        self.branch.confirming_delete_toolchain = false;
+        cx.notify();
+    }
+
     /// Never the build in use, nor any while a choice is being saved, a game runs or a build runs.
     pub fn branch_delete(&mut self, commit: &Commit, cx: &mut Context<Self>) {
+        self.branch.confirming_delete = None;
         if self.package.selected_build() == Some(commit) || !self.may_delete(cx) {
             self.branch.error = Some(Text::new("ps.branch.errors.delete_in_use"));
             cx.notify();
@@ -228,6 +260,7 @@ impl Ps {
 
     /// The downloaded toolchain, never while a game or a build runs; the next build downloads it again.
     pub fn branch_delete_toolchain(&mut self, cx: &mut Context<Self>) {
+        self.branch.confirming_delete_toolchain = false;
         self.delete_toolchain(false, cx);
     }
 

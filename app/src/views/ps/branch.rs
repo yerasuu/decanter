@@ -10,7 +10,7 @@ use rust_i18n::t;
 use crate::runners;
 use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, progress_bar};
+use crate::widgets::{ButtonKind, button, confirm_panel, progress_bar};
 
 const TAMPERED: &str = "ps.branch.errors.tampered";
 
@@ -75,6 +75,12 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .child(theme::muted(toolchain))
         .children(head.map(|head| div().child(SharedString::from(head))))
         .children(state.confirming().map(|head| confirmation(ps, head)))
+        .children(state.confirming_delete().map(|commit| delete_confirmation(ps, commit)))
+        .children(
+            state
+                .is_confirming_delete_toolchain()
+                .then(|| delete_toolchain_confirmation(ps)),
+        )
         .children(progress)
         .children(lines)
         .when(deleting, |card| card.child(theme::muted(t!("ps.branch.deleting"))))
@@ -153,7 +159,7 @@ fn actions(ps: &Entity<Ps>, checking: bool, can_build: Option<Head>, busy: bool,
                     busy,
                 )
                 .when(!busy, |b| {
-                    b.on_click(move |_, _, cx| ps.update(cx, Ps::branch_delete_toolchain))
+                    b.on_click(move |_, _, cx| ps.update(cx, Ps::branch_ask_delete_toolchain))
                 }),
             )
         })
@@ -199,6 +205,35 @@ fn confirmation(ps: &Entity<Ps>, head: &Head) -> AnyElement {
                 ),
         )
         .into_any_element()
+}
+
+fn delete_confirmation(ps: &Entity<Ps>, commit: &Commit) -> AnyElement {
+    let (yes, no, target) = (ps.clone(), ps.clone(), commit.clone());
+    confirm_panel(
+        "ps-branch-confirm-delete",
+        t!("ps.branch.confirm_delete.title"),
+        t!("ps.branch.confirm_delete.body", commit = commit.short()),
+        t!("ps.branch.confirm_delete.confirm", commit = commit.short()),
+        move |_, _, cx| yes.update(cx, |ps, cx| ps.branch_delete(&target, cx)),
+        move |_, _, cx| no.update(cx, Ps::branch_cancel_delete),
+    )
+    .into_any_element()
+}
+
+fn delete_toolchain_confirmation(ps: &Entity<Ps>) -> AnyElement {
+    let (yes, no) = (ps.clone(), ps.clone());
+    confirm_panel(
+        "ps-branch-confirm-delete-toolchain",
+        t!("ps.branch.confirm_delete_toolchain.title"),
+        t!(
+            "ps.branch.confirm_delete_toolchain.body",
+            number = winbuild::pins::TOOLCHAIN.number
+        ),
+        t!("ps.branch.confirm_delete_toolchain.confirm"),
+        move |_, _, cx| yes.update(cx, Ps::branch_delete_toolchain),
+        move |_, _, cx| no.update(cx, Ps::branch_cancel_delete),
+    )
+    .into_any_element()
 }
 
 fn progress(head: &Head, stage: Option<&Progress>) -> AnyElement {
@@ -265,7 +300,7 @@ fn build_row(
                 .when(!busy, |b| {
                     b.on_click(move |_, _, cx| {
                         let (ps, commit) = &for_delete;
-                        ps.update(cx, |ps, cx| ps.branch_delete(commit, cx));
+                        ps.update(cx, |ps, cx| ps.branch_ask_delete(commit, cx));
                     })
                 }),
             );
