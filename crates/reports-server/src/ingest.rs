@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use crate::app::{AppState, api_error, denied, internal, not_found, rate_limit, today};
 use crate::html::message_text;
 use crate::limits::{Verdict, client_ip};
-use crate::secrets::{self, is_hex_token, random_hex, sha256};
-use crate::store::{Attach, Change, Insert, NewReport};
+use crate::secrets::{self, random_hex, sha256};
+use crate::store::{Attach, Change, Insert, NewReport, Product};
 
 pub const MAX_ATTACHMENT_BYTES: usize = 5 * 1024 * 1024;
 const DELETE_CODE_HEADER: &str = "x-delete-code";
@@ -46,7 +46,7 @@ async fn read_capped(
 }
 
 struct Meta {
-    product: &'static str,
+    product: Product,
     title_id: Option<String>,
     game_name: Option<String>,
     failure_kind: String,
@@ -56,9 +56,9 @@ struct Meta {
 
 fn meta(report: &Report) -> Meta {
     let (product, title_id, game_name, failure, date) = match report {
-        Report::Decanter(r) => ("decanter", None, None, &r.failure, &r.date),
+        Report::Decanter(r) => (Product::Decanter, None, None, &r.failure, &r.date),
         Report::Psport(r) => (
-            "psport",
+            Product::Psport,
             Some(r.game.title_id.clone()),
             r.game.name.clone(),
             &r.failure,
@@ -123,9 +123,6 @@ pub async fn create(
     let Ok(report_json) = String::from_utf8(bytes) else {
         return api_error(StatusCode::UNPROCESSABLE_ENTITY, "not_utf8");
     };
-    let (Ok(id), Ok(delete_code)) = (random_hex(), random_hex()) else {
-        return internal("random", &"entropy source unavailable");
-    };
     let Meta {
         product,
         title_id,
@@ -134,6 +131,9 @@ pub async fn create(
         template_id,
         created_day,
     } = meta(&report);
+    let (Ok(id), Ok(delete_code)) = (product.new_id(), random_hex()) else {
+        return internal("random", &"entropy source unavailable");
+    };
     let fingerprint = fingerprint(&report);
     let message = serde_json::from_str::<Value>(&report_json)
         .map(|value| message_text(&value))
@@ -142,7 +142,7 @@ pub async fn create(
         id: id.clone(),
         delete_hash: sha256(delete_code.as_bytes()),
         fingerprint: fingerprint.clone(),
-        product,
+        product: product.name(),
         title_id,
         game_name,
         failure_kind,
@@ -152,11 +152,13 @@ pub async fn create(
         received_day: today(),
         report_json,
     };
-    match state.store.insert(&stored, state.config.limits.max_reports).await {
+    let store = state.stores.get(product);
+    let product = product.name();
+    match store.insert(&stored, state.config.limits.max_reports).await {
         Ok(Insert::Stored { evicted }) => {
             if evicted > 0 {
                 state.index_cache.clear();
-                tracing::warn!(evicted, "report store full: oldest unresolved reports evicted");
+                tracing::warn!(product, evicted, "report store full: oldest unresolved reports evicted");
             }
         }
         Ok(Insert::Full) => return api_error(StatusCode::SERVICE_UNAVAILABLE, "storage_full"),
@@ -193,11 +195,12 @@ async fn code_matches_hash(state: &AppState, id: &str, headers: &HeaderMap) -> R
         .get(DELETE_CODE_HEADER)
         .map(axum::http::HeaderValue::as_bytes)
         .unwrap_or_default();
-    if !is_hex_token(id, 32) {
+    // A malformed id names no partition; an id of the other product is simply unknown in this one.
+    let Some(store) = state.stores.of_id(id) else {
         let _ = secrets::matches(&[0; 32], code);
         return Ok(false);
-    }
-    match state.store.delete_hash(id).await {
+    };
+    match store.delete_hash(id).await {
         Ok(Some(hash)) => Ok(secrets::matches_hex(&hash, code)),
         Ok(None) => {
             let _ = secrets::matches(&[0; 32], code);
@@ -218,7 +221,10 @@ pub async fn remove(
         Ok(false) => return not_found(),
         Err(response) => return *response,
     }
-    match state.store.change(&[id], &Change::Delete).await {
+    let Some(store) = state.stores.of_id(&id) else {
+        return not_found();
+    };
+    match store.change(&[id], &Change::Delete).await {
         Ok(changed) if changed.matched == 0 => not_found(),
         Ok(_) => {
             state.index_cache.clear();
@@ -249,14 +255,22 @@ pub async fn attach(
         Ok(bytes) => bytes,
         Err(response) => return *response,
     };
+    let Some(product) = Product::of_id(&id) else {
+        return not_found();
+    };
     match state
-        .store
+        .stores
+        .get(product)
         .attach(&id, &bytes, state.config.limits.max_attachments)
         .await
     {
         Ok(Attach::Stored { evicted }) => {
             if evicted > 0 {
-                tracing::warn!(evicted, "attachment store full: oldest attachments evicted");
+                tracing::warn!(
+                    product = product.name(),
+                    evicted,
+                    "attachment store full: oldest attachments evicted"
+                );
             }
             StatusCode::NO_CONTENT.into_response()
         }

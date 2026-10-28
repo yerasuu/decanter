@@ -22,7 +22,7 @@ use tracing::level_filters::LevelFilter;
 
 use crate::app::{AppState, router};
 use crate::config::{Config, ConfigError, Credentials, Driver};
-use crate::store::Store;
+use crate::store::{Product, Store, Stores};
 
 struct Args {
     check_only: bool,
@@ -47,17 +47,31 @@ fn parse_args(args: impl Iterator<Item = String>, env: &impl Fn(&str) -> Option<
     })
 }
 
+async fn open_store(config: &Config, credentials: &Credentials, product: Product) -> Result<Store, String> {
+    let name = product.name();
+    if config.storage.driver == Driver::Local {
+        let dir = store::partition_dir(&config.storage, product);
+        perms::private_dir(&dir).map_err(|error| format!("cannot prepare {}: {error}", dir.display()))?;
+    }
+    let backend = store::connect(&config.storage, credentials, product)
+        .map_err(|error| format!("cannot set up the {name} partition: {error:#}"))?;
+    Store::open(backend, &credentials.passphrase)
+        .await
+        .map_err(|error| format!("cannot open the {name} partition: {error:#}"))
+}
+
 async fn open_state(config: Config, credentials: Credentials) -> Result<AppState, String> {
     if config.storage.driver == Driver::Local {
         let dir = &config.storage.dir;
         perms::private_dir(dir).map_err(|error| format!("cannot prepare {}: {error}", dir.display()))?;
     }
-    let backend = store::connect(&config.storage, &credentials)
-        .map_err(|error| format!("cannot set up the storage: {error:#}"))?;
-    let store = Store::open(backend, &credentials.passphrase)
-        .await
-        .map_err(|error| format!("cannot open the storage: {error:#}"))?;
-    Ok(AppState::new(config, &credentials.admin_key, store))
+    let decanter = open_store(&config, &credentials, Product::Decanter).await?;
+    let psport = open_store(&config, &credentials, Product::Psport).await?;
+    Ok(AppState::new(
+        config,
+        &credentials.admin_key,
+        Stores::new(decanter, psport),
+    ))
 }
 
 fn describe_storage(config: &Config) -> String {
@@ -87,12 +101,14 @@ async fn check(config: &Config, credentials: &Credentials) -> Result<(), String>
     if config.storage.driver == Driver::Local {
         return Ok(());
     }
-    let backend = store::connect(&config.storage, credentials)
-        .map_err(|error| format!("cannot set up the storage: {error:#}"))?;
-    match store::probe(backend.as_ref(), &credentials.passphrase).await {
-        Ok(true) => eprintln!("bucket reachable and the passphrase opens it"),
-        Ok(false) => eprintln!("bucket reachable, not initialized yet (the first start creates its encryption)"),
-        Err(error) => return Err(format!("bucket check failed: {error:#}")),
+    for product in Product::ALL {
+        let backend = store::connect(&config.storage, credentials, product)
+            .map_err(|error| format!("cannot set up the storage: {error:#}"))?;
+        match store::probe(backend.as_ref(), &credentials.passphrase).await {
+            Ok(true) => eprintln!("bucket reachable and the passphrase opens it"),
+            Ok(false) => eprintln!("bucket reachable, not initialized yet (the first start creates its encryption)"),
+            Err(error) => return Err(format!("bucket check failed: {error:#}")),
+        }
     }
     Ok(())
 }

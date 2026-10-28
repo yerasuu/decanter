@@ -20,12 +20,12 @@ use crate::cache::PageCache;
 use crate::config::Config;
 use crate::limits::{Limiter, Verdict, client_ip};
 use crate::secrets::Hash;
-use crate::store::Store;
+use crate::store::Stores;
 use crate::{admin, ingest, pages};
 
 pub struct Inner {
     pub config: Config,
-    pub store: Store,
+    pub stores: Stores,
     pub limiter: Limiter,
     pub index_cache: PageCache,
     /// Lets one request rebuild an expired index while the rest wait for its result instead of repeating the scan.
@@ -46,12 +46,12 @@ impl std::ops::Deref for AppState {
 
 impl AppState {
     #[must_use]
-    pub fn new(config: Config, admin_key: &str, store: Store) -> Self {
+    pub fn new(config: Config, admin_key: &str, stores: Stores) -> Self {
         let limiter = Limiter::new(config.limits.clone());
         let index_cache = PageCache::new(config.index_cache_secs);
         Self(Arc::new(Inner {
             config,
-            store,
+            stores,
             limiter,
             index_cache,
             index_gate: tokio::sync::Mutex::new(()),
@@ -229,7 +229,7 @@ mod tests {
     use super::{AppState, router};
     use crate::config::Config;
     use crate::secrets::sha256;
-    use crate::store::{NewReport, test_store};
+    use crate::store::{NewReport, Product, test_stores};
 
     type Test = Result<(), Box<dyn Error>>;
 
@@ -250,9 +250,8 @@ mod tests {
             tweak(&mut config);
             let root = std::env::temp_dir().join(format!("decanter-reports-test-{}", crate::secrets::random_hex()?));
             std::fs::create_dir_all(&root)?;
-            let store = test_store(&root, s3db::LocalEngine::Redb);
             Ok(Self {
-                state: AppState::new(config, ADMIN_KEY, store),
+                state: AppState::new(config, ADMIN_KEY, test_stores(&root)),
                 root,
             })
         }
@@ -296,11 +295,41 @@ mod tests {
         }
 
         async fn stored(&self) -> Result<u32, Box<dyn Error>> {
-            Ok(self.state.store.count().await?)
+            Ok(self.state.stores.count().await?)
         }
 
         async fn blobs(&self) -> Result<usize, Box<dyn Error>> {
-            Ok(self.state.store.blob_count().await?)
+            Ok(self.state.stores.blob_count().await?)
+        }
+
+        async fn count_in(&self, product: Product) -> Result<u32, Box<dyn Error>> {
+            Ok(self.state.stores.get(product).count().await?)
+        }
+
+        /// Stores a report as if validated, with the received day the test needs.
+        async fn insert_direct(
+            &self,
+            product: Product,
+            fingerprint: &str,
+            day: &str,
+        ) -> Result<String, Box<dyn Error>> {
+            let id = product.new_id()?;
+            let new = NewReport {
+                id: id.clone(),
+                delete_hash: sha256(b"code"),
+                fingerprint: fingerprint.to_owned(),
+                product: product.name(),
+                title_id: None,
+                game_name: None,
+                failure_kind: "error".to_owned(),
+                template_id: "t".to_owned(),
+                message: "t".to_owned(),
+                created_day: day.to_owned(),
+                received_day: day.to_owned(),
+                report_json: "{}".to_owned(),
+            };
+            self.state.stores.get(product).insert(&new, 1000).await?;
+            Ok(id)
         }
     }
 
@@ -353,7 +382,7 @@ mod tests {
         let (status, answer) = h.post(DECANTER).await?;
         assert_eq!(status, StatusCode::CREATED);
         let id = answer["id"].as_str().ok_or("id")?;
-        assert_eq!(id.len(), 32);
+        assert_eq!(Product::of_id(id), Some(Product::Decanter), "{id}");
         assert_eq!(answer["delete_code"].as_str().map(str::len), Some(32));
         let (status, headers, page) = h.send(Method::GET, &format!("/r/{id}"), &[], vec![]).await?;
         assert_eq!(status, StatusCode::OK);
@@ -413,20 +442,30 @@ mod tests {
         let (_, answer) = h.post(DECANTER).await?;
         let id = answer["id"].as_str().ok_or("id")?.to_owned();
         let code = answer["delete_code"].as_str().ok_or("code")?.to_owned();
-        let unknown = format!("/v1/reports/{}", "0".repeat(32));
         let known = format!("/v1/reports/{id}");
-        let (s1, _, b1) = h
-            .send(Method::DELETE, &unknown, &[("x-delete-code", &code)], vec![])
-            .await?;
         let (s2, _, b2) = h
             .send(Method::DELETE, &known, &[("x-delete-code", "wrong")], vec![])
             .await?;
         let (s3, _, b3) = h.send(Method::DELETE, &known, &[], vec![]).await?;
-        assert_eq!(
-            (s1, s2, s3),
-            (StatusCode::NOT_FOUND, StatusCode::NOT_FOUND, StatusCode::NOT_FOUND)
-        );
-        assert!(b1 == b2 && b2 == b3);
+        assert_eq!((s2, s3), (StatusCode::NOT_FOUND, StatusCode::NOT_FOUND));
+        assert_eq!(b2, b3);
+        let other_partition = id.replacen('d', "p", 1);
+        for unknown in [
+            "0".repeat(32),
+            format!("d{}", "0".repeat(32)),
+            other_partition,
+            id.get(1..).unwrap_or_default().to_owned(),
+        ] {
+            let (status, _, body) = h
+                .send(
+                    Method::DELETE,
+                    &format!("/v1/reports/{unknown}"),
+                    &[("x-delete-code", &code)],
+                    vec![],
+                )
+                .await?;
+            assert_eq!((status, &body), (StatusCode::NOT_FOUND, &b2), "{unknown}");
+        }
         let (ok, ..) = h
             .send(Method::DELETE, &known, &[("x-delete-code", &code)], vec![])
             .await?;
@@ -560,7 +599,7 @@ mod tests {
         let h = Harness::new(|_| {})?;
         let hostile = json!({"product": "decanter", "system": {"os_version": "<img src=x onerror=alert(1)>\"'"},
             "game": {"name": "<script>alert(1)</script>"}, "failure": {"message": {"template": "<b>t</b>"}}});
-        let id = "a".repeat(32);
+        let id = format!("p{}", "a".repeat(32));
         let new = NewReport {
             id: id.clone(),
             delete_hash: sha256(b"x"),
@@ -575,7 +614,7 @@ mod tests {
             received_day: "2026-10-25".to_owned(),
             report_json: hostile.to_string(),
         };
-        h.state.store.insert(&new, 10).await?;
+        h.state.stores.get(Product::Psport).insert(&new, 10).await?;
         for path in [format!("/r/{id}"), "/".to_owned(), format!("/g/{}", "b".repeat(16))] {
             let (status, _, body) = h.send(Method::GET, &path, &[], vec![]).await?;
             let page = String::from_utf8(body)?;
@@ -658,10 +697,10 @@ mod tests {
         }
         let reads: Vec<_> = (0..16)
             .map(|_| {
-                let store = h.state.store.clone();
+                let stores = h.state.stores.clone();
                 tokio::spawn(async move {
                     for _ in 0..10 {
-                        store.groups(&crate::store::Filter::default(), 26, 0).await?;
+                        stores.groups(&crate::store::Filter::default(), 26, 0).await?;
                     }
                     Ok::<_, anyhow::Error>(())
                 })
@@ -952,15 +991,179 @@ mod tests {
             &format!("/admin/reports/{}/resolve", resolved["id"].as_str().ok_or("id")?),
         )
         .await?;
-        let kept = h.state.store.sweep("2026-10-28", "0000-01-01", None).await?;
+        let store = h.state.stores.get(Product::Decanter);
+        let kept = store.sweep("2026-10-28", "0000-01-01", None).await?;
         assert_eq!((kept.unresolved, kept.resolved), (0, 0));
-        let swept = h
-            .state
-            .store
-            .sweep("2026-10-28", "0000-01-01", Some("9999-12-31"))
-            .await?;
+        let swept = store.sweep("2026-10-28", "0000-01-01", Some("9999-12-31")).await?;
         assert_eq!((swept.unresolved, swept.resolved), (0, 1));
         assert_eq!(h.stored().await?, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reports_of_each_product_land_in_their_own_partition() -> Test {
+        let h = Harness::new(|_| {})?;
+        let (_, decanter) = h.post(DECANTER).await?;
+        let (_, psport) = h.post(&psport("CUSA00001", "G")).await?;
+        let decanter = decanter["id"].as_str().ok_or("id")?;
+        let psport = psport["id"].as_str().ok_or("id")?;
+        assert!(decanter.starts_with('d') && psport.starts_with('p'));
+        for product in Product::ALL {
+            let file = h.root.join(product.name()).join("s3db.redb");
+            assert!(file.is_file(), "{}", file.display());
+        }
+        let (in_decanter, in_psport) = (
+            h.state.stores.get(Product::Decanter),
+            h.state.stores.get(Product::Psport),
+        );
+        assert!(in_decanter.find_public(decanter).await?.is_some());
+        assert!(in_psport.find_public(decanter).await?.is_none());
+        assert!(in_psport.find_public(psport).await?.is_some());
+        assert!(in_decanter.find_public(psport).await?.is_none());
+        assert_eq!(
+            (h.count_in(Product::Decanter).await?, h.count_in(Product::Psport).await?),
+            (1, 1)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn an_id_never_resolves_in_the_other_partition() -> Test {
+        let h = Harness::new(|_| {})?;
+        let (_, answer) = h.post(DECANTER).await?;
+        let id = answer["id"].as_str().ok_or("id")?.to_owned();
+        let code = answer["delete_code"].as_str().ok_or("code")?.to_owned();
+        let crossed = id.replacen('d', "p", 1);
+        let (missing, unknown_page) = h.get(&format!("/r/{}", "0".repeat(33))).await?;
+        let (status, crossed_page) = h.get(&format!("/r/{crossed}")).await?;
+        assert_eq!((missing, status), (StatusCode::NOT_FOUND, StatusCode::NOT_FOUND));
+        assert_eq!(unknown_page, crossed_page);
+        let (attach, ..) = h
+            .send(
+                Method::PUT,
+                &format!("/v1/reports/{crossed}/attachment"),
+                &[("x-delete-code", &code)],
+                b"log".to_vec(),
+            )
+            .await?;
+        assert_eq!(attach, StatusCode::NOT_FOUND);
+        for (method, path) in [
+            (Method::POST, format!("/admin/reports/{crossed}/hide")),
+            (Method::DELETE, format!("/admin/reports/{crossed}")),
+            (Method::GET, format!("/admin/reports/{crossed}/attachment")),
+        ] {
+            assert_eq!(h.admin(method, &path).await?.0, StatusCode::NOT_FOUND, "{path}");
+        }
+        assert_eq!(h.get(&format!("/r/{id}")).await?.0, StatusCode::OK);
+        assert_eq!(h.blobs().await?, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn index_merges_both_partitions_in_index_order_and_filters_by_product() -> Test {
+        let h = Harness::new(|config| {
+            config.index_cache_secs = 0;
+            config.page_size = 1;
+        })?;
+        let oldest = "1".repeat(16);
+        let middle = "2".repeat(16);
+        let newest = "3".repeat(16);
+        h.insert_direct(Product::Decanter, &oldest, "2026-10-20").await?;
+        h.insert_direct(Product::Psport, &middle, "2026-10-22").await?;
+        h.insert_direct(Product::Decanter, &newest, "2026-10-24").await?;
+        for (page, fp) in [(1, &newest), (2, &middle), (3, &oldest)] {
+            let body = h.get(&format!("/?page={page}")).await?.1;
+            assert!(body.contains(fp.as_str()), "page {page}: {body}");
+        }
+        assert!(!h.get("/?page=4").await?.1.contains("/g/"));
+        let psport = h.get("/?product=psport").await?.1;
+        assert!(psport.contains(&middle) && !psport.contains(&newest));
+        let decanter = h.get("/?product=decanter&page=2").await?.1;
+        assert!(decanter.contains(&oldest) && !decanter.contains(&middle));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn group_actions_and_lists_span_both_partitions() -> Test {
+        let h = Harness::new(|config| config.index_cache_secs = 0)?;
+        let fp = "c".repeat(16);
+        let decanter = h.insert_direct(Product::Decanter, &fp, "2026-10-25").await?;
+        let psport = h.insert_direct(Product::Psport, &fp, "2026-10-26").await?;
+        h.insert_direct(Product::Psport, &"d".repeat(16), "2026-10-27").await?;
+        let group = h.get(&format!("/g/{fp}")).await?.1;
+        assert!(
+            group.find(&psport) < group.find(&decanter) && group.contains(&decanter),
+            "{group}"
+        );
+        assert_eq!(h.get("/").await?.1.matches(&format!("/g/{fp}")).count(), 2);
+        assert_eq!(h.admin_rows(&format!("?fingerprint={fp}")).await?.len(), 2);
+        let all = h.admin_rows("").await?;
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            all[2]["id"],
+            json!(decanter),
+            "newest received day first across partitions"
+        );
+        assert_eq!(h.admin_rows("?product=decanter").await?.len(), 1);
+        assert_eq!(h.admin_rows("?limit=1&offset=1").await?[0]["id"], json!(psport));
+        assert_eq!(
+            h.admin(Method::POST, &format!("/admin/groups/{fp}/hide")).await?.0,
+            StatusCode::NO_CONTENT
+        );
+        for id in [&decanter, &psport] {
+            assert_eq!(h.get(&format!("/r/{id}")).await?.0, StatusCode::NOT_FOUND);
+        }
+        assert_eq!(h.get(&format!("/g/{fp}")).await?.0, StatusCode::NOT_FOUND);
+        assert_eq!(
+            h.admin(Method::DELETE, &format!("/admin/groups/{fp}")).await?.0,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            (h.count_in(Product::Decanter).await?, h.count_in(Product::Psport).await?),
+            (0, 1)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn caps_evict_within_the_partition_that_is_full() -> Test {
+        let h = Harness::new(|config| config.limits.max_reports = 2)?;
+        let mut first = None;
+        for n in 0..2 {
+            let (_, answer) = h.post(&other_commit(n)).await?;
+            first.get_or_insert(answer);
+            h.post(&psport(&format!("CUSA0000{n}"), "G")).await?;
+        }
+        assert_eq!(h.stored().await?, 4, "each partition holds up to max_reports");
+        assert_eq!(h.post(&other_commit(9)).await?.0, StatusCode::CREATED);
+        let first = first.ok_or("first")?;
+        assert_eq!(
+            h.get(&format!("/r/{}", first["id"].as_str().ok_or("id")?)).await?.0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            (h.count_in(Product::Decanter).await?, h.count_in(Product::Psport).await?),
+            (2, 2)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn daily_sweep_runs_on_every_partition() -> Test {
+        let h = Harness::new(|_| {})?;
+        for product in Product::ALL {
+            h.insert_direct(product, &"e".repeat(16), "2001-01-01").await?;
+        }
+        let (_, fresh) = h.post(&psport("CUSA00001", "G")).await?;
+        crate::sweep::run_once(&h.state).await;
+        assert_eq!(
+            (h.count_in(Product::Decanter).await?, h.count_in(Product::Psport).await?),
+            (0, 1)
+        );
+        assert_eq!(
+            h.get(&format!("/r/{}", fresh["id"].as_str().ok_or("id")?)).await?.0,
+            StatusCode::OK
+        );
         Ok(())
     }
 

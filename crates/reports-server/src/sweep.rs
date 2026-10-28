@@ -26,25 +26,29 @@ pub async fn run_once(state: &AppState) {
         0 => None,
         days => cutoff_day(days),
     };
-    match state
-        .store
-        .sweep(&crate::app::today(), &unresolved_cutoff, resolved_cutoff.as_deref())
-        .await
-    {
-        Ok(swept) => {
-            if swept.unresolved + swept.resolved > 0 {
-                state.index_cache.clear();
+    let today = crate::app::today();
+    for (product, store) in state.stores.iter() {
+        let product = product.name();
+        match store
+            .sweep(&today, &unresolved_cutoff, resolved_cutoff.as_deref())
+            .await
+        {
+            Ok(swept) => {
+                if swept.unresolved + swept.resolved > 0 {
+                    state.index_cache.clear();
+                }
+                tracing::info!(
+                    product,
+                    unresolved = swept.unresolved,
+                    resolved = swept.resolved,
+                    attachments = swept.attachments,
+                    orphans = swept.orphans,
+                    repaired = swept.repaired,
+                    "retention sweep"
+                );
             }
-            tracing::info!(
-                unresolved = swept.unresolved,
-                resolved = swept.resolved,
-                attachments = swept.attachments,
-                orphans = swept.orphans,
-                repaired = swept.repaired,
-                "retention sweep"
-            );
+            Err(error) => tracing::error!(product, %error, "retention sweep failed"),
         }
-        Err(error) => tracing::error!(%error, "retention sweep failed"),
     }
 }
 
@@ -58,10 +62,13 @@ pub async fn daily(state: AppState) {
 pub async fn recover(state: AppState) {
     loop {
         tokio::time::sleep(RECOVER_EVERY).await;
-        match state.store.recover().await {
-            Ok(0) => {}
-            Ok(recovered) => tracing::warn!(recovered, "stale transactions recovered"),
-            Err(error) => tracing::error!(%error, "transaction recovery failed"),
+        for (product, store) in state.stores.iter() {
+            let product = product.name();
+            match store.recover().await {
+                Ok(0) => {}
+                Ok(recovered) => tracing::warn!(product, recovered, "stale transactions recovered"),
+                Err(error) => tracing::error!(product, %error, "transaction recovery failed"),
+            }
         }
     }
 }

@@ -61,6 +61,14 @@ pub struct Changed {
     pub attachments: usize,
 }
 
+impl Changed {
+    pub const fn absorb(&mut self, other: &Self) {
+        self.matched += other.matched;
+        self.removed += other.removed;
+        self.attachments += other.attachments;
+    }
+}
+
 impl Change {
     fn apply(&self, report: &Report) -> Report {
         let mut after = report.clone();
@@ -228,10 +236,7 @@ impl Store {
     pub async fn change(&self, ids: &[String], change: &Change) -> Result<Changed> {
         let mut total = Changed::default();
         for chunk in ids.chunks(BATCH) {
-            let done = self.change_batch(chunk, change).await?;
-            total.matched += done.matched;
-            total.removed += done.removed;
-            total.attachments += done.attachments;
+            total.absorb(&self.change_batch(chunk, change).await?);
         }
         Ok(total)
     }

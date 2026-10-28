@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::app::{AppState, internal};
 use crate::html::{TITLE, escape_html, fields_table, layout, message_text};
 use crate::secrets::is_hex_token;
-use crate::store::{Filter, GroupRow};
+use crate::store::{Filter, GroupRow, Product};
 
 const MAX_PAGE: u32 = 10_000;
 
@@ -63,9 +63,7 @@ fn parse_page(raw: Option<&str>) -> Option<u32> {
 fn parse_filter(params: &ListParams) -> Result<Filter, &'static str> {
     let product = match params.product.as_deref().filter(|value| !value.is_empty()) {
         None => None,
-        Some("decanter") => Some("decanter"),
-        Some("psport") => Some("psport"),
-        Some(_) => return Err("product"),
+        Some(value) => Some(Product::from_name(value).ok_or("product")?),
     };
     let title = match params.title.as_deref().filter(|value| !value.is_empty()) {
         None => None,
@@ -89,7 +87,7 @@ fn parse_filter(params: &ListParams) -> Result<Filter, &'static str> {
 fn filter_key(filter: &Filter, page: u32) -> String {
     let mut parts = Vec::new();
     if let Some(product) = filter.product {
-        parts.push(format!("product={product}"));
+        parts.push(format!("product={}", product.name()));
     }
     if let Some(title) = &filter.title {
         parts.push(format!("title={title}"));
@@ -142,8 +140,8 @@ fn filter_form(filter: &Filter) -> String {
          <label>Estado<select name=\"resolved\"><option value=\"\">todos</option>\
          <option value=\"0\"{}>sin resolver</option><option value=\"1\"{}>resueltos</option></select></label>\
          <button type=\"submit\">Filtrar</button></form>",
-        selected(product == Some("decanter")),
-        selected(product == Some("psport")),
+        selected(product == Some(Product::Decanter)),
+        selected(product == Some(Product::Psport)),
         selected(resolved == Some(false)),
         selected(resolved == Some(true)),
     )
@@ -204,7 +202,7 @@ async fn build_index(state: &AppState, filter: Filter, page: u32) -> Result<Stri
     let size = state.config.page_size;
     let offset = (page - 1) * size;
     let mut groups = state
-        .store
+        .stores
         .groups(&filter, size + 1, offset)
         .await
         .map_err(|error| Box::new(internal("groups", &error)))?;
@@ -245,10 +243,10 @@ pub async fn index(State(state): State<AppState>, Query(params): Query<ListParam
 }
 
 pub async fn report(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    if !is_hex_token(&id, 32) {
+    let Some(store) = state.stores.of_id(&id) else {
         return not_found_page();
-    }
-    let stored = match state.store.find_public(&id).await {
+    };
+    let stored = match store.find_public(&id).await {
         Ok(Some(stored)) => stored,
         Ok(None) => return not_found_page(),
         Err(error) => return internal("find_public", &error),
@@ -294,7 +292,7 @@ pub async fn group(
     };
     let size = state.config.page_size;
     let offset = (page - 1) * size;
-    let mut members = match state.store.group_members(&fingerprint, size + 1, offset).await {
+    let mut members = match state.stores.group_members(&fingerprint, size + 1, offset).await {
         Ok(members) => members,
         Err(error) => return internal("group_members", &error),
     };

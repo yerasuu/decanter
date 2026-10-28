@@ -10,6 +10,7 @@ use serde::Serialize;
 use super::Store;
 use super::index::{self, ALL, BY_FINGERPRINT, BY_PRODUCT, BY_TITLE, GROUP_ORDER, GROUP_TITLES, GROUPS};
 use super::model::{Group, Report};
+use super::partition::Product;
 
 /// Index keys listed per round trip.
 const PAGE_KEYS: usize = 200;
@@ -19,7 +20,7 @@ const MAX_TITLE_GROUPS: usize = 10_000;
 
 #[derive(Default)]
 pub struct Filter {
-    pub product: Option<&'static str>,
+    pub product: Option<Product>,
     pub title: Option<String>,
     pub resolved: Option<bool>,
 }
@@ -28,7 +29,7 @@ pub struct Filter {
 pub struct AdminFilter {
     pub fingerprint: Option<String>,
     pub day: Option<String>,
-    pub product: Option<&'static str>,
+    pub product: Option<Product>,
     pub title: Option<String>,
 }
 
@@ -44,6 +45,8 @@ pub struct GroupRow {
     pub game_name: Option<String>,
     pub failure_kind: String,
     pub message: String,
+    /// The group's key in the order index, which a merge of the two partitions sorts by.
+    pub last_received: String,
 }
 
 #[derive(Serialize)]
@@ -82,7 +85,7 @@ impl From<Report> for AdminRow {
 /// The row a group shows under `filter`, or `None` when none of its visible reports match. Counts follow the
 /// filter; the day range and the game name are the group's whole visible range (see docs/design.md).
 fn group_row(group: Group, filter: &Filter) -> Option<GroupRow> {
-    if group.visible == 0 || filter.product.is_some_and(|product| product != group.product) {
+    if group.visible == 0 || filter.product.is_some_and(|product| product.name() != group.product) {
         return None;
     }
     let (count, resolved, title_id, game_name, titles) = if let Some(title) = &filter.title {
@@ -115,6 +118,7 @@ fn group_row(group: Group, filter: &Filter) -> Option<GroupRow> {
         product: group.product,
         failure_kind: group.failure_kind,
         message: group.message,
+        last_received: group.last_received,
     })
 }
 
@@ -220,7 +224,7 @@ impl Store {
         } else if let Some(title) = &filter.title {
             dated(title, &BY_TITLE)?
         } else if let Some(product) = filter.product {
-            dated(product, &BY_PRODUCT)?
+            dated(product.name(), &BY_PRODUCT)?
         } else if let Some(day) = &day {
             ALL.members_prefix(day)?
         } else {
@@ -229,7 +233,7 @@ impl Store {
         let keep = |report: &Report| {
             filter.fingerprint.as_ref().is_none_or(|fp| *fp == report.fingerprint)
                 && filter.day.as_ref().is_none_or(|day| *day == report.received_day)
-                && filter.product.is_none_or(|product| product == report.product)
+                && filter.product.is_none_or(|product| product.name() == report.product)
                 && filter
                     .title
                     .as_ref()

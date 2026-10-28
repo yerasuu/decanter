@@ -5,6 +5,7 @@
 mod index;
 mod maintain;
 mod model;
+mod partition;
 mod prefixed;
 mod read;
 mod write;
@@ -18,6 +19,9 @@ use s3db::{Backend, Blob, Cipher, Singleton, bootstrap};
 use serde::Serialize;
 
 pub use model::Report;
+#[cfg(test)]
+pub use partition::test_stores;
+pub use partition::{Product, Stores};
 pub use prefixed::Prefixed;
 pub use read::{AdminFilter, Filter, GroupRow};
 pub use write::{Attach, Change, Insert, NewReport};
@@ -44,18 +48,33 @@ pub const STALE_TRANSACTION: Duration = Duration::from_secs(60);
 const BUCKET_RETRIES: u32 = 3;
 const BUCKET_RETRY_BACKOFF: Duration = Duration::from_millis(100);
 
-/// The backend `storage` names, built from `credentials`. The S3 drivers get the key prefix and transport retries
-/// only: s3db's full resilience stack journals writes on local disk, and the server keeps no local state with them.
+/// The `local` driver's directory of one partition.
+pub fn partition_dir(storage: &Storage, product: Product) -> std::path::PathBuf {
+    storage.dir.join(product.name())
+}
+
+/// The key prefix of one partition in an S3 bucket: the optional common root, then the product.
+pub fn partition_prefix(storage: &Storage, product: Product) -> String {
+    if storage.prefix.is_empty() {
+        product.name().to_owned()
+    } else {
+        format!("{}/{}", storage.prefix, product.name())
+    }
+}
+
+/// The backend of `product`'s partition, built from `credentials`. The S3 drivers get the key prefix and transport
+/// retries only: s3db's full resilience stack journals writes on local disk, and the server keeps no local state
+/// with them.
 ///
 /// # Errors
 ///
 /// The driver refuses its parameters (an `http://` endpoint without `allow_insecure_http`, say).
-pub fn connect(storage: &Storage, credentials: &Credentials) -> Result<Arc<dyn Backend>> {
+pub fn connect(storage: &Storage, credentials: &Credentials, product: Product) -> Result<Arc<dyn Backend>> {
     let (access_key_id, secret_access_key) = credentials.bucket_keys.clone().unwrap_or_default();
     let config = match storage.driver {
         Driver::Local => {
             return s3db::build_backend(&s3db::BackendConfig::Local(s3db::LocalParams {
-                bucket: storage.dir.to_string_lossy().into_owned(),
+                bucket: partition_dir(storage, product).to_string_lossy().into_owned(),
                 engine: s3db::LocalEngine::Redb,
             }));
         }
@@ -75,10 +94,10 @@ pub fn connect(storage: &Storage, credentials: &Credentials) -> Result<Arc<dyn B
             secret_access_key: s3db::config::Secret::new(secret_access_key),
         }),
     };
-    let mut backend = s3db::build_backend(&config)?;
-    if !storage.prefix.is_empty() {
-        backend = Arc::new(Prefixed::new(backend, &storage.prefix));
-    }
+    let backend = Arc::new(Prefixed::new(
+        s3db::build_backend(&config)?,
+        &partition_prefix(storage, product),
+    ));
     Ok(Arc::new(s3db::RetryBackend::new(
         backend,
         BUCKET_RETRIES,

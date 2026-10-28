@@ -11,7 +11,7 @@ use s3db::{Backend, Cas, DeleteOutcome, ListPage, LocalEngine};
 
 use super::index::{self, Entry, PENDING, QUEUE};
 use super::model::Report;
-use super::{ATTACHMENTS, Change, Insert, NewReport, Store, test_store};
+use super::{ATTACHMENTS, Change, Insert, NewReport, Product, Store, test_store};
 use crate::secrets::{random_hex, sha256};
 
 type Test = Result<(), Box<dyn Error>>;
@@ -34,7 +34,7 @@ impl Drop for Scratch {
 
 fn new_report(fingerprint: &str, title: &str, day: &str) -> Result<NewReport, Box<dyn Error>> {
     Ok(NewReport {
-        id: random_hex()?,
+        id: Product::Psport.new_id()?,
         delete_hash: sha256(b"code"),
         fingerprint: fingerprint.to_owned(),
         product: "psport",
