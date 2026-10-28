@@ -8,7 +8,7 @@
 pub mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub(crate) mod unported;
 pub mod windows;
 
@@ -19,7 +19,9 @@ use macos as sys;
 #[cfg(windows)]
 use windows::sys;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub(crate) use linux::runner as ports;
+#[cfg(target_os = "macos")]
 pub(crate) use unported as ports;
 #[cfg(windows)]
 pub(crate) use windows::runner as ports;

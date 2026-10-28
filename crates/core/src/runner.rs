@@ -122,6 +122,11 @@ impl fmt::Display for Pin {
 pub enum Origin {
     /// A published release fetched as it is, not built here.
     Download,
+    /// A release bundled with every library it links, run without the
+    /// toolchain that built it.
+    Bundle,
+    /// Fetched from the binary cache its CI fills, as built at its commit.
+    Cache,
     /// Built on this machine from its sources.
     Local,
 }

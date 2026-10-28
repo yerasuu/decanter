@@ -8,7 +8,8 @@
 //! nobody vetted for decanter, so it is built only once that commit was confirmed; on Windows that
 //! confirmation names the branch the remote listed the commit on, which only the remote's answer
 //! carries, so it is recorded by [`crate::os::windows::winbuild::confirm`] and [`confirm`] only
-//! checks it.
+//! checks it. On Linux the checkout's commit is fetched or built as a job of the app, so a commit is
+//! only reported there ([`Error::AppJob`]).
 
 use std::io;
 use std::path::PathBuf;
@@ -16,6 +17,7 @@ use std::path::PathBuf;
 use decanter_core::capabilities::{Reason, Support};
 use decanter_core::runner::{Installed, Pin, Progress, Runner, Status, Tag};
 
+use crate::download;
 use crate::os::{self, windows};
 use crate::paths::Root;
 use crate::port::Port;
@@ -34,6 +36,16 @@ pub enum Error {
     Package(windows::package::Error),
     #[error("{0}")]
     Build(windows::winbuild::Error),
+    #[error("the release {0} has no bundle of the port")]
+    NoBundle(Tag),
+    #[error("the port's checkout is not on the release {0}, and a bundle only runs for the checkout's own release")]
+    OffTag(Tag),
+    #[error("{0}")]
+    Bundle(download::Error),
+    #[error("could not record the port's bundle: {0}")]
+    Record(io::Error),
+    #[error("the port's checkout is fetched or built at a commit as a job of the app")]
+    AppJob,
 }
 
 const fn port(runner: Runner) -> Option<Port> {
@@ -97,7 +109,7 @@ pub async fn prepare(
 }
 
 /// Installs the newest release, leaving the ones installed before for the user to remove, since
-/// any of them may be the one chosen to play.
+/// any of them may be the one chosen to play. On Linux the checkout's git moves the port instead.
 ///
 /// # Errors
 ///
