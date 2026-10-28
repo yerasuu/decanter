@@ -204,6 +204,7 @@ impl CallReport {
                 "stub" => report.stubs.push(call),
                 "failed" if call.error.is_some() => report.failed.push(call),
                 "status" if call.error.is_some() => report.status.push(call),
+                "offline" => report.offline.push(call),
                 _ => {}
             }
         }
@@ -212,6 +213,7 @@ impl CallReport {
             &mut report.stubs,
             &mut report.failed,
             &mut report.status,
+            &mut report.offline,
         ] {
             list.sort_by_key(|call| Reverse(call.count));
         }
@@ -221,6 +223,19 @@ impl CallReport {
     /// Expected statuses and offline answers alone don't make a run's report worth a failure record.
     pub const fn is_empty(&self) -> bool {
         self.unimplemented.is_empty() && self.stubs.is_empty() && self.failed.is_empty()
+    }
+
+    /// A run with online play: what the port counted as offline is a failure of the online path.
+    pub fn restore_offline(&mut self) {
+        for call in mem::take(&mut self.offline) {
+            if call.error.is_some() {
+                self.failed.push(call);
+            } else {
+                self.stubs.push(call);
+            }
+        }
+        self.failed.sort_by_key(|call| Reverse(call.count));
+        self.stubs.sort_by_key(|call| Reverse(call.count));
     }
 
     /// Only for a run without online play: with it, a signed-out or unreachable answer is a real
@@ -504,6 +519,8 @@ impl Scanner {
             .map(|mut report| {
                 if self.is_offline {
                     report.set_aside_offline();
+                } else {
+                    report.restore_offline();
                 }
                 report
             })
