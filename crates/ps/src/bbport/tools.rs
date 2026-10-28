@@ -15,9 +15,9 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::{Bbport, Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
+use crate::os::linux::toolchain::Toolchain;
 use crate::paths::Root;
 use crate::port::Port;
-use crate::toolchain::Toolchain;
 
 /// Imports bbport's helpers and prints JSON for one request: `mods <dir>`,
 /// `patches <dir>`, `dll <upscaler> [loader]`. Everything arrives through

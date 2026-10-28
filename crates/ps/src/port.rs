@@ -31,7 +31,7 @@ impl Port {
     }
 
     /// The Nix binary cache its CI publishes each default-branch build to
-    /// ([`crate::prebuilt`]), as a release of the same repository.
+    /// ([`crate::os::linux::prebuilt`]), as a release of the same repository.
     pub const fn binary_cache(self) -> Option<&'static str> {
         match self {
             Self::Bbport => Some("https://github.com/yerasuu/psport/releases/download/nix-cache"),
@@ -39,7 +39,7 @@ impl Port {
         }
     }
 
-    /// Where its CI publishes each release's bundle ([`crate::bundle`]), as assets of the tag's own
+    /// Where its CI publishes each release's bundle ([`crate::os::linux::bundle`]), as assets of the tag's own
     /// release: `<this>/<tag>/<asset>`.
     pub const fn release_downloads(self) -> Option<&'static str> {
         match self {

@@ -4,7 +4,7 @@
 //!
 //! Only the remotes written here are ever asked: psport's own ([`Port::upstream`], the one Linux
 //! follows) and Dear ImGui's. Every value the remote sends back is checked before it goes anywhere
-//! (a branch name as [`crate::updater`] accepts it, 40-hex commits), and every argument that comes
+//! (a branch name as [`crate::os::linux::updater`] accepts it, 40-hex commits), and every argument that comes
 //! from outside goes after `--end-of-options`. git is decanter's pinned MinGit ([`program`]), never
 //! the user's, run with only the variables in [`ENV`] (no `GIT_*` of the caller's), without a system
 //! configuration, never looking for a repository above the work folder, and with [`OPTIONS`]: HTTPS
@@ -20,11 +20,11 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use super::{Commit, Error, Head, Log, Stage, pins, toolchain};
+use crate::os::linux::updater;
 use crate::paths::Root;
 use crate::platform;
 use crate::port::Port;
 use crate::remote::RemoteError;
-use crate::updater;
 
 /// The remote psport's sources come from: the one Linux follows.
 pub const REMOTE: &str = Port::Bbport.upstream();

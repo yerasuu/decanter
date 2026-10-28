@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::os::linux::prebuilt::valid_commit;
 use crate::paths::Root;
 use crate::port::Port;
-use crate::prebuilt::valid_commit;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Failed {

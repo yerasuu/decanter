@@ -12,9 +12,9 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
+use crate::os::linux::prebuilt::Release;
 use crate::paths::Root;
 use crate::port::Port;
-use crate::prebuilt::Release;
 use crate::remote::RemoteError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,7 +139,7 @@ pub async fn check(repo: &Path, upstream: &str) -> Result<Check, RemoteError> {
             .filter_map(|line| line.split_once('\t'))
             .filter(|&(commit, name)| {
                 (name.starts_with("refs/heads/") || name.starts_with("refs/tags/"))
-                    && crate::prebuilt::valid_commit(commit)
+                    && crate::os::linux::prebuilt::valid_commit(commit)
             })
             .map(|(commit, _)| commit),
     );
@@ -250,7 +250,7 @@ pub async fn upstream_commit(repo: &Path) -> Option<String> {
         tracing::info!(repo = %repo.display(), head, "checkout is on a commit upstream lacks");
         return None;
     }
-    crate::prebuilt::valid_commit(&head).then_some(head)
+    crate::os::linux::prebuilt::valid_commit(&head).then_some(head)
 }
 
 /// The highest `vX.Y.Z` tag on `commit`, a full one [`upstream_commit`] vouched for: the release
@@ -271,7 +271,7 @@ pub async fn release_tag(repo: &Path, commit: &str) -> Option<String> {
         }
     };
     tags.lines()
-        .filter(|tag| crate::prebuilt::valid_tag(tag))
+        .filter(|tag| crate::os::linux::prebuilt::valid_tag(tag))
         .max_by_key(|tag| version(tag))
         .map(str::to_owned)
 }

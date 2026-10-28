@@ -1,7 +1,7 @@
 //! Why a port's upstream could not be asked, told apart so the Ports view
 //! says what the user can do about it instead of a raw git or HTTP error.
 
-use crate::prebuilt::LookupError;
+use crate::os::linux::prebuilt::LookupError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RemoteError {
@@ -16,7 +16,7 @@ pub enum RemoteError {
 }
 
 impl RemoteError {
-    /// Read off git's stderr, which [`crate::updater`] keeps in English
+    /// Read off git's stderr, which [`crate::os::linux::updater`] keeps in English
     /// (`LC_ALL=C`) so these matches hold whatever the user's locale.
     pub fn from_git(stderr: String) -> Self {
         const OFFLINE: [&str; 6] = [

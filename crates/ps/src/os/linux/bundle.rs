@@ -1,7 +1,7 @@
 //! A release of the port as its CI bundles it (psport's `tools/bundle.sh`): the programs with every
 //! library they link, glibc's loader included, run from the library by the host's bash with the
 //! host's Vulkan drivers, and no nix anywhere. Release runs a tag's bundle when CI published one;
-//! tags from before the bundles only have the nix cache ([`crate::prebuilt`]).
+//! tags from before the bundles only have the nix cache ([`crate::os::linux::prebuilt`]).
 //!
 //! A bundle is checked where it enters: its checksum file is the tag release's own, the archive
 //! must match it and stay under [`download::MAX_BYTES`], and what `tar` extracts must be one folder of plain
@@ -38,7 +38,7 @@ fn bundles(root: &Root, port: Port) -> PathBuf {
         .with_file_name(format!("{}-bundles", port.name().to_lowercase()))
 }
 
-/// The bundle of `tag`, a tag [`crate::prebuilt::valid_tag`] accepts.
+/// The bundle of `tag`, a tag [`crate::os::linux::prebuilt::valid_tag`] accepts.
 pub fn dir(root: &Root, port: Port, tag: &str) -> PathBuf {
     bundles(root, port).join(tag)
 }

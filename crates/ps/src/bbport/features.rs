@@ -10,8 +10,8 @@ use serde::Deserialize;
 use std::env::consts::OS;
 
 use super::{Bbport, Names};
+use crate::os::linux::toolchain::Toolchain;
 use crate::port::Port;
-use crate::toolchain::Toolchain;
 
 /// What the answer may hold before it's taken for something else: psport's
 /// table has a dozen or two rows of a sentence each.

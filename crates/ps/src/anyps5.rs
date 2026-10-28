@@ -19,9 +19,9 @@ use decanter_core::platform::link_dir;
 use tokio::process::Command;
 
 use crate::library::Game;
+use crate::os::linux::toolchain::Toolchain;
 use crate::paths::Root;
 use crate::port::Port;
-use crate::toolchain::Toolchain;
 
 /// Module folders the relinker reads beside the executable and rewrites under `app0/`.
 const MODULE_DIRS: [&str; 3] = ["sce_module", "sce_modules", "prx"];

@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use super::{Bbport, Names};
+use crate::os::linux::toolchain::Toolchain;
 use crate::port::Port;
-use crate::toolchain::Toolchain;
 
 /// What the answer may hold before it's taken for something else: a title's switches with
 /// their texts in a few languages come to a few kilobytes.

@@ -2,7 +2,7 @@
 //! GPU library, its two helper programs and the DLLs they load, in one folder of a zip attached to each
 //! `vX.Y.Z` release with its `.sha256` beside it. Only tagged releases are published; which ones carry
 //! a package comes from the releases API of its repository, asked anonymously, and the package itself from the release's
-//! downloads, as the Linux bundles ([`crate::bundle`]).
+//! downloads, as the Linux bundles ([`crate::os::linux::bundle`]).
 //!
 //! A package is checked where it enters: its tag and asset names must be the exact published ones, the
 //! archive must match the release's own checksum and size and stay under [`download::MAX_BYTES`], every
@@ -25,9 +25,9 @@ use serde::{Deserialize, Serialize};
 use crate::archive::{self, Limits, Names, Top};
 use crate::bbport::direct::{EXECUTABLE, GPU_LIBRARY};
 use crate::download;
+use crate::os::linux::prebuilt;
 use crate::paths::Root;
 use crate::port::Port;
-use crate::prebuilt;
 use crate::winbuild::assemble::{MAX_PATCH_BYTES, MAX_PATCHES, PATCHES};
 
 /// The [`crate::bbport::LauncherSettings`] key the version Jugar runs is kept under.

@@ -739,7 +739,9 @@ pub async fn built_commit(root: &Root, commit: &Commit) -> Option<Built> {
             return None;
         }
     };
-    if record.commit != commit.as_str() || record.remote != git::REMOTE || !crate::updater::valid_branch(&record.branch)
+    if record.commit != commit.as_str()
+        || record.remote != git::REMOTE
+        || !crate::os::linux::updater::valid_branch(&record.branch)
     {
         tracing::warn!(path = %path.display(), "record of a Windows build that doesn't match its name");
         return None;

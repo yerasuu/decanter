@@ -2,7 +2,7 @@
 //!
 //! The host's own tools when they cover the port, then the system's nix,
 //! then decanter's own nix-portable, downloaded the first time it is
-//! needed. A release's bundle ([`crate::bundle`]) needs none of them: it
+//! needed. A release's bundle ([`crate::os::linux::bundle`]) needs none of them: it
 //! carries its libraries and only asks the host for bash. The Vulkan drivers follow the same choice: a port built by the
 //! host loads the host's Mesa, one built by nix only loads nix's, which is
 //! why every nix environment here sets `VK_DRIVER_FILES` itself and why a

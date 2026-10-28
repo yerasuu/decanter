@@ -39,9 +39,9 @@ pub use settings::LauncherSettings;
 
 use crate::learned;
 use crate::library::{Game, Platform};
+use crate::os::linux::toolchain::Toolchain;
 use crate::paths::Root;
 use crate::port::Port;
-use crate::toolchain::Toolchain;
 use names::single_memory_model;
 
 const BLOODBORNE_IDS: [&str; 6] = [
@@ -177,7 +177,7 @@ impl Bbport {
     /// with another toolchain, or after the checkout moved, builds again
     /// instead of failing to load drivers or running the old code. A second
     /// line names the store path of a build fetched from the port's binary
-    /// cache, or the tag of a release bundle ([`crate::bundle`]), instead.
+    /// cache, or the tag of a release bundle ([`crate::os::linux::bundle`]), instead.
     fn build_marker(&self) -> PathBuf {
         self.checkout.join("out/decanter-toolchain")
     }
@@ -194,13 +194,15 @@ impl Bbport {
     pub async fn prebuilt(&self) -> Option<PathBuf> {
         self.fetched()
             .await
-            .filter(|path| crate::prebuilt::valid_store_path(path))
+            .filter(|path| crate::os::linux::prebuilt::valid_store_path(path))
             .map(PathBuf::from)
     }
 
     /// The release whose bundle the marker names, when the current build is one.
     pub async fn bundle_tag(&self) -> Option<String> {
-        self.fetched().await.filter(|tag| crate::prebuilt::valid_tag(tag))
+        self.fetched()
+            .await
+            .filter(|tag| crate::os::linux::prebuilt::valid_tag(tag))
     }
 
     /// The current build's marker, which changes whenever the port is built or fetched again:
@@ -213,7 +215,7 @@ impl Bbport {
     /// fetched build, else the checkout built in place.
     async fn port_dir(&self) -> PathBuf {
         if let Some(tag) = self.bundle_tag().await {
-            return crate::bundle::dir(&self.root, Port::Bbport, &tag);
+            return crate::os::linux::bundle::dir(&self.root, Port::Bbport, &tag);
         }
         self.prebuilt().await.unwrap_or_else(|| self.checkout.clone())
     }
@@ -221,7 +223,7 @@ impl Bbport {
     /// [`Self::port_dir`] as the host sees it, where `toolchain` may keep its store elsewhere.
     async fn host_port_dir(&self, toolchain: &Toolchain) -> PathBuf {
         if let Some(tag) = self.bundle_tag().await {
-            return crate::bundle::dir(&self.root, Port::Bbport, &tag);
+            return crate::os::linux::bundle::dir(&self.root, Port::Bbport, &tag);
         }
         self.prebuilt().await.map_or_else(
             || self.checkout.clone(),

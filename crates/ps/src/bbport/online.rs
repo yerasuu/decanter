@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use super::{Bbport, LauncherSettings, Names};
+use crate::os::linux::toolchain::Toolchain;
 use crate::port::Port;
-use crate::toolchain::Toolchain;
 
 /// psport's launcher's defaults (`scripts/online.py`): Seamless Hunt's servers.
 pub const SHADNET_SERVER: &str = "play.seamlesshunt.com:31313";
