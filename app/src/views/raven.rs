@@ -15,7 +15,7 @@ use rust_i18n::t;
 use crate::runners;
 use crate::state::{AppState, Raven};
 use crate::theme;
-use crate::widgets::{ButtonKind, button, progress_bar};
+use crate::widgets::{ButtonKind, button, confirm_panel, progress_bar};
 
 /// The end of a failed run's output shown under its program; the whole run is in its log.
 const SHOWN_RUN_LINES: usize = 8;
@@ -116,10 +116,10 @@ fn build_card(raven: &Entity<Raven>, cx: &App) -> AnyElement {
                 "raven-remove",
                 ButtonKind::Secondary,
                 t!("raven.build.remove"),
-                removing,
+                removing || state.is_confirming_remove(),
             )
-            .when(!removing, |b| {
-                b.on_click(move |_, _, cx| raven.update(cx, Raven::remove_build))
+            .when(!removing && !state.is_confirming_remove(), |b| {
+                b.on_click(move |_, _, cx| raven.update(cx, Raven::ask_remove))
             }),
         );
     } else if !state.is_confirming() {
@@ -139,6 +139,12 @@ fn build_card(raven: &Entity<Raven>, cx: &App) -> AnyElement {
         .child(theme::h3(t!("raven.build.title")))
         .child(status)
         .children(state.is_confirming().then(|| confirmation(raven)))
+        .children(
+            state
+                .built()
+                .filter(|_| state.is_confirming_remove())
+                .map(|built| remove_confirmation(raven, built.size)),
+        )
         .children(state.error().map(theme::error))
         .children(tail)
         .child(actions)
@@ -175,6 +181,24 @@ fn confirmation(raven: &Entity<Raven>) -> AnyElement {
                 ),
         )
         .into_any_element()
+}
+
+/// What removing takes away, with the size when it is measured.
+fn remove_confirmation(raven: &Entity<Raven>, size: Option<u64>) -> AnyElement {
+    let (yes, no) = (raven.clone(), raven.clone());
+    let body = match size {
+        Some(size) => t!("raven.confirm_remove.body_size", size = crate::format::bytes(size)),
+        None => t!("raven.confirm_remove.body"),
+    };
+    confirm_panel(
+        "raven-confirm-remove",
+        t!("raven.confirm_remove.title"),
+        body,
+        t!("raven.confirm_remove.confirm"),
+        move |_, _, cx| yes.update(cx, Raven::remove_build),
+        move |_, _, cx| no.update(cx, Raven::cancel_remove),
+    )
+    .into_any_element()
 }
 
 fn progress(progress: Option<&Progress>) -> Div {

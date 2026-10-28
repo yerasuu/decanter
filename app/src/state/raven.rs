@@ -34,6 +34,8 @@ pub struct Raven {
     built: Option<Built>,
     /// The confirmation the section asks for before a build.
     confirming: bool,
+    /// The confirmation the section asks for before removing the build.
+    confirming_remove: bool,
     /// The build running, which dropping stops.
     building: Option<Task<()>>,
     progress: Option<Progress>,
@@ -63,6 +65,7 @@ impl Raven {
                 programs: Vec::new(),
                 built: None,
                 confirming: false,
+                confirming_remove: false,
                 building: None,
                 progress: None,
                 removing: false,
@@ -92,6 +95,10 @@ impl Raven {
 
     pub const fn is_confirming(&self) -> bool {
         self.confirming
+    }
+
+    pub const fn is_confirming_remove(&self) -> bool {
+        self.confirming_remove
     }
 
     pub const fn is_building(&self) -> bool {
@@ -169,6 +176,19 @@ impl Raven {
         cx.notify();
     }
 
+    pub fn ask_remove(&mut self, cx: &mut Context<Self>) {
+        if self.building.is_none() && !self.removing {
+            self.confirming_remove = true;
+            self.error = None;
+            cx.notify();
+        }
+    }
+
+    pub fn cancel_remove(&mut self, cx: &mut Context<Self>) {
+        self.confirming_remove = false;
+        cx.notify();
+    }
+
     /// The player's yes, recorded before the build starts.
     pub fn confirm_build(&mut self, cx: &mut Context<Self>) {
         if !std::mem::take(&mut self.confirming) || self.building.is_some() {
@@ -200,6 +220,7 @@ impl Raven {
 
     /// Removes Raven's build and toolchain, never while a program runs or a build runs.
     pub fn remove_build(&mut self, cx: &mut Context<Self>) {
+        self.confirming_remove = false;
         let running = &AppState::get(cx).background.read(cx).running;
         if self.programs.iter().any(|program| running.contains(&program.game_id)) {
             self.error = Some(Text::new("raven.errors.remove_running"));

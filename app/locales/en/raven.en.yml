@@ -25,6 +25,10 @@ raven.confirm.commit: 'Commit: %{commit}'
 raven.confirm.text: 'decanter will download Raven''s code at this commit from GitHub (about 18 MB), the libraries it needs to build (from Nix, if your system lacks them) and the data its build downloads, and compile it in your library. It takes a few minutes. The build folder takes up to about 5 GB and the runtime about 140 MB. It is third-party code that decanter does not review.'
 raven.confirm.yes: Download and build
 raven.confirm.no: Cancel
+raven.confirm_remove.title: Remove Raven?
+raven.confirm_remove.body_size: 'Raven''s build and its toolchain will be removed from your library, freeing %{size}. Your Windows programs stay in the list; building Raven again downloads everything again.'
+raven.confirm_remove.body: 'Raven''s build and its toolchain will be removed from your library. Your Windows programs stay in the list; building Raven again downloads everything again.'
+raven.confirm_remove.confirm: Remove Raven
 raven.programs.title: Windows programs
 raven.programs.add: Add…
 raven.programs.pick_title: Choose a Windows program
