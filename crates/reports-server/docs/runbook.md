@@ -18,7 +18,9 @@ curl -s -H "$A" "$B/admin/reports?product=psport&title=CUSA00000&offset=100"
 ```
 
 Filters are validated (`fingerprint` 16 hex, `day` `YYYY-MM-DD`, `product` `decanter|psport`, `title` `CUSA00000`);
-anything else is `400 invalid_filter`. `limit` is at most 500.
+anything else is `400 invalid_filter`. `limit` is at most 500. Without `product` the list merges both partitions,
+newest received day first (within one day, decanter's before psport's); with it, only that partition is read. Ids
+start with their product's letter (`d…` decanter, `p…` psport), so the id routes below never need the product.
 
 ## Hide, resolve, delete one report
 
@@ -32,7 +34,8 @@ curl -s -H "$A" -o log.bin $B/admin/reports/$ID/attachment # the private log, as
 
 ## A flooded group, in bulk
 
-The group routes act on every report with that fingerprint and answer 204, or 404 when the group has none.
+The group routes act on every report with that fingerprint, in both partitions, and answer 204, or 404 when neither
+holds one. A 500 halfway (the second partition failing) leaves the first one changed: repeat the call.
 
 ```sh
 curl -s -H "$A" "$B/admin/reports?fingerprint=$FP&day=$DAY"   # look first
@@ -46,16 +49,18 @@ Hide first, delete when sure. Each call clears the cached index at once.
 
 ## Bucket full and 503
 
-- `503 storage_full` on an upload means the store or the attachments are at their cap and nothing could be
-  evicted: at `max_reports` the oldest *unresolved* reports are evicted in 1% batches, so only a store made of
-  resolved reports (never evicted) answers 503. Delete or lower `resolved_retention_days`, or resolve nothing more
+- `503 storage_full` on an upload means that product's partition (the caps count per partition) or its attachments
+  are at their cap and nothing could be evicted: at `max_reports` the oldest *unresolved* reports of the partition
+  are evicted in 1% batches, so only a partition made of resolved reports (never evicted) answers 503; the other
+  product keeps accepting uploads. Delete or lower `resolved_retention_days`, or resolve nothing more
   until the sweep runs; then raise `limits.max_reports` if the volume is genuine.
 - A full *bucket* (MinIO's quota, or its disk) shows as `500 internal` on uploads and `request failed` in the log
   (writes to the bucket failing). Look at the usage (`mc du home/decanter-reports`), delete the flooded group,
   or raise the quota (`mc quota set home/decanter-reports --size ...`). Size it for `max_reports` x 64 KiB plus
-  `max_attachments` x 5 MiB, plus small index objects.
+  `max_attachments` x 5 MiB, twice (the caps are per partition), plus small index objects.
 - An unreachable bucket shows the same way. `GET /healthz` answers 200 regardless (it does not touch the bucket);
-  `decanter-reports --check-config` with the same credentials makes one read-only round trip and says what fails.
+  `decanter-reports --check-config` with the same credentials makes one read-only round trip per partition and says
+  what fails, one line each.
 - Never delete objects in the bucket by hand: a report, its group counters and the totals change together in one
   transaction, and the sweep removes what nothing refers to (blobs whose upload died, index entries that no longer
   match, the leftovers of a removal that was cut off). Deleting a report object by hand leaves its group counting it.
@@ -69,7 +74,7 @@ The bucket is the whole state. Two options, both with the objects still encrypte
 passphrase, and the passphrase is useless without a backup: keep both, apart):
 
 - **Bucket replication** (MinIO's `mc mirror --watch home/decanter-reports backup/decanter-reports`
-  or server-side replication to a second MinIO): an exact copy, including `.conf/encryption.json`. A mirror taken while
+  or server-side replication to a second MinIO): an exact copy, including both partitions' `.conf/encryption.json`. A mirror taken while
   the server writes may catch a transaction half applied; s3db's transaction records travel with it, and the restored
   server's recovery finishes or rolls them back at its first start.
 - **s3db's logical backup** (`s3db::backup::backup_collection` / `restore_collection`): per collection, fuzzy-snapshot
@@ -81,26 +86,36 @@ the private attachments: keep them as private as the bucket.
 
 ### Looking inside
 
-`s3db-inspect` (from the s3db repository at the pinned tag: `cargo build --release --bin s3db-inspect`) lists,
-counts and decrypts objects by hand. It takes the passphrase from `S3DB_PASSPHRASE` (never an argument) and the
-bucket from `--config <file.json>`, a serialized s3db `BackendConfig` that holds the secret access key: create it
-with `umask 077` in a private temporary directory and delete it afterwards. It only opens buckets the server already
-initialized and changes nothing without `--yes`/`--apply`; never use those on the live bucket.
+Every key of the bucket is under a partition prefix (`decanter/`, `psport/`, behind the optional root), and s3db
+seals each object with its key *inside* the partition as associated data. `s3db-inspect` knows no prefix: it can
+list and count a partition's keys, never decrypt them. So the server carries its own read-only inspector, which
+connects exactly as the server does (same config, same prefix layer) and opens the partition's cipher without ever
+creating one:
 
 ```sh
-S3DB_PASSPHRASE="$(cat /etc/decanter-reports/storage.passphrase)" s3db-inspect --config "$TMP/bucket.json" ls groups/ 20
-S3DB_PASSPHRASE="$(cat /etc/decanter-reports/storage.passphrase)" s3db-inspect --config "$TMP/bucket.json" get meta/totals.json
+export DECANTER_REPORTS_CONFIG=/etc/decanter-reports/config.toml
+export DECANTER_REPORTS_PASSPHRASE_FILE=/etc/decanter-reports/storage.passphrase
+export DECANTER_REPORTS_ACCESS_KEY_ID_FILE=/etc/decanter-reports/s3.access_key_id
+export DECANTER_REPORTS_SECRET_ACCESS_KEY_FILE=/etc/decanter-reports/s3.secret_access_key
+decanter-reports inspect psport ls groups/ 20          # keys and sizes, at most 1000; "(more after <key>)" if cut
+decanter-reports inspect decanter get meta/totals.json # one object, decrypted, as JSON on stdout
+decanter-reports inspect psport get reports/p<32 hex>.json
 ```
 
-It knows nothing of this server's `storage.prefix`, and each object is sealed with its key (without the prefix) as
-associated data: on a bucket with a prefix it can list and count (`ls reports/idx/`), not decrypt. That is why the
-example config uses a bucket of its own with no prefix. Its `--local` reads the deprecated `files` engine, not the
-local driver's database file. Layout: `reports/<id>.json`, `groups/<fingerprint>.json`, `meta/totals.json`,
-`attachments/` (blobs), `idx/` (the ordered lists) and `.conf/` (encryption config and transaction records).
+It needs the passphrase and the bucket keys but not the admin key, writes nothing, refuses a partition that is not
+initialized (and, with the `local` driver, one whose directory the server has not created; stop the server first,
+since its database file is locked while it runs). What it prints is decrypted bucket content (delete-code hashes,
+attachment names): treat the output as private as the bucket. Attachments are blobs, read them through
+`GET /admin/reports/<id>/attachment` instead.
+
+Layout of each partition: `reports/<id>.json`, `groups/<fingerprint>.json`, `meta/totals.json`,
+`meta/sequence.json`, `meta/sweep.json`, `attachments/` (blobs), `idx/` (the ordered lists) and `.conf/` (encryption
+config and transaction records).
 
 ## What to watch
 
-The log has no addresses, codes or report contents, only counts. With `journalctl -u decanter-reports`:
+The log has no addresses, codes or report contents, only counts; storage lines name their partition
+(`product="decanter"` or `"psport"`). With `journalctl -u decanter-reports`:
 
 | Look for | Means |
 |---|---|

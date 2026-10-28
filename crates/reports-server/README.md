@@ -5,8 +5,8 @@ pages. One Rust binary, no database (everything in an S3-compatible bucket throu
 accounts, no JavaScript. It speaks plain HTTP on loopback; a tunnel in
 front exposes the port and terminates TLS (see `docs/deploy.md`).
 
-Design decisions live in decanter's board: #985, #986, #987, #988, #989, #991, #1033, #1034, #1047, #1049 (tasks
-#993, #1048). `docs/design.md` has the data model.
+Design decisions live in decanter's board: #985, #986, #987, #988, #989, #991, #1033, #1034, #1047, #1049, #1055
+(tasks #993, #1048, #1056). `docs/design.md` has the data model.
 
 ## How it works
 
@@ -15,6 +15,11 @@ crate and sends it after the player previews it. This server runs the **same cra
 receives: if anything does not fit the schema, the whole report is refused with the path and rule that failed (never
 the value) and nothing is stored. A report that passes is stored exactly as validated and published at once, with no
 human review. Because that is the last barrier, every value is treated as untrusted and every page escapes it.
+
+The bucket is split by product (#1055): the reports of `decanter` and of `psport` live in two partitions,
+`decanter/` and `psport/`, each its own s3db store with its own encryption config, reports, groups, indexes,
+attachments and totals. A report id is the product's letter (`d` or `p`) followed by 32 hex characters, so every
+route that takes an id goes straight to its partition; anything else is an unknown id.
 
 `decanter-report` is a path dependency (`../report`), a crate of the same repository. This crate is excluded from
 decanter's workspace and has its own `Cargo.lock`, so build and test it from this directory
@@ -28,14 +33,14 @@ tag; `.cargo/config.toml` makes cargo fetch it with the system git.
 | `POST /v1/reports` | anyone, rate limited, `Content-Type: application/json` | 201 `{id, delete_code, url, fingerprint}`; 422 `{rejections:[{path, rule}]}`; 413 above 64 KiB; 415 without the JSON content type; 429 with `Retry-After` |
 | `DELETE /v1/reports/<id>` | owner, header `X-Delete-Code` | 204; 404 for an unknown id or a wrong code (identical); 429 once the address has made too many wrong codes |
 | `PUT /v1/reports/<id>/attachment` | owner, header `X-Delete-Code`, rate limited | 204; one per report, up to 5 MiB, private; 409 if there is one or the report is resolved |
-| `GET /` | public | reports grouped by fingerprint; `?product=decanter\|psport&title=CUSA00000&resolved=0\|1&page=N` |
+| `GET /` | public | reports grouped by fingerprint, both partitions merged; `?product=decanter\|psport` reads one; `&title=CUSA00000&resolved=0\|1&page=N` |
 | `GET /r/<id>` | public | one report: every field as escaped text, plus the raw JSON |
-| `GET /g/<fingerprint>` | public | the reports of one group |
+| `GET /g/<fingerprint>` | public | the reports of one group, from every partition that holds it |
 | `GET /healthz` | public | `ok` |
-| `GET /admin/reports?limit=&offset=&fingerprint=&day=&product=&title=` | admin | JSON list including hidden reports; the filters (16 hex, `YYYY-MM-DD` received day, `decanter\|psport`, `CUSA00000`) are validated, 400 `invalid_filter` otherwise |
+| `GET /admin/reports?limit=&offset=&fingerprint=&day=&product=&title=` | admin | JSON list including hidden reports, both partitions merged unless `product` is given; the filters (16 hex, `YYYY-MM-DD` received day, `decanter\|psport`, `CUSA00000`) are validated, 400 `invalid_filter` otherwise |
 | `POST /admin/reports/<id>/hide`, `/restore`, `/resolve` | admin | 204 |
 | `DELETE /admin/reports/<id>` | admin | 204 |
-| `POST /admin/groups/<fingerprint>/hide`, `/restore`, `/resolve` | admin | 204 for every report of the group; 404 if the group has none |
+| `POST /admin/groups/<fingerprint>/hide`, `/restore`, `/resolve` | admin | 204 for every report of the group, in both partitions; 404 if neither holds one |
 | `DELETE /admin/groups/<fingerprint>` | admin | 204; deletes the group's reports and their attachments |
 | `GET /admin/reports/<id>/attachment` | admin | the file as `application/octet-stream`, `Content-Disposition: attachment` |
 
@@ -70,6 +75,8 @@ curl -s -H "$A" -X DELETE $B/admin/groups/$FP
 
 `decanter-reports [--check-config] [config.toml]`, or the path in `DECANTER_REPORTS_CONFIG`. With neither, the
 defaults plus the environment apply. `deploy/config.example.toml` lists every key.
+`decanter-reports inspect <decanter|psport> ls [prefix] [limit] | get <key>` lists or decrypts the objects of one
+partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runbook.md`, "Looking inside").
 
 | Key | Default | Environment override |
 |---|---|---|
@@ -83,15 +90,15 @@ defaults plus the environment apply. `deploy/config.example.toml` lists every ke
 | `limits.per_ip_hour` / `per_ip_day` / `global_hour` | 10 / 50 / 500 | `DECANTER_REPORTS_LIMIT_PER_IP_HOUR`, `_PER_IP_DAY`, `_GLOBAL_HOUR` |
 | `limits.get_per_ip_minute` | 120 | `DECANTER_REPORTS_LIMIT_GET_PER_IP_MINUTE` |
 | `limits.failures_per_ip` / `failure_window_secs` | 10 / 600 | `DECANTER_REPORTS_LIMIT_FAILURES_PER_IP`, `_LIMIT_FAILURE_WINDOW_SECS` |
-| `limits.max_reports` / `max_attachments` | 100000 / 2000 | none |
+| `limits.max_reports` / `max_attachments` | 100000 / 2000, per partition | none |
 | `max_connections` | 512 | `DECANTER_REPORTS_MAX_CONNECTIONS` |
 | `header_timeout_secs` | 10 (also the idle keep-alive limit) | `DECANTER_REPORTS_HEADER_TIMEOUT_SECS` |
 | `shutdown_grace_secs` | 5 | `DECANTER_REPORTS_SHUTDOWN_GRACE_SECS` |
 | `log_level` | `info` | `DECANTER_REPORTS_LOG` |
 | `storage.driver` | `local` (`s3`, `r2`) | `DECANTER_REPORTS_STORAGE_DRIVER` |
-| `storage.dir` | `data` (local driver only) | `DECANTER_REPORTS_STORAGE_DIR` |
+| `storage.dir` | `data` (local driver only; partitions in `<dir>/decanter` and `<dir>/psport`) | `DECANTER_REPORTS_STORAGE_DIR` |
 | `storage.bucket`, `endpoint`, `region`, `account_id` (r2) | empty | `DECANTER_REPORTS_STORAGE_BUCKET`, `_STORAGE_ENDPOINT`, `_STORAGE_REGION`, `_STORAGE_ACCOUNT_ID` |
-| `storage.prefix` | empty (s3 and r2 only) | `DECANTER_REPORTS_STORAGE_PREFIX` |
+| `storage.prefix` | empty: the optional common root of the partitions, `<prefix>/decanter/` and `<prefix>/psport/` (s3 and r2 only) | `DECANTER_REPORTS_STORAGE_PREFIX` |
 | `storage.path_style`, `allow_insecure_http` | false, false | `DECANTER_REPORTS_STORAGE_PATH_STYLE`, `_STORAGE_ALLOW_INSECURE_HTTP` |
 | `storage.access_key_id_env` / `_file` | `DECANTER_REPORTS_S3_ACCESS_KEY_ID` / none | `DECANTER_REPORTS_ACCESS_KEY_ID_ENV`, `_ACCESS_KEY_ID_FILE` |
 | `storage.secret_access_key_env` / `_file` | `DECANTER_REPORTS_S3_SECRET_ACCESS_KEY` / none | `DECANTER_REPORTS_SECRET_ACCESS_KEY_ENV`, `_SECRET_ACCESS_KEY_FILE` |
@@ -100,9 +107,10 @@ defaults plus the environment apply. `deploy/config.example.toml` lists every ke
 The server refuses to start without an admin key of at least 32 characters and a storage passphrase of at least 32
 characters (plus the bucket's access key id and secret access key for `s3` and `r2`), and refuses a secret file that
 group or others can read (a path starting with `$CREDENTIALS_DIRECTORY`, from systemd's `LoadCredential=`, and the
-environment variables are exempt). No secret is ever printed or logged. `--check-config` validates them and, for a
-bucket, makes one read-only round trip: it reads the bucket's encryption config and checks that the passphrase opens
-it. `--check-config` also prints warnings for settings that let a client choose its own address (see `docs/deploy.md`). Logs go to stderr through `tracing`
+environment variables are exempt). No secret is ever printed or logged. `--check-config` validates them and makes
+one read-only round trip per partition, printing one line for each: it reads the partition's encryption config and
+says whether it is reachable, whether it is initialized and whether the passphrase opens it (a local partition not
+created yet is not opened, since opening it would create it). `--check-config` also prints warnings for settings that let a client choose its own address (see `docs/deploy.md`). Logs go to stderr through `tracing`
 and hold no report contents and no addresses.
 
 ## Security model
@@ -126,8 +134,9 @@ and hold no report contents and no addresses.
   attachments sent with the right delete code, so rejected traffic cannot use up what real players share; a
   full global cap answers 429 without counting. Page reads have their own bucket (`get_per_ip_minute`, IPv6 by
   /64) with 429 and `Retry-After`; `/healthz` and `/admin` are outside it.
-- **Reads.** Every change is one s3db transaction over the reports, their group and the totals; reads take no lock,
-  so a flood of reads cannot delay an upload. The index reads one `Group` row per group shown, never the reports,
+- **Reads.** Every change is one s3db transaction over the reports, their group and the totals of one partition;
+  reads take no lock, so a flood of reads cannot delay an upload. The index reads one `Group` row per group shown,
+  never the reports (without a product filter from both partitions, merged up to the end of the page),
   and is still rendered once per `index_cache_secs` for each validated filter combination (at most 128 cached keys;
   when full, new combinations are rendered without caching); hiding, resolving or deleting anything clears it, a new
   upload does not, so a new group can take up to that long to appear. The day range and some per-filter figures of
@@ -135,7 +144,8 @@ and hold no report contents and no addresses.
 - **Groups.** The fingerprint ignores the game, so a group can span titles; its row shows the title most of its
   reports name, with that title's most frequent game name and `(+N más)` for the other titles (32 titles and 8
   names per title are tracked; more count as at least one more).
-- **Caps.** At `max_reports` an upload evicts the oldest unresolved reports (1% of the cap per batch, with their
+- **Caps.** Each partition counts its own totals against `max_reports` and `max_attachments`, so the bucket holds up
+  to twice each figure, and a flood of one product never evicts the other's reports. At `max_reports` an upload evicts the oldest unresolved reports (1% of the cap per batch, with their
   attachments, taken from an oldest-first list without reading the rest) instead of failing; resolved reports are never evicted, and if nothing can be freed the answer is
   503. At `max_attachments` the oldest attachments of unresolved reports are removed (their reports stay). Only
   the count is logged. A flood can still push genuine unresolved reports out, which is why the per-address
@@ -144,8 +154,8 @@ and hold no report contents and no addresses.
   `client_ip_header` is set: then it is the rightmost entry of that header that is not itself a trusted proxy. From
   any other peer the header is ignored, since anyone can write it.
 - **Retention.** Unresolved reports received more than `retention_days` ago, and resolved reports resolved more
-  than `resolved_retention_days` ago (unless 0), are deleted with their attachments by a sweep at startup and every
-  24 hours. The same sweep removes blobs no report names and repairs index entries left by failed writes.
+  than `resolved_retention_days` ago (unless 0), are deleted with their attachments by a sweep of each partition at
+  startup and every 24 hours. The same sweep removes blobs no report names and repairs index entries left by failed writes.
 - **Connections.** The process serves with hyper directly: at most `max_connections` at once (the next is closed
   at once), a request head must arrive within `header_timeout_secs` (slow headers and idle keep-alive connections
   are closed), and on SIGTERM open connections get `shutdown_grace_secs` before they are dropped.
@@ -153,9 +163,10 @@ and hold no report contents and no addresses.
   `failure_window_secs`, IPv6 by /48); past it every `/admin/` path and every delete answers 429 with
   `Retry-After` for that address, known route or not, so the 429 names no route. Successes do not count. A
   maintainer locked out this way waits out the window or comes from another address.
-- **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase; the bucket
-  keys and the passphrase are credentials like the admin key. The `local` driver's directory is 0700 and its file
-  0600; the process sets umask 077.
+- **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase (each partition
+  has its own encryption config, opened by the same passphrase); the bucket keys and the passphrase are credentials
+  like the admin key. The `local` driver's directory is 0700 and its file
+  0600 (one per partition); the process sets umask 077.
 - **Admin.** One key, compared in constant time after hashing both sides; 404 without it.
 
 Not covered by the server: a report that passes validation is public. What that guarantee is worth is the schema's

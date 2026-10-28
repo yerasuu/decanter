@@ -3,7 +3,7 @@
 What the server is for, how its parts fit, what it trusts and what it never does. The endpoints and the
 configuration keys are in `README.md`, the deployment in `docs/deploy.md`, the day-to-day work in
 `docs/runbook.md`. The decisions behind this design are on decanter's board: #985, #986, #987, #988, #989, #991,
-#1033, #1034, #1037, #1038, #1041 to #1046 (tasks #982, #993, #994, #1039, #1040).
+#1033, #1034, #1037, #1038, #1041 to #1046, #1047, #1049, #1055 (tasks #982, #993, #994, #1039, #1040, #1048, #1056).
 
 ## Purpose
 
@@ -72,6 +72,23 @@ through `s3db` (`git.yerasuu.com/yerasuu/s3db`, pinned by tag `v0.6.1`): a typed
 database over S3, R2 or a local directory. Everything is in the bucket, attachments included; the bucket is the
 owner's own MinIO. The code is in `src/store/`.
 
+**Partitions (#1055).** The bucket holds two independent s3db stores, one per product: `decanter/` and `psport/`
+(under the optional common root `storage.prefix`, through the server's prefix layer for `s3` and `r2`), or the
+directories `<storage.dir>/decanter` and `<storage.dir>/psport` for the `local` driver. Each has its own encryption
+config (`<partition>/.conf/encryption.json`, derived from the one passphrase), its own transaction records, and
+everything below: a partition is never written by a transaction of the other, and the upload picks it from the
+validated report's `product`. There is no partition per game or per report; psport titles stay a field and an index
+inside `psport/`.
+
+- **Ids.** A report id is the product's letter, `d` or `p`, followed by 32 lowercase hex characters (128 random
+  bits). Every route that takes an id reads its partition from the letter, without a lookup, so an id cannot be
+  ambiguous and asking for it cannot tell anything about the other partition: a malformed id, an id whose letter
+  points at the partition that does not hold it, an unknown id and a wrong or missing delete code all answer the
+  same 404, after the same dummy hash comparison. A fingerprint names no product (it hashes the failure, not the
+  product, although in practice the template ids differ), so group pages and group actions ask both partitions.
+
+The entities below exist once per partition.
+
 - **`Report`** (`reports/<id>`, `#[derive(Entity)]`): `delete_hash`, `fingerprint`, `product`, `title_id`,
   `game_name`, `failure_kind`, `template_id`, `message`, `created_day`, `received_day`, `hidden`, `resolved_at`,
   `attachment` (blob name or none), the validated `json`, plus `seq` (insertion order), `deleted` and `tracked`
@@ -79,8 +96,8 @@ owner's own MinIO. The code is in `src/store/`.
 - **`Group`** (`groups/<fingerprint>`): over the group's visible reports (not hidden, not deleted) the report count,
   the resolved count, the hidden count, the first and last `created_day`, the latest `received_day`, the product,
   kind and latest message, and per title its report and resolved counts and its game names with their counts.
-- **Singletons** under `meta/`: `totals` (reports and attachments stored, what `max_reports` and `max_attachments`
-  are checked against), `sequence` (the next insertion number, which orders reports without storing any time finer
+- **Singletons** under `meta/`: `totals` (reports and attachments stored in the partition, what `max_reports` and
+  `max_attachments` are checked against, so the effective caps of the whole bucket are twice each figure), `sequence` (the next insertion number, which orders reports without storing any time finer
   than a day) and `sweep` (the last sweep's day and sequence, so the sweep only cleans up inserts that cannot still
   be running).
 - **Attachments**: `Blob`s (`attachments/<id>-<random>`), at most 5 MiB, named by the server, never by input.
@@ -104,12 +121,27 @@ transaction that makes them true and removed after the one that makes them false
 report is never missing from a list, and every reader checks an entry against the object it names. A blob is written
 before the transaction that names it and removed if that transaction does not land, so no report points at a
 missing blob. On S3 a transaction holds lock objects; a crash leaves them, and `recover_stale_updates` (at startup
-and every minute) rolls such a transaction back or forward. The daily sweep finishes removals and failed inserts,
-removes blobs no report names (older than an hour) and fixes the group indexes.
+and every minute, for each partition) rolls such a transaction back or forward. The daily sweep, run on each
+partition in turn, finishes removals and failed inserts, removes blobs no report names (older than an hour) and fixes
+the group indexes.
 
 **Bounded reads.** `GET /` reads `Group` rows in the order index, never reports (finding H1 of #1038 at its root);
 the index cache stays. A group page, the admin list and the evictions walk their index and read only what they show
-or take. Eviction at `max_reports` takes the head of `queue/open`; at `max_attachments`, of `queue/attached`.
+or take. Eviction at `max_reports` takes the head of the full partition's `queue/open`; at `max_attachments`, of its
+`queue/attached`: one product's flood never evicts the other's reports.
+
+**Lists across partitions.** With `?product=` the index and the admin list read that partition only. Without it,
+each partition is read up to the end of the requested page (offset plus page size, as one partition alone already
+reads past the offset) and the two lists are merged:
+
+- *Index:* by the order the group index itself uses, latest received day first, then fingerprint. A fingerprint held
+  by both partitions shows as two rows, one per product, each with its own counters; its `/g/` page lists the
+  reports of both.
+- *Admin list and group page:* newest received day first. Insertion order is a per-partition sequence, so within one
+  received day the decanter reports come before the psport ones instead of interleaving by arrival (nothing finer
+  than a day is stored to order them by).
+- *Group actions* (`/admin/groups/<fp>/...`) run on each partition that holds the fingerprint, one after the other;
+  if the second partition fails after the first changed, the answer is 500 and repeating the call finishes it.
 
 **Capped lists.** A group tracks at most 32 titles and 8 game names per title; reports beyond count in an overflow
 counter, and each report records (`tracked`) what it was counted under, so removing it undoes exactly that. A group
@@ -128,8 +160,9 @@ least one more title than it tracks.
   down; SQLite ordered by the current maximum of the matching rows. Ties sort by fingerprint as before.
 - A title page sorts at most 10 000 groups of that title.
 
-Days are UTC `YYYY-MM-DD`; nothing finer is stored, and no address or user agent. Ids and delete codes are 128-bit
-random values from the operating system; the delete code is shown once and only its SHA-256 hash is kept.
+Days are UTC `YYYY-MM-DD`; nothing finer is stored, and no address or user agent. Ids (behind their product letter)
+and delete codes are 128-bit random values from the operating system; the delete code is shown once and only its
+SHA-256 hash is kept.
 Encryption at rest is s3db's: every object is sealed (XChaCha20-Poly1305) under a data key wrapped by a key derived
 from a passphrase (Argon2id) that the server reads as a credential, like the admin key; the bucket provider sees only
 object names and sizes. The bucket credentials and the passphrase are never in `config.toml`; losing the passphrase
@@ -138,16 +171,19 @@ makes the bucket unreadable.
 ## Lifecycle of a report
 
 1. **Upload.** Size cap, JSON content type, per-address and global rate limit, `validate`; on success the report
-   is stored with its group and the totals in one transaction and `{id, delete_code, url, fingerprint}` returned. A rejection returns the path and rule that failed,
-   never the value, and stores nothing.
-2. **Visible.** Public at `/r/<id>` and in its group at once. The index is cached for a few seconds.
+   is stored in its product's partition with its group and the partition's totals in one transaction, and
+   `{id, delete_code, url, fingerprint}` returned, the id starting with the product's letter. A rejection returns the
+   path and rule that failed, never the value, and stores nothing.
+2. **Visible.** Public at `/r/<id>` and in its group at once, and in the merged index and its product's filtered
+   one. The index is cached for a few seconds.
 3. **Attachment (optional).** `PUT` with the delete code; refused once resolved.
 4. **Resolved.** A maintainer marks it (or the whole group). It stays public, marked, loses its attachment and is
    deleted `resolved_retention_days` later (default 90).
 5. **Hidden or deleted.** The maintainer hides a report (404 on the public pages, kept for review) or deletes it;
    the player deletes their own with the code.
 6. **Expiry.** Unresolved reports are deleted after `retention_days` (default 365). At `max_reports` and
-   `max_attachments` the oldest unresolved ones are evicted in batches rather than refusing uploads.
+   `max_attachments`, counted per partition, the oldest unresolved ones of that partition are evicted in batches
+   rather than refusing uploads.
 
 ## Trust and threats
 
@@ -168,8 +204,8 @@ Everything a client sends is hostile, including what looks like decanter's own o
 - **Authentication.** One admin key (at least 32 characters, from a credential file or the environment, held as
   a SHA-256 in memory, constant-time comparison). Without it every `/admin` route, any wrong method and any unknown
   path answer the same 404. Players hold only their delete code.
-- **No oracle.** An unknown id, a malformed id, a wrong code and a missing code answer the same 404 in the same
-  bytes.
+- **No oracle.** An unknown id, a malformed id, an id of the other partition, a wrong code and a missing code answer
+  the same 404 in the same bytes.
 - **Client address.** Read from `client_ip_header` only when the connection comes from a `trusted_proxies`
   address, else from the socket. It is used for the in-memory limits and never written or logged.
 - **Storage.** The bucket holds only encrypted objects (s3db), the bucket credentials and the passphrase are
@@ -195,7 +231,10 @@ and a credential for the admin key, or in a rootless container.
 - Route and middlewares in Traefik, DNS record and tunnel: the owner's (task #994); `docs/deploy.md` has no
   Traefik section yet because it must follow the documentation of the version in use.
 - ~~Moving the storage from SQLite to `s3db`~~: done (#1048), with the licence now AGPL-3.0-or-later (#1049) and the
-  backend the owner's MinIO. Not yet exercised against a real MinIO; `s3db-inspect` cannot decrypt a prefixed bucket.
+  backend the owner's MinIO. Not yet exercised against a real MinIO; `s3db-inspect` cannot decrypt a prefixed
+  bucket, so `decanter-reports inspect` does it per partition.
+- The partitions (#1056) have no migration from the single store that preceded them: nothing was deployed with it.
+  A `local` directory of that layout (`<dir>/s3db.redb`) is not read; the partitions start empty beside it.
 - Real unit start under systemd with `DynamicUser`, `PrivateUsers` and `LoadCredential` (now four credentials), the
   container image build (its secrets' modes) and the forged-header check through the real tunnel are untested.
 - Reports with several failures of one run (today one report per run; a new schema version would be needed).

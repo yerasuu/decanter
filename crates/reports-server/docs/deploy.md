@@ -46,9 +46,11 @@ bodies are capped in size and read time.
 ## The bucket (MinIO)
 
 All state lives in one S3-compatible bucket through [s3db](https://git.yerasuu.com/yerasuu/s3db): reports, groups,
-counters and the private attachments, every object encrypted under a key derived from a passphrase. The owner's
-bucket is a MinIO (or similar) on the home server. Create a bucket of its own and a user that can reach only that
-bucket, with the MinIO client (`mc`; check the commands against the version installed):
+counters and the private attachments, every object encrypted under a key derived from a passphrase. The bucket is
+split by product (#1055): every key the server writes is under `decanter/` or `psport/` (each an s3db store of its
+own), behind the optional root `prefix`. The owner's bucket is a MinIO (or similar) on the home server. Create a
+bucket of its own and a user that can reach only that bucket, with the MinIO client (`mc`; check the commands against
+the version installed):
 
 ```sh
 mc alias set home https://minio.example.lan:9000 <admin user> <admin password>
@@ -70,8 +72,9 @@ mc admin policy attach home decanter-reports --user decanter-reports
 
 The user name is the access key id and the generated password the secret access key; write both into the credential
 files below and nowhere else. The server needs `ListBucket` (every list is a prefix listing) and get, put and delete
-on the objects; nothing else. s3db writes with conditional requests (`If-Match`,
-`If-None-Match`), which MinIO supports.
+on the objects; nothing else. `decanter-reports/*` covers both partitions, `decanter-reports/decanter/*` and
+`decanter-reports/psport/*`. s3db writes with conditional requests (`If-Match`, `If-None-Match`), which MinIO
+supports.
 
 - **Addressing.** `path_style = true` (`https://minio:9000/bucket/key`) unless MinIO answers on wildcard DNS
   (`bucket.minio...`).
@@ -80,14 +83,25 @@ on the objects; nothing else. s3db writes with conditional requests (`If-Match`,
   (`rustls-native-certs`), so a private CA must be installed there. A plain `http://` endpoint is refused unless
   `allow_insecure_http = true`, which is only for MinIO on the same host.
 - **Region.** MinIO accepts any; `us-east-1` is the usual value.
-- **Prefix.** On a bucket shared with something else, `prefix = "decanter-reports"` puts every key under
-  `decanter-reports/` (s3db's own `.conf/` bookkeeping too); then restrict the policy to it: a
-  `"Condition": {"StringLike": {"s3:prefix": ["decanter-reports/*"]}}` on `ListBucket` and
-  `arn:aws:s3:::<bucket>/decanter-reports/*` as the objects' resource. The cost: `s3db-inspect` cannot decrypt a
-  prefixed bucket (`docs/runbook.md`), so a bucket of its own without a prefix is the default.
-- **Quota.** A bucket quota (`mc quota set home/decanter-reports --size 20GiB`) bounds what a flood can take; size it
-  for `max_reports` reports (64 KiB each at most, plus small index objects) and `max_attachments` attachments (5 MiB
-  each at most).
+- **Partitions.** Without a root prefix the keys are `decanter/...` and `psport/...`. Each partition holds its own
+  s3db bookkeeping: `decanter/.conf/encryption.json` and `psport/.conf/encryption.json` (a salt and the data key
+  wrapped by the passphrase; both written by the first start, from the same passphrase) and each one's transaction
+  records under `<partition>/.conf/txn-update`. Nothing is written at the bucket's top level.
+- **Root prefix.** On a bucket shared with something else, `prefix = "decanter-reports"` puts both partitions under
+  it (`decanter-reports/decanter/`, `decanter-reports/psport/`); then restrict the policy to the two of them:
+
+  ```json
+  { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::<bucket>"],
+    "Condition": {"StringLike": {"s3:prefix": ["decanter-reports/decanter/*", "decanter-reports/psport/*"]}} },
+  { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+    "Resource": ["arn:aws:s3:::<bucket>/decanter-reports/decanter/*", "arn:aws:s3:::<bucket>/decanter-reports/psport/*"] }
+  ```
+
+  Without a root prefix on a shared bucket, the same policy names `decanter/*` and `psport/*`. Neither layout can be
+  decrypted by `s3db-inspect` (it knows no prefix); `decanter-reports inspect` can (`docs/runbook.md`).
+- **Quota.** A bucket quota (`mc quota set home/decanter-reports --size 20GiB`) bounds what a flood can take. The
+  caps apply per partition, so size it for twice `max_reports` reports (64 KiB each at most, plus small index
+  objects) and twice `max_attachments` attachments (5 MiB each at most).
 
 ### The passphrase
 
@@ -96,11 +110,12 @@ umask 077
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /etc/decanter-reports/storage.passphrase   # 64 hex characters
 ```
 
-The first start writes the bucket's encryption config (`.conf/encryption.json`: a salt and the data key wrapped by
-a key derived from the passphrase with Argon2id). **Losing the passphrase makes the whole bucket unreadable**: there
+The first start writes each partition's encryption config (`decanter/.conf/encryption.json` and
+`psport/.conf/encryption.json`: a salt and the data key wrapped by a key derived from the passphrase with Argon2id),
+both from this one passphrase. **Losing the passphrase makes the whole bucket unreadable**: there
 is no recovery and no back door. Keep a copy offline (a password manager, paper in a safe), apart from the bucket's
-backups. Changing it later is s3db's `bootstrap::change_passphrase`, which rewraps the data key without re-encrypting
-the objects; this server has no command for it yet.
+backups. Changing it later is s3db's `bootstrap::change_passphrase` on each partition, which rewraps the data key
+without re-encrypting the objects; this server has no command for it yet.
 
 ## Configuration
 
@@ -128,13 +143,21 @@ DECANTER_REPORTS_SECRET_ACCESS_KEY_FILE=/etc/decanter-reports/s3.secret_access_k
 `storage.passphrase_file = "$CREDENTIALS_DIRECTORY/storage_passphrase"` and so on), which the unit's
 `LoadCredential=` lines provide. Any other secret file is refused when group or others can read it (mode `& 0o077`);
 a secret from `$CREDENTIALS_DIRECTORY` or from an environment variable is not mode-checked. Run `--check-config` as
-root for the check above (the overrides replace the credential paths). It prints no secret; for a bucket it reads
-`.conf/encryption.json` once and says whether the bucket is reachable, whether it is initialized, and whether the
-passphrase opens it. It writes nothing.
+root for the check above (the overrides replace the credential paths). It prints no secret, and one line per
+partition: it reads that partition's `.conf/encryption.json` once and says whether it is reachable, whether it is
+initialized, and whether the passphrase opens it. It writes nothing; a failing partition makes it exit non-zero.
 
-With `driver = "local"` (development, or a single host without MinIO) the data is one database file in
-`storage.dir`, created `0700` (a looser existing directory is narrowed with a warning in the log); the process sets
-umask `077`, so the file is `0600`. The passphrase is still required: the local file is encrypted the same way.
+```text
+config ok: listening on 127.0.0.1:8787
+partition decanter: bucket decanter-reports at https://minio.example.lan:9000, prefix decanter/: reachable, the passphrase opens it
+partition psport: bucket decanter-reports at https://minio.example.lan:9000, prefix psport/: reachable, not initialized yet (the first start creates its encryption)
+```
+
+With `driver = "local"` (development, or a single host without MinIO) each partition is one database file, in
+`storage.dir/decanter` and `storage.dir/psport`, created `0700` (a looser existing directory is narrowed with a
+warning in the log); the process sets umask `077`, so the files are `0600`. The passphrase is still required: the
+local files are encrypted the same way. `--check-config` does not open a local partition the server has not created
+yet, and needs the server stopped (the database file is locked while it runs).
 
 ## systemd
 
@@ -228,8 +251,8 @@ above.
 - **Flooded group.** Find it on the index, look at it with `GET /admin/reports?fingerprint=<fp>&day=<day>`, then
   hide it in one call (`POST /admin/groups/<fp>/hide`, reversible with `/restore`), resolve it, or delete it with its
   attachments (`DELETE /admin/groups/<fp>`). Hiding and deleting clear the cached index at once.
-- **Full store.** At `max_reports` uploads evict the oldest unresolved reports in batches of 1% and the log says
-  `report store full: oldest unresolved reports evicted` with a count. Repeated lines mean a flood or too small a
+- **Full store.** At `max_reports` (per partition) uploads evict the oldest unresolved reports of that partition in
+  batches of 1% and the log says `report store full: oldest unresolved reports evicted` with the product and a count. Repeated lines mean a flood or too small a
   cap; resolved reports are never evicted, so a 503 `storage_full` means the store holds only resolved reports
   (lower `resolved_retention_days` or delete some).
 - **Reads.** `get_per_ip_minute` behind a tunnel only works if the client address header is right (see the
@@ -242,5 +265,7 @@ above.
 - A valid report is accepted and one with a private path is refused with 422 (see README, "Try it").
 - The forged-header test in the requirements above passes through the real tunnel.
 - A burst of `GET /` from one address ends in 429 with `Retry-After` while `GET /healthz` still answers 200.
-- `--check-config` says the bucket is reachable and the passphrase opens it; the passphrase has an offline copy.
-- The bucket quota leaves room for `max_reports` (64 KiB each at most) plus `max_attachments` (5 MiB each at most).
+- `--check-config` says both partitions are reachable and the passphrase opens them; the passphrase has an offline
+  copy.
+- The bucket quota leaves room for twice `max_reports` (64 KiB each at most) plus twice `max_attachments` (5 MiB each
+  at most): the caps are per partition.
