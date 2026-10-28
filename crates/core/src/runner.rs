@@ -118,7 +118,7 @@ impl fmt::Display for Pin {
 }
 
 /// How what is installed got there.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Origin {
     /// A published release fetched as it is, not built here.
     Download,

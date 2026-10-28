@@ -5,9 +5,10 @@
 
 use std::collections::VecDeque;
 
-use decanter_core::runner::Progress;
+use decanter_core::runner::{Pin, Progress, Runner};
 use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head};
 use decanter_ps::paths::{self, Root};
+use decanter_ps::runner;
 use gpui::{AsyncApp, Context, Task, WeakEntity};
 
 use super::Ps;
@@ -210,10 +211,12 @@ impl Ps {
             let result = if package::settings_now(&root, cx).await.selected_build.as_ref() == Some(&commit) {
                 Err(Text::new("ps.branch.errors.delete_in_use"))
             } else {
-                winbuild::remove(&root, &commit).await.map_err(|err| {
-                    tracing::warn!(%commit, %err, "could not remove a Windows build");
-                    Text::new("ps.branch.errors.delete").arg("error", err)
-                })
+                runner::remove(&root, Runner::Psport, &Pin::Commit(commit.clone()))
+                    .await
+                    .map_err(|err| {
+                        tracing::warn!(%commit, %err, "could not remove a Windows build");
+                        Text::new("ps.branch.errors.delete").arg("error", err)
+                    })
             };
             if result.is_ok() {
                 tracing::info!(%commit, "Windows build removed");
@@ -303,11 +306,15 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
             cx.notify();
         });
     };
-    let result = winbuild::build(root, head, &mut on_progress, &mut on_line).await;
+    let pin = Pin::Commit(head.commit.clone());
+    let result = runner::prepare(root, Runner::Psport, &pin, &mut on_progress, &mut on_line).await;
     let error = result.as_ref().err().map(|err| {
         Text::new("ps.branch.errors.failed")
-            .text("error", error_text(err))
-            .arg("log", winbuild::log_path(root, &head.commit).display())
+            .text("error", prepare_error_text(err))
+            .arg(
+                "log",
+                runner::log_path(root, Runner::Psport, &pin).map_or_else(String::new, |log| log.display().to_string()),
+            )
     });
     // Reloaded before `building` is cleared: dropping that task is dropping this one, so nothing after would run.
     reload(this, root, cx).await;
@@ -318,6 +325,22 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
         state.error = error;
         cx.notify();
     });
+}
+
+/// Why preparing a build failed: the build's own errors as [`error_text`] words them.
+fn prepare_error_text(err: &runner::Error) -> Text {
+    match err {
+        runner::Error::Build(err) => error_text(err),
+        runner::Error::NotAPort
+        | runner::Error::Unsupported(_)
+        | runner::Error::NotOffered(_)
+        | runner::Error::Package(_)
+        | runner::Error::NoBundle(_)
+        | runner::Error::OffTag(_)
+        | runner::Error::Bundle(_)
+        | runner::Error::Record(_)
+        | runner::Error::AppJob => Text::new("ps.branch.errors.raw").arg("error", err),
+    }
 }
 
 /// Why a build or check failed, in the UI's language where the owner can act on it.

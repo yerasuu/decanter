@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 use decanter_core::capabilities::Feature;
+use decanter_core::runner::Origin;
 use decanter_nix::Toolchain;
 use decanter_ps::bbport::direct;
 use decanter_ps::channel::Channel;
@@ -19,7 +20,7 @@ use rust_i18n::t;
 
 use super::log::LogView;
 use crate::capabilities::Caps;
-use crate::state::{BuildOrigin, Fallback, JobKey, PortState, Ps, Stage, Track};
+use crate::state::{Fallback, JobKey, PortState, Ps, Stage, Track};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
@@ -75,9 +76,10 @@ impl PortsView {
             .and_then(|state| state.toolchain())
             .map(|toolchain| t!("ps.ports.toolchain", name = toolchain_label(toolchain)));
         let origin = state.and_then(PortState::origin).map(|origin| match origin {
-            BuildOrigin::Local => t!("ps.ports.origin.local"),
-            BuildOrigin::Cache => t!("ps.ports.origin.cache"),
-            BuildOrigin::Bundle => t!("ps.ports.origin.bundle"),
+            Origin::Local => t!("ps.ports.origin.local"),
+            Origin::Cache => t!("ps.ports.origin.cache"),
+            // Download is Windows' package, which never runs where ports are built.
+            Origin::Bundle | Origin::Download => t!("ps.ports.origin.bundle"),
         });
         let check = state.and_then(|state| state.check());
         let upstream = check.map(upstream_text);

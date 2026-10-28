@@ -2,8 +2,10 @@
 //! releases that carry it, the versions in the library, which one Jugar runs, and keeping that one
 //! on the newest release unless the user chose another.
 
+use std::io;
 use std::time::Duration;
 
+use decanter_core::runner::{Pin, Runner, Tag};
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::direct::FOLDER_KEY;
 use decanter_ps::download;
@@ -11,6 +13,7 @@ use decanter_ps::os::windows::package::{self, Installed, Offer, PINNED_KEY, SELE
 use decanter_ps::os::windows::winbuild::Commit;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
+use decanter_ps::runner;
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
@@ -185,7 +188,12 @@ impl Ps {
                 set_error(&this, Some(Text::new("ps.package.errors.delete_in_use")), cx);
                 return reload(&this, &root, cx).await;
             }
-            match package::remove(&root, &version).await {
+            // A version's tag is always a release's name; refused like a failed removal otherwise.
+            let removed = match Tag::try_new(version.tag()) {
+                Some(tag) => runner::remove(&root, Runner::Psport, &Pin::Release(tag)).await,
+                None => Err(io::Error::from(io::ErrorKind::InvalidInput)),
+            };
+            match removed {
                 Ok(()) => {
                     tracing::info!(tag = version.tag(), "psport Windows package removed");
                     set_error(&this, None, cx);

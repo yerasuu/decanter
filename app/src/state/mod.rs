@@ -15,8 +15,8 @@ use crate::i18n::Text;
 pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
 pub use ps::{
-    Adding as PsAdding, BuildOrigin, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track,
-    failure_message, folder_error as ps_folder_error, job_label, job_target, online_error, vk_layer_unavailable_text,
+    Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
+    folder_error as ps_folder_error, job_label, job_target, online_error, vk_layer_unavailable_text,
 };
 pub use raven::Raven;
 

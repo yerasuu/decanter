@@ -2,6 +2,7 @@
 //! for, so a host without nix runs a release without downloading nix-portable. Tags from before
 //! the bundles, and anything that stops one, leave the port to the nix cache as before.
 
+use decanter_core::runner::Origin;
 use decanter_nix::Toolchain;
 use decanter_ps::bbport::Bbport;
 use decanter_ps::channel::Channel;
@@ -13,7 +14,7 @@ use gpui::{AsyncApp, WeakEntity};
 
 use super::Ps;
 use super::channel;
-use super::ports::{BuildOrigin, PortState, Stage, set_stage};
+use super::ports::{PortState, Stage, set_stage};
 
 /// The bundle of the release the checkout is on, installed already or downloaded now, and
 /// pointed at its own loader for wherever the library is. `None` sends the port down the nix
@@ -40,7 +41,7 @@ pub(super) async fn ready(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &m
     let _ = this.update(cx, |this, cx| {
         let state = this.ports.entry(port).or_insert_with(PortState::new);
         state.toolchain = Some((root.clone(), Toolchain::Bundle));
-        state.origin = Some(BuildOrigin::Bundle);
+        state.origin = Some(Origin::Bundle);
         state.fell_back = false;
         cx.notify();
     });

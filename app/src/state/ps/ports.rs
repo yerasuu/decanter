@@ -7,6 +7,7 @@ use std::io;
 use std::time::Duration;
 
 use decanter_core::capabilities::Feature;
+use decanter_core::runner::Origin;
 use decanter_nix::Toolchain;
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport};
@@ -56,18 +57,10 @@ pub enum Stage {
     Failed(Text),
 }
 
-/// Where the port's current build came from, for the Ports view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuildOrigin {
-    Local,
-    Cache,
-    /// The release's bundle, run without nix.
-    Bundle,
-}
-
 pub struct PortState {
     stage: Stage,
-    pub(super) origin: Option<BuildOrigin>,
+    /// Where the port's current build came from, for the Ports view.
+    pub(super) origin: Option<Origin>,
     /// With the library it was resolved for, since nix-portable lives in each one.
     pub(super) toolchain: Option<(Root, Toolchain)>,
     pub(super) check: Option<Result<Check, RemoteError>>,
@@ -108,7 +101,7 @@ impl PortState {
         &self.stage
     }
 
-    pub const fn origin(&self) -> Option<BuildOrigin> {
+    pub const fn origin(&self) -> Option<Origin> {
         self.origin
     }
 
@@ -292,7 +285,7 @@ fn toolchain_error(err: &decanter_nix::Error) -> Text {
     }
 }
 
-fn set_origin(this: &WeakEntity<Ps>, port: Port, origin: BuildOrigin, cx: &mut AsyncApp) {
+fn set_origin(this: &WeakEntity<Ps>, port: Port, origin: Origin, cx: &mut AsyncApp) {
     let _ = this.update(cx, |this, cx| {
         this.ports.entry(port).or_insert_with(PortState::new).origin = Some(origin);
         cx.notify();
@@ -409,8 +402,8 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
     };
     let toolchain = if built {
         let origin = match port {
-            Port::Bbport if Bbport::new(root.clone()).prebuilt().await.is_some() => BuildOrigin::Cache,
-            Port::Bbport | Port::AnyPs5 => BuildOrigin::Local,
+            Port::Bbport if Bbport::new(root.clone()).prebuilt().await.is_some() => Origin::Cache,
+            Port::Bbport | Port::AnyPs5 => Origin::Local,
         };
         set_origin(this, port, origin, cx);
         toolchain
@@ -470,7 +463,7 @@ async fn prebuilt_or_reason(
         state.fell_back = channel == Channel::Release && fetched.is_none();
         if let Some(nix) = &fetched {
             state.toolchain = Some((root.clone(), nix.clone()));
-            state.origin = Some(BuildOrigin::Cache);
+            state.origin = Some(Origin::Cache);
         }
         cx.notify();
     });
@@ -569,7 +562,7 @@ pub(super) async fn build(
     };
     match recorded {
         Ok(()) => {
-            set_origin(this, port, BuildOrigin::Local, cx);
+            set_origin(this, port, Origin::Local, cx);
             Ok(toolchain)
         }
         Err(err) => Err(PortError::RecordBuild(err)),
