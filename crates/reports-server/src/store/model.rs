@@ -33,6 +33,10 @@ pub struct Report {
     pub resolved_at: Option<String>,
     /// Blob name of the private attachment.
     pub attachment: Option<String>,
+    /// Blob name of the public clean version of the attachment, which outlives the attachment (resolve and
+    /// eviction keep it, since it holds only allow-listed data) and goes with the report.
+    #[serde(default)]
+    pub clean_log: Option<String>,
     /// Set in the transaction that removes the report, because s3db transactions cannot delete: the object itself,
     /// its index entries and its blob go right after, and the sweep finishes what a crash left.
     pub deleted: bool,

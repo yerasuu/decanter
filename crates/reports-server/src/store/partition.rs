@@ -27,6 +27,14 @@ impl Product {
         }
     }
 
+    /// The same product as the report crate names it, whose vocabulary reads this partition's logs.
+    pub const fn schema(self) -> decanter_report::schema::Product {
+        match self {
+            Self::Decanter => decanter_report::schema::Product::Decanter,
+            Self::Psport => decanter_report::schema::Product::Psport,
+        }
+    }
+
     const fn tag(self) -> char {
         match self {
             Self::Decanter => 'd',
@@ -159,6 +167,11 @@ impl Stores {
     #[cfg(test)]
     pub async fn blob_count(&self) -> Result<usize> {
         Ok(self.decanter.blob_count().await? + self.psport.blob_count().await?)
+    }
+
+    #[cfg(test)]
+    pub async fn clean_blob_count(&self) -> Result<usize> {
+        Ok(self.decanter.clean_blob_count().await? + self.psport.clean_blob_count().await?)
     }
 }
 

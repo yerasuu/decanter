@@ -10,7 +10,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use decanter_report::schema::Report;
 use decanter_report::validate::MAX_BYTES;
-use decanter_report::{fingerprint, validate};
+use decanter_report::{MAX_CLEAN_LINES, clean_log, fingerprint, validate};
 use serde_json::{Value, json};
 
 use crate::app::{AppState, api_error, denied, internal, not_found, rate_limit, today};
@@ -235,6 +235,18 @@ pub async fn remove(
     }
 }
 
+/// The stored form of the attachment's public clean log (decision #1060), built from the allow-list alone. A NUL
+/// byte means the attachment is not a text log, and matching lossily decoded binary against the templates could
+/// only produce noise, so it gives an empty one.
+fn public_log(bytes: &[u8], product: Product) -> Result<Vec<u8>, serde_json::Error> {
+    let text = if bytes.contains(&0) {
+        String::new()
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+    serde_json::to_vec(&clean_log(&text, product.schema(), MAX_CLEAN_LINES))
+}
+
 pub async fn attach(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -258,10 +270,20 @@ pub async fn attach(
     let Some(product) = Product::of_id(&id) else {
         return not_found();
     };
+    let (bytes, clean) = match tokio::task::spawn_blocking(move || {
+        let clean = public_log(&bytes, product);
+        (bytes, clean)
+    })
+    .await
+    {
+        Ok((bytes, Ok(clean))) => (bytes, clean),
+        Ok((_, Err(error))) => return internal("clean_log", &error),
+        Err(error) => return internal("clean_log", &error),
+    };
     match state
         .stores
         .get(product)
-        .attach(&id, &bytes, state.config.limits.max_attachments)
+        .attach(&id, &bytes, &clean, state.config.limits.max_attachments)
         .await
     {
         Ok(Attach::Stored { evicted }) => {

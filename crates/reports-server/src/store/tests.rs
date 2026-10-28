@@ -11,7 +11,7 @@ use s3db::{Backend, Cas, DeleteOutcome, ListPage, LocalEngine};
 
 use super::index::{self, Entry, PENDING, QUEUE};
 use super::model::Report;
-use super::{ATTACHMENTS, Change, Insert, NewReport, Product, Store, test_store};
+use super::{ATTACHMENTS, CLEAN_LOGS, Change, Insert, NewReport, Product, Store, test_store};
 use crate::secrets::{random_hex, sha256};
 
 type Test = Result<(), Box<dyn Error>>;
@@ -230,7 +230,7 @@ async fn sweep_removes_orphan_blobs_and_failed_inserts_but_keeps_live_ones() -> 
     let report = new_report("0123456789abcdef", "CUSA00001", "2026-10-27")?;
     insert(&store, &report, 10).await?;
     assert!(matches!(
-        store.attach(&report.id, b"log", 10).await?,
+        store.attach(&report.id, b"log", b"{}", 10).await?,
         super::Attach::Stored { .. }
     ));
     let orphan = format!("{}-{}", random_hex()?, random_hex()?);
@@ -243,8 +243,13 @@ async fn sweep_removes_orphan_blobs_and_failed_inserts_but_keeps_live_ones() -> 
         0,
         "young blobs may be in flight"
     );
-    assert_eq!(store.remove_orphan_blobs(Duration::ZERO).await?, 1);
+    let orphan_clean = format!("{}-{}", random_hex()?, random_hex()?);
+    CLEAN_LOGS
+        .put(store.backend(), &store.cipher, &orphan_clean, b"{}", None)
+        .await?;
+    assert_eq!(store.remove_orphan_blobs(Duration::ZERO).await?, 2);
     assert_eq!(store.blob_count().await?, 1);
+    assert_eq!(store.clean_blob_count().await?, 1, "the live report's clean log stays");
     assert_eq!(store.attachment(&report.id).await?.as_deref(), Some(&b"log"[..]));
 
     let lost = Report {
@@ -288,12 +293,36 @@ async fn deleting_a_report_with_an_attachment_frees_its_attachment_count() -> Te
     let store = test_store(&scratch.0, LocalEngine::Redb);
     let report = new_report("0123456789abcdef", "CUSA00001", "2026-10-27")?;
     insert(&store, &report, 1000).await?;
-    store.attach(&report.id, b"log", 10).await?;
+    store.attach(&report.id, b"log", b"{}", 10).await?;
     assert_eq!(store.totals().await?.0.attachments, 1);
     store.change(std::slice::from_ref(&report.id), &Change::Delete).await?;
     let totals = store.totals().await?.0;
     assert_eq!((totals.reports, totals.attachments), (0, 0));
     assert_eq!(store.blob_count().await?, 0);
+    assert_eq!(store.clean_blob_count().await?, 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn clean_log_outlives_its_attachment_and_a_new_one_replaces_it() -> Test {
+    let scratch = Scratch::new()?;
+    let store = test_store(&scratch.0, LocalEngine::Redb);
+    let report = new_report("0123456789abcdef", "CUSA00001", "2026-10-27")?;
+    insert(&store, &report, 1000).await?;
+    store.attach(&report.id, b"log", b"first", 10).await?;
+    let id = std::slice::from_ref(&report.id);
+    store.change(id, &Change::Detach).await?;
+    assert_eq!((store.blob_count().await?, store.clean_blob_count().await?), (0, 1));
+    store.attach(&report.id, b"log", b"second", 10).await?;
+    assert_eq!(
+        store.clean_blob_count().await?,
+        1,
+        "the evicted attachment's clean log is replaced"
+    );
+    let public = store.find_public(&report.id).await?.ok_or("report")?;
+    assert_eq!(store.clean_log(&public).await?.as_deref(), Some(&b"second"[..]));
+    store.change(id, &Change::Resolve("2026-10-28".to_owned())).await?;
+    assert_eq!((store.blob_count().await?, store.clean_blob_count().await?), (0, 1));
     Ok(())
 }
 
@@ -314,7 +343,7 @@ async fn bulk_actions_span_several_transactions_and_keep_the_counters() -> Test 
         1000,
     )
     .await?;
-    store.attach(&ids[0], b"log", 10).await?;
+    store.attach(&ids[0], b"log", b"{}", 10).await?;
     let all = store.group_ids(fp).await?;
     assert_eq!(all.len(), ids.len());
 

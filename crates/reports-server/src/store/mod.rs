@@ -35,6 +35,9 @@ const TOTALS: Singleton = Singleton::new("meta/totals.json");
 const SEQUENCE: Singleton = Singleton::new("meta/sequence.json");
 const LAST_SWEEP: Singleton = Singleton::new("meta/sweep.json");
 const ATTACHMENTS: Blob = Blob::new("attachments").with_max_total_bytes(MAX_ATTACHMENT_BYTES);
+/// The public clean logs, apart from the attachments so the sweep, the caps and the admin download of the private
+/// ones never mix the two.
+const CLEAN_LOGS: Blob = Blob::new("cleanlogs").with_max_total_bytes(decanter_report::MAX_CLEAN_BYTES);
 
 /// Attempts of one transaction before the request fails. A lost attempt means another writer's transaction landed
 /// on the same group or the totals, so the next read sees it; with jitter this outlasts any realistic burst.
@@ -258,6 +261,12 @@ impl Store {
         }
     }
 
+    async fn remove_clean_blob(&self, name: &str) {
+        if let Err(error) = CLEAN_LOGS.delete(self.backend(), name).await {
+            tracing::warn!(target: "decanter_reports::store", %error, "clean log blob not removed");
+        }
+    }
+
     #[cfg(test)]
     pub async fn count(&self) -> Result<u32> {
         Ok(self.totals().await?.0.reports)
@@ -266,6 +275,11 @@ impl Store {
     #[cfg(test)]
     pub async fn blob_count(&self) -> Result<usize> {
         Ok(ATTACHMENTS.list_names(self.backend()).await?.len())
+    }
+
+    #[cfg(test)]
+    pub async fn clean_blob_count(&self) -> Result<usize> {
+        Ok(CLEAN_LOGS.list_names(self.backend()).await?.len())
     }
 }
 

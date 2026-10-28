@@ -30,11 +30,11 @@ pub struct PageParams {
     page: Option<String>,
 }
 
-fn html_page(status: StatusCode, title: &str, body: &str) -> Response {
+pub fn html_page(status: StatusCode, title: &str, body: &str) -> Response {
     (status, Html(layout(title, body))).into_response()
 }
 
-fn not_found_page() -> Response {
+pub fn not_found_page() -> Response {
     html_page(
         StatusCode::NOT_FOUND,
         "No encontrado",
@@ -271,6 +271,10 @@ pub async fn report(State(state): State<AppState>, Path(id): Path<String>) -> Re
         escape_html(&message_text(&value)),
     );
     body.push_str(&fields_table(&value));
+    match crate::clean_page::load(store, &stored).await {
+        Ok(loaded) => body.push_str(&crate::clean_page::summary(&stored.id, &loaded)),
+        Err(error) => return internal("clean_log", &error),
+    }
     let _ = write!(body, "<h2>JSON</h2><pre>{}</pre>", escape_html(&raw));
     html_page(
         StatusCode::OK,

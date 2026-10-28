@@ -6,11 +6,12 @@ use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
+use s3db::Blob;
 
 use super::index::{self, ATTACHED, Entry, GONE, GROUP_ORDER, GROUP_TITLES, GROUPS, OPEN, PENDING, QUEUE, RESOLVED};
 use super::model::{Group, Report, Sequence, SweepMark};
 use super::write::Change;
-use super::{ATTACHMENTS, LAST_SWEEP, SEQUENCE, Store};
+use super::{ATTACHMENTS, CLEAN_LOGS, LAST_SWEEP, SEQUENCE, Store};
 
 const PAGE_KEYS: usize = 200;
 /// A blob younger than this may belong to an upload whose transaction is still running.
@@ -272,26 +273,44 @@ impl Store {
     /// Blobs no report names: a crash between writing a blob and the transaction naming it, or a delete that did
     /// not land. Also the parts of blob generations no manifest names.
     pub(super) async fn remove_orphan_blobs(&self, grace: Duration) -> Result<usize> {
+        let removed = self
+            .remove_orphans_of(&ATTACHMENTS, grace, |report| report.attachment.as_deref())
+            .await?;
+        Ok(removed
+            + self
+                .remove_orphans_of(&CLEAN_LOGS, grace, |report| report.clean_log.as_deref())
+                .await?)
+    }
+
+    /// The blobs of `blobs` older than `grace` whose report does not name them through `named`.
+    async fn remove_orphans_of(
+        &self,
+        blobs: &Blob,
+        grace: Duration,
+        named: impl Fn(&Report) -> Option<&str>,
+    ) -> Result<usize> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
         let grace = u64::try_from(grace.as_millis()).unwrap_or(u64::MAX);
         let now_ms = u64::try_from(now.as_millis()).unwrap_or(u64::MAX);
         let mut removed = 0;
-        for name in ATTACHMENTS.list_names(self.backend()).await? {
+        for name in blobs.list_names(self.backend()).await? {
             let id = name.split_once('-').map_or(name.as_str(), |(id, _)| id);
             let referenced = self
                 .report(id)
                 .await?
-                .is_some_and(|(report, _)| report.attachment.as_deref() == Some(name.as_str()));
+                .is_some_and(|(report, _)| named(&report) == Some(name.as_str()));
             if referenced {
                 continue;
             }
-            let (manifest, _) = ATTACHMENTS.head(self.backend(), &self.cipher, &name).await?;
+            let (manifest, _) = blobs.head(self.backend(), &self.cipher, &name).await?;
             if manifest.is_some_and(|manifest| now_ms.saturating_sub(manifest.written_at_ms) >= grace) {
-                self.remove_blob(&name).await;
+                if let Err(error) = blobs.delete(self.backend(), &name).await {
+                    tracing::warn!(target: "decanter_reports::store", %error, "orphan blob not removed");
+                }
                 removed += 1;
             }
         }
-        ATTACHMENTS
+        blobs
             .sweep_all_orphan_parts(self.backend(), &self.cipher, grace)
             .await?;
         Ok(removed)

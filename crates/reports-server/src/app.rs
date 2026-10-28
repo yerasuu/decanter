@@ -22,7 +22,7 @@ use crate::limits::{Limiter, Verdict, client_ip};
 use crate::secrets::Hash;
 use crate::session::{LOGIN_PATH, Sessions, is_admin_path};
 use crate::store::Stores;
-use crate::{admin, admin_ui, ingest, pages, session};
+use crate::{admin, admin_ui, clean_page, ingest, pages, session};
 
 pub struct Inner {
     pub config: Config,
@@ -201,6 +201,7 @@ fn routes(state: AppState) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .route("/", get(pages::index))
         .route("/r/{id}", get(pages::report))
+        .route("/r/{id}/log", get(clean_page::log))
         .route("/g/{fingerprint}", get(pages::group))
         .route("/v1/reports", post(ingest::create))
         .route("/v1/reports/{id}", delete(ingest::remove))

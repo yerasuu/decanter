@@ -3,6 +3,8 @@
 
 use std::fmt::Write as _;
 
+use decanter_report::schema::{Message, Product};
+use serde::Deserialize;
 use serde_json::Value;
 
 pub const TITLE: &str = "Informes de errores de decanter";
@@ -113,14 +115,22 @@ fn slots_text(slots: Option<&Value>) -> String {
     }
 }
 
-/// The message template and its slots as plain text: `psport.gpu.failed_rc (class=Lib.Font, ...)`, plus the
-/// cause template when there is one. Escaping is the caller's.
+/// The message as the crate rebuilds it from its template and slots (`GPU [Lib.Font] <Error> …:… sceFontOpen: …`);
+/// a message the crate cannot render (one stored before its template existed) as its template id and slots, plus
+/// the cause template when there is one. Escaping is the caller's.
 #[must_use]
 pub fn message_text(report: &Value) -> String {
     let message = &report["failure"]["message"];
     let Some(template) = message["template"].as_str() else {
         return "sin plantilla (solo el tipo)".to_owned();
     };
+    let readable = Product::deserialize(&report["product"])
+        .ok()
+        .zip(Message::deserialize(message).ok())
+        .and_then(|(product, message)| decanter_report::message_text(&message, product));
+    if let Some(text) = readable {
+        return text;
+    }
     let mut text = format!("{template}{}", slots_text(message.get("slots")));
     if let Some(cause) = message["cause"]["template"].as_str() {
         let _ = write!(text, " \u{2190} {cause}{}", slots_text(message["cause"].get("slots")));
@@ -162,5 +172,16 @@ mod tests {
             "cause": {"template": "cause.x"}}}});
         assert_eq!(message_text(&report), "a.b (number=3) \u{2190} cause.x");
         assert_eq!(message_text(&json!({"failure": {}})), "sin plantilla (solo el tipo)");
+    }
+
+    #[test]
+    fn message_text_is_readable_for_a_known_template() {
+        let report = json!({"product": "decanter", "failure": {"message": {"template": "decanter.job.failed",
+            "slots": [{"type": "choice", "value": "build"}, {"type": "number", "value": 1}],
+            "cause": {"template": "cause.db.locked"}}}});
+        assert_eq!(
+            message_text(&report),
+            "job failed job=build exit=code 1: database is locked"
+        );
     }
 }

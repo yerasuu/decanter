@@ -154,6 +154,14 @@ impl Store {
         Ok(super::ATTACHMENTS.get(&self.backend, &self.cipher, &name).await?.0)
     }
 
+    /// The stored clean log a public report names, unvalidated: the page re-validates it before showing it.
+    pub async fn clean_log(&self, report: &Report) -> Result<Option<Vec<u8>>> {
+        let Some(name) = &report.clean_log else {
+            return Ok(None);
+        };
+        Ok(super::CLEAN_LOGS.get(&self.backend, &self.cipher, name).await?.0)
+    }
+
     /// Walks the newest-first entries under `prefix`, keeping the reports that still match what their entry says and
     /// that `keep` accepts; skips `skip` of them and returns at most `take`.
     async fn walk_reports(

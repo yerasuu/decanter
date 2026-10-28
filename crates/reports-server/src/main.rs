@@ -8,6 +8,7 @@ mod admin_ui;
 mod app;
 mod cache;
 mod check;
+mod clean_page;
 mod config;
 mod html;
 mod ingest;

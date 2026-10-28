@@ -10,7 +10,7 @@ use s3db::{Cas, Update};
 
 use super::index::{self, ATTACHED, Entry, GONE, GROUP_ORDER, GROUP_TITLES, GROUPS, OPEN, PENDING, QUEUE, RESOLVED};
 use super::model::{Group, Report, Sequence, Totals};
-use super::{ATTACHMENTS, BATCH, MAX_ATTEMPTS, SEQUENCE, Store, TOTALS, backoff, eviction_batch};
+use super::{ATTACHMENTS, BATCH, CLEAN_LOGS, MAX_ATTEMPTS, SEQUENCE, Store, TOTALS, backoff, eviction_batch};
 use crate::secrets::{Hash, hex, random_hex};
 
 /// Everything the upload derives from a validated report.
@@ -349,6 +349,9 @@ impl Store {
         if let Some(name) = &report.attachment {
             self.remove_blob(name).await;
         }
+        if let Some(name) = &report.clean_log {
+            self.remove_clean_blob(name).await;
+        }
         match Report::COLLECTION.key(&report.id) {
             Ok(key) => s3db::delete_object(self.backend(), &key).await,
             Err(error) => tracing::warn!(target: "decanter_reports::store", %error, "removed report not purged"),
@@ -361,14 +364,15 @@ impl Store {
         .await;
     }
 
-    /// Stores `bytes` as the report's private attachment, evicting the oldest attachments first at `max_attachments`.
-    /// The blob is written before the transaction that names it, so no report ever points at a missing blob; a blob
-    /// whose transaction never landed is removed here or, after a crash, by the sweep.
+    /// Stores `bytes` as the report's private attachment and `clean` (the stored form of its public clean log) beside
+    /// it, evicting the oldest attachments first at `max_attachments`. Both blobs are written before the one
+    /// transaction that names them, so no report ever points at a missing blob; blobs whose transaction never landed
+    /// are removed here or, after a crash, by the sweep. A clean log left by an attachment evicted earlier is replaced.
     ///
     /// # Errors
     ///
     /// The bucket fails, or the transaction keeps losing races past `MAX_ATTEMPTS`.
-    pub async fn attach(&self, id: &str, bytes: &[u8], max_attachments: u32) -> Result<Attach> {
+    pub async fn attach(&self, id: &str, bytes: &[u8], clean: &[u8], max_attachments: u32) -> Result<Attach> {
         if let Some(refused) = attach_refusal(self.report(id).await?.as_ref().map(|(r, _)| r)) {
             return Ok(refused);
         }
@@ -380,14 +384,23 @@ impl Store {
         {
             bail!("attachment name collision");
         }
-        let outcome = self.attach_blob(id, &name, max_attachments).await;
+        let clean_name = format!("{id}-{}", random_hex()?);
+        let outcome = match CLEAN_LOGS
+            .put(self.backend(), &self.cipher, &clean_name, clean, None)
+            .await
+        {
+            Ok(Cas::Ok) => self.attach_blob(id, &name, &clean_name, max_attachments).await,
+            Ok(Cas::Conflict) => Err(anyhow::anyhow!("clean log name collision")),
+            Err(error) => Err(error),
+        };
         if !matches!(outcome, Ok(Attach::Stored { .. })) {
             self.remove_blob(&name).await;
+            self.remove_clean_blob(&clean_name).await;
         }
         outcome
     }
 
-    async fn attach_blob(&self, id: &str, name: &str, max_attachments: u32) -> Result<Attach> {
+    async fn attach_blob(&self, id: &str, name: &str, clean_name: &str, max_attachments: u32) -> Result<Attach> {
         let mut evicted = 0;
         for attempt in 0..MAX_ATTEMPTS {
             let (totals, totals_etag) = self.totals().await?;
@@ -408,6 +421,7 @@ impl Store {
                 return Ok(Attach::NotFound);
             };
             report.attachment = Some(name.to_owned());
+            let replaced = report.clean_log.replace(clean_name.to_owned());
             let entry = queue_entry(ATTACHED, &report);
             self.add_entry(&entry).await?;
             let next = Totals {
@@ -419,6 +433,9 @@ impl Store {
                 totals_op(&next, totals_etag.as_deref())?,
             ];
             if self.commit(ops).await? {
+                if let Some(old) = replaced {
+                    self.remove_clean_blob(&old).await;
+                }
                 return Ok(Attach::Stored { evicted });
             }
             self.remove_entry(&entry).await;
