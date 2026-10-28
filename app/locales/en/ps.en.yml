@@ -727,6 +727,7 @@ ps.branch.build: Build %{commit}
 ps.branch.stop: Stop
 ps.branch.stopped: Build stopped; nothing it started is left running
 ps.branch.delete_toolchain: Delete the toolchain
+ps.branch.redownload_toolchain: Download again
 ps.branch.deleting: Deleting…
 ps.branch.building: 'Building %{commit}: %{stage}'
 ps.branch.built: '%{branch} · built %{date} · toolchain-win32-%{number}'

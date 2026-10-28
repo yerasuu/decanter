@@ -228,6 +228,15 @@ impl Ps {
 
     /// The downloaded toolchain, never while a game or a build runs; the next build downloads it again.
     pub fn branch_delete_toolchain(&mut self, cx: &mut Context<Self>) {
+        self.delete_toolchain(false, cx);
+    }
+
+    /// Delete the toolchain a check found changed, then check again so it is fetched afresh.
+    pub fn branch_redownload_toolchain(&mut self, cx: &mut Context<Self>) {
+        self.delete_toolchain(true, cx);
+    }
+
+    fn delete_toolchain(&mut self, then_check: bool, cx: &mut Context<Self>) {
         if !self.may_delete(cx) {
             self.branch.error = Some(Text::new("ps.branch.errors.delete_toolchain_busy"));
             cx.notify();
@@ -245,7 +254,11 @@ impl Ps {
             if result.is_ok() {
                 tracing::info!("Windows toolchain removed");
             }
+            let deleted = result.is_ok();
             finish_delete(&this, &root, result.err(), cx).await;
+            if then_check && deleted {
+                let _ = this.update(cx, Ps::branch_check);
+            }
         })
         .detach();
     }

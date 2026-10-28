@@ -87,6 +87,17 @@ impl Text {
         Self::new("common.errors.verbatim").arg("error", value)
     }
 
+    /// Whether this text, or one it wraps, is `key`: how a view tells which
+    /// failure a stored error is, to offer its way out.
+    #[must_use]
+    pub fn is_or_wraps(&self, key: &str) -> bool {
+        self.key == key
+            || self.args.iter().any(|(_, arg)| match arg {
+                Arg::Text(text) => text.is_or_wraps(key),
+                Arg::Verbatim(_) => false,
+            })
+    }
+
     /// `value` as it is in every language: a path, a number, a name, an error
     /// worded outside decanter.
     #[must_use]

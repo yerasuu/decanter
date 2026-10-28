@@ -12,6 +12,8 @@ use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
+const TAMPERED: &str = "ps.branch.errors.tampered";
+
 pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
     let state = ps.read(cx).branch();
     let selected = ps.read(cx).package().selected_build();
@@ -39,6 +41,10 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         Some(Err(err)) => Some(t!("ps.branch.check_error", error = err)),
         None => None,
     };
+    let tampered = state.error().is_some_and(|err| err.is_or_wraps(TAMPERED))
+        || state
+            .head()
+            .is_some_and(|head| head.as_ref().is_err_and(|err| err.is_or_wraps(TAMPERED)));
     let built_head = state
         .head()
         .and_then(|head| head.as_ref().ok())
@@ -80,6 +86,20 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
             busy,
             state.is_toolchain_installed() && !deleting,
         ))
+        .when(tampered && !busy && !deleting, |card| {
+            let ps = ps.clone();
+            card.child(
+                div().flex().child(
+                    button(
+                        "ps-branch-redownload-toolchain",
+                        ButtonKind::Primary,
+                        t!("ps.branch.redownload_toolchain"),
+                        false,
+                    )
+                    .on_click(move |_, _, cx| ps.update(cx, Ps::branch_redownload_toolchain)),
+                ),
+            )
+        })
         .when(count > 0, |card| card.child(theme::card().mt_2().children(list)))
         .into_any_element()
 }
