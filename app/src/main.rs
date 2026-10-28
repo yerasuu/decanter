@@ -166,7 +166,11 @@ fn main() {
     // register with this runtime's reactor, which its worker threads drive.
     let tokio_context = runtime.enter();
     art::init(runtime.handle().clone());
-    runtime.spawn(taskbar::sweep());
+    // In turn, since both rewrite the same desktop entries.
+    runtime.spawn(async {
+        taskbar::sweep().await;
+        self_update::settle().await;
+    });
 
     // Only where the capability table offers a tray (see `views::Lifecycle`):
     // a library brought from elsewhere may still have the setting on.

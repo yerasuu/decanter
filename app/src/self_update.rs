@@ -44,6 +44,9 @@ const MANAGED_DIR: &str = "dev.decanter.Decanter";
 const VERSION_FILE: &str = "version";
 /// Longer than any tag decanter writes, so a garbled file is read no further.
 const MAX_VERSION: u64 = 64;
+/// The AppImage that started decanter's own copy, so the copy can move the
+/// games' desktop entries off it.
+const ORIGINAL_ENV: &str = "DECANTER_ORIGINAL_APPIMAGE";
 
 static RESTART: OnceLock<PathBuf> = OnceLock::new();
 
@@ -513,18 +516,69 @@ pub fn hand_over() {
         return;
     };
     tracing::info!(from = %appimage.display(), to = %copy.display(), "handing over to decanter's own newer copy");
-    let err = start(&copy);
+    let err = start(&copy, Some(&appimage));
     tracing::error!(appimage = %copy.display(), %err, "cannot start decanter's own copy, running this AppImage");
 }
 
-/// Replaces this process with `appimage`, with the same arguments. Only
-/// returns when it couldn't.
-fn start(appimage: &Path) -> std::io::Error {
+/// Replaces this process with `appimage`, with the same arguments, telling
+/// it the AppImage it took over from, if any. Only returns when it couldn't.
+fn start(appimage: &Path, original: Option<&Path>) -> std::io::Error {
     let mut command = Command::new(appimage);
     command.args(std::env::args_os().skip(1));
     // The new AppRun sets its own; inheriting ours would stack them.
     decanter_core::strip_launcher_env(&mut command);
+    match original {
+        Some(original) => command.env(ORIGINAL_ENV, original),
+        None => command.env_remove(ORIGINAL_ENV),
+    };
     crate::platform::replace_process(&mut command)
+}
+
+/// Once the libraries are known, in the window's run: the GOG games'
+/// desktop entries start the AppImage this process runs from. Off the
+/// original when decanter's own copy took over from it, or off that copy
+/// when it's no newer than the AppImage the user opened, and then the copy
+/// goes; it stays while any entry still names it.
+pub async fn settle() {
+    let (Some(appimage), Some(managed)) = (running_appimage(), managed_path()) else {
+        return;
+    };
+    match managed_copy(&appimage, &managed) {
+        ManagedCopy::Running => {
+            let Some(original) = std::env::var_os(ORIGINAL_ENV)
+                .map(PathBuf::from)
+                .filter(|original| original.is_absolute() && *original != appimage)
+            else {
+                return;
+            };
+            if let Err(err) = crate::taskbar::rebind(original, appimage).await {
+                tracing::warn!(%err, "some game entries still start the AppImage decanter took over from");
+            }
+        }
+        ManagedCopy::Stale(copy) => {
+            if let Err(err) = crate::taskbar::rebind(copy.clone(), appimage.clone()).await {
+                tracing::warn!(%err, "some game entries still start decanter's own older copy, keeping it");
+                return;
+            }
+            // Checked again: another decanter may have installed a newer release there since.
+            if matches!(managed_copy(&appimage, &managed), ManagedCopy::Stale(_)) {
+                remove_managed(&managed).await;
+            }
+        }
+        ManagedCopy::Absent | ManagedCopy::Newer(_) => {}
+    }
+}
+
+/// The `version` file first, so a start in between finds no copy to hand over to.
+async fn remove_managed(managed: &Path) {
+    let version = managed.with_file_name(VERSION_FILE);
+    for path in [version.as_path(), managed] {
+        if let Err(err) = tokio::fs::remove_file(path).await {
+            tracing::warn!(path = %path.display(), %err, "cannot remove decanter's own older copy");
+            return;
+        }
+    }
+    tracing::info!(managed = %managed.display(), "removed decanter's own copy, older than this AppImage");
 }
 
 /// Starts `appimage` in place of this process once decanter has gone
@@ -543,6 +597,7 @@ pub fn restart_if_requested() {
         return;
     };
     tracing::info!(appimage = %appimage.display(), "restarting into the updated AppImage");
-    let err = start(appimage);
+    let original = running_appimage().filter(|running| appimage.canonicalize().ok().as_ref() != Some(running));
+    let err = start(appimage, original.as_deref());
     tracing::error!(appimage = %appimage.display(), %err, "cannot start the updated AppImage");
 }

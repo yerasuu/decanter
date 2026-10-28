@@ -431,9 +431,8 @@ pub async fn sweep() {
     }
 }
 
-/// [`sweep`]'s blocking file I/O and database reads, returning whether
-/// anything went.
-fn remove_stale() -> bool {
+/// Every library decanter knows of, whose entries [`sweep`] and [`rebind`] look at.
+fn roots() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = crate::core::db()
         .and_then(|db| db.list_profiles().map_err(crate::core::StoreError::Query))
         .unwrap_or_default()
@@ -445,6 +444,13 @@ fn remove_stale() -> bool {
         .collect();
     roots.sort();
     roots.dedup();
+    roots
+}
+
+/// [`sweep`]'s blocking file I/O and database reads, returning whether
+/// anything went.
+fn remove_stale() -> bool {
+    let roots = roots();
     let mut changed = false;
     for root in &roots {
         let Ok(entries) = std::fs::read_dir(desktop_dir(root)) else {
@@ -478,6 +484,50 @@ fn remove_stale() -> bool {
         }
     }
     changed
+}
+
+/// After decanter's binary moved from `from` to `to` (into decanter's own
+/// copy of itself, or back): the GOG entries' `Exec` start `to` from then
+/// on. A library whose disk is away keeps its entries as they are.
+///
+/// # Errors
+/// The last entry that couldn't be rewritten; the rest are rewritten anyway.
+pub async fn rebind(from: PathBuf, to: PathBuf) -> io::Result<()> {
+    let rebound = tokio::task::spawn_blocking(move || rebind_entries(&from, &to))
+        .await
+        .map_err(io::Error::other)
+        .flatten();
+    if !matches!(rebound, Ok(false)) {
+        refresh().await;
+    }
+    rebound.map(|_| ())
+}
+
+/// [`rebind`]'s blocking part, returning whether any entry changed.
+fn rebind_entries(from: &Path, to: &Path) -> io::Result<bool> {
+    let mut changed = false;
+    let mut failed = None;
+    for root in roots() {
+        let Ok(entries) = std::fs::read_dir(desktop_dir(&root)) else {
+            continue;
+        };
+        for desktop in entries.flatten().map(|entry| entry.path()) {
+            if key_of(&desktop).is_none() {
+                continue;
+            }
+            match rewrite(&desktop, from, to) {
+                Ok(rewritten) => changed |= rewritten,
+                Err(err) => {
+                    tracing::warn!(path = %desktop.display(), %err, "could not point a game's desktop entry at decanter's new binary");
+                    failed = Some(err);
+                }
+            }
+        }
+    }
+    if changed {
+        tracing::info!(from = %from.display(), to = %to.display(), "game desktop entries point at decanter's new binary");
+    }
+    failed.map_or(Ok(changed), Err)
 }
 
 /// The key in a `game.<key>.desktop` file name.

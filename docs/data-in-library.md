@@ -35,6 +35,12 @@ implemented.
   libraries, active library and profile), to be added.
 - `~/.local/share/applications/decanter/`: one symlink per game; Plasma
   only reads its application folders.
+- `$XDG_DATA_HOME/dev.decanter.Decanter/` (`Decanter-x86_64.AppImage` and
+  `version`): decanter's own copy, where releases go when the AppImage the
+  user started sits in a folder decanter can't write to; that AppImage
+  hands over to the copy while it is newer. It has to start before any
+  library is known, and it isn't under `$XDG_DATA_HOME/decanter/`, whose
+  leftovers Storage deletes.
 - Keyring (`dev.decanter.Decanter`): GOG tokens, the SteamGridDB key and
   the shadNet password and token of PS online play (`shadnet/<NPID>/…`;
   the server addresses, NPID and switches stay in the port's
