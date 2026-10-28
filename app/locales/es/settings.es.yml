@@ -92,6 +92,12 @@ settings.updates.errors.offline: No hay conexión con GitHub.
 settings.updates.errors.rate_limited: GitHub ha limitado las consultas desde esta red; vuelve a intentarlo dentro de un rato.
 settings.updates.errors.invalid: 'GitHub ha respondido algo que no es una versión válida: %{error}'
 settings.updates.errors.failed: 'La consulta a GitHub ha fallado: %{error}'
+settings.compatibility.ge_proton.title: GE-Proton
+settings.compatibility.ge_proton.intro: 'Decanter guarda esta versión de Proton en la biblioteca para lo que necesita Proton sin Steam; se vuelve a descargar cuando hace falta.'
+settings.compatibility.ge_proton.installed: 'GE-Proton %{tag} · %{size}'
+settings.compatibility.ge_proton.measuring: 'GE-Proton %{tag} · midiendo…'
+settings.compatibility.ge_proton.remove: 'Quitar'
+settings.compatibility.ge_proton.error: 'no se ha podido quitar GE-Proton: %{error}'
 settings.compatibility.tools.title: Herramientas
 settings.compatibility.tools.intro: Decanter descarga su propia copia de umu-run y de nix-portable, en versiones fijas que solo cambia tras probarlas; umu descarga UMU-Proton por su cuenta cuando el Proton es automático.
 settings.compatibility.tools.check: Buscar actualizaciones

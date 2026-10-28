@@ -5,10 +5,11 @@
 //! checked against GitHub when the user asks.
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 
 use decanter_core::capabilities::Feature;
-use decanter_core::runner::Runner;
-use gpui::{Context, Div, Entity, IntoElement, SharedString, Window, prelude::*};
+use decanter_core::runner::{Pin, Runner, Status};
+use gpui::{Context, Div, Entity, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::game_tools::GameToolDefaults;
@@ -29,12 +30,22 @@ struct ToolChecks {
     umu_proton_installed: bool,
 }
 
+struct GeProtonBuild {
+    pin: Pin,
+    path: PathBuf,
+    /// Measured off the UI thread, since the folder holds thousands of files.
+    size: Option<u64>,
+}
+
 pub struct CompatibilityTab {
     runners: Vec<String>,
     current: Option<String>,
     checking: bool,
     tools: Option<ToolChecks>,
     game_tools: Entity<GameToolDefaults>,
+    ge_proton: Vec<GeProtonBuild>,
+    removing_ge_proton: bool,
+    ge_proton_error: Option<String>,
 }
 
 impl CompatibilityTab {
@@ -45,12 +56,15 @@ impl CompatibilityTab {
             current: None,
             checking: false,
             tools: None,
+            ge_proton: Vec::new(),
+            removing_ge_proton: false,
+            ge_proton_error: None,
         };
-        this.reload();
+        this.reload(cx);
         this
     }
 
-    fn reload(&mut self) {
+    fn reload(&mut self, cx: &mut Context<Self>) {
         self.runners = decanter_runtime::runner::status(Runner::Proton)
             .installed()
             .iter()
@@ -65,6 +79,60 @@ impl CompatibilityTab {
                     .ok()
                     .flatten()
             });
+        self.ge_proton = match decanter_runtime::runner::status(Runner::GeProton) {
+            Status::Installed(installed) => installed
+                .into_iter()
+                .map(|build| GeProtonBuild {
+                    pin: build.pin,
+                    path: build.path,
+                    size: None,
+                })
+                .collect(),
+            Status::Unsupported | Status::Absent => Vec::new(),
+        };
+        for build in &self.ge_proton {
+            let (pin, path) = (build.pin.to_string(), build.path.clone());
+            cx.spawn(async move |this, cx| {
+                let size = cx
+                    .background_spawn(async move { decanter_core::directory_size(&path) })
+                    .await
+                    .inspect_err(|err| tracing::warn!(%pin, %err, "could not measure GE-Proton"))
+                    .ok();
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(build) = this.ge_proton.iter_mut().find(|build| build.pin.to_string() == pin) {
+                        build.size = size;
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
+        }
+    }
+
+    fn remove_ge_proton(&mut self, pin: Pin, cx: &mut Context<Self>) {
+        if self.removing_ge_proton {
+            return;
+        }
+        self.removing_ge_proton = true;
+        self.ge_proton_error = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let removed = decanter_runtime::runner::remove(Runner::GeProton, &pin).await;
+            let _ = this.update(cx, |this, cx| {
+                this.removing_ge_proton = false;
+                match removed {
+                    Ok(()) => tracing::info!(%pin, "GE-Proton removed by the user"),
+                    Err(err) => {
+                        tracing::warn!(%pin, %err, "could not remove GE-Proton");
+                        this.ge_proton_error =
+                            Some(t!("settings.compatibility.ge_proton.error", error = err).into_owned());
+                    }
+                }
+                this.reload(cx);
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn set_default(&mut self, chosen: &str, cx: &mut Context<Self>) {
@@ -73,7 +141,7 @@ impl CompatibilityTab {
             Ok(db) => match db.set_default_proton(chosen) {
                 Ok(()) => {
                     tracing::info!(proton = chosen, "default proton pin changed");
-                    self.reload();
+                    self.reload(cx);
                     cx.notify();
                 }
                 Err(err) => tracing::warn!(proton = chosen, error = %err, "failed to save default proton setting"),
@@ -87,7 +155,7 @@ impl CompatibilityTab {
     /// Also reads Steam's compat folder again, so a Proton installed since the tab opened shows up.
     fn check_tools(&mut self, cx: &mut Context<Self>) {
         self.checking = true;
-        self.reload();
+        self.reload(cx);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let (umu_run, nix_portable, umu_proton) = futures::join!(
@@ -129,6 +197,36 @@ impl CompatibilityTab {
             });
         })
         .detach();
+    }
+
+    fn ge_proton_section(&self, cx: &Context<Self>) -> Div {
+        column()
+            .child(theme::h2(t!("settings.compatibility.ge_proton.title")))
+            .child(theme::muted(t!("settings.compatibility.ge_proton.intro")))
+            .children(self.ge_proton.iter().enumerate().map(|(index, build)| {
+                let pin = build.pin.clone();
+                let removing = self.removing_ge_proton;
+                let text = match build.size {
+                    Some(size) => t!(
+                        "settings.compatibility.ge_proton.installed",
+                        tag = build.pin,
+                        size = crate::format::bytes(size)
+                    ),
+                    None => t!("settings.compatibility.ge_proton.measuring", tag = build.pin),
+                };
+                field_row().items_center().child(div().flex_1().child(text)).child(
+                    button(
+                        ("ge-proton-remove", index),
+                        ButtonKind::Secondary,
+                        t!("settings.compatibility.ge_proton.remove"),
+                        removing,
+                    )
+                    .when(!removing, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| this.remove_ge_proton(pin.clone(), cx)))
+                    }),
+                )
+            }))
+            .children(self.ge_proton_error.clone().map(theme::error))
     }
 
     fn tools_section(&self, cx: &Context<Self>) -> Div {
@@ -273,6 +371,9 @@ impl Render for CompatibilityTab {
                 column.child(theme::muted(t!("settings.compatibility.none_installed")))
             })
             .child(self.game_tools.clone())
+            .when(!self.ge_proton.is_empty(), |column| {
+                column.child(self.ge_proton_section(cx))
+            })
             .child(self.tools_section(cx))
     }
 }
