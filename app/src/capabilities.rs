@@ -38,7 +38,7 @@ impl Caps {
     pub fn init(cx: &mut App) {
         let mut capabilities = Capabilities::detect();
         match self_update::availability() {
-            Availability::AppImage(_) => {}
+            Availability::AppImage(_) | Availability::Managed { .. } => {}
             Availability::NoKey => capabilities.restrict(Feature::SelfUpdate, Reason::NeedsSetup(RELEASE_KEY)),
             Availability::Elsewhere => capabilities.restrict(Feature::SelfUpdate, Reason::NotOnThisSystem),
         }

@@ -1,9 +1,10 @@
 //! The UI language, window behaviour that isn't tied to any profile or
 //! game, closing a game from the controller or keyboard, the Steam export
 //! toggle and its pending-restart callout, whether GitHub has a newer
-//! decanter, which an AppImage can install over itself, and debug mode.
+//! decanter, which an AppImage can install over itself or into decanter's
+//! own copy, and debug mode.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use decanter_core::capabilities::Feature;
 use gpui::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div, prelude::*};
@@ -208,8 +209,9 @@ impl GeneralTab {
     /// What a newer release offers: the button that installs it over this
     /// AppImage and how far that got, or why it can't be offered here.
     fn install_section(&self, release: &Release, cx: &Context<Self>) -> impl IntoElement {
-        let appimage = match &self.availability {
-            Availability::AppImage(appimage) => appimage,
+        let (appimage, original) = match &self.availability {
+            Availability::AppImage(appimage) => (appimage, None),
+            Availability::Managed { managed, original } => (managed, original.as_deref()),
             Availability::NoKey => {
                 return column()
                     .child(inline(button(
@@ -224,20 +226,23 @@ impl GeneralTab {
         };
         if let Some(Install::Installed { tag, appimage }) = &self.install {
             let appimage = appimage.clone();
-            return column()
-                .child(div().child(t!("settings.general.updates.installed_update", tag = tag)))
-                .child(inline(
-                    button(
-                        "restart-decanter",
-                        ButtonKind::Primary,
-                        t!("settings.general.updates.restart_now"),
-                        false,
-                    )
-                    .on_click(move |_, _, cx| {
-                        self_update::restart_after_quit(appimage.clone());
-                        cx.quit();
-                    }),
-                ));
+            let installed = if original.is_some() {
+                t!("settings.general.updates.installed_managed", tag = tag)
+            } else {
+                t!("settings.general.updates.installed_update", tag = tag)
+            };
+            return column().child(div().child(installed)).child(inline(
+                button(
+                    "restart-decanter",
+                    ButtonKind::Primary,
+                    t!("settings.general.updates.restart_now"),
+                    false,
+                )
+                .on_click(move |_, _, cx| {
+                    self_update::restart_after_quit(appimage.clone());
+                    cx.quit();
+                }),
+            ));
         }
         let downloading = match &self.install {
             Some(Install::Downloading { done, total }) => Some(match total {
@@ -260,7 +265,11 @@ impl GeneralTab {
         let busy = downloading.is_some();
         let release = release.clone();
         let appimage = appimage.clone();
+        let managed = original
+            .and_then(Path::parent)
+            .map(|dir| theme::muted(t!("settings.general.updates.managed", dir = dir.display().to_string())));
         column()
+            .children(managed)
             .child(inline(
                 button(
                     "install-decanter-release",
@@ -281,7 +290,10 @@ impl GeneralTab {
     fn release_section(&self, cx: &Context<Self>) -> impl IntoElement {
         let checking = self.checking_release;
         // Where this build can't install a release itself, its page is where to get it.
-        let page_label = if matches!(self.availability, Availability::AppImage(_)) {
+        let page_label = if matches!(
+            self.availability,
+            Availability::AppImage(_) | Availability::Managed { .. }
+        ) {
             t!("settings.general.updates.notes")
         } else {
             t!("settings.general.updates.download_page")

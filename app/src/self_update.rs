@@ -5,6 +5,10 @@
 //! update on its own (decision #400). Anywhere else (a nix-shell, `cargo
 //! run`, /nix/store) decanter doesn't rewrite itself, and Ajustes only links
 //! the release page.
+//!
+//! An AppImage in a folder decanter can't write to gets its releases in a
+//! copy of decanter's own instead (decision #1102: the user never moves or
+//! re-permissions decanter's files), which it then runs.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -32,6 +36,11 @@ const DOWNLOAD_HOSTS: [&str; 3] = [
 ];
 /// How often the download reports progress, so the UI isn't redrawn per chunk.
 const PROGRESS_STEP: u64 = 1024 * 1024;
+/// Named as the keyring's application id, not `decanter`: `$XDG_DATA_HOME/decanter`
+/// is the legacy folder whose leftovers Storage deletes (`migrate::remove_legacy`).
+const MANAGED_DIR: &str = "dev.decanter.Decanter";
+/// The tag the managed copy was installed from, beside it.
+const VERSION_FILE: &str = "version";
 
 static RESTART: OnceLock<PathBuf> = OnceLock::new();
 
@@ -40,6 +49,13 @@ static RESTART: OnceLock<PathBuf> = OnceLock::new();
 pub enum Availability {
     /// Running from this AppImage, in a folder decanter may write to.
     AppImage(PathBuf),
+    /// Releases go to decanter's own copy, `managed`: the AppImage it runs
+    /// from, `original`, sits in a folder it can't write to, or is that copy
+    /// (`None`).
+    Managed {
+        managed: PathBuf,
+        original: Option<PathBuf>,
+    },
     /// An AppImage it could replace, but this build carries no key to verify a release with.
     NoKey,
     /// Not an AppImage decanter can rewrite.
@@ -50,48 +66,76 @@ fn in_nix_store(path: &Path) -> bool {
     path.starts_with("/nix/store")
 }
 
-/// `$APPIMAGE` is set by the AppImage runtime, but anything can set it: it
-/// only counts as an AppImage when it names an existing file in a writable
-/// folder, outside the nix store.
-///
 /// Decided once per run, and only where the capability table offers it.
 pub fn availability() -> Availability {
     static DECIDED: OnceLock<Availability> = OnceLock::new();
     DECIDED.get_or_init(decide).clone()
 }
 
-fn decide() -> Availability {
+/// The AppImage this process runs from, canonical. `$APPIMAGE` is set by the
+/// AppImage runtime, but anything can set it: it only counts when it names
+/// an existing file outside the nix store, where the capability table
+/// offers self-update.
+fn running_appimage() -> Option<PathBuf> {
     if !decanter_core::platform::support(Feature::SelfUpdate).is_offered() {
-        return Availability::Elsewhere;
+        return None;
     }
     let Some(appimage) = std::env::var_os("APPIMAGE").filter(|value| !value.is_empty()) else {
-        return Availability::Elsewhere;
+        return None;
     };
     let appimage = PathBuf::from(appimage);
     let exe_in_store = std::env::current_exe().is_ok_and(|exe| in_nix_store(&exe));
-    let appimage = match appimage.canonicalize() {
-        Ok(path) if path.is_file() && !in_nix_store(&path) && !exe_in_store => path,
+    match appimage.canonicalize() {
+        Ok(path) if path.is_file() && !in_nix_store(&path) && !exe_in_store => Some(path),
         Ok(path) => {
             tracing::info!(appimage = %path.display(), exe_in_store, "not an AppImage decanter can replace");
-            return Availability::Elsewhere;
+            None
         }
         Err(err) => {
             tracing::warn!(appimage = %appimage.display(), %err, "APPIMAGE names no file");
-            return Availability::Elsewhere;
+            None
         }
+    }
+}
+
+/// decanter's own copy of itself. Outside the library on purpose
+/// (docs/data-in-library.md): it has to start before any library is known.
+fn managed_path() -> Option<PathBuf> {
+    if !decanter_core::platform::support(Feature::SelfUpdate).is_offered() {
+        return None;
+    }
+    dirs::data_dir().map(|dir| dir.join(MANAGED_DIR).join(ASSET))
+}
+
+fn decide() -> Availability {
+    let Some(appimage) = running_appimage() else {
+        return Availability::Elsewhere;
     };
     let Some(dir) = appimage.parent() else {
         return Availability::Elsewhere;
     };
-    if let Err(err) = crate::platform::check_writable(dir) {
-        tracing::info!(dir = %dir.display(), %err, "the AppImage's folder isn't writable");
-        return Availability::Elsewhere;
-    }
+    let managed = managed_path();
+    let is_managed = managed
+        .as_deref()
+        .and_then(|managed| managed.canonicalize().ok())
+        .is_some_and(|managed| managed == appimage);
+    let writable = !is_managed
+        && crate::platform::check_writable(dir)
+            .inspect_err(|err| {
+                tracing::info!(dir = %dir.display(), %err, "the AppImage's folder isn't writable, releases go to decanter's own copy");
+            })
+            .is_ok();
     if RELEASE_KEY.is_empty() {
         tracing::info!("this build carries no release key, updates can't be verified");
         return Availability::NoKey;
     }
-    Availability::AppImage(appimage)
+    if writable {
+        return Availability::AppImage(appimage);
+    }
+    managed.map_or(Availability::Elsewhere, |managed| Availability::Managed {
+        managed,
+        original: (!is_managed).then_some(appimage),
+    })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -242,6 +286,10 @@ async fn signature(client: &reqwest::Client, tag: &str) -> Result<Signature, Ins
 /// renames it over `appimage`. On any failure `appimage` is left as it was
 /// and the partial download removed. `progress` gets the bytes written so
 /// far and the total, when GitHub sends one.
+///
+/// Into decanter's own copy, its folder is made private first, and the
+/// `version` file goes before the rename and comes back after it, so a copy
+/// whose install stopped halfway is never handed over to.
 pub async fn install(
     tag: &str,
     appimage: &Path,
@@ -263,6 +311,12 @@ pub async fn install(
 
     let dir = appimage.parent().unwrap_or(appimage);
     let partial = dir.join(format!(".{ASSET}.{}.part", std::process::id()));
+    let managed = managed_path().is_some_and(|managed| managed == appimage);
+    if managed {
+        crate::platform::create_private_dir(dir)
+            .await
+            .map_err(|err| write_error(&partial, &err))?;
+    }
     let mut options = tokio::fs::OpenOptions::new();
     options.write(true).create_new(true);
     crate::platform::restrict_to_owner(&mut options);
@@ -312,6 +366,9 @@ pub async fn install(
                 .await
                 .map_err(|err| write_error(&partial, &err))?;
         }
+        if managed {
+            forget_version(dir).await?;
+        }
         tokio::fs::rename(&partial, appimage)
             .await
             .map_err(|err| write_error(appimage, &err))?;
@@ -327,6 +384,10 @@ pub async fn install(
         }
         return written;
     }
+    if managed && let Err(err) = write_version(dir, tag).await {
+        tracing::warn!(tag, error = %err, "release installed in decanter's own copy, but its version isn't recorded");
+        return Err(err);
+    }
     // The rename only survives a crash once the folder's own entry is on disk.
     match tokio::fs::File::open(dir).await {
         Ok(folder) => {
@@ -337,6 +398,39 @@ pub async fn install(
         Err(err) => tracing::warn!(dir = %dir.display(), %err, "cannot open the AppImage's folder to sync it"),
     }
     written
+}
+
+async fn forget_version(dir: &Path) -> Result<(), InstallError> {
+    let version = dir.join(VERSION_FILE);
+    match tokio::fs::remove_file(&version).await {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(write_error(&version, &err)),
+        Ok(()) | Err(_) => Ok(()),
+    }
+}
+
+/// Written aside and renamed into place, so the hand-over never reads half a tag.
+async fn write_version(dir: &Path, tag: &str) -> Result<(), InstallError> {
+    let version = dir.join(VERSION_FILE);
+    let partial = dir.join(format!(".{VERSION_FILE}.{}.part", std::process::id()));
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    crate::platform::restrict_to_owner(&mut options);
+    let written = async {
+        let mut file = options.open(&partial).await?;
+        file.write_all(format!("{tag}\n").as_bytes()).await?;
+        file.sync_all().await?;
+        tokio::fs::rename(&partial, &version).await
+    }
+    .await;
+    if let Err(err) = written {
+        if let Err(remove) = tokio::fs::remove_file(&partial).await
+            && remove.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(partial = %partial.display(), error = %remove, "cannot remove the partial version file");
+        }
+        return Err(write_error(&version, &err));
+    }
+    Ok(())
 }
 
 /// Starts `appimage` in place of this process once decanter has gone

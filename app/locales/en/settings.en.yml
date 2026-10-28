@@ -76,9 +76,11 @@ settings.general.updates.ahead: This build is newer than the latest published ve
 settings.general.updates.available: 'A new version is out: %{tag}.'
 settings.general.updates.install: Download and install
 settings.general.updates.no_key: This build carries no signing key, so it can't verify or install new versions by itself.
+settings.general.updates.managed: Decanter can't write in %{dir}, where this AppImage is, so it installs updates in its own folder; this copy opens the newest one from there.
 settings.general.updates.downloading: Downloading… %{done}
 settings.general.updates.downloading_of: Downloading… %{done} of %{total}
 settings.general.updates.installed_update: '%{tag} is installed and its signature checked. It will be used the next time you open Decanter.'
+settings.general.updates.installed_managed: '%{tag} is installed in Decanter''s own folder and its signature checked. It will be used the next time you open Decanter, from this copy too.'
 settings.general.updates.restart_now: Restart now
 settings.general.updates.none: No version has been published on GitHub yet.
 settings.general.updates.notes: Release notes
@@ -108,7 +110,7 @@ settings.updates.install_errors.too_large: The download is over %{size}, more th
 settings.updates.install_errors.bad_signature: The signature doesn't match the download. Nothing was installed and your version is unchanged.
 settings.updates.install_errors.wrong_key: The version is signed with a different key than this build's. Nothing was installed.
 settings.updates.install_errors.wrong_release: The signature belongs to another version (“%{found}”). Nothing was installed.
-settings.updates.install_errors.no_permission: No permission to write in %{dir}, where this AppImage is; nothing was installed and your version is unchanged.
+settings.updates.install_errors.no_permission: No permission to write in %{dir}; nothing was installed and your version is unchanged.
 settings.updates.install_errors.disk_full: No space left in %{dir}. Free some space and try again; your version is unchanged.
 settings.updates.install_errors.io: 'Couldn''t write %{path}: %{error}'
 settings.updates.install_errors.broken_key: 'This build''s signing key isn''t valid: %{error}'

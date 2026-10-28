@@ -76,9 +76,11 @@ settings.general.updates.ahead: Esta compilación es más reciente que la últim
 settings.general.updates.available: 'Hay una versión nueva: %{tag}.'
 settings.general.updates.install: Descargar e instalar
 settings.general.updates.no_key: Esta compilación no trae clave de firma, así que no puede comprobar ni instalar versiones nuevas por sí misma.
+settings.general.updates.managed: Decanter no puede escribir en %{dir}, donde está este AppImage, así que instala las actualizaciones en su propia carpeta; esta copia abre desde allí la más reciente.
 settings.general.updates.downloading: Descargando… %{done}
 settings.general.updates.downloading_of: Descargando… %{done} de %{total}
 settings.general.updates.installed_update: '%{tag} está instalada y su firma, comprobada. Se usará la próxima vez que abras Decanter.'
+settings.general.updates.installed_managed: '%{tag} está instalada en la carpeta propia de Decanter y su firma, comprobada. Se usará la próxima vez que abras Decanter, también desde esta copia.'
 settings.general.updates.restart_now: Reiniciar ahora
 settings.general.updates.none: Todavía no hay ninguna versión publicada en GitHub.
 settings.general.updates.notes: Notas de la versión
@@ -108,7 +110,7 @@ settings.updates.install_errors.too_large: La descarga supera los %{size}, más 
 settings.updates.install_errors.bad_signature: La firma no corresponde a lo descargado. No se ha instalado nada y tu versión sigue igual.
 settings.updates.install_errors.wrong_key: La versión está firmada con una clave distinta de la de esta compilación. No se ha instalado nada.
 settings.updates.install_errors.wrong_release: La firma es de otra versión («%{found}»). No se ha instalado nada.
-settings.updates.install_errors.no_permission: No hay permiso para escribir en %{dir}, donde está este AppImage; no se ha instalado nada y tu versión sigue igual.
+settings.updates.install_errors.no_permission: No hay permiso para escribir en %{dir}; no se ha instalado nada y tu versión sigue igual.
 settings.updates.install_errors.disk_full: No queda espacio en %{dir}. Libera espacio y vuelve a intentarlo; tu versión sigue igual.
 settings.updates.install_errors.io: 'No se ha podido escribir %{path}: %{error}'
 settings.updates.install_errors.broken_key: 'La clave de firma de esta compilación no es válida: %{error}'

@@ -4,6 +4,7 @@ mod shortcut;
 mod tray;
 
 use std::io;
+use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
@@ -133,6 +134,15 @@ pub fn hostname() -> Option<String> {
 
 pub fn restrict_to_owner(options: &mut tokio::fs::OpenOptions) {
     options.mode(0o600);
+}
+
+/// Creates `dir` and its missing parents, `dir` itself kept to this user
+/// even when it already existed with wider permissions.
+pub async fn create_private_dir(dir: &Path) -> io::Result<()> {
+    let mut builder = tokio::fs::DirBuilder::new();
+    builder.recursive(true).mode(0o700);
+    builder.create(dir).await?;
+    tokio::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).await
 }
 
 /// A console program opens no window of its own here.

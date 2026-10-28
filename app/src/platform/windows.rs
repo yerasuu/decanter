@@ -31,6 +31,11 @@ pub fn hostname() -> Option<String> {
 
 pub const fn restrict_to_owner(_options: &mut tokio::fs::OpenOptions) {}
 
+/// decanter never installs a copy of its own here; see `self_update`.
+pub async fn create_private_dir(dir: &Path) -> io::Result<()> {
+    tokio::fs::create_dir_all(dir).await
+}
+
 /// `CREATE_NO_WINDOW`, so a console program decanter runs doesn't flash a
 /// console window over everything.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;

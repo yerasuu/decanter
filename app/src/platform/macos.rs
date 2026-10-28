@@ -38,6 +38,11 @@ pub fn restrict_to_owner(options: &mut tokio::fs::OpenOptions) {
     options.mode(0o600);
 }
 
+/// decanter never installs a copy of its own here; see `self_update`.
+pub async fn create_private_dir(dir: &Path) -> io::Result<()> {
+    tokio::fs::create_dir_all(dir).await
+}
+
 /// A console program opens no window of its own here.
 pub const fn without_console(_command: &mut tokio::process::Command) {}
 
