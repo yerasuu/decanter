@@ -716,7 +716,7 @@ ps.branch.confirm.no: Cancelar
 ps.branch.errors.not_pinned: esta versión de decanter aún no fija ningún paquete de toolchain
 ps.branch.errors.no_git: git no está en el PATH; instala Git for Windows
 ps.branch.errors.tampered: 'el archivo %{file} de la toolchain ha cambiado desde que se instaló y comprobó, así que no se usa: borra la toolchain para descargarla de nuevo'
-ps.branch.errors.path_too_long: 'la compilación quedaría en %{path}, de %{length} caracteres, y en Windows no puede pasar de %{max}: mueve la biblioteca a una ruta más corta'
+ps.branch.errors.path_too_long: 'la compilación quedaría en %{path}, de %{length} caracteres, y en Windows no puede pasar de %{max}: elige una ubicación más corta para la biblioteca en Ajustes › Cuenta › Cambiar ubicación y decanter la moverá allí'
 ps.branch.errors.raw: '%{error}'
 ps.branch.errors.failed: 'La compilación ha fallado: %{error}. Su registro: %{log}'
 ps.branch.errors.confirm: 'No se pudo guardar la confirmación: %{error}'

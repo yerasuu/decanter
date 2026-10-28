@@ -96,7 +96,7 @@ pub enum Error {
     #[error("{step} started {count} processes at once")]
     TooManyProcesses { step: &'static str, count: usize },
     #[error(
-        "the checkout would be at {path}, {length} characters long; Windows builds need at most {MAX_CHECKOUT_PATH}: move the library to a shorter path"
+        "the checkout would be at {path}, {length} characters long; Windows builds need at most {MAX_CHECKOUT_PATH}: choose a shorter library location (Settings › Account › Change location)"
     )]
     PathTooLong { path: String, length: usize },
     #[error(

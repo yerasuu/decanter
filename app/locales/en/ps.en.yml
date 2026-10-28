@@ -716,7 +716,7 @@ ps.branch.confirm.no: Cancel
 ps.branch.errors.not_pinned: this decanter pins no toolchain package yet
 ps.branch.errors.no_git: git isn't on PATH; install Git for Windows
 ps.branch.errors.tampered: 'the toolchain''s %{file} changed after it was installed and checked, so it isn''t used: delete the toolchain to download it again'
-ps.branch.errors.path_too_long: 'the build would be at %{path}, %{length} characters, and Windows builds need at most %{max}: move the library to a shorter path'
+ps.branch.errors.path_too_long: 'the build would be at %{path}, %{length} characters, and Windows builds need at most %{max}: choose a shorter location for the library in Settings › Account › Change location, and decanter moves it there'
 ps.branch.errors.raw: '%{error}'
 ps.branch.errors.failed: 'The build failed: %{error}. Its log: %{log}'
 ps.branch.errors.confirm: 'Couldn''t record the confirmation: %{error}'
