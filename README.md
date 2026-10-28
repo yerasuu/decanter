@@ -277,7 +277,8 @@ turned off in Ajustes > General.
 | `crates/core` | Local state: database, libraries, profiles, accounts, credentials, migration |
 | `crates/gog` | GOG client: auth, library, installs, cloud saves, achievements, Steam export |
 | `crates/runtime` | Proton launches through `umu-run` |
-| `crates/ps` | PS dumps, port builds and updates, toolchain, runs, run logs, failures |
+| `crates/nix` | The nix toolchain a build runs in: host tools, the system's nix or nix-portable, pinned nixpkgs, Vulkan validation layer |
+| `crates/ps` | PS dumps, port builds and updates, the ports' nix recipes, runs, run logs, failures |
 | `crates/hook` | `Galaxy64.dll` proxy, a Windows cdylib outside the workspace |
 
 UI texts live in `app/locales/`, a folder per language (`es/`, `en/`) with

@@ -171,7 +171,7 @@ def check_manifest(problems):
 def check_crates(manifest, problems):
     workspace_license = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["license"]
     by_path = {path: component["license"] for component in manifest["components"] for path in component["paths"]}
-    members = ["app", *(f"crates/{name}" for name in ("core", "gog", "ps", "runtime", "report", "hook", "reports-server"))]
+    members = ["app", *(f"crates/{name}" for name in ("core", "gog", "nix", "ps", "runtime", "report", "hook", "reports-server"))]
     for member in members:
         data = tomllib.loads((ROOT / member / "Cargo.toml").read_text())["package"]
         license_value = data.get("license")

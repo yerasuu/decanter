@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  # shell.nix imports <nixpkgs>: the revision crates/ps/src/toolchain/pkgs.nix pins.
+  # shell.nix imports <nixpkgs>: the revision crates/nix/src/pkgs.nix pins.
   NIX_PATH: nixpkgs=https://github.com/NixOS/nixpkgs/archive/39ad350a0602fa0a58a544344e3e9187526ea45c.tar.gz
 
 jobs:
