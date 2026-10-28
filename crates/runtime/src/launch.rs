@@ -8,7 +8,7 @@ use std::time::Instant;
 use anyhow::{Context as _, bail};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
-use crate::prefix::{Prefix, live_lock};
+use crate::prefix::{Prefix, SESSION_ENV, live_lock};
 use crate::proton::Proton;
 use crate::umu::ensure_umu_run;
 
@@ -48,6 +48,10 @@ pub struct Launch {
     /// and the executable, for what isn't a game of its own (an
     /// installer, `wineboot`).
     pub identity: Option<(String, String)>,
+    /// A Linux program, run as itself rather than through `umu-run`: no
+    /// Proton, no Wine, and the prefix only names the session (see
+    /// [`crate::Prefix::stop`]). Everything Proton-specific here is ignored.
+    pub native: bool,
     pub proton: Proton,
     /// umu's `STORE`, used alongside `game_id` to look up protonfixes.
     pub store: Option<String>,
@@ -103,6 +107,7 @@ impl Launch {
             working_directory: None,
             game_id: game_id.into(),
             identity: None,
+            native: false,
             store: None,
             proton: Proton::default(),
             dll_overrides: Vec::new(),
@@ -229,8 +234,9 @@ pub struct Prepared {
     launch: Launch,
     /// The prefix it runs against, handed to the [`Session`].
     prefix: Prefix,
-    /// Named when the spawn fails.
-    umu_run_path: PathBuf,
+    /// What the command starts (`umu-run`, or a native program itself),
+    /// named when the spawn fails.
+    program: PathBuf,
 }
 
 impl Prepared {
@@ -251,14 +257,15 @@ impl Prepared {
         let child = match self
             .command
             .spawn()
-            .with_context(|| format!("spawning {}", self.umu_run_path.display()))
+            .with_context(|| format!("spawning {}", self.program.display()))
         {
             Ok(child) => child,
             Err(err) => {
                 tracing::error!(
                     executable = %self.launch.executable.display(),
                     game_id = %self.launch.game_id,
-                    "failed to spawn umu-run"
+                    native = self.launch.native,
+                    "failed to spawn the game's command"
                 );
                 return Err(err);
             }
@@ -344,24 +351,12 @@ pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prep
     };
     tracing::debug!(working_directory = %working_directory.display(), "resolved working directory for launch");
 
+    if launch.native {
+        return Ok(prepare_native(prefix, launch, &working_directory));
+    }
+
     let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
-    let (key, description) = launch.identity.take().unwrap_or_else(|| {
-        let name = launch.executable.file_name().unwrap_or_default();
-        (launch.game_id.clone(), name.to_string_lossy().into_owned())
-    });
-    let gamemode = launch.gamemoded.as_deref().map(decanter_core::gamemode_prefix);
-    let mut command = match (decanter_core::own_scope(&key, &description), gamemode) {
-        (Some(mut scoped), gamemode) => {
-            scoped.args(gamemode.into_iter().flatten()).arg(&umu_run_path);
-            Command::from(scoped)
-        }
-        (None, Some([shell, rest @ ..])) => {
-            let mut command = Command::new(shell);
-            command.args(rest).arg(&umu_run_path);
-            command
-        }
-        (None, None) => Command::new(&umu_run_path),
-    };
+    let mut command = wrapped(&umu_run_path, &mut launch);
     // umu/Proton build whatever environment the container needs
     // themselves; decanter's own (library path, allocator and EGL
     // settings) has only ever caused breakage in there.
@@ -437,8 +432,63 @@ pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prep
         command,
         launch,
         prefix: prefix.clone(),
-        umu_run_path,
+        program: umu_run_path,
     })
+}
+
+/// `program` started in the game's own scope and under GameMode when the
+/// launch asks for them.
+fn wrapped(program: &Path, launch: &mut Launch) -> Command {
+    let (key, description) = launch.identity.take().unwrap_or_else(|| {
+        let name = launch.executable.file_name().unwrap_or_default();
+        (launch.game_id.clone(), name.to_string_lossy().into_owned())
+    });
+    let gamemode = launch.gamemoded.as_deref().map(decanter_core::gamemode_prefix);
+    match (decanter_core::own_scope(&key, &description), gamemode) {
+        (Some(mut scoped), gamemode) => {
+            scoped.args(gamemode.into_iter().flatten()).arg(program);
+            Command::from(scoped)
+        }
+        (None, Some([shell, rest @ ..])) => {
+            let mut command = Command::new(shell);
+            command.args(rest).arg(program);
+            command
+        }
+        (None, None) => Command::new(program),
+    }
+}
+
+/// A Linux program started as itself, tagged with [`SESSION_ENV`] so the
+/// session's processes are found the way a prefix's are.
+fn prepare_native(prefix: &Prefix, mut launch: Launch, working_directory: &Path) -> Prepared {
+    let executable = launch.executable.clone();
+    let mut command = wrapped(&executable, &mut launch);
+    // As under umu: decanter's own library path and allocator settings are
+    // not the game's.
+    decanter_core::strip_launcher_env(command.as_std_mut());
+    command
+        .args(&launch.args)
+        .current_dir(working_directory)
+        .env(SESSION_ENV, &prefix.path)
+        .stdin(Stdio::null());
+    if launch.capture_output {
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    }
+    command.envs(launch.env.iter().map(|entry| (entry.0.as_str(), entry.1.as_str())));
+    tracing::debug!(
+        executable = %executable.display(),
+        args = ?launch.args,
+        game_id = %launch.game_id,
+        gamemode = launch.gamemoded.is_some(),
+        session = %prefix.path.display(),
+        "native command built"
+    );
+    Prepared {
+        command,
+        launch,
+        prefix: prefix.clone(),
+        program: executable,
+    }
 }
 
 /// Builds the `WINEDLLOVERRIDES` value, or `None` when there is nothing to

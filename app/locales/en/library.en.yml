@@ -208,6 +208,7 @@ library.properties.compatibility.default_proton: Use the default
 library.properties.compatibility.reset: Reset prefix
 library.properties.compatibility.resetting: Resetting...
 library.properties.compatibility.reset_tooltip: Deletes the prefix. It's recreated when the game starts. Saves kept inside the prefix are lost.
+library.properties.compatibility.native: A Linux program, run as it is, with no Proton and no prefix.
 library.properties.compatibility.prefix: Prefix
 library.properties.compatibility.prefix_created: created
 library.properties.compatibility.prefix_missing: no prefix (created on first launch)

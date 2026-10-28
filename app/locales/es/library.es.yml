@@ -208,6 +208,7 @@ library.properties.compatibility.default_proton: Usar el predeterminado
 library.properties.compatibility.reset: Restablecer prefijo
 library.properties.compatibility.resetting: Restableciendo...
 library.properties.compatibility.reset_tooltip: Borra el prefijo. Se regenera al abrir el juego. Las partidas guardadas dentro del prefijo se pierden.
+library.properties.compatibility.native: Es un programa de Linux y se ejecuta tal cual, sin Proton ni prefijo.
 library.properties.compatibility.prefix: Prefijo
 library.properties.compatibility.prefix_created: creado
 library.properties.compatibility.prefix_missing: sin prefijo (se crea al jugar)

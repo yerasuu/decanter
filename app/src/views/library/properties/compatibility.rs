@@ -19,6 +19,8 @@ use crate::widgets::{ButtonKind, Select, button, tooltip};
 pub(super) struct CompatibilityTab {
     target: Rc<Target>,
     installed: Option<InstalledGame>,
+    /// A Linux program added as an external game, which runs without Proton.
+    native: bool,
     runners: Vec<String>,
     created: bool,
     busy: bool,
@@ -33,6 +35,7 @@ impl CompatibilityTab {
             tools: cx.new(|_| GameToolsPanel::new(key)),
             target,
             installed: None,
+            native: false,
             runners: Vec::new(),
             created: false,
             busy: false,
@@ -46,6 +49,10 @@ impl CompatibilityTab {
         let account_id = self.target.account_id.as_str();
         let product_id = self.target.product_id.as_str();
         self.installed = crate::core::installed_game(account_id, product_id);
+        self.native = self.installed.as_ref().is_some_and(|game| {
+            game.storefront == decanter_core::Storefront::Unspecified
+                && crate::core::executable_for(game).is_some_and(|path| crate::external::probe::is_native_linux(&path))
+        });
         self.runners = decanter_runtime::steam_runners();
         // A prefix that was never launched into doesn't exist yet, which is
         // the normal state for a game you installed but haven't opened.
@@ -99,6 +106,11 @@ impl Render for CompatibilityTab {
         };
         if let Some(reason) = Caps::get(cx).reason(Feature::Proton) {
             return pane().child(theme::muted(reason));
+        }
+        if self.native {
+            return pane()
+                .child(theme::muted(t!("library.properties.compatibility.native")))
+                .child(self.tools.clone());
         }
 
         let options = std::iter::once((

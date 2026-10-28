@@ -1,4 +1,6 @@
-//! Games run under Proton through umu-run, each in its own prefix.
+//! Games run under Proton through umu-run, each in its own prefix — and
+//! external games that are Linux programs, run as themselves with the
+//! prefix's path only naming their session.
 
 use std::path::PathBuf;
 
@@ -30,6 +32,12 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
         return None;
     };
 
+    // Read from the file rather than kept in the manifest: what decides is
+    // what the executable is now, and only an external game can be a Linux
+    // program.
+    let native = game.storefront == decanter_core::Storefront::Unspecified
+        && crate::external::probe::is_native_linux(&executable);
+
     // `umu-<product id>` with `STORE=gog` is how protonfixes finds a GOG
     // game's workarounds. An external game's uuid is in no database, so it
     // goes in as `umu-default` with no store instead — the same as Heroic
@@ -49,6 +57,7 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
         }
         (_, None) => Launch::new(executable, crate::external::UMU_ID),
     };
+    launch.native = native;
     launch.proton = crate::core::proton_for(game);
     let key = crate::taskbar::key(game.storefront, &game.game_id);
     let (mangohud, gamemoded) = crate::core::db()
@@ -89,7 +98,11 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
     let facts = vec![
         ("game", game.name.clone()),
         ("game_id", game.game_id.clone()),
-        ("prefix", prefix.path().display().to_string()),
+        if native {
+            ("runtime", "native Linux".to_owned())
+        } else {
+            ("prefix", prefix.path().display().to_string())
+        },
     ];
     Some(Planned {
         launch,

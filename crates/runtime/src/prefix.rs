@@ -24,6 +24,12 @@ use crate::proton::Proton;
 /// directory scan per tick and nothing while a game is actually running.
 pub(crate) const IDLE_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
+/// Set on a Linux program run natively ([`crate::Launch::native`]) to its
+/// prefix's path, which is then only the session's key: nothing creates
+/// the folder, and the program and its children are found and stopped by
+/// it the way a Proton session is found by `WINEPREFIX`.
+pub(crate) const SESSION_ENV: &str = "DECANTER_SESSION";
+
 /// A Proton prefix decanter owns.
 ///
 /// umu treats `WINEPREFIX` as Proton's `STEAM_COMPAT_DATA_PATH` and then
@@ -272,7 +278,8 @@ pub async fn stop_all() {
 ///
 /// The blob is NUL-separated `KEY=VALUE` entries. `WINEPREFIX` covers Wine
 /// and the game; `STEAM_COMPAT_DATA_PATH` covers umu and Proton
-/// themselves, which are already running before Wine sets anything.
+/// themselves, which are already running before Wine sets anything;
+/// [`SESSION_ENV`] a native program.
 fn environ_has_prefix(environ: &[u8], prefix: &Path) -> bool {
     let Some(prefix_str) = prefix.to_str() else {
         return false;
@@ -284,7 +291,7 @@ fn environ_has_prefix(environ: &[u8], prefix: &Path) -> bool {
         let Some((key, value)) = text.split_once('=') else {
             return false;
         };
-        matches!(key, "WINEPREFIX" | "STEAM_COMPAT_DATA_PATH") && value == prefix_str
+        matches!(key, "WINEPREFIX" | "STEAM_COMPAT_DATA_PATH" | SESSION_ENV) && value == prefix_str
     })
 }
 
