@@ -12,9 +12,8 @@ DynamicUser=yes
 #StateDirectoryMode=0700
 ExecStart=/usr/local/bin/decanter-reports /etc/decanter-reports/config.toml
 # Each secret sits in a root-only file; systemd hands the service a private copy under $CREDENTIALS_DIRECTORY, which
-# config.toml names (admin_key_file = "$CREDENTIALS_DIRECTORY/admin_key" and the three in [storage]). config.toml
-# itself holds no secret. The two S3 keys are not needed with the local driver.
-LoadCredential=admin_key:/etc/decanter-reports/admin.key
+# config.toml names (the three in [storage]). config.toml itself holds no secret. The two S3 keys are not needed
+# with the local driver.
 LoadCredential=storage_passphrase:/etc/decanter-reports/storage.passphrase
 LoadCredential=s3_access_key_id:/etc/decanter-reports/s3.access_key_id
 LoadCredential=s3_secret_access_key:/etc/decanter-reports/s3.secret_access_key

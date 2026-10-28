@@ -218,9 +218,13 @@ Days are UTC `YYYY-MM-DD`; nothing finer is stored, and no address or user agent
 and delete codes are 128-bit random values from the operating system; the delete code is shown once and only its
 SHA-256 hash is kept.
 Encryption at rest is s3db's: every object is sealed (XChaCha20-Poly1305) under a data key wrapped by a key derived
-from a passphrase (Argon2id) that the server reads as a credential, like the admin key; the bucket provider sees only
+from a passphrase (Argon2id) that the server reads as a credential; the bucket provider sees only
 object names and sizes. The bucket credentials and the passphrase are never in `config.toml`; losing the passphrase
-makes the bucket unreadable.
+makes the bucket unreadable. The passphrase is made by `decanter-reports secret` (256 bits from the operating system,
+as 64 hex characters), never by the serving process, since a fresh empty volume would otherwise give the bucket a
+second key (decisions #1150, #1151). For the same reason the server opens the partitions that already have their
+encryption first and never creates one partition's encryption while another is initialized and the passphrase does
+not open it.
 
 ## The private log viewer
 
@@ -299,11 +303,13 @@ Everything a client sends is hostile, including what looks like decanter's own o
 - **Abuse.** Per-address upload and read limits kept in memory only, a global cap spent only by valid reports, a
   failure limiter on wrong admin keys and wrong delete codes, bounded connections and header timeouts in the
   process, caps that evict instead of refusing, bulk actions by fingerprint for clean-up.
-- **Authentication.** One admin key (at least 32 characters, from a credential file or the environment, held as
-  a SHA-256 in memory, constant-time comparison). Without it, or a session, every `/admin` route but the login form,
+- **Authentication.** Admin keys held as SHA-256, each compared in constant time (`session::AdminKeys`). The single
+  configured admin key is gone (decisions #1150, #1151); admin accounts and their keys arrive with #1153, and until
+  one exists no key matches, so admin access is disabled and the log says so hourly. Without a valid key, or a
+  session, every `/admin` route but the login form,
   any wrong method and any unknown path answer the same 404 in the same bytes, and count as an authentication
   failure. Players hold only their delete code.
-- **Admin sessions** (#1060, #1062). A browser cannot send the Bearer header, so `POST /admin/login` trades the key
+- **Admin sessions** (#1060, #1062). A browser cannot send the Bearer header, so `POST /admin/login` trades a key
   (form field, same constant-time check, same-site `Origin` required) for a session: a 256-bit random id held in
   memory only as its SHA-256, with an idle timeout and an absolute lifetime, a cap that ends the oldest session,
   and expired entries swept on every login and lookup. A restart ends every session. The cookie is
@@ -325,7 +331,8 @@ Everything a client sends is hostile, including what looks like decanter's own o
 - **Client address.** Read from `client_ip_header` only when the connection comes from a `trusted_proxies`
   address, else from the socket. It is used for the in-memory limits and never written or logged.
 - **Storage.** The bucket holds only encrypted objects (s3db), the bucket credentials and the passphrase are
-  credentials like the admin key (files owner-only or from `LoadCredential=`, never logged), and attachment keys are
+  credentials (files owner-only or from `LoadCredential=`, never logged; `--check-config` warns about ones read from
+  the environment outside a container), and attachment keys are
   generated, never taken from input. The server keeps no other local state (the `local` driver aside).
 
 The reviews that shaped this are in decanter's notes #1033 (the crate) and #1038 (the server, findings fixed in
@@ -340,7 +347,7 @@ server in a single-valued header the client cannot control (`CF-Connecting-IP`, 
 traffic from `cloudflared` alone and trusts that header at its entry point), `trusted_proxies` is the address
 Traefik connects from (not `127.0.0.1` inside a container network), and header and idle timeouts and connection
 limits are set at the tunnel and at Traefik as a second layer. The service runs under systemd with a dynamic user
-and a credential for the admin key, or in a rootless container.
+and credentials for the passphrase and the bucket keys, or in a rootless container.
 
 ## Open points
 

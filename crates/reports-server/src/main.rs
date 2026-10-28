@@ -27,19 +27,22 @@ mod session;
 mod store;
 mod sweep;
 
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use tracing::level_filters::LevelFilter;
 
 use crate::app::{AppState, router};
-use crate::config::{Config, ConfigError, Credentials, Driver, StorageCredentials};
+use crate::config::{Config, ConfigError, Driver, StorageCredentials};
+use crate::session::AdminKeys;
 use crate::store::{Product, Store, Stores};
 
 enum Mode {
     Serve,
     Check,
     Inspect(inspect::Request),
+    Secret,
 }
 
 struct Args {
@@ -49,6 +52,14 @@ struct Args {
 
 fn parse_args(args: &[String], env: &impl Fn(&str) -> Option<String>) -> Result<Args, String> {
     let env_path = || env("DECANTER_REPORTS_CONFIG").map(PathBuf::from);
+    if let [only] = args
+        && only == "secret"
+    {
+        return Ok(Args {
+            mode: Mode::Secret,
+            config_path: None,
+        });
+    }
     if let Some(("inspect", rest)) = args.split_first().map(|(first, rest)| (first.as_str(), rest)) {
         return Ok(Args {
             mode: Mode::Inspect(inspect::parse(rest)?),
@@ -84,24 +95,64 @@ async fn open_store(config: &Config, credentials: &StorageCredentials, product: 
         .map_err(|error| format!("cannot open the {name} partition: {error:#}"))
 }
 
-async fn open_state(config: Config, credentials: Credentials) -> Result<AppState, String> {
+/// Partitions that already have their encryption open first: a passphrase that does not open one of them stops the
+/// start before a partition still without encryption gets a key of its own, which the other could never share.
+async fn open_stores(config: &Config, credentials: &StorageCredentials) -> Result<Stores, String> {
+    let mut order = Vec::with_capacity(Product::ALL.len());
+    for product in Product::ALL {
+        let initialised = store::is_initialised(&config.storage, credentials, product)
+            .await
+            .map_err(|error| format!("cannot reach the {} partition: {error:#}", product.name()))?;
+        order.push((product, initialised));
+    }
+    order.sort_by_key(|(_, initialised)| !initialised);
+    let (mut decanter, mut psport) = (None, None);
+    for (index, &(product, _)) in order.iter().enumerate() {
+        match open_store(config, credentials, product).await {
+            Ok(opened) => match product {
+                Product::Decanter => decanter = Some(opened),
+                Product::Psport => psport = Some(opened),
+            },
+            Err(message) => {
+                let blocked: Vec<&str> = order
+                    .iter()
+                    .skip(index + 1)
+                    .filter(|(_, initialised)| !initialised)
+                    .map(|(product, _)| product.name())
+                    .collect();
+                if blocked.is_empty() {
+                    return Err(message);
+                }
+                return Err(format!(
+                    "{message}; the {} partition's encryption was not created, so that both partitions keep one \
+                     passphrase",
+                    blocked.join(" and ")
+                ));
+            }
+        }
+    }
+    decanter
+        .zip(psport)
+        .map(|(decanter, psport)| Stores::new(decanter, psport))
+        .ok_or_else(|| "a partition was not opened".to_owned())
+}
+
+async fn open_state(config: Config, credentials: StorageCredentials) -> Result<AppState, String> {
     if config.storage.driver == Driver::Local {
         let dir = &config.storage.dir;
         perms::private_dir(dir).map_err(|error| format!("cannot prepare {}: {error}", dir.display()))?;
     }
-    let decanter = open_store(&config, &credentials.storage, Product::Decanter).await?;
-    let psport = open_store(&config, &credentials.storage, Product::Psport).await?;
-    Ok(AppState::new(
-        config,
-        &credentials.admin_key,
-        Stores::new(decanter, psport),
-    ))
+    let stores = open_stores(&config, &credentials).await?;
+    Ok(AppState::new(config, AdminKeys::default(), stores))
 }
 
 /// The secrets are already validated; this makes one read-only round trip per partition and prints no secret.
-async fn check_config(config: &Config, credentials: &Credentials) -> Result<(), String> {
+async fn check_config(config: &Config, credentials: &StorageCredentials) -> Result<(), String> {
     eprintln!("config ok: listening on {}", config.listen);
-    let (lines, passed) = check::partitions(config, &credentials.storage).await;
+    if let Some(warning) = check::env_secrets_warning(config, check::in_container()) {
+        eprintln!("warning: {warning}");
+    }
+    let (lines, passed) = check::partitions(config, credentials).await;
     for line in lines {
         eprintln!("{line}");
     }
@@ -134,16 +185,30 @@ async fn serve(state: AppState) -> Result<(), String> {
         .map_err(|error| format!("cannot listen on {listen}: {error}"))?;
     tokio::spawn(sweep::daily(state.clone()));
     tokio::spawn(sweep::recover(state.clone()));
+    tokio::spawn(session::warn_without_admins(state.clone()));
     tracing::info!(%listen, "listening");
     let limits = server::Limits::from_config(&state.config);
     server::run(listener, router(state), limits, shutdown_signal()).await;
     Ok(())
 }
 
-async fn start() -> Result<Option<(Config, Credentials)>, String> {
+/// Only the secret reaches standard output, so `$(decanter-reports secret)` captures it whole.
+fn print_secret() -> Result<(), String> {
+    let secret = secrets::random_hex_256().map_err(|error| format!("the random source is unavailable: {error}"))?;
+    std::io::stdout()
+        .lock()
+        .write_all(format!("{secret}\n").as_bytes())
+        .map_err(|error| format!("cannot write the output: {error}"))
+}
+
+async fn start() -> Result<Option<(Config, StorageCredentials)>, String> {
     let env = |name: &str| std::env::var(name).ok();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args = parse_args(&args, &env)?;
+    if matches!(args.mode, Mode::Secret) {
+        print_secret()?;
+        return Ok(None);
+    }
     let describe = |error: ConfigError| error.to_string();
     let config = Config::load(args.config_path.as_deref(), &env).map_err(describe)?;
     if let Mode::Inspect(request) = &args.mode {
@@ -151,7 +216,7 @@ async fn start() -> Result<Option<(Config, Credentials)>, String> {
         inspect::run(&config, &credentials, request).await?;
         return Ok(None);
     }
-    let credentials = config.credentials(&env).map_err(describe)?;
+    let credentials = config.storage_credentials(&env).map_err(describe)?;
     for warning in config.warnings() {
         eprintln!("warning: {warning}");
     }
@@ -189,5 +254,56 @@ async fn main() -> ExitCode {
             tracing::error!(%message, "stopped");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use super::*;
+
+    fn credentials(passphrase: &str) -> StorageCredentials {
+        StorageCredentials {
+            passphrase: passphrase.to_owned(),
+            bucket_keys: None,
+        }
+    }
+
+    #[test]
+    fn secret_takes_no_other_argument() {
+        let no_env = |_: &str| None;
+        let parse = |args: &[&str]| parse_args(&args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>(), &no_env);
+        assert!(parse(&["secret"]).is_ok_and(|args| matches!(args.mode, Mode::Secret)));
+        assert!(parse(&["secret", "extra"]).is_err());
+        assert!(parse(&["config.toml"]).is_ok_and(|args| matches!(args.mode, Mode::Serve)));
+    }
+
+    #[tokio::test]
+    async fn a_passphrase_that_does_not_open_one_partition_creates_no_other() -> Result<(), Box<dyn Error>> {
+        let dir = std::env::temp_dir().join(format!("decanter-reports-guard-{}", secrets::random_hex()?));
+        let mut config = Config::default();
+        config.storage.dir.clone_from(&dir);
+        perms::private_dir(&dir)?;
+        let right = "the right passphrase, long enough for the guard";
+        let wrong = "a wrong passphrase, just as long as the right one";
+        drop(open_store(&config, &credentials(right), Product::Psport).await?);
+
+        let message = open_stores(&config, &credentials(wrong))
+            .await
+            .err()
+            .unwrap_or_default();
+        assert!(message.contains("cannot open the psport partition"), "{message}");
+        assert!(
+            message.contains("the decanter partition's encryption was not created"),
+            "{message}"
+        );
+        assert!(!message.contains(right) && !message.contains(wrong));
+        assert!(!store::is_initialised(&config.storage, &credentials(right), Product::Decanter).await?);
+
+        assert!(open_stores(&config, &credentials(right)).await.is_ok());
+        assert!(store::is_initialised(&config.storage, &credentials(right), Product::Decanter).await?);
+        std::fs::remove_dir_all(&dir)?;
+        Ok(())
     }
 }

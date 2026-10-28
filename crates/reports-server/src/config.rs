@@ -8,15 +8,15 @@ use axum::http::HeaderName;
 use serde::Deserialize;
 use tracing::level_filters::LevelFilter;
 
-pub const DEFAULT_ADMIN_KEY_ENV: &str = "DECANTER_REPORTS_ADMIN_KEY";
 pub const DEFAULT_PASSPHRASE_ENV: &str = "DECANTER_REPORTS_PASSPHRASE";
 pub const DEFAULT_ACCESS_KEY_ID_ENV: &str = "DECANTER_REPORTS_S3_ACCESS_KEY_ID";
 pub const DEFAULT_SECRET_ACCESS_KEY_ENV: &str = "DECANTER_REPORTS_S3_SECRET_ACCESS_KEY";
 const CREDENTIALS_DIR_PREFIX: &str = "$CREDENTIALS_DIRECTORY";
-const MIN_ADMIN_KEY_LEN: usize = 32;
 /// The passphrase derives the key every object in the bucket is encrypted with; a short one is guessable offline by
 /// anyone who can read the bucket.
 const MIN_PASSPHRASE_LEN: usize = 32;
+const GENERATE_PASSPHRASE: &str = " (`decanter-reports secret` prints one; keep an offline copy, since nothing \
+                                   in the bucket can be read without it)";
 
 #[derive(Debug)]
 pub struct ConfigError(String);
@@ -159,6 +159,8 @@ pub struct Storage {
     pub secret_access_key_env: String,
     pub secret_access_key_file: Option<PathBuf>,
     pub passphrase_env: String,
+    /// A path readable only by its owner, like every `*_file` here; a leading `$CREDENTIALS_DIRECTORY` is replaced
+    /// by systemd's credential directory (`LoadCredential=`), whose files are exempt from the mode check.
     pub passphrase_file: Option<PathBuf>,
 }
 
@@ -185,12 +187,6 @@ impl Default for Storage {
 }
 
 /// The secrets the server runs with, read once at startup. No `Debug`, so none can reach a log by accident.
-pub struct Credentials {
-    pub admin_key: String,
-    pub storage: StorageCredentials,
-}
-
-/// What opening the partitions takes, apart from the admin key, so `inspect` does not need that key.
 pub struct StorageCredentials {
     pub passphrase: String,
     /// Access key id and secret access key, for the `s3` and `r2` drivers.
@@ -203,11 +199,6 @@ pub struct Config {
     pub listen: SocketAddr,
     /// Prefix of the `url` the upload answers with; empty gives a path only.
     pub public_url: String,
-    /// Environment variable holding the admin key; ignored when `admin_key_file` is set.
-    pub admin_key_env: String,
-    /// A path readable only by its owner; a leading `$CREDENTIALS_DIRECTORY` is replaced by systemd's credential
-    /// directory (`LoadCredential=`), whose files are exempt from the mode check.
-    pub admin_key_file: Option<PathBuf>,
     /// Only requests whose socket address is listed here may name another client in `client_ip_header`.
     pub trusted_proxies: Vec<IpAddr>,
     pub client_ip_header: Option<String>,
@@ -235,8 +226,6 @@ impl Default for Config {
         Self {
             listen: SocketAddr::from(([127, 0, 0, 1], 8787)),
             public_url: String::new(),
-            admin_key_env: DEFAULT_ADMIN_KEY_ENV.to_owned(),
-            admin_key_file: None,
             trusted_proxies: Vec::new(),
             client_ip_header: None,
             retention_days: 365,
@@ -287,12 +276,6 @@ impl Config {
         }
         if let Some(v) = env("DECANTER_REPORTS_PUBLIC_URL") {
             self.public_url = v;
-        }
-        if let Some(v) = env("DECANTER_REPORTS_ADMIN_KEY_ENV") {
-            self.admin_key_env = v;
-        }
-        if let Some(v) = env("DECANTER_REPORTS_ADMIN_KEY_FILE") {
-            self.admin_key_file = Some(PathBuf::from(v));
         }
         if let Some(v) = env("DECANTER_REPORTS_TRUSTED_PROXIES") {
             self.trusted_proxies = v
@@ -469,40 +452,6 @@ impl Config {
         warnings
     }
 
-    /// The key itself never appears in an error.
-    ///
-    /// # Errors
-    ///
-    /// No key is configured, it cannot be read, or it is shorter than 32 characters.
-    pub fn admin_key(&self, env: &impl Fn(&str) -> Option<String>) -> Result<String, ConfigError> {
-        let source = SecretSource {
-            what: "the admin key",
-            file_key: "admin_key_file",
-            env_name: &self.admin_key_env,
-            file: self.admin_key_file.as_deref(),
-        };
-        let key = source.read(env)?;
-        if key.chars().count() < MIN_ADMIN_KEY_LEN {
-            return err(format!(
-                "the admin key must have at least {MIN_ADMIN_KEY_LEN} characters"
-            ));
-        }
-        Ok(key)
-    }
-
-    /// Every secret the server needs; none of them ever appears in an error.
-    ///
-    /// # Errors
-    ///
-    /// A secret is missing, unreadable, readable by group or others, or too short.
-    pub fn credentials(&self, env: &impl Fn(&str) -> Option<String>) -> Result<Credentials, ConfigError> {
-        let storage = self.storage_credentials(env)?;
-        Ok(Credentials {
-            admin_key: self.admin_key(env)?,
-            storage,
-        })
-    }
-
     /// The passphrase and, for a bucket, its keys; none of them ever appears in an error.
     ///
     /// # Errors
@@ -518,11 +467,12 @@ impl Config {
             file_key: "storage.passphrase_file",
             env_name: &storage.passphrase_env,
             file: storage.passphrase_file.as_deref(),
+            hint: GENERATE_PASSPHRASE,
         }
         .read(env)?;
         if passphrase.chars().count() < MIN_PASSPHRASE_LEN {
             return err(format!(
-                "the storage passphrase must have at least {MIN_PASSPHRASE_LEN} characters"
+                "the storage passphrase must have at least {MIN_PASSPHRASE_LEN} characters{GENERATE_PASSPHRASE}"
             ));
         }
         let bucket_keys = match storage.driver {
@@ -533,6 +483,7 @@ impl Config {
                     file_key: "storage.access_key_id_file",
                     env_name: &storage.access_key_id_env,
                     file: storage.access_key_id_file.as_deref(),
+                    hint: "",
                 }
                 .read(env)?,
                 SecretSource {
@@ -540,6 +491,7 @@ impl Config {
                     file_key: "storage.secret_access_key_file",
                     env_name: &storage.secret_access_key_env,
                     file: storage.secret_access_key_file.as_deref(),
+                    hint: "",
                 }
                 .read(env)?,
             )),
@@ -548,6 +500,22 @@ impl Config {
             passphrase,
             bucket_keys,
         })
+    }
+
+    /// The environment variables the secrets are read from: those without a `*_file`, for the driver in use.
+    #[must_use]
+    pub fn secrets_from_env(&self) -> Vec<&str> {
+        let storage = &self.storage;
+        let mut sources = vec![(&storage.passphrase_env, &storage.passphrase_file)];
+        if storage.driver != Driver::Local {
+            sources.push((&storage.access_key_id_env, &storage.access_key_id_file));
+            sources.push((&storage.secret_access_key_env, &storage.secret_access_key_file));
+        }
+        sources
+            .into_iter()
+            .filter(|(_, file)| file.is_none())
+            .map(|(env, _)| env.as_str())
+            .collect()
     }
 }
 
@@ -674,6 +642,8 @@ struct SecretSource<'a> {
     file_key: &'static str,
     env_name: &'a str,
     file: Option<&'a Path>,
+    /// Appended to the error when the secret is missing.
+    hint: &'static str,
 }
 
 impl SecretSource<'_> {
@@ -684,8 +654,8 @@ impl SecretSource<'_> {
                 Some(value) => value,
                 None => {
                     return err(format!(
-                        "{} is missing: set {} or {}",
-                        self.what, self.env_name, self.file_key
+                        "{} is missing: set {} or {}{}",
+                        self.what, self.env_name, self.file_key, self.hint
                     ));
                 }
             },
@@ -742,14 +712,43 @@ mod tests {
         assert!(Config::load(None, &env).is_err());
     }
 
+    fn passphrase(config: &Config, env: &impl Fn(&str) -> Option<String>) -> Result<usize, ConfigError> {
+        config.storage_credentials(env).map(|c| c.passphrase.len())
+    }
+
     #[test]
-    fn short_or_missing_admin_key_is_refused() {
+    fn short_or_missing_passphrase_is_refused_and_names_the_generator() {
         let config = Config::default();
-        assert!(config.admin_key(&no_env).is_err());
         let short = |_: &str| Some("short".to_owned());
-        assert!(config.admin_key(&short).is_err());
+        for message in [passphrase(&config, &no_env), passphrase(&config, &short)]
+            .into_iter()
+            .map(|result| result.err().map(|e| e.to_string()).unwrap_or_default())
+        {
+            assert!(message.contains("`decanter-reports secret`"), "{message}");
+            assert!(!message.contains("short"), "{message}");
+        }
         let long = |_: &str| Some(format!("{}\n", "k".repeat(32)));
-        assert_eq!(config.admin_key(&long).map(|k| k.len()).ok(), Some(32));
+        assert_eq!(passphrase(&config, &long).ok(), Some(32));
+    }
+
+    #[test]
+    fn an_old_admin_key_setting_is_refused() {
+        assert!(toml::from_str::<Config>("admin_key_file = \"/run/secrets/admin_key\"").is_err());
+    }
+
+    #[test]
+    fn secrets_from_env_lists_only_the_ones_without_a_file() {
+        let mut config = Config::default();
+        assert_eq!(config.secrets_from_env(), ["DECANTER_REPORTS_PASSPHRASE"]);
+        config.storage.driver = Driver::S3;
+        config.storage.secret_access_key_file = Some(PathBuf::from("/run/secrets/s3"));
+        assert_eq!(
+            config.secrets_from_env(),
+            ["DECANTER_REPORTS_PASSPHRASE", "DECANTER_REPORTS_S3_ACCESS_KEY_ID"]
+        );
+        config.storage.passphrase_file = Some(PathBuf::from("/run/secrets/passphrase"));
+        config.storage.access_key_id_file = Some(PathBuf::from("/run/secrets/id"));
+        assert!(config.secrets_from_env().is_empty());
     }
 
     fn key_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -759,17 +758,16 @@ mod tests {
     }
 
     fn key_config(path: &str) -> Config {
-        Config {
-            admin_key_file: Some(PathBuf::from(path)),
-            ..Config::default()
-        }
+        let mut config = Config::default();
+        config.storage.passphrase_file = Some(PathBuf::from(path));
+        config
     }
 
     #[test]
     fn key_file_readable_by_others_is_refused() -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::PermissionsExt;
         let dir = key_dir()?;
-        let path = dir.join("admin.key");
+        let path = dir.join("passphrase");
         std::fs::write(&path, "k".repeat(32))?;
         let config = key_config(&path.to_string_lossy());
         for (mode, accepted) in [
@@ -780,11 +778,10 @@ mod tests {
             (0o400, true),
         ] {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))?;
-            assert_eq!(config.admin_key(&no_env).is_ok(), accepted, "{mode:o}");
+            assert_eq!(passphrase(&config, &no_env).is_ok(), accepted, "{mode:o}");
         }
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))?;
-        let message = config
-            .admin_key(&no_env)
+        let message = passphrase(&config, &no_env)
             .err()
             .map(|e| e.to_string())
             .unwrap_or_default();
@@ -797,13 +794,13 @@ mod tests {
     fn credentials_directory_key_skips_the_mode_check() -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::PermissionsExt;
         let dir = key_dir()?;
-        let path = dir.join("admin_key");
+        let path = dir.join("passphrase");
         std::fs::write(&path, "k".repeat(32))?;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))?;
-        let config = key_config("$CREDENTIALS_DIRECTORY/admin_key");
+        let config = key_config("$CREDENTIALS_DIRECTORY/passphrase");
         let env = |name: &str| (name == "CREDENTIALS_DIRECTORY").then(|| dir.to_string_lossy().into_owned());
-        assert_eq!(config.admin_key(&env).map(|k| k.len()).ok(), Some(32));
-        assert!(config.admin_key(&no_env).is_err());
+        assert_eq!(passphrase(&config, &env).ok(), Some(32));
+        assert!(passphrase(&config, &no_env).is_err());
         std::fs::remove_dir_all(&dir)?;
         Ok(())
     }
@@ -952,15 +949,11 @@ mod tests {
     #[test]
     fn credentials_need_a_long_passphrase_and_bucket_keys_for_s3() -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::PermissionsExt;
-        let admin = "k".repeat(32);
         let passphrase = "p".repeat(32);
         let local = Config::default();
-        let short = [
-            ("DECANTER_REPORTS_ADMIN_KEY", admin.as_str()),
-            ("DECANTER_REPORTS_PASSPHRASE", "short"),
-        ];
+        let short = [("DECANTER_REPORTS_PASSPHRASE", "short")];
         let message = local
-            .credentials(&storage_env(&short))
+            .storage_credentials(&storage_env(&short))
             .err()
             .map(|e| e.to_string())
             .unwrap_or_default();
@@ -968,14 +961,11 @@ mod tests {
             message.contains("passphrase") && !message.contains("short"),
             "{message}"
         );
-        let both = [
-            ("DECANTER_REPORTS_ADMIN_KEY", admin.as_str()),
-            ("DECANTER_REPORTS_PASSPHRASE", passphrase.as_str()),
-        ];
+        let both = [("DECANTER_REPORTS_PASSPHRASE", passphrase.as_str())];
         assert!(
             local
-                .credentials(&storage_env(&both))
-                .is_ok_and(|c| c.storage.bucket_keys.is_none())
+                .storage_credentials(&storage_env(&both))
+                .is_ok_and(|c| c.bucket_keys.is_none())
         );
 
         let dir = key_dir()?;
@@ -984,11 +974,14 @@ mod tests {
         let mut s3 = Config::default();
         s3.storage.driver = Driver::S3;
         s3.storage.bucket = "reports".to_owned();
-        assert!(s3.credentials(&storage_env(&both)).is_err(), "s3 needs its keys");
+        assert!(
+            s3.storage_credentials(&storage_env(&both)).is_err(),
+            "s3 needs its keys"
+        );
         s3.storage.secret_access_key_file = Some(dir.join("secret_access_key"));
         let with_id = [both.as_slice(), &[("DECANTER_REPORTS_S3_ACCESS_KEY_ID", "AKIA")]].concat();
         let message = s3
-            .credentials(&storage_env(&with_id))
+            .storage_credentials(&storage_env(&with_id))
             .err()
             .map(|e| e.to_string())
             .unwrap_or_default();
@@ -996,7 +989,7 @@ mod tests {
         s3.storage.secret_access_key_file = Some(PathBuf::from("$CREDENTIALS_DIRECTORY/secret_access_key"));
         let dir_text = dir.to_string_lossy().into_owned();
         let systemd = [with_id.as_slice(), &[("CREDENTIALS_DIRECTORY", dir_text.as_str())]].concat();
-        let keys = s3.credentials(&storage_env(&systemd))?.storage.bucket_keys;
+        let keys = s3.storage_credentials(&storage_env(&systemd))?.bucket_keys;
         assert_eq!(keys, Some(("AKIA".to_owned(), "s3-secret".to_owned())));
         std::fs::remove_dir_all(&dir)?;
         Ok(())

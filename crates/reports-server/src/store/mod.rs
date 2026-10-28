@@ -139,6 +139,21 @@ pub async fn probe(backend: &dyn Backend, passphrase: &str) -> Result<bool> {
     Ok(true)
 }
 
+/// Whether the partition already has its encryption config. Creates nothing: a local partition that does not exist
+/// is not opened, and a bucket is only read.
+///
+/// # Errors
+///
+/// The driver refuses its parameters or the bucket cannot be read.
+pub async fn is_initialised(storage: &Storage, credentials: &StorageCredentials, product: Product) -> Result<bool> {
+    if storage.driver == Driver::Local && !local_partition_exists(storage, product) {
+        return Ok(false);
+    }
+    let backend = connect(storage, credentials, product)?;
+    let (_, etag) = backend.get(bootstrap::ENCRYPTION_META_KEY).await?;
+    Ok(etag.is_some())
+}
+
 #[derive(Clone)]
 pub struct Store {
     backend: Arc<dyn Backend>,

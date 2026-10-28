@@ -1,12 +1,14 @@
 # Maintainer runbook
 
-Commands for the person running the server. `B` is the base URL, `A` the admin header. Without the key every
-`/admin` route answers 404; an address that fails the key (or a delete code) `failures_per_ip` times in
+Commands for the person running the server. `B` is the base URL, `A` the admin header. There is no admin key to
+configure: admin accounts and their keys arrive with #1153, and until an admin account exists every `/admin` route
+answers 404 to everyone and the log repeats hourly `no admin accounts: admin access is disabled until an admin
+account exists`. Without a valid key every `/admin` route answers 404; an address that fails the key (or a delete code) `failures_per_ip` times in
 `failure_window_secs` gets 429 on all `/admin/` paths until the window passes.
 
 ```sh
 B=https://reports.example.org            # or http://127.0.0.1:8787 on the host
-A="Authorization: Bearer $(cat /etc/decanter-reports/admin.key)"
+A="Authorization: Bearer $KEY"             # KEY: an admin account's key (#1153)
 ```
 
 ## In a browser
@@ -27,7 +29,7 @@ The same session works with curl, which helps when checking it:
 
 ```sh
 J=$(mktemp)                                                       # the cookie jar
-curl -s -c "$J" -H "Origin: $B" --data-urlencode "key=$(cat /etc/decanter-reports/admin.key)" $B/admin/login
+curl -s -c "$J" -H "Origin: $B" --data-urlencode "key=$KEY" $B/admin/login
 T=$(curl -s -b "$J" -D - -o /dev/null $B/admin | sed -n 's/^x-csrf-token: //Ip' | tr -d '\r')
 curl -s -b "$J" -H "Origin: $B" -H "X-CSRF-Token: $T" -X POST $B/admin/reports/$ID/hide
 curl -s -b "$J" -H "Origin: $B" -d "csrf=$T" $B/admin/logout; rm -f "$J"
@@ -164,7 +166,7 @@ decanter-reports inspect decanter get meta/totals.json # one object, decrypted, 
 decanter-reports inspect psport get reports/p<32 hex>.json
 ```
 
-It needs the passphrase and the bucket keys but not the admin key, writes nothing, refuses a partition that is not
+It needs the passphrase and the bucket keys but no admin key, writes nothing, refuses a partition that is not
 initialized (and, with the `local` driver, one whose directory the server has not created; stop the server first,
 since its database file is locked while it runs). What it prints is decrypted bucket content (delete-code hashes,
 attachment names): treat the output as private as the bucket. Attachments are blobs, read them through

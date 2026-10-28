@@ -138,6 +138,7 @@ mod tests {
 
     use crate::app::{AppState, router};
     use crate::config::Config;
+    use crate::session::AdminKeys;
     use crate::store::{Product, test_stores};
 
     type Test = Result<(), Box<dyn Error>>;
@@ -216,7 +217,7 @@ ERROR: cannot read /home/deck/data/Decanter/steamapps/psport/profiles/3cb00b65-3
             let root = std::env::temp_dir().join(format!("decanter-reports-clean-{}", crate::secrets::random_hex()?));
             std::fs::create_dir_all(&root)?;
             Ok(Self {
-                state: AppState::new(Config::default(), ADMIN_KEY, test_stores(&root)),
+                state: AppState::new(Config::default(), AdminKeys::single(ADMIN_KEY), test_stores(&root)),
                 root,
             })
         }

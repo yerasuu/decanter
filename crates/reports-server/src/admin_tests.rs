@@ -13,6 +13,7 @@ use tower::ServiceExt;
 use crate::app::{AppState, router};
 use crate::config::Config;
 use crate::secrets::sha256;
+use crate::session::AdminKeys;
 use crate::store::{NewReport, Product, test_stores};
 
 type Test = Result<(), Box<dyn Error>>;
@@ -40,13 +41,17 @@ struct Login {
 
 impl Harness {
     fn new(tweak: impl FnOnce(&mut Config)) -> Result<Self, Box<dyn Error>> {
+        Self::with_keys(AdminKeys::single(ADMIN_KEY), tweak)
+    }
+
+    fn with_keys(keys: AdminKeys, tweak: impl FnOnce(&mut Config)) -> Result<Self, Box<dyn Error>> {
         let mut config = Config::default();
         config.limits.failures_per_ip = 1000;
         tweak(&mut config);
         let root = std::env::temp_dir().join(format!("decanter-reports-admin-{}", crate::secrets::random_hex()?));
         std::fs::create_dir_all(&root)?;
         Ok(Self {
-            state: AppState::new(config, ADMIN_KEY, test_stores(&root)),
+            state: AppState::new(config, keys, test_stores(&root)),
             root,
         })
     }
@@ -462,5 +467,27 @@ async fn admin_page_escapes_hostile_values_and_carries_the_token_in_every_form()
     assert_eq!(status, StatusCode::OK, "the key opens the page too");
     assert!(headers.get("x-csrf-token").is_none());
     assert!(String::from_utf8(body)?.contains(&fp));
+    Ok(())
+}
+
+#[tokio::test]
+async fn without_admin_accounts_every_key_gets_the_uniform_404() -> Test {
+    let h = Harness::with_keys(AdminKeys::default(), |_| {})?;
+    let uniform = h.send(Method::GET, "/admin/nothing", &[], "").await?;
+    let bearer = format!("Bearer {ADMIN_KEY}");
+    let answer = h
+        .send(Method::GET, "/admin/reports", &[("authorization", &bearer)], "")
+        .await?;
+    assert_eq!(answer, uniform);
+    let answer = h
+        .send(
+            Method::POST,
+            "/admin/login",
+            &[FORM, ("origin", ORIGIN)],
+            &format!("key={ADMIN_KEY}"),
+        )
+        .await?;
+    assert_eq!(answer, uniform);
+    assert_eq!(h.state.sessions.len(), 0);
     Ok(())
 }

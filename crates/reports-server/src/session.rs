@@ -1,4 +1,4 @@
-//! Browser sessions of the maintainer: login with the admin key, a `__Host-` cookie, a CSRF token per session, and
+//! Browser sessions of the maintainer: login with an admin key, a `__Host-` cookie, a CSRF token per session, and
 //! the gate that lets an `/admin` request through with either a valid Bearer key or a valid session.
 //!
 //! Sessions live in memory only, so a restart logs every maintainer out. Neither the key, a session id nor a CSRF
@@ -24,7 +24,7 @@ use crate::app::{AppState, api_error, internal, not_found};
 use crate::config::{AdminSessions, Config};
 use crate::html::layout;
 use crate::limits::client_ip;
-use crate::secrets::{Hash, hex, is_hex_token, matches, sha256};
+use crate::secrets::{Hash, is_hex_token, matches, random_hex_256, sha256};
 
 pub const LOGIN_PATH: &str = "/admin/login";
 const COOKIE_NAME: &str = "__Host-session";
@@ -70,10 +70,41 @@ pub struct Sessions {
     by_id_hash: Mutex<HashMap<Hash, Session>>,
 }
 
-fn random_token() -> Result<String, getrandom::Error> {
-    let mut bytes = [0_u8; 32];
-    getrandom::fill(&mut bytes)?;
-    Ok(hex(&bytes))
+/// The keys that open `/admin`, kept as SHA-256. Nothing fills it until admin accounts exist (#1153), so until then
+/// every key matches nothing and `/admin` answers the uniform 404 to everyone.
+#[derive(Default)]
+pub struct AdminKeys(Vec<Hash>);
+
+impl AdminKeys {
+    #[cfg(test)]
+    pub fn single(key: &str) -> Self {
+        Self(vec![sha256(key.as_bytes())])
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Every stored hash is compared, so the time taken does not say which one matched.
+    fn matches(&self, candidate: &[u8]) -> bool {
+        let mut found = false;
+        for hash in &self.0 {
+            found |= matches(hash, candidate);
+        }
+        found
+    }
+}
+
+const NO_ADMINS_EVERY: Duration = Duration::from_hours(1);
+
+/// Repeats in the log, hourly, why `/admin` refuses everyone, since the 404 itself must not say so.
+pub async fn warn_without_admins(state: AppState) {
+    loop {
+        if state.admin_keys.is_empty() {
+            tracing::warn!("no admin accounts: admin access is disabled until an admin account exists");
+        }
+        tokio::time::sleep(NO_ADMINS_EVERY).await;
+    }
 }
 
 impl Sessions {
@@ -98,8 +129,8 @@ impl Sessions {
     ///
     /// The operating system's random source is unavailable.
     pub fn open(&self, now: Instant) -> Result<String, getrandom::Error> {
-        let id = random_token()?;
-        let csrf = random_token()?;
+        let id = random_hex_256()?;
+        let csrf = random_hex_256()?;
         let session = Session {
             csrf_hash: sha256(csrf.as_bytes()),
             csrf,
@@ -181,7 +212,7 @@ fn bearer_matches(state: &AppState, headers: &HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split_once(' '))
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-        .is_some_and(|(_, key)| matches(&state.admin_hash, key.trim().as_bytes()))
+        .is_some_and(|(_, key)| state.admin_keys.matches(key.trim().as_bytes()))
 }
 
 /// `scheme://authority` of an absolute http(s) URL, lowercased; `None` for anything else, `null` included.
@@ -397,7 +428,7 @@ pub async fn login(
     } else {
         None
     };
-    if !key.is_some_and(|key| matches(&state.admin_hash, key.trim().as_bytes())) {
+    if !key.is_some_and(|key| state.admin_keys.matches(key.trim().as_bytes())) {
         record_failure(&state, &parts.headers, Some(peer), now);
         return not_found();
     }

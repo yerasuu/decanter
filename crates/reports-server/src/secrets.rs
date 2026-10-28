@@ -18,6 +18,17 @@ pub fn random_hex() -> Result<String, getrandom::Error> {
     Ok(hex(&bytes))
 }
 
+/// 256 random bits as 64 lowercase hex characters: session ids, CSRF tokens and the `secret` subcommand.
+///
+/// # Errors
+///
+/// The operating system's random source is unavailable.
+pub fn random_hex_256() -> Result<String, getrandom::Error> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes)?;
+    Ok(hex(&bytes))
+}
+
 #[must_use]
 pub fn hex(bytes: &[u8]) -> String {
     bytes
@@ -71,6 +82,12 @@ mod tests {
     fn random_tokens_are_32_hex_and_differ() {
         let (a, b) = (random_hex().unwrap_or_default(), random_hex().unwrap_or_default());
         assert!(is_hex_token(&a, 32));
+        assert_ne!(a, b);
+        let (a, b) = (
+            random_hex_256().unwrap_or_default(),
+            random_hex_256().unwrap_or_default(),
+        );
+        assert!(is_hex_token(&a, 64));
         assert_ne!(a, b);
     }
 

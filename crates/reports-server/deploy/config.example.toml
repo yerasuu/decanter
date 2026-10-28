@@ -1,6 +1,5 @@
 # decanter-reports configuration. Every key is optional; the values below are the defaults except where noted.
-# Environment overrides: DECANTER_REPORTS_LISTEN, _PUBLIC_URL, _ADMIN_KEY_ENV, _ADMIN_KEY_FILE,
-# _TRUSTED_PROXIES (comma separated), _CLIENT_IP_HEADER, _RETENTION_DAYS, _LOG,
+# Environment overrides: DECANTER_REPORTS_LISTEN, _PUBLIC_URL, _TRUSTED_PROXIES (comma separated), _CLIENT_IP_HEADER, _RETENTION_DAYS, _LOG,
 # _RESOLVED_RETENTION_DAYS, _INDEX_CACHE_SECS, _MAX_CONNECTIONS, _HEADER_TIMEOUT_SECS, _SHUTDOWN_GRACE_SECS,
 # _LIMIT_PER_IP_HOUR, _LIMIT_PER_IP_DAY, _LIMIT_GLOBAL_HOUR, _LIMIT_GET_PER_IP_MINUTE,
 # _LIMIT_FAILURES_PER_IP, _LIMIT_FAILURE_WINDOW_SECS; for [admin]: _ADMIN_SESSION_IDLE_SECS,
@@ -15,12 +14,6 @@ listen = "127.0.0.1:8787"
 # Prefix of the `url` the upload answers with (no trailing slash). Also the only origin the admin session accepts
 # for actions: it must be the https:// address the browser shows.
 public_url = "https://reports.example.org"
-
-# The admin key is never in this file: a file holding it, or an environment variable (name below).
-# Under systemd the key is a credential (LoadCredential= in the unit); a path starting with $CREDENTIALS_DIRECTORY
-# is resolved against that directory. Any other file must be readable by its owner only (mode 0600).
-admin_key_file = "$CREDENTIALS_DIRECTORY/admin_key"
-# admin_key_env = "DECANTER_REPORTS_ADMIN_KEY"
 
 # The tunnel's address as the server sees it (single addresses, no ranges), and the header it fills with the real
 # client address. Use a single-valued header the tunnel overwrites (cf-connecting-ip); x-forwarded-for works only if
@@ -93,10 +86,11 @@ path_style = true                  # MinIO without wildcard DNS needs it
 allow_insecure_http = false        # an http:// endpoint is refused unless this is true (keys and data in clear)
 # dir = "/var/lib/decanter-reports"  # the local driver's directory (partitions in dir/decanter, dir/psport), 0700
 
-# The three secrets are never in this file. Like the admin key, each comes from a file (a $CREDENTIALS_DIRECTORY
-# path from LoadCredential=, or an owner-only file) or, without one, from the environment variable named here.
-# One passphrase opens both partitions (each has its own encryption config derived from it). Losing it makes the
-# whole bucket unreadable: keep a copy offline.
+# The three secrets are never in this file. Each comes from a file (a path starting with $CREDENTIALS_DIRECTORY is
+# resolved against systemd's LoadCredential= directory; any other file must be readable by its owner only, mode
+# 0600) or, without one, from the environment variable named here. One passphrase opens both partitions (each has
+# its own encryption config derived from it); `decanter-reports secret` prints a new one. Losing it makes the whole
+# bucket unreadable: keep a copy offline.
 access_key_id_file = "$CREDENTIALS_DIRECTORY/s3_access_key_id"
 secret_access_key_file = "$CREDENTIALS_DIRECTORY/s3_secret_access_key"
 passphrase_file = "$CREDENTIALS_DIRECTORY/storage_passphrase"

@@ -107,12 +107,18 @@ supports.
 
 ```sh
 umask 077
-head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /etc/decanter-reports/storage.passphrase   # 64 hex characters
+decanter-reports secret > /etc/decanter-reports/storage.passphrase   # 64 hex characters from the OS random source
 ```
+
+`decanter-reports secret` prints the passphrase and nothing else; the serving process never makes one, because a
+fresh empty volume would otherwise give a second key to a bucket that already has one. Serving without a passphrase
+stops with an error that names `secret`.
 
 The first start writes each partition's encryption config (`decanter/.conf/encryption.json` and
 `psport/.conf/encryption.json`: a salt and the data key wrapped by a key derived from the passphrase with Argon2id),
-both from this one passphrase. **Losing the passphrase makes the whole bucket unreadable**: there
+both from this one passphrase. The server never creates one partition's encryption while the other partition is
+initialized and the passphrase does not open it: the start stops naming that partition, and `--check-config` says
+so on the uninitialized one's line. **Losing the passphrase makes the whole bucket unreadable**: there
 is no recovery and no back door. Keep a copy offline (a password manager, paper in a safe), apart from the bucket's
 backups. Changing it later is s3db's `bootstrap::change_passphrase` on each partition, which rewraps the data key
 without re-encrypting the objects; this server has no command for it yet.
@@ -121,37 +127,41 @@ without re-encrypting the objects; this server has no command for it yet.
 
 Copy `deploy/config.example.toml` to `/etc/decanter-reports/config.toml`, set `public_url` and the `[storage]`
 section. The directory and the config are world-readable (the service runs as a transient user that is not root)
-and hold no secret; the admin key, the passphrase and the two bucket keys are separate root-only files that systemd
-hands to the service as credentials.
+and hold no secret; the passphrase and the two bucket keys are separate root-only files that systemd hands to the
+service as credentials.
 
 ```sh
 install -d -m 0755 /etc/decanter-reports
 install -m 0644 deploy/config.example.toml /etc/decanter-reports/config.toml
 umask 077
-head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /etc/decanter-reports/admin.key   # 64 hex characters
 printf '%s' 'decanter-reports' > /etc/decanter-reports/s3.access_key_id
 printf '%s' '<the secret access key>' > /etc/decanter-reports/s3.secret_access_key
-chmod 0600 /etc/decanter-reports/admin.key /etc/decanter-reports/storage.passphrase /etc/decanter-reports/s3.*
-DECANTER_REPORTS_ADMIN_KEY_FILE=/etc/decanter-reports/admin.key \
+chmod 0600 /etc/decanter-reports/storage.passphrase /etc/decanter-reports/s3.*
 DECANTER_REPORTS_PASSPHRASE_FILE=/etc/decanter-reports/storage.passphrase \
 DECANTER_REPORTS_ACCESS_KEY_ID_FILE=/etc/decanter-reports/s3.access_key_id \
 DECANTER_REPORTS_SECRET_ACCESS_KEY_FILE=/etc/decanter-reports/s3.secret_access_key \
   decanter-reports --check-config /etc/decanter-reports/config.toml
 ```
 
-`config.toml` names each secret by its credential path (`admin_key_file = "$CREDENTIALS_DIRECTORY/admin_key"`,
-`storage.passphrase_file = "$CREDENTIALS_DIRECTORY/storage_passphrase"` and so on), which the unit's
+`config.toml` names each secret by its credential path (`storage.passphrase_file =
+"$CREDENTIALS_DIRECTORY/storage_passphrase"` and the two bucket keys), which the unit's
 `LoadCredential=` lines provide. Any other secret file is refused when group or others can read it (mode `& 0o077`);
 a secret from `$CREDENTIALS_DIRECTORY` or from an environment variable is not mode-checked. Run `--check-config` as
 root for the check above (the overrides replace the credential paths). It prints no secret, and one line per
 partition: it reads that partition's `.conf/encryption.json` once and says whether it is reachable, whether it is
 initialized, and whether the passphrase opens it. It writes nothing; a failing partition makes it exit non-zero.
+Outside a container it also warns when a secret comes from an environment variable (every process of the same user
+can read a process's environment); inside one (`/.dockerenv` or `/run/.containerenv` present) it does not.
 
 ```text
 config ok: listening on 127.0.0.1:8787
 partition decanter: bucket decanter-reports at https://minio.example.lan:9000, prefix decanter/: reachable, the passphrase opens it
 partition psport: bucket decanter-reports at https://minio.example.lan:9000, prefix psport/: reachable, not initialized yet (the first start creates its encryption)
 ```
+
+There is no admin credential to configure: admin accounts arrive with #1153, and until one exists `/admin` answers
+the same 404 as an unknown path to everyone, and the log repeats hourly `no admin accounts: admin access is disabled
+until an admin account exists`.
 
 With `driver = "local"` (development, or a single host without MinIO) each partition is one database file, in
 `storage.dir/decanter` and `storage.dir/psport`, created `0700` (a looser existing directory is narrowed with a
@@ -202,15 +212,14 @@ podman inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/cc-debian12
 
 ```sh
 podman build -f crates/reports-server/deploy/Containerfile -t decanter-reports .
-for name in admin.key storage.passphrase s3.access_key_id s3.secret_access_key; do
+for name in storage.passphrase s3.access_key_id s3.secret_access_key; do
   podman secret create "decanter-reports-$name" "/etc/decanter-reports/$name"
 done
 podman run -d --name decanter-reports --restart=always \
   --read-only --cap-drop=all --security-opt no-new-privileges \
   -p 127.0.0.1:8787:8787 \
-  --secret decanter-reports-admin.key --secret decanter-reports-storage.passphrase \
+  --secret decanter-reports-storage.passphrase \
   --secret decanter-reports-s3.access_key_id --secret decanter-reports-s3.secret_access_key \
-  -e DECANTER_REPORTS_ADMIN_KEY_FILE=/run/secrets/decanter-reports-admin.key \
   -e DECANTER_REPORTS_PASSPHRASE_FILE=/run/secrets/decanter-reports-storage.passphrase \
   -e DECANTER_REPORTS_ACCESS_KEY_ID_FILE=/run/secrets/decanter-reports-s3.access_key_id \
   -e DECANTER_REPORTS_SECRET_ACCESS_KEY_FILE=/run/secrets/decanter-reports-s3.secret_access_key \
@@ -337,8 +346,8 @@ image digests are placeholders to fill in before the first release.
 
 ## Before exposing it
 
-- `--check-config` passes without warnings and the admin key has been tried: `curl -H "Authorization: Bearer $KEY" .../admin/reports`
-  answers 200 and the same call without the key answers 404.
+- `--check-config` passes without warnings, and `curl .../admin/reports` answers the same 404 as an unknown path
+  (until admin accounts exist, #1153, with or without a Bearer key).
 - `public_url` is the exact `https://` address the browser shows (the admin session's origin check compares it), and
   a login through the tunnel at `<public_url>/admin/login` opens `/admin`; after a restart of the service the same
   browser gets the plain 404 on `/admin` (sessions live in memory only).

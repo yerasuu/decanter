@@ -16,6 +16,7 @@ use tower::ServiceExt;
 use crate::app::{AppState, router};
 use crate::config::Config;
 use crate::secrets::sha256;
+use crate::session::AdminKeys;
 use crate::store::{Change, NewReport, Product, test_stores};
 
 type Test = Result<(), Box<dyn Error>>;
@@ -63,7 +64,7 @@ impl Harness {
         let root = std::env::temp_dir().join(format!("decanter-reports-logs-{}", crate::secrets::random_hex()?));
         std::fs::create_dir_all(&root)?;
         let mut harness = Self {
-            state: AppState::new(config, ADMIN_KEY, test_stores(&root)),
+            state: AppState::new(config, AdminKeys::single(ADMIN_KEY), test_stores(&root)),
             root,
             cookie: String::new(),
             csrf: String::new(),

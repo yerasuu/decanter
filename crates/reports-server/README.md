@@ -58,7 +58,8 @@ Public pages (everything but `/healthz` and `/admin`) are rate limited per clien
 Hidden reports answer 404 on the public pages, their clean log too. Resolved reports stay public, marked, and lose
 their attachment but keep their clean log.
 "admin" means a valid key in `Authorization: Bearer`, or a browser session from `/admin/login` (see "Security
-model"); a session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
+model"). Admin keys belong to admin accounts, which arrive with #1153: until an admin account exists no key is valid,
+so `/admin` is disabled; a session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
 from a form field `csrf` or the header `X-CSRF-Token` (sent back on every session answer), and an `Origin` (or
 `Referer`) of this server, else 403. A form action answers 303 back to the admin page instead of 204.
 Without a valid key or session every `/admin` route but the login form answers 404, not 401, and a wrong method on any path also answers 404 (with no `Allow` header). Every error is a small JSON `{"error": ...}`, also the framework's own (a repeated query key is `400 bad_request`).
@@ -72,7 +73,7 @@ curl -s -X DELETE -H "X-Delete-Code: $CODE" $B/v1/reports/$ID
 curl -s -X PUT -H "X-Delete-Code: $CODE" --data-binary @game.log $B/v1/reports/$ID/attachment
 curl -s $B/r/$ID/log                                      # the public clean version of that log
 
-A="Authorization: Bearer $DECANTER_REPORTS_ADMIN_KEY"
+A="Authorization: Bearer $KEY"                             # an admin account's key (#1153)
 curl -s -H "$A" $B/admin/reports
 curl -s -H "$A" -X POST $B/admin/reports/$ID/hide
 curl -s -H "$A" -X POST $B/admin/reports/$ID/restore
@@ -100,7 +101,6 @@ partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runb
 |---|---|---|
 | `listen` | `127.0.0.1:8787` | `DECANTER_REPORTS_LISTEN` |
 | `public_url` | empty (the `url` is a path) | `DECANTER_REPORTS_PUBLIC_URL` |
-| `admin_key_env` / `admin_key_file` | `DECANTER_REPORTS_ADMIN_KEY` / none | `DECANTER_REPORTS_ADMIN_KEY_ENV`, `_ADMIN_KEY_FILE` |
 | `trusted_proxies`, `client_ip_header` | none | `DECANTER_REPORTS_TRUSTED_PROXIES`, `_CLIENT_IP_HEADER` |
 | `retention_days` | 365 | `DECANTER_REPORTS_RETENTION_DAYS` |
 | `resolved_retention_days` | 90 (0 keeps resolved reports for good) | `DECANTER_REPORTS_RESOLVED_RETENTION_DAYS` |
@@ -127,13 +127,17 @@ partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runb
 | `storage.secret_access_key_env` / `_file` | `DECANTER_REPORTS_S3_SECRET_ACCESS_KEY` / none | `DECANTER_REPORTS_SECRET_ACCESS_KEY_ENV`, `_SECRET_ACCESS_KEY_FILE` |
 | `storage.passphrase_env` / `_file` | `DECANTER_REPORTS_PASSPHRASE` / none | `DECANTER_REPORTS_PASSPHRASE_ENV`, `_PASSPHRASE_FILE` |
 
-The server refuses to start without an admin key of at least 32 characters and a storage passphrase of at least 32
-characters (plus the bucket's access key id and secret access key for `s3` and `r2`), and refuses a secret file that
+`decanter-reports secret` prints a new passphrase (64 hex characters from the operating system's random source) and
+nothing else; the serving process never makes one. The server refuses to start without a storage passphrase of at
+least 32 characters, naming `secret` in the error (plus the bucket's access key id and secret access key for `s3`
+and `r2`), and refuses a secret file that
 group or others can read (a path starting with `$CREDENTIALS_DIRECTORY`, from systemd's `LoadCredential=`, and the
 environment variables are exempt). No secret is ever printed or logged. `--check-config` validates them and makes
 one read-only round trip per partition, printing one line for each: it reads the partition's encryption config and
 says whether it is reachable, whether it is initialized and whether the passphrase opens it (a local partition not
-created yet is not opened, since opening it would create it). `--check-config` also prints warnings for settings that let a client choose its own address (see `docs/deploy.md`). Logs go to stderr through `tracing`
+created yet is not opened, since opening it would create it). The server never creates one partition's encryption
+while the other partition is initialized and the passphrase does not open it: it stops naming that partition, and
+`--check-config` says so on the uninitialized partition's line. `--check-config` also prints warnings for settings that let a client choose its own address (see `docs/deploy.md`), and, outside a container, for secrets read from the environment. Logs go to stderr through `tracing`
 and hold no report contents and no addresses.
 
 ## Security model
@@ -148,7 +152,7 @@ and hold no report contents and no addresses.
   default-src 'none'; style-src 'self' 'unsafe-inline'`, `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`.
 - **Never stored.** IP addresses, user agents, request headers, times finer than a day. The delete code is stored
-  only as a SHA-256 hash; the admin key only as a hash in memory. Rejected reports are not stored and their values
+  only as a SHA-256 hash; admin keys only as hashes. Rejected reports are not stored and their values
   are not echoed or logged. Attachments are the one private, optional exception: kept in the
   bucket as encrypted blobs under generated names, never served except to the admin. The server reads them once,
   at upload, through `decanter_report::clean_log` to build their public **clean log**: only lines that are instances
@@ -192,10 +196,11 @@ and hold no report contents and no addresses.
   `Retry-After` for that address, known route or not, so the 429 names no route. Successes do not count. A
   maintainer locked out this way waits out the window or comes from another address.
 - **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase (each partition
-  has its own encryption config, opened by the same passphrase); the bucket keys and the passphrase are credentials
-  like the admin key. The `local` driver's directory is 0700 and its file
+  has its own encryption config, opened by the same passphrase); the bucket keys and the passphrase are credentials,
+  read from owner-only files or the environment. The `local` driver's directory is 0700 and its file
   0600 (one per partition); the process sets umask 077.
-- **Admin.** One key, compared in constant time after hashing both sides; 404 without it. For a browser,
+- **Admin.** Admin keys, each compared in constant time after hashing both sides; 404 without one. There are none
+  until admin accounts exist (#1153), so admin access is disabled for now and the log says so hourly. For a browser,
   `/admin/login` trades the key for a session: a 256-bit random id kept in memory only as its SHA-256 (so a
   restart logs everyone out), ended after `admin.session_idle_secs` without a request or `admin.session_max_secs`
   after login, at most `admin.max_sessions` at once (the oldest ends first), swept when expired. The cookie is

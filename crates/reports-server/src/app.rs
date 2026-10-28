@@ -19,8 +19,7 @@ use serde_json::json;
 use crate::cache::PageCache;
 use crate::config::Config;
 use crate::limits::{Limiter, Verdict, client_ip};
-use crate::secrets::Hash;
-use crate::session::{LOGIN_PATH, Sessions, is_admin_path};
+use crate::session::{AdminKeys, LOGIN_PATH, Sessions, is_admin_path};
 use crate::store::Stores;
 use crate::{admin, admin_logs, admin_ui, clean_page, ingest, pages, session};
 
@@ -31,7 +30,7 @@ pub struct Inner {
     pub index_cache: PageCache,
     /// Lets one request rebuild an expired index while the rest wait for its result instead of repeating the scan.
     pub index_gate: tokio::sync::Mutex<()>,
-    pub admin_hash: Hash,
+    pub admin_keys: AdminKeys,
     pub sessions: Sessions,
     pub log_searches: admin_logs::Searches,
 }
@@ -49,7 +48,7 @@ impl std::ops::Deref for AppState {
 
 impl AppState {
     #[must_use]
-    pub fn new(config: Config, admin_key: &str, stores: Stores) -> Self {
+    pub fn new(config: Config, admin_keys: AdminKeys, stores: Stores) -> Self {
         let limiter = Limiter::new(config.limits.clone());
         let index_cache = PageCache::new(config.index_cache_secs);
         let sessions = Sessions::new(&config.admin);
@@ -59,7 +58,7 @@ impl AppState {
             limiter,
             index_cache,
             index_gate: tokio::sync::Mutex::new(()),
-            admin_hash: crate::secrets::sha256(admin_key.as_bytes()),
+            admin_keys,
             sessions,
             log_searches: admin_logs::Searches::default(),
         }))
@@ -251,6 +250,7 @@ mod tests {
     use super::{AppState, router};
     use crate::config::Config;
     use crate::secrets::sha256;
+    use crate::session::AdminKeys;
     use crate::store::{NewReport, Product, test_stores};
 
     type Test = Result<(), Box<dyn Error>>;
@@ -273,7 +273,7 @@ mod tests {
             let root = std::env::temp_dir().join(format!("decanter-reports-test-{}", crate::secrets::random_hex()?));
             std::fs::create_dir_all(&root)?;
             Ok(Self {
-                state: AppState::new(config, ADMIN_KEY, test_stores(&root)),
+                state: AppState::new(config, AdminKeys::single(ADMIN_KEY), test_stores(&root)),
                 root,
             })
         }
