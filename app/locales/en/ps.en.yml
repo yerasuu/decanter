@@ -723,6 +723,7 @@ ps.online.local_player.note: Only needed to play co-op with two windows on this 
 ps.online.no_password: 'There''s an Online ID saved with no password in the keyring: type it and press Save, or clear the Online ID to play without shadNet. Until then, online play won''t start.'
 ps.online.kept_existing: Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten.
 ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.
+ps.play.local_player_error: The local player "%{value}" saved for this game isn't 1 to 10 digits. Fix it in the game's Online tab or clear it.
 ps.branch.title: psport's branch, built on this PC (Testing)
 ps.branch.description: 'decanter fetches the newest commit of psport''s branch with your git, downloads the toolchain it pins (llvm-mingw, CMake, Ninja and psport''s toolchain package, each checked against its SHA-256) and builds it here, with nothing else running from what it downloads. Building runs the branch''s own scripts with your rights, so each new commit asks for your confirmation first.'
 ps.branch.toolchain.not_pinned: This decanter pins no toolchain package yet, so it can't build; a later version will.

@@ -154,6 +154,7 @@ pub struct GameLaunch<'launch> {
     pub learned: &'launch learned::Title,
     pub aspect_ratio: Option<&'launch str>,
     pub online: Option<&'launch online::Online>,
+    pub local_player: Option<&'launch local_player::LocalPlayer>,
 }
 
 /// A bbport checkout. The toolchain that builds it must be the one that
@@ -310,14 +311,12 @@ impl Bbport {
     /// `run.sh` in `toolchain`, with [`Self::game_env`] plus what keeps it from building and from
     /// writing into the checkout.
     pub async fn launch_command(&self, toolchain: &Toolchain, launch: &GameLaunch<'_>) -> io::Result<Command> {
-        let mut command = match toolchain::command(
-            toolchain,
-            &self.root,
-            Port::Bbport,
-            r#"bash "$DECANTER_PORT_DIR/run.sh""#,
-        )
-        .await
-        {
+        // The id is digits only ([`local_player::LocalPlayer`]), so it can't break out of the script.
+        let script = match launch.local_player {
+            Some(player) => format!(r#"bash "$DECANTER_PORT_DIR/run.sh" --user-id {}"#, player.as_str()),
+            None => String::from(r#"bash "$DECANTER_PORT_DIR/run.sh""#),
+        };
+        let mut command = match toolchain::command(toolchain, &self.root, Port::Bbport, &script).await {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
@@ -360,7 +359,7 @@ impl Bbport {
             .env(names.var("PROBE"), folder.executable());
         self.game_env(command, names, false, launch).await;
         direct::run_sh_defaults(command, &data.join(names.ini()), &data);
-        command.args(direct::arguments(command, &data, &out));
+        command.args(direct::arguments(command, &data, &out, launch.local_player));
         Ok(())
     }
 
@@ -379,6 +378,7 @@ impl Bbport {
             learned,
             aspect_ratio,
             online,
+            local_player: _,
         } = *launch;
         let var = |suffix: &str| names.var(suffix);
         let port_reads = |key: &str| old_memory_model || !MEMORY_MODEL_SETTINGS.contains(&key);

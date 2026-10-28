@@ -11,6 +11,7 @@ use decanter_nix::Toolchain;
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::GameLaunch;
 use decanter_ps::bbport::icons::IconStyle;
+use decanter_ps::bbport::local_player::{LocalPlayer, LocalPlayerError};
 use decanter_ps::bbport::mods::Mods;
 use decanter_ps::bbport::online::{self, Online, OnlineError};
 use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
@@ -264,6 +265,8 @@ pub(super) enum LaunchError {
     Keyring(String),
     #[error("no shadNet password in the keyring for {0}")]
     NoPassword(String),
+    #[error("local player unusable: {0}")]
+    LocalPlayer(LocalPlayerError),
 }
 
 impl LaunchError {
@@ -282,6 +285,7 @@ impl LaunchError {
             Self::Online(err) => Text::new("ps.play.online_error").text("error", online_error(err)),
             Self::Keyring(err) => Text::new("ps.play.online_keyring_error").arg("error", err),
             Self::NoPassword(npid) => Text::new("ps.play.online_no_password").arg("npid", npid),
+            Self::LocalPlayer(err) => Text::new("ps.play.local_player_error").arg("value", err.value()),
         }
     }
 }
@@ -303,6 +307,7 @@ pub(super) struct LaunchInputs {
     debug_dir: Option<PathBuf>,
     user_dir: PathBuf,
     online: Option<Online>,
+    local_player: Option<LocalPlayer>,
     menu_language: String,
 }
 
@@ -323,6 +328,7 @@ impl LaunchInputs {
             learned: &self.learned,
             aspect_ratio: self.aspect_ratio,
             online: self.online.as_ref(),
+            local_player: self.local_player.as_ref(),
         }
     }
 }
@@ -392,6 +398,14 @@ pub(super) async fn launch_inputs(
         Ok(online) => online,
         Err(err) => return Err(err),
     };
+    let local_player = if bbport::is_bloodborne(game) {
+        match LocalPlayer::of_title(&settings, &game.title_id) {
+            Ok(player) => player,
+            Err(err) => return Err(LaunchError::LocalPlayer(err)),
+        }
+    } else {
+        None
+    };
     Ok(LaunchInputs {
         settings,
         learned,
@@ -400,6 +414,7 @@ pub(super) async fn launch_inputs(
         debug_dir,
         user_dir,
         online,
+        local_player,
         menu_language: rust_i18n::locale().to_string(),
     })
 }

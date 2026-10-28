@@ -723,6 +723,7 @@ ps.online.local_player.note: Solo hace falta para jugar en cooperativo con dos v
 ps.online.no_password: 'Hay un Online ID guardado sin contraseña en el llavero: escríbela y pulsa Guardar, o borra el Online ID para jugar sin shadNet. Mientras tanto, el juego online no arranca.'
 ps.online.kept_existing: Guardado. %{previous} conserva su contraseña y su token en el llavero, porque el nuevo Online ID ya tenía los suyos y no se han sobrescrito.
 ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online.
+ps.play.local_player_error: El jugador local «%{value}» guardado para este juego no son de 1 a 10 cifras. Corrígelo en la pestaña Online del juego o bórralo.
 ps.branch.title: Rama de psport, compilada en este PC (Pruebas)
 ps.branch.description: 'decanter obtiene el commit más reciente de la rama de psport con tu git, descarga la toolchain que fija (llvm-mingw, CMake, Ninja y el paquete de toolchain de psport, cada uno comprobado con su SHA-256) y la compila aquí, sin ejecutar nada más de lo que descarga. Compilar ejecuta los scripts de la propia rama con tus permisos, así que cada commit nuevo te pide confirmación antes.'
 ps.branch.toolchain.not_pinned: Esta versión de decanter aún no fija ningún paquete de toolchain, así que no puede compilar; lo hará una posterior.

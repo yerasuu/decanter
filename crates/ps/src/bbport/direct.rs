@@ -8,6 +8,8 @@ use std::{fs, io};
 
 use tokio::process::Command;
 
+use super::local_player::LocalPlayer;
+
 /// Whether this system runs psport this way rather than through `run.sh`.
 pub const IN_USE: bool = crate::os::DIRECT_LAUNCH;
 
@@ -118,9 +120,10 @@ pub fn run_sh_defaults(command: &mut Command, config: &Path, data: &Path) {
 
 /// The arguments `run.sh` passes the program, read from the environment `command` will run with
 /// as `run.sh` reads its own: an empty variable counts as unset. `data` is `PS_DATA_DIR` and `out`
-/// the folder the port links a game's mods in.
+/// the folder the port links a game's mods in. `local_player` adds `--user-id` and its digits as two
+/// arguments, which `run.sh` takes through its own.
 #[must_use]
-pub fn arguments(command: &Command, data: &Path, out: &Path) -> Vec<OsString> {
+pub fn arguments(command: &Command, data: &Path, out: &Path, local_player: Option<&LocalPlayer>) -> Vec<OsString> {
     let var = |name: &str| env_of(command, name);
     let path = |name: &str| var(name).map(not_an_option);
     let var_or = |name: &str, fallback: PathBuf| path(name).unwrap_or_else(|| fallback.into_os_string());
@@ -159,6 +162,9 @@ pub fn arguments(command: &Command, data: &Path, out: &Path) -> Vec<OsString> {
         OsString::from("--timeout"),
         var("PS_TIMEOUT").unwrap_or_else(|| OsString::from("0")),
     ]);
+    if let Some(player) = local_player {
+        args.extend([OsString::from("--user-id"), OsString::from(player.as_str())]);
+    }
     args
 }
 
