@@ -738,6 +738,7 @@ ps.branch.confirm_delete_toolchain.title: Delete the toolchain?
 ps.branch.confirm_delete_toolchain.body: 'The downloaded toolchain %{number} (llvm-mingw, CMake, Ninja and psport''s toolchain package) will be deleted from your library. The next build downloads it again.'
 ps.branch.confirm_delete_toolchain.confirm: Delete the toolchain
 ps.branch.redownload_toolchain: Download again
+ps.branch.open_settings: Open Settings
 ps.branch.deleting: Deleting…
 ps.branch.building: 'Building %{commit}: %{stage}'
 ps.branch.built: '%{branch} · built %{date} · toolchain-win32-%{number}'

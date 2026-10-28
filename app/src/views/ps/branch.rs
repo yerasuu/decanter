@@ -10,9 +10,11 @@ use rust_i18n::t;
 use crate::runners;
 use crate::state::Ps;
 use crate::theme;
+use crate::views::settings::{self, Tab};
 use crate::widgets::{ButtonKind, button, confirm_panel, progress_bar};
 
 const TAMPERED: &str = "ps.branch.errors.tampered";
+const PATH_TOO_LONG: &str = "ps.branch.errors.path_too_long";
 
 pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
     let state = ps.read(cx).branch();
@@ -45,6 +47,7 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         || state
             .head()
             .is_some_and(|head| head.as_ref().is_err_and(|err| err.is_or_wraps(TAMPERED)));
+    let path_too_long = state.error().is_some_and(|err| err.is_or_wraps(PATH_TOO_LONG));
     let built_head = state
         .head()
         .and_then(|head| head.as_ref().ok())
@@ -103,6 +106,19 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
                         false,
                     )
                     .on_click(move |_, _, cx| ps.update(cx, Ps::branch_redownload_toolchain)),
+                ),
+            )
+        })
+        .when(path_too_long && !busy && !deleting, |card| {
+            card.child(
+                div().flex().child(
+                    button(
+                        "ps-branch-open-settings",
+                        ButtonKind::Primary,
+                        t!("ps.branch.open_settings"),
+                        false,
+                    )
+                    .on_click(|_, _, cx| settings::open(Tab::Account, cx)),
                 ),
             )
         })
