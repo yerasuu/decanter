@@ -11,6 +11,7 @@ mod raven;
 use gpui::{App, AppContext as _, Entity, Global};
 
 use crate::i18n::Text;
+use crate::views::settings::Tab as SettingsTab;
 
 pub use background::{Background, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState};
@@ -39,6 +40,9 @@ pub struct Session {
     pub external_request: u32,
     /// The external game that request is to edit, if any.
     pub external_edit: Option<String>,
+    /// The Ajustes tab some other view asks the shell to open; Ajustes clears
+    /// it once it has switched to it.
+    pub settings_request: Option<SettingsTab>,
     /// Whether the player switched the Raven section on in Ajustes; it shows
     /// only where Raven is offered too.
     pub raven: bool,
@@ -73,6 +77,7 @@ impl Session {
             ps_home: 0,
             external_request: 0,
             external_edit: None,
+            settings_request: None,
             raven,
         }
     }

@@ -11,7 +11,7 @@ mod profile_form;
 mod ps;
 mod raven;
 pub mod session_renewal;
-mod settings;
+pub mod settings;
 mod shell;
 mod storage;
 mod unavailable;

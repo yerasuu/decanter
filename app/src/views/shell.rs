@@ -83,6 +83,12 @@ impl Shell {
                     view.update(cx, |view, cx| view.start(editing, cx));
                 }
             }
+            if session.read(cx).settings_request.is_some() {
+                this.navigate(Page::Settings, window, cx);
+                if let Some(view) = &this.settings {
+                    view.update(cx, SettingsView::open_requested);
+                }
+            }
             cx.notify();
         })
         .detach();

@@ -15,7 +15,7 @@ mod general;
 use std::borrow::Cow;
 
 use decanter_core::Storefront;
-use gpui::{Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
+use gpui::{App, Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::state::AppState;
@@ -25,10 +25,19 @@ use compatibility::CompatibilityTab;
 use general::GeneralTab;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Tab {
+pub enum Tab {
     General,
     Account,
     Compatibility,
+}
+
+/// Asks the shell to show Ajustes on `tab`.
+pub fn open(tab: Tab, cx: &mut App) {
+    let session = AppState::get(cx).session.clone();
+    session.update(cx, |session, cx| {
+        session.settings_request = Some(tab);
+        cx.notify();
+    });
 }
 
 /// The open tab's own entity. Rebuilt on every tab switch or profile
@@ -67,6 +76,15 @@ impl SettingsView {
         }
         self.profile = profile;
         self.rebuild(cx);
+    }
+
+    /// Switches to the tab the session asks for, if any, and clears the request.
+    pub fn open_requested(&mut self, cx: &mut Context<Self>) {
+        let session = AppState::get(cx).session.clone();
+        let requested = session.update(cx, |session, _| session.settings_request.take());
+        if let Some(tab) = requested {
+            self.select(tab, cx);
+        }
     }
 
     fn select(&mut self, tab: Tab, cx: &mut Context<Self>) {
