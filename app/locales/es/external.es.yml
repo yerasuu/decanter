@@ -125,6 +125,7 @@ external.drop.refused.library: es una biblioteca, no un programa
 external.drop.refused.unsupported: 'no es un ejecutable que decanter sepa añadir: suelta un .exe de Windows, un ejecutable de Linux, un AppImage o un script con #!'
 external.drop.refused.unsupported_windows: 'no es un ejecutable que decanter sepa añadir: suelta un .exe'
 external.drop.refused.other_system: es un programa para otro sistema
+external.drop.refused.one_dump: otro volcado en la misma suelta; añádelo cuando termine el primero
 external.drop.edit: Editar
 external.drop.undo: Deshacer
 external.drop.undo_running: Detén el juego antes de deshacer

@@ -1,7 +1,7 @@
 //! The main window's frame: topbar (logo, sections, profile switcher,
 //! window controls), the current section, and the download strip along
 //! the bottom. Files dropped anywhere on it are added as external games
-//! ([`super::dropped`]).
+//! ([`super::dropped`]), and a PS dump's folder goes to the PS section's add.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -24,7 +24,7 @@ use super::settings::SettingsView;
 use super::storage::StorageView;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
-use crate::state::{AppState, InstallStatus};
+use crate::state::{AppState, InstallStatus, Ps};
 use crate::theme;
 use crate::widgets::{Select, progress_bar, select::SelectStyle};
 
@@ -155,7 +155,8 @@ impl Shell {
     }
 
     /// Registers every program among `paths` as an external game of the
-    /// active profile. Each file is read, never run.
+    /// active profile, and offers the first PS dump folder among them to the
+    /// PS section. Each file is read, never run.
     fn drop_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         self.drop_hover = false;
         let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
@@ -164,13 +165,41 @@ impl Shell {
             return;
         };
         tracing::info!(profile_id, count = paths.len(), "files dropped on the window");
+        let ps_offered = Caps::get(cx).is_offered(Feature::PsSection);
         // Detached rather than kept: a second drop must not cancel the
         // first one's notice while its games are already being written.
         cx.spawn(async move |this, cx| {
             let profile = profile_id.clone();
-            let outcome =
-                tokio::task::spawn_blocking(move || crate::external::dropped::register(&profile, &paths)).await;
-            let outcome = match outcome {
+            let outcome = tokio::task::spawn_blocking(move || {
+                let (mut dumps, mut programs) = (Vec::new(), Vec::with_capacity(paths.len()));
+                for path in paths {
+                    // Checked here, once: what the PS section is handed has
+                    // already passed as a dump.
+                    match ps_offered.then(|| decanter_ps::library::inspect(&path)) {
+                        Some(Ok(game)) => dumps.push((path, game)),
+                        Some(Err(_)) | None => programs.push(path),
+                    }
+                }
+                let mut outcome = if programs.is_empty() {
+                    crate::external::dropped::Outcome::default()
+                } else {
+                    crate::external::dropped::register(&profile, &programs)
+                };
+                let mut dumps = dumps.into_iter();
+                let first = dumps.next();
+                outcome
+                    .refused
+                    .extend(dumps.map(|(path, _)| crate::external::dropped::Refused {
+                        file: path.file_name().map_or_else(
+                            || path.display().to_string(),
+                            |name| name.to_string_lossy().into_owned(),
+                        ),
+                        reason: Text::new("external.drop.refused.one_dump"),
+                    }));
+                (first, outcome)
+            })
+            .await;
+            let (dump, outcome) = match outcome {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     tracing::error!(%err, "registering dropped files did not finish");
@@ -192,10 +221,20 @@ impl Shell {
                     this.page = Page::Library;
                     this.library.update(cx, |library, cx| library.select(id, cx));
                 }
-                this.drop_notice = Some(DropNotice {
-                    profile_id: Some(profile_id),
-                    outcome,
-                });
+                if let Some((path, game)) = dump {
+                    tracing::info!(path = %path.display(), title_id = game.title_id, "PS dump dropped on the window");
+                    this.ps.get_or_insert_with(|| cx.new(PsView::new));
+                    this.page = Page::Ps;
+                    Ps::get(cx).update(cx, |ps, cx| ps.offer_dump(path, Some(game), cx));
+                }
+                let outcome_empty =
+                    outcome.added.is_empty() && outcome.existing.is_empty() && outcome.refused.is_empty();
+                if !outcome_empty {
+                    this.drop_notice = Some(DropNotice {
+                        profile_id: Some(profile_id),
+                        outcome,
+                    });
+                }
                 cx.notify();
             });
         })

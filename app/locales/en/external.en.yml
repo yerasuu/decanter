@@ -125,6 +125,7 @@ external.drop.refused.library: a library, not a program
 external.drop.refused.unsupported: 'not an executable decanter can add: drop a Windows .exe, a Linux executable, an AppImage or a #! script'
 external.drop.refused.unsupported_windows: 'not an executable decanter can add: drop an .exe'
 external.drop.refused.other_system: a program for another system
+external.drop.refused.one_dump: another dump in the same drop; add it once the first one is done
 external.drop.edit: Edit
 external.drop.undo: Undo
 external.drop.undo_running: Stop the game before undoing

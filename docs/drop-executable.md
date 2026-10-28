@@ -18,8 +18,13 @@ Each file is classified by its first bytes, not its extension
 | AppImage | ELF with `AI\x01`/`AI\x02` at offset 8, or an `.AppImage` name | itself; without the permission to run it is added and the notice says to `chmod +x` it, since decanter never changes the file |
 | Script | `#!` with the permission to run | itself (Linux only) |
 
-Anything else (`.lnk`, `.msi`, `.bat`, a DLL, a shared library, a folder, a
-device or socket, a file that can't be read) is refused, one line per file in
+A folder that `decanter_ps::library::inspect` takes for a PS dump, where the
+PS section is offered, goes to the PS section's «Añadir volcado…» instead:
+the same Copiar/Mover question, progress and cancel. Only the first dump of a
+drop is offered; any other is listed in the notice to add once it is done.
+
+Anything else (`.lnk`, `.msi`, `.bat`, a DLL, a shared library, any other
+folder, a device or socket, a file that can't be read) is refused, one line per file in
 the notice saying why and which kinds are handled. A Linux program dropped on
 the Windows build, or any program on macOS, is refused as a program for
 another system. Symlinks are followed to read the target, and the game keeps

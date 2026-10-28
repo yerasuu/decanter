@@ -133,7 +133,7 @@ ps.failures.notice.errors_and_missing.other: '%{count} errores y %{missing} (ver
 ps.failures.notice.errors.one: '%{count} error registrado en Fallos'
 ps.failures.notice.errors.other: '%{count} errores registrados en Fallos'
 ps.settings.games.title: Carpeta de juegos
-ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, en su mismo disco. «Añadir volcado…» copia o mueve un volcado a la principal, y los de cada carpeta aparecen solos. Las partidas y los ajustes se quedan siempre en la principal; la caché va a la ubicación de caché de la carpeta de cada juego. Para pasar un juego de una carpeta a otra, o elegir dónde va su caché, usa Almacenamiento.'
+ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, en su mismo disco. «Añadir volcado…», o soltar su carpeta en la ventana, copia o mueve un volcado a la principal, y los de cada carpeta aparecen solos. Las partidas y los ajustes se quedan siempre en la principal; la caché va a la ubicación de caché de la carpeta de cada juego. Para pasar un juego de una carpeta a otra, o elegir dónde va su caché, usa Almacenamiento.'
 ps.settings.sys_modules.title: Módulos del sistema (opcional)
 ps.settings.sys_modules.none: Sin carpeta
 ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno.'
@@ -162,10 +162,10 @@ ps.settings.forget: Quitar
 ps.settings.save_error: 'No se pudo guardar la carpeta: %{error}'
 ps.games.search: Buscar
 ps.games.scanning: Buscando juegos…
-ps.games.no_dumps: 'Todavía no hay volcados: añade el primero.'
+ps.games.no_dumps: 'Todavía no hay volcados: añade el primero o suelta su carpeta en la ventana.'
 ps.games.no_match: Nada coincide con la búsqueda.
 ps.games.rescan: Actualizar biblioteca
-ps.games.browser_empty: 'Todavía no hay juegos: añade un volcado y decanter lo copia o lo mueve a la carpeta de juegos.'
+ps.games.browser_empty: 'Todavía no hay juegos: añade un volcado, o suelta su carpeta en la ventana, y decanter lo copia o lo mueve a la carpeta de juegos.'
 ps.add.button: Añadir volcado…
 ps.add.pick_title: Elige la carpeta del volcado
 ps.add.title: 'Añadir «%{title}» (%{title_id})'
