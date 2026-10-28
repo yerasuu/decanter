@@ -264,6 +264,19 @@ impl Ps {
         let scan = self.scan;
         self.scanning = true;
         cx.notify();
+        // A dump lying in a games folder's root is only put in a folder of
+        // its own while nothing has it open.
+        let busy: HashSet<PathBuf> = self
+            .entries
+            .iter()
+            .map(|entry| &entry.game.dir)
+            .filter(|dir| {
+                self.launching.contains(*dir)
+                    || self.moving.contains(*dir)
+                    || self.is_running(&JobKey::Game((*dir).clone()), cx)
+            })
+            .cloned()
+            .collect();
         let root = decanter_ps::paths::active();
         let task = cx.background_spawn(async move {
             // Read again on every scan, since a folder can be added or its
@@ -291,7 +304,21 @@ impl Ps {
                         .filter(|folder| folder.is_dir()),
                 )
                 .collect();
-            Ok((status::classify(&root, &library::scan(&folders)), library_roots))
+            let wrapped: Vec<(Text, bool)> = folders
+                .iter()
+                .filter(|folder| !busy.contains(*folder))
+                .filter_map(|folder| match crate::relocate::wrap_root_dump(folder) {
+                    Ok(Some((game, dir))) => Some((
+                        Text::new("ps.games.wrapped")
+                            .arg("title", if game.title.is_empty() { game.title_id } else { game.title })
+                            .arg("path", dir.display()),
+                        false,
+                    )),
+                    Ok(None) => None,
+                    Err(err) => Some((err, true)),
+                })
+                .collect();
+            Ok((status::classify(&root, &library::scan(&folders)), library_roots, wrapped))
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -301,7 +328,19 @@ impl Ps {
                 }
                 this.scanning = false;
                 match result {
-                    Ok((entries, library_roots)) => {
+                    Ok((entries, library_roots, wrapped)) => {
+                        // Shown where an add's outcome is, unless an add is
+                        // under way and needs that place.
+                        if this.adding.is_none()
+                            && let Some(notice) = wrapped.into_iter().reduce(|(all, all_failed), (next, failed)| {
+                                (
+                                    Text::new("ps.games.notices").text("first", all).text("next", next),
+                                    all_failed || failed,
+                                )
+                            })
+                        {
+                            this.add_notice = Some(notice);
+                        }
                         tracing::debug!(
                             games = entries.len(),
                             folders = library_roots.len(),

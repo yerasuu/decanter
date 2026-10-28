@@ -109,8 +109,10 @@ See [Development](#development).
 3. Install games from Biblioteca (Library). Updates, versions, DLC, cloud
    saves and the Proton pin are in each game's Propiedades (Properties).
 4. Add other Windows games with Añadir juego (Add game) in Biblioteca.
-5. For PS games, copy or move your dumps into the PS section's games
-   folder (`<root>/psport/games/`); they show up on their own. The port is
+5. For PS games, use Añadir volcado (Add dump) in the PS section, or drop a
+   dump's folder on the window: decanter copies or moves it, as you choose
+   each time, into `<root>/psport/games/<name>/`. A dump left loose in that
+   folder is put in a folder of its own on the next scan. The port is
    prepared (fetched prebuilt or built) when a game is played.
 
 ## PS section

@@ -166,6 +166,9 @@ ps.games.no_dumps: 'No dumps yet: add the first one, or drop its folder on the w
 ps.games.no_match: Nothing matches the search.
 ps.games.rescan: Refresh library
 ps.games.browser_empty: 'No games yet: add a dump, or drop its folder on the window, and decanter copies or moves it into the games folder.'
+ps.games.wrapped: '"%{title}" lay loose in the games folder: it is now in %{path}.'
+ps.games.wrap_failed: 'Could not put the loose dump in %{path} into a folder of its own: %{error}'
+ps.games.notices: '%{first} %{next}'
 ps.add.button: Add dump…
 ps.add.pick_title: Choose the dump's folder
 ps.add.title: 'Add "%{title}" (%{title_id})'

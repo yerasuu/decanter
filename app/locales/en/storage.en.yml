@@ -24,7 +24,6 @@ storage.errors.hosted: 'This game lives in its launcher''s prefix: move the laun
 storage.errors.running: 'The game is running: close it before moving it.'
 storage.errors.shared: 'Another account shares these files: they can''t be moved on their own.'
 storage.errors.exists: '%{path} already exists in the destination folder.'
-storage.errors.dump_root: '%{path} is the whole games folder: put the dump in a subfolder to move it.'
 storage.errors.manifest: 'moving the record of %{game}: %{error}'
 storage.legacy.title: Old Decanter data
 storage.legacy.body: Decanter now keeps its data in the library; %{path} is only left as a copy of how things were.

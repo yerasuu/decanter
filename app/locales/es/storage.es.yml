@@ -24,7 +24,6 @@ storage.errors.hosted: 'Este juego vive en el prefijo de su lanzador: mueve el l
 storage.errors.running: 'El juego está abierto: ciérralo antes de moverlo.'
 storage.errors.shared: 'Otra cuenta comparte estos archivos: no se pueden mover solos.'
 storage.errors.exists: '%{path} ya existe en la carpeta de destino.'
-storage.errors.dump_root: '%{path} es la carpeta de juegos entera: mete el volcado en una subcarpeta para moverlo.'
 storage.errors.manifest: 'moviendo el registro de %{game}: %{error}'
 storage.legacy.title: Datos antiguos de Decanter
 storage.legacy.body: Decanter ya guarda sus datos en la biblioteca; %{path} solo queda como copia de lo anterior.

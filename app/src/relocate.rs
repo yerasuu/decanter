@@ -127,13 +127,19 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
 /// once the copy is whole.
 pub fn move_dump(dir: &Path, library_root: &Path, progress: &Progress) -> Result<(), Text> {
     let games = decanter_ps::paths::games_in(library_root);
-    // A dump dropped straight into a games folder is that folder itself:
-    // moving it would take every other dump with it.
+    // A dump lying straight in a games folder is that folder itself: it
+    // gets its own folder first, so the other dumps stay behind.
+    let wrapped = if dir.ends_with("psport/games") {
+        crate::achv_try!(wrap_root_dump(dir)).map(|(_, wrapped)| wrapped)
+    } else {
+        None
+    };
+    let dir = wrapped.as_deref().unwrap_or(dir);
     let Some(name) = dir
         .file_name()
         .filter(|_| dir.parent().is_some_and(|parent| parent.ends_with("psport/games")))
     else {
-        return Err(Text::new("storage.errors.dump_root").arg("path", dir.display()));
+        return Err(Text::new("messages.errors.not_installed"));
     };
     if dir.parent() == Some(games.as_path()) {
         return Ok(());
@@ -228,6 +234,76 @@ pub fn add_dump(source: &Path, target: &Path, mode: Mode, progress: &Progress) -
     }
     tracing::info!(to = %target.display(), "PS dump added");
     Ok(())
+}
+
+/// Puts a dump lying straight in the games folder `games` into a folder of
+/// its own, `games/<TITLE_ID>` (`<TITLE_ID>-2`... when taken): a games
+/// folder that is itself a dump can't move without every other dump in it.
+///
+/// Only renames, on one disk. The dump's entries gather in
+/// `.<name>.wrapping`, `sce_sys` last so that the root reads as the dump
+/// until everything else is across, and the next call finishes one a crash
+/// cut short. Other dumps in `games` and staging folders stay. Blocking; the
+/// caller makes sure the game isn't running.
+pub fn wrap_root_dump(games: &Path) -> Result<Option<(Game, PathBuf)>, Text> {
+    let failed = |path: &Path, err: std::io::Error| {
+        tracing::error!(games = %games.display(), path = %path.display(), %err, "could not put a PS dump in its own folder");
+        Text::new("ps.games.wrap_failed")
+            .arg("path", games.display())
+            .arg("error", err)
+    };
+    let root_dump = decanter_ps::library::read_game(games);
+    let (staging, name) = match (unfinished_wrap(games), &root_dump) {
+        (Some(unfinished), _) => unfinished,
+        (None, None) => return Ok(None),
+        (None, Some(game)) => {
+            let Some(name) = std::iter::once(game.title_id.clone())
+                .chain((2..100).map(|suffix| format!("{}-{suffix}", game.title_id)))
+                .find(|name| !games.join(name).exists())
+            else {
+                return Err(failed(
+                    &games.join(&game.title_id),
+                    std::io::ErrorKind::AlreadyExists.into(),
+                ));
+            };
+            (games.join(format!(".{name}.wrapping")), name)
+        }
+    };
+    if root_dump.is_some() {
+        crate::achv_try!(std::fs::create_dir_all(&staging).map_err(|err| failed(&staging, err)));
+        let mut entries: Vec<_> = crate::achv_try!(std::fs::read_dir(games).map_err(|err| failed(games, err)))
+            .flatten()
+            .filter(|entry| !is_staging(&entry.file_name().to_string_lossy()))
+            .filter(|entry| decanter_ps::library::read_game(&entry.path()).is_none())
+            .collect();
+        entries.sort_by_key(|entry| entry.file_name() == "sce_sys");
+        for entry in entries {
+            crate::achv_try!(
+                std::fs::rename(entry.path(), staging.join(entry.file_name()))
+                    .map_err(|err| failed(&entry.path(), err))
+            );
+        }
+    }
+    let target = games.join(&name);
+    crate::achv_try!(std::fs::rename(&staging, &target).map_err(|err| failed(&target, err)));
+    crate::dump_size::moved(games, &target);
+    tracing::info!(games = %games.display(), to = %target.display(), "PS dump put in its own folder");
+    Ok(decanter_ps::library::read_game(&target).map(|game| (game, target)))
+}
+
+/// A `.<name>.wrapping` folder an earlier [`wrap_root_dump`] left in
+/// `games`, with the name it was taking.
+fn unfinished_wrap(games: &Path) -> Option<(PathBuf, String)> {
+    std::fs::read_dir(games).ok()?.flatten().find_map(|entry| {
+        let file_name = entry.file_name();
+        let name = file_name.to_str()?.strip_prefix('.')?.strip_suffix(".wrapping")?;
+        (!name.is_empty() && !name.starts_with('.')).then(|| (entry.path(), name.to_owned()))
+    })
+}
+
+/// A copy or wrap under way in a games folder, never part of a dump.
+fn is_staging(name: &str) -> bool {
+    name.starts_with('.') && (name.ends_with(".partial") || name.ends_with(".wrapping"))
 }
 
 /// `exe` with `from` swapped for `to` when it's under `from`.

@@ -196,8 +196,8 @@ unpacked still works as the manual alternative:
    `psport_exe_dir` in the port settings (`psport/bbport/settings.json` in
    the library), beside the other PS folders. It is checked again at each
    launch.
-3. Drop the game's dump in the library's PS games folder as on Linux and
-   press Jugar.
+3. Add the game's dump with «Añadir volcado…» (or drop its folder on the
+   window) as on Linux, and press Jugar.
 
 How it starts: `Bbport::direct_command` gives `psport.exe` the same
 `PS_*` environment `Bbport::launch_command` gives `run.sh` on Linux (one

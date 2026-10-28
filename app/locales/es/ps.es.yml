@@ -166,6 +166,9 @@ ps.games.no_dumps: 'Todavía no hay volcados: añade el primero o suelta su carp
 ps.games.no_match: Nada coincide con la búsqueda.
 ps.games.rescan: Actualizar biblioteca
 ps.games.browser_empty: 'Todavía no hay juegos: añade un volcado, o suelta su carpeta en la ventana, y decanter lo copia o lo mueve a la carpeta de juegos.'
+ps.games.wrapped: '«%{title}» estaba suelto en la carpeta de juegos: ahora está en %{path}.'
+ps.games.wrap_failed: 'No se ha podido meter el volcado suelto de %{path} en una carpeta propia: %{error}'
+ps.games.notices: '%{first} %{next}'
 ps.add.button: Añadir volcado…
 ps.add.pick_title: Elige la carpeta del volcado
 ps.add.title: 'Añadir «%{title}» (%{title_id})'

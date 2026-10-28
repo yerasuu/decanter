@@ -40,9 +40,6 @@ struct Dump {
     dir: PathBuf,
     name: String,
     size: u64,
-    /// `false` for a dump that is the games folder itself, which can only
-    /// move with every other dump in it.
-    movable: bool,
 }
 
 impl Dump {
@@ -61,7 +58,6 @@ impl Dump {
                     &game.title
                 };
                 Self {
-                    movable: game.dir != games,
                     name: format!("{title} ({})", game.version),
                     size,
                     dir: game.dir,
@@ -594,9 +590,6 @@ impl StorageView {
     }
 
     fn dump_move_control(&self, id: usize, dump: &Dump, from: &Path, cx: &Context<Self>) -> Option<AnyElement> {
-        if !dump.movable {
-            return None;
-        }
         let dir = dump.dir.clone();
         self.move_control(
             id,
