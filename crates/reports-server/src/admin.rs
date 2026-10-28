@@ -1,61 +1,29 @@
-//! The maintainer's side. Without the key every route here answers 404, as if it did not exist.
+//! The maintainer's side. Without the key or a session every route here answers 404, as if it did not exist; the
+//! check is `session::gate`, and [`Admin`] is the proof it passed.
 
-use std::future::Future;
-use std::net::SocketAddr;
-use std::time::Instant;
-
-use axum::extract::{ConnectInfo, FromRequestParts, Path, Query, State};
-use axum::http::header::{AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE};
-use axum::http::request::Parts;
+use axum::extract::{Path, Query, State};
+use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::NaiveDate;
 use serde::Deserialize;
 
 use crate::app::{AppState, api_error, internal, not_found, today};
-use crate::limits::client_ip;
 use crate::pages::is_title_id;
-use crate::secrets::{is_hex_token, matches};
+use crate::secrets::is_hex_token;
+pub use crate::session::Admin;
 use crate::store::{AdminFilter, Change, Product};
 
 const MAX_LIST: u32 = 500;
 
-/// Proof that the request carried the admin key; taking it as the first argument makes the 404 come
-/// before any other extractor can answer something different.
-pub struct Admin;
-
-impl FromRequestParts<AppState> for Admin {
-    type Rejection = Response;
-
-    fn from_request_parts(parts: &mut Parts, state: &AppState) -> impl Future<Output = Result<Self, Response>> + Send {
-        let peer = parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
-        let key = parts
-            .headers
-            .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.split_once(' '))
-            .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-            .map_or("", |(_, key)| key.trim());
-        std::future::ready(if matches(&state.admin_hash, key.as_bytes()) {
-            Ok(Self)
-        } else {
-            if let Some(peer) = peer {
-                let ip = client_ip(peer, &parts.headers, &state.config);
-                state.limiter.record_failure(ip, Instant::now());
-            }
-            Err(not_found())
-        })
-    }
-}
-
 #[derive(Deserialize)]
 pub struct ListParams {
-    limit: Option<u32>,
-    offset: Option<u32>,
-    fingerprint: Option<String>,
-    day: Option<String>,
-    product: Option<String>,
-    title: Option<String>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+    pub fingerprint: Option<String>,
+    pub day: Option<String>,
+    pub product: Option<String>,
+    pub title: Option<String>,
 }
 
 fn is_day(text: &str) -> bool {
@@ -63,7 +31,7 @@ fn is_day(text: &str) -> bool {
 }
 
 /// An empty value means "no filter", as on the public form; anything else must have the one accepted shape.
-fn parse_filter(params: ListParams) -> Option<AdminFilter> {
+pub fn parse_filter(params: ListParams) -> Option<AdminFilter> {
     let given = |value: Option<String>| value.filter(|text| !text.is_empty());
     let fingerprint = match given(params.fingerprint) {
         Some(text) if is_hex_token(&text, 16) => Some(text),

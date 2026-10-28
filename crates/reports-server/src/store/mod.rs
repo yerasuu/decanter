@@ -23,7 +23,7 @@ pub use model::Report;
 pub use partition::test_stores;
 pub use partition::{Product, Stores};
 pub use prefixed::Prefixed;
-pub use read::{AdminFilter, Filter, GroupRow};
+pub use read::{AdminFilter, AdminRow, Filter, GroupRow};
 pub use write::{Attach, Change, Insert, NewReport};
 
 use crate::config::{Driver, Storage, StorageCredentials};

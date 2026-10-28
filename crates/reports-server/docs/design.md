@@ -202,8 +202,26 @@ Everything a client sends is hostile, including what looks like decanter's own o
   failure limiter on wrong admin keys and wrong delete codes, bounded connections and header timeouts in the
   process, caps that evict instead of refusing, bulk actions by fingerprint for clean-up.
 - **Authentication.** One admin key (at least 32 characters, from a credential file or the environment, held as
-  a SHA-256 in memory, constant-time comparison). Without it every `/admin` route, any wrong method and any unknown
-  path answer the same 404. Players hold only their delete code.
+  a SHA-256 in memory, constant-time comparison). Without it, or a session, every `/admin` route but the login form,
+  any wrong method and any unknown path answer the same 404 in the same bytes, and count as an authentication
+  failure. Players hold only their delete code.
+- **Admin sessions** (#1060, #1062). A browser cannot send the Bearer header, so `POST /admin/login` trades the key
+  (form field, same constant-time check, same-site `Origin` required) for a session: a 256-bit random id held in
+  memory only as its SHA-256, with an idle timeout and an absolute lifetime, a cap that ends the oldest session,
+  and expired entries swept on every login and lookup. A restart ends every session. The cookie is
+  `__Host-session` (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`), so it is never sent on a
+  cross-site request, never readable by a script, and returned by a browser only over HTTPS or to `localhost`.
+  One `session::gate` middleware in front of every route decides for all of `/admin`: a valid Bearer passes as
+  before; a valid session passes reads, and every other method only with the session's CSRF token (256 random
+  bits, from the `csrf` form field or `X-CSRF-Token`, constant-time compared) and an `Origin` (else `Referer`)
+  equal to `public_url`'s origin, loopback only in development; anything else is the uniform 404. A failed CSRF or
+  origin check with a valid session answers 403 and changes nothing. Handlers take an `Admin` proof the gate
+  inserts, so no admin handler can run without it.
+- **CSRF.** `SameSite=Strict` already keeps the cookie off cross-site requests; the token and the origin check are
+  the second and third layer (for a browser without SameSite, or a same-site but foreign origin). The admin pages
+  answer `Referrer-Policy: same-origin` because under `no-referrer` a browser posts `Origin: null`, which the check
+  refuses. Their CSP adds nothing for forms beyond the site's: `form-action 'self'`, `base-uri 'none'`,
+  `frame-ancestors 'none'`, no script.
 - **No oracle.** An unknown id, a malformed id, an id of the other partition, a wrong code and a missing code answer
   the same 404 in the same bytes.
 - **Client address.** Read from `client_ip_header` only when the connection comes from a `trusted_proxies`

@@ -262,6 +262,9 @@ above.
 
 - `--check-config` passes without warnings and the admin key has been tried: `curl -H "Authorization: Bearer $KEY" .../admin/reports`
   answers 200 and the same call without the key answers 404.
+- `public_url` is the exact `https://` address the browser shows (the admin session's origin check compares it), and
+  a login through the tunnel at `<public_url>/admin/login` opens `/admin`; after a restart of the service the same
+  browser gets the plain 404 on `/admin` (sessions live in memory only).
 - A valid report is accepted and one with a private path is refused with 422 (see README, "Try it").
 - The forged-header test in the requirements above passes through the real tunnel.
 - A burst of `GET /` from one address ends in 429 with `Retry-After` while `GET /healthz` still answers 200.

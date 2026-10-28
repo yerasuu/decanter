@@ -37,17 +37,25 @@ tag; `.cargo/config.toml` makes cargo fetch it with the system git.
 | `GET /r/<id>` | public | one report: every field as escaped text, plus the raw JSON |
 | `GET /g/<fingerprint>` | public | the reports of one group, from every partition that holds it |
 | `GET /healthz` | public | `ok` |
+| `GET /admin/login` | public, rate limited like a page | the login form (no script) |
+| `POST /admin/login` | form field `key`, same-site `Origin` | 303 to `/admin` with the cookie `__Host-session` (`Secure; HttpOnly; SameSite=Strict; Path=/`); the uniform 404 otherwise, counted as a failure |
+| `POST /admin/logout` | session (with CSRF) or key | 303 to `/admin/login`; ends the session and clears the cookie |
+| `GET /admin?product=&title=&day=&fingerprint=&page=` | admin | HTML list of reports, hidden ones included, with forms to hide, restore, resolve and delete each report and, when filtered by fingerprint, its whole group |
 | `GET /admin/reports?limit=&offset=&fingerprint=&day=&product=&title=` | admin | JSON list including hidden reports, both partitions merged unless `product` is given; the filters (16 hex, `YYYY-MM-DD` received day, `decanter\|psport`, `CUSA00000`) are validated, 400 `invalid_filter` otherwise |
 | `POST /admin/reports/<id>/hide`, `/restore`, `/resolve` | admin | 204 |
-| `DELETE /admin/reports/<id>` | admin | 204 |
+| `DELETE /admin/reports/<id>`, or `POST /admin/reports/<id>/delete` for a form | admin | 204 |
 | `POST /admin/groups/<fingerprint>/hide`, `/restore`, `/resolve` | admin | 204 for every report of the group, in both partitions; 404 if neither holds one |
-| `DELETE /admin/groups/<fingerprint>` | admin | 204; deletes the group's reports and their attachments |
+| `DELETE /admin/groups/<fingerprint>`, or `POST .../delete` for a form | admin | 204; deletes the group's reports and their attachments |
 | `GET /admin/reports/<id>/attachment` | admin | the file as `application/octet-stream`, `Content-Disposition: attachment` |
 
 Public pages (everything but `/healthz` and `/admin`) are rate limited per client: 429 with `Retry-After`.
 
 Hidden reports answer 404 on the public pages. Resolved reports stay public, marked, and lose their attachment.
-Without a valid key every `/admin` route answers 404, not 401, and a wrong method on any path also answers 404 (with no `Allow` header). Every error is a small JSON `{"error": ...}`, also the framework's own (a repeated query key is `400 bad_request`).
+"admin" means a valid key in `Authorization: Bearer`, or a browser session from `/admin/login` (see "Security
+model"); a session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
+from a form field `csrf` or the header `X-CSRF-Token` (sent back on every session answer), and an `Origin` (or
+`Referer`) of this server, else 403. A form action answers 303 back to the admin page instead of 204.
+Without a valid key or session every `/admin` route but the login form answers 404, not 401, and a wrong method on any path also answers 404 (with no `Allow` header). Every error is a small JSON `{"error": ...}`, also the framework's own (a repeated query key is `400 bad_request`).
 
 ### Try it
 
@@ -70,6 +78,8 @@ curl -s -H "$A" "$B/admin/reports?fingerprint=$FP&day=2026-10-26"
 curl -s -H "$A" -X POST $B/admin/groups/$FP/hide          # also /restore and /resolve
 curl -s -H "$A" -X DELETE $B/admin/groups/$FP
 ```
+
+In a browser: open `$B/admin/login`, enter the key, and `/admin` lists the reports with their actions.
 
 ## Configuration
 
@@ -95,6 +105,8 @@ partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runb
 | `header_timeout_secs` | 10 (also the idle keep-alive limit) | `DECANTER_REPORTS_HEADER_TIMEOUT_SECS` |
 | `shutdown_grace_secs` | 5 | `DECANTER_REPORTS_SHUTDOWN_GRACE_SECS` |
 | `log_level` | `info` | `DECANTER_REPORTS_LOG` |
+| `admin.session_idle_secs` / `session_max_secs` | 1800 / 28800 | `DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS`, `_ADMIN_SESSION_MAX_SECS` |
+| `admin.max_sessions` | 16 (a login past it ends the oldest session) | `DECANTER_REPORTS_ADMIN_MAX_SESSIONS` |
 | `storage.driver` | `local` (`s3`, `r2`) | `DECANTER_REPORTS_STORAGE_DRIVER` |
 | `storage.dir` | `data` (local driver only; partitions in `<dir>/decanter` and `<dir>/psport`) | `DECANTER_REPORTS_STORAGE_DIR` |
 | `storage.bucket`, `endpoint`, `region`, `account_id` (r2) | empty | `DECANTER_REPORTS_STORAGE_BUCKET`, `_STORAGE_ENDPOINT`, `_STORAGE_REGION`, `_STORAGE_ACCOUNT_ID` |
@@ -133,7 +145,7 @@ and hold no report contents and no addresses.
   not. The `global_hour` cap for the whole server is spent only by reports that passed validation and by
   attachments sent with the right delete code, so rejected traffic cannot use up what real players share; a
   full global cap answers 429 without counting. Page reads have their own bucket (`get_per_ip_minute`, IPv6 by
-  /64) with 429 and `Retry-After`; `/healthz` and `/admin` are outside it.
+  /64) with 429 and `Retry-After`; `/healthz` and `/admin` are outside it, except `GET` and `POST /admin/login`.
 - **Reads.** Every change is one s3db transaction over the reports, their group and the totals of one partition;
   reads take no lock, so a flood of reads cannot delay an upload. The index reads one `Group` row per group shown,
   never the reports (without a product filter from both partitions, merged up to the end of the page),
@@ -160,14 +172,24 @@ and hold no report contents and no addresses.
   at once), a request head must arrive within `header_timeout_secs` (slow headers and idle keep-alive connections
   are closed), and on SIGTERM open connections get `shutdown_grace_secs` before they are dropped.
 - **Failures.** Wrong admin keys and wrong delete codes share one per-address bucket (`failures_per_ip` in
-  `failure_window_secs`, IPv6 by /48); past it every `/admin/` path and every delete answers 429 with
+  `failure_window_secs`, IPv6 by /48), and so does any `/admin` request without a valid key or session (an
+  expired session cookie included) and a failed login; past it every `/admin` path and every delete answers 429 with
   `Retry-After` for that address, known route or not, so the 429 names no route. Successes do not count. A
   maintainer locked out this way waits out the window or comes from another address.
 - **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase (each partition
   has its own encryption config, opened by the same passphrase); the bucket keys and the passphrase are credentials
   like the admin key. The `local` driver's directory is 0700 and its file
   0600 (one per partition); the process sets umask 077.
-- **Admin.** One key, compared in constant time after hashing both sides; 404 without it.
+- **Admin.** One key, compared in constant time after hashing both sides; 404 without it. For a browser,
+  `/admin/login` trades the key for a session: a 256-bit random id kept in memory only as its SHA-256 (so a
+  restart logs everyone out), ended after `admin.session_idle_secs` without a request or `admin.session_max_secs`
+  after login, at most `admin.max_sessions` at once (the oldest ends first), swept when expired. The cookie is
+  `__Host-session` with `Secure; HttpOnly; SameSite=Strict; Path=/` and no `Domain`; a browser returns a `Secure`
+  cookie only over HTTPS (or to `localhost`), so the login works only behind the TLS tunnel or on loopback.
+  Every state-changing session request needs the session's own random CSRF token (constant-time compared) and an
+  `Origin` equal to `public_url`'s (loopback origins only while `public_url` is empty or loopback); Bearer requests
+  need neither. The admin pages send `Cache-Control: no-store` and `Referrer-Policy: same-origin` (with
+  `no-referrer` a browser would post `Origin: null`). The key, session ids and CSRF tokens are never logged.
 
 Not covered by the server: a report that passes validation is public. What that guarantee is worth is the schema's
 (see #1033 and #1034), not this server's.

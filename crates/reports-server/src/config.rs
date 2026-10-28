@@ -62,6 +62,28 @@ impl Default for Limits {
     }
 }
 
+/// Browser sessions of the maintainer, kept in memory only.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct AdminSessions {
+    /// Seconds without a request after which a session ends.
+    pub session_idle_secs: u32,
+    /// Seconds after login at which a session ends however active it is.
+    pub session_max_secs: u32,
+    /// Sessions held at once; a new login past it ends the oldest.
+    pub max_sessions: u32,
+}
+
+impl Default for AdminSessions {
+    fn default() -> Self {
+        Self {
+            session_idle_secs: 1800,
+            session_max_secs: 28_800,
+            max_sessions: 16,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Driver {
@@ -175,6 +197,7 @@ pub struct Config {
     /// Seconds open connections get to finish after SIGTERM or Ctrl-C before they are dropped.
     pub shutdown_grace_secs: u32,
     pub limits: Limits,
+    pub admin: AdminSessions,
     pub storage: Storage,
 }
 
@@ -196,6 +219,7 @@ impl Default for Config {
             header_timeout_secs: 10,
             shutdown_grace_secs: 5,
             limits: Limits::default(),
+            admin: AdminSessions::default(),
             storage: Storage::default(),
         }
     }
@@ -290,6 +314,15 @@ impl Config {
         if let Some(v) = env("DECANTER_REPORTS_LIMIT_GET_PER_IP_MINUTE") {
             self.limits.get_per_ip_minute = parse("DECANTER_REPORTS_LIMIT_GET_PER_IP_MINUTE", &v)?;
         }
+        if let Some(v) = env("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS") {
+            self.admin.session_idle_secs = parse("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", &v)?;
+        }
+        if let Some(v) = env("DECANTER_REPORTS_ADMIN_SESSION_MAX_SECS") {
+            self.admin.session_max_secs = parse("DECANTER_REPORTS_ADMIN_SESSION_MAX_SECS", &v)?;
+        }
+        if let Some(v) = env("DECANTER_REPORTS_ADMIN_MAX_SESSIONS") {
+            self.admin.max_sessions = parse("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", &v)?;
+        }
         self.storage.apply_env(env, parse::<bool>)
     }
 
@@ -329,6 +362,13 @@ impl Config {
         if limits.per_ip_day < limits.per_ip_hour {
             return err("limits.per_ip_day must not be below limits.per_ip_hour");
         }
+        let admin = &self.admin;
+        if admin.session_idle_secs == 0 || admin.session_idle_secs > admin.session_max_secs {
+            return err("admin.session_idle_secs must be between 1 and admin.session_max_secs");
+        }
+        if !(1..=1024).contains(&admin.max_sessions) {
+            return err("admin.max_sessions must be between 1 and 1024");
+        }
         if self.public_url.ends_with('/') {
             return err("public_url must not end with a slash");
         }
@@ -345,6 +385,13 @@ impl Config {
     #[must_use]
     pub fn warnings(&self) -> Vec<String> {
         let mut warnings = Vec::new();
+        if self.public_url.starts_with("http://") && !crate::session::is_loopback_origin(&self.public_url) {
+            warnings.push(
+                "public_url is plain http: the admin session cookie is Secure, so a browser never returns it over \
+                 http and the browser login cannot work; serve the public URL over https"
+                    .to_owned(),
+            );
+        }
         let Some(header) = &self.client_ip_header else {
             return warnings;
         };
@@ -720,6 +767,40 @@ mod tests {
             ..base
         };
         assert!(forwarded.warnings().iter().any(|w| w.contains("single-valued")));
+    }
+
+    #[test]
+    fn admin_session_settings_come_from_the_environment_and_are_checked() {
+        let env = storage_env(&[
+            ("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", "60"),
+            ("DECANTER_REPORTS_ADMIN_SESSION_MAX_SECS", "120"),
+            ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", "3"),
+        ]);
+        let admin = Config::load(None, &env).map(|config| config.admin).ok();
+        assert_eq!(
+            admin.map(|a| (a.session_idle_secs, a.session_max_secs, a.max_sessions)),
+            Some((60, 120, 3))
+        );
+        for (name, value) in [
+            ("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", "0"),
+            ("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", "28801"),
+            ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", "0"),
+        ] {
+            assert!(
+                Config::load(None, &storage_env(&[(name, value)])).is_err(),
+                "{name}={value}"
+            );
+        }
+        let plain = Config {
+            public_url: "http://reports.example.org".to_owned(),
+            ..Config::default()
+        };
+        assert!(plain.warnings().iter().any(|w| w.contains("Secure")));
+        let local = Config {
+            public_url: "http://127.0.0.1:8787".to_owned(),
+            ..Config::default()
+        };
+        assert!(local.warnings().is_empty());
     }
 
     fn storage_env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {

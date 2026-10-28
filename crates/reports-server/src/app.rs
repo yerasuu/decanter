@@ -20,8 +20,9 @@ use crate::cache::PageCache;
 use crate::config::Config;
 use crate::limits::{Limiter, Verdict, client_ip};
 use crate::secrets::Hash;
+use crate::session::{LOGIN_PATH, Sessions, is_admin_path};
 use crate::store::Stores;
-use crate::{admin, ingest, pages};
+use crate::{admin, admin_ui, ingest, pages, session};
 
 pub struct Inner {
     pub config: Config,
@@ -31,6 +32,7 @@ pub struct Inner {
     /// Lets one request rebuild an expired index while the rest wait for its result instead of repeating the scan.
     pub index_gate: tokio::sync::Mutex<()>,
     pub admin_hash: Hash,
+    pub sessions: Sessions,
 }
 
 #[derive(Clone)]
@@ -49,6 +51,7 @@ impl AppState {
     pub fn new(config: Config, admin_key: &str, stores: Stores) -> Self {
         let limiter = Limiter::new(config.limits.clone());
         let index_cache = PageCache::new(config.index_cache_secs);
+        let sessions = Sessions::new(&config.admin);
         Self(Arc::new(Inner {
             config,
             stores,
@@ -56,6 +59,7 @@ impl AppState {
             index_cache,
             index_gate: tokio::sync::Mutex::new(()),
             admin_hash: crate::secrets::sha256(admin_key.as_bytes()),
+            sessions,
         }))
     }
 }
@@ -101,8 +105,9 @@ pub fn rate_limit(state: &AppState, peer: SocketAddr, headers: &HeaderMap) -> Re
 }
 
 /// Page reads are counted per client apart from uploads. The health check and the admin routes (which answer 404
-/// without the key and must stay indistinguishable from unknown paths) are outside it, except that an address over
-/// its authentication-failure budget gets 429 on every `/admin/` path, known or not, so the 429 reveals no route.
+/// without the key and must stay indistinguishable from unknown paths) are outside it, except the login form and its
+/// post, which are public and counted like a page. An address over its authentication-failure budget gets 429 on
+/// every `/admin` path, known or not, so the 429 reveals no route.
 async fn read_limit(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -110,14 +115,16 @@ async fn read_limit(
     next: Next,
 ) -> Response {
     let path = request.uri().path();
-    if path.starts_with("/admin/") {
+    let admin = is_admin_path(path);
+    if admin {
         let ip = client_ip(peer, request.headers(), &state.config);
         if let Verdict::Denied { retry_after } = state.limiter.check_failures(ip, Instant::now()) {
             return denied(retry_after);
         }
     }
-    let exempt = path == "/healthz" || path.starts_with("/admin/");
-    if matches!(*request.method(), Method::GET | Method::HEAD) && !exempt {
+    let read = matches!(*request.method(), Method::GET | Method::HEAD) && path != "/healthz" && !admin;
+    let login = path == LOGIN_PATH && matches!(*request.method(), Method::GET | Method::POST);
+    if read || login {
         let ip = client_ip(peer, request.headers(), &state.config);
         if let Verdict::Denied { retry_after } = state.limiter.check_read(ip, Instant::now()) {
             return denied(retry_after);
@@ -153,7 +160,9 @@ async fn security_headers(request: Request, next: Next) -> Response {
         .is_some_and(|value| value.starts_with("text/html"));
     headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(PAGE_CSP));
     headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers
+        .entry(REFERRER_POLICY)
+        .or_insert(HeaderValue::from_static("no-referrer"));
     headers.insert(
         HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
@@ -196,18 +205,24 @@ fn routes(state: AppState) -> Router {
         .route("/v1/reports", post(ingest::create))
         .route("/v1/reports/{id}", delete(ingest::remove))
         .route("/v1/reports/{id}/attachment", put(ingest::attach))
+        .route(LOGIN_PATH, get(session::login_form).post(session::login))
+        .route("/admin/logout", post(session::logout))
+        .route("/admin", get(admin_ui::page))
         .route("/admin/reports", get(admin::list))
         .route("/admin/reports/{id}", delete(admin::remove))
+        .route("/admin/reports/{id}/delete", post(admin::remove))
         .route("/admin/reports/{id}/hide", post(admin::hide))
         .route("/admin/reports/{id}/restore", post(admin::restore))
         .route("/admin/reports/{id}/resolve", post(admin::resolve))
         .route("/admin/reports/{id}/attachment", get(admin::attachment))
         .route("/admin/groups/{fingerprint}", delete(admin::remove_group))
+        .route("/admin/groups/{fingerprint}/delete", post(admin::remove_group))
         .route("/admin/groups/{fingerprint}/hide", post(admin::hide_group))
         .route("/admin/groups/{fingerprint}/restore", post(admin::restore_group))
         .route("/admin/groups/{fingerprint}/resolve", post(admin::resolve_group))
         .fallback(fallback)
         .method_not_allowed_fallback(fallback)
+        .layer(middleware::from_fn_with_state(state.clone(), session::gate))
         .layer(middleware::from_fn_with_state(state.clone(), read_limit))
         .layer(middleware::from_fn(json_errors))
         .layer(middleware::from_fn(security_headers))

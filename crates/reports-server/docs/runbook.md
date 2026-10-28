@@ -9,6 +9,30 @@ B=https://reports.example.org            # or http://127.0.0.1:8787 on the host
 A="Authorization: Bearer $(cat /etc/decanter-reports/admin.key)"
 ```
 
+## In a browser
+
+Open `$B/admin/login`, paste the key and send: the server sets the session cookie and opens `/admin`, the list with
+filters (product, title, received day, fingerprint, page) and, per report, buttons to hide or restore, resolve and
+delete (delete asks for its checkbox first). Filtering by a fingerprint adds the same buttons for the whole group.
+"Cerrar sesión" ends the session. A session ends after `admin.session_idle_secs` (30 min) without a request, after
+`admin.session_max_secs` (8 h) in any case, when a login past `admin.max_sessions` (16) pushes it out, and on every
+restart of the server; then any `/admin` page answers the plain 404: go back to `/admin/login`. Those 404s count
+against the failure budget like a wrong key, so do not reload an expired page in a loop.
+
+The cookie is `Secure`: a browser returns it only over HTTPS, so through the public URL it works behind the tunnel
+and on the host only as `http://127.0.0.1:8787` or `http://localhost:8787` (a browser treats loopback as secure).
+Buttons that change something need `public_url` to be the address in the browser's bar (else 403 `cross_origin`).
+
+The same session works with curl, which helps when checking it:
+
+```sh
+J=$(mktemp)                                                       # the cookie jar
+curl -s -c "$J" -H "Origin: $B" --data-urlencode "key=$(cat /etc/decanter-reports/admin.key)" $B/admin/login
+T=$(curl -s -b "$J" -D - -o /dev/null $B/admin | sed -n 's/^x-csrf-token: //Ip' | tr -d '\r')
+curl -s -b "$J" -H "Origin: $B" -H "X-CSRF-Token: $T" -X POST $B/admin/reports/$ID/hide
+curl -s -b "$J" -H "Origin: $B" -d "csrf=$T" $B/admin/logout; rm -f "$J"
+```
+
 ## List
 
 ```sh
