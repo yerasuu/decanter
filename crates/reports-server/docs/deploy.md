@@ -189,8 +189,9 @@ only the workspace manifests, `decanter-report` and this crate, and keeps `.git`
 the build (podman reads it next to the Containerfile; copy it to the context root as `.containerignore` with an
 older podman).
 
-The base images are named by tag only: this file was written offline and could not fetch digests. Before a real
-build, pin them:
+The base images are named by tag only: this file was written offline and could not fetch digests. The published
+image is built with these defaults, so pin them in the `ARG` lines before tagging a release (and for any local build,
+by build argument):
 
 ```sh
 podman pull docker.io/library/rust:1.98-bookworm gcr.io/distroless/cc-debian12:nonroot
@@ -248,19 +249,50 @@ above.
 
 ## Docker and Traefik
 
-`deploy/compose.yaml` runs the container behind Traefik the way the home server's other public services are
-published: the external network `expose-public`, `traefik.constraint-label=expose-public`, the `websecure` entry point
-and the router rule `Host(...)`. No port is published on the host. `deploy/config.docker.toml` is the server's configuration (public URL `https://reports.yerasuu.com`, the
-client-address header, the bucket and the secret paths); check the bucket and region in it. Copy
-`deploy/compose.env.example` to `deploy/.env`, fill in the host-specific values and run `docker compose up -d --build` from `deploy/`. The build context is the repository
-root, and BuildKit takes the ignore file named after the Dockerfile, `deploy/Containerfile.dockerignore` (a link to
+`deploy/compose.yaml` runs the published image `ghcr.io/yerasuu/decanter-reports` behind Traefik the way the home
+server's other public services are published: the external network `expose-public`,
+`traefik.constraint-label=expose-public`, the `websecure` entry point and the router rule `Host(...)`. No port is
+published on the host. There is no config file and no secret file: every setting, the secrets included, is a
+`DECANTER_REPORTS_*` variable in a `.env` (mode 0600) that Compose reads as `env_file` and for the labels;
+`deploy/compose.env.example` lists them all.
+
+The image is built only from a `reports-vX.Y.Z` tag by `.github/workflows/reports-image.yml` (linux/amd64, with a
+provenance attestation) and has no `latest` tag. The GHCR package is private until its owner makes it public.
+
+**Installing.** Keep `.env` in a deployment folder outside the checkout, so it is never committed and the build
+context never sees it. Verify the script before running it, since it handles the bucket keys and the passphrase:
+
+```sh
+git clone https://github.com/yerasuu/decanter.git && cd decanter
+git verify-tag reports-v0.1.0          # the tag is signed; check the signer is the owner's key
+git checkout reports-v0.1.0
+less crates/reports-server/deploy/install.sh     # read it
+mkdir -p ~/decanter-reports && cd ~/decanter-reports
+sh /path/to/decanter/crates/reports-server/deploy/install.sh 0.1.0
+```
+
+`install.sh <version>` checks `docker`, Compose v2 and the `expose-public` network, copies `compose.yaml` into the
+deployment folder, pulls the tag, resolves it to a digest and runs `gh attestation verify` when `gh` exists (it warns
+when it does not). It asks for the host, the S3 endpoint, the bucket, the region and the two bucket keys (the secret is
+read without echo), suggests Traefik's and the tunnel's addresses from `docker network inspect expose-public`, and
+makes the passphrase with `docker run --rm <image> secret`. It writes `.env` under `umask 077` and never overwrites an
+existing one, runs `--check-config` (it stops if the passphrase does not open an initialised bucket), prints the
+passphrase once and waits for its last 6 characters, runs `docker compose up -d` and creates the first admin with
+`docker compose run --rm --no-deps decanter-reports user add <name> --role admin`, which prints that admin's key once.
+It never pipes from the network, uses `sudo`, deploys `latest` or removes volumes.
+
+**Upgrading.** Set `REPORTS_IMAGE` in `.env` to the new version's digest and run `docker compose up -d`; running
+`install.sh <new version>` again resolves and verifies the digest and prints the line to use, leaving `.env` alone.
+
+**Building locally** instead: set `REPORTS_IMAGE=decanter-reports:local` in `.env` and, from `deploy/`,
+`docker compose -f compose.yaml -f compose.build.yaml up -d --build`. The build context is the repository root, and
+BuildKit takes the ignore file named after the Dockerfile, `deploy/Containerfile.dockerignore` (a link to
 `Containerfile.containerignore`), so `.git`, `.brain` and keys stay out of the build.
 
-- **Secrets.** The four secret files go in `deploy/secrets/` (`admin.key`, `storage.passphrase`, `s3.access_key_id`,
-  `s3.secret_access_key`, as in "Configuration" above) and must be owned by uid 65532 with mode 0400:
-  [Compose bind-mounts file secrets as they are and ignores `uid`, `gid` and `mode`](https://docs.docker.com/reference/compose-file/services/#secrets),
-  and the server refuses a secret that group or others can read. `sudo chown 65532:65532 secrets/* && sudo chmod 0400 secrets/*`.
-  Keep `secrets/` out of git (the repository's `.gitignore` is the owner's to change) and the passphrase copy offline.
+- **Secrets.** The passphrase and the two bucket keys are in `.env`, single-quoted so Compose does not interpolate a
+  `$`. Anyone who can run `docker inspect`, `docker compose config` or `docker exec` on the host (root, the `docker`
+  group) can read them, as they could read secret files; the practical risk is pasting that output. Keep `.env` out
+  of git and the passphrase copy offline.
 - **Client address.** The tunnel overwrites `CF-Connecting-IP` with what Cloudflare saw, and Traefik passes it on
   untouched. `DECANTER_REPORTS_TRUSTED_PROXIES` is Traefik's address on `expose-public` as the container sees it
   (`docker network inspect expose-public`), a single address: pin it with `ipv4_address` in Traefik's own compose, or
@@ -281,14 +313,15 @@ root, and BuildKit takes the ignore file named after the Dockerfile, `deploy/Con
 - **The container.** Read-only root, all capabilities dropped, `no-new-privileges`, user 65532, 512 MiB, 256
   processes, 4096 open files and a 10 s stop grace, the same bounds as the systemd unit. Distroless has no shell, so
   there is no container health check; Traefik routes to it once it is running, and `GET /healthz` answers 200.
-- **Order.** `docker compose config` (shows the values interpolated; the labels must carry the host and the tunnel
-  address), `docker compose up -d --build`, `docker compose logs decanter-reports`, then the checks in "Before
-  exposing it". `--check-config` inside the image is not available (no shell): run it from a build of the binary on
-  the host with the same variables, or `docker compose run --rm --no-deps decanter-reports --check-config` (the
-  entry point is the binary).
+- **Order.** `docker compose config` (shows the values interpolated, secrets included: do not paste it), `docker compose up -d`,
+  `docker compose logs decanter-reports`, then the checks in "Before exposing it". The image has no shell, so
+  `--check-config` is `docker compose run --rm --no-deps decanter-reports --check-config` (the entry point is the
+  binary).
 
-This was written without running Docker or Traefik: the compose file was not started and the labels were checked
-against the documentation only.
+Nothing here was run: no Docker, Traefik or GitHub Actions was available when `compose.yaml`, `install.sh` and the
+workflow were written. The script was only syntax-checked and exercised with a stubbed `docker` and `gh`; the
+subcommands `secret` and `user add` are the interface the server work delivers. The workflow's action SHAs and the base
+image digests are placeholders to fill in before the first release.
 
 ## Operating it
 

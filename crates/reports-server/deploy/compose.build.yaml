@@ -1,0 +1,13 @@
+# Local build instead of the published image. From this directory, with REPORTS_IMAGE=decanter-reports:local in .env:
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+# Relative paths resolve against the first file given, so run it from deploy/ (or keep both files together).
+services:
+  decanter-reports:
+    build:
+      # The root of decanter's repository: decanter-report is a path dependency in the same repository. What the build
+      # reads is limited by Containerfile.dockerignore (BuildKit's name for Containerfile.containerignore).
+      context: ../../..
+      dockerfile: crates/reports-server/deploy/Containerfile
+      args:
+        RUST_IMAGE: ${RUST_IMAGE:-docker.io/library/rust:1.98-bookworm}
+        RUNTIME_IMAGE: ${RUNTIME_IMAGE:-gcr.io/distroless/cc-debian12:nonroot}

@@ -1,0 +1,67 @@
+name: Reports image
+
+on:
+  push:
+    tags: ['reports-v*']
+
+# Nothing is granted by default; the job asks for what it uses.
+permissions: {}
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # gh release create
+      packages: write # push to GHCR
+      id-token: write # keyless signing of the attestation
+      attestations: write
+    env:
+      IMAGE: ghcr.io/yerasuu/decanter-reports
+    steps:
+      # NOTE: the SHAs of the docker/* and actions/attest-build-provenance steps below are placeholders: they could
+      # not be read offline. Replace each <sha> with the commit of the release tag named in its comment before the
+      # first run, as ci.yml does.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the tag against the crate version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/reports-server/Cargo.toml | head -n 1)"
+          [[ "$GITHUB_REF_NAME" == "reports-v$version" ]] || { echo "::error::tag $GITHUB_REF_NAME isn't reports-v$version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@<sha> # v3 (pin the release tag's commit)
+
+      - uses: docker/login-action@<sha> # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # amd64 only: the home server is amd64; add linux/arm64 when a host needs it. No `latest` tag: a deployment
+      # names a version, and install.sh pins its digest.
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@<sha> # v6
+        with:
+          context: .
+          file: crates/reports-server/deploy/Containerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+
+      - uses: actions/attest-build-provenance@<sha> # v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
+              --notes "Image: $IMAGE:$VERSION ($DIGEST), linux/amd64. Verify with: gh attestation verify oci://$IMAGE@$DIGEST --owner yerasuu"

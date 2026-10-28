@@ -1,6 +1,8 @@
-# Fill the digests in before building for real (this file was written offline and could not fetch them):
+# The published image (.github/workflows/reports-image.yml) is built with the defaults below, so pin them in these ARG
+# lines (`name:tag@sha256:...`, committed) before tagging a release: a retagged base image must not change a release.
+# The digests are not filled in because this file was written offline and could not fetch them:
 #   podman pull docker.io/library/rust:1.98-bookworm && podman inspect --format '{{index .RepoDigests 0}}' <image>
-# then set RUST_IMAGE and RUNTIME_IMAGE to the `name@sha256:...` values so a retagged image cannot change the build.
+# A local build can override them with RUST_IMAGE and RUNTIME_IMAGE (compose.build.yaml).
 ARG RUST_IMAGE=docker.io/library/rust:1.98-bookworm
 ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:nonroot
 
