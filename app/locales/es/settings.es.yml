@@ -97,6 +97,10 @@ settings.compatibility.ge_proton.intro: 'Decanter guarda esta versión de Proton
 settings.compatibility.ge_proton.installed: 'GE-Proton %{tag} · %{size}'
 settings.compatibility.ge_proton.measuring: 'GE-Proton %{tag} · midiendo…'
 settings.compatibility.ge_proton.remove: 'Quitar'
+settings.compatibility.ge_proton.confirm_remove.title: '¿Quitar GE-Proton?'
+settings.compatibility.ge_proton.confirm_remove.body_size: 'GE-Proton %{tag} se quitará de tu biblioteca y liberará %{size}. Se vuelve a descargar la próxima vez que algo lo necesite.'
+settings.compatibility.ge_proton.confirm_remove.body: 'GE-Proton %{tag} se quitará de tu biblioteca. Se vuelve a descargar la próxima vez que algo lo necesite.'
+settings.compatibility.ge_proton.confirm_remove.confirm: Quitar GE-Proton
 settings.compatibility.ge_proton.error: 'no se ha podido quitar GE-Proton: %{error}'
 settings.compatibility.tools.title: Herramientas
 settings.compatibility.tools.intro: Decanter descarga su propia copia de umu-run y de nix-portable, en versiones fijas que solo cambia tras probarlas; umu descarga UMU-Proton por su cuenta cuando el Proton es automático.

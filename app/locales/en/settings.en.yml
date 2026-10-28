@@ -97,6 +97,10 @@ settings.compatibility.ge_proton.intro: 'Decanter keeps this Proton build in the
 settings.compatibility.ge_proton.installed: 'GE-Proton %{tag} · %{size}'
 settings.compatibility.ge_proton.measuring: 'GE-Proton %{tag} · measuring…'
 settings.compatibility.ge_proton.remove: 'Remove'
+settings.compatibility.ge_proton.confirm_remove.title: Remove GE-Proton?
+settings.compatibility.ge_proton.confirm_remove.body_size: 'GE-Proton %{tag} will be removed from your library, freeing %{size}. It is downloaded again the next time something needs it.'
+settings.compatibility.ge_proton.confirm_remove.body: 'GE-Proton %{tag} will be removed from your library. It is downloaded again the next time something needs it.'
+settings.compatibility.ge_proton.confirm_remove.confirm: Remove GE-Proton
 settings.compatibility.ge_proton.error: 'removing GE-Proton: %{error}'
 settings.compatibility.tools.title: Tools
 settings.compatibility.tools.intro: Decanter downloads its own copy of umu-run and nix-portable, at fixed versions it only changes after testing them; umu downloads UMU-Proton on its own when Proton is automatic.

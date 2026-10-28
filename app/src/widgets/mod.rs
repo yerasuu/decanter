@@ -10,8 +10,8 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt as _, AnyView, App, Context, Div, ElementId, FontWeight, IntoElement, ParentElement as _,
-    Render, SharedString, Stateful, Styled as _, Window, div, prelude::*, px, relative, rgb,
+    Animation, AnimationExt as _, AnyView, App, ClickEvent, Context, Div, ElementId, FontWeight, IntoElement,
+    ParentElement as _, Render, SharedString, Stateful, Styled as _, Window, div, prelude::*, px, relative, rgb,
 };
 use rust_i18n::t;
 
@@ -94,6 +94,36 @@ pub fn button(
     } else {
         base.cursor_pointer().active(|b| b.mt(px(1.)).mb(px(-1.)))
     }
+}
+
+/// What a removal takes away, asked before it happens: the same gold-bordered panel the builds'
+/// confirmations use, with the yes and the no beside each other.
+pub fn confirm_panel(
+    id: impl Into<ElementId>,
+    title: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+    yes: impl Into<SharedString>,
+    on_yes: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    on_no: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    let id = id.into();
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .p_3()
+        .border_1()
+        .border_color(rgb(theme::ACCENT_GOLD))
+        .rounded_md()
+        .child(theme::h3(title.into()))
+        .child(div().child(body.into()))
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(button((id.clone(), "yes"), ButtonKind::Primary, yes, false).on_click(on_yes))
+                .child(button((id, "no"), ButtonKind::Secondary, t!("common.cancel"), false).on_click(on_no)),
+        )
 }
 
 /// The text shown by a `title` attribute in the webview build.

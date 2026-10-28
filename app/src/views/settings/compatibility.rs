@@ -18,7 +18,7 @@ use crate::capabilities::Caps;
 use crate::releases::{self, Release, ReleaseError};
 use crate::runners;
 use crate::theme;
-use crate::widgets::{ButtonKind, Select, button};
+use crate::widgets::{ButtonKind, Select, button, confirm_panel};
 
 type Latest = Result<Option<Release>, ReleaseError>;
 
@@ -45,6 +45,8 @@ pub struct CompatibilityTab {
     game_tools: Entity<GameToolDefaults>,
     ge_proton: Vec<GeProtonBuild>,
     removing_ge_proton: bool,
+    /// The tag of the GE-Proton whose removal waits for the confirmation.
+    confirming_ge_proton: Option<String>,
     ge_proton_error: Option<String>,
 }
 
@@ -58,6 +60,7 @@ impl CompatibilityTab {
             tools: None,
             ge_proton: Vec::new(),
             removing_ge_proton: false,
+            confirming_ge_proton: None,
             ge_proton_error: None,
         };
         this.reload(cx);
@@ -110,6 +113,7 @@ impl CompatibilityTab {
     }
 
     fn remove_ge_proton(&mut self, pin: Pin, cx: &mut Context<Self>) {
+        self.confirming_ge_proton = None;
         if self.removing_ge_proton {
             return;
         }
@@ -214,17 +218,44 @@ impl CompatibilityTab {
                     ),
                     None => t!("settings.compatibility.ge_proton.measuring", tag = build.pin),
                 };
-                field_row().items_center().child(div().flex_1().child(text)).child(
+                let confirming = self.confirming_ge_proton.as_deref() == Some(pin.to_string().as_str());
+                let row = field_row().items_center().child(div().flex_1().child(text)).child(
                     button(
                         ("ge-proton-remove", index),
                         ButtonKind::Secondary,
                         t!("settings.compatibility.ge_proton.remove"),
-                        removing,
+                        removing || confirming,
                     )
-                    .when(!removing, |b| {
-                        b.on_click(cx.listener(move |this, _, _, cx| this.remove_ge_proton(pin.clone(), cx)))
+                    .when(!removing && !confirming, |b| {
+                        let tag = pin.to_string();
+                        b.on_click(cx.listener(move |this, _, _, cx| {
+                            this.confirming_ge_proton = Some(tag.clone());
+                            cx.notify();
+                        }))
                     }),
-                )
+                );
+                let panel = confirming.then(|| {
+                    let body = match build.size {
+                        Some(size) => t!(
+                            "settings.compatibility.ge_proton.confirm_remove.body_size",
+                            tag = build.pin,
+                            size = crate::format::bytes(size)
+                        ),
+                        None => t!("settings.compatibility.ge_proton.confirm_remove.body", tag = build.pin),
+                    };
+                    confirm_panel(
+                        ("ge-proton-confirm", index),
+                        t!("settings.compatibility.ge_proton.confirm_remove.title"),
+                        body,
+                        t!("settings.compatibility.ge_proton.confirm_remove.confirm"),
+                        cx.listener(move |this, _, _, cx| this.remove_ge_proton(pin.clone(), cx)),
+                        cx.listener(|this, _, _, cx| {
+                            this.confirming_ge_proton = None;
+                            cx.notify();
+                        }),
+                    )
+                });
+                column().child(row).children(panel)
             }))
             .children(self.ge_proton_error.clone().map(theme::error))
     }
