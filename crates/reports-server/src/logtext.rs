@@ -129,6 +129,83 @@ pub fn render_line(line: &str, max_chars: usize, out: &mut String) -> usize {
     line.len() - end
 }
 
+/// Lines shown before and after a matching line.
+const CONTEXT: usize = 2;
+
+pub struct SnippetLine {
+    /// From 1.
+    pub number: usize,
+    pub html: String,
+    pub hit: bool,
+}
+
+/// What one log gave a search: runs of consecutive lines around the matches.
+pub struct Found {
+    pub snippets: Vec<Vec<SnippetLine>>,
+    pub hits: usize,
+}
+
+/// Every line of `text` that holds `needle`, ignoring ASCII case, with `CONTEXT` lines around it, up to `max_hits`
+/// matching lines. `needle` must be ASCII-lowercased and not empty. The lowercased copy keeps every byte offset, so
+/// both texts split into the same lines; each line is searched with the standard library's linear substring search.
+#[must_use]
+pub fn search(text: &str, needle: &str, max_hits: usize, width: usize) -> Found {
+    let lower = text.to_ascii_lowercase();
+    let mut found = Found {
+        snippets: Vec::new(),
+        hits: 0,
+    };
+    let mut before: std::collections::VecDeque<(usize, &str)> = std::collections::VecDeque::with_capacity(CONTEXT + 1);
+    let mut after = 0;
+    let mut last: Option<usize> = None;
+    let push = |snippets: &mut Vec<Vec<SnippetLine>>, index: usize, line: &str, hit: bool| {
+        let mut html = String::new();
+        if render_line(line, width, &mut html) > 0 {
+            html.push_str("<span class=\"cut\"> &hellip;</span>");
+        }
+        if let Some(snippet) = snippets.last_mut() {
+            snippet.push(SnippetLine {
+                number: index + 1,
+                html,
+                hit,
+            });
+        }
+    };
+    for (index, (line, low)) in text.lines().zip(lower.lines()).enumerate() {
+        if found.hits < max_hits && low.contains(needle) {
+            let start = before
+                .iter()
+                .map(|(at, _)| *at)
+                .find(|at| last.is_none_or(|last| *at > last))
+                .unwrap_or(index);
+            if last.is_none_or(|last| start > last + 1) {
+                found.snippets.push(Vec::new());
+            }
+            for (at, kept) in std::mem::take(&mut before) {
+                if last.is_none_or(|last| at > last) {
+                    push(&mut found.snippets, at, kept, false);
+                }
+            }
+            push(&mut found.snippets, index, line, true);
+            found.hits += 1;
+            last = Some(index);
+            after = CONTEXT;
+        } else if after > 0 {
+            push(&mut found.snippets, index, line, false);
+            last = Some(index);
+            after -= 1;
+        } else if found.hits >= max_hits {
+            break;
+        } else {
+            before.push_back((index, line));
+            if before.len() > CONTEXT {
+                before.pop_front();
+            }
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,6 +257,61 @@ mod tests {
         let (out, cut) = rendered(&"é".repeat(10), 4);
         assert_eq!((out.as_str(), cut), ("éééé", 12));
         assert_eq!(rendered("short", 10).1, 0);
+    }
+
+    fn numbers(found: &Found) -> Vec<Vec<(usize, bool)>> {
+        found
+            .snippets
+            .iter()
+            .map(|snippet| snippet.iter().map(|line| (line.number, line.hit)).collect())
+            .collect()
+    }
+
+    #[test]
+    fn search_ignores_ascii_case_and_merges_overlapping_context() {
+        let text = (1..=20)
+            .map(|n| match n {
+                5 | 7 | 15 => format!("{n} Guest FAULT here"),
+                _ => format!("{n} plain"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let found = search(&text, "guest fault", 100, 100);
+        assert_eq!(found.hits, 3);
+        assert_eq!(
+            numbers(&found),
+            vec![
+                vec![
+                    (3, false),
+                    (4, false),
+                    (5, true),
+                    (6, false),
+                    (7, true),
+                    (8, false),
+                    (9, false)
+                ],
+                vec![(13, false), (14, false), (15, true), (16, false), (17, false)],
+            ]
+        );
+        let capped = search(&text, "guest fault", 2, 100);
+        assert_eq!(capped.hits, 2);
+        assert_eq!(
+            numbers(&capped).concat().last(),
+            Some(&(9, false)),
+            "context after the last hit"
+        );
+        let edge = search("hit\nb\nhit", "hit", 10, 100);
+        assert_eq!(numbers(&edge), vec![vec![(1, true), (2, false), (3, true)]]);
+    }
+
+    #[test]
+    fn search_lines_are_escaped_and_cut() {
+        let found = search(&format!("<b>needle</b>{}", "x".repeat(50)), "needle", 10, 20);
+        let html = &found.snippets[0][0].html;
+        assert!(
+            html.starts_with("&lt;b&gt;needle") && html.ends_with("&hellip;</span>"),
+            "{html}"
+        );
     }
 
     #[test]

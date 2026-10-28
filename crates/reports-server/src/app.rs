@@ -33,6 +33,7 @@ pub struct Inner {
     pub index_gate: tokio::sync::Mutex<()>,
     pub admin_hash: Hash,
     pub sessions: Sessions,
+    pub log_searches: admin_logs::Searches,
 }
 
 #[derive(Clone)]
@@ -60,6 +61,7 @@ impl AppState {
             index_gate: tokio::sync::Mutex::new(()),
             admin_hash: crate::secrets::sha256(admin_key.as_bytes()),
             sessions,
+            log_searches: admin_logs::Searches::default(),
         }))
     }
 }
@@ -210,6 +212,7 @@ fn routes(state: AppState) -> Router {
         .route("/admin/logout", post(session::logout))
         .route("/admin", get(admin_ui::page))
         .route("/admin/logs", get(admin_logs::list))
+        .route("/admin/logs/search", get(admin_logs::search))
         .route("/admin/logs/{id}", get(admin_logs::view))
         .route("/admin/reports", get(admin::list))
         .route("/admin/reports/{id}", delete(admin::remove))

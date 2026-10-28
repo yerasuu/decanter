@@ -3,6 +3,8 @@
 //! pass over it linear and the heavy ones on the blocking pool, so a hostile 5 MiB log neither breaks a page nor
 //! holds a runtime worker.
 
+mod search;
+
 use std::fmt::Write as _;
 
 use axum::extract::{Path, Query, State};
@@ -15,7 +17,9 @@ use crate::admin::{Admin, ListParams as AdminParams, parse_filter};
 use crate::app::{AppState, internal, not_found};
 use crate::html::{escape_html, layout};
 use crate::logtext::{Mark, classify, is_binary, render_line};
-use crate::store::{LogFilter, LogRow, Product};
+use crate::store::{AdminFilter, LogFilter, LogRow, Product};
+
+pub use search::{Searches, search};
 
 const TITLE: &str = "Logs adjuntos";
 const LIST_PAGE: usize = 50;
@@ -31,8 +35,8 @@ const STYLE: &str = "<style>.log{font:12px/1.35 ui-monospace,monospace;margin:.5
 .log td.n{text-align:right;white-space:nowrap;color:#666}.log td.m{white-space:nowrap;font-weight:600;font-size:.7rem}\
 tr.fault{background:#f6c9cc}tr.error{background:#fbe0de}tr.failed{background:#efe3fb}tr.calls{background:#d9e6fd}\
 tr.warn{background:#fff1c2}.ctl{outline:1px dotted #b00;color:#b00}.cut{color:#b00;font-style:italic}\
-.jump{font:12px/1.4 ui-monospace,monospace}\
-@media(prefers-color-scheme:dark){tr.fault{background:#5c1f24}tr.error{background:#4a2422}tr.failed{background:#3a2950}\
+.jump{font:12px/1.4 ui-monospace,monospace}tr.hit{background:#d1f0d9}\
+@media(prefers-color-scheme:dark){tr.hit{background:#1e5631}tr.fault{background:#5c1f24}tr.error{background:#4a2422}tr.failed{background:#3a2950}\
 tr.calls{background:#1f3357}tr.warn{background:#4a3d12}.log td.n{color:#aaa}.ctl,.cut{color:#ff8a80}}</style>";
 
 #[derive(Deserialize)]
@@ -192,6 +196,26 @@ fn filter_form(filter: &LogFilter) -> String {
     )
 }
 
+/// The search form over `filter`'s scope; a search needs a title or a fingerprint in it.
+fn search_form(filter: &LogFilter, query: &str) -> String {
+    let text = |value: &Option<String>| escape_html(value.as_deref().unwrap_or_default());
+    format!(
+        "<form method=\"get\" action=\"/admin/logs/search\">\
+         <label>Buscar texto<input name=\"q\" value=\"{}\" maxlength=\"{}\" required placeholder=\"Guest fault\"></label>\
+         <label>Título<input name=\"title\" value=\"{}\" maxlength=\"9\" placeholder=\"CUSA00000\"></label>\
+         <label>Huella<input name=\"fingerprint\" value=\"{}\" maxlength=\"16\"></label>\
+         <input type=\"hidden\" name=\"product\" value=\"{}\"><input type=\"hidden\" name=\"day\" value=\"{}\">\
+         <input type=\"hidden\" name=\"kind\" value=\"{}\"><button type=\"submit\">Buscar en los logs</button></form>",
+        escape_html(query),
+        search::MAX_QUERY_CHARS,
+        text(&filter.base.title),
+        text(&filter.base.fingerprint),
+        filter.base.product.map_or("", Product::name),
+        text(&filter.base.day),
+        text(&filter.kind),
+    )
+}
+
 fn list_row(row: &LogRow) -> String {
     let id = escape_html(&row.id);
     format!(
@@ -210,6 +234,7 @@ fn list_row(row: &LogRow) -> String {
 fn render_list(filter: &LogFilter, rows: &[LogRow], page: usize, has_next: bool) -> String {
     let mut body = String::from(NAV);
     body.push_str(&filter_form(filter));
+    body.push_str(&search_form(filter, ""));
     if rows.is_empty() {
         body.push_str("<p>No hay logs adjuntos que coincidan.</p>");
     } else {
@@ -295,6 +320,15 @@ pub fn render_log(row: &LogRow, bytes: &[u8], page: usize, page_lines: usize) ->
     let mut body = String::from(NAV);
     let _ = write!(body, "<h2>Log de <code>{}</code></h2>", escape_html(&row.id));
     body.push_str(&meta_table(row, bytes.len()));
+    let scope = LogFilter {
+        base: AdminFilter {
+            title: row.title_id.clone(),
+            fingerprint: row.title_id.is_none().then(|| row.fingerprint.clone()),
+            ..AdminFilter::default()
+        },
+        kind: None,
+    };
+    body.push_str(&search_form(&scope, ""));
     if is_binary(bytes) {
         let _ = write!(
             body,

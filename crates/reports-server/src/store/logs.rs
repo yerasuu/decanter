@@ -185,6 +185,22 @@ impl Stores {
         Ok(())
     }
 
+    /// The size and then the bytes of `row`'s attachment as the list found it; `None` once it is gone (resolved or
+    /// deleted since).
+    pub async fn log_size(&self, row: &LogRow) -> Result<Option<u64>> {
+        match self.of_id(&row.id) {
+            Some(store) => store.log_size(row).await,
+            None => Ok(None),
+        }
+    }
+
+    pub async fn log_bytes(&self, row: &LogRow) -> Result<Option<Vec<u8>>> {
+        match self.of_id(&row.id) {
+            Some(store) => store.log_bytes(row).await,
+            None => Ok(None),
+        }
+    }
+
     pub async fn log(&self, id: &str) -> Result<Option<(LogRow, Vec<u8>)>> {
         match self.of_id(id) {
             Some(store) => store.log(id).await,

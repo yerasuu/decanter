@@ -29,6 +29,7 @@ struct Harness {
     state: AppState,
     root: PathBuf,
     cookie: String,
+    csrf: String,
 }
 
 impl Drop for Harness {
@@ -65,6 +66,7 @@ impl Harness {
             state: AppState::new(config, ADMIN_KEY, test_stores(&root)),
             root,
             cookie: String::new(),
+            csrf: String::new(),
         };
         let (status, headers, _) = harness
             .send(
@@ -80,6 +82,8 @@ impl Harness {
             .next()
             .unwrap_or_default()
             .to_owned();
+        let (_, headers, _) = harness.get("/admin/logs").await?;
+        harness.csrf = header(&headers, "x-csrf-token");
         Ok(harness)
     }
 
@@ -433,5 +437,143 @@ async fn every_log_route_is_404_without_a_session() -> Test {
     assert_eq!(header(&headers, "cache-control"), "no-store");
     let admin = h.page("/admin").await?;
     assert!(admin.contains("href=\"/admin/logs\""));
+    Ok(())
+}
+
+fn fault_log(faults: usize, padding: usize) -> String {
+    let mut log = String::from("boot\nmounting\n");
+    for n in 0..faults {
+        let _ = writeln!(
+            log,
+            "Runtime: Guest fault #{n} at +0x1234 <b>x</b>\nafter {n}\nquiet\nquiet\nquiet"
+        );
+    }
+    log.push_str(&"p".repeat(padding));
+    log
+}
+
+#[tokio::test]
+async fn search_needs_a_scope_and_a_short_query() -> Test {
+    let h = Harness::new(|_| {}).await?;
+    h.insert(&PSPORT, Some(fault_log(1, 0).as_bytes())).await?;
+    let form = h.page("/admin/logs/search").await?;
+    assert!(form.contains("name=\"q\"") && !form.contains("Se buscó"));
+    let (status, _, body) = h.get("/admin/logs/search?q=Guest+fault").await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8(body)?.contains("una búsqueda en todos los logs del bucket"));
+    let (status, ..) = h.get("/admin/logs/search?q=Guest&product=psport&kind=crash").await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "product and kind are no scope");
+    for bad in [
+        format!("q={}&title=CUSA03173", "a".repeat(201)),
+        "q=a%01b&title=CUSA03173".to_owned(),
+        "q=x&title=bad".to_owned(),
+    ] {
+        let (status, ..) = h.get(&format!("/admin/logs/search?{bad}")).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    let page = h
+        .page(&format!("/admin/logs/search?q={}&title=CUSA03173", "a".repeat(200)))
+        .await?;
+    assert!(page.contains("0 coincidencias"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn search_shows_matches_with_context_and_links_to_the_line() -> Test {
+    let h = Harness::new(|config| config.logs.page_lines = 100).await?;
+    let older = h.insert(&PSPORT, Some(fault_log(1, 0).as_bytes())).await?;
+    let newer = h.insert(&PSPORT, Some(fault_log(30, 0).as_bytes())).await?;
+    let elsewhere = h
+        .insert(
+            &Spec {
+                title: Some("CUSA00001"),
+                ..PSPORT
+            },
+            Some(fault_log(1, 0).as_bytes()),
+        )
+        .await?;
+    let page = h.page("/admin/logs/search?q=guest+FAULT&title=CUSA03173").await?;
+    assert!(page.contains("en 2 de 2 logs"), "{page}");
+    assert!(page.contains("31 coincidencias en 2 logs"));
+    assert!(page.find(&newer) < page.find(&older) && !page.contains(&elsewhere));
+    assert!(!page.contains("<b>x</b>") && page.contains("&lt;b&gt;x&lt;/b&gt;"));
+    assert!(page.contains(&format!(
+        "/admin/logs/{older}?page=1#L3\">3</a></td><td class=\"m\">&raquo;"
+    )));
+    assert!(page.contains(&format!(
+        "/admin/logs/{older}?page=1#L2\">2</a></td><td class=\"m\"></td><td>mounting"
+    )));
+    assert!(
+        page.contains(&format!("/admin/logs/{newer}?page=2#L148\">148</a>")),
+        "line 148 is on page 2"
+    );
+    assert!(!page.contains("La búsqueda paró"));
+    let by_group = h
+        .page("/admin/logs/search?q=guest&fingerprint=aaaaaaaaaaaaaaaa&day=2026-10-28")
+        .await?;
+    assert!(by_group.contains("en 3 de 3 logs"), "a fingerprint spans titles");
+    Ok(())
+}
+
+#[tokio::test]
+async fn search_caps_are_applied_and_said() -> Test {
+    let h = Harness::new(|config| {
+        config.logs.search_max_logs = 2;
+        config.logs.search_max_mib = 1;
+        config.logs.search_max_matches = 5;
+    })
+    .await?;
+    for _ in 0..3 {
+        h.insert(&PSPORT, Some(fault_log(1, 0).as_bytes())).await?;
+    }
+    let logs = h.page("/admin/logs/search?q=guest&title=CUSA03173").await?;
+    assert!(
+        logs.contains("paró en el tope de 2 logs por búsqueda: buscados 2 de 3 logs"),
+        "{logs}"
+    );
+
+    let big = Spec {
+        title: Some("CUSA00002"),
+        ..PSPORT
+    };
+    for _ in 0..2 {
+        h.insert(&big, Some(fault_log(1, 700 * 1024).as_bytes())).await?;
+    }
+    let bytes = h.page("/admin/logs/search?q=guest&title=CUSA00002").await?;
+    assert!(
+        bytes.contains("tope de 1 MiB leídos por búsqueda: buscados 1 de 2 logs"),
+        "{bytes}"
+    );
+
+    let many = Spec {
+        title: Some("CUSA00003"),
+        ..PSPORT
+    };
+    h.insert(&many, Some(fault_log(9, 0).as_bytes())).await?;
+    let matches = h.page("/admin/logs/search?q=guest&title=CUSA00003").await?;
+    assert!(matches.contains("5 coincidencias en 1 logs") && matches.contains("tope de 5 coincidencias"));
+    assert!(matches.contains("Guest fault #4") && !matches.contains("Guest fault #5"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn one_search_at_a_time_per_session() -> Test {
+    let h = Harness::new(|_| {}).await?;
+    h.insert(&PSPORT, Some(fault_log(1, 0).as_bytes())).await?;
+    let uri = "/admin/logs/search?q=guest&title=CUSA03173";
+    let running = h.state.log_searches.try_begin(sha256(h.csrf.as_bytes()));
+    assert!(running.is_some());
+    let (status, headers, _) = h.get(uri).await?;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(header(&headers, "retry-after"), "5");
+    let auth = format!("Bearer {ADMIN_KEY}");
+    let (other, ..) = h.send(Method::GET, uri, &[("authorization", &auth)], "").await?;
+    assert_eq!(other, StatusCode::OK, "another maintainer is not held up");
+    drop(running);
+    assert!(h.page(uri).await?.contains("1 coincidencias"));
+    assert!(
+        h.state.log_searches.try_begin(sha256(h.csrf.as_bytes())).is_some(),
+        "a finished search frees its slot"
+    );
     Ok(())
 }

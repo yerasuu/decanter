@@ -80,11 +80,22 @@ pub struct AdminSessions {
 pub struct LogViewer {
     /// Lines of a log shown per page.
     pub page_lines: u32,
+    /// Logs one search reads at most, newest first.
+    pub search_max_logs: u32,
+    /// MiB of logs one search reads at most.
+    pub search_max_mib: u32,
+    /// Matching lines one search shows at most; it stops there.
+    pub search_max_matches: u32,
 }
 
 impl Default for LogViewer {
     fn default() -> Self {
-        Self { page_lines: 2000 }
+        Self {
+            page_lines: 2000,
+            search_max_logs: 50,
+            search_max_mib: 64,
+            search_max_matches: 500,
+        }
     }
 }
 
@@ -339,7 +350,15 @@ impl Config {
         if let Some(v) = env("DECANTER_REPORTS_ADMIN_MAX_SESSIONS") {
             self.admin.max_sessions = parse("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", &v)?;
         }
-        for (name, slot) in [("DECANTER_REPORTS_LOGS_PAGE_LINES", &mut self.logs.page_lines)] {
+        for (name, slot) in [
+            ("DECANTER_REPORTS_LOGS_PAGE_LINES", &mut self.logs.page_lines),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS", &mut self.logs.search_max_logs),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MIB", &mut self.logs.search_max_mib),
+            (
+                "DECANTER_REPORTS_LOGS_SEARCH_MAX_MATCHES",
+                &mut self.logs.search_max_matches,
+            ),
+        ] {
             if let Some(v) = env(name) {
                 *slot = parse(name, &v)?;
             }
@@ -532,7 +551,12 @@ impl LogViewer {
     /// The upper bounds keep one maintainer request from holding the process for long: a page renders at most
     /// 20000 lines, a search reads at most 1 GiB, a comparison runs its diff over at most 200000 lines.
     fn validate(&self) -> Result<(), ConfigError> {
-        let checks = [("logs.page_lines", self.page_lines, 100, 20_000)];
+        let checks = [
+            ("logs.page_lines", self.page_lines, 100, 20_000),
+            ("logs.search_max_logs", self.search_max_logs, 1, 1000),
+            ("logs.search_max_mib", self.search_max_mib, 1, 1024),
+            ("logs.search_max_matches", self.search_max_matches, 1, 10_000),
+        ];
         for (name, value, min, max) in checks {
             if !(min..=max).contains(&value) {
                 return err(format!("{name} must be between {min} and {max}"));
@@ -841,12 +865,23 @@ mod tests {
 
     #[test]
     fn log_viewer_bounds_come_from_the_environment_and_are_checked() {
-        let env = storage_env(&[("DECANTER_REPORTS_LOGS_PAGE_LINES", "500")]);
+        let env = storage_env(&[
+            ("DECANTER_REPORTS_LOGS_PAGE_LINES", "500"),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS", "10"),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MIB", "8"),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MATCHES", "20"),
+        ]);
         let logs = Config::load(None, &env).map(|config| config.logs).ok();
-        assert_eq!(logs.map(|l| (l.page_lines,)), Some((500,)));
+        assert_eq!(
+            logs.map(|l| (l.page_lines, l.search_max_logs, l.search_max_mib, l.search_max_matches)),
+            Some((500, 10, 8, 20))
+        );
         for (name, value) in [
             ("DECANTER_REPORTS_LOGS_PAGE_LINES", "0"),
             ("DECANTER_REPORTS_LOGS_PAGE_LINES", "x"),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS", "0"),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MIB", "2048"),
+            ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MATCHES", "10001"),
         ] {
             assert!(
                 Config::load(None, &storage_env(&[(name, value)])).is_err(),
