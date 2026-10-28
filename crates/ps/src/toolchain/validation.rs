@@ -65,7 +65,7 @@ fn pin() -> String {
     let mut hasher = Sha256::new();
     hasher.update(PKGS_NIX);
     hasher.update(VALIDATION_NIX);
-    crate::bundle::hex_digest(&hasher.finalize())
+    crate::download::hex_digest(&hasher.finalize())
 }
 
 /// The nix that realises the layer for a port run by `toolchain`: the same one, or the system's

@@ -34,7 +34,7 @@ use tokio::io::AsyncWriteExt as _;
 
 use crate::paths::Root;
 use crate::remote::RemoteError;
-use crate::{archive, bundle, package, platform, prebuilt};
+use crate::{archive, download, package, platform, prebuilt};
 
 /// The configure step: CMake checks the compiler and reads the toolchain package.
 const CONFIGURE: run::Bounds = run::Bounds {
@@ -82,7 +82,7 @@ pub enum Error {
     #[error("{0} is being built by another decanter")]
     Busy(Commit),
     #[error("{0}")]
-    Download(#[from] bundle::Error),
+    Download(#[from] download::Error),
     #[error("{0}")]
     Archive(#[from] archive::Error),
     #[error("the toolchain package's manifest doesn't match: {0}")]

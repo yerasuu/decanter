@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::direct::FOLDER_KEY;
-use decanter_ps::bundle;
+use decanter_ps::download;
 use decanter_ps::package::{self, Installed, Offer, PINNED_KEY, SELECTED_KEY, Version};
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
@@ -213,14 +213,14 @@ fn package_error(err: &package::Error) -> Text {
     let offline = |request: &reqwest::Error| request.is_connect() || request.is_timeout();
     match err {
         package::Error::NotPublished => Text::new("ps.package.errors.not_published"),
-        package::Error::Request(request) | package::Error::Download(bundle::Error::Download(request))
+        package::Error::Request(request) | package::Error::Download(download::Error::Download(request))
             if offline(request) =>
         {
             Text::new("ps.package.errors.offline")
         }
         package::Error::RateLimited => Text::new("ps.package.errors.rate_limited"),
         package::Error::NoChecksum(tag) => Text::new("ps.package.errors.no_checksum").arg("tag", tag),
-        package::Error::Download(bundle::Error::Checksum | bundle::Error::Size { .. }) => {
+        package::Error::Download(download::Error::Checksum | download::Error::Size { .. }) => {
             Text::new("ps.package.errors.checksum").arg("error", err)
         }
         package::Error::Layout(what) => Text::new("ps.package.errors.layout").arg("what", what),

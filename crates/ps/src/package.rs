@@ -5,7 +5,7 @@
 //! downloads, as the Linux bundles ([`crate::bundle`]).
 //!
 //! A package is checked where it enters: its tag and asset names must be the exact published ones, the
-//! archive must match the release's own checksum and size and stay under [`bundle::MAX_BYTES`], every
+//! archive must match the release's own checksum and size and stay under [`download::MAX_BYTES`], every
 //! name in it is checked before `tar` extracts anything, into a staging folder, and what lands there
 //! must be one folder of plain files whose programs are the four known ones and the DLLs its
 //! `BUILD-INFO.txt` lists. Only then is it renamed into place and recorded, so a recorded folder at
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::archive::{self, Limits, Names, Top};
 use crate::bbport::direct::{EXECUTABLE, GPU_LIBRARY};
-use crate::bundle;
+use crate::download;
 use crate::paths::Root;
 use crate::port::Port;
 use crate::prebuilt;
@@ -77,7 +77,7 @@ pub enum Error {
     #[error("the release {0} has no checksum for its Windows package")]
     NoChecksum(String),
     #[error("{0}")]
-    Download(#[from] bundle::Error),
+    Download(#[from] download::Error),
     #[error("tar could not read the package: {0}")]
     Tar(String),
     #[error("the package holds {0}")]
@@ -228,7 +228,7 @@ fn record_path(root: &Root, version: &Version) -> PathBuf {
 /// When the port publishes none for this system, its releases API can't be reached or limits anonymous
 /// requests, or its answer isn't a list of releases.
 pub async fn offers(port: Port) -> Result<Vec<Offer>, Error> {
-    let Some(repo) = port.github_repo().filter(|_| bundle::downloads(port).is_some()) else {
+    let Some(repo) = port.github_repo().filter(|_| download::downloads(port).is_some()) else {
         return Err(Error::NotPublished);
     };
     let answers = match releases(repo).await {
@@ -250,7 +250,7 @@ pub async fn offers(port: Port) -> Result<Vec<Offer>, Error> {
                 .iter()
                 .find(|published| published.name == asset)
                 .map(|published| published.size)
-                .filter(|&size| (1..=bundle::MAX_BYTES).contains(&size))?;
+                .filter(|&size| (1..=download::MAX_BYTES).contains(&size))?;
             let published = answer.published_at.as_deref().and_then(date_of);
             Some(Offer {
                 version,
@@ -277,7 +277,7 @@ fn date_of(timestamp: &str) -> Option<String> {
 }
 
 /// Redirects to [`DOWNLOAD_HOSTS`] and the releases API over HTTPS only, at most five: a download redirected anywhere
-/// else fails rather than fetching from there. The [`bundle`] override's own URL is never a
+/// else fails rather than fetching from there. The [`download`] override's own URL is never a
 /// redirect, so a local server still works through it.
 pub(crate) fn github_only() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
@@ -360,14 +360,14 @@ pub async fn install(
     if let Some(installed) = installed_version(root, version).await {
         return Ok(installed);
     }
-    let Some(downloads) = bundle::downloads(port) else {
+    let Some(downloads) = download::downloads(port) else {
         return Err(Error::NotPublished);
     };
     let asset = version.asset();
     let tag = version.tag();
-    let text = match bundle::fetch_small(
+    let text = match download::fetch_small(
         &format!("{downloads}/{tag}/{asset}.sha256"),
-        bundle::MAX_CHECKSUM_BYTES,
+        download::MAX_CHECKSUM_BYTES,
         github_only(),
     )
     .await
@@ -376,8 +376,8 @@ pub async fn install(
         Ok(None) => return Err(Error::NoChecksum(tag.to_owned())),
         Err(err) => return Err(err.into()),
     };
-    let Some(sha256) = bundle::checksum_of(&text, &asset) else {
-        return Err(bundle::Error::MalformedChecksum {
+    let Some(sha256) = download::checksum_of(&text, &asset) else {
+        return Err(download::Error::MalformedChecksum {
             expected: asset,
             found: text.chars().take(200).collect(),
         }
@@ -415,7 +415,8 @@ pub async fn install(
         size = offer.size,
         "downloading psport's Windows package"
     );
-    let unpacked = match bundle::download(&url, &archive, &sha256, Some(offer.size), github_only(), on_download).await {
+    let unpacked = match download::download(&url, &archive, &sha256, Some(offer.size), github_only(), on_download).await
+    {
         Ok(()) => unpack(root, version, &archive, &staging, &target).await,
         Err(err) => Err(err.into()),
     };
@@ -704,7 +705,7 @@ pub async fn installed_version(root: &Root, version: &Version) -> Option<Install
             .sha256
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-        && record.size <= bundle::MAX_BYTES;
+        && record.size <= download::MAX_BYTES;
     if !sound {
         tracing::warn!(path = %path.display(), "record of a Windows package that doesn't match its name");
         return None;

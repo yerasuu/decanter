@@ -20,7 +20,7 @@ use sha2::{Digest as _, Sha256};
 use super::pins::{self, Archive};
 use super::{Error, Stage};
 use crate::archive;
-use crate::bundle;
+use crate::download;
 use crate::package;
 use crate::paths::Root;
 
@@ -269,7 +269,7 @@ pub async fn install(cache: &Path, archive: &Archive, on_stage: &mut dyn FnMut(S
         "downloading a Windows toolchain piece"
     );
     let name = archive.name.clone();
-    let downloaded = bundle::download(
+    let downloaded = download::download(
         &archive.url,
         &zip,
         &archive.sha256,
@@ -453,7 +453,7 @@ pub(super) fn sha256_of(path: &Path) -> io::Result<String> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(crate::bundle::hex_digest(&hasher.finalize()))
+    Ok(crate::download::hex_digest(&hasher.finalize()))
 }
 
 /// `archive`'s list of hashes as its install wrote it, by path. Blocking file I/O.

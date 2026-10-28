@@ -71,7 +71,7 @@ pub(super) async fn ensure(root: &Root, mut on_download: impl FnMut(u64, Option<
         return Err(err.into());
     }
     drop(file);
-    if crate::bundle::hex_digest(&hasher.finalize()) != SHA256 {
+    if crate::download::hex_digest(&hasher.finalize()) != SHA256 {
         let _ = tokio::fs::remove_file(&partial).await;
         tracing::error!(url, "nix-portable download does not match its pinned checksum");
         return Err(Error::Checksum);

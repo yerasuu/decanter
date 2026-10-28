@@ -24,6 +24,7 @@ pub mod builds;
 pub mod bundle;
 pub mod channel;
 pub mod cmake_cache;
+pub mod download;
 pub mod failures;
 mod files;
 pub mod frame_stats;
