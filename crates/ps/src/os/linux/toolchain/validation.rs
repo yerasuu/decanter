@@ -10,7 +10,6 @@ use sha2::{Digest as _, Sha256};
 use tokio::process::Command;
 
 use super::{PKGS_NIX, Toolchain, VALIDATION_NIX, system_nix_shell, write_env_files};
-use crate::paths::Root;
 
 pub(super) const ENV_FILE: &str = "vulkan-validation.nix";
 
@@ -43,21 +42,21 @@ impl Unavailable {
     }
 }
 
-fn dir(root: &Root) -> PathBuf {
-    root.toolchain().join("vulkan-validation")
+fn layer_dir(dir: &Path) -> PathBuf {
+    dir.join("vulkan-validation")
 }
 
 /// nix's out-link, which also keeps the layer from its garbage collector.
-fn link(root: &Root, realiser: &Toolchain) -> PathBuf {
-    dir(root).join(realiser.id())
+fn link(dir: &Path, realiser: &Toolchain) -> PathBuf {
+    layer_dir(dir).join(realiser.id())
 }
 
 fn stamp(link: &Path) -> PathBuf {
     link.with_extension("pin")
 }
 
-fn unavailable_path(root: &Root) -> PathBuf {
-    dir(root).join("unavailable")
+fn unavailable_path(dir: &Path) -> PathBuf {
+    layer_dir(dir).join("unavailable")
 }
 
 /// Changes with the nixpkgs pin, so a layer realised from an older one is realised again.
@@ -82,8 +81,8 @@ pub async fn realiser(toolchain: &Toolchain) -> Result<Toolchain, Unavailable> {
 
 /// The folder for `VK_ADD_LAYER_PATH` as `realiser`'s environment sees it, once a launch
 /// realised it from the current pin.
-pub async fn cached(root: &Root, realiser: &Toolchain) -> Option<PathBuf> {
-    let link = link(root, realiser);
+pub async fn cached(dir: &Path, realiser: &Toolchain) -> Option<PathBuf> {
+    let link = link(dir, realiser);
     let stamped = tokio::fs::read_to_string(stamp(&link)).await.ok()?;
     if stamped.trim() != pin() {
         return None;
@@ -92,7 +91,7 @@ pub async fn cached(root: &Root, realiser: &Toolchain) -> Option<PathBuf> {
         .await
         .ok()?
         .join("share/vulkan/explicit_layer.d");
-    tokio::fs::metadata(realiser.store_path_on_host(root, &layers))
+    tokio::fs::metadata(realiser.store_path_on_host(dir, &layers))
         .await
         .is_ok_and(|meta| meta.is_dir())
         .then_some(layers)
@@ -100,12 +99,12 @@ pub async fn cached(root: &Root, realiser: &Toolchain) -> Option<PathBuf> {
 
 /// Realises the layer into `realiser`'s store where [`cached`] looks, with nix's progress as its
 /// output; [`record`] once it succeeded.
-pub async fn realise_command(root: &Root, realiser: &Toolchain) -> io::Result<Command> {
-    let env_file = write_env_files(&root.toolchain().join("env")).await?.join(ENV_FILE);
-    let link = link(root, realiser);
+pub async fn realise_command(dir: &Path, realiser: &Toolchain) -> io::Result<Command> {
+    let env_file = write_env_files(&dir.join("env"), None).await?.join(ENV_FILE);
+    let link = link(dir, realiser);
     realiser
         .nix_script(
-            root,
+            dir,
             "set -e; file=$1 link=$2; shift 2; mkdir -p -- \"$(dirname -- \"$link\")\"; \
              \"$@\" nix-build --out-link \"$link\" -- \"$file\"",
             &[OsStr::new("vulkan-validation"), env_file.as_os_str(), link.as_os_str()],
@@ -114,31 +113,31 @@ pub async fn realise_command(root: &Root, realiser: &Toolchain) -> io::Result<Co
 }
 
 /// Stamps the pin [`realise_command`] realised the layer from, after it succeeded.
-pub async fn record(root: &Root, realiser: &Toolchain) -> Result<PathBuf, Unavailable> {
-    let link = link(root, realiser);
+pub async fn record(dir: &Path, realiser: &Toolchain) -> Result<PathBuf, Unavailable> {
+    let link = link(dir, realiser);
     if let Err(err) = tokio::fs::write(stamp(&link), pin()).await {
         tracing::warn!(path = %link.display(), %err, "could not stamp the realised validation layer");
         return Err(Unavailable::Setup);
     }
-    cached(root, realiser).await.ok_or(Unavailable::Build)
+    cached(dir, realiser).await.ok_or(Unavailable::Build)
 }
 
 /// Kept for the setting's note until a launch gets the layer.
-pub async fn record_unavailable(root: &Root, why: Unavailable) -> io::Result<()> {
-    tokio::fs::create_dir_all(dir(root)).await?;
-    tokio::fs::write(unavailable_path(root), why.code()).await
+pub async fn record_unavailable(dir: &Path, why: Unavailable) -> io::Result<()> {
+    tokio::fs::create_dir_all(layer_dir(dir)).await?;
+    tokio::fs::write(unavailable_path(dir), why.code()).await
 }
 
-pub async fn clear_unavailable(root: &Root) -> io::Result<()> {
-    match tokio::fs::remove_file(unavailable_path(root)).await {
+pub async fn clear_unavailable(dir: &Path) -> io::Result<()> {
+    match tokio::fs::remove_file(unavailable_path(dir)).await {
         Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err),
         _ => Ok(()),
     }
 }
 
 /// Why the last launch that asked for the layer got none. File I/O: off the UI thread.
-pub fn last_unavailable_blocking(root: &Root) -> Option<Unavailable> {
-    std::fs::read_to_string(unavailable_path(root))
+pub fn last_unavailable_blocking(dir: &Path) -> Option<Unavailable> {
+    std::fs::read_to_string(unavailable_path(dir))
         .ok()
         .and_then(|code| Unavailable::from_code(code.trim()))
 }

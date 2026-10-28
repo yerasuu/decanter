@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::env::consts::OS;
 
 use super::{Bbport, Names};
-use crate::os::linux::toolchain::Toolchain;
+use crate::os::linux::toolchain::{self, Toolchain};
 use crate::port::Port;
 
 /// What the answer may hold before it's taken for something else: psport's
@@ -206,7 +206,7 @@ async fn list_features(bbport: &Bbport, toolchain: &Toolchain) -> Option<Vec<u8>
         return None;
     }
     let script = format!(r#"exec "$DECANTER_PORT_DIR/{}" --list-features"#, Names::Psport.probe());
-    let answered = match toolchain.command(&bbport.root, Port::Bbport, &script).await {
+    let answered = match toolchain::command(toolchain, &bbport.root, Port::Bbport, &script).await {
         Ok(mut command) => {
             command.env("DECANTER_PORT_DIR", port_dir);
             super::query_port(command, MAX_ANSWER).await

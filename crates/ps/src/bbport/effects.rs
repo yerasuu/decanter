@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use super::{Bbport, Names};
-use crate::os::linux::toolchain::Toolchain;
+use crate::os::linux::toolchain::{self, Toolchain};
 use crate::port::Port;
 
 /// What the answer may hold before it's taken for something else: a title's switches with
@@ -67,7 +67,7 @@ pub async fn list(bbport: &Bbport, toolchain: &Toolchain, title_id: &str) -> Opt
         r#"exec "$DECANTER_PORT_DIR/{}" --list-effects --title "$DECANTER_TITLE""#,
         names.probe()
     );
-    let mut command = match toolchain.command(&bbport.root, Port::Bbport, &script).await {
+    let mut command = match toolchain::command(toolchain, &bbport.root, Port::Bbport, &script).await {
         Ok(command) => command,
         Err(err) => {
             tracing::warn!(%err, "port effects not queried");

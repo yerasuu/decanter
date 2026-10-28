@@ -19,7 +19,7 @@ use decanter_core::platform::link_dir;
 use tokio::process::Command;
 
 use crate::library::Game;
-use crate::os::linux::toolchain::Toolchain;
+use crate::os::linux::toolchain::{self, Toolchain};
 use crate::paths::Root;
 use crate::port::Port;
 
@@ -83,12 +83,16 @@ impl AnyPs5 {
     }
 
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
-        toolchain.command(&self.root, Port::AnyPs5, BUILD_SCRIPT).await
+        toolchain::command(toolchain, &self.root, Port::AnyPs5, BUILD_SCRIPT).await
     }
 
     /// After a build that succeeded.
     pub async fn record_build(&self, toolchain: &Toolchain) -> io::Result<()> {
-        tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
+        tokio::fs::write(
+            self.build_marker(),
+            toolchain::build_stamp(toolchain, &self.checkout).await,
+        )
+        .await
     }
 
     pub async fn is_built_with(&self, toolchain: &Toolchain) -> bool {
@@ -96,7 +100,7 @@ impl AnyPs5 {
             .await
             .is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
-        let stamp = toolchain.build_stamp(&self.checkout).await;
+        let stamp = toolchain::build_stamp(toolchain, &self.checkout).await;
         relinker && marker.is_ok_and(|built| built == stamp)
     }
 
@@ -141,7 +145,7 @@ impl AnyPs5 {
     /// `--`; both paths are absolute, so neither can read as a flag.
     pub async fn convert_command(&self, toolchain: &Toolchain, game: &Game) -> io::Result<Command> {
         let script = r#"exec "$DECANTER_RELINKER" "$DECANTER_EBOOT" "$DECANTER_APP""#;
-        let mut command = match toolchain.command(&self.root, Port::AnyPs5, script).await {
+        let mut command = match toolchain::command(toolchain, &self.root, Port::AnyPs5, script).await {
             Ok(command) => command,
             Err(err) => return Err(err),
         };
@@ -159,9 +163,7 @@ impl AnyPs5 {
     /// for every title otherwise, and the task bar matches the game's
     /// desktop entry against them.
     pub async fn run_command(&self, toolchain: &Toolchain, game: &Game, run_dir: &Path) -> io::Result<Command> {
-        let mut command = match toolchain
-            .command(&self.root, Port::AnyPs5, r#"exec "$DECANTER_APP""#)
-            .await
+        let mut command = match toolchain::command(toolchain, &self.root, Port::AnyPs5, r#"exec "$DECANTER_APP""#).await
         {
             Ok(command) => command,
             Err(err) => return Err(err),

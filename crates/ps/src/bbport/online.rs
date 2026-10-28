@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use super::{Bbport, LauncherSettings, Names};
-use crate::os::linux::toolchain::Toolchain;
+use crate::os::linux::toolchain::{self, Toolchain};
 use crate::port::Port;
 
 /// psport's launcher's defaults (`scripts/online.py`): Seamless Hunt's servers.
@@ -347,7 +347,7 @@ pub async fn title_online(bbport: &Bbport, toolchain: &Toolchain, title_id: &str
         r#"exec "$DECANTER_PORT_DIR/{}" --online-overrides --title "$DECANTER_TITLE""#,
         names.probe()
     );
-    let mut command = match toolchain.command(&bbport.root, Port::Bbport, &script).await {
+    let mut command = match toolchain::command(toolchain, &bbport.root, Port::Bbport, &script).await {
         Ok(command) => command,
         Err(err) => {
             tracing::warn!(%err, "title online data not queried");

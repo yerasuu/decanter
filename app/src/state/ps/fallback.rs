@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use decanter_ps::failures;
 use decanter_ps::os::linux::builds::Record;
-use decanter_ps::os::linux::toolchain::Toolchain;
+use decanter_ps::os::linux::toolchain::{self, Toolchain};
 use decanter_ps::os::linux::updater;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
@@ -129,7 +129,7 @@ pub(super) async fn recover(
     if !finished.succeeded() {
         return Err(PortError::Rollback(short(&good)));
     }
-    let toolchain = match Toolchain::resolve(root, port, |_, _| {}).await {
+    let toolchain = match Toolchain::resolve(&root.toolchain(), &toolchain::recipe(port), |_, _| {}).await {
         Ok(toolchain) => toolchain,
         Err(err) => return Err(PortError::Toolchain(err)),
     };

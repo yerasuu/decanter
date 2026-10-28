@@ -39,7 +39,7 @@ pub use settings::LauncherSettings;
 
 use crate::learned;
 use crate::library::{Game, Platform};
-use crate::os::linux::toolchain::Toolchain;
+use crate::os::linux::toolchain::{self, Toolchain};
 use crate::paths::Root;
 use crate::port::Port;
 use names::single_memory_model;
@@ -227,7 +227,7 @@ impl Bbport {
         }
         self.prebuilt().await.map_or_else(
             || self.checkout.clone(),
-            |store_path| toolchain.store_path_on_host(&self.root, &store_path),
+            |store_path| toolchain.store_path_on_host(&self.root.toolchain(), &store_path),
         )
     }
 
@@ -262,12 +262,16 @@ impl Bbport {
     }
 
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
-        toolchain.command(&self.root, Port::Bbport, "bash build.sh").await
+        toolchain::command(toolchain, &self.root, Port::Bbport, "bash build.sh").await
     }
 
     /// After a build that succeeded.
     pub async fn record_build(&self, toolchain: &Toolchain) -> io::Result<()> {
-        tokio::fs::write(self.build_marker(), toolchain.build_stamp(&self.checkout).await).await
+        tokio::fs::write(
+            self.build_marker(),
+            toolchain::build_stamp(toolchain, &self.checkout).await,
+        )
+        .await
     }
 
     /// After `store_path`, the checkout's commit as the binary cache holds it,
@@ -276,7 +280,7 @@ impl Bbport {
         if let Err(err) = tokio::fs::create_dir_all(self.checkout.join("out")).await {
             return Err(err);
         }
-        let stamp = toolchain.build_stamp(&self.checkout).await;
+        let stamp = toolchain::build_stamp(toolchain, &self.checkout).await;
         tokio::fs::write(self.build_marker(), format!("{stamp}\n{store_path}")).await
     }
 
@@ -285,7 +289,7 @@ impl Bbport {
         if let Err(err) = tokio::fs::create_dir_all(self.checkout.join("out")).await {
             return Err(err);
         }
-        let stamp = Toolchain::Bundle.build_stamp(&self.checkout).await;
+        let stamp = toolchain::build_stamp(&Toolchain::Bundle, &self.checkout).await;
         tokio::fs::write(self.build_marker(), format!("{stamp}\n{tag}")).await
     }
 
@@ -297,16 +301,20 @@ impl Bbport {
             .await
             .is_ok_and(|meta| meta.is_file());
         let marker = tokio::fs::read_to_string(self.build_marker()).await;
-        let stamp = toolchain.build_stamp(&self.checkout).await;
+        let stamp = toolchain::build_stamp(toolchain, &self.checkout).await;
         probe && marker.is_ok_and(|built| built.lines().next() == Some(stamp.as_str()))
     }
 
     /// `run.sh` in `toolchain`, with [`Self::game_env`] plus what keeps it from building and from
     /// writing into the checkout.
     pub async fn launch_command(&self, toolchain: &Toolchain, launch: &GameLaunch<'_>) -> io::Result<Command> {
-        let mut command = match toolchain
-            .command(&self.root, Port::Bbport, r#"bash "$DECANTER_PORT_DIR/run.sh""#)
-            .await
+        let mut command = match toolchain::command(
+            toolchain,
+            &self.root,
+            Port::Bbport,
+            r#"bash "$DECANTER_PORT_DIR/run.sh""#,
+        )
+        .await
         {
             Ok(command) => command,
             Err(err) => return Err(err),
@@ -452,13 +460,13 @@ impl Bbport {
     pub async fn connected_gamepads(&self, toolchain: &Toolchain) -> Vec<(String, String)> {
         let port_dir = self.port_dir().await;
         let tool = Names::of(&port_dir).await.gpu_capabilities();
-        let command = toolchain
-            .command(
-                &self.root,
-                Port::Bbport,
-                &format!(r#""$DECANTER_PORT_DIR/{tool}" --gamepads"#),
-            )
-            .await;
+        let command = toolchain::command(
+            toolchain,
+            &self.root,
+            Port::Bbport,
+            &format!(r#""$DECANTER_PORT_DIR/{tool}" --gamepads"#),
+        )
+        .await;
         let Ok(mut command) = command else {
             return Vec::new();
         };

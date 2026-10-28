@@ -69,7 +69,7 @@ async fn give(
     }
     match layer(this, root, toolchain, game_dir, cx).await {
         Ok(Some(dir)) => {
-            if let Err(err) = validation::clear_unavailable(root).await {
+            if let Err(err) = validation::clear_unavailable(&root.toolchain()).await {
                 tracing::warn!(%err, "could not clear the validation layer's last failure");
             }
             tracing::info!(dir = %dir.display(), "Vulkan validation layer for the port");
@@ -81,7 +81,7 @@ async fn give(
         Err(why) => {
             tracing::warn!(%why, "Vulkan validation layer unavailable; the game starts without validating");
             command.env_remove(&validation_var);
-            if let Err(err) = validation::record_unavailable(root, why).await {
+            if let Err(err) = validation::record_unavailable(&root.toolchain(), why).await {
                 tracing::warn!(%err, "could not record why the validation layer is unavailable");
             }
             let _ = this.update(cx, |this, cx| {
@@ -105,11 +105,11 @@ async fn layer(
         Ok(realiser) => realiser,
         Err(why) => return Err(why),
     };
-    if let Some(dir) = validation::cached(root, &realiser).await {
+    if let Some(dir) = validation::cached(&root.toolchain(), &realiser).await {
         return Ok(Some(dir));
     }
     set_notice(this, Some(Text::new("ps.vk_layer.preparing")), cx);
-    let command = match validation::realise_command(root, &realiser).await {
+    let command = match validation::realise_command(&root.toolchain(), &realiser).await {
         Ok(command) => command,
         Err(err) => {
             tracing::warn!(%err, toolchain = realiser.id(), "could not set up the validation layer's realisation");
@@ -124,7 +124,7 @@ async fn layer(
     let finished = jobs::run(this, root, key.clone(), JobKind::VkLayer, facts, command, None, cx).await;
     if finished.succeeded() {
         set_notice(this, None, cx);
-        return validation::record(root, &realiser).await.map(Some);
+        return validation::record(&root.toolchain(), &realiser).await.map(Some);
     }
     let stopped = this
         .update(cx, |this, cx| {

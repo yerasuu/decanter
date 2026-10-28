@@ -49,18 +49,47 @@ const NIX_SHELL_FALLBACKS: [&str; 2] = [
     ".nix-profile/bin/nix-shell",
 ];
 
-const fn env_file(port: Port) -> &'static str {
+/// What one user of the mechanism builds and runs in it, kept by that user.
+pub struct Recipe {
+    /// Names its host marker, lower-cased, and its log lines.
+    pub name: &'static str,
+    /// The file [`Recipe::env`] is written to, beside `pkgs.nix`, the pinned nixpkgs it may import.
+    pub env_file: &'static str,
+    /// A nix expression taking `{ checkout }`, entered by nix-shell.
+    pub env: &'static str,
+    /// A bash script that succeeds when the host's own tools cover the build.
+    pub host_check: &'static str,
+}
+
+pub const fn recipe(port: Port) -> Recipe {
     match port {
-        Port::Bbport => "bbport.nix",
-        Port::AnyPs5 => "anyps5.nix",
+        Port::Bbport => Recipe {
+            name: port.name(),
+            env_file: "bbport.nix",
+            env: BBPORT_NIX,
+            host_check: BBPORT_HOST_CHECK,
+        },
+        Port::AnyPs5 => Recipe {
+            name: port.name(),
+            env_file: "anyps5.nix",
+            env: ANYPS5_NIX,
+            host_check: ANYPS5_HOST_CHECK,
+        },
     }
 }
 
-const fn host_check(port: Port) -> &'static str {
-    match port {
-        Port::Bbport => BBPORT_HOST_CHECK,
-        Port::AnyPs5 => ANYPS5_HOST_CHECK,
-    }
+/// `script` run by bash inside `port`'s environment, from its checkout under `root`.
+pub async fn command(toolchain: &Toolchain, root: &Root, port: Port, script: &str) -> io::Result<Command> {
+    toolchain
+        .command(&root.toolchain(), &recipe(port), &port.checkout(root), script)
+        .await
+}
+
+/// What a port's build marker holds: this toolchain and the checkout's
+/// commit, so a checkout that moved (an update applied before the port
+/// was prepared this session) is built again rather than run stale.
+pub async fn build_stamp(toolchain: &Toolchain, checkout: &Path) -> String {
+    format!("{} {}", toolchain.id(), crate::failures::full_commit_of(checkout).await)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,44 +115,48 @@ pub enum Error {
 impl Toolchain {
     /// May download nix-portable (about 65 MB), reporting bytes so far and
     /// the total when the server sends one.
-    pub async fn resolve(root: &Root, port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
-        if host_covers(port).await {
-            if !tokio::fs::try_exists(host_refused(root, port)).await.unwrap_or(false) {
-                tracing::info!(?port, "host tools cover the port");
+    pub async fn resolve(
+        dir: &Path,
+        recipe: &Recipe,
+        on_download: impl FnMut(u64, Option<u64>),
+    ) -> Result<Self, Error> {
+        if host_covers(recipe).await {
+            if !tokio::fs::try_exists(host_refused(dir, recipe)).await.unwrap_or(false) {
+                tracing::info!(recipe = recipe.name, "host tools cover the recipe");
                 return Ok(Self::Host);
             }
-            tracing::info!(?port, "host tools failed to configure the port before");
+            tracing::info!(recipe = recipe.name, "host tools failed to configure the recipe before");
         }
-        Self::nix(root, port, on_download).await
+        Self::nix(dir, recipe, on_download).await
     }
 
     /// What [`Toolchain::resolve`] falls back to, never the host.
-    pub async fn nix(root: &Root, port: Port, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
+    pub async fn nix(dir: &Path, recipe: &Recipe, on_download: impl FnMut(u64, Option<u64>)) -> Result<Self, Error> {
         if let Some(nix_shell) = system_nix_shell().await {
-            tracing::info!(?port, nix_shell = %nix_shell.display(), "using the system's nix");
+            tracing::info!(recipe = recipe.name, nix_shell = %nix_shell.display(), "using the system's nix");
             return Ok(Self::SystemNix(nix_shell));
         }
-        match portable::ensure(root, on_download).await {
+        match portable::ensure(dir, on_download).await {
             Ok(path) => {
-                tracing::info!(?port, path = %path.display(), "using decanter's nix-portable");
+                tracing::info!(recipe = recipe.name, path = %path.display(), "using decanter's nix-portable");
                 Ok(Self::Portable(path))
             }
             Err(err) => Err(err),
         }
     }
 
-    /// After the host's tools failed to configure `port`: later resolves
+    /// After the host's tools failed to configure `recipe`: later resolves
     /// skip the host for it until [`Toolchain::allow_host`].
-    pub async fn refuse_host(root: &Root, port: Port) -> io::Result<()> {
-        tokio::fs::create_dir_all(root.toolchain()).await?;
-        tokio::fs::write(host_refused(root, port), b"").await
+    pub async fn refuse_host(dir: &Path, recipe: &Recipe) -> io::Result<()> {
+        tokio::fs::create_dir_all(dir).await?;
+        tokio::fs::write(host_refused(dir, recipe), b"").await
     }
 
-    /// Once `port`'s checkout moved, since the new commit may configure with
+    /// Once `recipe`'s checkout moved, since the new commit may configure with
     /// the host's tools after all. True when the host had been refused: the
     /// checkout's build caches are then nix's, which the caller must forget.
-    pub async fn allow_host(root: &Root, port: Port) -> io::Result<bool> {
-        match tokio::fs::remove_file(host_refused(root, port)).await {
+    pub async fn allow_host(dir: &Path, recipe: &Recipe) -> io::Result<bool> {
+        match tokio::fs::remove_file(host_refused(dir, recipe)).await {
             Ok(()) => Ok(true),
             Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(err) => Err(err),
@@ -140,28 +173,20 @@ impl Toolchain {
         }
     }
 
-    /// What a port's build marker holds: this toolchain and the checkout's
-    /// commit, so a checkout that moved (an update applied before the port
-    /// was prepared this session) is built again rather than run stale.
-    pub async fn build_stamp(&self, checkout: &Path) -> String {
-        format!("{} {}", self.id(), crate::failures::full_commit_of(checkout).await)
-    }
-
     /// Where `store_path` of this toolchain's store is seen from outside it:
-    /// nix-portable mounts its store, kept under the library, at `/nix/store`
+    /// nix-portable mounts its store, kept under `dir`, at `/nix/store`
     /// only for what it runs.
-    pub fn store_path_on_host(&self, root: &Root, store_path: &Path) -> PathBuf {
+    pub fn store_path_on_host(&self, dir: &Path, store_path: &Path) -> PathBuf {
         match (self, store_path.strip_prefix("/")) {
-            (Self::Portable(_), Ok(relative)) => root.toolchain().join(".nix-portable").join(relative),
+            (Self::Portable(_), Ok(relative)) => dir.join(".nix-portable").join(relative),
             _ => store_path.to_owned(),
         }
     }
 
-    /// `script` run by bash inside `port`'s environment, from its checkout
-    /// under `root`. Callers that run something elsewhere (a converted game)
-    /// set their own `current_dir` after.
-    pub async fn command(&self, root: &Root, port: Port, script: &str) -> io::Result<Command> {
-        let checkout = port.checkout(root);
+    /// `script` run by bash inside `recipe`'s environment, from `checkout`.
+    /// Callers that run something elsewhere (a converted game) set their own
+    /// `current_dir` after.
+    pub async fn command(&self, dir: &Path, recipe: &Recipe, checkout: &Path, script: &str) -> io::Result<Command> {
         let mut command = match self {
             Self::Host | Self::Bundle => {
                 let mut command = Command::new("bash");
@@ -169,29 +194,29 @@ impl Toolchain {
                 command
             }
             Self::SystemNix(nix_shell) => {
-                let env_file = match write_env_files(&root.toolchain().join("env")).await {
-                    Ok(dir) => dir.join(env_file(port)),
+                let env_file = match write_env_files(&dir.join("env"), Some(recipe)).await {
+                    Ok(env) => env.join(recipe.env_file),
                     Err(err) => return Err(err),
                 };
                 let mut command = Command::new(nix_shell);
-                command.args(nix_shell_args(&env_file, &checkout, script));
+                command.args(nix_shell_args(&env_file, checkout, script));
                 command
             }
             Self::Portable(nix_portable) => {
-                let env_file = match write_env_files(&root.toolchain().join("env")).await {
-                    Ok(dir) => dir.join(env_file(port)),
+                let env_file = match write_env_files(&dir.join("env"), Some(recipe)).await {
+                    Ok(env) => env.join(recipe.env_file),
                     Err(err) => return Err(err),
                 };
                 let mut command = Command::new(nix_portable);
                 // Its store goes beside it rather than in `~/.nix-portable`.
                 command
-                    .env("NP_LOCATION", root.toolchain())
+                    .env("NP_LOCATION", dir)
                     .arg("nix-shell")
-                    .args(nix_shell_args(&env_file, &checkout, script));
+                    .args(nix_shell_args(&env_file, checkout, script));
                 command
             }
         };
-        command.current_dir(&checkout).stdin(Stdio::null());
+        command.current_dir(checkout).stdin(Stdio::null());
         decanter_core::strip_launcher_env(command.as_std_mut());
         Ok(command)
     }
@@ -199,9 +224,9 @@ impl Toolchain {
     /// Copies `store_path`'s closure from the binary cache at `cache` into
     /// this toolchain's store and roots it at `gc_root`. `None` for the host
     /// and a bundle, which have no store: a cached port only runs inside nix.
-    pub fn fetch_command(&self, root: &Root, cache: &str, store_path: &str, gc_root: &Path) -> Option<Command> {
+    pub fn fetch_command(&self, dir: &Path, cache: &str, store_path: &str, gc_root: &Path) -> Option<Command> {
         self.nix_script(
-            root,
+            dir,
             "set -e; cache=$1 path=$2 root=$3; shift 3; mkdir -p -- \"$(dirname -- \"$root\")\"; \
              \"$@\" nix --extra-experimental-features nix-command copy --no-check-sigs --from \"$cache\" -- \"$path\"; \
              \"$@\" nix-store --realise --add-root \"$root\" -- \"$path\" >/dev/null; \
@@ -218,22 +243,22 @@ impl Toolchain {
     /// `script` run by bash with `args` as `$0`, `$1`…, and nix's tools reachable: on `PATH` for
     /// the system's nix, behind the `"$@"` the script must put before each one, after shifting its
     /// own arguments, for nix-portable. `None` for the host and a bundle, which have no nix.
-    fn nix_script(&self, root: &Root, script: &str, args: &[&OsStr]) -> Option<Command> {
+    fn nix_script(&self, dir: &Path, script: &str, args: &[&OsStr]) -> Option<Command> {
         let mut command = Command::new("bash");
         command.arg("-c").arg(script).args(args);
         match self {
             Self::Host | Self::Bundle => return None,
             Self::SystemNix(nix_shell) => {
                 // `nix` and `nix-store` sit beside `nix-shell`, which may have been found off `PATH`.
-                let dir = nix_shell.parent().map(Path::to_owned).unwrap_or_default();
+                let bin = nix_shell.parent().map(Path::to_owned).unwrap_or_default();
                 let inherited = std::env::var_os("PATH").unwrap_or_default();
-                if let Ok(search) = std::env::join_paths(std::iter::once(dir).chain(std::env::split_paths(&inherited)))
+                if let Ok(search) = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&inherited)))
                 {
                     command.env("PATH", search);
                 }
             }
             Self::Portable(nix_portable) => {
-                command.env("NP_LOCATION", root.toolchain()).arg(nix_portable);
+                command.env("NP_LOCATION", dir).arg(nix_portable);
             }
         }
         command.stdin(Stdio::null());
@@ -242,9 +267,8 @@ impl Toolchain {
     }
 }
 
-fn host_refused(root: &Root, port: Port) -> PathBuf {
-    root.toolchain()
-        .join(format!("host-refused-{}", port.name().to_lowercase()))
+fn host_refused(dir: &Path, recipe: &Recipe) -> PathBuf {
+    dir.join(format!("host-refused-{}", recipe.name.to_lowercase()))
 }
 
 fn nix_shell_args(env_file: &Path, checkout: &Path, script: &str) -> [OsString; 6] {
@@ -260,16 +284,15 @@ fn nix_shell_args(env_file: &Path, checkout: &Path, script: &str) -> [OsString; 
 
 /// The environments, rewritten only when this build of decanter carries
 /// different ones, so nix-shell's evaluation cache stays warm.
-async fn write_env_files(dir: &Path) -> io::Result<PathBuf> {
+async fn write_env_files(dir: &Path, recipe: Option<&Recipe>) -> io::Result<PathBuf> {
     if let Err(err) = tokio::fs::create_dir_all(dir).await {
         return Err(err);
     }
-    for (name, text) in [
-        ("pkgs.nix", PKGS_NIX),
-        ("bbport.nix", BBPORT_NIX),
-        ("anyps5.nix", ANYPS5_NIX),
-        (validation::ENV_FILE, VALIDATION_NIX),
-    ] {
+    let own = [("pkgs.nix", PKGS_NIX), (validation::ENV_FILE, VALIDATION_NIX)];
+    for (name, text) in own
+        .into_iter()
+        .chain(recipe.map(|recipe| (recipe.env_file, recipe.env)))
+    {
         let path = dir.join(name);
         let current = tokio::fs::read_to_string(&path).await.ok();
         if current.as_deref() != Some(text)
@@ -281,11 +304,11 @@ async fn write_env_files(dir: &Path) -> io::Result<PathBuf> {
     Ok(dir.to_owned())
 }
 
-async fn host_covers(port: Port) -> bool {
+async fn host_covers(recipe: &Recipe) -> bool {
     let mut check = Command::new("bash");
     check
         .arg("-c")
-        .arg(host_check(port))
+        .arg(recipe.host_check)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

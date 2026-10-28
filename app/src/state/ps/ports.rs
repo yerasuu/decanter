@@ -385,7 +385,7 @@ async fn prepare(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
 
     let progress = this.clone();
     let mut async_cx = cx.clone();
-    let resolved = Toolchain::resolve(root, port, move |received, total| {
+    let resolved = Toolchain::resolve(&root.toolchain(), &toolchain::recipe(port), move |received, total| {
         set_stage(&progress, port, Stage::Downloading(received, total), &mut async_cx);
     })
     .await;
@@ -545,7 +545,7 @@ pub(super) async fn build(
         fell_back = true;
         let progress = this.clone();
         let mut async_cx = cx.clone();
-        let resolved = Toolchain::nix(root, port, move |received, total| {
+        let resolved = Toolchain::nix(&root.toolchain(), &toolchain::recipe(port), move |received, total| {
             set_stage(&progress, port, Stage::Downloading(received, total), &mut async_cx);
         })
         .await;
@@ -559,7 +559,7 @@ pub(super) async fn build(
         });
     }
     // Only once nix built it, so a CMake error nix shares doesn't keep the host away.
-    if fell_back && let Err(err) = Toolchain::refuse_host(root, port).await {
+    if fell_back && let Err(err) = Toolchain::refuse_host(&root.toolchain(), &toolchain::recipe(port)).await {
         tracing::warn!(port = port.name(), %err, "could not record that the host can't build the port");
     }
     let recorded = match port {
@@ -603,7 +603,7 @@ async fn fetch_prebuilt(
     // found here, ahead of the network, and still launches offline.
     if resolved_nix.is_none()
         && bbport.prebuilt().await.is_some()
-        && let Ok(nix) = Toolchain::nix(root, port, |_, _| {}).await
+        && let Ok(nix) = Toolchain::nix(&root.toolchain(), &toolchain::recipe(port), |_, _| {}).await
         && bbport.is_built_with(&nix).await
     {
         return Some(nix);
@@ -629,7 +629,7 @@ async fn fetch_prebuilt(
         None => {
             let progress = this.clone();
             let mut async_cx = cx.clone();
-            let resolved = Toolchain::nix(root, port, move |received, total| {
+            let resolved = Toolchain::nix(&root.toolchain(), &toolchain::recipe(port), move |received, total| {
                 set_stage(&progress, port, Stage::Downloading(received, total), &mut async_cx);
             })
             .await;
@@ -643,7 +643,8 @@ async fn fetch_prebuilt(
             }
         }
     };
-    let Some(command) = nix.fetch_command(root, &cache, &store_path, &prebuilt::gc_root(root, port)) else {
+    let Some(command) = nix.fetch_command(&root.toolchain(), &cache, &store_path, &prebuilt::gc_root(root, port))
+    else {
         return None;
     };
     let mut facts = jobs::port_facts(root, port, Some(&nix)).await;
@@ -689,7 +690,7 @@ fn failed_to_configure(this: &WeakEntity<Ps>, port: Port, cx: &mut AsyncApp) -> 
 /// After the checkout moved: built again right away, since whatever runs
 /// next would otherwise build first anyway.
 async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) {
-    match Toolchain::allow_host(root, port).await {
+    match Toolchain::allow_host(&root.toolchain(), &toolchain::recipe(port)).await {
         // Otherwise the host's configure would keep nix's compiler from the cache.
         Ok(true) => {
             let checkout = port.checkout(root);
@@ -721,7 +722,7 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         return;
     }
     // Resolved again rather than reusing nix from a fallback, now that the host may build it.
-    let toolchain = match Toolchain::resolve(root, port, |_, _| {}).await {
+    let toolchain = match Toolchain::resolve(&root.toolchain(), &toolchain::recipe(port), |_, _| {}).await {
         Ok(toolchain) => toolchain,
         Err(err) => {
             fail(this, port, &PortError::Toolchain(err), cx);

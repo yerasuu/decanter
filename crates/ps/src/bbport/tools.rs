@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::{Bbport, Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
-use crate::os::linux::toolchain::Toolchain;
+use crate::os::linux::toolchain::{self, Toolchain};
 use crate::paths::Root;
 use crate::port::Port;
 
@@ -55,13 +55,11 @@ async fn helper(
     args: &[&Path],
 ) -> Result<serde_json::Value, String> {
     let checkout = Port::Bbport.checkout(root);
-    let mut command = match toolchain
-        .command(root, Port::Bbport, r#"exec python3 -c "$DECANTER_HELPER""#)
-        .await
-    {
-        Ok(command) => command,
-        Err(err) => return Err(format!("python3: {err}")),
-    };
+    let mut command =
+        match toolchain::command(toolchain, root, Port::Bbport, r#"exec python3 -c "$DECANTER_HELPER""#).await {
+            Ok(command) => command,
+            Err(err) => return Err(format!("python3: {err}")),
+        };
     command
         .env("DECANTER_HELPER", HELPER)
         .env("DECANTER_ROOT", &checkout)
@@ -111,7 +109,7 @@ async fn psport_list(
         r#"exec "$DECANTER_PORT_DIR/{}" "$DECANTER_REQUEST" "$DECANTER_ARG0" --title "$DECANTER_TITLE" --version "$DECANTER_VERSION""#,
         Names::Psport.probe()
     );
-    let mut command = match toolchain.command(root, Port::Bbport, &script).await {
+    let mut command = match toolchain::command(toolchain, root, Port::Bbport, &script).await {
         Ok(command) => command,
         Err(err) => return Err(format!("psport: {err}")),
     };
@@ -370,7 +368,7 @@ pub async fn fsr411_build_command(
 ) -> io::Result<Command> {
     let script =
         r#"exec bash tools/fsr4cap/build_assets.sh "$DECANTER_UPSCALER" ${DECANTER_LOADER:+"$DECANTER_LOADER"}"#;
-    let mut command = match toolchain.command(root, Port::Bbport, script).await {
+    let mut command = match toolchain::command(toolchain, root, Port::Bbport, script).await {
         Ok(command) => command,
         Err(err) => return Err(err),
     };

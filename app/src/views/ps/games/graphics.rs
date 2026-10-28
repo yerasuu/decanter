@@ -57,7 +57,7 @@ impl GraphicsView {
         let load = cx.background_spawn(async {
             let root = decanter_ps::paths::active();
             let single_memory_model = single_memory_model_blocking(&Port::Bbport.checkout(&root));
-            let vk_layer_unavailable = validation::last_unavailable_blocking(&root);
+            let vk_layer_unavailable = validation::last_unavailable_blocking(&root.toolchain());
             (Values::load(&root), single_memory_model, vk_layer_unavailable)
         });
         cx.spawn(async move |this, cx| {
