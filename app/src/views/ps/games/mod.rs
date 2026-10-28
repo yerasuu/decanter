@@ -130,7 +130,22 @@ impl GamesView {
             } else {
                 t!("ps.games.no_match")
             };
-            div().p_4().child(theme::muted(message)).into_any_element()
+            div()
+                .p_4()
+                .flex()
+                .flex_col()
+                .items_start()
+                .gap_3()
+                .child(theme::muted(message))
+                .when(!ps.scanning() && ps.entries().is_empty(), |empty| {
+                    empty.child(super::adding::add_button(
+                        "ps-add-empty",
+                        ButtonKind::Secondary,
+                        &self.ps,
+                        cx,
+                    ))
+                })
+                .into_any_element()
         } else {
             let view = cx.entity();
             uniform_list("ps-games", rows.len(), move |range, _, cx| {
@@ -167,6 +182,7 @@ impl GamesView {
                     .p(px(14.))
                     .pb(px(8.))
                     .child(div().flex_1().min_w_0().child(self.search.clone()))
+                    .child(super::adding::add_button("ps-add", ButtonKind::Icon, &self.ps, cx))
                     .child(self.refresh_button(cx)),
             )
             .child(body)
@@ -317,7 +333,7 @@ const fn platform_label(platform: Platform) -> &'static str {
 
 /// Without the ™ and ® dumps carry, falling back to the title id for a
 /// dump with no name.
-fn display_title(game: &Game) -> String {
+pub(super) fn display_title(game: &Game) -> String {
     let title = game.title.replace(['™', '®'], "");
     let title = title.trim();
     if title.is_empty() {

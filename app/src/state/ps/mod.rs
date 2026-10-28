@@ -5,6 +5,7 @@
 //! profile never pays for it; kept after that, so jobs started from the
 //! section outlive switching to another one.
 
+mod adding;
 mod branch;
 mod bundle;
 mod channel;
@@ -30,6 +31,7 @@ use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
 use gpui::{App, AppContext as _, Context, Entity, Global};
 
+pub use adding::{Adding, Offer};
 use branch::BranchState;
 pub use channel::Track;
 pub use fallback::Fallback;
@@ -75,6 +77,9 @@ pub struct Ps {
     /// Games being moved to another library folder, which can't start
     /// until they land.
     moving: HashSet<PathBuf>,
+    /// A dump being offered or added from outside the games folders.
+    adding: Option<Adding>,
+    add_notice: Option<(Text, bool)>,
     /// Games whose session is being stopped, so DETENER can't start a second stop meanwhile.
     stopping: HashSet<PathBuf>,
     ports: HashMap<Port, PortState>,
@@ -112,6 +117,8 @@ impl Ps {
                 jobs: HashMap::new(),
                 launching: HashSet::new(),
                 moving: HashSet::new(),
+                adding: None,
+                add_notice: None,
                 stopping: HashSet::new(),
                 ports: HashMap::new(),
                 package: PackageState::default(),

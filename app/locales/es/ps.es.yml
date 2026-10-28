@@ -133,7 +133,7 @@ ps.failures.notice.errors_and_missing.other: '%{count} errores y %{missing} (ver
 ps.failures.notice.errors.one: '%{count} error registrado en Fallos'
 ps.failures.notice.errors.other: '%{count} errores registrados en Fallos'
 ps.settings.games.title: Carpeta de juegos
-ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, en su mismo disco. Copia o mueve ahí tus volcados y aparecerán solos: cada carpeta y sus subcarpetas directas se leen tal cual. Las partidas y los ajustes se quedan siempre en la principal; la caché va a la ubicación de caché de la carpeta de cada juego. Para pasar un juego de una carpeta a otra, o elegir dónde va su caché, usa Almacenamiento.'
+ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, en su mismo disco. «Añadir volcado…» copia o mueve un volcado a la principal, y los de cada carpeta aparecen solos. Las partidas y los ajustes se quedan siempre en la principal; la caché va a la ubicación de caché de la carpeta de cada juego. Para pasar un juego de una carpeta a otra, o elegir dónde va su caché, usa Almacenamiento.'
 ps.settings.sys_modules.title: Módulos del sistema (opcional)
 ps.settings.sys_modules.none: Sin carpeta
 ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno.'
@@ -162,10 +162,34 @@ ps.settings.forget: Quitar
 ps.settings.save_error: 'No se pudo guardar la carpeta: %{error}'
 ps.games.search: Buscar
 ps.games.scanning: Buscando juegos…
-ps.games.no_dumps: 'No hay volcados todavía: cópialos a la carpeta de juegos (Ajustes).'
+ps.games.no_dumps: 'Todavía no hay volcados: añade el primero.'
 ps.games.no_match: Nada coincide con la búsqueda.
 ps.games.rescan: Actualizar biblioteca
-ps.games.browser_empty: 'Todavía no hay juegos: copia tus volcados a la carpeta de juegos (ver Ajustes).'
+ps.games.browser_empty: 'Todavía no hay juegos: añade un volcado y decanter lo copia o lo mueve a la carpeta de juegos.'
+ps.add.button: Añadir volcado…
+ps.add.pick_title: Elige la carpeta del volcado
+ps.add.title: 'Añadir «%{title}» (%{title_id})'
+ps.add.details: 'De %{source} a %{target} · %{size}'
+ps.add.free: '%{free} libres en el destino'
+ps.add.question: 'Copiar deja el original donde está; mover lo quita de allí (en el mismo disco es instantáneo).'
+ps.add.copy: Copiar
+ps.add.move: Mover
+ps.add.cancel: Cancelar
+ps.add.close: Cerrar
+ps.add.copying: 'Copiando «%{title}»…'
+ps.add.moving: 'Moviendo «%{title}»…'
+ps.add.measuring: Midiendo el volcado…
+ps.add.progress: '%{done} de %{total} (%{percent}%)'
+ps.add.cancelling: Cancelando…
+ps.add.done: '«%{title}» añadido en %{path}.'
+ps.add.failed: 'No se ha podido añadir «%{title}»: %{error}'
+ps.add.refused.not_folder: '%{path} no es una carpeta.'
+ps.add.refused.not_dump: '%{path} no es un volcado: le falta sce_sys/param.sfo (PS4) o sce_sys/param.json (PS5).'
+ps.add.refused.title_id: 'El volcado de %{path} tiene un id de título que no sirve (%{title_id}).'
+ps.add.refused.no_eboot: 'Al volcado de %{path} le falta eboot.bin: el juego está incompleto.'
+ps.add.refused.in_games: '%{path} ya está en una carpeta de juegos de PS.'
+ps.add.refused.holds_games: '%{path} contiene la carpeta de juegos de PS: elige la carpeta del propio volcado.'
+ps.add.refused.busy: 'Ya se está añadiendo un volcado: espera a que termine.'
 ps.status.ready: Listo
 ps.status.needs_convert: Se convierte al jugar
 ps.status.needs_merge: Falta fusionar 1.09

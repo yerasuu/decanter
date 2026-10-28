@@ -7,10 +7,11 @@
 //! only takes the real name once whole. The manifest moves last, so until
 //! everything has landed the game is still recorded where it was.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use decanter_core::{InstalledGame, Storefront};
+use decanter_ps::library::{Game, Refusal};
 
 use crate::external::transfer::{self, Mode, Progress};
 use crate::i18n::Text;
@@ -154,6 +155,78 @@ pub fn move_dump(dir: &Path, library_root: &Path, progress: &Progress) -> Result
     );
     crate::dump_size::moved(dir, &target);
     tracing::info!(to = %target.display(), "PS dump moved to another library folder");
+    Ok(())
+}
+
+/// Where the dump `game` read from `source` lands in `games`, the primary
+/// games folder: under the picked folder's own name when it is a plain one,
+/// else under its title id, never under anything else its metadata says.
+/// Refused when `source` is already in one of `games_folders` (the
+/// profile's, `games` among them), holds one, or the name is taken.
+pub fn dump_target(source: &Path, game: &Game, games: &Path, games_folders: &[PathBuf]) -> Result<PathBuf, Text> {
+    // Compared as the filesystem resolves them, so a link to the games
+    // folder can't pass for a folder outside it.
+    let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let real_source = real(source);
+    for folder in games_folders.iter().map(PathBuf::as_path).chain(std::iter::once(games)) {
+        let folder = real(folder);
+        if real_source.starts_with(&folder) {
+            return Err(Text::new("ps.add.refused.in_games").arg("path", source.display()));
+        }
+        if folder.starts_with(&real_source) {
+            return Err(Text::new("ps.add.refused.holds_games").arg("path", source.display()));
+        }
+    }
+    let name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        // A leading dot would hide it, and is how staging folders are named.
+        .filter(|name| !name.starts_with('.'))
+        .unwrap_or(&game.title_id);
+    let target = games.join(name);
+    if target.exists() && std::fs::read_dir(&target).is_ok_and(|mut entries| entries.next().is_some()) {
+        return Err(Text::new("storage.errors.exists").arg("path", target.display()));
+    }
+    Ok(target)
+}
+
+/// Why [`decanter_ps::library::inspect`] turned the folder at `path` down.
+pub fn dump_refusal(path: &Path, refusal: &Refusal) -> Text {
+    match refusal {
+        Refusal::NotFolder => Text::new("ps.add.refused.not_folder"),
+        Refusal::NotDump => Text::new("ps.add.refused.not_dump"),
+        Refusal::TitleId(title_id) => Text::new("ps.add.refused.title_id").arg("title_id", title_id),
+        Refusal::NoEboot => Text::new("ps.add.refused.no_eboot"),
+    }
+    .arg("path", path.display())
+}
+
+/// Brings the dump in `source` to `target` (from [`dump_target`]). Blocking:
+/// a copy, or a move to another disk, copies every byte. A copy that fails
+/// or is cancelled leaves nothing at `target`, and `source` is only removed
+/// by a move once the copy is whole.
+pub fn add_dump(source: &Path, target: &Path, mode: Mode, progress: &Progress) -> Result<(), Text> {
+    if let Some(games) = target.parent() {
+        crate::achv_try!(std::fs::create_dir_all(games).map_err(|err| {
+            Text::new("messages.errors.create_dir")
+                .arg("path", games.display())
+                .arg("error", err)
+        }));
+    }
+    tracing::info!(from = %source.display(), to = %target.display(), moved = mode == Mode::Move, "adding PS dump");
+    if let Err(err) = transfer::bring(source, target, mode, progress.stop_flag(), |done| progress.record(done)) {
+        if !matches!(err, transfer::Error::Cancelled) {
+            tracing::error!(from = %source.display(), %err, "could not add the PS dump");
+        }
+        // Unlike a prefix import, nothing retries into a dump's staging: a
+        // half copy would only sit in the games folder.
+        transfer::discard_staging(target);
+        return Err(err.localized());
+    }
+    if mode == Mode::Move {
+        crate::dump_size::moved(source, target);
+    }
+    tracing::info!(to = %target.display(), "PS dump added");
     Ok(())
 }
 

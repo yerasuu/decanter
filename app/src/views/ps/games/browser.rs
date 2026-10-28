@@ -14,6 +14,7 @@ use super::detail::DetailView;
 use super::{art_url, display_title, platform_label, status_text};
 use crate::state::Ps;
 use crate::theme;
+use crate::widgets::ButtonKind;
 
 /// Square, like `icon0.png`.
 const COVER: f32 = 156.;
@@ -160,7 +161,21 @@ impl Render for BrowserView {
                 .flex()
                 .flex_col()
                 .gap(px(32.))
-                .when(empty, |page| page.child(theme::empty(t!("ps.games.browser_empty"))))
+                .when(empty, |page| {
+                    page.child(
+                        theme::empty(t!("ps.games.browser_empty"))
+                            .flex()
+                            .flex_col()
+                            .items_start()
+                            .gap_3()
+                            .child(crate::views::ps::adding::add_button(
+                                "ps-add-browser",
+                                ButtonKind::Primary,
+                                &self.ps,
+                                cx,
+                            )),
+                    )
+                })
                 .children(shelves),
         )
     }

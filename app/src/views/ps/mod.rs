@@ -2,6 +2,7 @@
 //! the ports that run them, and its settings — in one place rather than
 //! spread over Ajustes.
 
+mod adding;
 mod branch;
 mod failures;
 mod games;
@@ -44,6 +45,7 @@ pub struct PsView {
 impl PsView {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let ps = Ps::get(cx);
+        cx.observe(&ps, |_, _, cx| cx.notify()).detach();
         Self {
             tab: Tab::Games,
             games: cx.new(|cx| GamesView::new(ps, cx)),
@@ -95,11 +97,13 @@ impl Render for PsView {
             Tab::Games => None,
         }
         .unwrap_or_else(|| self.games.clone().into_any_element());
+        let adding = adding::panel(&Ps::get(cx), cx);
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(tabs)
+            .children(adding)
             .child(div().flex_1().min_h_0().child(body))
     }
 }

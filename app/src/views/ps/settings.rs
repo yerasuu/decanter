@@ -375,6 +375,12 @@ impl Render for SettingsView {
                     })),
                 )
                 .child(theme::muted(t!("ps.settings.games.description")))
+                .child(div().child(super::adding::add_button(
+                    "ps-add-settings",
+                    ButtonKind::Secondary,
+                    &self.ps,
+                    cx,
+                )))
                 .when(direct::IN_USE, |page| page.child(self.psport_folder_section(cx)))
                 .children(
                     DUMP_FOLDERS

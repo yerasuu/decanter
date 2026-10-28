@@ -133,7 +133,7 @@ ps.failures.notice.errors_and_missing.other: '%{count} errors and %{missing} (se
 ps.failures.notice.errors.one: '%{count} error recorded in Failures'
 ps.failures.notice.errors.other: '%{count} errors recorded in Failures'
 ps.settings.games.title: Games folder
-ps.settings.games.description: 'Next to each of the profile''s library folders, on the same disk. Copy or move your dumps there and they show up on their own: each folder and its direct subfolders are read as they are. Saves and settings always stay in the main one; the cache goes to the cache location of each game''s folder. To move a game between folders, or choose where its cache goes, use Storage.'
+ps.settings.games.description: 'Next to each of the profile''s library folders, on the same disk. "Add dump…" copies or moves a dump into the main one, and the dumps of each folder show up on their own. Saves and settings always stay in the main one; the cache goes to the cache location of each game''s folder. To move a game between folders, or choose where its cache goes, use Storage.'
 ps.settings.sys_modules.title: System modules (optional)
 ps.settings.sys_modules.none: No folder
 ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder with your own dump of the console''s modules (*.sprx, like libSceNgs2.sprx), only to compare against the port''s own libraries (PS_LLE) or for a game that still needs a console module. decanter neither ships nor copies any.'
@@ -162,10 +162,34 @@ ps.settings.forget: Remove
 ps.settings.save_error: 'Couldn''t save the folder: %{error}'
 ps.games.search: Search
 ps.games.scanning: Looking for games…
-ps.games.no_dumps: 'No dumps yet: copy them to the games folder (Settings).'
+ps.games.no_dumps: 'No dumps yet: add the first one.'
 ps.games.no_match: Nothing matches the search.
 ps.games.rescan: Refresh library
-ps.games.browser_empty: 'No games yet: copy your dumps to the games folder (see Settings).'
+ps.games.browser_empty: 'No games yet: add a dump and decanter copies or moves it into the games folder.'
+ps.add.button: Add dump…
+ps.add.pick_title: Choose the dump's folder
+ps.add.title: 'Add "%{title}" (%{title_id})'
+ps.add.details: 'From %{source} to %{target} · %{size}'
+ps.add.free: '%{free} free at the destination'
+ps.add.question: 'Copy leaves the original where it is; move takes it from there (instant on the same disk).'
+ps.add.copy: Copy
+ps.add.move: Move
+ps.add.cancel: Cancel
+ps.add.close: Close
+ps.add.copying: 'Copying "%{title}"…'
+ps.add.moving: 'Moving "%{title}"…'
+ps.add.measuring: Measuring the dump…
+ps.add.progress: '%{done} of %{total} (%{percent}%)'
+ps.add.cancelling: Cancelling…
+ps.add.done: '"%{title}" added in %{path}.'
+ps.add.failed: 'Could not add "%{title}": %{error}'
+ps.add.refused.not_folder: '%{path} is not a folder.'
+ps.add.refused.not_dump: '%{path} is not a dump: it has no sce_sys/param.sfo (PS4) or sce_sys/param.json (PS5).'
+ps.add.refused.title_id: 'The dump in %{path} has an unusable title id (%{title_id}).'
+ps.add.refused.no_eboot: 'The dump in %{path} has no eboot.bin: the game is incomplete.'
+ps.add.refused.in_games: '%{path} is already in a PS games folder.'
+ps.add.refused.holds_games: '%{path} holds the PS games folder: choose the dump''s own folder.'
+ps.add.refused.busy: 'A dump is already being added: wait for it to finish.'
 ps.status.ready: Ready
 ps.status.needs_convert: Converted on play
 ps.status.needs_merge: 1.09 not merged yet
