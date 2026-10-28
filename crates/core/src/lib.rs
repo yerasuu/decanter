@@ -18,6 +18,7 @@ mod library;
 pub mod migrate;
 pub mod platform;
 mod profiles;
+pub mod runner;
 mod scope;
 pub mod steam;
 mod vdf;

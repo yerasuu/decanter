@@ -16,11 +16,13 @@
 
 use core::time::Duration;
 use std::collections::HashMap;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::SystemTime;
 
 use anyhow::{Context as _, bail};
+use decanter_core::runner::{Installed, Pin, Progress, Status};
 use tokio::process::Child;
 use tokio::time::sleep;
 
@@ -230,4 +232,21 @@ pub(crate) const fn live_prefixes() -> Vec<Prefix> {
 /// No Steam compatibility tools folder to look in: Proton runs only on Linux.
 pub(crate) const fn steam_compat_dir() -> Option<PathBuf> {
     None
+}
+
+/// No umu-run to get: it runs Windows games under Proton, which is Linux's.
+pub(crate) const fn umu_status() -> Status {
+    Status::Unsupported
+}
+
+pub(crate) async fn umu_prepare(_: &Pin, _: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+    bail!("umu-run runs only on Linux")
+}
+
+pub(crate) async fn umu_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+    bail!("umu-run runs only on Linux")
+}
+
+pub(crate) async fn umu_remove(_: &Pin) -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "umu-run runs only on Linux"))
 }

@@ -21,5 +21,5 @@ use windows as platform;
 
 pub(crate) use backend::{
     LAUNCHER, Tracked, end, live_prefixes, prefix_processes, prepare, processes_by_prefix, spawn_failed, spawned,
-    steam_compat_dir, stop, stop_prefix, wait_status,
+    steam_compat_dir, stop, stop_prefix, umu_prepare, umu_remove, umu_status, umu_update, wait_status,
 };

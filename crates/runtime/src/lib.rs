@@ -40,6 +40,7 @@ mod os;
 mod path;
 mod prefix;
 mod proton;
+pub mod runner;
 mod session;
 mod umu;
 

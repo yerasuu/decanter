@@ -10,15 +10,17 @@ use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 
 use anyhow::{Context as _, bail};
+use decanter_core::runner::Runner;
 use tokio::process::{Child, Command};
 
+use crate::runner;
 use crate::session::live_lock;
 use crate::{Launch, Prefix, Prepared, Session};
 
 use prefix::SESSION_ENV;
 pub(crate) use prefix::{live_prefixes, prefix_processes, processes_by_prefix, stop_prefix};
 pub(crate) use proton::steam_compat_dir;
-use umu::ensure_umu_run;
+pub(crate) use umu::{umu_prepare, umu_remove, umu_status, umu_update};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
 /// script, `Session.init_session`).
@@ -75,7 +77,10 @@ pub(crate) async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
         return Ok(prepare_native(&prefix, launch, &working_directory));
     }
 
-    let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
+    let umu_run_path = runner::update(Runner::Umu, &mut |_| {})
+        .await
+        .context("ensuring umu-run is available")?
+        .path;
     let mut command = wrapped(&umu_run_path, &mut launch);
     // umu/Proton build whatever environment the container needs
     // themselves; decanter's own (library path, allocator and EGL
