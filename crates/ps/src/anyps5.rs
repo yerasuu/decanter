@@ -16,10 +16,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use decanter_core::platform::link_dir;
+use decanter_nix::Toolchain;
 use tokio::process::Command;
 
 use crate::library::Game;
-use crate::os::linux::toolchain::{self, Toolchain};
+use crate::os::linux::toolchain;
 use crate::paths::Root;
 use crate::port::Port;
 

@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
+use decanter_nix::Toolchain;
 use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 
@@ -39,7 +40,7 @@ pub use settings::LauncherSettings;
 
 use crate::learned;
 use crate::library::{Game, Platform};
-use crate::os::linux::toolchain::{self, Toolchain};
+use crate::os::linux::toolchain;
 use crate::paths::Root;
 use crate::port::Port;
 use names::single_memory_model;

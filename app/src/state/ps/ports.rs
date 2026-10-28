@@ -7,11 +7,12 @@ use std::io;
 use std::time::Duration;
 
 use decanter_core::capabilities::Feature;
+use decanter_nix::Toolchain;
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport};
 use decanter_ps::channel::Channel;
 use decanter_ps::os::linux::prebuilt;
-use decanter_ps::os::linux::toolchain::{self, Toolchain};
+use decanter_ps::os::linux::toolchain;
 use decanter_ps::os::linux::updater::{self, Check, Plan};
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
@@ -283,11 +284,11 @@ impl Ps {
     }
 }
 
-fn toolchain_error(err: &toolchain::Error) -> Text {
+fn toolchain_error(err: &decanter_nix::Error) -> Text {
     match err {
-        toolchain::Error::Download(err) => Text::new("ps.ports.errors.download").arg("error", err),
-        toolchain::Error::Checksum => Text::new("ps.ports.errors.checksum"),
-        toolchain::Error::Io(err) => Text::verbatim(err),
+        decanter_nix::Error::Download(err) => Text::new("ps.ports.errors.download").arg("error", err),
+        decanter_nix::Error::Checksum => Text::new("ps.ports.errors.checksum"),
+        decanter_nix::Error::Io(err) => Text::verbatim(err),
     }
 }
 
@@ -309,7 +310,7 @@ pub(super) fn set_stage(this: &WeakEntity<Ps>, port: Port, stage: Stage, cx: &mu
 #[derive(Debug, thiserror::Error)]
 pub(super) enum PortError {
     #[error("toolchain unavailable: {0}")]
-    Toolchain(toolchain::Error),
+    Toolchain(decanter_nix::Error),
     #[error("git clone failed")]
     Clone,
     #[error("CMake cache reset failed: {0}")]

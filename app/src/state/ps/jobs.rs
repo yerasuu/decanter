@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::Instant;
 
+use decanter_nix::Toolchain;
 use decanter_ps::failures::{self, CallReport, Failure, Scanner};
-use decanter_ps::os::linux::toolchain::Toolchain;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job, JobKind};

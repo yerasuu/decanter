@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use decanter_nix::Toolchain;
+use decanter_nix::validation::{self, Unavailable};
 use decanter_ps::bbport::Names;
-use decanter_ps::os::linux::toolchain::Toolchain;
-use decanter_ps::os::linux::toolchain::validation::{self, Unavailable};
 use decanter_ps::paths::Root;
 use decanter_ps::process::JobKind;
 use gpui::{AsyncApp, WeakEntity};

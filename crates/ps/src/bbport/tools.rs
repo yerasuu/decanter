@@ -11,11 +11,12 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use decanter_nix::Toolchain;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::{Bbport, Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
-use crate::os::linux::toolchain::{self, Toolchain};
+use crate::os::linux::toolchain;
 use crate::paths::Root;
 use crate::port::Port;
 

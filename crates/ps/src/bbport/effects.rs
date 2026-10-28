@@ -5,10 +5,11 @@
 
 use std::collections::BTreeMap;
 
+use decanter_nix::Toolchain;
 use serde::Deserialize;
 
 use super::{Bbport, Names};
-use crate::os::linux::toolchain::{self, Toolchain};
+use crate::os::linux::toolchain;
 use crate::port::Port;
 
 /// What the answer may hold before it's taken for something else: a title's switches with

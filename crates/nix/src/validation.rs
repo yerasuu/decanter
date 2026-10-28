@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest as _, Sha256};
 use tokio::process::Command;
 
-use super::{PKGS_NIX, Toolchain, VALIDATION_NIX, system_nix_shell, write_env_files};
+use crate::{PKGS_NIX, Toolchain, VALIDATION_NIX, system_nix_shell, write_env_files};
 
 pub(super) const ENV_FILE: &str = "vulkan-validation.nix";
 
@@ -64,7 +64,7 @@ fn pin() -> String {
     let mut hasher = Sha256::new();
     hasher.update(PKGS_NIX);
     hasher.update(VALIDATION_NIX);
-    crate::download::hex_digest(&hasher.finalize())
+    crate::hex_digest(&hasher.finalize())
 }
 
 /// The nix that realises the layer for a port run by `toolchain`: the same one, or the system's

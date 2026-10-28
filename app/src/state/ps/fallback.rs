@@ -5,9 +5,10 @@
 
 use std::path::PathBuf;
 
+use decanter_nix::Toolchain;
 use decanter_ps::failures;
 use decanter_ps::os::linux::builds::Record;
-use decanter_ps::os::linux::toolchain::{self, Toolchain};
+use decanter_ps::os::linux::toolchain;
 use decanter_ps::os::linux::updater;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;

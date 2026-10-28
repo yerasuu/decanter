@@ -9,8 +9,10 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use decanter_nix::Toolchain;
+
 use super::{Bbport, LauncherSettings, Names};
-use crate::os::linux::toolchain::{self, Toolchain};
+use crate::os::linux::toolchain;
 use crate::port::Port;
 
 /// psport's launcher's defaults (`scripts/online.py`): Seamless Hunt's servers.

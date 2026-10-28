@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use decanter_core::capabilities::Feature;
 use decanter_core::{KeyringError, ShadnetSecret};
+use decanter_nix::Toolchain;
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::GameLaunch;
 use decanter_ps::bbport::icons::IconStyle;
@@ -16,7 +17,6 @@ use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner, Summary};
 use decanter_ps::learned;
 use decanter_ps::library::Game;
-use decanter_ps::os::linux::toolchain::Toolchain;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, JobKind};

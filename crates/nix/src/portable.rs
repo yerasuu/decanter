@@ -8,7 +8,7 @@ use decanter_core::platform::executable_permissions;
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt as _;
 
-use super::Error;
+use crate::Error;
 
 /// Pinned and bumped deliberately, like `umu-run`: a new nix-portable
 /// changing how the ports build is worth testing first.
@@ -70,7 +70,7 @@ pub(super) async fn ensure(dir: &Path, mut on_download: impl FnMut(u64, Option<u
         return Err(err.into());
     }
     drop(file);
-    if crate::download::hex_digest(&hasher.finalize()) != SHA256 {
+    if crate::hex_digest(&hasher.finalize()) != SHA256 {
         let _ = tokio::fs::remove_file(&partial).await;
         tracing::error!(url, "nix-portable download does not match its pinned checksum");
         return Err(Error::Checksum);

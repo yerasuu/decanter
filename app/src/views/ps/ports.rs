@@ -7,9 +7,9 @@
 use std::borrow::Cow;
 
 use decanter_core::capabilities::Feature;
+use decanter_nix::Toolchain;
 use decanter_ps::bbport::direct;
 use decanter_ps::channel::Channel;
-use decanter_ps::os::linux::toolchain::Toolchain;
 use decanter_ps::os::linux::updater::{Check, Plan};
 use decanter_ps::paths;
 use decanter_ps::port::Port;

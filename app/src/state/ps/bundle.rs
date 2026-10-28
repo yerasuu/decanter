@@ -2,10 +2,10 @@
 //! for, so a host without nix runs a release without downloading nix-portable. Tags from before
 //! the bundles, and anything that stops one, leave the port to the nix cache as before.
 
+use decanter_nix::Toolchain;
 use decanter_ps::bbport::Bbport;
 use decanter_ps::channel::Channel;
 use decanter_ps::os::linux::bundle;
-use decanter_ps::os::linux::toolchain::Toolchain;
 use decanter_ps::os::linux::updater;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;

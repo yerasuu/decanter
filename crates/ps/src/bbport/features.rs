@@ -6,11 +6,12 @@
 //! error, and decanter's own table stands.
 
 use decanter_core::capabilities::{Capabilities, Feature, Source};
+use decanter_nix::Toolchain;
 use serde::Deserialize;
 use std::env::consts::OS;
 
 use super::{Bbport, Names};
-use crate::os::linux::toolchain::{self, Toolchain};
+use crate::os::linux::toolchain;
 use crate::port::Port;
 
 /// What the answer may hold before it's taken for something else: psport's

@@ -1,0 +1,18 @@
+[package]
+name = "decanter-nix"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+decanter-core.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "fs", "io-util"] }
+tracing.workspace = true

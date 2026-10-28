@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 decanter-core.workspace = true
+decanter-nix.workspace = true
 decanter-runtime.workspace = true
 flate2.workspace = true
 image.workspace = true
