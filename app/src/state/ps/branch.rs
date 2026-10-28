@@ -335,10 +335,6 @@ fn prepare_error_text(err: &runner::Error) -> Text {
         | runner::Error::Unsupported(_)
         | runner::Error::NotOffered(_)
         | runner::Error::Package(_)
-        | runner::Error::NoBundle(_)
-        | runner::Error::OffTag(_)
-        | runner::Error::Bundle(_)
-        | runner::Error::Record(_)
         | runner::Error::AppJob => Text::new("ps.branch.errors.raw").arg("error", err),
     }
 }
