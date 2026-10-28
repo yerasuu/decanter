@@ -12,7 +12,7 @@ mod decanter;
 mod pattern;
 mod psport;
 
-use pattern::Kind;
+use pattern::{Kind, Segment};
 
 use crate::schema::{Cause, Message, Slot};
 use crate::validate::{Rejection, Rule};
@@ -27,7 +27,7 @@ const fn t(id: &'static str, pattern: &'static str) -> Template {
 }
 
 /// Lines longer than this are never matched; a failure line is a few hundred bytes at most.
-const MAX_LINE: usize = 4096;
+pub const MAX_LINE: usize = 4096;
 
 /// Which tables a message may draw from: a report's product decides it.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -83,17 +83,21 @@ pub fn normalize(raw: &str, family: Family) -> Option<Message> {
     let line = flatten(raw)?;
     family.templates().find_map(|template| {
         let segments = pattern::parse(template.pattern)?;
-        let (slots, rest) = pattern::run(&segments, &line)?;
-        let cause = match (family, rest) {
-            (_, "") => None,
-            (Family::Decanter, tail) => cause_of(tail.strip_prefix(": ")?),
-            (Family::Psport, _) => return None,
-        };
-        Some(Message {
-            template: template.id.to_owned(),
-            slots,
-            cause,
-        })
+        instance(template.id, &segments, &line, family)
+    })
+}
+
+fn instance(id: &str, segments: &[Segment<'_>], line: &str, family: Family) -> Option<Message> {
+    let (slots, rest) = pattern::run(segments, line)?;
+    let cause = match (family, rest) {
+        (_, "") => None,
+        (Family::Decanter, tail) => cause_of(tail.strip_prefix(": ")?),
+        (Family::Psport, _) => return None,
+    };
+    Some(Message {
+        template: id.to_owned(),
+        slots,
+        cause,
     })
 }
 
@@ -131,7 +135,11 @@ fn check_part(path: &str, id: &str, slots: &[Slot], tables: Tables, out: &mut Ve
 
 /// Every way a received message departs from the vocabulary of its product.
 pub fn check(message: &Message, family: Family, out: &mut Vec<Rejection>) {
-    let path = "failure.message";
+    check_at("failure.message", message, family, out);
+}
+
+/// [`check`] for a message that is not a report's failure (a line of a clean log), named by `path`.
+pub fn check_at(path: &str, message: &Message, family: Family, out: &mut Vec<Rejection>) {
     check_part(path, &message.template, &message.slots, family.tables(), out);
     if let Some(cause) = &message.cause {
         if family == Family::Psport {
@@ -139,4 +147,62 @@ pub fn check(message: &Message, family: Family, out: &mut Vec<Rejection>) {
         }
         check_part(&format!("{path}.cause"), &cause.template, &cause.slots, CAUSES, out);
     }
+}
+
+/// One family's templates parsed once, so a whole log is matched without parsing every pattern
+/// again for each of its lines.
+pub struct Matcher {
+    family: Family,
+    templates: Vec<(&'static str, Vec<Segment<'static>>)>,
+}
+
+impl Matcher {
+    pub fn new(family: Family) -> Self {
+        let templates = family
+            .templates()
+            .filter_map(|template| Some((template.id, pattern::parse(template.pattern)?)))
+            .collect();
+        Self { family, templates }
+    }
+
+    /// Same answer as [`normalize`].
+    pub fn normalize(&self, raw: &str) -> Option<Message> {
+        let line = flatten(raw)?;
+        self.templates
+            .iter()
+            .find_map(|(id, segments)| instance(id, segments, &line, self.family))
+    }
+}
+
+/// A template with its slots as the line reads: the pattern's literal text, each slot's value and
+/// `…` where the line had text that is never reported. `None` when the template is unknown or a
+/// slot does not fit it, so nothing that skipped [`check`] is ever rendered.
+fn render_part(id: &str, slots: &[Slot], tables: Tables) -> Option<String> {
+    let template = find(id, tables)?;
+    let mut values = slots.iter();
+    let mut out = String::with_capacity(template.pattern.len());
+    for segment in pattern::parse(template.pattern)? {
+        match segment {
+            Segment::Literal(text) => out.push_str(text),
+            Segment::Slot(Kind::Drop) => out.push('\u{2026}'),
+            Segment::Slot(kind) => {
+                let slot = values.next().filter(|slot| pattern::fits(kind, slot))?;
+                out.push_str(&pattern::show(slot));
+            }
+        }
+    }
+    values.next().is_none().then_some(out)
+}
+
+/// The readable text of a message of `family`, its cause after `: ` as decanter's lines write it.
+pub fn render(message: &Message, family: Family) -> Option<String> {
+    let mut text = render_part(&message.template, &message.slots, family.tables())?;
+    if let Some(cause) = &message.cause {
+        if family == Family::Psport {
+            return None;
+        }
+        text.push_str(": ");
+        text.push_str(&render_part(&cause.template, &cause.slots, CAUSES)?);
+    }
+    Some(text)
 }

@@ -274,3 +274,20 @@ pub fn fits(kind: Kind<'_>, slot: &Slot) -> bool {
         _ => false,
     }
 }
+
+/// A slot's value as the log writes it: offsets and SCE codes in hex, the rest as they are.
+pub fn show(slot: &Slot) -> String {
+    match slot {
+        Slot::Number(value) => value.to_string(),
+        Slot::Offset(value) => format!("0x{value:x}"),
+        Slot::Code(value @ 0x8000_0000..=0xffff_ffff) => format!("0x{value:08x}"),
+        Slot::Code(value) => value.to_string(),
+        Slot::Call(text)
+        | Slot::Version(text)
+        | Slot::Image(text)
+        | Slot::Vuid(text)
+        | Slot::Const(text)
+        | Slot::Class(text)
+        | Slot::Choice(text) => text.clone(),
+    }
+}

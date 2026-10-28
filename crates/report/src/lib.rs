@@ -18,6 +18,7 @@
 )]
 
 mod build;
+mod clean;
 mod identity;
 pub mod schema;
 pub mod sources;
@@ -28,6 +29,10 @@ mod vocab;
 use sha2::{Digest, Sha256};
 
 pub use build::{Host, PsportInput, decanter_report, psport_report};
+pub use clean::{
+    CLEAN_VERSION, CleanLine, CleanLog, MAX_CLEAN_BYTES, MAX_CLEAN_INPUT, MAX_CLEAN_LINES, clean_log, message_text,
+    validate_clean_log,
+};
 pub use identity::Identity;
 pub use schema::Report;
 pub use text::{Private, normalize_message};

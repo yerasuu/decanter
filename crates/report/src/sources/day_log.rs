@@ -90,6 +90,28 @@ fn action(target: &str, job: Option<&str>) -> Action {
     }
 }
 
+/// The event's text with the fields that say what failed, in the order the vocabulary reads them.
+fn failure_message(line: &Line<'_>) -> String {
+    let mut message = line.message.to_owned();
+    if let Some(job) = field(line.fields, "job") {
+        message.push_str(&format!(" job={job}"));
+    }
+    if let Some(exit) = field(line.fields, "exit") {
+        message.push_str(&format!(" exit={exit}"));
+    }
+    if let Some(error) = field(line.fields, "error").or_else(|| field(line.fields, "err")) {
+        message.push_str(&format!(": {error}"));
+    }
+    message
+}
+
+/// A warning or error of decanter's own modules as [`DayLog::parse`] reads it; `None` for every
+/// other line.
+pub(crate) fn failing_line(text: &str) -> Option<String> {
+    let line = split(text)?;
+    (line.target.starts_with("decanter") && matches!(line.level, "WARN" | "ERROR")).then(|| failure_message(&line))
+}
+
 impl DayLog {
     #[must_use]
     pub fn parse(text: &str) -> Self {
@@ -109,18 +131,8 @@ impl DayLog {
             if !matches!(line.level, "WARN" | "ERROR") {
                 continue;
             }
-            let job = field(line.fields, "job");
-            let mut message = line.message.to_owned();
-            if let Some(job) = job {
-                message.push_str(&format!(" job={job}"));
-            }
-            if let Some(exit) = field(line.fields, "exit") {
-                message.push_str(&format!(" exit={exit}"));
-            }
-            if let Some(error) = field(line.fields, "error").or_else(|| field(line.fields, "err")) {
-                message.push_str(&format!(": {error}"));
-            }
-            let action = action(line.target, job);
+            let message = failure_message(&line);
+            let action = action(line.target, field(line.fields, "job"));
             match log
                 .failures
                 .iter_mut()
