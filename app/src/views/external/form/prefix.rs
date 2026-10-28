@@ -146,7 +146,7 @@ impl GameForm {
             folder: self.folder_row(cx),
             installer: (!self.editing && self.prefix_of.is_none()).then(|| self.prefix_installer_row(cx)),
             umu: Some(self.umu_section(cx)),
-            progress: self.wine.importing.then(|| self.import_progress()),
+            progress: self.wine.importing.then(|| self.import_progress(cx)),
         }
     }
 
@@ -242,7 +242,7 @@ impl GameForm {
             .child(div().flex_1().min_w_0().child(status))
     }
 
-    pub(super) fn import_progress(&self) -> Div {
+    pub(super) fn import_progress(&self, cx: &Context<Self>) -> Div {
         let snapshot = self.wine.progress.snapshot();
         let text = snapshot.map_or_else(
             || t!("external.form.import.measuring"),
@@ -266,7 +266,28 @@ impl GameForm {
                 snapshot.map(|(copied, total)| copied as f64 / total as f64),
                 6.,
             ))
-            .child(theme::muted(text).text_size(px(12.)))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(div().flex_1().min_w_0().child(theme::muted(text).text_size(px(12.))))
+                    .child({
+                        let stopping = self.wine.progress.is_cancelled();
+                        button(
+                            "external-import-stop",
+                            ButtonKind::Secondary,
+                            t!("external.form.import.stop"),
+                            stopping,
+                        )
+                        .when(!stopping, |b| {
+                            b.on_click(cx.listener(|this, _, _, cx| {
+                                this.wine.progress.cancel();
+                                cx.notify();
+                            }))
+                        })
+                    }),
+            )
     }
 
     /// Which library folder a new game goes in — only with more than one,

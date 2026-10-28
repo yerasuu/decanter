@@ -18,6 +18,7 @@ use std::fs::{self, File};
 use std::io;
 use std::iter;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::SystemTime;
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension as _, params};
@@ -205,7 +206,9 @@ fn copy_art(legacy_dir: &Path, root: &Path) {
     // Copied aside, like umu-run, so a copy cut short isn't taken for the
     // whole cache by the next run's `exists` check.
     let partial = to.with_added_extension("part");
-    if let Err(err) = crate::copy_dir(&from, &partial, |_| {}).and_then(|()| fs::rename(&partial, &to)) {
+    if let Err(err) =
+        crate::copy_dir(&from, &partial, &AtomicBool::new(false), |_| {}).and_then(|()| fs::rename(&partial, &to))
+    {
         tracing::warn!(root = %root.display(), %err, "cannot copy the art cache into the library");
     }
 }

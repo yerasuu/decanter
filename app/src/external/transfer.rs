@@ -10,13 +10,16 @@
 //! same staging directory from scratch.
 //!
 //! A staging directory only lives as long as the form that could retry
-//! into it: leaving the form, or opening the page afresh, deletes any.
+//! into it: leaving the form, or opening the page afresh, deletes any. A
+//! copy the user cancels deletes its own at once, since there is nothing
+//! left to retry.
 
 use std::io::{self, BufRead as _, BufReader, Read as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::Duration;
 
 use decanter_core::MoveProgress;
 
@@ -30,6 +33,7 @@ use crate::i18n::Text;
 pub struct Progress {
     copied: AtomicU64,
     total: AtomicU64,
+    stop: AtomicBool,
 }
 
 impl Progress {
@@ -43,6 +47,21 @@ impl Progress {
     pub fn record(&self, progress: MoveProgress) {
         self.total.store(progress.total_bytes, Ordering::Relaxed);
         self.copied.store(progress.bytes_copied, Ordering::Relaxed);
+    }
+
+    /// Asks the copy reporting here to stop; [`bring`] then ends with
+    /// [`Error::Cancelled`] and nothing left at the destination.
+    pub fn cancel(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
+    /// The flag [`bring`] watches for [`Self::cancel`].
+    pub const fn stop_flag(&self) -> &AtomicBool {
+        &self.stop
     }
 }
 
@@ -62,6 +81,10 @@ pub enum Error {
     Copy(io::Error),
     #[error("rsync failed: {0}")]
     Rsync(String),
+    #[error("the copy holds {found} bytes of {expected}")]
+    Verify { expected: u64, found: u64 },
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl Error {
@@ -79,6 +102,10 @@ impl Error {
                 .arg("error", err),
             Self::Copy(err) => Text::new("external.transfer.errors.copy").arg("error", err),
             Self::Rsync(err) => Text::new("external.transfer.errors.rsync").arg("error", err),
+            Self::Verify { expected, found } => Text::new("external.transfer.errors.verify")
+                .arg("found", crate::format::bytes(*found))
+                .arg("expected", crate::format::bytes(*expected)),
+            Self::Cancelled => Text::new("external.transfer.errors.cancelled"),
         }
     }
 }
@@ -96,10 +123,20 @@ pub enum Mode {
     Move,
 }
 
-/// Brings `src` to `dst`, which must not exist yet (or be empty). A move on
-/// one filesystem is a rename; anything else is a copy, and for a move
-/// `src` is removed only once the copy is whole.
-pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MoveProgress)) -> Result<(), Error> {
+/// Brings `src` to `dst`, which must not exist yet (or be empty).
+///
+/// A move on one filesystem is a rename; anything else is a copy, and for a
+/// move `src` is removed only once the copy is whole and its size checked
+/// against the original. `stop` turning ends a copy with
+/// [`Error::Cancelled`], its staging directory removed and `src` untouched;
+/// a rename is never stopped.
+pub fn bring(
+    src: &Path,
+    dst: &Path,
+    mode: Mode,
+    stop: &AtomicBool,
+    on_progress: impl FnMut(MoveProgress),
+) -> Result<(), Error> {
     if dst.is_dir() {
         // Left by an installer run that wrote nothing; it would block the
         // rename below.
@@ -113,7 +150,34 @@ pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MovePro
         return Ok(());
     }
     let staging = staging_for(dst);
-    crate::achv_try!(copy(src, &staging, on_progress));
+    let total_bytes = match copy(src, &staging, stop, on_progress) {
+        Ok(total_bytes) => total_bytes,
+        Err(Error::Cancelled) => {
+            tracing::info!(from = %src.display(), to = %dst.display(), "copy cancelled");
+            if let Err(err) = std::fs::remove_dir_all(&staging)
+                && err.kind() != io::ErrorKind::NotFound
+            {
+                tracing::warn!(dir = %staging.display(), %err, "could not remove a cancelled copy");
+            }
+            return Err(Error::Cancelled);
+        }
+        Err(err) => return Err(err),
+    };
+    if mode == Mode::Move {
+        // The original goes next, so whatever went missing on the way
+        // would be gone for good.
+        let found = crate::achv_try!(decanter_core::directory_size(&staging).map_err(|err| Error::Measure {
+            path: staging.clone(),
+            err
+        }));
+        if found != total_bytes {
+            tracing::error!(from = %src.display(), staging = %staging.display(), total_bytes, found, "copy is incomplete, keeping the original");
+            return Err(Error::Verify {
+                expected: total_bytes,
+                found,
+            });
+        }
+    }
     crate::achv_try!(std::fs::rename(&staging, dst).map_err(Error::Place));
     if mode == Mode::Move
         && let Err(err) = std::fs::remove_dir_all(src)
@@ -165,7 +229,13 @@ fn staging_for(dst: &Path) -> PathBuf {
     dst.with_file_name(format!(".{name}.partial"))
 }
 
-fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -> Result<(), Error> {
+/// Fills `staging` with `src`'s files; the total it measured on the way.
+fn copy(
+    src: &Path,
+    staging: &Path,
+    stop: &AtomicBool,
+    mut on_progress: impl FnMut(MoveProgress),
+) -> Result<u64, Error> {
     let total_bytes = crate::achv_try!(decanter_core::directory_size(src).map_err(|err| Error::Measure {
         path: src.to_owned(),
         err
@@ -174,7 +244,7 @@ fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -
         bytes_copied: 0,
         total_bytes,
     });
-    match rsync(src, staging, total_bytes, &mut on_progress) {
+    match rsync(src, staging, total_bytes, stop, &mut on_progress) {
         Err(RsyncError::Missing) => {
             tracing::info!("rsync not installed, copying the prefix with the built-in copy");
             // The built-in copy can't resume: whatever an earlier attempt
@@ -185,10 +255,15 @@ fn copy(src: &Path, staging: &Path, mut on_progress: impl FnMut(MoveProgress)) -
                     err
                 }));
             }
-            decanter_core::copy_dir(src, staging, on_progress).map_err(Error::Copy)
+            match decanter_core::copy_dir(src, staging, stop, on_progress) {
+                Ok(()) => Ok(total_bytes),
+                Err(_) if stop.load(Ordering::Relaxed) => Err(Error::Cancelled),
+                Err(err) => Err(Error::Copy(err)),
+            }
         }
         Err(RsyncError::Failed(err)) => Err(Error::Rsync(err)),
-        Ok(()) => Ok(()),
+        Err(RsyncError::Stopped) => Err(Error::Cancelled),
+        Ok(()) => Ok(total_bytes),
     }
 }
 
@@ -196,12 +271,14 @@ enum RsyncError {
     /// Not installed: the built-in copy takes over.
     Missing,
     Failed(String),
+    Stopped,
 }
 
 fn rsync(
     src: &Path,
     staging: &Path,
     total_bytes: u64,
+    stop: &AtomicBool,
     on_progress: &mut impl FnMut(MoveProgress),
 ) -> Result<(), RsyncError> {
     // Trailing slashes: copy the contents of `src` into `staging`, not
@@ -239,15 +316,38 @@ fn rsync(
             text
         })
     });
+    // Read on its own thread too, so that a cancel is seen while rsync
+    // prints nothing (a large file between two progress updates).
+    let (sender, updates) = mpsc::channel();
     if let Some(stdout) = child.stdout.take() {
-        // progress2 rewrites one line with `\r`: "  1,234,567  12%  ...".
-        for chunk in BufReader::new(stdout).split(b'\r').map_while(Result::ok) {
-            if let Some(bytes_copied) = transferred(&chunk) {
-                on_progress(MoveProgress {
-                    bytes_copied: bytes_copied.min(total_bytes),
-                    total_bytes,
-                });
+        std::thread::spawn(move || {
+            // progress2 rewrites one line with `\r`: "  1,234,567  12%  ...".
+            for chunk in BufReader::new(stdout).split(b'\r').map_while(Result::ok) {
+                if let Some(bytes_copied) = transferred(&chunk)
+                    && sender.send(bytes_copied).is_err()
+                {
+                    return;
+                }
             }
+        });
+    } else {
+        drop(sender);
+    }
+    loop {
+        match updates.recv_timeout(Duration::from_millis(200)) {
+            Ok(bytes_copied) => on_progress(MoveProgress {
+                bytes_copied: bytes_copied.min(total_bytes),
+                total_bytes,
+            }),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if stop.load(Ordering::Relaxed) {
+            if let Err(err) = child.kill().and_then(|()| child.wait().map(drop)) {
+                tracing::warn!(%err, "could not stop rsync");
+            }
+            tracing::info!(to, "rsync stopped");
+            return Err(RsyncError::Stopped);
         }
     }
     let status = child.wait().map_err(|err| RsyncError::Failed(err.to_string()))?;

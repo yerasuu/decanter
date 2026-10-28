@@ -49,6 +49,7 @@ external.form.import.copy_hint: 'Al añadir, el prefijo %{prefix} se copia a dec
 external.form.import.move_hint: 'Al añadir, el prefijo %{prefix} se mueve a decanter: no ocupa más espacio, pero la otra herramienta se queda sin él.'
 external.form.import.measuring: Midiendo el prefijo...
 external.form.import.progress: '%{done} de %{total} (%{percent}%)'
+external.form.import.stop: Cancelar la copia
 external.form.umu.title: Arreglos de Proton
 external.form.umu.search: Buscar en UMU
 external.form.umu.hint: 'El juego en la base de datos de UMU: con él, protonfixes aplica sus arreglos con cualquier Proton.'
@@ -108,6 +109,8 @@ external.transfer.errors.measure: 'midiendo %{path}: %{error}'
 external.transfer.errors.clean: 'limpiando %{path}: %{error}'
 external.transfer.errors.copy: 'copiando el prefijo: %{error}'
 external.transfer.errors.rsync: 'copiando el prefijo con rsync: %{error}'
+external.transfer.errors.verify: 'la copia tiene %{found} de %{expected}; el original se queda donde estaba'
+external.transfer.errors.cancelled: 'copia cancelada: no ha quedado nada a medias'
 external.drop.hint: Suelta el ejecutable para añadir el juego
 external.drop.added.one: 'Añadido «%{name}».'
 external.drop.added.other: 'Añadidos %{count} juegos: %{names}.'

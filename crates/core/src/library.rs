@@ -58,6 +58,7 @@ use std::fs;
 use std::io;
 use std::iter;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::catalog::Storefront;
 use crate::platform;
@@ -897,23 +898,31 @@ pub fn move_dir(src: &Path, dst: &Path, mut on_progress: impl FnMut(MoveProgress
     );
     let total_bytes = directory_size(src)?;
     let mut bytes_copied = 0u64;
-    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, &mut on_progress)?;
+    let never = AtomicBool::new(false);
+    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, &never, &mut on_progress)?;
     fs::remove_dir_all(src)?;
     tracing::info!(from = %src.display(), to = %dst.display(), total_bytes, "moved directory (copy)");
     Ok(())
 }
 
 /// Copies `src` to `dst`, keeping symlinks as links, and leaves `src` as
-/// it was. A failure partway leaves a partial `dst` for the caller to
-/// clear.
+/// it was. A failure partway, or `stop` turning, leaves a partial `dst`
+/// for the caller to clear. `stop` is read between files, so a large file
+/// already being copied still finishes first.
 ///
 /// # Errors
-/// Any filesystem operation along the way failing.
+/// Any filesystem operation along the way failing, or
+/// [`io::ErrorKind::Interrupted`] once `stop` is set.
 #[inline]
-pub fn copy_dir(src: &Path, dst: &Path, mut on_progress: impl FnMut(MoveProgress)) -> io::Result<()> {
+pub fn copy_dir(
+    src: &Path,
+    dst: &Path,
+    stop: &AtomicBool,
+    mut on_progress: impl FnMut(MoveProgress),
+) -> io::Result<()> {
     let total_bytes = directory_size(src)?;
     let mut bytes_copied = 0u64;
-    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, &mut on_progress)?;
+    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, stop, &mut on_progress)?;
     tracing::info!(from = %src.display(), to = %dst.display(), total_bytes, "copied directory");
     Ok(())
 }
@@ -948,10 +957,14 @@ fn copy_dir_recursive(
     dst: &Path,
     bytes_copied: &mut u64,
     total_bytes: u64,
+    stop: &AtomicBool,
     on_progress: &mut impl FnMut(MoveProgress),
 ) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
+        if stop.load(Ordering::Relaxed) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "copy stopped"));
+        }
         let entry = entry?;
         let dst_path = dst.join(entry.file_name());
         let kind = entry.file_type()?;
@@ -961,7 +974,7 @@ fn copy_dir_recursive(
             // on a link to a directory, halfway through the move.
             copy_symlink(&entry.path(), &dst_path)?;
         } else if kind.is_dir() {
-            copy_dir_recursive(&entry.path(), &dst_path, bytes_copied, total_bytes, on_progress)?;
+            copy_dir_recursive(&entry.path(), &dst_path, bytes_copied, total_bytes, stop, on_progress)?;
         } else {
             fs::copy(entry.path(), &dst_path)?;
             *bytes_copied += entry.metadata()?.len();

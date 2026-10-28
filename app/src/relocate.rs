@@ -8,6 +8,7 @@
 //! everything has landed the game is still recorded where it was.
 
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 use decanter_core::{InstalledGame, Storefront};
 
@@ -69,18 +70,20 @@ pub fn move_game(account_id: &str, game_id: &str, to: &Path, progress: &Progress
 
     if let (Some(files), Some(new_files)) = (&files, &new_files) {
         crate::achv_try!(
-            transfer::bring(files, new_files, Mode::Move, |done| progress.record(done)).inspect_err(
+            transfer::bring(files, new_files, Mode::Move, progress.stop_flag(), |done| progress.record(done)).inspect_err(
                 |err| tracing::error!(account_id, game_id, from = %files.display(), %err, "could not move the game's files")
             )
         );
     }
     if old_prefix.is_dir()
-        && let Err(err) = transfer::bring(&old_prefix, &new_prefix, Mode::Move, |done| progress.record(done))
+        && let Err(err) = transfer::bring(&old_prefix, &new_prefix, Mode::Move, progress.stop_flag(), |done| {
+            progress.record(done);
+        })
     {
         tracing::error!(account_id, game_id, from = %old_prefix.display(), %err, "could not move the game's prefix");
         // Half a game in each folder runs from neither: the files go back.
         if let (Some(files), Some(new_files)) = (&files, &new_files)
-            && let Err(undo) = transfer::bring(new_files, files, Mode::Move, |_| {})
+            && let Err(undo) = transfer::bring(new_files, files, Mode::Move, &AtomicBool::new(false), |_| {})
         {
             tracing::error!(account_id, game_id, %undo, "could not move the files back after the prefix failed to move");
         }
@@ -145,8 +148,9 @@ pub fn move_dump(dir: &Path, library_root: &Path, progress: &Progress) -> Result
     }));
     tracing::info!(from = %dir.display(), to = %target.display(), "moving PS dump to another library folder");
     crate::achv_try!(
-        transfer::bring(dir, &target, Mode::Move, |done| progress.record(done))
-            .inspect_err(|err| tracing::error!(dir = %dir.display(), %err, "could not move the PS dump"))
+        transfer::bring(dir, &target, Mode::Move, progress.stop_flag(), |done| progress
+            .record(done))
+        .inspect_err(|err| tracing::error!(dir = %dir.display(), %err, "could not move the PS dump"))
     );
     crate::dump_size::moved(dir, &target);
     tracing::info!(to = %target.display(), "PS dump moved to another library folder");

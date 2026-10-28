@@ -11,6 +11,7 @@
 //! saves that drift apart from then on.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use crate::i18n::Text;
 
@@ -86,8 +87,9 @@ pub fn import(
     }
     tracing::info!(profile_id, id, from = %root.display(), to = %destination.display(), copy = mode == Mode::Copy, "importing prefix");
     crate::achv_try!(
-        super::transfer::bring(&root, &destination, mode, |done| progress.record(done))
-            .inspect_err(|err| tracing::error!(from = %root.display(), %err, "could not import prefix"))
+        super::transfer::bring(&root, &destination, mode, progress.stop_flag(), |done| progress
+            .record(done))
+        .inspect_err(|err| tracing::error!(from = %root.display(), %err, "could not import prefix"))
     );
     let steam_layout = root != picked && root.parent() == Some(picked);
     if steam_layout {
@@ -104,7 +106,7 @@ pub fn import(
         // Nothing points at the new prefix without its manifest: a moved
         // one goes back where the other tool expects it, a copy goes.
         let undo = match mode {
-            Mode::Move => super::transfer::bring(&destination, &root, Mode::Move, |_| {}),
+            Mode::Move => super::transfer::bring(&destination, &root, Mode::Move, &AtomicBool::new(false), |_| {}),
             Mode::Copy => std::fs::remove_dir_all(&destination).map_err(|err| super::transfer::Error::Clean {
                 path: destination.clone(),
                 err,

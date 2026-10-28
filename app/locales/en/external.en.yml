@@ -49,6 +49,7 @@ external.form.import.copy_hint: 'When the game is added, the prefix %{prefix} is
 external.form.import.move_hint: 'When the game is added, the prefix %{prefix} is moved into decanter: it takes no extra space, but the other tool loses it.'
 external.form.import.measuring: Measuring the prefix...
 external.form.import.progress: '%{done} of %{total} (%{percent}%)'
+external.form.import.stop: Cancel the copy
 external.form.umu.title: Proton fixes
 external.form.umu.search: Search UMU
 external.form.umu.hint: 'The game in the UMU database: with it, protonfixes applies its fixes on any Proton.'
@@ -108,6 +109,8 @@ external.transfer.errors.measure: 'measuring %{path}: %{error}'
 external.transfer.errors.clean: 'cleaning up %{path}: %{error}'
 external.transfer.errors.copy: 'copying the prefix: %{error}'
 external.transfer.errors.rsync: 'copying the prefix with rsync: %{error}'
+external.transfer.errors.verify: 'the copy holds %{found} of %{expected}; the original stays where it was'
+external.transfer.errors.cancelled: 'copy cancelled: nothing was left half done'
 external.drop.hint: Drop the executable to add the game
 external.drop.added.one: 'Added “%{name}”.'
 external.drop.added.other: 'Added %{count} games: %{names}.'
