@@ -440,6 +440,94 @@ async fn every_log_route_is_404_without_a_session() -> Test {
     Ok(())
 }
 
+fn run_log(started: &str, extra: &str) -> String {
+    format!(
+        "# started {started}\nboot\nLinked modules: libc.prx@0x56e0000\nframe 1\nframe 2\nframe 3\nframe 4\nframe 5\n\
+         frame 6\nframe 7\n{extra}Guest fault at +0x1234 <img src=x>\n# ended {started}\n# exit 139\n"
+    )
+}
+
+#[tokio::test]
+async fn diff_shows_changed_added_and_removed_lines_with_both_numbers() -> Test {
+    let h = Harness::new(|_| {}).await?;
+    let a = h
+        .insert(&PSPORT, Some(run_log("2026-10-27T10:00:00Z", "only in a\n").as_bytes()))
+        .await?;
+    let b_log = run_log("2026-10-28T11:30:00Z", "").replace("frame 4", "frame four") + "trailer\n";
+    let b = h.insert(&PSPORT, Some(b_log.as_bytes())).await?;
+    let raw = h.page(&format!("/admin/logs/diff?a={a}&b={b}")).await?;
+    assert!(!raw.contains("<img") && raw.contains("&lt;img src=x&gt;"));
+    assert!(
+        raw.contains("Iguales 10 &middot; cambiadas 3 &middot; quitadas de A 1 &middot; añadidas en B 1"),
+        "{raw}"
+    );
+    let changed = format!(
+        "<tr class=\"chg\"><td class=\"n\"><a href=\"/admin/logs/{a}?page=1#L7\">7</a></td><td>frame 4</td>\
+         <td class=\"m\">~</td><td class=\"n\"><a href=\"/admin/logs/{b}?page=1#L7\">7</a></td><td>frame four</td></tr>"
+    );
+    assert!(raw.contains(&changed), "{changed}");
+    assert!(
+        raw.contains("<tr class=\"del\"><td class=\"n\"><a href=\"/admin/logs/") && raw.contains(">only in a</td>")
+    );
+    assert!(raw.contains("<td class=\"m\">+</td>") && raw.contains(">trailer</td>"));
+    assert!(raw.contains("<td class=\"m\">&minus;</td>"));
+    assert!(
+        !raw.contains("líneas iguales"),
+        "runs of up to twice the context are shown whole"
+    );
+
+    let normalized = h.page(&format!("/admin/logs/diff?a={a}&b={b}&normalize=1")).await?;
+    assert!(normalized.contains("Iguales 12 &middot; cambiadas 1 &middot; quitadas de A 1 &middot; añadidas en B 1"));
+    assert!(normalized.contains("ignorados") && normalized.contains("name=\"normalize\" value=\"1\" checked"));
+    assert!(
+        normalized.contains("&hellip; 3 líneas iguales</td></tr><tr class=\"\"><td class=\"n\"><a href=\"/admin/logs/"),
+        "the leading run shows only the context before the first change: {normalized}"
+    );
+
+    let same = h.page(&format!("/admin/logs/diff?a={a}&b={a}")).await?;
+    assert!(same.contains("Los dos logs son iguales (14 líneas)") && !same.contains("class=\"chg\""));
+    Ok(())
+}
+
+#[tokio::test]
+async fn diff_falls_back_when_too_long_and_needs_two_readable_logs() -> Test {
+    let h = Harness::new(|config| config.logs.diff_max_lines = 100).await?;
+    let mut long_a = String::new();
+    for n in 0..80 {
+        let _ = writeln!(long_a, "line {n}");
+    }
+    let long_b = long_a.replace("line 40\n", "line forty\n");
+    let a = h.insert(&PSPORT, Some(long_a.as_bytes())).await?;
+    let b = h.insert(&PSPORT, Some(long_b.as_bytes())).await?;
+    let page = h.page(&format!("/admin/logs/diff?a={a}&b={b}")).await?;
+    assert!(
+        page.contains("Demasiado distintos para un diff (los dos logs juntos pasan"),
+        "{page}"
+    );
+    assert!(page.contains("cambiadas 1") && page.contains(">line forty</td>"));
+
+    let form = h.page("/admin/logs/diff").await?;
+    assert!(form.contains("name=\"a\"") && form.contains("checked"));
+    let hidden = h.insert(&PSPORT, Some(b"log")).await?;
+    h.state
+        .stores
+        .get(Product::Psport)
+        .change(std::slice::from_ref(&hidden), &Change::Hide)
+        .await?;
+    let unattached = h.insert(&PSPORT, None).await?;
+    let (_, _, baseline) = h.get(&format!("/admin/logs/p{}", "0".repeat(32))).await?;
+    for other in [hidden, unattached, "x".to_owned(), format!("d{}", "0".repeat(32))] {
+        for uri in [
+            format!("/admin/logs/diff?a={a}&b={other}"),
+            format!("/admin/logs/diff?a={other}&b={a}"),
+        ] {
+            let (status, _, body) = h.get(&uri).await?;
+            assert_eq!((status, &body), (StatusCode::NOT_FOUND, &baseline), "{uri}");
+        }
+    }
+    Ok(())
+}
+
 fn fault_log(faults: usize, padding: usize) -> String {
     let mut log = String::from("boot\nmounting\n");
     for n in 0..faults {

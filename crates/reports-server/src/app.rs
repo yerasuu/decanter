@@ -213,6 +213,7 @@ fn routes(state: AppState) -> Router {
         .route("/admin", get(admin_ui::page))
         .route("/admin/logs", get(admin_logs::list))
         .route("/admin/logs/search", get(admin_logs::search))
+        .route("/admin/logs/diff", get(admin_logs::diff))
         .route("/admin/logs/{id}", get(admin_logs::view))
         .route("/admin/reports", get(admin::list))
         .route("/admin/reports/{id}", delete(admin::remove))

@@ -17,6 +17,7 @@ mod html;
 mod ingest;
 mod inspect;
 mod limits;
+mod logdiff;
 mod logtext;
 mod pages;
 mod perms;

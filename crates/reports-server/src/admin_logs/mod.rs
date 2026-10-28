@@ -3,6 +3,7 @@
 //! pass over it linear and the heavy ones on the blocking pool, so a hostile 5 MiB log neither breaks a page nor
 //! holds a runtime worker.
 
+mod diff;
 mod search;
 
 use std::fmt::Write as _;
@@ -19,6 +20,7 @@ use crate::html::{escape_html, layout};
 use crate::logtext::{Mark, classify, is_binary, render_line};
 use crate::store::{AdminFilter, LogFilter, LogRow, Product};
 
+pub use diff::diff;
 pub use search::{Searches, search};
 
 const TITLE: &str = "Logs adjuntos";
@@ -35,8 +37,9 @@ const STYLE: &str = "<style>.log{font:12px/1.35 ui-monospace,monospace;margin:.5
 .log td.n{text-align:right;white-space:nowrap;color:#666}.log td.m{white-space:nowrap;font-weight:600;font-size:.7rem}\
 tr.fault{background:#f6c9cc}tr.error{background:#fbe0de}tr.failed{background:#efe3fb}tr.calls{background:#d9e6fd}\
 tr.warn{background:#fff1c2}.ctl{outline:1px dotted #b00;color:#b00}.cut{color:#b00;font-style:italic}\
-.jump{font:12px/1.4 ui-monospace,monospace}tr.hit{background:#d1f0d9}\
-@media(prefers-color-scheme:dark){tr.hit{background:#1e5631}tr.fault{background:#5c1f24}tr.error{background:#4a2422}tr.failed{background:#3a2950}\
+.jump{font:12px/1.4 ui-monospace,monospace}tr.hit,tr.add{background:#d1f0d9}tr.del{background:#fbe0de}\
+tr.chg{background:#fff1c2}tr.fold td{color:#666;font-style:italic}.diff td{width:46%}.diff td.n,.diff td.m{width:auto}\
+@media(prefers-color-scheme:dark){tr.hit,tr.add{background:#1e5631}tr.del{background:#4a2422}tr.chg{background:#4a3d12}tr.fault{background:#5c1f24}tr.error{background:#4a2422}tr.failed{background:#3a2950}\
 tr.calls{background:#1f3357}tr.warn{background:#4a3d12}.log td.n{color:#aaa}.ctl,.cut{color:#ff8a80}}</style>";
 
 #[derive(Deserialize)]
@@ -221,7 +224,9 @@ fn list_row(row: &LogRow) -> String {
     format!(
         "<tr><td><a href=\"/admin/logs/{id}\"><code>{id}</code></a></td><td>{}</td><td>{}</td><td>{}</td>\
          <td>{}</td><td><code>{}</code></td><td>{}</td><td><a href=\"/admin/logs/{id}\">ver</a> &middot; \
-         <a href=\"/r/{id}\">informe</a> &middot; <a href=\"/admin/reports/{id}/attachment\">descargar</a></td></tr>",
+         <a href=\"/r/{id}\">informe</a> &middot; <a href=\"/admin/reports/{id}/attachment\">descargar</a></td>\
+         <td><input type=\"radio\" name=\"a\" value=\"{id}\" title=\"A\"></td>\
+         <td><input type=\"radio\" name=\"b\" value=\"{id}\" title=\"B\"></td></tr>",
         escape_html(&row.product),
         game_cell(row),
         escape_html(&row.received_day),
@@ -239,13 +244,17 @@ fn render_list(filter: &LogFilter, rows: &[LogRow], page: usize, has_next: bool)
         body.push_str("<p>No hay logs adjuntos que coincidan.</p>");
     } else {
         body.push_str(
-            "<table><thead><tr><th>Informe</th><th>Producto</th><th>Título y juego</th><th>Recibido</th>\
-             <th>Tipo</th><th>Plantilla</th><th>Tamaño</th><th>Enlaces</th></tr></thead><tbody>",
+            "<form method=\"get\" action=\"/admin/logs/diff\"><table><thead><tr><th>Informe</th><th>Producto</th>\
+             <th>Título y juego</th><th>Recibido</th><th>Tipo</th><th>Plantilla</th><th>Tamaño</th><th>Enlaces</th>\
+             <th>A</th><th>B</th></tr></thead><tbody>",
         );
         for row in rows {
             body.push_str(&list_row(row));
         }
-        body.push_str("</tbody></table>");
+        body.push_str(
+            "</tbody></table><label><span><input type=\"checkbox\" name=\"normalize\" value=\"1\" checked> ignorar \
+             horas, direcciones y números largos</span></label><button type=\"submit\">Comparar A con B</button></form>",
+        );
     }
     body.push_str("<p>");
     if page > 1 {
@@ -329,6 +338,14 @@ pub fn render_log(row: &LogRow, bytes: &[u8], page: usize, page_lines: usize) ->
         kind: None,
     };
     body.push_str(&search_form(&scope, ""));
+    let _ = write!(
+        body,
+        "<form method=\"get\" action=\"/admin/logs/diff\"><input type=\"hidden\" name=\"a\" value=\"{}\">\
+         <label>Comparar con el log<input name=\"b\" maxlength=\"33\" required placeholder=\"p…\"></label>\
+         <label><span><input type=\"checkbox\" name=\"normalize\" value=\"1\" checked> ignorar horas, direcciones y \
+         números largos</span></label><button type=\"submit\">Comparar</button></form>",
+        escape_html(&row.id)
+    );
     if is_binary(bytes) {
         let _ = write!(
             body,

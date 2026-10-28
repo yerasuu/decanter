@@ -86,6 +86,8 @@ pub struct LogViewer {
     pub search_max_mib: u32,
     /// Matching lines one search shows at most; it stops there.
     pub search_max_matches: u32,
+    /// Lines of both logs together above which a comparison is positional instead of a real diff.
+    pub diff_max_lines: u32,
 }
 
 impl Default for LogViewer {
@@ -95,6 +97,7 @@ impl Default for LogViewer {
             search_max_logs: 50,
             search_max_mib: 64,
             search_max_matches: 500,
+            diff_max_lines: 20_000,
         }
     }
 }
@@ -358,6 +361,7 @@ impl Config {
                 "DECANTER_REPORTS_LOGS_SEARCH_MAX_MATCHES",
                 &mut self.logs.search_max_matches,
             ),
+            ("DECANTER_REPORTS_LOGS_DIFF_MAX_LINES", &mut self.logs.diff_max_lines),
         ] {
             if let Some(v) = env(name) {
                 *slot = parse(name, &v)?;
@@ -556,6 +560,7 @@ impl LogViewer {
             ("logs.search_max_logs", self.search_max_logs, 1, 1000),
             ("logs.search_max_mib", self.search_max_mib, 1, 1024),
             ("logs.search_max_matches", self.search_max_matches, 1, 10_000),
+            ("logs.diff_max_lines", self.diff_max_lines, 100, 200_000),
         ];
         for (name, value, min, max) in checks {
             if !(min..=max).contains(&value) {
@@ -870,11 +875,18 @@ mod tests {
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS", "10"),
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MIB", "8"),
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MATCHES", "20"),
+            ("DECANTER_REPORTS_LOGS_DIFF_MAX_LINES", "1000"),
         ]);
         let logs = Config::load(None, &env).map(|config| config.logs).ok();
         assert_eq!(
-            logs.map(|l| (l.page_lines, l.search_max_logs, l.search_max_mib, l.search_max_matches)),
-            Some((500, 10, 8, 20))
+            logs.map(|l| (
+                l.page_lines,
+                l.search_max_logs,
+                l.search_max_mib,
+                l.search_max_matches,
+                l.diff_max_lines
+            )),
+            Some((500, 10, 8, 20, 1000))
         );
         for (name, value) in [
             ("DECANTER_REPORTS_LOGS_PAGE_LINES", "0"),
@@ -882,6 +894,7 @@ mod tests {
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS", "0"),
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MIB", "2048"),
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_MATCHES", "10001"),
+            ("DECANTER_REPORTS_LOGS_DIFF_MAX_LINES", "99"),
         ] {
             assert!(
                 Config::load(None, &storage_env(&[(name, value)])).is_err(),
