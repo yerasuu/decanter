@@ -735,13 +735,20 @@ ps.report.errors.read: 'Couldn''t read %{what}: %{error}'
 ps.report.errors.serialize: 'Couldn''t write the report: %{error}'
 ps.report.errors.exists: '%{path} already exists; it is not overwritten'
 ps.report.errors.write: 'Couldn''t save %{path}: %{error}'
-ps.report.open: Error report
-ps.report.title: Error report
-ps.report.note: This is exactly what the report contains. Nothing is sent, and the report holds no paths, names or accounts.
 ps.report.save: Save report
 ps.report.close: Close
 ps.report.building: Preparing the report…
+ps.report.open: Report errors
+ps.report.title: Report errors
+ps.report.note: This is exactly what the report contains. Nothing leaves your computer until you confirm, and the report holds no paths, names or accounts.
+ps.report.attach_log: Attach the full log for the maintainer (not published)
 ps.report.privacy: The report is public and is kept until it is resolved. It holds no paths, names or accounts. You can delete it with the code you will get. There is no account, and your IP is kept only as long as the rate limit needs it.
+ps.report.send.button: Send report
+ps.report.send.confirm: 'Send this report now? It will be public.'
+ps.report.send.confirm_with_log: 'Send this report now, which will be public, and your log, which only the maintainer reads?'
+ps.report.send.confirm_yes: Yes, send
+ps.report.send.cancel: Cancel
+ps.report.send.sending: Sending…
 ps.report.send.off: Sending reports is turned off in the settings
 ps.report.send.no_log: This run has no log to attach
 ps.report.send.dry_run: 'Nothing was sent. The report above would be sent to %{server}. Add --yes to send it.'
@@ -749,12 +756,20 @@ ps.report.send.dry_run_log: 'Nothing was sent. The report above would be sent to
 ps.report.send.duplicate: 'This report was already sent that day: %{url}. It is not sent again; delete it first to send it anew.'
 ps.report.send.sent: 'Report sent: %{url}'
 ps.report.send.code: 'Delete code: %{code}'
+ps.report.send.code_label: 'Delete code:'
+ps.report.send.address_label: 'Public address:'
+ps.report.send.copy: Copy address
+ps.report.send.copy_code: Copy code
+ps.report.send.copied: Copied
+ps.report.send.open_page: Open
 ps.report.send.unrecorded: 'Couldn''t note the code in the library; keep it yourself: %{error}'
 ps.report.send.log_attached: Log attached, privately
 ps.report.send.log_failed: 'The report was sent, but the log was not: %{error}'
 ps.report.send.sent_without_log: The report was sent, but the log was not
 ps.report.send.none_sent: No report has been sent from this library
+ps.report.send.delete: Delete sent report
 ps.report.send.delete_dry_run: 'Nothing was deleted. Report %{id} would be deleted from the server. Add --yes to delete it.'
+ps.report.send.deleting: Deleting…
 ps.report.send.deleted: 'Report %{id} deleted from the server'
 ps.report.send.gone: 'The server no longer has report %{id}; it is removed from the list'
 ps.report.send.errors.address: 'The report server address isn''t valid (%{address}): it must be https://, or http://127.0.0.1:PORT / http://localhost:PORT for development'

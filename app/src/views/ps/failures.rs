@@ -8,27 +8,11 @@ use decanter_ps::failures::{self, Call, CallReport, Failure, Kind, Log};
 use gpui::{ClipboardItem, Context, Div, Entity, FontWeight, SharedString, Stateful, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use super::report::{Closed, ReportView};
 use crate::i18n::Text;
-use crate::report;
 use crate::state::{Ps, failure_message};
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
-
-/// The report previewed under the list: what [`report::psport`] built for one failure, or why it
-/// could not.
-struct ReportPanel {
-    /// Tells a late build of a failure the player has since left for another one.
-    id: u32,
-    state: ReportState,
-    /// The outcome of the last save: the file's path, or why it failed.
-    saved: Option<Result<PathBuf, Text>>,
-}
-
-enum ReportState {
-    Building,
-    Ready(report::Built),
-    Failed(Text),
-}
 
 pub struct FailuresView {
     ps: Entity<Ps>,
@@ -41,8 +25,7 @@ pub struct FailuresView {
     /// Shows "Copiado" until the record changes.
     copied: bool,
     error: Option<Text>,
-    report: Option<ReportPanel>,
-    reports_opened: u32,
+    report: Option<Entity<ReportView>>,
 }
 
 impl FailuresView {
@@ -57,7 +40,6 @@ impl FailuresView {
             copied: false,
             error: None,
             report: None,
-            reports_opened: 0,
         };
         this.reload(cx);
         this
@@ -104,113 +86,15 @@ impl FailuresView {
         cx.notify();
     }
 
-    /// The exact report that would go out, built off the UI thread: it reads the run's log and the
-    /// machine's names.
     fn open_report(&mut self, failure: Failure, cx: &mut Context<Self>) {
-        self.reports_opened = self.reports_opened.wrapping_add(1);
-        let id = self.reports_opened;
-        self.report = Some(ReportPanel {
-            id,
-            state: ReportState::Building,
-            saved: None,
-        });
+        let panel = cx.new(|cx| ReportView::new(failure, cx));
+        cx.subscribe(&panel, |this, _, _: &Closed, cx| {
+            this.report = None;
+            cx.notify();
+        })
+        .detach();
+        self.report = Some(panel);
         cx.notify();
-        let task = cx.background_spawn(async move { report::psport(&failure).map_err(|err| err.text()) });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Some(panel) = this.report.as_mut().filter(|panel| panel.id == id) {
-                    panel.state = match result {
-                        Ok(built) => ReportState::Ready(built),
-                        Err(text) => ReportState::Failed(text),
-                    };
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
-
-    fn save_report(&mut self, cx: &mut Context<Self>) {
-        let Some(ReportPanel {
-            id,
-            state: ReportState::Ready(built),
-            ..
-        }) = &self.report
-        else {
-            return;
-        };
-        let (id, built) = (*id, built.clone());
-        let task = cx.background_spawn(async move { report::save(&built, None).map_err(|err| err.text()) });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Some(panel) = this.report.as_mut().filter(|panel| panel.id == id) {
-                    panel.saved = Some(result);
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
-
-    fn report_panel(&self, panel: &ReportPanel, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let body = match &panel.state {
-            ReportState::Building => theme::muted(t!("ps.report.building")).into_any_element(),
-            ReportState::Failed(text) => theme::error(text).into_any_element(),
-            ReportState::Ready(built) => theme::mono()
-                .id("ps-report-json")
-                .max_h(px(360.))
-                .overflow_y_scroll()
-                .p_3()
-                .bg(rgb(theme::BG_PANEL_3))
-                .border_1()
-                .border_color(rgb(theme::LINE))
-                .rounded(px(theme::RADIUS_SM))
-                .text_size(px(11.))
-                .children(
-                    built
-                        .json
-                        .lines()
-                        .map(|line| div().child(SharedString::from(line.to_owned()))),
-                )
-                .into_any_element(),
-        };
-        let ready = matches!(panel.state, ReportState::Ready(_));
-        theme::card()
-            .p_4()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(theme::h3(t!("ps.report.title")).flex_1())
-                    .child(
-                        button("ps-report-close", ButtonKind::Secondary, t!("ps.report.close"), false).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.report = None;
-                                cx.notify();
-                            }),
-                        ),
-                    ),
-            )
-            .child(theme::muted(t!("ps.report.note")))
-            .child(body)
-            .children(panel.saved.as_ref().map(|saved| match saved {
-                Ok(path) => theme::muted(Text::new("ps.report.saved").arg("path", path.display())),
-                Err(text) => theme::error(text),
-            }))
-            .when(ready, |card| {
-                card.child(
-                    div().flex().child(
-                        button("ps-report-save", ButtonKind::Primary, t!("ps.report.save"), false)
-                            .on_click(cx.listener(|this, _, _, cx| this.save_report(cx))),
-                    ),
-                )
-            })
     }
 
     fn clear(&mut self, cx: &mut Context<Self>) {
@@ -359,7 +243,7 @@ impl Render for FailuresView {
                 )
                 .child(theme::muted(t!("ps.failures.description")))
                 .children(self.error.as_ref().map(theme::error))
-                .children(self.report.as_ref().map(|panel| self.report_panel(panel, cx)))
+                .children(self.report.clone())
                 .child(if empty {
                     theme::empty(t!("ps.failures.empty")).into_any_element()
                 } else {

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport};
+use decanter_ps::failures::Log;
 use decanter_ps::learned::{self, FrameOverlap};
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
@@ -25,6 +26,7 @@ use crate::state::{JobKey, Ps};
 use crate::theme;
 use crate::views::game_tools::GameToolsPanel;
 use crate::views::ps::log::LogView;
+use crate::views::ps::report::{Closed, ReportView, primary_failure};
 use crate::widgets::{ButtonKind, button, hero_stat, tooltip};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -96,6 +98,9 @@ pub struct DetailView {
     learned_error: Option<Text>,
     /// `selected`'s own tool choices, made again for each game picked.
     tools: Option<Entity<GameToolsPanel>>,
+    /// The report of `selected`'s last failed run, opened from the banner.
+    report: Option<Entity<ReportView>>,
+    report_error: Option<Text>,
 }
 
 impl DetailView {
@@ -121,6 +126,8 @@ impl DetailView {
             learned_read_at: None,
             learned_error: None,
             tools: None,
+            report: None,
+            report_error: None,
         }
     }
 
@@ -131,6 +138,8 @@ impl DetailView {
     /// Back to the covers.
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.selected = None;
+        self.report = None;
+        self.report_error = None;
         self.controls = None;
         self.log = None;
         self.runs = None;
@@ -147,6 +156,8 @@ impl DetailView {
             .map(|entry| entry.game.key());
         self.tools = key.map(|key| cx.new(|_| GameToolsPanel::new(key)));
         self.selected = Some(dir);
+        self.report = None;
+        self.report_error = None;
         self.tab = Tab::Overview;
         self.controls = None;
         self.runs = None;
@@ -156,6 +167,34 @@ impl DetailView {
         self.sync_log(cx);
         self.sync_learned(cx);
         cx.notify();
+    }
+
+    /// Reads the profile's failures off the UI thread and opens the report of the last run's.
+    fn open_report(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        let Some(path) = self.ps.read(cx).failures_path() else {
+            return;
+        };
+        self.report_error = None;
+        let task = cx.background_spawn(async move { Log::load(path).records().to_vec() });
+        cx.spawn(async move |this, cx| {
+            let records = task.await;
+            let _ = this.update(cx, |this, cx| {
+                match primary_failure(&records, &dir) {
+                    Some(failure) => {
+                        let panel = cx.new(|cx| ReportView::new(failure, cx));
+                        cx.subscribe(&panel, |this, _, _: &Closed, cx| {
+                            this.report = None;
+                            cx.notify();
+                        })
+                        .detach();
+                        this.report = Some(panel);
+                    }
+                    None => this.report_error = Some(Text::new("ps.report.errors.no_failure")),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn select_tab(&mut self, tab: Tab, entry: Option<(Port, String)>, cx: &mut Context<Self>) {
@@ -547,6 +586,7 @@ impl Render for DetailView {
                 .into_any_element();
         };
         let entity = cx.entity();
+        let (report_entity, report_dir) = (cx.entity(), entry.game.dir.clone());
         let port = entry.port.map(|port| (port, entry.game.title_id.clone()));
         let shown: &[Tab] = match entry.port {
             Some(Port::Bbport) if bbport::is_bloodborne(&entry.game) => &BBPORT_TABS,
@@ -603,12 +643,39 @@ impl Render for DetailView {
             .flex_col()
             .child(Self::hero(&entry))
             .child(self.action_bar(&entry, cx))
-            .children(notice.or(run_notice).map(|(text, error)| {
+            .children(notice.clone().or_else(|| run_notice.clone()).map(|(text, error)| {
                 div()
                     .mx(px(32.))
                     .mt(px(16.))
                     .child(if error { theme::error(text) } else { theme::muted(text) })
             }))
+            .children(
+                (notice.is_none() && run_notice.is_some() && self.report.is_none()).then(|| {
+                    div()
+                        .mx(px(32.))
+                        .mt(px(12.))
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(div().flex().child(
+                            button("ps-run-report", ButtonKind::Secondary, t!("ps.report.open"), false).on_click(
+                                move |_, _, cx| {
+                                    report_entity.update(cx, |this, cx| this.open_report(report_dir.clone(), cx));
+                                },
+                            ),
+                        ))
+                }),
+            )
+            .children(
+                self.report_error
+                    .as_ref()
+                    .map(|text| div().mx(px(32.)).mt(px(12.)).child(theme::error(text))),
+            )
+            .children(
+                self.report
+                    .clone()
+                    .map(|panel| div().mx(px(32.)).mt(px(12.)).child(panel)),
+            )
             .child(div().mx(px(32.)).mt(px(24.)).child(tabs))
             .child(div().px(px(32.)).pt(px(20.)).child(body))
             .into_any_element()

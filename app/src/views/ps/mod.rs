@@ -9,6 +9,7 @@ pub mod log;
 mod online;
 mod package;
 mod ports;
+mod report;
 mod settings;
 
 use decanter_core::capabilities::Feature;
