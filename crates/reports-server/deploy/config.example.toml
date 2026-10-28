@@ -32,6 +32,8 @@ shutdown_grace_secs = 5
 retention_days = 365
 # Resolved reports are deleted this many days after their resolution; 0 keeps them for good.
 resolved_retention_days = 90
+# Records of the maintainers' changes (/admin/audit) older than this are deleted by the daily sweep; 0 keeps them.
+audit_retention_days = 180
 # Seconds a rendered index page is reused (each render reads the bucket); 0 turns the cache off.
 index_cache_secs = 15
 page_size = 25

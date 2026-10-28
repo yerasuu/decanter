@@ -10,7 +10,7 @@ use s3db::txn_update::UpdateOp;
 use s3db::{Backend, Cipher, Entity, Singleton};
 use serde::{Deserialize, Serialize};
 
-use super::{MAX_ATTEMPTS, Store, backoff};
+use super::{AuditSummary, MAX_ATTEMPTS, Store, backoff};
 use crate::secrets::{hex, random_hex_256, sha256};
 
 const ROSTER: Singleton = Singleton::new("meta/roster.json");
@@ -158,7 +158,7 @@ struct Named {
 
 #[derive(Clone)]
 pub struct AccountStore {
-    store: Store,
+    pub(super) store: Store,
 }
 
 impl AccountStore {
@@ -173,14 +173,16 @@ impl AccountStore {
         })
     }
 
-    /// The roster of an initialised store, read without recovering or creating anything, for `--check-config`.
+    /// The roster and the audit trail's size of an initialised store, read without recovering or creating
+    /// anything, for `--check-config`.
     ///
     /// # Errors
     ///
     /// The bucket cannot be read, or `passphrase` does not open it.
-    pub async fn peek_roster(backend: Arc<dyn Backend>, passphrase: &str) -> Result<Roster> {
+    pub async fn peek(backend: Arc<dyn Backend>, passphrase: &str) -> Result<(Roster, AuditSummary)> {
         let cipher = s3db::bootstrap::open_cipher(backend.as_ref(), passphrase).await?;
-        Self::with_cipher(backend, Arc::new(cipher)).roster().await
+        let store = Self::with_cipher(backend, Arc::new(cipher));
+        Ok((store.roster().await?, store.audit_summary().await?))
     }
 
     pub const fn with_cipher(backend: Arc<dyn Backend>, cipher: Arc<Cipher>) -> Self {

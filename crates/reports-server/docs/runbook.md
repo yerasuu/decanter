@@ -36,6 +36,9 @@ server keeps only its SHA-256. `remove` and `role` refuse to leave no admin. The
   Its page shows no buttons; a change it sends answers 403 `{"error":"role"}`.
 - **`admin`** also hides, restores, resolves and deletes.
 
+Every `user add`, `remove`, `reset` and `role` that changes something leaves an audit record by `cli` (see "The
+audit trail"); if that record cannot be written the command says so on stderr and the change stands.
+
 **Lost key.** Of one person: an admin runs `user reset <name>` and hands over the new key. Of every admin: whoever
 holds the configuration and secrets (`.env`, or the credential files) runs `user add <new name> --role admin`, then
 removes or resets the old accounts. **Lost passphrase:** the bucket, accounts included, is unreadable; there is no
@@ -66,6 +69,25 @@ T=$(curl -s -b "$J" -D - -o /dev/null $B/admin | sed -n 's/^x-csrf-token: //Ip' 
 curl -s -b "$J" -H "Origin: $B" -H "X-CSRF-Token: $T" -X POST $B/admin/reports/$ID/hide
 curl -s -b "$J" -H "Origin: $B" -d "csrf=$T" $B/admin/logout; rm -f "$J"
 ```
+
+## The audit trail
+
+Who changed what, and when: every hide, restore, resolve and delete (of a report or a whole group), every session
+login and logout, and every `user` command that changed an account leaves one record in the accounts store, with
+the account's name and role (`cli` for the command line), the action, its target (report id, fingerprint or account
+name) and the number of reports, at the minute in UTC. No address, key, hash or attachment content is ever in a
+record. Admins read it at `$B/admin/audit` ("Registro de cambios", linked from `/admin`), newest first, 100 per page
+("Anteriores" goes back); a viewer gets 403. For a script:
+
+```sh
+curl -s -H "Authorization: Bearer $KEY" $B/admin/audit/records             # {"records":[...],"next":"<id>"|null}
+curl -s -H "Authorization: Bearer $KEY" "$B/admin/audit/records?after=$NEXT"  # the next 100
+```
+
+The daily sweep deletes records older than `audit_retention_days` (default 180; 0 keeps them for good) and logs
+`audit retention sweep` with `deleted=N`. `--check-config` prints how many records there are and the day of the
+oldest on the accounts line. A record that could not be written is the warning `audit record not written; the
+change itself stands`: the change happened, only its record is missing.
 
 ## Reading the logs
 
@@ -204,6 +226,9 @@ since its database file is locked while it runs). What it prints is decrypted bu
 attachment names): treat the output as private as the bucket. Attachments are blobs, read them through
 `GET /admin/reports/<id>/attachment` instead.
 
+The accounts store holds `users/<id>.json`, `idx/name/<name>.json`, `meta/roster.json` and `audit/<id>.json` (the
+audit trail), beside its own `.conf/`.
+
 Layout of each partition: `reports/<id>.json`, `groups/<fingerprint>.json`, `meta/totals.json`,
 `meta/sequence.json`, `meta/sweep.json`, `attachments/` (blobs), `cleanlogs/` (blobs: the public clean logs),
 `idx/` (the ordered lists) and `.conf/` (encryption config and transaction records).
@@ -226,6 +251,8 @@ The log has no addresses, codes, keys or report contents, only counts; storage l
 | `stale transactions recovered` | a transaction was cut off; repeated lines mean the bucket is failing |
 | `no admin account` (hourly) | nobody can change reports; create one with `user add <name> --role admin` |
 | `account refresh failed` | the accounts could not be re-read; the server keeps the previous list until it can |
+| `audit record not written; the change itself stands` | a change went unrecorded in the audit trail; repeated lines mean the bucket is failing |
+| `audit retention sweep failed` | old audit records were not deleted this time; the next daily sweep tries again |
 | `admin session ended: account removed, disabled or given a new key` | a `user remove` or `user reset` took effect |
 | `retention sweep` with `orphans` or `repaired` above 0 | leftovers of failed writes cleaned up; a steady stream means writes keep failing halfway |
 | `report rejected` counts | uploads failing validation: a client bug or probing |

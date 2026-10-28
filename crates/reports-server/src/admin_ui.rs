@@ -190,6 +190,9 @@ fn render(admin: &Admin, filter: &AdminFilter, rows: &[AdminRow], page: u32, has
         );
     }
     body.push_str("<p><a href=\"/admin/logs\">Logs adjuntos</a>: ver, buscar y comparar los logs de los informes</p>");
+    if admin.role == Role::Admin {
+        body.push_str("<p><a href=\"/admin/audit\">Registro de cambios</a>: quién cambió qué y cuándo</p>");
+    }
     body.push_str(&filter_form(filter));
     if let Some(fingerprint) = &filter.fingerprint {
         let _ = write!(body, "<h2>Grupo <code>{}</code></h2>", escape_html(fingerprint));

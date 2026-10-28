@@ -10,6 +10,7 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 
 use crate::app::{AppState, api_error, internal, not_found, today};
+use crate::audit::{self, Action};
 use crate::pages::is_title_id;
 use crate::secrets::is_hex_token;
 pub use crate::session::{Admin, CanChange};
@@ -73,16 +74,18 @@ pub async fn list(_: Admin, State(state): State<AppState>, Query(params): Query<
     }
 }
 
-/// Applies `change` to one report; 404 for a malformed or unknown id, like every other admin miss.
-async fn change_one(state: &AppState, id: String, change: Change, what: &'static str) -> Response {
+/// Applies `change` to one report and records it; 404 for a malformed or unknown id, like every other admin miss.
+async fn change_one(state: &AppState, admin: &Admin, id: String, change: Change, action: Action) -> Response {
     let Some(store) = state.stores.of_id(&id) else {
         return not_found();
     };
-    match store.change(&[id], &change).await {
+    let what = action.name();
+    match store.change(std::slice::from_ref(&id), &change).await {
         Ok(changed) if changed.matched == 0 => not_found(),
         Ok(_) => {
             state.index_cache.clear();
             tracing::info!(action = what, "report changed by the maintainer");
+            audit::record(state, (&admin.user, admin.role), action, &id, 1).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Err(error) => internal(what, &error),
@@ -91,10 +94,11 @@ async fn change_one(state: &AppState, id: String, change: Change, what: &'static
 
 /// Applies `change` to every report of the group in both partitions, hidden ones included; 404 when neither holds
 /// any.
-async fn change_group(state: &AppState, fingerprint: &str, change: Change, what: &'static str) -> Response {
+async fn change_group(state: &AppState, admin: &Admin, fingerprint: &str, change: Change, action: Action) -> Response {
     if !is_hex_token(fingerprint, 16) {
         return not_found();
     }
+    let what = action.name();
     match state.stores.change_group(fingerprint, &change).await {
         Ok(changed) if changed.matched == 0 => not_found(),
         Ok(changed) => {
@@ -104,42 +108,71 @@ async fn change_group(state: &AppState, fingerprint: &str, change: Change, what:
                 count = changed.matched,
                 "group changed by the maintainer"
             );
+            let count = u32::try_from(changed.matched).unwrap_or(u32::MAX);
+            audit::record(state, (&admin.user, admin.role), action, fingerprint, count).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Err(error) => internal(what, &error),
     }
 }
 
-pub async fn hide(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    change_one(&state, id, Change::Hide, "hide").await
+pub async fn hide(admin: Admin, _: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    change_one(&state, &admin, id, Change::Hide, Action::Hide).await
 }
 
-pub async fn restore(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    change_one(&state, id, Change::Restore, "restore").await
+pub async fn restore(admin: Admin, _: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    change_one(&state, &admin, id, Change::Restore, Action::Restore).await
 }
 
-pub async fn resolve(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    change_one(&state, id, Change::Resolve(today()), "resolve").await
+pub async fn resolve(admin: Admin, _: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    change_one(&state, &admin, id, Change::Resolve(today()), Action::Resolve).await
 }
 
-pub async fn remove(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    change_one(&state, id, Change::Delete, "delete").await
+pub async fn remove(admin: Admin, _: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    change_one(&state, &admin, id, Change::Delete, Action::Delete).await
 }
 
-pub async fn hide_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
-    change_group(&state, &fingerprint, Change::Hide, "hide_group").await
+pub async fn hide_group(
+    admin: Admin,
+    _: CanChange,
+    State(state): State<AppState>,
+    Path(fingerprint): Path<String>,
+) -> Response {
+    change_group(&state, &admin, &fingerprint, Change::Hide, Action::HideGroup).await
 }
 
-pub async fn restore_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
-    change_group(&state, &fingerprint, Change::Restore, "restore_group").await
+pub async fn restore_group(
+    admin: Admin,
+    _: CanChange,
+    State(state): State<AppState>,
+    Path(fingerprint): Path<String>,
+) -> Response {
+    change_group(&state, &admin, &fingerprint, Change::Restore, Action::RestoreGroup).await
 }
 
-pub async fn resolve_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
-    change_group(&state, &fingerprint, Change::Resolve(today()), "resolve_group").await
+pub async fn resolve_group(
+    admin: Admin,
+    _: CanChange,
+    State(state): State<AppState>,
+    Path(fingerprint): Path<String>,
+) -> Response {
+    change_group(
+        &state,
+        &admin,
+        &fingerprint,
+        Change::Resolve(today()),
+        Action::ResolveGroup,
+    )
+    .await
 }
 
-pub async fn remove_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
-    change_group(&state, &fingerprint, Change::Delete, "delete_group").await
+pub async fn remove_group(
+    admin: Admin,
+    _: CanChange,
+    State(state): State<AppState>,
+    Path(fingerprint): Path<String>,
+) -> Response {
+    change_group(&state, &admin, &fingerprint, Change::Delete, Action::DeleteGroup).await
 }
 
 /// The one place an attachment leaves the bucket: fixed type, forced download, never parsed.

@@ -10,6 +10,9 @@ mod admin_logs_tests;
 mod admin_tests;
 mod admin_ui;
 mod app;
+mod audit;
+#[cfg(test)]
+mod audit_tests;
 mod cache;
 mod check;
 mod clean_page;

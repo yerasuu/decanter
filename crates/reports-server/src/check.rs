@@ -2,7 +2,7 @@
 //! no secret in any line.
 
 use crate::config::{Config, Driver, Storage, StorageCredentials};
-use crate::store::{self, AccountStore, Section};
+use crate::store::{self, AccountStore, AuditSummary, Section};
 
 const NO_ADMIN: &str = "warning: no admin account, so /admin refuses everyone until `decanter-reports user add \
                         <name> --role admin`";
@@ -25,11 +25,12 @@ pub fn describe(storage: &Storage, section: impl Into<Section>) -> String {
     }
 }
 
-/// What one read-only look at a section found; the accounts store also says how many admins and viewers it holds.
+/// What one read-only look at a section found; the accounts store also says how many admins and viewers it holds
+/// and how large its audit trail is.
 enum Status {
     NotCreated,
     NotInitialised,
-    Opens(Option<store::Roster>),
+    Opens(Option<(store::Roster, AuditSummary)>),
 }
 
 async fn status(storage: &Storage, credentials: &StorageCredentials, section: Section) -> Result<Status, String> {
@@ -38,9 +39,9 @@ async fn status(storage: &Storage, credentials: &StorageCredentials, section: Se
     }
     let backend = store::connect(storage, credentials, section).map_err(|error| format!("cannot set up: {error:#}"))?;
     match store::probe(backend.as_ref(), &credentials.passphrase).await {
-        Ok(true) if section == Section::Accounts => AccountStore::peek_roster(backend, &credentials.passphrase)
+        Ok(true) if section == Section::Accounts => AccountStore::peek(backend, &credentials.passphrase)
             .await
-            .map(|roster| Status::Opens(Some(roster)))
+            .map(|peeked| Status::Opens(Some(peeked)))
             .map_err(|error| format!("{error:#}")),
         Ok(true) => Ok(Status::Opens(None)),
         Ok(false) => Ok(Status::NotInitialised),
@@ -53,6 +54,14 @@ fn plural(count: u32, one: &str) -> String {
         format!("1 {one}")
     } else {
         format!("{count} {one}s")
+    }
+}
+
+fn audit_text(audit: &AuditSummary) -> String {
+    let count = plural(u32::try_from(audit.records).unwrap_or(u32::MAX), "audit record");
+    match &audit.oldest_day {
+        Some(day) => format!("{count}, the oldest from {day}"),
+        None => count,
     }
 }
 
@@ -88,15 +97,16 @@ pub async fn partitions(config: &Config, credentials: &StorageCredentials) -> (V
                 Ok(Status::NotCreated) => first_start("not created yet"),
                 Ok(Status::NotInitialised) => first_start("reachable, not initialized yet"),
                 Ok(Status::Opens(None)) => "reachable, the passphrase opens it".to_owned(),
-                Ok(Status::Opens(Some(roster))) => format!(
-                    "reachable, the passphrase opens it; {}, {}",
+                Ok(Status::Opens(Some((roster, audit)))) => format!(
+                    "reachable, the passphrase opens it; {}, {}; {}",
                     plural(roster.admins, "admin"),
-                    plural(roster.viewers, "viewer")
+                    plural(roster.viewers, "viewer"),
+                    audit_text(audit)
                 ),
                 Err(error) => format!("check failed: {error}"),
             };
             let no_admin = matches!(status, Ok(Status::NotCreated | Status::NotInitialised))
-                || matches!(status, Ok(Status::Opens(Some(roster))) if roster.admins == 0);
+                || matches!(status, Ok(Status::Opens(Some((roster, _)))) if roster.admins == 0);
             if *section == Section::Accounts && no_admin {
                 text = format!("{text}; {NO_ADMIN}");
             }
@@ -185,13 +195,21 @@ mod tests {
         drop(AccountStore::open(backend, right).await?);
         let (lines, _) = partitions(&config, &credentials(right)).await;
         assert!(
-            lines[2].contains("opens it; 0 admins, 0 viewers") && lines[2].ends_with(NO_ADMIN),
+            lines[2].contains("opens it; 0 admins, 0 viewers; 0 audit records;") && lines[2].ends_with(NO_ADMIN),
             "{lines:?}"
         );
         let backend = store::connect(&config.storage, &credentials(right), Section::Accounts)?;
         let accounts = AccountStore::open(backend, right).await?;
         accounts.add("owner", store::Role::Admin, "2026-10-28").await?;
         accounts.add("ana", store::Role::Viewer, "2026-10-28").await?;
+        let record = store::AuditRecord {
+            user: "owner".to_owned(),
+            role: "admin".to_owned(),
+            action: "hide".to_owned(),
+            ..store::AuditRecord::default()
+        };
+        accounts.append_audit(&record, 29_000_000).await?;
+        accounts.append_audit(&record, 29_100_000).await?;
         drop(accounts);
 
         let (lines, passed) = partitions(&config, &credentials(right)).await;
@@ -202,7 +220,10 @@ mod tests {
             lines[1].ends_with("(the first start creates its encryption)"),
             "{lines:?}"
         );
-        assert!(lines[2].ends_with("opens it; 1 admin, 1 viewer"), "{lines:?}");
+        assert!(
+            lines[2].ends_with("opens it; 1 admin, 1 viewer; 2 audit records, the oldest from 2025-02-19"),
+            "{lines:?}"
+        );
 
         let (lines, passed) = partitions(&config, &credentials(wrong)).await;
         assert!(!passed);

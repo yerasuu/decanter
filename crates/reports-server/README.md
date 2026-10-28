@@ -48,6 +48,8 @@ tag; `.cargo/config.toml` makes cargo fetch it with the system git.
 | `POST /admin/groups/<fingerprint>/hide`, `/restore`, `/resolve` | admin | 204 for every report of the group, in both partitions; 404 if neither holds one |
 | `DELETE /admin/groups/<fingerprint>`, or `POST .../delete` for a form | admin | 204; deletes the group's reports and their attachments |
 | `GET /admin/reports/<id>/attachment` | admin | the file as `application/octet-stream`, `Content-Disposition: attachment` |
+| `GET /admin/audit?after=<record id>` | `admin` role only | HTML "Registro de cambios": every change, login and logout and every `user` command, newest first, 100 per page (When / Who / Action / Target); 400 for a malformed cursor |
+| `GET /admin/audit/records?after=<record id>` | `admin` role only | the same page as JSON, `{"records": [{user, role, action, target, count, at}], "next": <record id or null>}` |
 | `GET /admin/logs?product=&title=&day=&kind=&fingerprint=&page=` | admin | HTML list of the visible reports with an attached log, newest first, 50 per page: id, product, title and game, day, kind, template, size, links to the viewer, the report and the download, and A/B choices for a comparison; filters as the admin list plus `kind` (lowercase letters), 400 otherwise |
 | `GET /admin/logs/<id>?page=N` | admin | the log as numbered text, `logs.page_lines` lines per page, ERROR / WARN / fault / `Calls: summary` / failed-stub-unimplemented lines highlighted with a text marker and listed at the top; 404 for an unknown, hidden or unattached id |
 | `GET /admin/logs/search?q=&title=&fingerprint=&product=&day=&kind=` | admin | lines holding `q` (1 to 200 characters, ASCII case ignored) with 2 lines of context, in the logs of one title or fingerprint (400 without one), newest first, within `logs.search_max_*`; 429 while the same session runs another search |
@@ -59,7 +61,8 @@ Hidden reports answer 404 on the public pages, their clean log too. Resolved rep
 their attachment but keep their clean log.
 "admin" means a maintainer account's key in `Authorization: Bearer`, or a browser session from `/admin/login` (see
 "Security model"); the accounts are made with `decanter-reports user add` ("Maintainer accounts" below). Both roles
-reach every `GET` above and the logout; the hide, restore, resolve and delete routes need the `admin` role, and a
+reach every `GET` above but the audit trail, and the logout; the hide, restore, resolve and delete routes and the
+audit trail need the `admin` role, and a
 `viewer`'s call answers 403 `{"error":"role"}` and changes nothing. A session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
 from a form field `csrf` or the header `X-CSRF-Token` (sent back on every session answer), and an `Origin` (or
 `Referer`) of this server, else 403. A form action answers 303 back to the admin page instead of 204.
@@ -101,6 +104,8 @@ actions (none for a viewer); its "Logs adjuntos" link opens the log viewer (`doc
 | `decanter-reports user role <name> --role viewer\|admin` | changes the role; open sessions follow within 15 s |
 | `decanter-reports user remove <name>` | removes the account; its key and sessions stop within 15 s |
 
+Every command that changes an account leaves an audit record by `cli` (see `/admin/audit`).
+
 Names are `[a-z0-9-]{1,32}` and unique; `remove` and `role` refuse to leave no admin. The commands read the same
 configuration and secrets as the server (`DECANTER_REPORTS_CONFIG` and the environment); with the `local` driver the
 server must be stopped. Keys are `drk_<8 hex id>_<64 hex>`, 256 random bits, kept by the server only as SHA-256 in
@@ -120,6 +125,7 @@ partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runb
 | `trusted_proxies`, `client_ip_header` | none | `DECANTER_REPORTS_TRUSTED_PROXIES`, `_CLIENT_IP_HEADER` |
 | `retention_days` | 365 | `DECANTER_REPORTS_RETENTION_DAYS` |
 | `resolved_retention_days` | 90 (0 keeps resolved reports for good) | `DECANTER_REPORTS_RESOLVED_RETENTION_DAYS` |
+| `audit_retention_days` | 180 (0 keeps audit records for good) | `DECANTER_REPORTS_AUDIT_RETENTION_DAYS` |
 | `index_cache_secs` | 15 (0 turns the cache off) | `DECANTER_REPORTS_INDEX_CACHE_SECS` |
 | `limits.per_ip_hour` / `per_ip_day` / `global_hour` | 10 / 50 / 500 | `DECANTER_REPORTS_LIMIT_PER_IP_HOUR`, `_PER_IP_DAY`, `_GLOBAL_HOUR` |
 | `limits.get_per_ip_minute` | 120 | `DECANTER_REPORTS_LIMIT_GET_PER_IP_MINUTE` |
@@ -204,6 +210,11 @@ and hold no report contents and no addresses.
 - **Retention.** Unresolved reports received more than `retention_days` ago, and resolved reports resolved more
   than `resolved_retention_days` ago (unless 0), are deleted with their attachments by a sweep of each partition at
   startup and every 24 hours. The same sweep removes blobs no report names and repairs index entries left by failed writes.
+- **Audit trail.** Every change a maintainer makes (and every login, logout and `user` command that changed an
+  account) leaves one record in the encrypted accounts store: name, role (`cli` for the command line), action,
+  target, count and the minute in UTC; never an address, key, hash or attachment content. Written after the change,
+  a failed record is a logged warning and never undoes it. The daily sweep deletes records older than
+  `audit_retention_days` (180, 0 keeps them); admins read them at `/admin/audit`.
 - **Connections.** The process serves with hyper directly: at most `max_connections` at once (the next is closed
   at once), a request head must arrive within `header_timeout_secs` (slow headers and idle keep-alive connections
   are closed), and on SIGTERM open connections get `shutdown_grace_secs` before they are dropped.

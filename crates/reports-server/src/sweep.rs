@@ -1,6 +1,7 @@
 //! The retention safety net: unresolved reports past `retention_days` and resolved ones past
 //! `resolved_retention_days` go, with their attachments, and so do blobs and index entries nothing refers to any
-//! more. Stale transactions are recovered more often, since a lock they hold blocks every upload.
+//! more, and audit records past `audit_retention_days`. Stale transactions are recovered more often, since a lock
+//! they hold blocks every upload.
 
 use std::time::Duration;
 
@@ -49,6 +50,19 @@ pub async fn run_once(state: &AppState) {
             }
             Err(error) => tracing::error!(product, %error, "retention sweep failed"),
         }
+    }
+    sweep_audit(state).await;
+}
+
+async fn sweep_audit(state: &AppState) {
+    let days = u64::from(state.config.audit_retention_days);
+    if days == 0 {
+        return;
+    }
+    let cutoff = crate::store::current_minute().saturating_sub(days * 24 * 60);
+    match state.accounts.store().sweep_audit(cutoff).await {
+        Ok(deleted) => tracing::info!(store = "accounts", deleted, "audit retention sweep"),
+        Err(error) => tracing::error!(store = "accounts", %error, "audit retention sweep failed"),
     }
 }
 

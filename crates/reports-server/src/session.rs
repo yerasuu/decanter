@@ -24,6 +24,7 @@ use tracing::Instrument as _;
 
 use crate::accounts::Identity;
 use crate::app::{AppState, api_error, internal, not_found};
+use crate::audit::{self, Action};
 use crate::config::{AdminSessions, Config};
 use crate::html::layout;
 use crate::limits::client_ip;
@@ -552,13 +553,16 @@ pub async fn login(
     no_store(&mut response);
     state.accounts.record_login(&identity.id).await;
     tracing::info!(user = %identity.name, role = %identity.role.name(), "admin session opened");
+    audit::record(&state, (&identity.name, identity.role), Action::Login, "", 1).await;
     response
 }
 
-/// Reached only through the gate, so a session request here already passed the origin and CSRF checks.
-pub async fn logout(_: Admin, State(state): State<AppState>, headers: HeaderMap) -> Response {
+/// Reached only through the gate, so a session request here already passed the origin and CSRF checks. A Bearer
+/// request closes nothing and records nothing.
+pub async fn logout(admin: Admin, State(state): State<AppState>, headers: HeaderMap) -> Response {
     if session_cookie(&headers).is_some_and(|id| state.sessions.close(id)) {
         tracing::info!("admin session closed");
+        audit::record(&state, (&admin.user, admin.role), Action::Logout, "", 1).await;
     }
     let mut response = (
         StatusCode::SEE_OTHER,

@@ -22,7 +22,7 @@ use crate::config::Config;
 use crate::limits::{Limiter, Verdict, client_ip};
 use crate::session::{LOGIN_PATH, Sessions, is_admin_path};
 use crate::store::Stores;
-use crate::{admin, admin_logs, admin_ui, clean_page, ingest, pages, session};
+use crate::{admin, admin_logs, admin_ui, audit, clean_page, ingest, pages, session};
 
 pub struct Inner {
     pub config: Config,
@@ -211,6 +211,8 @@ fn routes(state: AppState) -> Router {
         .route(LOGIN_PATH, get(session::login_form).post(session::login))
         .route("/admin/logout", post(session::logout))
         .route("/admin", get(admin_ui::page))
+        .route("/admin/audit", get(audit::page))
+        .route("/admin/audit/records", get(audit::records))
         .route("/admin/logs", get(admin_logs::list))
         .route("/admin/logs/search", get(admin_logs::search))
         .route("/admin/logs/diff", get(admin_logs::diff))

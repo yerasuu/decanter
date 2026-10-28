@@ -208,6 +208,8 @@ pub struct Config {
     pub retention_days: u32,
     /// Days a resolved report stays public after its resolution; 0 keeps them for good.
     pub resolved_retention_days: u32,
+    /// Days an audit record of a maintainer's change is kept; 0 keeps them for good.
+    pub audit_retention_days: u32,
     pub page_size: u32,
     /// Seconds a rendered index page is reused; 0 turns the cache off.
     pub index_cache_secs: u32,
@@ -233,6 +235,7 @@ impl Default for Config {
             client_ip_header: None,
             retention_days: 365,
             resolved_retention_days: 90,
+            audit_retention_days: 180,
             page_size: 25,
             index_cache_secs: 15,
             log_level: "info".to_owned(),
@@ -296,6 +299,9 @@ impl Config {
         }
         if let Some(v) = env("DECANTER_REPORTS_RESOLVED_RETENTION_DAYS") {
             self.resolved_retention_days = parse("DECANTER_REPORTS_RESOLVED_RETENTION_DAYS", &v)?;
+        }
+        if let Some(v) = env("DECANTER_REPORTS_AUDIT_RETENTION_DAYS") {
+            self.audit_retention_days = parse("DECANTER_REPORTS_AUDIT_RETENTION_DAYS", &v)?;
         }
         if let Some(v) = env("DECANTER_REPORTS_INDEX_CACHE_SECS") {
             self.index_cache_secs = parse("DECANTER_REPORTS_INDEX_CACHE_SECS", &v)?;
@@ -880,6 +886,19 @@ mod tests {
             ..Config::default()
         };
         assert!(local.warnings().is_empty());
+    }
+
+    #[test]
+    fn audit_retention_defaults_to_180_days_and_takes_the_environment() {
+        assert_eq!(Config::default().audit_retention_days, 180);
+        let days = |value| {
+            Config::load(None, &storage_env(&[("DECANTER_REPORTS_AUDIT_RETENTION_DAYS", value)]))
+                .map(|config| config.audit_retention_days)
+                .ok()
+        };
+        assert_eq!(days("30"), Some(30));
+        assert_eq!(days("0"), Some(0), "0 keeps the records for good");
+        assert_eq!(days("-1"), None);
     }
 
     #[test]

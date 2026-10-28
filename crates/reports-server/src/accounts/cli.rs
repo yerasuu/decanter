@@ -1,11 +1,13 @@
 //! `decanter-reports user add|list|remove|reset|role`: the maintainers' accounts, managed with the binary so the
 //! first admin needs no shell on the host. Only `add` and `reset` write to standard output, and only the key, so
 //! `$(decanter-reports user add ...)` captures it whole; everything else goes to standard error. A key is never
-//! logged and `list` never shows a hash.
+//! logged and `list` never shows a hash. Every change leaves an audit record by `cli`; a record that cannot be written
+//! is a warning, never a reason to fail a change that already landed.
 
 use std::fmt::Write as _;
 use std::io::Write;
 
+use crate::audit::{self, Action, CLI};
 use crate::store::{AccountChange, AccountStore, NAME_RULE, Role, is_name};
 
 pub const USAGE: &str = "usage: decanter-reports user add <name> --role viewer|admin | list | remove <name> | \
@@ -78,6 +80,16 @@ fn show_key(out: &mut impl Write, notes: &mut impl Write, key: &str, what: &str)
     ))
 }
 
+async fn audited(store: &AccountStore, notes: &mut impl Write, action: Action, name: &str) -> Result<(), String> {
+    match audit::append(store, (CLI, CLI), action, name, 1).await {
+        Ok(()) => Ok(()),
+        Err(error) => written(writeln!(
+            notes,
+            "warning: the audit record was not written ({error:#}); the change itself stands"
+        )),
+    }
+}
+
 fn table(users: &[crate::store::User]) -> String {
     let mut text = String::from("name\trole\tcreated\tlast login\tstate\n");
     for user in users {
@@ -113,7 +125,8 @@ pub async fn run(
             let Some(key) = store.add(name, *role, &today).await.map_err(failed)? else {
                 return Err(format!("a user named {name} already exists"));
             };
-            show_key(out, notes, &key, &format!("user {name} added as {}", role.name()))
+            show_key(out, notes, &key, &format!("user {name} added as {}", role.name()))?;
+            audited(store, notes, Action::UserAdd(*role), name).await
         }
         Command::List => {
             let users = store.users().await.map_err(failed)?;
@@ -132,15 +145,19 @@ pub async fn run(
             written(writeln!(
                 notes,
                 "user {name} removed; its key and sessions stop working within 15 s"
-            ))
+            ))?;
+            audited(store, notes, Action::UserRemove, name).await
         }
         Command::Reset { name } => match store.reset(name).await.map_err(failed)? {
-            AccountChange::Key(key) => show_key(
-                out,
-                notes,
-                &key,
-                &format!("user {name} has a new key; the old one and its sessions stop working within 15 s"),
-            ),
+            AccountChange::Key(key) => {
+                show_key(
+                    out,
+                    notes,
+                    &key,
+                    &format!("user {name} has a new key; the old one and its sessions stop working within 15 s"),
+                )?;
+                audited(store, notes, Action::UserReset, name).await
+            }
             other => refused(&other, name),
         },
         Command::Role { name, role } => {
@@ -149,7 +166,8 @@ pub async fn run(
                 notes,
                 "user {name} is now {}; open sessions follow within 15 s",
                 role.name()
-            ))
+            ))?;
+            audited(store, notes, Action::UserRole(*role), name).await
         }
     }
 }

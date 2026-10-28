@@ -3,6 +3,7 @@
 //! never drift from the reports they count, even when requests race.
 
 mod accounts;
+mod audit;
 mod index;
 mod logs;
 mod maintain;
@@ -25,6 +26,7 @@ pub use accounts::test_accounts;
 pub use accounts::{
     AccountStore, Changed as AccountChange, ID_HEX, KEY_PREFIX, NAME_RULE, Role, Roster, User, is_name,
 };
+pub use audit::{AuditRecord, AuditSummary, current_minute, is_audit_id};
 pub use logs::{LogFilter, LogRow};
 pub use model::Report;
 #[cfg(test)]

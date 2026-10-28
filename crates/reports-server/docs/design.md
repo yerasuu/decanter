@@ -225,8 +225,18 @@ two partitions and opened by the same passphrase, is not a report `Product` and 
   `user add` with one name exactly one lands. An entry left by a crash after a removal is reclaimed by the next add.
 - **`meta/roster.json`** counts admins and viewers, updated in the transaction of every add, remove and role
   change, so `remove` and `role` can refuse to leave no admin even when two run at once.
+- **`audit/<inverted minute>-<8 hex>`** (#1154, decision 5 of #1150): one record per change a maintainer makes
+  (hide, restore, resolve and delete of a report or a group, login, logout, and `user add`, `remove`, `reset` and
+  `role`), holding `user` (the account's name, or `cli`), `role` (`admin`, `viewer` or `cli`), `action`, `target`
+  (report id, fingerprint or account name; empty for a login or logout), `count` (reports changed) and `at` (UTC
+  `YYYY-MM-DDTHH:MMZ`). The minute is written as `9999999999 - minutes since the epoch`, so a key listing reads
+  newest first and the sweep finds old records from their keys without decrypting them; records of one minute list
+  in random order. A record is written with a create-only write after the change has landed; a failed write is a
+  `warn` (a warning on stderr for the CLI) and the change stands. The daily sweep deletes records older than
+  `audit_retention_days` (180; 0 keeps them).
 
-Only days are kept. Nothing else of a maintainer is stored; log lines name the account (below).
+Account records keep only days and audit records only minutes. Nothing else of a maintainer is stored, and no
+record holds an address, a key, a hash or an attachment's content; log lines name the account (below).
 
 Days are UTC `YYYY-MM-DD`; nothing finer is stored, and no address or user agent. Ids (behind their product letter)
 and delete codes are 128-bit random values from the operating system; the delete code is shown once and only its
@@ -336,6 +346,12 @@ Everything a client sends is hostile, including what looks like decanter's own o
   check would not compile. A viewer's change answers 403 `{"error":"role"}` (a page for a form) and changes
   nothing; the admin page shows a viewer no action forms. Every log line of an admin request carries `user` and
   `role` (the request runs in a span with both), never an address.
+- **Audit trail** (#1154). Besides the log lines, every change and every session login and logout leaves a record
+  in the accounts store (`audit/`, above). `GET /admin/audit` ("Registro de cambios", linked from the admin page
+  for admins only) shows them newest first, 100 per page with an `after=<record id>` cursor, and
+  `GET /admin/audit/records` gives the same page as JSON (`{"records": [...], "next": <id or null>}`) for Bearer
+  scripts. Both take `CanChange`, so a viewer gets the 403 `{"error":"role"}` and no credential the uniform 404; a
+  cursor of any other shape is a 400. Every field is escaped like any other dynamic text.
 - **Admin sessions** (#1060, #1062). A browser cannot send the Bearer header, so `POST /admin/login` trades a key
   (form field, same constant-time check, same-site `Origin` required) for a session: a 256-bit random id held in
   memory only as its SHA-256 together with its account, role and key generation, with an idle timeout and an
