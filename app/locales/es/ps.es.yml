@@ -599,7 +599,8 @@ ps.fsr.unsupported.other: '%{name}: versión %{version}. bbport solo reproduce l
 ps.fsr.bad_loader.is_upscaler: eso es la DLL del reescalado; el cargador es amd_fidelityfx_loader_dx12.dll (o amd_fidelityfx_dx12.dll en OptiScaler), en la misma carpeta del juego
 ps.fsr.bad_loader.wrong_version: '%{loader}: versión %{version}; hace falta el cargador FidelityFX 2.x del mismo juego'
 ps.fsr.failures.bad_dll: 'La DLL no sirve: detalles en el registro'
-ps.fsr.failures.no_proton: 'No hay un Proton adecuado: instala GE-Proton 10 o posterior, Proton Experimental o Proton-CachyOS, y abre con él cualquier juego en Steam para que instale su runtime'
+ps.fsr.failures.no_proton: 'La grabación no encontró ningún Proton con el que ejecutarse, aunque decanter preparó el suyo: detalles en el registro'
+ps.fsr.failures.proton_not_ready: 'decanter no pudo preparar su GE-Proton para la grabación: %{error}'
 ps.fsr.failures.missing_tools: 'Faltan programas para compilar: la lista está en el registro'
 ps.fsr.failures.no_proton_ran: 'Ningún Proton ejecutó FSR 4.1 con esa DLL: son demasiado antiguos o la DLL no activa FSR 4.1 en esta GPU'
 ps.fsr.failures.mismatch: 'Las pasadas grabadas no coinciden con lo que reproduce bbport (otra versión de la DLL o una GPU nueva): detalles en el registro'
@@ -621,10 +622,13 @@ ps.extras.fsr.needs_loader: 'Junto a la DLL no hay cargador: elige amd_fidelityf
 ps.extras.fsr.checking: Comprobando…
 ps.extras.fsr.ready: Recursos listos para esta resolución y preset
 ps.extras.fsr.missing_file: falta o está dañado %{file}
-ps.extras.fsr.missing: Sin recursos (%{problem}). Se compilan desde amd_fidelityfx_upscaler_dx12.dll 4.1.x (FSR4_LATEST de OptiScaler o de un juego con FSR 4.1); necesita GE-Proton 10+, Proton Experimental o Proton-CachyOS y tarda 2–5 minutos
+ps.extras.fsr.missing: Sin recursos (%{problem}). Se compilan desde amd_fidelityfx_upscaler_dx12.dll 4.1.x (FSR4_LATEST de OptiScaler o de un juego con FSR 4.1); tarda 2–5 minutos, y la primera vez decanter descarga además GE-Proton para la grabación (unos 0,5 GB)
 ps.extras.fsr.progress.preparing: Preparando…
 ps.extras.fsr.progress.recording: 'Grabando las pasadas bajo Proton: %{done} de %{total}'
 ps.extras.fsr.progress.translating: Traduciendo las pasadas a SPIR-V…
+ps.extras.fsr.progress.runner_downloading: 'decanter está preparando %{runner} para la grabación: %{received} de %{total}'
+ps.extras.fsr.progress.runner_downloading_size: 'decanter está preparando %{runner} para la grabación: %{received}'
+ps.extras.fsr.progress.runner_unpacking: decanter está descomprimiendo %{runner}…
 ps.mods.description: Se aplican en el próximo arranque; "Cargar mods" está en Gráficos.
 ps.mods.loading: Preparando bbport y buscando mods…
 ps.mods.refresh: Actualizar

@@ -599,7 +599,8 @@ ps.fsr.unsupported.other: '%{name}: version %{version}. bbport only replays AMD'
 ps.fsr.bad_loader.is_upscaler: that's the upscaler DLL; the loader is amd_fidelityfx_loader_dx12.dll (or amd_fidelityfx_dx12.dll with OptiScaler), in the same game folder
 ps.fsr.bad_loader.wrong_version: '%{loader}: version %{version}; the FidelityFX 2.x loader from the same game is needed'
 ps.fsr.failures.bad_dll: 'The DLL won''t work: details in the log'
-ps.fsr.failures.no_proton: 'No suitable Proton: install GE-Proton 10 or later, Proton Experimental or Proton-CachyOS, and open any game with it in Steam so it installs its runtime'
+ps.fsr.failures.no_proton: 'The recording found no Proton to run under, although decanter prepared its own: details in the log'
+ps.fsr.failures.proton_not_ready: 'decanter couldn''t prepare its GE-Proton for the recording: %{error}'
 ps.fsr.failures.missing_tools: 'Build tools are missing: the list is in the log'
 ps.fsr.failures.no_proton_ran: 'No Proton ran FSR 4.1 with that DLL: they''re too old or the DLL doesn''t enable FSR 4.1 on this GPU'
 ps.fsr.failures.mismatch: 'The recorded passes don''t match what bbport replays (another DLL version or a new GPU): details in the log'
@@ -621,10 +622,13 @@ ps.extras.fsr.needs_loader: 'There''s no loader next to the DLL: choose amd_fide
 ps.extras.fsr.checking: Checking…
 ps.extras.fsr.ready: Assets ready for this resolution and preset
 ps.extras.fsr.missing_file: '%{file} is missing or damaged'
-ps.extras.fsr.missing: No assets (%{problem}). They're built from amd_fidelityfx_upscaler_dx12.dll 4.1.x (OptiScaler's FSR4_LATEST or from a game with FSR 4.1); needs GE-Proton 10+, Proton Experimental or Proton-CachyOS and takes 2–5 minutes
+ps.extras.fsr.missing: No assets (%{problem}). They're built from amd_fidelityfx_upscaler_dx12.dll 4.1.x (OptiScaler's FSR4_LATEST or from a game with FSR 4.1); it takes 2–5 minutes, and the first time decanter also downloads GE-Proton for the recording (about 0.5 GB)
 ps.extras.fsr.progress.preparing: Preparing…
 ps.extras.fsr.progress.recording: 'Recording the passes under Proton: %{done} of %{total}'
 ps.extras.fsr.progress.translating: Translating the passes to SPIR-V…
+ps.extras.fsr.progress.runner_downloading: 'decanter is preparing %{runner} for the recording: %{received} of %{total}'
+ps.extras.fsr.progress.runner_downloading_size: 'decanter is preparing %{runner} for the recording: %{received}'
+ps.extras.fsr.progress.runner_unpacking: decanter is unpacking %{runner}…
 ps.mods.description: They apply on the next start; "Load mods" is in Graphics.
 ps.mods.loading: Preparing bbport and looking for mods…
 ps.mods.refresh: Refresh

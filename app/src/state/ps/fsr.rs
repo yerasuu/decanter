@@ -1,14 +1,22 @@
 //! Building FSR 4.1.1 from the user's AMD DLL: checked by bbport's own
 //! inspector first, recorded under Proton by bbport's script, and chosen as
 //! the upscaler once it succeeds.
+//!
+//! The recording runs under decanter's own GE-Proton and `umu-run`, prepared
+//! here first, so the user never installs a Proton build or opens Steam for it.
 
 use std::path::{Path, PathBuf};
 
+use decanter_core::runner::{Progress, Runner, Stage};
 use decanter_ps::bbport::tools::{self, BadLoader, DllCheck, Fsr411Failure, Unsupported};
 use decanter_ps::bbport::{GROUPS, values};
 use decanter_ps::port::Port;
 use decanter_ps::process::JobKind;
-use gpui::{AppContext as _, Context};
+use decanter_runtime::runner;
+use futures::StreamExt as _;
+use futures::channel::{mpsc, oneshot};
+use futures::future::{self, Either};
+use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 
 use super::Ps;
 use super::jobs::{self, JobKey};
@@ -66,9 +74,19 @@ impl Ps {
                 }
             };
             cx.update(|cx| on_checked(DllOutcome::Building, cx));
+            let recorder = match prepare_recorder(&this, cx).await {
+                Ok(recorder) => recorder,
+                Err(notice) => {
+                    let _ = this.update(cx, |this, cx| {
+                        this.notice = Some(notice);
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
             let command = match tools::fsr411_build_command(&root, &toolchain, &upscaler, found_loader.as_deref()).await
             {
-                Ok(command) => command,
+                Ok(command) => with_recorder(recorder.as_ref(), command),
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
                         this.notice = Some((Text::new("ps.errors.environment").arg("error", err), true));
@@ -116,6 +134,107 @@ impl Ps {
         })
         .detach();
     }
+}
+
+impl Ps {
+    /// The runner an FSR 4.1.1 build is getting before it records, and how far it got.
+    pub const fn fsr_runner(&self) -> Option<&(Runner, Progress)> {
+        self.fsr_runner.as_ref()
+    }
+
+    /// Stops getting the runners, dropping the download or unpacking it is in.
+    pub fn cancel_fsr_runner(&mut self, cx: &mut Context<Self>) {
+        self.fsr_cancel = None;
+        self.fsr_runner = None;
+        cx.notify();
+    }
+}
+
+/// What the recording runs under: psport's script takes `PROTONPATH` as it is
+/// and the first `umu-run` on `PATH`, which decanter's own copy is not
+/// without the folder of [`decanter_runtime::umu_run_dir`].
+struct Recorder {
+    umu_dir: PathBuf,
+    proton: PathBuf,
+}
+
+fn with_recorder(recorder: Option<&Recorder>, mut command: tokio::process::Command) -> tokio::process::Command {
+    let Some(recorder) = recorder else {
+        return command;
+    };
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let search = std::iter::once(recorder.umu_dir.clone()).chain(std::env::split_paths(&inherited));
+    match std::env::join_paths(search) {
+        Ok(search) => {
+            command.env("PATH", search);
+        }
+        Err(err) => {
+            tracing::warn!(%err, dir = %recorder.umu_dir.display(), "FSR 4.1.1: umu-run's folder can't go on PATH");
+        }
+    }
+    command.env("PROTONPATH", &recorder.proton);
+    command
+}
+
+/// decanter's `umu-run` and GE-Proton, each installed unless it is there, with
+/// their progress shown in the FSR row; `None` where the recording needs no
+/// Proton, and otherwise what the user is told, a cancel included.
+async fn prepare_recorder(this: &WeakEntity<Ps>, cx: &mut AsyncApp) -> Result<Option<Recorder>, (Text, bool)> {
+    if !runner::support(Runner::GeProton).is_offered() {
+        return Ok(None);
+    }
+    let (cancel, cancelled) = oneshot::channel();
+    let (sender, mut receiver) = mpsc::unbounded::<(Runner, Progress)>();
+    let _ = this.update(cx, |this, _| this.fsr_cancel = Some(cancel));
+    let shown = this.clone();
+    let _shown = cx.spawn(async move |cx| {
+        while let Some(update) = receiver.next().await {
+            let _ = shown.update(cx, |ps, cx| {
+                ps.fsr_runner = Some(update);
+                cx.notify();
+            });
+        }
+    });
+    // A step per mebibyte, since a download reports every chunk and each step redraws the row.
+    let mut last = None;
+    let report = move |runner: Runner, progress: Progress| {
+        let step = (
+            matches!(runner, Runner::GeProton),
+            matches!(progress.stage, Stage::Unpacking),
+            progress.received >> 20,
+        );
+        if last != Some(step) {
+            last = Some(step);
+            let _ = sender.unbounded_send((runner, progress));
+        }
+    };
+    let prepared = future::select(Box::pin(get_recorder(report)), cancelled).await;
+    let _ = this.update(cx, |this, cx| {
+        this.fsr_cancel = None;
+        this.fsr_runner = None;
+        cx.notify();
+    });
+    match prepared {
+        Either::Left((Ok(recorder), _)) => Ok(Some(recorder)),
+        Either::Left((Err(err), _)) => {
+            tracing::warn!(error = %format!("{err:#}"), "FSR 4.1.1: decanter's Proton is not ready");
+            Err((
+                Text::new("ps.fsr.failures.proton_not_ready").arg("error", format!("{err:#}")),
+                true,
+            ))
+        }
+        Either::Right(_) => Err((Text::new("ps.fsr.cancelled"), false)),
+    }
+}
+
+async fn get_recorder(mut report: impl FnMut(Runner, Progress) + Send) -> anyhow::Result<Recorder> {
+    let umu = runner::update(Runner::Umu, &mut |progress| report(Runner::Umu, progress)).await?;
+    let umu_dir = decanter_runtime::umu_run_dir(&umu.path).await?;
+    let proton = runner::update(Runner::GeProton, &mut |progress| report(Runner::GeProton, progress)).await?;
+    Ok(Recorder {
+        umu_dir,
+        proton: proton.path,
+    })
 }
 
 fn unsupported_text(unsupported: &Unsupported, upscaler: &Path) -> Text {

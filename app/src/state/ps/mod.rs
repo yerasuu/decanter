@@ -24,11 +24,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use decanter_core::capabilities::Feature;
+use decanter_core::runner::{Progress, Runner};
 use decanter_ps::bbport::direct::FolderError;
 use decanter_ps::library;
 use decanter_ps::port::Port;
 use decanter_ps::process::Job;
 use decanter_ps::status::{self, Entry};
+use futures::channel::oneshot;
 use gpui::{App, AppContext as _, Context, Entity, Global};
 
 pub use adding::{Adding, Offer};
@@ -63,6 +65,10 @@ pub struct Ps {
     failures_revision: u32,
     /// Bumped when an FSR 4.1.1 build ends, so its status is checked again.
     fsr_revision: u32,
+    /// The runner an FSR 4.1.1 build is getting before it records, and how far it got.
+    fsr_runner: Option<(Runner, Progress)>,
+    /// Ends that preparation, dropping the download or unpacking it is in.
+    fsr_cancel: Option<oneshot::Sender<()>>,
     /// Bumped whenever what a run taught about a title changes, for the
     /// game's view to read it again.
     learned_revision: u32,
@@ -113,6 +119,8 @@ impl Ps {
                 scan: 0,
                 failures_revision: 0,
                 fsr_revision: 0,
+                fsr_runner: None,
+                fsr_cancel: None,
                 learned_revision: 0,
                 jobs: HashMap::new(),
                 launching: HashSet::new(),

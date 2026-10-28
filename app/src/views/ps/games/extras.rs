@@ -1,6 +1,9 @@
 //! What bbport's settings table can't hold: building FSR 4.1.1 from an AMD
 //! DLL, and free-form environment for the game.
 
+use std::borrow::Cow;
+
+use decanter_core::runner::{Progress, Runner, Stage};
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::tools::{self, Fsr411Progress};
 use decanter_ps::bbport::values::Values;
@@ -178,17 +181,20 @@ impl ExtrasView {
             .job(&JobKey::Fsr411)
             .filter(|job| job.read(cx).is_running())
             .cloned();
-        let status = match (&job, &self.fsr_problem) {
-            (Some(job), _) => match tools::fsr411_progress(job.read(cx)) {
+        let preparing = self.ps.read(cx).fsr_runner().map(runner_progress);
+        let is_preparing = preparing.is_some();
+        let status = match (&job, preparing, &self.fsr_problem) {
+            (Some(job), _, _) => match tools::fsr411_progress(job.read(cx)) {
                 Fsr411Progress::Preparing => t!("ps.extras.fsr.progress.preparing"),
                 Fsr411Progress::Recording { done, total } => {
                     t!("ps.extras.fsr.progress.recording", done = done, total = total)
                 }
                 Fsr411Progress::Translating => t!("ps.extras.fsr.progress.translating"),
             },
-            (None, None) => t!("ps.extras.fsr.checking"),
-            (None, Some(None)) => t!("ps.extras.fsr.ready"),
-            (None, Some(Some(file))) => t!(
+            (None, Some(preparing), _) => preparing,
+            (None, None, None) => t!("ps.extras.fsr.checking"),
+            (None, None, Some(None)) => t!("ps.extras.fsr.ready"),
+            (None, None, Some(Some(file))) => t!(
                 "ps.extras.fsr.missing",
                 problem = t!("ps.extras.fsr.missing_file", file = file)
             ),
@@ -196,6 +202,9 @@ impl ExtrasView {
         let action = if job.is_some() {
             button("fsr411", ButtonKind::Secondary, t!("common.cancel"), false)
                 .on_click(cx.listener(|this, _, _, cx| this.ps.update(cx, |ps, cx| ps.stop(&JobKey::Fsr411, cx))))
+        } else if is_preparing {
+            button("fsr411", ButtonKind::Secondary, t!("common.cancel"), false)
+                .on_click(cx.listener(|this, _, _, cx| this.ps.update(cx, Ps::cancel_fsr_runner)))
         } else {
             button("fsr411", ButtonKind::Secondary, t!("ps.extras.fsr.pick"), false)
                 .on_click(cx.listener(|this, _, _, cx| this.pick_dll(None, cx)))
@@ -241,5 +250,28 @@ impl Render for ExtrasView {
                         .child(div().flex_1().min_w_0().child(self.env.clone())),
                 ),
             )
+    }
+}
+
+/// What the FSR row says while decanter gets a runner the recording needs.
+fn runner_progress((runner, progress): &(Runner, Progress)) -> Cow<'static, str> {
+    let name = match runner {
+        Runner::Umu => "umu-run",
+        Runner::Proton => "Proton",
+        Runner::GeProton => "GE-Proton",
+    };
+    match (&progress.stage, progress.total) {
+        (Stage::Downloading, Some(total)) => t!(
+            "ps.extras.fsr.progress.runner_downloading",
+            runner = name,
+            received = crate::format::bytes(progress.received),
+            total = crate::format::bytes(total)
+        ),
+        (Stage::Downloading, None) => t!(
+            "ps.extras.fsr.progress.runner_downloading_size",
+            runner = name,
+            received = crate::format::bytes(progress.received)
+        ),
+        (Stage::Unpacking, _) => t!("ps.extras.fsr.progress.runner_unpacking", runner = name),
     }
 }

@@ -19,6 +19,10 @@ implemented.
 - MangoHud's performance logs: `<root>/decanter/logs/mangohud/` (its
   `output_folder`); the per-game tool choices are rows of the database's
   `game_options`.
+- decanter's GE-Proton for psport's FSR 4.1.1 recording, one pinned
+  release: `<root>/decanter/runners/ge-proton/<tag>/` (installed through
+  `.<tag>.<pid>.part/` and one rename), and `<root>/decanter/bin/path/umu-run`,
+  a link to the pinned `umu-run` that the recording finds on `PATH`.
 
 ## Still outside, to move in
 
