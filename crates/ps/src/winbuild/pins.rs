@@ -145,9 +145,6 @@ pub struct MinGit {
     pub size: u64,
 }
 
-/// MinGit's git, below its folder: the launcher that puts MinGit's own folders on `PATH` first.
-pub const MINGIT_GIT: &str = "cmd/git.exe";
-
 /// [`MINGIT`]'s zip, which has its files at the top. Its caps are bounds for a git distribution until
 /// the pinned zip is measured (entries, unpacked bytes, the largest file), as the others were.
 #[must_use]
@@ -170,7 +167,7 @@ pub fn mingit() -> Archive {
             unpacked_bytes: 512 << 20,
             file_bytes: 64 << 20,
         },
-        required: vec![MINGIT_GIT.to_owned()],
+        required: vec!["cmd/git.exe".to_owned()],
     }
 }
 

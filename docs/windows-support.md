@@ -167,7 +167,7 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | Proton, Prefixes, DesktopEntries, Scopes, SelfUpdate | available | no | no |
 | PsSection | available | testing | no (page says psport isn't ported) |
 | PsPlay | available | testing (Windows package or psport.exe folder) | no |
-| PsBuilds | available | testing (the branch built with the pinned toolchain; `NeedsSetup` without git on `PATH`) | no |
+| PsBuilds | available | testing (the branch built with the pinned toolchain and MinGit) | no |
 | MangoHud, GameMode | available | no | no |
 | PsMenuBinding, PsOnline | once psport lists it | no | no |
 | PsDownloads | available on x86_64 | testing (the release's Windows package) | no |
@@ -329,13 +329,15 @@ Done on `feat/927-windows-build-psport-branch` (decisions #924 and #928,
 psport #926). `decanter_ps::winbuild` builds the branch Linux's Testing
 channel follows on this machine, with a toolchain decanter downloads and
 pins itself, and leaves the result beside the packages. `PsBuilds` is
-offered (Testing) on Windows when `git` is on `PATH`, otherwise it is off
-with *git on PATH* as the reason; decanter downloads no git. Where
+offered (Testing) on Windows; git is decanter's pinned MinGit, never the
+user's, so nothing has to be installed first (decision #1107). Where
 `psport.exe` runs directly the Linux pipeline (checkouts, nix, the update
 loop, `prepare`) stays off whatever `PsBuilds` says.
 
-**What runs.** Only the user's own `git` (found on `PATH` by absolute path,
-never a relative entry) and, from the downloads, the pinned `cmake.exe` and
+**What runs.** Only, from the downloads, MinGit's `cmd\git.exe` (with
+`GIT_CONFIG_NOSYSTEM=1`, so MinGit's own `etc\gitconfig` is not read, and
+`http.sslBackend=schannel`, so certificates are checked against Windows'
+store; the user's own git configuration still applies), the pinned `cmake.exe` and
 `ninja.exe` and what they start: llvm-mingw's clang and lld, and
 `pkgconf.exe`, `glslang.exe` and `cmd.exe /C` for CMake's custom commands.
 Nothing built is run; Jugar runs it once the user chooses it.
@@ -371,6 +373,22 @@ downloaded. To pin a new `toolchain-win32-N`:
    resizing the package's caps if step 3 asks for it (never loosening the
    names), and build once on Windows.
 
+MinGit is pinned apart, in `pins::MINGIT` (`tag`, `version` as the asset
+names it, `sha256`, `size`); its SHA-256 still says `unpinned`, which stops
+every check and build with `NotPinned`. To pin a release:
+
+1. On the release page
+   (`https://github.com/git-for-windows/git/releases/tag/v<git>.windows.<n>`),
+   read the SHA-256 the notes list for `MinGit-<version>-64-bit.zip` and the
+   asset's size (`gh release view v<git>.windows.<n> -R
+   git-for-windows/git --json assets`, whose `digest` must agree).
+2. Download the zip and compare `sha256sum MinGit-<version>-64-bit.zip`.
+3. List it (`bsdtar -tvf`): entries, unpacked bytes, the largest file and
+   any character beyond `Names::Toolchain`; set `mingit()`'s caps from it
+   and write the measures beside them and in the table below.
+4. Set `pins::MINGIT` and remove `MINGIT_SHA256`'s placeholder, then check
+   the branch and build once on Windows without Git for Windows on `PATH`.
+
 **Toolchain cache** (`winbuild::toolchain`): `<library>\psport\toolchain\win32\<folder>\`
 per piece, `<folder>.json` recording the SHA-256 the zip was checked
 against and `<folder>.files` the SHA-256 of every file extracted from it
@@ -379,7 +397,7 @@ against and `<folder>.files` the SHA-256 of every file extracted from it
 HTTPS to GitHub's release hosts, the 512 MiB cap) to `.<folder>.<pid>.zip`,
 extracted with `archive::unpack` (below) into `.<folder>.<pid>\`, its
 required files checked (clang, clang++, ld.lld, llvm-ar, llvm-ranlib,
-llvm-windres, llvm-dlltool; `cmake.exe`; `ninja.exe`; `manifest.json`,
+llvm-windres, llvm-dlltool; `cmake.exe`; `ninja.exe`; `cmd\git.exe`; `manifest.json`,
 `psport-toolchain.cmake`, `pkgconf.exe`, `glslang.exe`), hashed, then
 renamed into place and recorded. One install of a piece at a time, across
 processes (`.<folder>.lock`): the second finds it installed and keeps it,
@@ -388,7 +406,7 @@ install removes what other processes' interrupted installs of that piece
 left. A piece counts while its record names the current pin and its
 required files and list are there; a new pin downloads it again.
 
-Before each build every file of the four pieces is hashed again against its
+Before each build every file of the five pieces is hashed again against its
 list: a file changed, missing, added or turned into a link stops the build
 with *the toolchain's <file> changed after it was installed and checked*,
 and *Borrar la toolchain* lets the next build download it again. The DLLs a
@@ -398,7 +416,7 @@ package's `manifest.json` must be schema 1, name
 `psport-toolchain-win32-N-x86_64` with the pinned number, `psport-toolchain.cmake`
 and `clang64`, and list `llvm-mingw`, `cmake` and `ninja` with the pinned
 SHA-256 and folders (other fields, such as `msys2_database`, are not read).
-About 560 MB to download the first time, 2 GB on disk; hashing the 2 GB
+About 560 MB to download the first time, 2 GB on disk, plus MinGit; hashing the 2 GB
 takes seconds per build.
 
 **Archive checks** (`crates/ps/src/archive.rs`, shared with the package of
@@ -593,7 +611,7 @@ allow-listed URLs by a test `~/.gitconfig`:
 
 Only Windows can check the rest: `tar.exe` on the real zips (names with
 spaces and `@` included), the Job Object (its limits accepted for a
-standard user, kill on close, the process count), git for Windows with
+standard user, kill on close, the process count), MinGit with
 the clean environment, `core.hooksPath=NUL` and fsck, CMake and Ninja with
 the clean environment, the build itself, the card, and Jugar on a built
 folder.

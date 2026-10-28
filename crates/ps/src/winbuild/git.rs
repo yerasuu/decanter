@@ -5,11 +5,12 @@
 //! Only the remotes written here are ever asked: psport's own ([`Port::upstream`], the one Linux
 //! follows) and Dear ImGui's. Every value the remote sends back is checked before it goes anywhere
 //! (a branch name as [`crate::updater`] accepts it, 40-hex commits), and every argument that comes
-//! from outside goes after `--end-of-options`. git runs as the user's own program with only the
-//! variables in [`ENV`] (no `GIT_*` of the caller's), never looking for a repository above the work
-//! folder, and with [`OPTIONS`]: HTTPS only, certificates verified, no credential helper, no hooks,
-//! no Git LFS, received objects checked, links checked out as plain files. The user's own git
-//! configuration (a proxy, an `insteadOf`) still applies. Nothing in the fetched tree runs here.
+//! from outside goes after `--end-of-options`. git is decanter's pinned MinGit ([`program`]), never
+//! the user's, run with only the variables in [`ENV`] (no `GIT_*` of the caller's), without a system
+//! configuration, never looking for a repository above the work folder, and with [`OPTIONS`]: HTTPS
+//! only, certificates verified, no credential helper, no hooks, no Git LFS, received objects checked,
+//! links checked out as plain files. The user's own git configuration (a proxy, an `insteadOf`)
+//! still applies. Nothing in the fetched tree runs here.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,8 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-use super::{Commit, Error, Head, Log};
+use super::{Commit, Error, Head, Log, Stage, pins, toolchain};
+use crate::paths::Root;
 use crate::platform;
 use crate::port::Port;
 use crate::remote::RemoteError;
@@ -33,20 +35,20 @@ const IMGUI_REMOTE: &str = "https://github.com/ocornut/imgui.git";
 const NETWORK_TIMEOUT: Duration = Duration::from_mins(15);
 const LOCAL_TIMEOUT: Duration = Duration::from_mins(5);
 
-/// git as found on `PATH`, by absolute path: Git for Windows' installer puts it there, and Linux
-/// asks `PATH` for it too. Never a relative entry, so the current folder can't supply one.
-#[must_use]
-pub fn program() -> Option<PathBuf> {
-    let name = if cfg!(windows) { "git.exe" } else { "git" };
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .filter(|dir| dir.is_absolute())
-        .map(|dir| dir.join(name))
-        .find(|candidate| std::fs::metadata(candidate).is_ok_and(|meta| meta.is_file()))
+/// The pinned MinGit's git, installed into the toolchain cache first when it isn't there: whatever
+/// git the user has, or hasn't, plays no part (decision #1107).
+///
+/// # Errors
+/// When MinGit isn't pinned, or can't be downloaded, doesn't match its pin or holds anything its
+/// checks refuse.
+pub async fn program(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<PathBuf, Error> {
+    toolchain::install(&toolchain::dir(root), &pins::mingit(), on_stage)
+        .await
+        .map(|folder| toolchain::mingit_git(&folder))
 }
 
-/// The caller's variables git keeps: where the user's and the system's configuration are, temporary
-/// files, and proxies. Everything else, `GIT_DIR` and `GIT_CONFIG_*` included, is dropped.
+/// The caller's variables git keeps: where the user's configuration is, temporary files, and
+/// proxies. Everything else, `GIT_DIR` and `GIT_CONFIG_*` included, is dropped.
 const ENV: [&str; 16] = [
     "SystemRoot",
     "SystemDrive",
@@ -100,6 +102,12 @@ fn command(git: &Path, dir: &Path, ceiling: &Path) -> Command {
             command.arg(option);
         }
     }
+    // MinGit names its CA bundle in its system configuration, which `GIT_CONFIG_NOSYSTEM` leaves out,
+    // so certificates are checked against Windows' own store instead
+    // ([http.sslBackend](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httpsslBackend)).
+    if cfg!(windows) {
+        command.args(["-c", "http.sslBackend=schannel"]);
+    }
     command.arg("-C").arg(dir).current_dir(dir).env_clear();
     for name in ENV {
         if let Some(value) = std::env::var_os(name) {
@@ -113,6 +121,7 @@ fn command(git: &Path, dir: &Path, ceiling: &Path) -> Command {
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
         .env("GIT_LFS_SKIP_SMUDGE", "1")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         // Ceilings are folders git won't move up into, so the one above `ceiling` keeps it at `ceiling`.
         .env("GIT_CEILING_DIRECTORIES", ceiling.parent().unwrap_or(ceiling))
         .stdin(Stdio::null())

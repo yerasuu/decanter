@@ -89,20 +89,22 @@ impl Ps {
 
     /// Asks the remote for the branch's newest commit.
     pub fn branch_check(&mut self, cx: &mut Context<Self>) {
-        if self.branch.checking {
+        // A delete under way may be taking the MinGit the check installs.
+        if self.branch.checking || self.branch.deleting {
             return;
         }
         self.branch.checking = true;
         cx.notify();
-        let work = winbuild::work(&paths::active());
+        let root = paths::active();
         cx.spawn(async move |this, cx| {
-            let head = match winbuild::git::program() {
-                Some(program) => winbuild::git::head(&program, &work).await.map_err(|err| {
-                    tracing::warn!(%err, "could not ask psport's remote for its branch");
-                    error_text(&err)
-                }),
-                None => Err(error_text(&winbuild::Error::NoGit)),
-            };
+            let head = match winbuild::git::program(&root, &mut |_| {}).await {
+                Ok(program) => winbuild::git::head(&program, &winbuild::work(&root)).await,
+                Err(err) => Err(err),
+            }
+            .map_err(|err| {
+                tracing::warn!(%err, "could not ask psport's remote for its branch");
+                error_text(&err)
+            });
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.branch;
                 state.checking = false;
@@ -246,7 +248,11 @@ impl Ps {
 
     fn may_delete(&self, cx: &Context<Self>) -> bool {
         let playing = self.jobs.values().any(|job| job.read(cx).is_running());
-        !playing && self.branch.building.is_none() && !self.branch.deleting && !self.package.is_selecting()
+        !playing
+            && self.branch.building.is_none()
+            && !self.branch.checking
+            && !self.branch.deleting
+            && !self.package.is_selecting()
     }
 }
 
@@ -317,7 +323,6 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
 fn error_text(err: &winbuild::Error) -> Text {
     match err {
         winbuild::Error::NotPinned => Text::new("ps.branch.errors.not_pinned"),
-        winbuild::Error::NoGit => Text::new("ps.branch.errors.no_git"),
         winbuild::Error::Tampered(file) => Text::new("ps.branch.errors.tampered").arg("file", file),
         winbuild::Error::PathTooLong { path, length } => Text::new("ps.branch.errors.path_too_long")
             .arg("path", path)

@@ -5,6 +5,7 @@
 //! while its record names the pin of this decanter and its required files are there; a new pin
 //! downloads it again. Before each build every file is hashed again ([`verify`]), so a build that
 //! changed the toolchain (it runs with the user's rights) is caught before the next one uses it.
+//! MinGit, the git the build fetches its sources with, is one of the pieces.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -38,6 +39,7 @@ const VERIFY_LOG_EVERY: Duration = Duration::from_secs(30);
 /// The absolute paths a build runs and passes.
 #[derive(Debug, Clone)]
 pub struct Tools {
+    pub git: PathBuf,
     pub cmake: PathBuf,
     pub ninja: PathBuf,
     pub llvm_mingw: PathBuf,
@@ -104,7 +106,7 @@ pub async fn is_installed(root: &Root) -> bool {
         return false;
     };
     let cache = dir(root);
-    for archive in pins::tools().iter().chain(std::iter::once(&package)) {
+    for archive in pins::tools().iter().chain([&pins::mingit(), &package]) {
         if installed(&cache, archive).await.is_none() {
             return false;
         }
@@ -124,14 +126,15 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
     };
     let cache = dir(root);
     let [llvm_mingw, cmake, ninja] = pins::tools();
-    let mut folders = Vec::with_capacity(4);
-    for archive in [&llvm_mingw, &cmake, &ninja, &package] {
+    let mingit = pins::mingit();
+    let mut folders = Vec::with_capacity(5);
+    for archive in [&llvm_mingw, &cmake, &ninja, &mingit, &package] {
         match install(&cache, archive, on_stage).await {
             Ok(folder) => folders.push(folder),
             Err(err) => return Err(err),
         }
     }
-    let [llvm_mingw_dir, cmake_dir, ninja_dir, package_dir] = match <[PathBuf; 4]>::try_from(folders) {
+    let [llvm_mingw_dir, cmake_dir, ninja_dir, mingit_dir, package_dir] = match <[PathBuf; 5]>::try_from(folders) {
         Ok(folders) => folders,
         Err(_) => return Err(Error::Manifest("a toolchain piece went missing".to_owned())),
     };
@@ -140,7 +143,8 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
     let mut task = {
         let (cache, package_dir, checked) = (cache.clone(), package_dir.clone(), Arc::clone(&checked));
         tokio::task::spawn_blocking(move || {
-            let pieces = [&llvm_mingw, &cmake, &ninja, &package];
+            // The package last, since its list is the one kept for `sysroot_bin`.
+            let pieces = [&llvm_mingw, &cmake, &ninja, &mingit, &package];
             let mut lists = Vec::with_capacity(pieces.len());
             for archive in pieces {
                 match expected(&cache, archive) {
@@ -214,12 +218,18 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
         })
         .collect();
     Ok(Tools {
+        git: mingit_git(&mingit_dir),
         cmake: cmake_dir.join("bin").join("cmake.exe"),
         ninja: ninja_dir.join("ninja.exe"),
         llvm_mingw: llvm_mingw_dir,
         package: package_dir,
         sysroot_bin,
     })
+}
+
+/// The git inside MinGit's `folder`: the launcher that puts MinGit's own folders first on `PATH`.
+pub(super) fn mingit_git(folder: &Path) -> PathBuf {
+    folder.join("cmd").join("git.exe")
 }
 
 /// `archive`'s folder in `cache`, installing it first unless its record names the same SHA-256.

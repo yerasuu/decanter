@@ -69,8 +69,6 @@ const WORK_HEX: usize = 8;
 pub enum Error {
     #[error("this decanter pins no psport toolchain package yet")]
     NotPinned,
-    #[error("git is not on PATH")]
-    NoGit,
     #[error("{0}")]
     Remote(RemoteError),
     #[error("{0}")]
@@ -403,8 +401,8 @@ pub async fn is_confirmed(root: &Root, commit: &Commit) -> bool {
 }
 
 /// `head` built and in the library, or the build already there. Refused unless [`confirm`] was
-/// given for its commit, the toolchain is pinned and git is on `PATH`; one build per commit at a time,
-/// across decanter processes.
+/// given for its commit and the toolchain is pinned; one build per commit at a time, across decanter
+/// processes.
 ///
 /// # Errors
 /// When any step fails; the work folder goes, the log at [`log_path`] stays.
@@ -423,9 +421,6 @@ pub async fn build(
     if pins::package().is_none() {
         return Err(Error::NotPinned);
     }
-    let Some(program) = git::program() else {
-        return Err(Error::NoGit);
-    };
     let folder = match work_folder(root, &head.commit) {
         Ok(folder) => folder,
         Err(err) => return Err(err),
@@ -480,7 +475,7 @@ pub async fn build(
     ))
     .await;
     tracing::info!(commit = %head.commit, branch = head.branch, "building psport for Windows");
-    let result = steps(root, head, &program, &folder, on_stage, &mut log).await;
+    let result = steps(root, head, &folder, on_stage, &mut log).await;
     match &result {
         Ok(built) => {
             log.line(format!(
@@ -547,7 +542,6 @@ fn sweep_staging(builds: &Path, base: &Path, own: &str) {
 async fn steps(
     root: &Root,
     head: &Head,
-    program: &Path,
     folder: &Path,
     on_stage: &mut dyn FnMut(Stage),
     log: &mut Log<'_>,
@@ -567,7 +561,7 @@ async fn steps(
             return Err(err.into());
         }
     }
-    if let Err(err) = git::checkout(program, &work(root), &sources, head, log).await {
+    if let Err(err) = git::checkout(&tools.git, &work(root), &sources, head, log).await {
         return Err(err);
     }
     let env = platform::build_env(&temp);

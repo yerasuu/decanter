@@ -15,7 +15,6 @@ common.setup.tray_host: una bandeja del sistema (servicio StatusNotifier)
 common.setup.psport_menu_binding: una compilación de psport que incluya port_menu_binding
 common.setup.psport_key_stick: una compilación de psport que incluya key_stick
 common.setup.psport_online: una compilación de psport que incluya online_module
-common.setup.git: git en el PATH (Git for Windows)
 common.reported_by_ps: 'El port de PS no lo admite: %{why}'
 common.not_ported_yet_ps: 'psport todavía no es compatible con %{system}'
 common.downloads_instead_ps: 'En %{system} todavía no se compila psport: el canal de versión estable descarga su paquete ya compilado'

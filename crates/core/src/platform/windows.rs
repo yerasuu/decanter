@@ -192,7 +192,7 @@ pub const fn executable_permissions() -> Option<Permissions> {
 ///
 /// The PS section plays psport's Windows package, downloaded from its releases,
 /// a build of psport's branch made here with the toolchain decanter pins
-/// (`decanter_ps::winbuild`, git needed), or a psport.exe from a folder the
+/// (`decanter_ps::winbuild`), or a psport.exe from a folder the
 /// user picks; no online play. It, the tray, the close-game shortcut and the
 /// Steam export wait for a run on a real Windows.
 #[must_use]
