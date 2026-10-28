@@ -31,16 +31,16 @@ decanter-report = { path = "crates/report" }
 decanter-runtime = { path = "crates/runtime" }
 # Zed's repository at a pinned commit: the crates.io release of gpui no
 # longer builds.
-gpui = { git = "https://github.com/zed-industries/zed", rev = "8fda6e46539bdf056e3e326cfcab7deea831ff40" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "8fda6e46539bdf056e3e326cfcab7deea831ff40" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
 anyhow = "1.0.104"
 chrono = "0.4.45"
 clap = "4.6.7"
 # `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
 # default — see crates/gog for the features that vendor both instead.
-curl = "0.4"
+curl = "0.4.51"
 dirs = "7.0.0"
-flate2 = "1"
+flate2 = "1.1.10"
 futures = "0.3.34"
 futures-util = "0.3.34"
 # Free disk space where nix's statvfs isn't used (Windows, macOS).
@@ -51,13 +51,13 @@ gog = "0.5.0"
 global-hotkey = "0.9.0"
 image = "0.25.10"
 keyring = "4.2.0"
-ksni = "0.3.6"
+ksni = "0.3.7"
 md5 = "0.8.1"
 # Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
 # exactly so a new release of what decides which binary runs gets read first.
 minisign-verify = "=0.3.0"
 nix = { version = "0.31.3", default-features = false }
-open = "5.4.4"
+open = "5.4.5"
 # A macOS build's Info.plist, which names the app bundle's executable; XML or
 # binary, both of which bundles ship (decision #892).
 plist = { version = "1.10.3", default-features = false }
@@ -65,33 +65,33 @@ plist = { version = "1.10.3", default-features = false }
 # rustls is pure Rust, no system TLS library to find at build or link time.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
 rfd = "0.17.2"
-rusqlite = "0.40.2"
+rusqlite = "0.41.0"
 rust-i18n = "4.2.4"
 serde = "1.0.229"
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 # Already in the graph through the TLS stack; listed for the nix-portable
 # checksum in crates/ps.
-sha2 = "0.10.9"
+sha2 = "0.11.1"
 # The system language where no POSIX locale variable carries it (Windows'
 # user default locale, macOS's preferred languages); already locked through
 # cosmic-text.
 sys-locale = "0.3.2"
-thiserror = "2.0.20"
-tokio = "1.53.2"
-toml = "1.1.5"
+thiserror = "2.0.21"
+tokio = "1.54.1"
+toml = "1.1.8"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 # The tray on Windows and macOS; Linux keeps ksni (see app/src/platform/linux/tray.rs).
 tray-icon = { version = "0.26.1", default-features = false }
 unicode-segmentation = "1.13.3"
-url = "2"
-uuid = "1.27.0"
+url = "2.5.8"
+uuid = "1.29.0"
 # Job Objects for native Windows game sessions, through a safe API since the
 # workspace forbids `unsafe`.
 win32job = "2.0.3"
 # Already in the graph through ksni, GPUI and the keyring; decanter talks to
 # KGlobalAccel and the notification server with it, on the tokio runtime.
-zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }
 
 # GPUI unoptimized is slow enough to misjudge the app's own performance by,
 # so dependencies are always built optimized; the workspace's own crates
