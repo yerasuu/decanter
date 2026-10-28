@@ -14,8 +14,9 @@ use crate::process::JobKind;
 /// `CREATE_NO_WINDOW`, so `tar.exe` doesn't flash a console over decanter.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// `psport.exe` from the Windows package or build in use ([`crate::package`], [`crate::winbuild`]) or
-/// a folder the user picked, started directly ([`crate::bbport::direct`]): no checkout, toolchain or `run.sh` here.
+/// `psport.exe` from the Windows package or build in use ([`crate::os::windows::package`],
+/// [`crate::os::windows::winbuild`]) or a folder the user picked, started directly ([`crate::bbport::direct`]): no
+/// checkout, toolchain or `run.sh` here.
 pub const DIRECT_LAUNCH: bool = true;
 
 /// Process groups are a Unix job-control idea; a game's Job Object is its

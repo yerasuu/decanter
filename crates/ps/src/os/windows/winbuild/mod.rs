@@ -1,6 +1,6 @@
 //! psport's Testing channel on Windows: the branch Linux follows, built on this machine with a
 //! toolchain decanter downloads and pins itself (decisions #924 and #928), since CI publishes
-//! Windows builds only for tagged releases ([`crate::package`]).
+//! Windows builds only for tagged releases ([`crate::os::windows::package`]).
 //!
 //! A build fetches one commit with git ([`git`]), only after the owner confirmed that commit
 //! ([`confirm`]), since building runs the branch's own CMake scripts with the user's rights. It
@@ -32,9 +32,11 @@ use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt as _;
 
+use crate::os::linux::prebuilt;
+use crate::os::windows::package;
 use crate::paths::Root;
 use crate::remote::RemoteError;
-use crate::{archive, download, package, platform, prebuilt};
+use crate::{archive, download, platform};
 
 /// The configure step: CMake checks the compiler and reads the toolchain package.
 const CONFIGURE: run::Bounds = run::Bounds {

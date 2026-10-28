@@ -4,3 +4,4 @@
 //! orchestration; which one runs is decided at run time ([`decanter_core::platform::support`]).
 
 pub mod linux;
+pub mod windows;

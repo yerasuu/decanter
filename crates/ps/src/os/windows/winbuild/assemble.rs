@@ -1,5 +1,5 @@
 //! A built tree made into a folder `psport.exe` runs from, the same shape as the package psport's CI
-//! publishes ([`crate::package`]): the three programs and `libpsport-gpu.dll` from the build, the
+//! publishes ([`crate::os::windows::package`]): the three programs and `libpsport-gpu.dll` from the build, the
 //! DLLs they load from the toolchain package's `clang64/bin` (the closure of their PE import tables,
 //! [`super::pe`]), a `BUILD-INFO.txt` listing those DLLs, and the checkout's `patches/`, which
 //! `psport.exe` reads a title's patch file from, exiting when it is missing. The folder must then
@@ -15,7 +15,7 @@ use sha2::{Digest as _, Sha256};
 use super::{Error, Head};
 use crate::archive::{self, Names};
 use crate::bbport::direct::{Folder, GPU_LIBRARY};
-use crate::package::{self, BUILD_INFO, PROGRAMS};
+use crate::os::windows::package::{self, BUILD_INFO, PROGRAMS};
 
 /// The loader psport ships nowhere: the GPU driver's own, as psport's `tools/win32-bundle.sh` leaves
 /// it.

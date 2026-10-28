@@ -1,7 +1,8 @@
 //! Fetching what a port's CI publishes: bounded downloads checked against their published SHA-256 and size.
 //!
-//! Shared by the Linux bundles ([`crate::os::linux::bundle`]), the Windows package ([`crate::package`]) and the
-//! Windows toolchain ([`crate::winbuild`]), so neither system's code depends on the other's.
+//! Shared by the Linux bundles ([`crate::os::linux::bundle`]), the Windows package
+//! ([`crate::os::windows::package`]) and the Windows toolchain ([`crate::os::windows::winbuild`]), so neither
+//! system's code depends on the other's.
 
 use std::io;
 use std::path::Path;

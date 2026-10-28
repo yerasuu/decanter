@@ -342,7 +342,7 @@ store; the user's own git configuration still applies), the pinned `cmake.exe` a
 `pkgconf.exe`, `glslang.exe` and `cmd.exe /C` for CMake's custom commands.
 Nothing built is run; Jugar runs it once the user chooses it.
 
-**Pins** (`crates/ps/src/winbuild/pins.rs`), checked against the official
+**Pins** (`crates/ps/src/os/windows/winbuild/pins.rs`), checked against the official
 release pages on 2026-10-24:
 
 | Piece | Asset | SHA-256 | Where the hash comes from |

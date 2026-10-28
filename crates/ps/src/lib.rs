@@ -31,7 +31,6 @@ pub mod learned;
 pub mod library;
 pub mod mapping;
 pub mod os;
-pub mod package;
 pub mod paths;
 mod platform;
 pub mod port;
@@ -39,6 +38,6 @@ pub mod process;
 pub mod remote;
 pub mod run_log;
 pub mod status;
-pub mod winbuild;
 
 pub use os::linux::{builds, bundle, cmake_cache, prebuilt, toolchain, updater};
+pub use os::windows::{package, winbuild};

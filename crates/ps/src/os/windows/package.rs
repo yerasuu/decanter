@@ -26,9 +26,9 @@ use crate::archive::{self, Limits, Names, Top};
 use crate::bbport::direct::{EXECUTABLE, GPU_LIBRARY};
 use crate::download;
 use crate::os::linux::prebuilt;
+use crate::os::windows::winbuild::assemble::{MAX_PATCH_BYTES, MAX_PATCHES, PATCHES};
 use crate::paths::Root;
 use crate::port::Port;
-use crate::winbuild::assemble::{MAX_PATCH_BYTES, MAX_PATCHES, PATCHES};
 
 /// The [`crate::bbport::LauncherSettings`] key the version Jugar runs is kept under.
 pub const SELECTED_KEY: &str = "psport_windows_version";

@@ -1,6 +1,6 @@
 //! Zip archives from the network, read with the system's `tar` ([`platform::zip_tar`]) and checked
-//! before and after it extracts anything: psport's Windows package ([`crate::package`]) and the
-//! pieces of the Windows toolchain ([`crate::winbuild`]).
+//! before and after it extracts anything: psport's Windows package ([`crate::os::windows::package`]) and the
+//! pieces of the Windows toolchain ([`crate::os::windows::winbuild`]).
 //!
 //! Every name is checked from the listing first: one top folder (or none, as [`Top`] asks), names
 //! Windows takes as they are, no links or special files, nothing listed twice regardless of case,

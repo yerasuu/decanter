@@ -22,7 +22,7 @@ use super::pins::{self, Archive};
 use super::{Error, Stage};
 use crate::archive;
 use crate::download;
-use crate::package;
+use crate::os::windows::package;
 use crate::paths::Root;
 
 const MAX_RECORD_BYTES: u64 = 4096;
