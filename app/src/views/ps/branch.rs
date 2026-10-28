@@ -2,13 +2,12 @@
 //! branch's newest commit, the confirmation asked before building a commit the first time, the
 //! build's progress and last lines, and the builds in the library to use or delete.
 
-use std::borrow::Cow;
-
-use decanter_core::runner::{Progress, Stage};
+use decanter_core::runner::{Progress, Runner};
 use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head};
 use gpui::{AnyElement, App, Div, Entity, SharedString, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use crate::runners;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
@@ -183,34 +182,10 @@ fn confirmation(ps: &Entity<Ps>, head: &Head) -> AnyElement {
 }
 
 fn progress(head: &Head, stage: Option<&Progress>) -> AnyElement {
-    let (text, fraction): (Cow<'static, str>, Option<f64>) = match stage {
-        None => (t!("ps.branch.stage.starting"), None),
-        Some(stage) => {
-            let name = stage.item.as_deref().unwrap_or_default();
-            match stage.stage {
-                Stage::Downloading => (
-                    t!(
-                        "ps.branch.stage.downloading",
-                        name = name,
-                        size = crate::format::bytes(stage.received)
-                    ),
-                    stage.total.map(|total| stage.received as f64 / total.max(1) as f64),
-                ),
-                Stage::Unpacking => (t!("ps.branch.stage.unpacking", name = name), None),
-                Stage::Verifying => {
-                    let total = stage.total.unwrap_or_default();
-                    (
-                        t!("ps.branch.stage.verifying", checked = stage.received, total = total),
-                        (total > 0).then(|| stage.received as f64 / total as f64),
-                    )
-                }
-                Stage::Sources => (t!("ps.branch.stage.sources"), None),
-                Stage::Configuring => (t!("ps.branch.stage.configuring"), None),
-                Stage::Compiling => (t!("ps.branch.stage.compiling"), None),
-                Stage::Assembling => (t!("ps.branch.stage.assembling"), None),
-            }
-        }
-    };
+    let (text, fraction) = stage.map_or_else(
+        || (t!("ps.branch.stage.starting"), None),
+        |stage| runners::progress(Runner::Psport, stage),
+    );
     div()
         .flex()
         .flex_col()

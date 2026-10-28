@@ -8,12 +8,12 @@ use std::collections::VecDeque;
 use decanter_core::runner::{Pin, Progress, Runner};
 use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head};
 use decanter_ps::paths::{self, Root};
-use decanter_ps::runner;
 use gpui::{AsyncApp, Context, Task, WeakEntity};
 
 use super::Ps;
 use super::package;
 use crate::i18n::Text;
+use crate::runners;
 
 /// The last lines of a build's output the card shows; the whole of it is in its log file.
 const SHOWN_LINES: usize = 12;
@@ -105,7 +105,7 @@ impl Ps {
             }
             .map_err(|err| {
                 tracing::warn!(%err, "could not ask psport's remote for its branch");
-                error_text(&err)
+                runners::build_error(&err)
             });
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.branch;
@@ -211,11 +211,11 @@ impl Ps {
             let result = if package::settings_now(&root, cx).await.selected_build.as_ref() == Some(&commit) {
                 Err(Text::new("ps.branch.errors.delete_in_use"))
             } else {
-                runner::remove(&root, Runner::Psport, &Pin::Commit(commit.clone()))
+                runners::remove(&root, Runner::Psport, &Pin::Commit(commit.clone()))
                     .await
                     .map_err(|err| {
                         tracing::warn!(%commit, %err, "could not remove a Windows build");
-                        Text::new("ps.branch.errors.delete").arg("error", err)
+                        err.text()
                     })
             };
             if result.is_ok() {
@@ -307,15 +307,8 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
         });
     };
     let pin = Pin::Commit(head.commit.clone());
-    let result = runner::prepare(root, Runner::Psport, &pin, &mut on_progress, &mut on_line).await;
-    let error = result.as_ref().err().map(|err| {
-        Text::new("ps.branch.errors.failed")
-            .text("error", prepare_error_text(err))
-            .arg(
-                "log",
-                runner::log_path(root, Runner::Psport, &pin).map_or_else(String::new, |log| log.display().to_string()),
-            )
-    });
+    let result = runners::prepare(root, Runner::Psport, &pin, &mut on_progress, &mut on_line).await;
+    let error = result.as_ref().err().map(runners::Error::text);
     // Reloaded before `building` is cleared: dropping that task is dropping this one, so nothing after would run.
     reload(this, root, cx).await;
     let _ = this.update(cx, |this, cx| {
@@ -325,43 +318,4 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
         state.error = error;
         cx.notify();
     });
-}
-
-/// Why preparing a build failed: the build's own errors as [`error_text`] words them.
-fn prepare_error_text(err: &runner::Error) -> Text {
-    match err {
-        runner::Error::Build(err) => error_text(err),
-        runner::Error::NotAPort
-        | runner::Error::Unsupported(_)
-        | runner::Error::NotOffered(_)
-        | runner::Error::Package(_)
-        | runner::Error::AppJob => Text::new("ps.branch.errors.raw").arg("error", err),
-    }
-}
-
-/// Why a build or check failed, in the UI's language where the owner can act on it.
-fn error_text(err: &winbuild::Error) -> Text {
-    match err {
-        winbuild::Error::NotPinned => Text::new("ps.branch.errors.not_pinned"),
-        winbuild::Error::Tampered(file) => Text::new("ps.branch.errors.tampered").arg("file", file),
-        winbuild::Error::PathTooLong { path, length } => Text::new("ps.branch.errors.path_too_long")
-            .arg("path", path)
-            .arg("length", length)
-            .arg("max", winbuild::MAX_CHECKOUT_PATH),
-        winbuild::Error::Remote(_)
-        | winbuild::Error::Git(_)
-        | winbuild::Error::Rejected(_)
-        | winbuild::Error::NotConfirmed(_)
-        | winbuild::Error::Busy(_)
-        | winbuild::Error::Download(_)
-        | winbuild::Error::Archive(_)
-        | winbuild::Error::Manifest(_)
-        | winbuild::Error::Confinement(_)
-        | winbuild::Error::Tool { .. }
-        | winbuild::Error::TimedOut { .. }
-        | winbuild::Error::TooManyProcesses { .. }
-        | winbuild::Error::Output(_)
-        | winbuild::Error::Package(_)
-        | winbuild::Error::Io(_) => Text::new("ps.branch.errors.raw").arg("error", err),
-    }
 }
