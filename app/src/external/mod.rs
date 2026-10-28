@@ -11,6 +11,7 @@
 //! uuid, which no GOG product id ever looks like.
 
 pub mod art;
+pub mod dropped;
 #[cfg(proton)]
 pub mod import;
 #[cfg(proton)]
@@ -183,6 +184,7 @@ impl RemoveError {
 pub fn remove(profile_id: &str, id: &str) -> Result<(), RemoveError> {
     let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
     let removed = library.read_manifest(profile_id, Storefront::Unspecified, id);
+    let root = library.root_of(profile_id, id);
     // Games a launcher installed live in its prefix, which is about to go:
     // they go with it rather than pointing at nothing.
     for hosted in list(profile_id)
@@ -212,6 +214,11 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), RemoveError> {
                 tracing::warn!(profile_id, id, path = %compatdata.display(), %err, "could not remove external game prefix")
             }
         }
+    }
+    // Images read from a dropped program: decanter put them there, and
+    // nothing else points at them.
+    if let Some(root) = &root {
+        dropped::remove_art(root, id);
     }
     // Same best-effort reasoning: rows for an id nothing will ever show
     // again are only clutter.

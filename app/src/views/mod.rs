@@ -2,6 +2,7 @@
 
 mod chrome;
 mod downloads;
+mod dropped;
 pub mod external;
 mod game_tools;
 mod gog_login;

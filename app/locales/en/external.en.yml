@@ -107,3 +107,23 @@ external.transfer.errors.measure: 'measuring %{path}: %{error}'
 external.transfer.errors.clean: 'cleaning up %{path}: %{error}'
 external.transfer.errors.copy: 'copying the prefix: %{error}'
 external.transfer.errors.rsync: 'copying the prefix with rsync: %{error}'
+external.drop.hint: Drop the executable to add the game
+external.drop.added.one: 'Added “%{name}”.'
+external.drop.added.other: 'Added %{count} games: %{names}.'
+external.drop.existing: '“%{name}” was already in your library.'
+external.drop.no_exec_bit: '“%{name}” isn''t allowed to run: give it the permission (chmod +x) before playing.'
+external.drop.no_profile: Pick a profile before adding games.
+external.drop.refused.line: '%{file}: %{reason}.'
+external.drop.refused.missing: no longer there
+external.drop.refused.directory: a folder; drop the game's executable
+external.drop.refused.special: not a regular file
+external.drop.refused.unreadable: 'can''t be read (%{error})'
+external.drop.refused.library: a library, not a program
+external.drop.refused.not_executable: a Linux program without the permission to run
+external.drop.refused.unsupported: 'not an executable decanter can add: drop a Windows .exe, a Linux executable, an AppImage or a #! script'
+external.drop.refused.unsupported_windows: 'not an executable decanter can add: drop an .exe'
+external.drop.refused.other_system: a program for another system
+external.drop.edit: Edit
+external.drop.undo: Undo
+external.drop.undo_running: Stop the game before undoing
+external.drop.close: Close

@@ -196,7 +196,7 @@ impl ExternalView {
     }
 
     /// Re-reads the list here and the library's copy of it.
-    fn reload(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn reload(&mut self, cx: &mut Context<Self>) {
         self.games = self
             .profile_id
             .as_deref()

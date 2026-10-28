@@ -1,6 +1,7 @@
 //! The main window's frame: topbar (logo, sections, profile switcher,
 //! window controls), the current section, and the download strip along
-//! the bottom.
+//! the bottom. Files dropped anywhere on it are added as external games
+//! ([`super::dropped`]).
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -8,12 +9,14 @@ use std::rc::Rc;
 use decanter_core::Profile;
 use decanter_core::capabilities::Feature;
 use gpui::{
-    AnyElement, App, Context, Entity, FontWeight, SharedString, StyleRefinement, Window, div, prelude::*, px, rgb,
+    AnyElement, App, Context, Entity, ExternalPaths, FontWeight, SharedString, StyleRefinement, Window, div,
+    prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
 use super::chrome;
 use super::downloads::DownloadsView;
+use super::dropped::{self, DropNotice};
 use super::external::ExternalView;
 use super::library::LibraryView;
 use super::ps::PsView;
@@ -51,6 +54,9 @@ pub struct Shell {
     external: Option<Entity<ExternalView>>,
     profiles: Vec<(PathBuf, Option<Vec<Profile>>)>,
     on_close: Rc<dyn Fn(&mut Window, &mut App)>,
+    /// Files are being dragged over the window.
+    drop_hover: bool,
+    drop_notice: Option<DropNotice>,
 }
 
 impl Shell {
@@ -85,6 +91,8 @@ impl Shell {
             external: None,
             profiles: Vec::new(),
             on_close,
+            drop_hover: false,
+            drop_notice: None,
         };
         this.reload_profiles();
         this
@@ -143,6 +151,97 @@ impl Shell {
             }
         }
         self.page = page;
+        cx.notify();
+    }
+
+    /// Registers every program among `paths` as an external game of the
+    /// active profile. Each file is read, never run.
+    fn drop_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        self.drop_hover = false;
+        let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+            self.drop_notice = Some(DropNotice::no_profile());
+            cx.notify();
+            return;
+        };
+        tracing::info!(profile_id, count = paths.len(), "files dropped on the window");
+        // Detached rather than kept: a second drop must not cancel the
+        // first one's notice while its games are already being written.
+        cx.spawn(async move |this, cx| {
+            let profile = profile_id.clone();
+            let outcome =
+                tokio::task::spawn_blocking(move || crate::external::dropped::register(&profile, &paths)).await;
+            let outcome = match outcome {
+                Ok(outcome) => outcome,
+                Err(err) => {
+                    tracing::error!(%err, "registering dropped files did not finish");
+                    return;
+                }
+            };
+            let _ = this.update(cx, |this, cx| {
+                let shown = outcome
+                    .added
+                    .first()
+                    .or_else(|| outcome.existing.first())
+                    .map(|game| game.id.clone());
+                if !outcome.added.is_empty() {
+                    this.reload_external(cx);
+                }
+                if let Some(id) = shown {
+                    // Straight to the page rather than through `navigate`,
+                    // whose "back to the shelves" would clear the selection.
+                    this.page = Page::Library;
+                    this.library.update(cx, |library, cx| library.select(id, cx));
+                }
+                this.drop_notice = Some(DropNotice {
+                    profile_id: Some(profile_id),
+                    outcome,
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn reload_external(&self, cx: &mut Context<Self>) {
+        AppState::get(cx)
+            .library
+            .clone()
+            .update(cx, |library, cx| library.refresh_external(cx));
+        if let Some(external) = &self.external {
+            external.update(cx, ExternalView::reload);
+        }
+    }
+
+    /// Removes what the notice's drop added, off the UI thread: a prefix
+    /// can be large once the game ran.
+    fn undo_drop(&mut self, cx: &mut Context<Self>) {
+        let Some(notice) = self.drop_notice.take() else {
+            return;
+        };
+        let (Some(profile_id), ids) = (notice.profile_id.clone(), notice.added()) else {
+            return;
+        };
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            if let Err(err) =
+                tokio::task::spawn_blocking(move || crate::external::dropped::undo(&profile_id, &ids)).await
+            {
+                tracing::error!(%err, "undoing dropped games did not finish");
+            }
+            let _ = this.update(cx, |this, cx| this.reload_external(cx));
+        })
+        .detach();
+    }
+
+    fn edit_dropped(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self
+            .drop_notice
+            .take()
+            .and_then(|notice| notice.editable().map(str::to_owned))
+        else {
+            return;
+        };
+        super::external::open(Some(id), cx);
         cx.notify();
     }
 
@@ -437,15 +536,52 @@ impl Render for Shell {
             );
 
         let body = self.page_body(cx);
+        let entity = cx.entity();
+        let notice = self.drop_notice.as_ref().map(|notice| {
+            let (edit, undo, close) = (entity.clone(), entity.clone(), entity);
+            dropped::render(
+                notice,
+                move |cx| edit.update(cx, Shell::edit_dropped),
+                move |cx| undo.update(cx, Shell::undo_drop),
+                move |cx| {
+                    close.update(cx, |this, cx| {
+                        this.drop_notice = None;
+                        cx.notify();
+                    });
+                },
+                cx,
+            )
+        });
 
         div()
+            .id("shell")
             .size_full()
             .relative()
             .flex()
             .flex_col()
+            .on_drag_move::<ExternalPaths>(cx.listener(|this, _, _, cx| {
+                if !this.drop_hover {
+                    this.drop_hover = true;
+                    cx.notify();
+                }
+            }))
+            .on_file_drop_exit(cx.listener(|this, _, _, cx| {
+                this.drop_hover = false;
+                cx.notify();
+            }))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+                this.drop_files(paths.paths().to_vec(), cx);
+            }))
             .child(topbar)
             .child(div().flex_1().min_h_0().overflow_hidden().child(body))
             .children(Self::download_bar(cx))
+            .children(notice)
+            // Also gated on the drag itself: one dropped where the shell's
+            // handler doesn't see it (on a popup) ends without resetting the
+            // flag.
+            .when(self.drop_hover && cx.has_active_drag(), |shell| {
+                shell.child(dropped::highlight())
+            })
             .children(chrome::resize_edges())
     }
 }

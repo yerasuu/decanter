@@ -178,6 +178,12 @@ impl LibraryView {
             model,
         }
     }
+
+    /// Opens `product_id`'s detail, for a game picked from outside the
+    /// library's own views.
+    pub fn select(&self, product_id: String, cx: &mut Context<Self>) {
+        self.model.update(cx, |model, cx| model.select(Some(product_id), cx));
+    }
 }
 
 impl Render for LibraryView {
