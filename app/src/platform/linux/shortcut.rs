@@ -7,8 +7,8 @@
 
 use futures::StreamExt as _;
 use rust_i18n::t;
+use zbus::OwnedObjectPath;
 use zbus::proxy::SignalStream;
-use zbus::zvariant::OwnedObjectPath;
 use zbus::{Connection, Proxy};
 
 const SERVICE: &str = "org.kde.kglobalaccel";

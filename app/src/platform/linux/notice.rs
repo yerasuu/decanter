@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use rust_i18n::t;
 use zbus::Connection;
-use zbus::zvariant::Value;
+use zbus::Variant;
 
 /// Critical, so Plasma shows it over a fullscreen game and through Do Not
 /// Disturb.
@@ -60,8 +60,8 @@ async fn notify(
         return None;
     };
     let hints = HashMap::from([
-        ("urgency", Value::from(urgency)),
-        ("desktop-entry", Value::from("decanter")),
+        ("urgency", Variant::from(urgency)),
+        ("desktop-entry", Variant::from("decanter")),
     ]);
     let actions: &[&str] = &[];
     let shown = bus

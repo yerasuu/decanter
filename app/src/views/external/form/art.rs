@@ -305,7 +305,7 @@ impl GameForm {
                     .track_scroll(scroll)
                     // The arrows depend on the offset, so a scroll has to
                     // re-render, not just repaint.
-                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                    .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
                     .children(thumbs),
             )
             .when(!at_start, |strip| strip.child(arrow(true)))

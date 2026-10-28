@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use decanter_core::capabilities::Feature;
 use gpui::{
     Context, Div, Entity, FocusHandle, KeyDownEvent, ModifiersChangedEvent, MouseButton as GpuiMouse, MouseDownEvent,
-    NavigationDirection, ScrollDelta, ScrollWheelEvent, SharedString, Stateful, Window, div, prelude::*, px, rgb,
+    NavigationDirection, ScrollDelta, ScrollEvent, SharedString, Stateful, Window, div, prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
@@ -363,7 +363,7 @@ impl KeyboardView {
         self.capture(Source::Mouse(button), cx);
     }
 
-    fn on_wheel(&mut self, event: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_wheel(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
         let y = match event.delta {
             ScrollDelta::Lines(delta) => delta.y,
             ScrollDelta::Pixels(delta) => f32::from(delta.y),
@@ -623,7 +623,7 @@ impl KeyboardView {
             .pt(px(120.))
             .bg(theme::alpha(theme::BG_DEEP, 0.85))
             .on_any_mouse_down(cx.listener(Self::on_mouse))
-            .on_scroll_wheel(cx.listener(Self::on_wheel))
+            .on_scroll(cx.listener(Self::on_wheel))
             .child(
                 div()
                     .flex()

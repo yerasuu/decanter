@@ -128,7 +128,11 @@ impl Pads {
             }
         };
         for (path, opened) in found {
-            match opened.and_then(AsyncFd::new) {
+            // AsyncFd::register is unsafe and the workspace forbids unsafe code; each fd here is
+            // owned by the value handed over, which keeps it open for the AsyncFd's whole life.
+            #[expect(deprecated, reason = "AsyncFd::register is unsafe and unsafe_code is forbidden")]
+            let registered = opened.and_then(AsyncFd::new);
+            match registered {
                 Ok(file) => {
                     tracing::info!(path = %path.display(), "watching gamepad for the close-game chord");
                     self.open.insert(path.clone());
@@ -156,7 +160,9 @@ impl Hotplug {
     fn watch() -> io::Result<AsyncFd<Self>> {
         let inotify = crate::achv_try!(Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC));
         crate::achv_try!(inotify.add_watch(INPUT_DIR, AddWatchFlags::IN_CREATE | AddWatchFlags::IN_ATTRIB));
-        AsyncFd::new(Self(inotify))
+        #[expect(deprecated, reason = "AsyncFd::register is unsafe and unsafe_code is forbidden")]
+        let watch = AsyncFd::new(Self(inotify));
+        watch
     }
 }
 

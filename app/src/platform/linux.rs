@@ -115,7 +115,7 @@ async fn host_registered() -> zbus::Result<bool> {
             &("org.kde.StatusNotifierWatcher", "IsStatusNotifierHostRegistered"),
         )
         .await?;
-    let value: zbus::zvariant::OwnedValue = reply.body().deserialize()?;
+    let value: zbus::OwnedVariant = reply.body().deserialize()?;
     Ok(bool::try_from(value)?)
 }
 

@@ -242,7 +242,7 @@ impl BrowserView {
                     .track_scroll(&scroll)
                     // Windowing below depends on the offset, so a scroll
                     // has to re-render the row, not just repaint it.
-                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                    .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
                     .when(first > 0, |row| row.child(spacer(first)))
                     .children(
                         shelf.capsules[first..last]
