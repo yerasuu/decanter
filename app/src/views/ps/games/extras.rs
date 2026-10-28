@@ -260,6 +260,8 @@ fn runner_progress((runner, progress): &(Runner, Progress)) -> Cow<'static, str>
         Runner::Proton => "Proton",
         Runner::GeProton => "GE-Proton",
         Runner::Raven => "Raven",
+        Runner::Psport => "psport",
+        Runner::AnyPs5 => "AnyPS5",
     };
     match (&progress.stage, progress.total) {
         (Stage::Downloading, Some(total)) => t!(

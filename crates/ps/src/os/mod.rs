@@ -8,6 +8,8 @@
 pub mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(not(windows))]
+pub(crate) mod unported;
 pub mod windows;
 
 #[cfg(target_os = "linux")]
@@ -16,6 +18,11 @@ use linux::sys;
 use macos as sys;
 #[cfg(windows)]
 use windows::sys;
+
+#[cfg(not(windows))]
+pub(crate) use unported as ports;
+#[cfg(windows)]
+pub(crate) use windows::runner as ports;
 
 pub(crate) use sys::{
     Confined, DIRECT_LAUNCH, GIT_TLS_OPTIONS, NULL_DEVICE, build_env, confine, own_process_group, signal_of,

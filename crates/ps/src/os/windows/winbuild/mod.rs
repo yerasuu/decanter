@@ -351,6 +351,20 @@ pub async fn is_confirmed(root: &Root, commit: &Commit) -> bool {
         .any(|confirmation| confirmation.commit == commit.as_str() && confirmation.remote == git::REMOTE)
 }
 
+/// `commit` as the owner confirmed it, with the branch the remote named then: what a build asked for
+/// by its commit alone records.
+pub async fn confirmed(root: &Root, commit: &Commit) -> Option<Head> {
+    read_confirmations(root)
+        .await
+        .into_iter()
+        .find(|confirmation| confirmation.commit == commit.as_str() && confirmation.remote == git::REMOTE)
+        .filter(|confirmation| crate::os::linux::updater::valid_branch(&confirmation.branch))
+        .map(|confirmation| Head {
+            branch: confirmation.branch,
+            commit: commit.clone(),
+        })
+}
+
 /// `head` built and in the library, or the build already there. Refused unless [`confirm`] was
 /// given for its commit and the toolchain is pinned; one build per commit at a time, across decanter
 /// processes.

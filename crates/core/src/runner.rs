@@ -29,6 +29,11 @@ pub enum Runner {
     /// Raven, an early-stage Windows runtime built here from a pinned commit,
     /// only once the player asks for it.
     Raven,
+    /// psport, the PS4 compatibility layer, as its release or built here from
+    /// its branch.
+    Psport,
+    /// AnyPS5, the PS5 executable relinker, built here from its branch.
+    AnyPs5,
 }
 
 /// A release name, checked where it enters (an answer from `GitHub`, a

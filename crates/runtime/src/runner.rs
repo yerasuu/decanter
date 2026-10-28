@@ -1,6 +1,9 @@
 //! Getting the runners this crate owns onto the machine: the same functions
 //! on every system, each answered by the system's own part under `os/`.
 //!
+//! psport and AnyPS5 are `decanter_ps`'s (`decanter_ps::runner`): asked here, they answer as the PS
+//! builds' feature says and refuse everything else.
+//!
 //! Cancelling is dropping the future. A preparation installs nothing unless
 //! every step before it passed, and is a no-op for what is already there. A
 //! runner built from a [`Pin::Commit`] runs code nobody vetted for decanter,
@@ -20,6 +23,7 @@ use crate::os;
 
 /// Why Steam's Proton builds are only listed: Steam and umu own `compatibilitytools.d`.
 const UMU_INSTALLS_PROTON: &str = "Proton builds are installed by umu at launch or by the user, not by decanter";
+const PS_PREPARES_PORTS: &str = "psport and AnyPS5 are prepared by decanter-ps";
 
 /// The commit of [mirkobrombin/raven](https://github.com/mirkobrombin/raven) decanter builds, the
 /// one its build was tried at (2026-10-27); bumped only after a build at the new one was tried.
@@ -46,6 +50,7 @@ pub const fn support(runner: Runner) -> Support {
     match runner {
         Runner::Umu | Runner::Proton | Runner::GeProton => platform::support(Feature::Proton),
         Runner::Raven => platform::support(Feature::Raven),
+        Runner::Psport | Runner::AnyPs5 => platform::support(Feature::PsBuilds),
     }
 }
 
@@ -58,6 +63,7 @@ pub fn status(runner: Runner) -> Status {
         Runner::Proton => os::proton_status(),
         Runner::GeProton => os::ge_proton_status(),
         Runner::Raven => os::raven_status(),
+        Runner::Psport | Runner::AnyPs5 => Status::Unsupported,
     }
 }
 
@@ -74,6 +80,7 @@ pub async fn confirm(runner: Runner, pin: &Pin) -> io::Result<()> {
     match runner {
         Runner::Umu | Runner::Proton | Runner::GeProton => Ok(()),
         Runner::Raven => os::raven_confirm(pin).await,
+        Runner::Psport | Runner::AnyPs5 => Err(io::Error::new(io::ErrorKind::Unsupported, PS_PREPARES_PORTS)),
     }
 }
 
@@ -94,6 +101,7 @@ pub async fn prepare(
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
         Runner::GeProton => os::ge_proton_prepare(pin, on_progress).await,
         Runner::Raven => os::raven_prepare(pin, on_progress).await,
+        Runner::Psport | Runner::AnyPs5 => bail!(PS_PREPARES_PORTS),
     }
 }
 
@@ -111,6 +119,7 @@ pub async fn update(runner: Runner, on_progress: &mut (dyn FnMut(Progress) + Sen
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
         Runner::GeProton => os::ge_proton_update(on_progress).await,
         Runner::Raven => os::raven_update(on_progress).await,
+        Runner::Psport | Runner::AnyPs5 => bail!(PS_PREPARES_PORTS),
     }
 }
 
@@ -127,6 +136,7 @@ pub async fn remove(runner: Runner, pin: &Pin) -> io::Result<()> {
         Runner::Proton => Err(io::Error::new(io::ErrorKind::Unsupported, UMU_INSTALLS_PROTON)),
         Runner::GeProton => os::ge_proton_remove(pin).await,
         Runner::Raven => os::raven_remove(pin).await,
+        Runner::Psport | Runner::AnyPs5 => Err(io::Error::new(io::ErrorKind::Unsupported, PS_PREPARES_PORTS)),
     }
 }
 
@@ -136,7 +146,7 @@ pub async fn remove(runner: Runner, pin: &Pin) -> io::Result<()> {
 #[inline]
 pub fn log_path(runner: Runner, pin: &Pin) -> Option<PathBuf> {
     match runner {
-        Runner::Umu | Runner::Proton | Runner::GeProton => None,
+        Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Psport | Runner::AnyPs5 => None,
         Runner::Raven => os::raven_log_path(pin),
     }
 }
