@@ -19,7 +19,9 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-use super::{Commit, Error, Head, Log, Stage, pins, toolchain};
+use decanter_core::runner::Progress;
+
+use super::{Commit, Error, Head, Log, pins, toolchain};
 use crate::os;
 use crate::os::linux::updater;
 use crate::paths::Root;
@@ -41,8 +43,8 @@ const LOCAL_TIMEOUT: Duration = Duration::from_mins(5);
 /// # Errors
 /// When MinGit isn't pinned, or can't be downloaded, doesn't match its pin or holds anything its
 /// checks refuse.
-pub async fn program(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<PathBuf, Error> {
-    toolchain::install(&toolchain::dir(root), &pins::mingit(), on_stage)
+pub async fn program(root: &Root, on_progress: &mut dyn FnMut(Progress)) -> Result<PathBuf, Error> {
+    toolchain::install(&toolchain::dir(root), &pins::mingit(), on_progress)
         .await
         .map(|folder| toolchain::mingit_git(&folder))
 }

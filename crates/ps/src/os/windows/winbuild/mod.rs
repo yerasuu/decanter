@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
+use decanter_core::runner::{Progress, Stage};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt as _;
 
@@ -157,26 +158,6 @@ impl Commit {
 pub struct Head {
     pub branch: String,
     pub commit: Commit,
-}
-
-/// Where a build stands, for the UI.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Stage {
-    Downloading {
-        name: String,
-        received: u64,
-        total: Option<u64>,
-    },
-    Unpacking(String),
-    /// The installed toolchain's files hashed again; `total` is 0 until their lists are read.
-    Verifying {
-        checked: u32,
-        total: u32,
-    },
-    Sources,
-    Configuring,
-    Compiling,
-    Assembling,
 }
 
 /// A build in the library, as its record says it was made.
@@ -341,6 +322,16 @@ pub fn log_path(root: &Root, commit: &Commit) -> PathBuf {
     work(root).join(format!("{commit}.log"))
 }
 
+/// A step of the build that counts nothing.
+const fn step(stage: Stage) -> Progress {
+    Progress {
+        stage,
+        received: 0,
+        total: None,
+        item: None,
+    }
+}
+
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -411,7 +402,7 @@ pub async fn is_confirmed(root: &Root, commit: &Commit) -> bool {
 pub async fn build(
     root: &Root,
     head: &Head,
-    on_stage: &mut dyn FnMut(Stage),
+    on_progress: &mut dyn FnMut(Progress),
     on_line: &mut dyn FnMut(String),
 ) -> Result<Built, Error> {
     if let Some(built) = built_commit(root, &head.commit).await {
@@ -477,7 +468,7 @@ pub async fn build(
     ))
     .await;
     tracing::info!(commit = %head.commit, branch = head.branch, "building psport for Windows");
-    let result = steps(root, head, &folder, on_stage, &mut log).await;
+    let result = steps(root, head, &folder, on_progress, &mut log).await;
     match &result {
         Ok(built) => {
             log.line(format!(
@@ -545,15 +536,15 @@ async fn steps(
     root: &Root,
     head: &Head,
     folder: &Path,
-    on_stage: &mut dyn FnMut(Stage),
+    on_progress: &mut dyn FnMut(Progress),
     log: &mut Log<'_>,
 ) -> Result<Built, Error> {
-    let tools = match toolchain::ensure(root, on_stage).await {
+    let tools = match toolchain::ensure(root, on_progress).await {
         Ok(tools) => tools,
         Err(err) => return Err(err),
     };
     let (sources, out, temp) = (folder.join("s"), folder.join("b"), folder.join("t"));
-    on_stage(Stage::Sources);
+    on_progress(step(Stage::Sources));
     if tokio::fs::symlink_metadata(folder).await.is_ok() {
         tracing::info!(dir = %folder.display(), "removing the work folder an earlier build left");
     }
@@ -567,7 +558,7 @@ async fn steps(
         return Err(err);
     }
     let env = os::build_env(&temp);
-    on_stage(Stage::Configuring);
+    on_progress(step(Stage::Configuring));
     let configure = [
         "-S".into(),
         cmake_path(&sources).into(),
@@ -601,7 +592,7 @@ async fn steps(
     {
         return Err(err);
     }
-    on_stage(Stage::Compiling);
+    on_progress(step(Stage::Compiling));
     let jobs = std::thread::available_parallelism().map_or(4, |count| count.get().min(MAX_JOBS));
     let compile = [
         "-C".into(),
@@ -624,7 +615,7 @@ async fn steps(
     {
         return Err(err);
     }
-    on_stage(Stage::Assembling);
+    on_progress(step(Stage::Assembling));
     install(root, head, &tools, &sources, &out).await
 }
 

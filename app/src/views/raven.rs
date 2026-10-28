@@ -196,8 +196,9 @@ fn progress(progress: Option<&Progress>) -> Div {
                 ),
                 None,
             ),
-            (Stage::Unpacking, _) => (t!("raven.build.stage.unpacking"), None),
-            (Stage::Configuring, _) => (t!("raven.build.stage.configuring"), None),
+            // Raven's build never verifies nor assembles anything: those read as the step nearest them.
+            (Stage::Unpacking | Stage::Verifying, _) => (t!("raven.build.stage.unpacking"), None),
+            (Stage::Configuring | Stage::Assembling, _) => (t!("raven.build.stage.configuring"), None),
             (Stage::Compiling, total) => (
                 t!(
                     "raven.build.stage.compiling",

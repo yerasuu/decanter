@@ -154,11 +154,16 @@ impl Status {
 pub enum Stage {
     Downloading,
     Unpacking,
+    /// Files already installed hashed again before they are used: `received`
+    /// files of `total`, which is 0 until their lists are read.
+    Verifying,
     /// Getting the sources at the pin.
     Sources,
     Configuring,
     /// `received` steps of `total`, as the build tool counts them.
     Compiling,
+    /// What was built put together in the shape of a published release.
+    Assembling,
 }
 
 /// Where a preparation is; the byte counts belong to the stage, and stay at
@@ -168,4 +173,7 @@ pub struct Progress {
     pub stage: Stage,
     pub received: u64,
     pub total: Option<u64>,
+    /// The piece the stage works on, for a preparation that downloads and
+    /// unpacks several (a build's toolchain): its name as the UI shows it.
+    pub item: Option<String>,
 }

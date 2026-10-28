@@ -127,6 +127,7 @@ pub(super) async fn compile(
         stage: Stage::Configuring,
         received: 0,
         total: None,
+        item: None,
     });
     let mut command = toolchain
         .command(toolchain_dir, recipe, checkout, COMPILE)
@@ -138,6 +139,7 @@ pub(super) async fn compile(
                 stage: Stage::Compiling,
                 received,
                 total: Some(total),
+                item: None,
             });
         }
     })

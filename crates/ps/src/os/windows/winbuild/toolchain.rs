@@ -15,11 +15,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
+use decanter_core::runner::{Progress, Stage};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+use super::Error;
 use super::pins::{self, Archive};
-use super::{Error, Stage};
 use crate::archive;
 use crate::download;
 use crate::os::windows::package;
@@ -114,13 +115,24 @@ pub async fn is_installed(root: &Root) -> bool {
     true
 }
 
+/// `checked` of the installed toolchain's `total` files hashed again; `total` is 0 until their lists
+/// are read.
+fn verifying(checked: u32, total: u32) -> Progress {
+    Progress {
+        stage: Stage::Verifying,
+        received: u64::from(checked),
+        total: Some(u64::from(total)),
+        item: None,
+    }
+}
+
 /// Every piece in place, downloading and extracting what is missing, then the package's manifest
 /// checked against the tools pinned here.
 ///
 /// # Errors
 /// When the package isn't pinned yet, or a piece can't be downloaded, doesn't match its pin, or
 /// holds anything its checks refuse.
-pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tools, Error> {
+pub async fn ensure(root: &Root, on_progress: &mut dyn FnMut(Progress)) -> Result<Tools, Error> {
     let Some(package) = pins::package() else {
         return Err(Error::NotPinned);
     };
@@ -129,7 +141,7 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
     let mingit = pins::mingit();
     let mut folders = Vec::with_capacity(5);
     for archive in [&llvm_mingw, &cmake, &ninja, &mingit, &package] {
-        match install(&cache, archive, on_stage).await {
+        match install(&cache, archive, on_progress).await {
             Ok(folder) => folders.push(folder),
             Err(err) => return Err(err),
         }
@@ -169,7 +181,7 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
     let started = Instant::now();
     let mut logged = started;
     tracing::info!("checking the Windows toolchain's files before the build");
-    on_stage(Stage::Verifying { checked: 0, total: 0 });
+    on_progress(verifying(0, 0));
     let outcome = loop {
         if let Ok(result) = tokio::time::timeout(VERIFY_TICK, &mut task).await {
             break result;
@@ -198,7 +210,7 @@ pub async fn ensure(root: &Root, on_stage: &mut dyn FnMut(Stage)) -> Result<Tool
                 "still checking the Windows toolchain's files"
             );
         }
-        on_stage(Stage::Verifying { checked: files, total });
+        on_progress(verifying(files, total));
     };
     tracing::info!(
         files = checked.files.load(Ordering::Relaxed),
@@ -237,7 +249,7 @@ pub(super) fn mingit_git(folder: &Path) -> PathBuf {
 ///
 /// # Errors
 /// When it can't be downloaded, doesn't match its pin, or holds anything its checks refuse.
-pub async fn install(cache: &Path, archive: &Archive, on_stage: &mut dyn FnMut(Stage)) -> Result<PathBuf, Error> {
+pub async fn install(cache: &Path, archive: &Archive, on_progress: &mut dyn FnMut(Progress)) -> Result<PathBuf, Error> {
     if let Some(folder) = installed(cache, archive).await {
         return Ok(folder);
     }
@@ -286,17 +298,23 @@ pub async fn install(cache: &Path, archive: &Archive, on_stage: &mut dyn FnMut(S
         archive.size,
         package::github_only(),
         |received, total| {
-            on_stage(Stage::Downloading {
-                name: name.clone(),
+            on_progress(Progress {
+                stage: Stage::Downloading,
                 received,
                 total,
+                item: Some(name.clone()),
             });
         },
     )
     .await;
     let result = match downloaded {
         Ok(()) => {
-            on_stage(Stage::Unpacking(archive.name.clone()));
+            on_progress(Progress {
+                stage: Stage::Unpacking,
+                received: 0,
+                total: None,
+                item: Some(archive.name.clone()),
+            });
             unpack(cache, archive, &zip, &staging).await
         }
         Err(err) => Err(err.into()),

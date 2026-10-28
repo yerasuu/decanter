@@ -4,7 +4,8 @@
 
 use std::borrow::Cow;
 
-use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head, Stage};
+use decanter_core::runner::{Progress, Stage};
+use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head};
 use gpui::{AnyElement, App, Div, Entity, SharedString, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
@@ -181,26 +182,34 @@ fn confirmation(ps: &Entity<Ps>, head: &Head) -> AnyElement {
         .into_any_element()
 }
 
-fn progress(head: &Head, stage: Option<&Stage>) -> AnyElement {
+fn progress(head: &Head, stage: Option<&Progress>) -> AnyElement {
     let (text, fraction): (Cow<'static, str>, Option<f64>) = match stage {
         None => (t!("ps.branch.stage.starting"), None),
-        Some(Stage::Downloading { name, received, total }) => (
-            t!(
-                "ps.branch.stage.downloading",
-                name = name,
-                size = crate::format::bytes(*received)
-            ),
-            total.map(|total| *received as f64 / total.max(1) as f64),
-        ),
-        Some(Stage::Unpacking(name)) => (t!("ps.branch.stage.unpacking", name = name), None),
-        Some(Stage::Verifying { checked, total }) => (
-            t!("ps.branch.stage.verifying", checked = checked, total = total),
-            (*total > 0).then(|| f64::from(*checked) / f64::from(*total)),
-        ),
-        Some(Stage::Sources) => (t!("ps.branch.stage.sources"), None),
-        Some(Stage::Configuring) => (t!("ps.branch.stage.configuring"), None),
-        Some(Stage::Compiling) => (t!("ps.branch.stage.compiling"), None),
-        Some(Stage::Assembling) => (t!("ps.branch.stage.assembling"), None),
+        Some(stage) => {
+            let name = stage.item.as_deref().unwrap_or_default();
+            match stage.stage {
+                Stage::Downloading => (
+                    t!(
+                        "ps.branch.stage.downloading",
+                        name = name,
+                        size = crate::format::bytes(stage.received)
+                    ),
+                    stage.total.map(|total| stage.received as f64 / total.max(1) as f64),
+                ),
+                Stage::Unpacking => (t!("ps.branch.stage.unpacking", name = name), None),
+                Stage::Verifying => {
+                    let total = stage.total.unwrap_or_default();
+                    (
+                        t!("ps.branch.stage.verifying", checked = stage.received, total = total),
+                        (total > 0).then(|| stage.received as f64 / total as f64),
+                    )
+                }
+                Stage::Sources => (t!("ps.branch.stage.sources"), None),
+                Stage::Configuring => (t!("ps.branch.stage.configuring"), None),
+                Stage::Compiling => (t!("ps.branch.stage.compiling"), None),
+                Stage::Assembling => (t!("ps.branch.stage.assembling"), None),
+            }
+        }
     };
     div()
         .flex()

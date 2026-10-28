@@ -5,7 +5,8 @@
 
 use std::collections::VecDeque;
 
-use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head, Stage};
+use decanter_core::runner::Progress;
+use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head};
 use decanter_ps::paths::{self, Root};
 use gpui::{AsyncApp, Context, Task, WeakEntity};
 
@@ -25,7 +26,7 @@ pub struct BranchState {
     confirming: Option<Head>,
     /// The build running, which dropping stops: its tools end with their Job Object.
     building: Option<(Head, Task<()>)>,
-    stage: Option<Stage>,
+    stage: Option<Progress>,
     lines: VecDeque<String>,
     error: Option<Text>,
     built: Vec<Built>,
@@ -51,7 +52,7 @@ impl BranchState {
         self.building.as_ref().map(|(head, _)| head)
     }
 
-    pub const fn stage(&self) -> Option<&Stage> {
+    pub const fn stage(&self) -> Option<&Progress> {
         self.stage.as_ref()
     }
 
@@ -285,9 +286,9 @@ async fn reload(this: &WeakEntity<Ps>, root: &Root, cx: &mut AsyncApp) {
 
 async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut AsyncApp) {
     let (for_stage, mut stage_cx) = (this.clone(), cx.clone());
-    let mut on_stage = move |stage: Stage| {
+    let mut on_progress = move |progress: Progress| {
         let _ = for_stage.update(&mut stage_cx, |this, cx| {
-            this.branch.stage = Some(stage);
+            this.branch.stage = Some(progress);
             cx.notify();
         });
     };
@@ -302,7 +303,7 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
             cx.notify();
         });
     };
-    let result = winbuild::build(root, head, &mut on_stage, &mut on_line).await;
+    let result = winbuild::build(root, head, &mut on_progress, &mut on_line).await;
     let error = result.as_ref().err().map(|err| {
         Text::new("ps.branch.errors.failed")
             .text("error", error_text(err))

@@ -129,6 +129,7 @@ pub(crate) async fn raven_prepare(
         stage: Stage::Sources,
         received: 0,
         total: None,
+        item: None,
     });
     build::clone(&checkout, &commit, &mut log).await?;
     let toolchain_dir = folder.join(TOOLCHAIN);
@@ -137,6 +138,7 @@ pub(crate) async fn raven_prepare(
             stage: Stage::Downloading,
             received,
             total,
+            item: None,
         });
     })
     .await

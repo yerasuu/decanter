@@ -185,6 +185,7 @@ async fn install(path: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) ->
         stage: Stage::Downloading,
         received: 0,
         total: None,
+        item: None,
     });
 
     // A fresh temp dir per attempt rather than a fixed name: two decanter
@@ -211,6 +212,7 @@ async fn install(path: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) ->
                 stage: Stage::Downloading,
                 received,
                 total,
+                item: None,
             });
         },
     )
@@ -224,6 +226,7 @@ async fn install(path: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) ->
         stage: Stage::Unpacking,
         received: 0,
         total: None,
+        item: None,
     });
     // Shelled out to rather than pulling in a tar-handling crate for one
     // archive this rarely: `tar` is as close to guaranteed present on

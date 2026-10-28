@@ -273,8 +273,8 @@ fn runner_progress((runner, progress): &(Runner, Progress)) -> Cow<'static, str>
             runner = name,
             received = crate::format::bytes(progress.received)
         ),
-        (Stage::Unpacking, _) => t!("ps.extras.fsr.progress.runner_unpacking", runner = name),
-        (Stage::Sources | Stage::Configuring | Stage::Compiling, _) => {
+        (Stage::Unpacking | Stage::Verifying, _) => t!("ps.extras.fsr.progress.runner_unpacking", runner = name),
+        (Stage::Sources | Stage::Configuring | Stage::Compiling | Stage::Assembling, _) => {
             t!("ps.extras.fsr.progress.runner_building", runner = name)
         }
     }

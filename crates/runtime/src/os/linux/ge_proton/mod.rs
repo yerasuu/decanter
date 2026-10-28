@@ -172,6 +172,7 @@ async fn install(folder: &Path, target: &Path, on_progress: &mut (dyn FnMut(Prog
         stage: Stage::Downloading,
         received: 0,
         total: Some(pin.size),
+        item: None,
     });
     let expected = Expected {
         digest: pin.sha512,
@@ -188,6 +189,7 @@ async fn install(folder: &Path, target: &Path, on_progress: &mut (dyn FnMut(Prog
                 stage: Stage::Downloading,
                 received,
                 total,
+                item: None,
             });
         },
     )
@@ -197,6 +199,7 @@ async fn install(folder: &Path, target: &Path, on_progress: &mut (dyn FnMut(Prog
         stage: Stage::Unpacking,
         received: 0,
         total: None,
+        item: None,
     });
     unpack(&archive, &staging, pin.asset).await?;
     // A folder of the tag without `proton` is a copy cut short outside decanter's own staging.

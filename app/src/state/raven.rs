@@ -334,7 +334,12 @@ async fn build(this: &WeakEntity<Raven>, pin: &Pin, cx: &mut AsyncApp) {
             core::mem::discriminant(&progress.stage),
             match progress.stage {
                 Stage::Downloading => progress.received >> 20,
-                Stage::Unpacking | Stage::Sources | Stage::Configuring | Stage::Compiling => progress.received,
+                Stage::Unpacking
+                | Stage::Verifying
+                | Stage::Sources
+                | Stage::Configuring
+                | Stage::Compiling
+                | Stage::Assembling => progress.received,
             },
         );
         if last != Some(step) {
