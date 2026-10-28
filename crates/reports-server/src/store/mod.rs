@@ -120,6 +120,12 @@ pub fn connect(storage: &Storage, credentials: &StorageCredentials, product: Pro
 pub async fn probe(backend: &dyn Backend, passphrase: &str) -> Result<bool> {
     let (_, etag) = backend.get(bootstrap::ENCRYPTION_META_KEY).await?;
     if etag.is_none() {
+        // A missing key and a missing bucket both read as "no object": a listing tells them apart, as the first
+        // start does before it creates the encryption.
+        backend
+            .list_page("", None, 1)
+            .await
+            .context("the bucket cannot be listed (does it exist, and may this key use it?)")?;
         return Ok(false);
     }
     bootstrap::open_cipher(backend, passphrase)
