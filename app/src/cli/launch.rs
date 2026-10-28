@@ -78,7 +78,9 @@ async fn start(
     // over any builtin stub of the same name, which is what makes
     // decanter-hook's proxy (see `decanter_gog::hook::deploy`, run at
     // install time) the one that actually loads.
-    let mut launch = Launch::new(executable, format!("umu-{product_id}")).store("gog");
+    let mut launch = Launch::new(executable, format!("{account_id}/{product_id}"))
+        .game_id(format!("umu-{product_id}"))
+        .store("gog");
     launch.dll_overrides.push(("Galaxy64".to_owned(), "n".to_owned()));
     // Same pin the GUI applies (`crate::launch::start`) — without it this
     // path falls back to `Proton::Latest`, which lets umu pick whatever
@@ -109,7 +111,8 @@ async fn start(
         achievement_log.display().to_string(),
     ));
 
-    decanter_runtime::start(&prefix, launch)
+    launch.prefix = Some(prefix);
+    decanter_runtime::start(launch)
         .await
         .context("launching program")
         .map(|session| (session, Some(achievement_log)))
@@ -118,12 +121,12 @@ async fn start(
 /// Starts `game`'s executable from its own folder, with decanter-hook told
 /// where to write; the session and that log.
 #[cfg(not(proton))]
-fn start(
+async fn start(
     _: &decanter_core::Db,
     library: &Library,
     game: &InstalledGame,
     executable: PathBuf,
-) -> core::future::Ready<anyhow::Result<(Session, Option<PathBuf>)>> {
+) -> anyhow::Result<(Session, Option<PathBuf>)> {
     let (account_id, product_id) = (game.account_id.as_str(), game.game_id.as_str());
     let mut launch = Launch::new(executable, format!("{account_id}/{product_id}"));
     let achievement_log = decanter_gog::hook::achievement_log_path(library, account_id, product_id);
@@ -135,6 +138,8 @@ fn start(
             .env
             .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), path.display().to_string()));
     }
-    let started = decanter_runtime::start(launch).context("launching program");
-    core::future::ready(started.map(|session| (session, achievement_log)))
+    decanter_runtime::start(launch)
+        .await
+        .context("launching program")
+        .map(|session| (session, achievement_log))
 }

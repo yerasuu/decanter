@@ -16,7 +16,7 @@
 
 use core::time::Duration;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Instant, SystemTime};
@@ -25,6 +25,8 @@ use anyhow::{Context as _, bail};
 use futures_util::future::join_all;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::time::sleep;
+
+use crate::Launch;
 
 use super::platform as os;
 use os::Tracked;
@@ -46,44 +48,6 @@ pub(super) enum Remaining {
     Done,
     /// How many processes, where the system says.
     Running(Option<usize>),
-}
-
-/// One game launch.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct Launch {
-    pub args: Vec<String>,
-    /// Pipe the game's stdout and stderr to the caller
-    /// ([`Session::take_output`]) instead of inheriting decanter's.
-    pub capture_output: bool,
-    /// Extra environment on top of decanter's own.
-    pub env: Vec<(String, String)>,
-    /// Must exist as a file: [`prepare`] rejects anything else.
-    pub executable: PathBuf,
-    /// Names the session for [`stop`] and [`is_live`]; one live session
-    /// per key.
-    pub key: String,
-    /// Defaults to the executable's own directory, which is where most
-    /// games load their data from by relative path.
-    pub working_directory: Option<PathBuf>,
-}
-
-impl Launch {
-    #[inline]
-    pub fn new<P, K>(executable: P, key: K) -> Self
-    where
-        P: Into<PathBuf>,
-        K: Into<String>,
-    {
-        Self {
-            args: Vec::new(),
-            capture_output: false,
-            env: Vec::new(),
-            executable: executable.into(),
-            key: key.into(),
-            working_directory: None,
-        }
-    }
 }
 
 /// A launched game.
@@ -239,8 +203,8 @@ impl Prepared {
 /// Returns an error if the executable isn't on disk, has no directory to
 /// run in, or fails to spawn.
 #[inline]
-pub fn start(launch: Launch) -> anyhow::Result<Session> {
-    match prepare(launch) {
+pub async fn start(launch: Launch) -> anyhow::Result<Session> {
+    match prepare(launch).await {
         Ok(prepared) => prepared.spawn(),
         Err(err) => Err(err),
     }
@@ -254,7 +218,7 @@ pub fn start(launch: Launch) -> anyhow::Result<Session> {
 /// Returns an error if the executable isn't on disk or has no directory to
 /// run in.
 #[inline]
-pub fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
+pub async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     if !launch.executable.is_file() {
         tracing::warn!(executable = %launch.executable.display(), key = %launch.key, "rejecting launch: no such executable on disk");
         bail!("no executable at {}", launch.executable.display());

@@ -247,10 +247,13 @@ pub async fn run_installer(
         crate::achv_try!(prefix_in(profile_id, id, library_root).ok_or_else(|| Text::new("messages.errors.prefix")));
     // The same id the game itself launches with, so protonfixes treats
     // both alike.
-    let launch = decanter_runtime::Launch::new(installer, UMU_ID).proton(crate::core::proton_or_default(proton));
+    let launch = decanter_runtime::Launch::new(installer, format!("{profile_id}/{id}"))
+        .prefix(prefix)
+        .game_id(UMU_ID)
+        .proton(crate::core::proton_or_default(proton));
     tracing::info!(profile_id, id, installer = %installer.display(), "running external game installer");
     let session = crate::achv_try!(
-        decanter_runtime::start(&prefix, launch)
+        decanter_runtime::start(launch)
             .await
             .inspect_err(|err| tracing::error!(profile_id, id, %err, "installer failed to start"))
             .map_err(|err| Text::new("external.errors.installer").arg("error", err))

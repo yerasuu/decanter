@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
-use decanter_runtime::{Launch, Prefix, Prepared};
+use decanter_runtime::{Launch, Prepared};
 
 use crate::i18n::Text;
 
@@ -16,7 +16,6 @@ pub(super) const LAUNCHER: &str = "umu-run";
 /// no prefix to run in fails before its cloud saves are touched.
 pub(super) struct Planned {
     launch: Launch,
-    prefix: Prefix,
     /// Where decanter-hook writes this session's unlocks; GOG games only.
     pub(super) achievement_log: Option<PathBuf>,
     /// Header lines for the run's log.
@@ -46,16 +45,17 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
     // it fixes a game like Arknights: Endfield can't start without.
     // One picked from the UMU database by name goes in as that entry, store
     // and all, which works with any Proton carrying protonfixes.
+    let launch = Launch::new(executable, format!("{account_id}/{}", game.game_id));
     let mut launch = match (game.storefront, &game.umu_id) {
-        (decanter_core::Storefront::Gog, _) => Launch::new(executable, format!("umu-{}", game.game_id)).store("gog"),
+        (decanter_core::Storefront::Gog, _) => launch.game_id(format!("umu-{}", game.game_id)).store("gog"),
         (_, Some(id)) => {
-            let launch = Launch::new(executable, id.as_str());
+            let launch = launch.game_id(id.as_str());
             match &game.umu_store {
                 Some(store) => launch.store(store.as_str()),
                 None => launch,
             }
         }
-        (_, None) => Launch::new(executable, crate::external::UMU_ID),
+        (_, None) => launch.game_id(crate::external::UMU_ID),
     };
     launch.native = native;
     launch.proton = crate::core::proton_for(game);
@@ -104,9 +104,9 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
             ("prefix", prefix.path().display().to_string())
         },
     ];
+    launch.prefix = Some(prefix);
     Some(Planned {
         launch,
-        prefix,
         achievement_log,
         facts,
         mangohud,
@@ -122,7 +122,7 @@ impl Planned {
                     .map(|(name, value)| (name.to_owned(), value)),
             );
         }
-        decanter_runtime::prepare(&self.prefix, self.launch).await
+        decanter_runtime::prepare(self.launch).await
     }
 }
 

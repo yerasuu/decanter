@@ -13,133 +13,17 @@ use std::time::Instant;
 use anyhow::{Context as _, bail};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
-pub use prefix::{Prefix, live_prefixes, processes_by_prefix, stop_all};
+use crate::{Launch, Prefix};
+
 use prefix::{SESSION_ENV, live_lock};
-pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
+pub use prefix::{live_prefixes, processes_by_prefix, stop_all};
+pub use proton::{UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
 use umu::ensure_umu_run;
 pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
 /// script, `Session.init_session`).
 const PROTON_LOG_WINEDEBUG: &str = "+timestamp,+pid,+tid,+seh,+unwind,+threadname,+debugstr,+loaddll,+mscoree";
-
-/// One game launch.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct Launch {
-    pub args: Vec<String>,
-    /// Pipe `umu-run`'s stdout and stderr to the caller ([`Session::take_output`])
-    /// instead of inheriting decanter's. Proton then logs to stderr at the
-    /// level `PROTON_LOG` would, rather than to its own file beside the
-    /// prefix, so one stream carries the whole run.
-    pub capture_output: bool,
-    /// `(dll name, mode)` pairs, e.g. `("Galaxy64", "n,b")`.
-    ///
-    /// Only needed to override a DLL Wine itself provides: a proxy sitting
-    /// in the game's own directory already wins, because that is where
-    /// Wine looks first for a non-system DLL.
-    pub dll_overrides: Vec<(String, String)>,
-    /// Extra environment, applied last — so it wins over everything above.
-    pub env: Vec<(String, String)>,
-    /// Host path to the `.exe`. Use [`crate::Prefix::resolve_windows_path`]
-    /// to get one from a program's stored `C:\...` path.
-    pub executable: std::path::PathBuf,
-    /// umu's game identity, which is what protonfixes keys its per-game
-    /// workarounds off. Convention is `umu-<storefront id>`.
-    pub game_id: String,
-    /// Runs the launch under GameMode through this `gamemoded`
-    /// ([`decanter_core::gamemode_prefix`]).
-    pub gamemoded: Option<PathBuf>,
-    /// `(game key, title)` the launch's scope is named and described by —
-    /// see [`decanter_core::own_scope`]. `None` names it after `game_id`
-    /// and the executable, for what isn't a game of its own (an
-    /// installer, `wineboot`).
-    pub identity: Option<(String, String)>,
-    /// A Linux program, run as itself rather than through `umu-run`: no
-    /// Proton, no Wine, and the prefix only names the session (see
-    /// [`crate::Prefix::stop`]). Everything Proton-specific here is ignored.
-    pub native: bool,
-    pub proton: Proton,
-    /// umu's `STORE`, used alongside `game_id` to look up protonfixes.
-    pub store: Option<String>,
-    /// Defaults to the executable's own directory. Games that load data
-    /// by relative path — most of them — need this, and Proton does not
-    /// infer it.
-    pub working_directory: Option<std::path::PathBuf>,
-}
-
-impl Launch {
-    #[inline]
-    #[must_use]
-    pub fn arg<S>(mut self, arg: S) -> Self
-    where
-        S: Into<String>,
-    {
-        self.args.push(arg.into());
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn dll_override<D, M>(mut self, dll: D, mode: M) -> Self
-    where
-        D: Into<String>,
-        M: Into<String>,
-    {
-        self.dll_overrides.push((dll.into(), mode.into()));
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn env<K, V>(mut self, key: K, value: V) -> Self
-    where
-        K: Into<String>,
-        V: Into<String>,
-    {
-        self.env.push((key.into(), value.into()));
-        self
-    }
-
-    #[inline]
-    pub fn new<P, G>(executable: P, game_id: G) -> Self
-    where
-        P: Into<std::path::PathBuf>,
-        G: Into<String>,
-    {
-        Self {
-            executable: executable.into(),
-            args: Vec::new(),
-            capture_output: false,
-            working_directory: None,
-            game_id: game_id.into(),
-            identity: None,
-            native: false,
-            store: None,
-            proton: Proton::default(),
-            dll_overrides: Vec::new(),
-            env: Vec::new(),
-            gamemoded: None,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn proton(mut self, proton: Proton) -> Self {
-        self.proton = proton;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn store<S>(mut self, store: S) -> Self
-    where
-        S: Into<String>,
-    {
-        self.store = Some(store.into());
-        self
-    }
-}
 
 /// A launched game.
 ///
@@ -296,19 +180,16 @@ impl Prepared {
     }
 }
 
-/// Starts `launch` in `prefix`, returning as soon as umu is running.
-///
-/// The prefix is created by umu on first use, so a path that doesn't exist
-/// yet is fine — that is how a new prefix gets made.
+/// Starts `launch` in its prefix, returning as soon as umu is running.
 ///
 /// # Errors
 ///
-/// Returns an error off Linux, if `launch.executable` isn't a bare command
-/// and doesn't exist as a host file, if its working directory can't be
-/// resolved, or if `umu-run` fails to spawn.
+/// Returns an error off Linux, without a prefix, if `launch.executable`
+/// isn't a bare command and doesn't exist as a host file, if its working
+/// directory can't be resolved, or if `umu-run` fails to spawn.
 #[inline]
-pub async fn start(prefix: &Prefix, launch: Launch) -> anyhow::Result<Session> {
-    match prepare(prefix, launch).await {
+pub async fn start(launch: Launch) -> anyhow::Result<Session> {
+    match prepare(launch).await {
         Ok(prepared) => prepared.spawn(),
         Err(err) => Err(err),
     }
@@ -319,17 +200,21 @@ pub async fn start(prefix: &Prefix, launch: Launch) -> anyhow::Result<Session> {
 ///
 /// # Errors
 ///
-/// Returns an error off Linux, if `launch.executable` isn't a bare command
-/// and doesn't exist as a host file, or if its working directory can't be
-/// resolved.
+/// Returns an error off Linux, without a prefix, if `launch.executable`
+/// isn't a bare command and doesn't exist as a host file, or if its working
+/// directory can't be resolved.
 #[inline]
-pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prepared> {
+pub async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     if !crate::available() {
         bail!(
             "Proton runs only on Linux, cannot start {}",
             launch.executable.display()
         );
     }
+    let Some(prefix) = launch.prefix.take() else {
+        tracing::warn!(executable = %launch.executable.display(), game_id = %launch.game_id, "rejecting launch: no prefix");
+        bail!("no prefix to run {} in", launch.executable.display());
+    };
     // A bare name (`wineboot`) is left for Wine to resolve inside the
     // prefix; anything with a path in it is a host file that has to exist,
     // and catching that here beats a launch that silently does nothing.
@@ -438,7 +323,7 @@ pub async fn prepare(prefix: &Prefix, mut launch: Launch) -> anyhow::Result<Prep
     Ok(Prepared {
         command,
         launch,
-        prefix: prefix.clone(),
+        prefix,
         program: umu_run_path,
     })
 }
@@ -467,7 +352,7 @@ fn wrapped(program: &Path, launch: &mut Launch) -> Command {
 
 /// A Linux program started as itself, tagged with [`SESSION_ENV`] so the
 /// session's processes are found the way a prefix's are.
-fn prepare_native(prefix: &Prefix, mut launch: Launch, working_directory: &Path) -> Prepared {
+fn prepare_native(prefix: Prefix, mut launch: Launch, working_directory: &Path) -> Prepared {
     let executable = launch.executable.clone();
     let mut command = wrapped(&executable, &mut launch);
     // As under umu: decanter's own library path and allocator settings are
@@ -493,7 +378,7 @@ fn prepare_native(prefix: &Prefix, mut launch: Launch, working_directory: &Path)
     Prepared {
         command,
         launch,
-        prefix: prefix.clone(),
+        prefix,
         program: executable,
     }
 }

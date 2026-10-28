@@ -1,5 +1,5 @@
-//! A Proton prefix decanter owns, and tracking which ones currently have
-//! something running in them.
+//! What runs in a Proton prefix: finding its processes, stopping them, and
+//! tracking which prefixes currently have something running in them.
 
 use core::str::from_utf8;
 use core::time::Duration;
@@ -15,9 +15,8 @@ use anyhow::Context as _;
 use futures_util::future::join_all;
 use tokio::time::sleep;
 
-use super::Proton;
-use super::{Launch, start};
-use crate::path::sanitize_relative_path;
+use super::start;
+use crate::{Launch, Prefix, Proton};
 
 /// How often [`Prefix::wait_until_idle`] re-checks for leftover processes.
 /// Only reached after the launcher already exited, so it costs one
@@ -30,27 +29,7 @@ pub(crate) const IDLE_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// it the way a Proton session is found by `WINEPREFIX`.
 pub(crate) const SESSION_ENV: &str = "DECANTER_SESSION";
 
-/// A Proton prefix decanter owns.
-///
-/// umu treats `WINEPREFIX` as Proton's `STEAM_COMPAT_DATA_PATH` and then
-/// symlinks `pfx` inside it back to the directory itself, so — unlike a
-/// Steam `compatdata` layout — `drive_c` sits directly under this path.
-#[derive(Debug, Clone)]
-pub struct Prefix {
-    /// Filesystem path to the prefix root.
-    pub(crate) path: PathBuf,
-}
-
 impl Prefix {
-    /// Where games get installed. Created on demand — umu creates it on
-    /// first launch, but an install has to write files there before any
-    /// launch has happened.
-    #[inline]
-    #[must_use]
-    pub fn drive_c(&self) -> PathBuf {
-        self.path.join("drive_c")
-    }
-
     /// Creates the prefix if it isn't there yet, and returns once Wine has
     /// finished laying it out.
     ///
@@ -68,29 +47,17 @@ impl Prefix {
         // `wineboot`, not a path to it: on a prefix that doesn't exist
         // there is nothing to point at yet, so Wine resolves it from the
         // Proton build instead.
-        let mut launch = Launch::new("wineboot", "umu-decanter");
+        let mut launch = Launch::new("wineboot", self.path.display().to_string())
+            .game_id("umu-decanter")
+            .prefix(self.clone());
         launch.args.push("-i".to_owned());
         launch.proton = proton;
         launch.working_directory = Some(env::temp_dir());
-        let session = match start(self, launch).await {
+        let session = match start(launch).await {
             Ok(session) => session,
             Err(err) => return Err(err),
         };
         session.wait().await.context("initializing the prefix with wineboot")
-    }
-
-    #[inline]
-    pub fn new<P>(path: P) -> Self
-    where
-        P: Into<PathBuf>,
-    {
-        Self { path: path.into() }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 
     /// Pids of every live process running against this prefix, the
@@ -132,29 +99,6 @@ impl Prefix {
             .collect();
         tracing::trace!(prefix = %self.path.display(), found = pids.len(), "scanned /proc for this prefix's processes");
         pids
-    }
-
-    /// Resolves a Windows path as stored on a program (`C:\Games\x.exe`)
-    /// to the host path umu should be handed.
-    ///
-    /// Only `C:` resolves: that's the only drive decanter ever creates a
-    /// program under, and mapping an arbitrary drive letter would mean
-    /// reading `dosdevices`, which is the prefix's business, not ours.
-    #[inline]
-    #[must_use]
-    pub fn resolve_windows_path(&self, windows_path: &str) -> Option<PathBuf> {
-        let Some(rest) = windows_path
-            .strip_prefix("C:\\")
-            .or_else(|| windows_path.strip_prefix("c:\\"))
-        else {
-            tracing::warn!(windows_path, "rejecting windows path: not on the C: drive");
-            return None;
-        };
-        let Some(relative) = sanitize_relative_path(&rest.replace('\\', "/")) else {
-            tracing::warn!(windows_path, "rejecting windows path: escapes the prefix");
-            return None;
-        };
-        Some(self.drive_c().join(relative))
     }
 
     /// Asks everything in the prefix to exit, then waits for it to.

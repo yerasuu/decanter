@@ -69,7 +69,7 @@ pub(super) async fn launch(
     };
     let mut launch = Launch::new(folder.executable(), session_key(&game.dir));
     launch.capture_output = true;
-    let mut prepared = match decanter_runtime::prepare(launch) {
+    let mut prepared = match decanter_runtime::prepare(launch).await {
         Ok(prepared) => prepared,
         Err(err) => {
             tracing::warn!(executable = %folder.executable().display(), error = %format_args!("{err:#}"), "could not prepare psport.exe");

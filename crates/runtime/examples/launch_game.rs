@@ -63,9 +63,12 @@ async fn run() -> anyhow::Result<()> {
     println!("exe    : {}", exe.display());
     println!("prefix : {}", prefix.path().display());
 
-    let mut launch = Launch::new(exe, format!("umu-{game_id}")).store("gog");
+    let mut launch = Launch::new(exe, format!("{profile}/{game_id}"))
+        .prefix(prefix.clone())
+        .game_id(format!("umu-{game_id}"))
+        .store("gog");
     launch.proton = Proton::Latest;
-    let session = match decanter_runtime::start(&prefix, launch).await {
+    let session = match decanter_runtime::start(launch).await {
         Ok(session) => session,
         Err(err) => return Err(err),
     };

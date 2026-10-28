@@ -89,10 +89,8 @@ fn achievement_log(account_id: &str, game: &InstalledGame, launch: &mut Launch) 
 }
 
 impl Planned {
-    /// A future only to share the Proton backend's shape, whose prepare
-    /// awaits umu-run.
-    pub(super) fn prepare(self) -> core::future::Ready<anyhow::Result<Prepared>> {
-        core::future::ready(decanter_runtime::prepare(self.launch))
+    pub(super) async fn prepare(self) -> anyhow::Result<Prepared> {
+        decanter_runtime::prepare(self.launch).await
     }
 }
 

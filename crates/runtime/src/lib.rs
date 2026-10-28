@@ -31,11 +31,17 @@
     reason = "most async fns here cost more than the 512-byte threshold by design"
 )]
 
+mod launch;
 mod os;
 mod path;
+mod prefix;
+mod proton;
 
+pub use launch::Launch;
 pub use os::*;
 pub use path::sanitize_relative_path;
+pub use prefix::Prefix;
+pub use proton::Proton;
 
 use decanter_core::capabilities::Feature;
 use decanter_core::platform;
