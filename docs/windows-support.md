@@ -242,7 +242,7 @@ Only the Release channel exists here: psport's CI attaches
 Testing builds are compiled locally with an encapsulated toolchain (see
 the next section); nothing per commit is downloaded.
 
-`decanter_ps::package` (compiled everywhere, offered where `PsDownloads`
+`decanter_ps::os::windows::package` (compiled everywhere, offered where `PsDownloads`
 is):
 
 - **Listing**: `offers` asks the [releases API](https://docs.github.com/en/rest/releases/releases#list-releases)
@@ -326,7 +326,7 @@ downloaded `psport.exe`.
 ## psport's branch built on Windows (Testing)
 
 Done on `feat/927-windows-build-psport-branch` (decisions #924 and #928,
-psport #926). `decanter_ps::winbuild` builds the branch Linux's Testing
+psport #926). `decanter_ps::os::windows::winbuild` builds the branch Linux's Testing
 channel follows on this machine, with a toolchain decanter downloads and
 pins itself, and leaves the result beside the packages. `PsBuilds` is
 offered (Testing) on Windows; git is decanter's pinned MinGit, never the

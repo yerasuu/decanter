@@ -1,10 +1,10 @@
-//! The Ports tab's card for psport's branch built on this machine ([`decanter_ps::winbuild`]): the
+//! The Ports tab's card for psport's branch built on this machine ([`decanter_ps::os::windows::winbuild`]): the
 //! branch's newest commit, the confirmation asked before building a commit the first time, the
 //! build's progress and last lines, and the builds in the library to use or delete.
 
 use std::borrow::Cow;
 
-use decanter_ps::winbuild::{self, Built, Commit, Head, Stage};
+use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head, Stage};
 use gpui::{AnyElement, App, Div, Entity, SharedString, div, prelude::*, px, rgb};
 use rust_i18n::t;
 

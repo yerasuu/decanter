@@ -3,12 +3,12 @@
 //! whose build [`super::ports`] then fetches instead of building.
 
 use decanter_ps::channel::Channel;
+use decanter_ps::os::linux::prebuilt::{self, Release};
+use decanter_ps::os::linux::updater;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::prebuilt::{self, Release};
 use decanter_ps::process::JobKind;
 use decanter_ps::remote::RemoteError;
-use decanter_ps::updater;
 use gpui::{AppContext as _, AsyncApp, WeakEntity};
 
 use super::Ps;

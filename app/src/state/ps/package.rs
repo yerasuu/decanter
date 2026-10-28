@@ -1,4 +1,4 @@
-//! psport's Windows package ([`decanter_ps::package`]) where decanter runs `psport.exe` directly: the
+//! psport's Windows package ([`decanter_ps::os::windows::package`]) where decanter runs `psport.exe` directly: the
 //! releases that carry it, the versions in the library, which one Jugar runs, and keeping that one
 //! on the newest release unless the user chose another.
 
@@ -7,10 +7,10 @@ use std::time::Duration;
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::direct::FOLDER_KEY;
 use decanter_ps::download;
-use decanter_ps::package::{self, Installed, Offer, PINNED_KEY, SELECTED_KEY, Version};
+use decanter_ps::os::windows::package::{self, Installed, Offer, PINNED_KEY, SELECTED_KEY, Version};
+use decanter_ps::os::windows::winbuild::Commit;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
-use decanter_ps::winbuild::Commit;
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
@@ -470,9 +470,11 @@ pub(super) async fn for_play(
     if let Some(commit) = settings
         .text(SELECTED_KEY)
         .and_then(|commit| commit.parse::<Commit>().ok())
-        && decanter_ps::winbuild::built_commit(root, &commit).await.is_some()
+        && decanter_ps::os::windows::winbuild::built_commit(root, &commit)
+            .await
+            .is_some()
     {
-        return Ok(decanter_ps::winbuild::dir(root, &commit));
+        return Ok(decanter_ps::os::windows::winbuild::dir(root, &commit));
     }
     let selected = settings.text(SELECTED_KEY).and_then(|tag| tag.parse::<Version>().ok());
     if let Some(version) = selected

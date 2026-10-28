@@ -8,11 +8,11 @@ use std::process::ExitStatus;
 use std::time::Instant;
 
 use decanter_ps::failures::{self, CallReport, Failure, Scanner};
+use decanter_ps::os::linux::toolchain::Toolchain;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job, JobKind};
 use decanter_ps::run_log::{self, RunLog, describe_exit};
-use decanter_ps::toolchain::Toolchain;
 use gpui::{AppContext as _, AsyncApp, Entity, WeakEntity};
 use rust_i18n::t;
 use tokio::process::Command;

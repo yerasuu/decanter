@@ -2,7 +2,7 @@
 //! releases that carry its Windows package and the versions in the library, to download, choose the
 //! one Jugar runs and delete the others.
 
-use decanter_ps::package::{Installed, Offer, Version};
+use decanter_ps::os::windows::package::{Installed, Offer, Version};
 use gpui::{AnyElement, App, Entity, SharedString, div, prelude::*, px};
 use rust_i18n::t;
 

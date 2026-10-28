@@ -1,14 +1,14 @@
-//! Release's bundle of the port ([`decanter_ps::bundle`]), tried before any toolchain is looked
+//! Release's bundle of the port ([`decanter_ps::os::linux::bundle`]), tried before any toolchain is looked
 //! for, so a host without nix runs a release without downloading nix-portable. Tags from before
 //! the bundles, and anything that stops one, leave the port to the nix cache as before.
 
 use decanter_ps::bbport::Bbport;
-use decanter_ps::bundle;
 use decanter_ps::channel::Channel;
+use decanter_ps::os::linux::bundle;
+use decanter_ps::os::linux::toolchain::Toolchain;
+use decanter_ps::os::linux::updater;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::toolchain::Toolchain;
-use decanter_ps::updater;
 use gpui::{AsyncApp, WeakEntity};
 
 use super::Ps;

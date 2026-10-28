@@ -91,7 +91,7 @@ impl CompatibilityTab {
         cx.spawn(async move |this, cx| {
             let (umu_run, nix_portable, umu_proton) = futures::join!(
                 releases::latest(decanter_runtime::UMU_LAUNCHER_REPO),
-                releases::latest(decanter_ps::toolchain::NIX_PORTABLE_REPO),
+                releases::latest(decanter_ps::os::linux::toolchain::NIX_PORTABLE_REPO),
                 releases::latest(decanter_runtime::UMU_PROTON_REPO),
             );
             for (tool, result) in [
@@ -143,7 +143,7 @@ impl CompatibilityTab {
             ))
             .child(pinned_line(
                 "nix-portable",
-                decanter_ps::toolchain::NIX_PORTABLE_VERSION,
+                decanter_ps::os::linux::toolchain::NIX_PORTABLE_VERSION,
                 tools.map(|tools| &tools.nix_portable),
             ))
             .child(proton_line(tools))

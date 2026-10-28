@@ -1,17 +1,17 @@
 //! A port whose build fails once its checkout moved goes back to the last commit it built at
-//! ([`decanter_ps::builds`]) and runs from there, rather than staying unusable until upstream
+//! ([`decanter_ps::os::linux::builds`]) and runs from there, rather than staying unusable until upstream
 //! fixes it. The commit that broke is remembered, so the automatic update doesn't move onto it
 //! again; [`Ps::retry_update`] does.
 
 use std::path::PathBuf;
 
-use decanter_ps::builds::Record;
 use decanter_ps::failures;
+use decanter_ps::os::linux::builds::Record;
+use decanter_ps::os::linux::toolchain::Toolchain;
+use decanter_ps::os::linux::updater;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
 use decanter_ps::process::JobKind;
-use decanter_ps::toolchain::Toolchain;
-use decanter_ps::updater;
 use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 
 use super::Ps;

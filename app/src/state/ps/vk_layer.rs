@@ -5,10 +5,10 @@
 use std::path::{Path, PathBuf};
 
 use decanter_ps::bbport::Names;
+use decanter_ps::os::linux::toolchain::Toolchain;
+use decanter_ps::os::linux::toolchain::validation::{self, Unavailable};
 use decanter_ps::paths::Root;
 use decanter_ps::process::JobKind;
-use decanter_ps::toolchain::Toolchain;
-use decanter_ps::toolchain::validation::{self, Unavailable};
 use gpui::{AsyncApp, WeakEntity};
 use tokio::process::Command;
 

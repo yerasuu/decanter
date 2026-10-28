@@ -1,12 +1,12 @@
 //! psport's branch built on this machine where decanter runs `psport.exe` directly
-//! ([`decanter_ps::winbuild`]): the newest commit of the branch, the owner's confirmation before
+//! ([`decanter_ps::os::windows::winbuild`]): the newest commit of the branch, the owner's confirmation before
 //! the first build of each commit, the build's progress and output, the builds in the library, which
 //! one Jugar runs, and deleting them and the toolchain.
 
 use std::collections::VecDeque;
 
+use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head, Stage};
 use decanter_ps::paths::{self, Root};
-use decanter_ps::winbuild::{self, Built, Commit, Head, Stage};
 use gpui::{AsyncApp, Context, Task, WeakEntity};
 
 use super::Ps;

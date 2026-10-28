@@ -10,13 +10,13 @@ use decanter_core::capabilities::Feature;
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport};
 use decanter_ps::channel::Channel;
+use decanter_ps::os::linux::prebuilt;
+use decanter_ps::os::linux::toolchain::{self, Toolchain};
+use decanter_ps::os::linux::updater::{self, Check, Plan};
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
-use decanter_ps::prebuilt;
 use decanter_ps::process::JobKind;
 use decanter_ps::remote::RemoteError;
-use decanter_ps::toolchain::{self, Toolchain};
-use decanter_ps::updater::{self, Check, Plan};
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
@@ -502,7 +502,7 @@ pub(super) async fn build(
     set_stage(this, port, Stage::Building, cx);
     let for_reset = port.checkout(root);
     match cx
-        .background_spawn(async move { decanter_ps::cmake_cache::forget_moved(&for_reset) })
+        .background_spawn(async move { decanter_ps::os::linux::cmake_cache::forget_moved(&for_reset) })
         .await
     {
         Ok(reset) => {
@@ -537,7 +537,7 @@ pub(super) async fn build(
         );
         let checkout = port.checkout(root);
         if let Err(err) = cx
-            .background_spawn(async move { decanter_ps::cmake_cache::forget_all(&checkout) })
+            .background_spawn(async move { decanter_ps::os::linux::cmake_cache::forget_all(&checkout) })
             .await
         {
             return Err(PortError::CmakeCache(err));
@@ -694,7 +694,7 @@ async fn rebuild(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncA
         Ok(true) => {
             let checkout = port.checkout(root);
             if let Err(err) = cx
-                .background_spawn(async move { decanter_ps::cmake_cache::forget_all(&checkout) })
+                .background_spawn(async move { decanter_ps::os::linux::cmake_cache::forget_all(&checkout) })
                 .await
             {
                 tracing::warn!(port = port.name(), %err, "could not drop nix's CMake cache for the host");

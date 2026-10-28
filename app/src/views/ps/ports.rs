@@ -9,11 +9,11 @@ use std::borrow::Cow;
 use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::direct;
 use decanter_ps::channel::Channel;
+use decanter_ps::os::linux::toolchain::Toolchain;
+use decanter_ps::os::linux::updater::{Check, Plan};
 use decanter_ps::paths;
 use decanter_ps::port::Port;
 use decanter_ps::remote::RemoteError;
-use decanter_ps::toolchain::Toolchain;
-use decanter_ps::updater::{Check, Plan};
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
