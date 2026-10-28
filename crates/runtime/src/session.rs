@@ -104,6 +104,8 @@ impl Session {
         self.child.id()
     }
 
+    /// The prefix the launch ran in, for a caller that stops or inspects it
+    /// afterwards; `None` for a program that runs without one.
     #[inline]
     #[must_use]
     pub const fn prefix(&self) -> Option<&Prefix> {
@@ -209,6 +211,7 @@ fn killed() -> &'static Mutex<HashMap<String, SystemTime>> {
     KILLED.get_or_init(Default::default)
 }
 
+/// Locks [`killed`], recovering a poisoned lock for the same reason as [`live_lock`].
 pub(crate) fn killed_lock() -> MutexGuard<'static, HashMap<String, SystemTime>> {
     killed().lock().unwrap_or_else(PoisonError::into_inner)
 }
