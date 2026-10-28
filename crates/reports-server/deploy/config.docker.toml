@@ -1,0 +1,23 @@
+# decanter-reports configuration for the container behind Traefik (compose.yaml mounts it read-only at
+# /etc/decanter-reports/config.toml). It holds no secret. Two values depend on the host's network and come from
+# deploy/.env as environment variables, which override this file: DECANTER_REPORTS_TRUSTED_PROXIES (Traefik's address
+# on expose-public) and DECANTER_REPORTS_STORAGE_ENDPOINT (MinIO). Every other key keeps its default; see
+# config.example.toml for the full list.
+
+# The image sets DECANTER_REPORTS_LISTEN=0.0.0.0:8787; only Traefik reaches it, over expose-public.
+public_url = "https://reports.yerasuu.com"
+
+# Cloudflare overwrites this header with the address it saw; Traefik passes it on untouched.
+client_ip_header = "cf-connecting-ip"
+
+# Compose mounts file secrets at /run/secrets/<name>, owned by uid 65532 with mode 0400 (docs/deploy.md).
+admin_key_file = "/run/secrets/admin_key"
+
+[storage]
+driver = "s3"
+bucket = "decanter-reports"
+region = "us-east-1"
+path_style = true
+access_key_id_file = "/run/secrets/s3_access_key_id"
+secret_access_key_file = "/run/secrets/s3_secret_access_key"
+passphrase_file = "/run/secrets/storage_passphrase"

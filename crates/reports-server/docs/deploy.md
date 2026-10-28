@@ -246,6 +246,50 @@ The `Peer Address` column is the value for `trusted_proxies`. This procedure was
 written (no container was built offline); check it on the host, and confirm the result with the forged-header test
 above.
 
+## Docker and Traefik
+
+`deploy/compose.yaml` runs the container behind Traefik the way the home server's other public services are
+published: the external network `expose-public`, `traefik.constraint-label=expose-public`, the `websecure` entry point
+and the router rule `Host(...)`. No port is published on the host. `deploy/config.docker.toml` is the server's configuration (public URL `https://reports.yerasuu.com`, the
+client-address header, the bucket and the secret paths); check the bucket and region in it. Copy
+`deploy/compose.env.example` to `deploy/.env`, fill in the host-specific values and run `docker compose up -d --build` from `deploy/`. The build context is the repository
+root, and BuildKit takes the ignore file named after the Dockerfile, `deploy/Containerfile.dockerignore` (a link to
+`Containerfile.containerignore`), so `.git`, `.brain` and keys stay out of the build.
+
+- **Secrets.** The four secret files go in `deploy/secrets/` (`admin.key`, `storage.passphrase`, `s3.access_key_id`,
+  `s3.secret_access_key`, as in "Configuration" above) and must be owned by uid 65532 with mode 0400:
+  [Compose bind-mounts file secrets as they are and ignores `uid`, `gid` and `mode`](https://docs.docker.com/reference/compose-file/services/#secrets),
+  and the server refuses a secret that group or others can read. `sudo chown 65532:65532 secrets/* && sudo chmod 0400 secrets/*`.
+  Keep `secrets/` out of git (the repository's `.gitignore` is the owner's to change) and the passphrase copy offline.
+- **Client address.** The tunnel overwrites `CF-Connecting-IP` with what Cloudflare saw, and Traefik passes it on
+  untouched. `DECANTER_REPORTS_TRUSTED_PROXIES` is Traefik's address on `expose-public` as the container sees it
+  (`docker network inspect expose-public`), a single address: pin it with `ipv4_address` in Traefik's own compose, or
+  it can change on a restart and every request is counted against Traefik's address. Then run the forged-header test
+  from the requirements above through the real tunnel.
+- **Origin.** `traefik.http.middlewares.decanter-reports-origin.ipallowlist.sourcerange` (`TUNNEL_SOURCE`) is the
+  address `cloudflared` connects to Traefik from; every other source gets a 404 on this host name
+  ([ipAllowList](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/ipallowlist/)).
+  Without it, anyone who reaches Traefik's port from the local network can send their own `CF-Connecting-IP` and
+  choose the address the limits count. The middleware has no `ipStrategy`: it checks the peer address, not
+  `X-Forwarded-For`. Traefik v3 names it `ipAllowList`; v2 called it `ipWhiteList`, so check the version in use.
+- **Entry point.** Timeouts and the grace period belong to Traefik's static configuration, under
+  `entryPoints.websecure.transport`: `respondingTimeouts.readTimeout` (default 60s, the whole request including the
+  body), `idleTimeout` (default 180s) and `lifeCycle.graceTimeOut` (default 10s)
+  ([entry points](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/)). The server's own
+  `header_timeout_secs` (10) and body limits are tighter, so the defaults are enough; do not add the tunnel's address
+  to `forwardedHeaders.trustedIPs` for this service, since the server reads no `X-Forwarded-*`.
+- **The container.** Read-only root, all capabilities dropped, `no-new-privileges`, user 65532, 512 MiB, 256
+  processes, 4096 open files and a 10 s stop grace, the same bounds as the systemd unit. Distroless has no shell, so
+  there is no container health check; Traefik routes to it once it is running, and `GET /healthz` answers 200.
+- **Order.** `docker compose config` (shows the values interpolated; the labels must carry the host and the tunnel
+  address), `docker compose up -d --build`, `docker compose logs decanter-reports`, then the checks in "Before
+  exposing it". `--check-config` inside the image is not available (no shell): run it from a build of the binary on
+  the host with the same variables, or `docker compose run --rm --no-deps decanter-reports --check-config` (the
+  entry point is the binary).
+
+This was written without running Docker or Traefik: the compose file was not started and the labels were checked
+against the documentation only.
+
 ## Operating it
 
 - **Flooded group.** Find it on the index, look at it with `GET /admin/reports?fingerprint=<fp>&day=<day>`, then

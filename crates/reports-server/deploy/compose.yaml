@@ -1,0 +1,76 @@
+# decanter-reports behind Traefik, on the same pattern as the other public services of the home server: the external
+# network `expose-public`, the constraint label and the `websecure` entry point. Run it from this directory:
+#   cp compose.env.example .env   # fill it in, then: docker compose up -d --build
+# docs/deploy.md ("Docker and Traefik") explains every value and the checks to make before exposing it.
+services:
+  decanter-reports:
+    build:
+      # The root of decanter's repository: decanter-report is a path dependency in the same repository. What the build
+      # reads is limited by Containerfile.dockerignore (BuildKit's name for Containerfile.containerignore).
+      context: ../../..
+      dockerfile: crates/reports-server/deploy/Containerfile
+      args:
+        RUST_IMAGE: ${RUST_IMAGE:-docker.io/library/rust:1.98-bookworm}
+        RUNTIME_IMAGE: ${RUNTIME_IMAGE:-gcr.io/distroless/cc-debian12:nonroot}
+    image: decanter-reports:latest
+    container_name: decanter-reports
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+    ulimits:
+      nofile: 4096
+    stop_grace_period: 10s
+    # No published ports: only Traefik reaches the server, through expose-public.
+    # Everything but the two values below is in config.docker.toml; these come from .env because they depend on
+    # the host's network.
+    command: ["/etc/decanter-reports/config.toml"]
+    volumes:
+      - ./config.docker.toml:/etc/decanter-reports/config.toml:ro
+    environment:
+      # Traefik's address on expose-public as this container sees it (single address, no range). Pin it in Traefik's
+      # own compose (ipv4_address) or it can change when Traefik restarts.
+      DECANTER_REPORTS_TRUSTED_PROXIES: ${TRAEFIK_IP}
+      DECANTER_REPORTS_STORAGE_ENDPOINT: ${S3_ENDPOINT}
+    secrets:
+      - admin_key
+      - storage_passphrase
+      - s3_access_key_id
+      - s3_secret_access_key
+    labels:
+      - traefik.enable=true
+      - traefik.constraint-label=expose-public
+      - traefik.http.routers.decanter-reports.rule=Host(`${REPORTS_HOST}`)
+      - traefik.http.routers.decanter-reports.entrypoints=websecure
+      - traefik.http.routers.decanter-reports.tls=true
+      - traefik.http.routers.decanter-reports.service=decanter-reports
+      # Only the tunnel may reach this router: cf-connecting-ip is trusted for the per-IP limits, so a client that
+      # connected to Traefik directly (from the LAN) could choose the address the limits count.
+      - traefik.http.routers.decanter-reports.middlewares=decanter-reports-origin
+      - traefik.http.middlewares.decanter-reports-origin.ipallowlist.sourcerange=${TUNNEL_SOURCE}
+      - traefik.http.middlewares.decanter-reports-origin.ipallowlist.rejectstatuscode=404
+      - traefik.http.services.decanter-reports.loadbalancer.server.port=8787
+    networks:
+      - expose-public
+
+# The files are bind-mounted as they are on the host: Compose ignores uid, gid and mode for file secrets, and the
+# server refuses a secret that group or others can read. They must belong to uid 65532 with mode 0400
+# (docs/deploy.md, "Docker and Traefik").
+secrets:
+  admin_key:
+    file: ./secrets/admin.key
+  storage_passphrase:
+    file: ./secrets/storage.passphrase
+  s3_access_key_id:
+    file: ./secrets/s3.access_key_id
+  s3_secret_access_key:
+    file: ./secrets/s3.secret_access_key
+
+networks:
+  expose-public:
+    external: true
