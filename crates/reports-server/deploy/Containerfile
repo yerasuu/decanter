@@ -1,0 +1,29 @@
+# Fill the digests in before building for real (this file was written offline and could not fetch them):
+#   podman pull docker.io/library/rust:1.98-bookworm && podman inspect --format '{{index .RepoDigests 0}}' <image>
+# then set RUST_IMAGE and RUNTIME_IMAGE to the `name@sha256:...` values so a retagged image cannot change the build.
+ARG RUST_IMAGE=docker.io/library/rust:1.98-bookworm
+ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:nonroot
+
+FROM ${RUST_IMAGE} AS build
+WORKDIR /src
+# decanter-report is a path dependency in the same repository: build with the repository root as the context. What
+# the build reads is limited by Containerfile.containerignore.
+COPY . /src
+WORKDIR /src/crates/reports-server
+# s3db is a git dependency (.cargo/config.toml fetches it with the git CLI), so the build stage needs network to
+# git.yerasuu.com and crates.io, or a vendored copy.
+RUN cargo build --release --locked
+
+# The runtime image has no shell, so /data is made here and copied over with its owner: a new named volume takes
+# the ownership of the image's directory, a bind mount does not (docs/deploy.md, "Container"). Only the local
+# storage driver uses it; with a bucket the container keeps no state.
+RUN install -d -m 0700 -o 65532 -g 65532 /rootfs/data
+
+FROM ${RUNTIME_IMAGE}
+COPY --from=build /src/crates/reports-server/target/release/decanter-reports /usr/local/bin/decanter-reports
+COPY --from=build --chown=65532:65532 /rootfs/data /data
+ENV DECANTER_REPORTS_LISTEN=0.0.0.0:8787 DECANTER_REPORTS_STORAGE_DIR=/data
+VOLUME /data
+EXPOSE 8787
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/decanter-reports"]

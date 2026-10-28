@@ -1,0 +1,28 @@
+# Build context: the root of decanter's repository. Podman reads this file next to the Containerfile
+# (Containerfile.containerignore); with an older podman or buildah copy it to the context root as .containerignore.
+# Only what the server's build reads is let through: the workspace manifest and every member's Cargo.toml (cargo
+# reads them to resolve `workspace = true` of decanter-report, but builds nothing else), decanter-report's source and
+# this crate. A new decanter workspace member needs its Cargo.toml listed below.
+*
+!Cargo.toml
+!app/Cargo.toml
+!crates/core/Cargo.toml
+!crates/gog/Cargo.toml
+!crates/ps/Cargo.toml
+!crates/runtime/Cargo.toml
+!crates/report
+!crates/reports-server
+**/.git
+**/.githooks
+**/.brain
+**/.claude
+**/target
+**/keys
+**/*.key
+**/*.pem
+**/.env*
+**/*.redb
+**/*.passphrase
+**/*access_key*
+crates/reports-server/data
+crates/reports-server/docs

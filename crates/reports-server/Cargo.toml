@@ -1,0 +1,56 @@
+[package]
+name = "decanter-reports"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "AGPL-3.0-or-later"
+description = "Receives, validates and publishes decanter's error reports"
+publish = false
+
+# Not a member of decanter's workspace (it is excluded there): s3db brings its own 266 crates, which must not enter
+# decanter's Cargo.lock, so this crate is its own workspace root with its own lock.
+[workspace]
+
+# The same crate decanter builds reports with validates them here, so both sides agree on what a
+# public report may hold. It inherits from decanter's workspace; cargo resolves that from the path.
+[dependencies]
+decanter-report = { path = "../report" }
+# s3db speaks anyhow and its Backend trait is an async_trait; the prefix layer implements it.
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+axum = { version = "=0.8.4", default-features = false, features = ["http1", "tokio", "query", "json"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+getrandom = { version = "0.3.4", features = ["std"] }
+rustix = { version = "1.1.4", default-features = false, features = ["fs", "process"] }
+hyper = { version = "1.11.0", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio", "server-graceful"] }
+# The storage engine, its own project: pinned by tag like gitquarry pins it, never a branch, so a rebuild resolves
+# the exact same engine. Its rust-version (1.97) sets this crate's.
+s3db = { git = "https://git.yerasuu.com/yerasuu/s3db", tag = "v0.6.1" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10.9"
+subtle = "2.6.1"
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "fs", "time", "signal", "io-util", "sync"] }
+toml = { version = "0.8.23", default-features = false, features = ["parse"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+redundant_clone = "deny"
+clone_on_ref_ptr = "deny"
+needless_collect = "deny"
+uninlined_format_args = "deny"

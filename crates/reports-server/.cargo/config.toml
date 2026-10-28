@@ -1,0 +1,5 @@
+[net]
+# s3db is a git dependency on git.yerasuu.com: the system git honours the
+# user's credential helpers, proxy and ssh setup, which cargo's built-in
+# libgit2 fetcher does not.
+git-fetch-with-cli = true

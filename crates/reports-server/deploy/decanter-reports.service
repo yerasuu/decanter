@@ -1,0 +1,65 @@
+[Unit]
+Description=decanter-reports: error report server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+# All state is in the bucket ([storage] in config.toml), so the service has no state directory. Only with
+# driver = "local", uncomment these two lines and set storage.dir = "/var/lib/decanter-reports".
+#StateDirectory=decanter-reports
+#StateDirectoryMode=0700
+ExecStart=/usr/local/bin/decanter-reports /etc/decanter-reports/config.toml
+# Each secret sits in a root-only file; systemd hands the service a private copy under $CREDENTIALS_DIRECTORY, which
+# config.toml names (admin_key_file = "$CREDENTIALS_DIRECTORY/admin_key" and the three in [storage]). config.toml
+# itself holds no secret. The two S3 keys are not needed with the local driver.
+LoadCredential=admin_key:/etc/decanter-reports/admin.key
+LoadCredential=storage_passphrase:/etc/decanter-reports/storage.passphrase
+LoadCredential=s3_access_key_id:/etc/decanter-reports/s3.access_key_id
+LoadCredential=s3_secret_access_key:/etc/decanter-reports/s3.secret_access_key
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+UMask=0077
+
+# The process talks to the tunnel and to the bucket only. Put the bucket's address on the second line (MinIO on this
+# host is already covered by localhost); a tunnel on another host (a WireGuard or tailnet address, say) goes on the
+# third. A hostname endpoint is resolved through 127.0.0.53 (systemd-resolved) or the resolver in resolv.conf, whose
+# address must be allowed too.
+IPAddressDeny=any
+IPAddressAllow=localhost
+#IPAddressAllow=<MinIO address>
+#IPAddressAllow=<tunnel address>
+
+MemoryMax=512M
+TasksMax=256
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

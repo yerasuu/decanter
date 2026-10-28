@@ -1,0 +1,2 @@
+# The root clippy.toml of decanter sets thresholds for the launcher (a 512 byte stack-size-threshold, for one):
+# this crate is its own workspace and keeps clippy's defaults, which its lints were tuned against.

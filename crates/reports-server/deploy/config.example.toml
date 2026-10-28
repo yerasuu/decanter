@@ -1,0 +1,79 @@
+# decanter-reports configuration. Every key is optional; the values below are the defaults except where noted.
+# Environment overrides: DECANTER_REPORTS_LISTEN, _PUBLIC_URL, _ADMIN_KEY_ENV, _ADMIN_KEY_FILE,
+# _TRUSTED_PROXIES (comma separated), _CLIENT_IP_HEADER, _RETENTION_DAYS, _LOG,
+# _RESOLVED_RETENTION_DAYS, _INDEX_CACHE_SECS, _MAX_CONNECTIONS, _HEADER_TIMEOUT_SECS, _SHUTDOWN_GRACE_SECS,
+# _LIMIT_PER_IP_HOUR, _LIMIT_PER_IP_DAY, _LIMIT_GLOBAL_HOUR, _LIMIT_GET_PER_IP_MINUTE,
+# _LIMIT_FAILURES_PER_IP, _LIMIT_FAILURE_WINDOW_SECS; for [storage]: _STORAGE_DRIVER, _STORAGE_DIR,
+# _STORAGE_BUCKET, _STORAGE_ENDPOINT, _STORAGE_REGION, _STORAGE_ACCOUNT_ID, _STORAGE_PREFIX, _STORAGE_PATH_STYLE,
+# _STORAGE_ALLOW_INSECURE_HTTP, _ACCESS_KEY_ID_ENV, _ACCESS_KEY_ID_FILE, _SECRET_ACCESS_KEY_ENV,
+# _SECRET_ACCESS_KEY_FILE, _PASSPHRASE_ENV, _PASSPHRASE_FILE.
+# This file holds no secret and must be readable by the service user (mode 0644).
+
+listen = "127.0.0.1:8787"
+# Prefix of the `url` the upload answers with (no trailing slash).
+public_url = "https://reports.example.org"
+
+# The admin key is never in this file: a file holding it, or an environment variable (name below).
+# Under systemd the key is a credential (LoadCredential= in the unit); a path starting with $CREDENTIALS_DIRECTORY
+# is resolved against that directory. Any other file must be readable by its owner only (mode 0600).
+admin_key_file = "$CREDENTIALS_DIRECTORY/admin_key"
+# admin_key_env = "DECANTER_REPORTS_ADMIN_KEY"
+
+# The tunnel's address as the server sees it (single addresses, no ranges), and the header it fills with the real
+# client address. Use a single-valued header the tunnel overwrites (cf-connecting-ip); x-forwarded-for works only if
+# the tunnel replaces what the client sent. --check-config warns about the risky combinations.
+trusted_proxies = ["127.0.0.1"]
+client_ip_header = "cf-connecting-ip"
+
+# Connections served at once; the next one is closed at once.
+max_connections = 512
+# Seconds to receive a request head. Also closes idle keep-alive connections.
+header_timeout_secs = 10
+# Seconds open connections get to finish after SIGTERM before they are dropped.
+shutdown_grace_secs = 5
+
+# Unresolved reports older than this are deleted by the daily sweep, with their attachments.
+retention_days = 365
+# Resolved reports are deleted this many days after their resolution; 0 keeps them for good.
+resolved_retention_days = 90
+# Seconds a rendered index page is reused (each render reads the bucket); 0 turns the cache off.
+index_cache_secs = 15
+page_size = 25
+log_level = "info"
+
+[limits]
+per_ip_hour = 10
+per_ip_day = 50
+# Spent only by reports that passed validation and attachments sent with the right delete code.
+global_hour = 500
+# Page reads per client address and minute (not /healthz or /admin).
+get_per_ip_minute = 120
+# Wrong admin keys and wrong delete codes one address may make per window, then 429 with Retry-After.
+failures_per_ip = 10
+failure_window_secs = 600
+# At these caps the oldest unresolved reports (and attachments) are evicted instead of refusing uploads.
+max_reports = 100000
+max_attachments = 2000
+
+# Where the reports, groups and attachments live: an S3-compatible bucket through s3db, encrypted at rest. The
+# default is driver = "local" with dir = "data" (one database file in a 0700 directory, for development).
+[storage]
+driver = "s3"                      # "s3" (MinIO or any S3), "r2" (Cloudflare R2, needs account_id) or "local"
+bucket = "decanter-reports"
+endpoint = "https://minio.example.lan:9000"   # empty for AWS itself
+region = "us-east-1"               # MinIO accepts any; AWS needs the bucket's own
+prefix = ""                        # on a shared bucket, a prefix the user is limited to (s3db-inspect then cannot
+                                   # decrypt; see docs/runbook.md); s3/r2 only
+path_style = true                  # MinIO without wildcard DNS needs it
+allow_insecure_http = false        # an http:// endpoint is refused unless this is true (keys and data in clear)
+# dir = "/var/lib/decanter-reports"  # the local driver's directory, created 0700
+
+# The three secrets are never in this file. Like the admin key, each comes from a file (a $CREDENTIALS_DIRECTORY
+# path from LoadCredential=, or an owner-only file) or, without one, from the environment variable named here.
+# Losing the passphrase makes the whole bucket unreadable: keep a copy offline.
+access_key_id_file = "$CREDENTIALS_DIRECTORY/s3_access_key_id"
+secret_access_key_file = "$CREDENTIALS_DIRECTORY/s3_secret_access_key"
+passphrase_file = "$CREDENTIALS_DIRECTORY/storage_passphrase"
+# access_key_id_env = "DECANTER_REPORTS_S3_ACCESS_KEY_ID"
+# secret_access_key_env = "DECANTER_REPORTS_S3_SECRET_ACCESS_KEY"
+# passphrase_env = "DECANTER_REPORTS_PASSPHRASE"

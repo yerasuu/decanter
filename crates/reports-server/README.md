@@ -1,0 +1,173 @@
+# decanter-reports
+
+The server that receives decanter's error reports, re-validates them, and publishes the ones that pass as public
+pages. One Rust binary, no database (everything in an S3-compatible bucket through `s3db`, encrypted at rest), no
+accounts, no JavaScript. It speaks plain HTTP on loopback; a tunnel in
+front exposes the port and terminates TLS (see `docs/deploy.md`).
+
+Design decisions live in decanter's board: #985, #986, #987, #988, #989, #991, #1033, #1034, #1047, #1049 (tasks
+#993, #1048). `docs/design.md` has the data model.
+
+## How it works
+
+A report is not a log. decanter builds a closed JSON structure from an allow-list with the `decanter-report`
+crate and sends it after the player previews it. This server runs the **same crate's** `validate` on the bytes it
+receives: if anything does not fit the schema, the whole report is refused with the path and rule that failed (never
+the value) and nothing is stored. A report that passes is stored exactly as validated and published at once, with no
+human review. Because that is the last barrier, every value is treated as untrusted and every page escapes it.
+
+`decanter-report` is a path dependency (`../report`), a crate of the same repository. This crate is excluded from
+decanter's workspace and has its own `Cargo.lock`, so build and test it from this directory
+(`cargo test` inside `crates/reports-server`). `s3db` is a git dependency pinned by
+tag; `.cargo/config.toml` makes cargo fetch it with the system git.
+
+## Endpoints
+
+| Method and path | Who | Answer |
+|---|---|---|
+| `POST /v1/reports` | anyone, rate limited, `Content-Type: application/json` | 201 `{id, delete_code, url, fingerprint}`; 422 `{rejections:[{path, rule}]}`; 413 above 64 KiB; 415 without the JSON content type; 429 with `Retry-After` |
+| `DELETE /v1/reports/<id>` | owner, header `X-Delete-Code` | 204; 404 for an unknown id or a wrong code (identical); 429 once the address has made too many wrong codes |
+| `PUT /v1/reports/<id>/attachment` | owner, header `X-Delete-Code`, rate limited | 204; one per report, up to 5 MiB, private; 409 if there is one or the report is resolved |
+| `GET /` | public | reports grouped by fingerprint; `?product=decanter\|psport&title=CUSA00000&resolved=0\|1&page=N` |
+| `GET /r/<id>` | public | one report: every field as escaped text, plus the raw JSON |
+| `GET /g/<fingerprint>` | public | the reports of one group |
+| `GET /healthz` | public | `ok` |
+| `GET /admin/reports?limit=&offset=&fingerprint=&day=&product=&title=` | admin | JSON list including hidden reports; the filters (16 hex, `YYYY-MM-DD` received day, `decanter\|psport`, `CUSA00000`) are validated, 400 `invalid_filter` otherwise |
+| `POST /admin/reports/<id>/hide`, `/restore`, `/resolve` | admin | 204 |
+| `DELETE /admin/reports/<id>` | admin | 204 |
+| `POST /admin/groups/<fingerprint>/hide`, `/restore`, `/resolve` | admin | 204 for every report of the group; 404 if the group has none |
+| `DELETE /admin/groups/<fingerprint>` | admin | 204; deletes the group's reports and their attachments |
+| `GET /admin/reports/<id>/attachment` | admin | the file as `application/octet-stream`, `Content-Disposition: attachment` |
+
+Public pages (everything but `/healthz` and `/admin`) are rate limited per client: 429 with `Retry-After`.
+
+Hidden reports answer 404 on the public pages. Resolved reports stay public, marked, and lose their attachment.
+Without a valid key every `/admin` route answers 404, not 401, and a wrong method on any path also answers 404 (with no `Allow` header). Every error is a small JSON `{"error": ...}`, also the framework's own (a repeated query key is `400 bad_request`).
+
+### Try it
+
+```sh
+B=http://127.0.0.1:8787
+curl -s -X POST -H 'Content-Type: application/json' --data-binary @report.json $B/v1/reports          # keep the delete_code: it is shown once
+curl -s -X DELETE -H "X-Delete-Code: $CODE" $B/v1/reports/$ID
+curl -s -X PUT -H "X-Delete-Code: $CODE" --data-binary @game.log $B/v1/reports/$ID/attachment
+
+A="Authorization: Bearer $DECANTER_REPORTS_ADMIN_KEY"
+curl -s -H "$A" $B/admin/reports
+curl -s -H "$A" -X POST $B/admin/reports/$ID/hide
+curl -s -H "$A" -X POST $B/admin/reports/$ID/restore
+curl -s -H "$A" -X POST $B/admin/reports/$ID/resolve      # also deletes the attachment
+curl -s -H "$A" -X DELETE $B/admin/reports/$ID
+curl -s -H "$A" -o log.bin $B/admin/reports/$ID/attachment
+
+# bulk clean-up of a flooded group
+curl -s -H "$A" "$B/admin/reports?fingerprint=$FP&day=2026-10-26"
+curl -s -H "$A" -X POST $B/admin/groups/$FP/hide          # also /restore and /resolve
+curl -s -H "$A" -X DELETE $B/admin/groups/$FP
+```
+
+## Configuration
+
+`decanter-reports [--check-config] [config.toml]`, or the path in `DECANTER_REPORTS_CONFIG`. With neither, the
+defaults plus the environment apply. `deploy/config.example.toml` lists every key.
+
+| Key | Default | Environment override |
+|---|---|---|
+| `listen` | `127.0.0.1:8787` | `DECANTER_REPORTS_LISTEN` |
+| `public_url` | empty (the `url` is a path) | `DECANTER_REPORTS_PUBLIC_URL` |
+| `admin_key_env` / `admin_key_file` | `DECANTER_REPORTS_ADMIN_KEY` / none | `DECANTER_REPORTS_ADMIN_KEY_ENV`, `_ADMIN_KEY_FILE` |
+| `trusted_proxies`, `client_ip_header` | none | `DECANTER_REPORTS_TRUSTED_PROXIES`, `_CLIENT_IP_HEADER` |
+| `retention_days` | 365 | `DECANTER_REPORTS_RETENTION_DAYS` |
+| `resolved_retention_days` | 90 (0 keeps resolved reports for good) | `DECANTER_REPORTS_RESOLVED_RETENTION_DAYS` |
+| `index_cache_secs` | 15 (0 turns the cache off) | `DECANTER_REPORTS_INDEX_CACHE_SECS` |
+| `limits.per_ip_hour` / `per_ip_day` / `global_hour` | 10 / 50 / 500 | `DECANTER_REPORTS_LIMIT_PER_IP_HOUR`, `_PER_IP_DAY`, `_GLOBAL_HOUR` |
+| `limits.get_per_ip_minute` | 120 | `DECANTER_REPORTS_LIMIT_GET_PER_IP_MINUTE` |
+| `limits.failures_per_ip` / `failure_window_secs` | 10 / 600 | `DECANTER_REPORTS_LIMIT_FAILURES_PER_IP`, `_LIMIT_FAILURE_WINDOW_SECS` |
+| `limits.max_reports` / `max_attachments` | 100000 / 2000 | none |
+| `max_connections` | 512 | `DECANTER_REPORTS_MAX_CONNECTIONS` |
+| `header_timeout_secs` | 10 (also the idle keep-alive limit) | `DECANTER_REPORTS_HEADER_TIMEOUT_SECS` |
+| `shutdown_grace_secs` | 5 | `DECANTER_REPORTS_SHUTDOWN_GRACE_SECS` |
+| `log_level` | `info` | `DECANTER_REPORTS_LOG` |
+| `storage.driver` | `local` (`s3`, `r2`) | `DECANTER_REPORTS_STORAGE_DRIVER` |
+| `storage.dir` | `data` (local driver only) | `DECANTER_REPORTS_STORAGE_DIR` |
+| `storage.bucket`, `endpoint`, `region`, `account_id` (r2) | empty | `DECANTER_REPORTS_STORAGE_BUCKET`, `_STORAGE_ENDPOINT`, `_STORAGE_REGION`, `_STORAGE_ACCOUNT_ID` |
+| `storage.prefix` | empty (s3 and r2 only) | `DECANTER_REPORTS_STORAGE_PREFIX` |
+| `storage.path_style`, `allow_insecure_http` | false, false | `DECANTER_REPORTS_STORAGE_PATH_STYLE`, `_STORAGE_ALLOW_INSECURE_HTTP` |
+| `storage.access_key_id_env` / `_file` | `DECANTER_REPORTS_S3_ACCESS_KEY_ID` / none | `DECANTER_REPORTS_ACCESS_KEY_ID_ENV`, `_ACCESS_KEY_ID_FILE` |
+| `storage.secret_access_key_env` / `_file` | `DECANTER_REPORTS_S3_SECRET_ACCESS_KEY` / none | `DECANTER_REPORTS_SECRET_ACCESS_KEY_ENV`, `_SECRET_ACCESS_KEY_FILE` |
+| `storage.passphrase_env` / `_file` | `DECANTER_REPORTS_PASSPHRASE` / none | `DECANTER_REPORTS_PASSPHRASE_ENV`, `_PASSPHRASE_FILE` |
+
+The server refuses to start without an admin key of at least 32 characters and a storage passphrase of at least 32
+characters (plus the bucket's access key id and secret access key for `s3` and `r2`), and refuses a secret file that
+group or others can read (a path starting with `$CREDENTIALS_DIRECTORY`, from systemd's `LoadCredential=`, and the
+environment variables are exempt). No secret is ever printed or logged. `--check-config` validates them and, for a
+bucket, makes one read-only round trip: it reads the bucket's encryption config and checks that the passphrase opens
+it. `--check-config` also prints warnings for settings that let a client choose its own address (see `docs/deploy.md`). Logs go to stderr through `tracing`
+and hold no report contents and no addresses.
+
+## Security model
+
+- **Validated.** Every upload goes through `decanter_report::validate`: size (64 KiB, checked on the declared length
+  before reading and again while reading), closed JSON shape, every field's rule, the closed message vocabulary.
+  The stored text is the exact validated bytes.
+- **Public.** What the schema allows: product, versions and commits, OS family and version, GPU, the game's title id
+  and name, settings from a closed list, the failure kind, a message template id with typed slots, failing call
+  names and counts, relative fault offsets, performance figures, and days. Pages render it all as text with one
+  `escape_html`; there is no script, no external resource, and the headers are `Content-Security-Policy:
+  default-src 'none'; style-src 'self' 'unsafe-inline'`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`.
+- **Never stored.** IP addresses, user agents, request headers, times finer than a day. The delete code is stored
+  only as a SHA-256 hash; the admin key only as a hash in memory. Rejected reports are not stored and their values
+  are not echoed or logged. Attachments are the one private, optional exception: kept in the
+  bucket as encrypted blobs under generated names, never served except to the admin, never parsed.
+- **Rate limits.** In memory only, per client address; restarting resets them. Uploads and attachment uploads
+  share one per-address counter (`per_ip_hour`, `per_ip_day`; IPv6 by /48) that counts every request, rejected or
+  not. The `global_hour` cap for the whole server is spent only by reports that passed validation and by
+  attachments sent with the right delete code, so rejected traffic cannot use up what real players share; a
+  full global cap answers 429 without counting. Page reads have their own bucket (`get_per_ip_minute`, IPv6 by
+  /64) with 429 and `Retry-After`; `/healthz` and `/admin` are outside it.
+- **Reads.** Every change is one s3db transaction over the reports, their group and the totals; reads take no lock,
+  so a flood of reads cannot delay an upload. The index reads one `Group` row per group shown, never the reports,
+  and is still rendered once per `index_cache_secs` for each validated filter combination (at most 128 cached keys;
+  when full, new combinations are rendered without caching); hiding, resolving or deleting anything clears it, a new
+  upload does not, so a new group can take up to that long to appear. The day range and some per-filter figures of
+  a group row differ slightly from a full recount (`docs/design.md`, "Data model").
+- **Groups.** The fingerprint ignores the game, so a group can span titles; its row shows the title most of its
+  reports name, with that title's most frequent game name and `(+N más)` for the other titles (32 titles and 8
+  names per title are tracked; more count as at least one more).
+- **Caps.** At `max_reports` an upload evicts the oldest unresolved reports (1% of the cap per batch, with their
+  attachments, taken from an oldest-first list without reading the rest) instead of failing; resolved reports are never evicted, and if nothing can be freed the answer is
+  503. At `max_attachments` the oldest attachments of unresolved reports are removed (their reports stay). Only
+  the count is logged. A flood can still push genuine unresolved reports out, which is why the per-address
+  limits matter and why the maintainer resolves what must be kept.
+- **Trusted proxy.** The client address is the socket's, unless the socket's address is in `trusted_proxies` and
+  `client_ip_header` is set: then it is the rightmost entry of that header that is not itself a trusted proxy. From
+  any other peer the header is ignored, since anyone can write it.
+- **Retention.** Unresolved reports received more than `retention_days` ago, and resolved reports resolved more
+  than `resolved_retention_days` ago (unless 0), are deleted with their attachments by a sweep at startup and every
+  24 hours. The same sweep removes blobs no report names and repairs index entries left by failed writes.
+- **Connections.** The process serves with hyper directly: at most `max_connections` at once (the next is closed
+  at once), a request head must arrive within `header_timeout_secs` (slow headers and idle keep-alive connections
+  are closed), and on SIGTERM open connections get `shutdown_grace_secs` before they are dropped.
+- **Failures.** Wrong admin keys and wrong delete codes share one per-address bucket (`failures_per_ip` in
+  `failure_window_secs`, IPv6 by /48); past it every `/admin/` path and every delete answers 429 with
+  `Retry-After` for that address, known route or not, so the 429 names no route. Successes do not count. A
+  maintainer locked out this way waits out the window or comes from another address.
+- **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase; the bucket
+  keys and the passphrase are credentials like the admin key. The `local` driver's directory is 0700 and its file
+  0600; the process sets umask 077.
+- **Admin.** One key, compared in constant time after hashing both sides; 404 without it.
+
+Not covered by the server: a report that passes validation is public. What that guarantee is worth is the schema's
+(see #1033 and #1034), not this server's.
+
+## License
+
+AGPL-3.0-or-later, like `s3db` (the storage engine it links) and gitquarry. See `LICENSE`.
+
+## In decanter's repository
+
+This crate lives in decanter's repository for now (decisions #1051 and #1053), outside its workspace. It is the one
+crate there that carries tests, because it is a public service that receives data from strangers: the rule of the
+rest of the repository (no tests) does not apply to it. Its licence is AGPL-3.0-or-later (`LICENSE` in this
+directory), because of `s3db`; the rest of decanter is GPL-3.0-or-later.
