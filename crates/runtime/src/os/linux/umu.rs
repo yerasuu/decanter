@@ -74,10 +74,7 @@ pub(crate) fn umu_status() -> Status {
 
 /// Installs `umu-run` at `pin` unless it is there; only [`UMU_LAUNCHER_VERSION`] is accepted, the one
 /// decanter tested a real launch against.
-pub(crate) async fn umu_prepare(
-    pin: &Pin,
-    on_progress: &mut (dyn FnMut(Progress) + Send),
-) -> anyhow::Result<Installed> {
+pub(crate) async fn umu_prepare(pin: &Pin, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let Pin::Release(tag) = pin else {
         bail!("umu-run is downloaded from its releases, never built from {pin}");
     };
@@ -105,7 +102,7 @@ pub(crate) async fn umu_prepare(
 /// # Errors
 /// Fails if the download, extraction, or making the result executable
 /// fails.
-pub(crate) async fn umu_update(on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn umu_update(on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let Some(tag) = Tag::try_new(UMU_LAUNCHER_VERSION) else {
         bail!("umu-run's pinned version {UMU_LAUNCHER_VERSION:?} is no release name");
     };
@@ -175,7 +172,7 @@ fn pinned_path() -> anyhow::Result<PathBuf> {
     Ok(umu_run_path(&data_dir))
 }
 
-async fn install(path: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<()> {
+async fn install(path: &Path, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<()> {
     if !download::is_hex_digest(UMU_LAUNCHER_SHA256, 32) {
         bail!("umu-run {UMU_LAUNCHER_VERSION} has no pinned SHA-256");
     }

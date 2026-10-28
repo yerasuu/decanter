@@ -91,11 +91,7 @@ pub async fn confirm(runner: Runner, pin: &Pin) -> io::Result<()> {
 /// Fails if this system cannot get the runner, `pin` is not one decanter
 /// tested it at, or a download or install step fails.
 #[inline]
-pub async fn prepare(
-    runner: Runner,
-    pin: &Pin,
-    on_progress: &mut (dyn FnMut(Progress) + Send),
-) -> anyhow::Result<Installed> {
+pub async fn prepare(runner: Runner, pin: &Pin, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     match runner {
         Runner::Umu => os::umu_prepare(pin, on_progress).await,
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
@@ -113,7 +109,7 @@ pub async fn prepare(
 ///
 /// As [`prepare`].
 #[inline]
-pub async fn update(runner: Runner, on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub async fn update(runner: Runner, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     match runner {
         Runner::Umu => os::umu_update(on_progress).await,
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),

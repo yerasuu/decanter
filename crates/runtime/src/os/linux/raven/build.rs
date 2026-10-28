@@ -121,7 +121,7 @@ pub(super) async fn compile(
     recipe: &Recipe,
     checkout: &Path,
     log: &mut Log,
-    on_progress: &mut (dyn FnMut(Progress) + Send),
+    on_progress: &mut dyn FnMut(Progress),
 ) -> anyhow::Result<()> {
     on_progress(Progress {
         stage: Stage::Configuring,

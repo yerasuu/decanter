@@ -244,11 +244,11 @@ pub(crate) const fn umu_status() -> Status {
     Status::Unsupported
 }
 
-pub(crate) async fn umu_prepare(_: &Pin, _: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn umu_prepare(_: &Pin, _: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     bail!("umu-run runs only on Linux")
 }
 
-pub(crate) async fn umu_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn umu_update(_: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     bail!("umu-run runs only on Linux")
 }
 
@@ -265,11 +265,11 @@ pub(crate) const fn ge_proton_status() -> Status {
     Status::Unsupported
 }
 
-pub(crate) async fn ge_proton_prepare(_: &Pin, _: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn ge_proton_prepare(_: &Pin, _: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     bail!("GE-Proton runs only on Linux")
 }
 
-pub(crate) async fn ge_proton_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn ge_proton_update(_: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     bail!("GE-Proton runs only on Linux")
 }
 
@@ -290,11 +290,11 @@ pub(crate) async fn raven_confirm(_: &Pin) -> io::Result<()> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "Raven runs only on Linux"))
 }
 
-pub(crate) async fn raven_prepare(_: &Pin, _: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn raven_prepare(_: &Pin, _: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     bail!("Raven runs only on Linux")
 }
 
-pub(crate) async fn raven_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn raven_update(_: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     bail!("Raven runs only on Linux")
 }
 

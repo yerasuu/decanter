@@ -84,10 +84,7 @@ pub(crate) fn ge_proton_status() -> Status {
 }
 
 /// Installs GE-Proton at `pin` unless it is there; only [`GE_PROTON`] is accepted.
-pub(crate) async fn ge_proton_prepare(
-    pin: &Pin,
-    on_progress: &mut (dyn FnMut(Progress) + Send),
-) -> anyhow::Result<Installed> {
+pub(crate) async fn ge_proton_prepare(pin: &Pin, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let Pin::Release(tag) = pin else {
         bail!("GE-Proton is downloaded from its releases, never built from {pin}");
     };
@@ -109,7 +106,7 @@ pub(crate) async fn ge_proton_prepare(
 }
 
 /// Installs [`GE_PROTON`] and, once it is newly in, removes the releases it replaces.
-pub(crate) async fn ge_proton_update(on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn ge_proton_update(on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let Some(tag) = Tag::try_new(GE_PROTON.tag) else {
         bail!("GE-Proton's pinned tag {:?} is no release name", GE_PROTON.tag);
     };
@@ -146,7 +143,7 @@ pub(crate) async fn ge_proton_remove(pin: &Pin) -> io::Result<()> {
     }
 }
 
-async fn install(folder: &Path, target: &Path, on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<()> {
+async fn install(folder: &Path, target: &Path, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<()> {
     let pin = &GE_PROTON;
     if !download::is_hex_digest(pin.sha512, 64) || pin.size == 0 {
         bail!("GE-Proton {} has no pinned SHA-512 and size", pin.tag);

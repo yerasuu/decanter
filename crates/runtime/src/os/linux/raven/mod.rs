@@ -104,10 +104,7 @@ async fn is_confirmed(folder: &Path, commit: &Commit) -> bool {
         .is_ok_and(|confirmed| confirmed.trim() == commit.as_str())
 }
 
-pub(crate) async fn raven_prepare(
-    pin: &Pin,
-    on_progress: &mut (dyn FnMut(Progress) + Send),
-) -> anyhow::Result<Installed> {
+pub(crate) async fn raven_prepare(pin: &Pin, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let commit = pinned(pin)?;
     let folder = folder()?;
     let checkout = folder.join(commit.as_str());
@@ -174,7 +171,7 @@ async fn mark_built(checkout: &Path, toolchain: &Toolchain) -> anyhow::Result<()
 }
 
 /// Builds [`RAVEN_COMMIT`] and, once it is newly in, removes the builds of other commits.
-pub(crate) async fn raven_update(on_progress: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+pub(crate) async fn raven_update(on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let Some(pin) = crate::runner::raven_pin() else {
         bail!("Raven's pinned commit {RAVEN_COMMIT:?} is no commit id");
     };
