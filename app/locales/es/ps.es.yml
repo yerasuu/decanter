@@ -716,6 +716,10 @@ ps.online.bbsc.local.off: Nunca
 ps.online.bbsc.local.on: Siempre
 ps.online.bbsc.local.auto: Si el de la comunidad no responde
 ps.online.bbsc.local.note: Con el servidor en este equipo, los mensajes y las manchas de sangre son solo de este equipo; las invocaciones siguen pasando por la WebAPI de shadNet.
+ps.online.local_player.label: Jugador local (co-op en el mismo PC)
+ps.online.local_player.placeholder: 'Vacío: un solo jugador'
+ps.online.local_player.invalid: el jugador local «%{value}» debe tener de 1 a 10 cifras y nada más
+ps.online.local_player.note: Solo hace falta para jugar en cooperativo con dos ventanas en este PC, cada ventana con un número distinto (por ejemplo 1001 y 1002), de modo que cada una solo toque sus propias partidas guardadas. Déjalo vacío si juegas solo. Pulsa Intro para guardar.
 ps.online.no_password: 'Hay un Online ID guardado sin contraseña en el llavero: escríbela y pulsa Guardar, o borra el Online ID para jugar sin shadNet. Mientras tanto, el juego online no arranca.'
 ps.online.kept_existing: Guardado. %{previous} conserva su contraseña y su token en el llavero, porque el nuevo Online ID ya tenía los suyos y no se han sobrescrito.
 ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online.

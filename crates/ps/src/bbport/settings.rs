@@ -117,22 +117,44 @@ impl LauncherSettings {
 
     /// Off removes the key, and a title left with none, so the file keeps only what was turned on.
     pub fn set_title_flag(&mut self, title_id: &str, key: &str, value: bool) {
+        self.set_title_value(title_id, key, value.then(|| true.into()));
+    }
+
+    /// A non-empty text of one game, under `titles.<TITLE_ID>`.
+    pub fn title_text(&self, title_id: &str, key: &str) -> Option<&str> {
+        self.0
+            .get(TITLES)
+            .and_then(|titles| titles.get(title_id))
+            .and_then(|title| title.get(key))
+            .and_then(serde_json::Value::as_str)
+            .filter(|text| !text.is_empty())
+    }
+
+    /// Empty removes the key, like [`Self::set_title_flag`] off.
+    pub fn set_title_text(&mut self, title_id: &str, key: &str, value: &str) {
+        self.set_title_value(title_id, key, (!value.is_empty()).then(|| value.into()));
+    }
+
+    fn set_title_value(&mut self, title_id: &str, key: &str, value: Option<serde_json::Value>) {
         use serde_json::Value;
         let mut titles = match self.0.remove(TITLES) {
             Some(Value::Object(titles)) => titles,
             _ => serde_json::Map::new(),
         };
-        let mut flags = match titles.remove(title_id) {
-            Some(Value::Object(flags)) => flags,
+        let mut values = match titles.remove(title_id) {
+            Some(Value::Object(values)) => values,
             _ => serde_json::Map::new(),
         };
-        if value {
-            flags.insert(key.into(), true.into());
-        } else {
-            flags.remove(key);
+        match value {
+            Some(value) => {
+                values.insert(key.into(), value);
+            }
+            None => {
+                values.remove(key);
+            }
         }
-        if !flags.is_empty() {
-            titles.insert(title_id.into(), flags.into());
+        if !values.is_empty() {
+            titles.insert(title_id.into(), values.into());
         }
         if !titles.is_empty() {
             self.0.insert(TITLES.into(), titles.into());

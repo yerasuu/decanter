@@ -3,6 +3,7 @@
 //! servers and the account are in the PS section's Ajustes.
 
 use decanter_core::capabilities::Feature;
+use decanter_ps::bbport::local_player::{self, LocalPlayer};
 use decanter_ps::bbport::online::{self, LocalServer};
 use decanter_ps::bbport::{Bbport, LauncherSettings};
 use decanter_ps::port::Port;
@@ -13,7 +14,7 @@ use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{Select, checkbox, select::SelectStyle};
+use crate::widgets::{InputEvent, Select, TextInput, checkbox, select::SelectStyle};
 
 /// The title's co-op extension, as far as the port has said.
 enum Extension {
@@ -28,12 +29,21 @@ pub struct OnlineTitleView {
     is_online: bool,
     is_bbsc: bool,
     local_server: LocalServer,
+    local_player: Entity<TextInput>,
     error: Option<Text>,
 }
 
 impl OnlineTitleView {
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
         Self::load_settings(cx);
+        let local_player = cx.new(|cx| TextInput::new(Text::new("ps.online.local_player.placeholder"), cx));
+        cx.subscribe(&local_player, |this, input, event, cx| {
+            if matches!(event, InputEvent::Submit) {
+                let value = input.read(cx).text().to_owned();
+                this.set_local_player(&value, cx);
+            }
+        })
+        .detach();
         Self {
             ps,
             title_id: None,
@@ -41,6 +51,7 @@ impl OnlineTitleView {
             is_online: false,
             is_bbsc: false,
             local_server: LocalServer::Off,
+            local_player,
             error: None,
         }
     }
@@ -69,6 +80,7 @@ impl OnlineTitleView {
         }
         self.title_id = Some(title_id.to_owned());
         self.extension = Extension::Asking;
+        self.load_local_player(title_id, cx);
         cx.notify();
         let Some(toolchain) = self
             .ps
@@ -92,6 +104,46 @@ impl OnlineTitleView {
             });
         })
         .detach();
+    }
+
+    fn load_local_player(&self, title_id: &str, cx: &mut Context<Self>) {
+        let title_id = title_id.to_owned();
+        cx.spawn(async move |this, cx| {
+            let saved = cx
+                .background_spawn({
+                    let title_id = title_id.clone();
+                    async move {
+                        LauncherSettings::load(&decanter_ps::paths::active())
+                            .title_text(&title_id, local_player::KEY)
+                            .map(str::to_owned)
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.title_id.as_deref() == Some(title_id.as_str()) {
+                    this.local_player
+                        .update(cx, |input, cx| input.set_text(saved.unwrap_or_default(), cx));
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Refused as typed when it isn't 1 to 10 digits; empty clears it.
+    fn set_local_player(&mut self, value: &str, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
+        if let Err(err) = LocalPlayer::parse(value) {
+            self.error = Some(Text::new("ps.online.local_player.invalid").arg("value", err.value()));
+            cx.notify();
+            return;
+        }
+        let value = value.to_owned();
+        Self::save(
+            move |settings| settings.set_title_text(&title_id, local_player::KEY, &value),
+            cx,
+        );
     }
 
     fn save(change: impl FnOnce(&mut LauncherSettings) + Send + 'static, cx: &mut Context<Self>) {
@@ -170,6 +222,18 @@ impl OnlineTitleView {
             )
             .child(theme::muted(t!("ps.online.bbsc.note")))
             .child(theme::muted(t!("ps.online.bbsc.local.note")))
+            .child(
+                theme::card().child(
+                    theme::compact_row(true)
+                        .child(
+                            div()
+                                .flex_1()
+                                .child(SharedString::from(t!("ps.online.local_player.label"))),
+                        )
+                        .child(div().w(px(160.)).child(self.local_player.clone())),
+                ),
+            )
+            .child(theme::muted(t!("ps.online.local_player.note")))
             .into_any_element()
     }
 }

@@ -12,6 +12,7 @@ mod features;
 mod groups;
 pub mod icons;
 mod ini;
+pub mod local_player;
 pub mod mods;
 mod names;
 pub mod online;

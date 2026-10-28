@@ -716,6 +716,10 @@ ps.online.bbsc.local.off: Never
 ps.online.bbsc.local.on: Always
 ps.online.bbsc.local.auto: If the community one doesn't answer
 ps.online.bbsc.local.note: With the server on this PC, messages and bloodstains are this PC's only; summons still go through the shadNet WebAPI.
+ps.online.local_player.label: Local player (co-op on the same PC)
+ps.online.local_player.placeholder: 'Empty: single player'
+ps.online.local_player.invalid: the local player "%{value}" must be 1 to 10 digits, nothing else
+ps.online.local_player.note: Only needed to play co-op with two windows on this PC, each window with a different number (for example 1001 and 1002), so each one only touches its own saves. Leave empty for a single player. Press Enter to save.
 ps.online.no_password: 'There''s an Online ID saved with no password in the keyring: type it and press Save, or clear the Online ID to play without shadNet. Until then, online play won''t start.'
 ps.online.kept_existing: Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten.
 ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.
