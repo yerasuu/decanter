@@ -175,7 +175,7 @@ library.properties.local_files.clean.other: '%{count} files, all good.'
 library.properties.local_files.broken: '%{broken} of %{total} files don''t match.'
 library.properties.local_files.note: Checks every installed file against GOG's manifest and downloads again whatever doesn't match.
 library.properties.saves.folder_placeholder: Save folder
-library.properties.saves.note: Decanter tries to find the save folder from GOG's remote configuration. If it finds nothing, enter it by hand.
+library.properties.saves.note: Decanter tries to find the save folder from GOG's remote configuration. If it finds nothing, pick it with “Choose folder...”.
 library.properties.saves.detect: Detect automatically
 library.properties.saves.detecting: Detecting...
 library.properties.saves.none_reported: GOG reports no save folder for this game.

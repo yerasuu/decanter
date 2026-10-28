@@ -175,7 +175,7 @@ library.properties.local_files.clean.other: '%{count} archivos, todo en orden.'
 library.properties.local_files.broken: '%{broken} de %{total} archivos no coinciden.'
 library.properties.local_files.note: Compara cada archivo instalado con el manifiesto de GOG y vuelve a descargar lo que no coincida.
 library.properties.saves.folder_placeholder: Carpeta de guardado
-library.properties.saves.note: Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, indícala a mano.
+library.properties.saves.note: Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, elígela con «Elegir carpeta...».
 library.properties.saves.detect: Detectar automáticamente
 library.properties.saves.detecting: Detectando...
 library.properties.saves.none_reported: GOG no indica ninguna carpeta de guardado para este juego.
