@@ -1561,6 +1561,7 @@ version = "0.3.4"
 dependencies = [
  "anyhow",
  "decanter-core",
+ "decanter-nix",
  "futures-util",
  "nix",
  "reqwest 0.13.5",

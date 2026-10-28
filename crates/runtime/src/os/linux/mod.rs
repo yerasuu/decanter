@@ -5,6 +5,7 @@
 mod ge_proton;
 mod prefix;
 mod proton;
+mod raven;
 mod umu;
 
 use std::path::Path;
@@ -22,6 +23,9 @@ pub(crate) use ge_proton::{ge_proton_prepare, ge_proton_remove, ge_proton_status
 use prefix::SESSION_ENV;
 pub(crate) use prefix::{live_prefixes, prefix_processes, processes_by_prefix, stop_prefix};
 pub(crate) use proton::{proton_status, steam_compat_dir};
+pub(crate) use raven::{
+    raven_confirm, raven_launch, raven_log_path, raven_prepare, raven_remove, raven_status, raven_update,
+};
 pub(crate) use umu::{umu_on_path, umu_prepare, umu_remove, umu_status, umu_update};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`

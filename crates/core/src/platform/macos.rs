@@ -149,7 +149,8 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PsKeyStick
         | Feature::PsOnline
         | Feature::MangoHud
-        | Feature::GameMode => Support::Unavailable(Reason::NotOnThisSystem),
+        | Feature::GameMode
+        | Feature::Raven => Support::Unavailable(Reason::NotOnThisSystem),
         Feature::PsSection => Support::Unavailable(Reason::NotPortedYet(crate::capabilities::Source::Psport)),
     }
 }

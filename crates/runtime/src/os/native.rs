@@ -279,3 +279,33 @@ pub(crate) async fn ge_proton_remove(_: &Pin) -> io::Result<()> {
         "GE-Proton runs only on Linux",
     ))
 }
+
+/// No Raven to build: Windows runs Windows programs itself, and macOS has no
+/// way to build it decided yet.
+pub(crate) const fn raven_status() -> Status {
+    Status::Unsupported
+}
+
+pub(crate) async fn raven_confirm(_: &Pin) -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "Raven runs only on Linux"))
+}
+
+pub(crate) async fn raven_prepare(_: &Pin, _: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+    bail!("Raven runs only on Linux")
+}
+
+pub(crate) async fn raven_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+    bail!("Raven runs only on Linux")
+}
+
+pub(crate) async fn raven_remove(_: &Pin) -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "Raven runs only on Linux"))
+}
+
+pub(crate) const fn raven_log_path(_: &Pin) -> Option<PathBuf> {
+    None
+}
+
+pub(crate) async fn raven_launch(_: Launch) -> anyhow::Result<Launch> {
+    bail!("Raven runs only on Linux")
+}

@@ -26,6 +26,9 @@ pub enum Runner {
     /// The one GE-Proton release decanter installs in the library itself, for
     /// what needs a Proton build without Steam (psport's FSR 4.1.1 recording).
     GeProton,
+    /// Raven, an early-stage Windows runtime built here from a pinned commit,
+    /// only once the player asks for it.
+    Raven,
 }
 
 /// A release name, checked where it enters (an answer from `GitHub`, a
@@ -57,10 +60,46 @@ impl fmt::Display for Tag {
     }
 }
 
+/// A full git commit id, checked where it enters to be 40 lower-case hex
+/// digits, since it names a folder on disk and is handed to git.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Commit(String);
+
+impl Commit {
+    #[must_use]
+    #[inline]
+    pub fn try_new(text: &str) -> Option<Self> {
+        let is_full_id = text.len() == 40 && text.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
+        is_full_id.then(|| Self(text.to_owned()))
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// The first 12 digits, as the UI shows a commit.
+    #[must_use]
+    #[inline]
+    pub fn short(&self) -> &str {
+        self.0.get(..12).unwrap_or(&self.0)
+    }
+}
+
+impl fmt::Display for Commit {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// What a runner is fixed to.
 #[derive(Clone, Debug)]
 pub enum Pin {
     Release(Tag),
+    /// Built here from this commit of the runner's repository.
+    Commit(Commit),
 }
 
 impl fmt::Display for Pin {
@@ -68,6 +107,7 @@ impl fmt::Display for Pin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Release(tag) => tag.fmt(f),
+            Self::Commit(commit) => commit.fmt(f),
         }
     }
 }
@@ -77,6 +117,8 @@ impl fmt::Display for Pin {
 pub enum Origin {
     /// A published release fetched as it is, not built here.
     Download,
+    /// Built on this machine from its sources.
+    Local,
 }
 
 #[derive(Debug)]
@@ -112,6 +154,11 @@ impl Status {
 pub enum Stage {
     Downloading,
     Unpacking,
+    /// Getting the sources at the pin.
+    Sources,
+    Configuring,
+    /// `received` steps of `total`, as the build tool counts them.
+    Compiling,
 }
 
 /// Where a preparation is; the byte counts belong to the stage, and stay at

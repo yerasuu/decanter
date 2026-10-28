@@ -259,6 +259,7 @@ fn runner_progress((runner, progress): &(Runner, Progress)) -> Cow<'static, str>
         Runner::Umu => "umu-run",
         Runner::Proton => "Proton",
         Runner::GeProton => "GE-Proton",
+        Runner::Raven => "Raven",
     };
     match (&progress.stage, progress.total) {
         (Stage::Downloading, Some(total)) => t!(
@@ -273,5 +274,8 @@ fn runner_progress((runner, progress): &(Runner, Progress)) -> Cow<'static, str>
             received = crate::format::bytes(progress.received)
         ),
         (Stage::Unpacking, _) => t!("ps.extras.fsr.progress.runner_unpacking", runner = name),
+        (Stage::Sources | Stage::Configuring | Stage::Compiling, _) => {
+            t!("ps.extras.fsr.progress.runner_building", runner = name)
+        }
     }
 }

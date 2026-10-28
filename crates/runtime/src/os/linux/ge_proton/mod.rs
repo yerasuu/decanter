@@ -88,7 +88,9 @@ pub(crate) async fn ge_proton_prepare(
     pin: &Pin,
     on_progress: &mut (dyn FnMut(Progress) + Send),
 ) -> anyhow::Result<Installed> {
-    let Pin::Release(tag) = pin;
+    let Pin::Release(tag) = pin else {
+        bail!("GE-Proton is downloaded from its releases, never built from {pin}");
+    };
     if tag.as_str() != GE_PROTON.tag {
         bail!("GE-Proton {tag} is not the pinned {}", GE_PROTON.tag);
     }
@@ -127,7 +129,12 @@ pub(crate) async fn ge_proton_remove(pin: &Pin) -> io::Result<()> {
             "the active library isn't available",
         ));
     };
-    let Pin::Release(tag) = pin;
+    let Pin::Release(tag) = pin else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("GE-Proton has no build of {pin}"),
+        ));
+    };
     let path = folder.join(tag.as_str());
     match tokio::fs::remove_dir_all(&path).await {
         Ok(()) => {

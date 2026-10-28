@@ -175,12 +175,16 @@ pub fn executable_permissions() -> Option<Permissions> {
 }
 
 /// The reference system: everything is built for it first. What a given
-/// machine lacks is taken away later, in [`crate::capabilities`].
+/// machine lacks is taken away later, in [`crate::capabilities`]. Raven is
+/// always being tested: it is an early-stage runtime that runs few programs yet.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {
     match feature {
-        Feature::PsDownloads if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
+        Feature::PsDownloads | Feature::Raven if !cfg!(target_arch = "x86_64") => {
+            Support::Unavailable(Reason::NotOnThisSystem)
+        }
+        Feature::Raven => Support::Testing,
         Feature::Play
         | Feature::Proton
         | Feature::Prefixes

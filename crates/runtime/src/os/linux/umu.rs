@@ -78,7 +78,9 @@ pub(crate) async fn umu_prepare(
     pin: &Pin,
     on_progress: &mut (dyn FnMut(Progress) + Send),
 ) -> anyhow::Result<Installed> {
-    let Pin::Release(tag) = pin;
+    let Pin::Release(tag) = pin else {
+        bail!("umu-run is downloaded from its releases, never built from {pin}");
+    };
     if tag.as_str() != UMU_LAUNCHER_VERSION {
         bail!("umu-run {tag} is not the tested {UMU_LAUNCHER_VERSION}");
     }
@@ -123,7 +125,12 @@ pub(crate) async fn umu_remove(pin: &Pin) -> io::Result<()> {
             "the active library isn't available",
         ));
     };
-    let Pin::Release(tag) = pin;
+    let Pin::Release(tag) = pin else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("umu-run has no build of {pin}"),
+        ));
+    };
     let path = data_dir.join("bin").join(format!("{FILE_PREFIX}{tag}"));
     match tokio::fs::remove_file(&path).await {
         Ok(()) => {

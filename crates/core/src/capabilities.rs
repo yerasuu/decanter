@@ -55,10 +55,13 @@ pub enum Feature {
     PsOnline,
     MangoHud,
     GameMode,
+    /// Raven's own section: building Raven here and running Windows
+    /// programs with it. Experimental wherever it is offered.
+    Raven,
 }
 
 impl Feature {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::Play,
         Self::Proton,
         Self::Prefixes,
@@ -80,6 +83,7 @@ impl Feature {
         Self::PsOnline,
         Self::MangoHud,
         Self::GameMode,
+        Self::Raven,
     ];
 }
 

@@ -2,7 +2,9 @@
 //! on every system, each answered by the system's own part under `os/`.
 //!
 //! Cancelling is dropping the future. A preparation installs nothing unless
-//! every step before it passed, and is a no-op for what is already there.
+//! every step before it passed, and is a no-op for what is already there. A
+//! runner built from a [`Pin::Commit`] runs code nobody vetted for decanter,
+//! so it is built only once that commit was [`confirm`]ed.
 
 use std::io;
 use std::path::PathBuf;
@@ -11,18 +13,39 @@ use anyhow::bail;
 
 use decanter_core::capabilities::{Feature, Support};
 use decanter_core::platform;
-use decanter_core::runner::{Installed, Pin, Progress, Runner, Status};
+use decanter_core::runner::{Commit, Installed, Pin, Progress, Runner, Status};
 
+use crate::Launch;
 use crate::os;
 
 /// Why Steam's Proton builds are only listed: Steam and umu own `compatibilitytools.d`.
 const UMU_INSTALLS_PROTON: &str = "Proton builds are installed by umu at launch or by the user, not by decanter";
+
+/// The commit of [mirkobrombin/raven](https://github.com/mirkobrombin/raven) decanter builds, the
+/// one its build was tried at (2026-10-27); bumped only after a build at the new one was tried.
+pub const RAVEN_COMMIT: &str = "1ce0c0324ce38202d49916b0b118d47d976768fb";
+
+/// Everything of Raven's in the active library: its build, toolchain and
+/// build log, and the prefix and manifest of each program it runs.
+#[must_use]
+#[inline]
+pub fn raven_dir() -> Option<PathBuf> {
+    decanter_core::bootstrap::data_dir().map(|data_dir| data_dir.join("runners").join("raven"))
+}
+
+/// Raven's [`RAVEN_COMMIT`] as a pin; `None` only if that constant were no commit id.
+#[must_use]
+#[inline]
+pub fn raven_pin() -> Option<Pin> {
+    Commit::try_new(RAVEN_COMMIT).map(Pin::Commit)
+}
 
 #[must_use]
 #[inline]
 pub const fn support(runner: Runner) -> Support {
     match runner {
         Runner::Umu | Runner::Proton | Runner::GeProton => platform::support(Feature::Proton),
+        Runner::Raven => platform::support(Feature::Raven),
     }
 }
 
@@ -34,6 +57,23 @@ pub fn status(runner: Runner) -> Status {
         Runner::Umu => os::umu_status(),
         Runner::Proton => os::proton_status(),
         Runner::GeProton => os::ge_proton_status(),
+        Runner::Raven => os::raven_status(),
+    }
+}
+
+/// Records the owner's yes to building `pin`, which [`prepare`] asks for
+/// before it builds a [`Pin::Commit`]; a release, checked against its pin
+/// when it is downloaded, needs none.
+///
+/// # Errors
+///
+/// Fails if this system cannot get the runner, `pin` is not the one decanter
+/// pins, or the confirmation cannot be written.
+#[inline]
+pub async fn confirm(runner: Runner, pin: &Pin) -> io::Result<()> {
+    match runner {
+        Runner::Umu | Runner::Proton | Runner::GeProton => Ok(()),
+        Runner::Raven => os::raven_confirm(pin).await,
     }
 }
 
@@ -53,6 +93,7 @@ pub async fn prepare(
         Runner::Umu => os::umu_prepare(pin, on_progress).await,
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
         Runner::GeProton => os::ge_proton_prepare(pin, on_progress).await,
+        Runner::Raven => os::raven_prepare(pin, on_progress).await,
     }
 }
 
@@ -69,10 +110,12 @@ pub async fn update(runner: Runner, on_progress: &mut (dyn FnMut(Progress) + Sen
         Runner::Umu => os::umu_update(on_progress).await,
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
         Runner::GeProton => os::ge_proton_update(on_progress).await,
+        Runner::Raven => os::raven_update(on_progress).await,
     }
 }
 
-/// Removes `pin`; one that is not there is already removed.
+/// Removes `pin`; one that is not there is already removed. Raven goes as a
+/// whole: its build, its toolchain, its build log and the confirmation.
 ///
 /// # Errors
 ///
@@ -83,15 +126,30 @@ pub async fn remove(runner: Runner, pin: &Pin) -> io::Result<()> {
         Runner::Umu => os::umu_remove(pin).await,
         Runner::Proton => Err(io::Error::new(io::ErrorKind::Unsupported, UMU_INSTALLS_PROTON)),
         Runner::GeProton => os::ge_proton_remove(pin).await,
+        Runner::Raven => os::raven_remove(pin).await,
     }
 }
 
 /// The log of the last build of `pin`; `None` for a runner that is only
-/// ever downloaded.
+/// ever downloaded, or where there is no library to keep it in.
 #[must_use]
 #[inline]
-pub const fn log_path(runner: Runner, _: &Pin) -> Option<PathBuf> {
+pub fn log_path(runner: Runner, pin: &Pin) -> Option<PathBuf> {
     match runner {
         Runner::Umu | Runner::Proton | Runner::GeProton => None,
+        Runner::Raven => os::raven_log_path(pin),
     }
+}
+
+/// `launch`, of a Windows program in its Raven prefix ([`Launch::prefix`]), turned into the
+/// Linux program that runs it under Raven, inside the toolchain that built Raven, with its session
+/// named after that prefix.
+///
+/// # Errors
+///
+/// Fails if this system has no Raven, none is built, `launch` has no prefix, or a path in it is
+/// not UTF-8.
+#[inline]
+pub async fn raven_launch(launch: Launch) -> anyhow::Result<Launch> {
+    os::raven_launch(launch).await
 }
