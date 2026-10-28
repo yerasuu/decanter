@@ -283,6 +283,21 @@ async fn sweep_removes_orphan_blobs_and_failed_inserts_but_keeps_live_ones() -> 
 }
 
 #[tokio::test]
+async fn deleting_a_report_with_an_attachment_frees_its_attachment_count() -> Test {
+    let scratch = Scratch::new()?;
+    let store = test_store(&scratch.0, LocalEngine::Redb);
+    let report = new_report("0123456789abcdef", "CUSA00001", "2026-10-27")?;
+    insert(&store, &report, 1000).await?;
+    store.attach(&report.id, b"log", 10).await?;
+    assert_eq!(store.totals().await?.0.attachments, 1);
+    store.change(std::slice::from_ref(&report.id), &Change::Delete).await?;
+    let totals = store.totals().await?.0;
+    assert_eq!((totals.reports, totals.attachments), (0, 0));
+    assert_eq!(store.blob_count().await?, 0);
+    Ok(())
+}
+
+#[tokio::test]
 async fn bulk_actions_span_several_transactions_and_keep_the_counters() -> Test {
     let scratch = Scratch::new()?;
     let store = test_store(&scratch.0, LocalEngine::Redb);

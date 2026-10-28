@@ -270,7 +270,9 @@ impl Store {
                     group.account(&mut after);
                 }
                 done.removed += usize::from(after.deleted);
-                done.attachments += usize::from(before.attachment.is_some() && after.attachment.is_none());
+                // A delete keeps `attachment` on the tombstone until the blob is unlinked, so it frees one too.
+                done.attachments +=
+                    usize::from(before.attachment.is_some() && (after.attachment.is_none() || after.deleted));
                 ops.push(report_op(&after, Some(&etag))?);
                 if after.deleted {
                     let gone = QUEUE.entry_key(GONE, &after.id)?;
