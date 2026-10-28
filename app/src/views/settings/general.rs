@@ -280,7 +280,12 @@ impl GeneralTab {
 
     fn release_section(&self, cx: &Context<Self>) -> impl IntoElement {
         let checking = self.checking_release;
-        let installable = !matches!(self.availability, Availability::Elsewhere);
+        // Where this build can't install a release itself, its page is where to get it.
+        let page_label = if matches!(self.availability, Availability::AppImage(_)) {
+            t!("settings.general.updates.notes")
+        } else {
+            t!("settings.general.updates.download_page")
+        };
         let newer = match &self.release {
             Some(Ok(Standing::Newer(release))) => Some(release),
             None | Some(Ok(Standing::UpToDate(_) | Standing::Ahead(_) | Standing::NoRelease) | Err(_)) => None,
@@ -290,10 +295,6 @@ impl GeneralTab {
                 (Some(t!("settings.general.updates.up_to_date", tag = release.tag)), None)
             }
             Some(Ok(Standing::Ahead(release))) => (Some(t!("settings.general.updates.ahead", tag = release.tag)), None),
-            Some(Ok(Standing::Newer(release))) if installable => (
-                Some(t!("settings.general.updates.available_install", tag = release.tag)),
-                Some(release.url.clone()),
-            ),
             Some(Ok(Standing::Newer(release))) => (
                 Some(t!("settings.general.updates.available", tag = release.tag)),
                 Some(release.url.clone()),
@@ -329,17 +330,13 @@ impl GeneralTab {
                         }),
                     )
                     .children(page.map(|url| {
-                        button(
-                            "open-release-notes",
-                            ButtonKind::Secondary,
-                            t!("settings.general.updates.notes"),
-                            false,
+                        button("open-release-notes", ButtonKind::Secondary, page_label, false).on_click(
+                            move |_, _, _| {
+                                if let Err(err) = crate::desktop::open(&url) {
+                                    tracing::warn!(url, %err, "could not open the release page");
+                                }
+                            },
                         )
-                        .on_click(move |_, _, _| {
-                            if let Err(err) = crate::desktop::open(&url) {
-                                tracing::warn!(url, %err, "could not open the release page");
-                            }
-                        })
                     })),
             )
             .children(text.map(|text| div().child(text)))

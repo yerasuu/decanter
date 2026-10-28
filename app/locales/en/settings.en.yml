@@ -73,16 +73,16 @@ settings.general.updates.check: Check for updates
 settings.general.updates.checking: Checking…
 settings.general.updates.up_to_date: You have the latest published version (%{tag}).
 settings.general.updates.ahead: This build is newer than the latest published version (%{tag}).
-settings.general.updates.available: 'A new version is out: %{tag}. For now, download it by hand from its GitHub page.'
-settings.general.updates.available_install: 'A new version is out: %{tag}.'
+settings.general.updates.available: 'A new version is out: %{tag}.'
 settings.general.updates.install: Download and install
-settings.general.updates.no_key: This build carries no signing key, so it can't verify or install new versions by itself. Download it by hand from its GitHub page.
+settings.general.updates.no_key: This build carries no signing key, so it can't verify or install new versions by itself.
 settings.general.updates.downloading: Downloading… %{done}
 settings.general.updates.downloading_of: Downloading… %{done} of %{total}
 settings.general.updates.installed_update: '%{tag} is installed and its signature checked. It will be used the next time you open Decanter.'
 settings.general.updates.restart_now: Restart now
 settings.general.updates.none: No version has been published on GitHub yet.
 settings.general.updates.notes: Release notes
+settings.general.updates.download_page: Open the download page
 settings.updates.errors.offline: No connection to GitHub.
 settings.updates.errors.rate_limited: GitHub is rate limiting requests from this network; try again in a while.
 settings.updates.errors.invalid: 'GitHub answered something that isn''t a valid release: %{error}'
@@ -102,13 +102,13 @@ settings.compatibility.tools.proton.pending: UMU-Proton · the latest is %{tag};
 settings.compatibility.tools.proton.unpublished: UMU-Proton · the project has no published release
 settings.compatibility.tools.proton.error: UMU-Proton · %{error}
 settings.updates.install_errors.missing_appimage: Version %{tag} has no AppImage on GitHub yet; try again in a while.
-settings.updates.install_errors.unsigned: Version %{tag} isn't signed yet; try again later or download it by hand.
+settings.updates.install_errors.unsigned: Version %{tag} isn't signed yet; try again in a while.
 settings.updates.install_errors.download: 'The download failed: %{error}'
 settings.updates.install_errors.too_large: The download is over %{size}, more than Decanter can take up; it wasn't installed.
 settings.updates.install_errors.bad_signature: The signature doesn't match the download. Nothing was installed and your version is unchanged.
 settings.updates.install_errors.wrong_key: The version is signed with a different key than this build's. Nothing was installed.
 settings.updates.install_errors.wrong_release: The signature belongs to another version (“%{found}”). Nothing was installed.
-settings.updates.install_errors.no_permission: No permission to write in %{dir}. Move the AppImage to a folder of yours or download it by hand.
+settings.updates.install_errors.no_permission: No permission to write in %{dir}, where this AppImage is; nothing was installed and your version is unchanged.
 settings.updates.install_errors.disk_full: No space left in %{dir}. Free some space and try again; your version is unchanged.
 settings.updates.install_errors.io: 'Couldn''t write %{path}: %{error}'
 settings.updates.install_errors.broken_key: 'This build''s signing key isn''t valid: %{error}'

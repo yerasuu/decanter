@@ -73,16 +73,16 @@ settings.general.updates.check: Buscar actualizaciones
 settings.general.updates.checking: Comprobando…
 settings.general.updates.up_to_date: Tienes la última versión publicada (%{tag}).
 settings.general.updates.ahead: Esta compilación es más reciente que la última versión publicada (%{tag}).
-settings.general.updates.available: 'Hay una versión nueva: %{tag}. Por ahora se descarga a mano desde su página en GitHub.'
-settings.general.updates.available_install: 'Hay una versión nueva: %{tag}.'
+settings.general.updates.available: 'Hay una versión nueva: %{tag}.'
 settings.general.updates.install: Descargar e instalar
-settings.general.updates.no_key: Esta compilación no trae clave de firma, así que no puede comprobar ni instalar versiones nuevas por sí misma. Descárgala a mano desde su página en GitHub.
+settings.general.updates.no_key: Esta compilación no trae clave de firma, así que no puede comprobar ni instalar versiones nuevas por sí misma.
 settings.general.updates.downloading: Descargando… %{done}
 settings.general.updates.downloading_of: Descargando… %{done} de %{total}
 settings.general.updates.installed_update: '%{tag} está instalada y su firma, comprobada. Se usará la próxima vez que abras Decanter.'
 settings.general.updates.restart_now: Reiniciar ahora
 settings.general.updates.none: Todavía no hay ninguna versión publicada en GitHub.
 settings.general.updates.notes: Notas de la versión
+settings.general.updates.download_page: Abrir la página de descarga
 settings.updates.errors.offline: No hay conexión con GitHub.
 settings.updates.errors.rate_limited: GitHub ha limitado las consultas desde esta red; vuelve a intentarlo dentro de un rato.
 settings.updates.errors.invalid: 'GitHub ha respondido algo que no es una versión válida: %{error}'
@@ -102,13 +102,13 @@ settings.compatibility.tools.proton.pending: UMU-Proton · la última es %{tag};
 settings.compatibility.tools.proton.unpublished: UMU-Proton · el proyecto no tiene ninguna versión publicada
 settings.compatibility.tools.proton.error: UMU-Proton · %{error}
 settings.updates.install_errors.missing_appimage: La versión %{tag} todavía no tiene AppImage en GitHub; vuelve a intentarlo dentro de un rato.
-settings.updates.install_errors.unsigned: La versión %{tag} todavía no está firmada; vuelve a intentarlo más tarde o descárgala a mano.
+settings.updates.install_errors.unsigned: La versión %{tag} todavía no está firmada; vuelve a intentarlo dentro de un rato.
 settings.updates.install_errors.download: 'La descarga ha fallado: %{error}'
 settings.updates.install_errors.too_large: La descarga supera los %{size}, más de lo que puede ocupar Decanter; no se ha instalado.
 settings.updates.install_errors.bad_signature: La firma no corresponde a lo descargado. No se ha instalado nada y tu versión sigue igual.
 settings.updates.install_errors.wrong_key: La versión está firmada con una clave distinta de la de esta compilación. No se ha instalado nada.
 settings.updates.install_errors.wrong_release: La firma es de otra versión («%{found}»). No se ha instalado nada.
-settings.updates.install_errors.no_permission: No hay permiso para escribir en %{dir}. Mueve el AppImage a una carpeta tuya o descárgalo a mano.
+settings.updates.install_errors.no_permission: No hay permiso para escribir en %{dir}, donde está este AppImage; no se ha instalado nada y tu versión sigue igual.
 settings.updates.install_errors.disk_full: No queda espacio en %{dir}. Libera espacio y vuelve a intentarlo; tu versión sigue igual.
 settings.updates.install_errors.io: 'No se ha podido escribir %{path}: %{error}'
 settings.updates.install_errors.broken_key: 'La clave de firma de esta compilación no es válida: %{error}'
