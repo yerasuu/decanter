@@ -13,13 +13,13 @@ use decanter_ps::os::windows::package::{self, Installed, Offer, PINNED_KEY, SELE
 use decanter_ps::os::windows::winbuild::Commit;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
-use decanter_ps::runner;
 use futures::FutureExt as _;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
 
 use super::Ps;
 use crate::i18n::Text;
+use crate::runners;
 
 /// As often as the ports' upstream check on Linux.
 const UPDATE_INTERVAL: Duration = Duration::from_secs(30 * 60);
@@ -190,8 +190,11 @@ impl Ps {
             }
             // A version's tag is always a release's name; refused like a failed removal otherwise.
             let removed = match Tag::try_new(version.tag()) {
-                Some(tag) => runner::remove(&root, Runner::Psport, &Pin::Release(tag)).await,
-                None => Err(io::Error::from(io::ErrorKind::InvalidInput)),
+                Some(tag) => runners::remove(&root, Runner::Psport, &Pin::Release(tag)).await,
+                None => Err(runners::Error::RemoveRelease(
+                    Runner::Psport,
+                    io::Error::from(io::ErrorKind::InvalidInput),
+                )),
             };
             match removed {
                 Ok(()) => {
@@ -200,7 +203,7 @@ impl Ps {
                 }
                 Err(err) => {
                     tracing::warn!(tag = version.tag(), %err, "could not remove a psport Windows package");
-                    set_error(&this, Some(Text::new("ps.package.errors.delete").arg("error", err)), cx);
+                    set_error(&this, Some(err.text()), cx);
                 }
             }
             reload(&this, &root, cx).await;
