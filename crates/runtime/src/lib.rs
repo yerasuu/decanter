@@ -36,12 +36,18 @@ mod os;
 mod path;
 mod prefix;
 mod proton;
+mod session;
 
 pub use launch::Launch;
-pub use os::*;
+#[cfg(target_os = "linux")]
+pub use os::{
+    UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, UMU_PROTON_REPO, live_prefixes, processes_by_prefix, steam_compat_dir,
+    steam_runner_exists, steam_runners, umu_run_path,
+};
 pub use path::sanitize_relative_path;
 pub use prefix::Prefix;
 pub use proton::Proton;
+pub use session::{Prepared, Session, end, is_live, prepare, start, stop, stop_all, take_killed};
 
 use decanter_core::capabilities::Feature;
 use decanter_core::platform;

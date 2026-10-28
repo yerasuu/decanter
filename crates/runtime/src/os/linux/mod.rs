@@ -6,17 +6,17 @@ mod prefix;
 mod proton;
 mod umu;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{ExitStatus, Stdio};
-use std::time::Instant;
 
 use anyhow::{Context as _, bail};
-use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::process::{Child, Command};
 
-use crate::{Launch, Prefix};
+use crate::session::live_lock;
+use crate::{Launch, Prefix, Prepared, Session};
 
-use prefix::{SESSION_ENV, live_lock};
-pub use prefix::{live_prefixes, processes_by_prefix, stop_all};
+use prefix::SESSION_ENV;
+pub use prefix::{live_prefixes, processes_by_prefix};
 pub use proton::{UMU_PROTON_REPO, steam_compat_dir, steam_runner_exists, steam_runners};
 use umu::ensure_umu_run;
 pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
@@ -25,193 +25,22 @@ pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_VERSION, umu_run_path};
 /// script, `Session.init_session`).
 const PROTON_LOG_WINEDEBUG: &str = "+timestamp,+pid,+tid,+seh,+unwind,+threadname,+debugstr,+loaddll,+mscoree";
 
-/// A launched game.
-///
-/// Dropping this detaches rather than kills — the game keeps running, and
-/// the prefix is still reachable through [`Prefix::processes`]. Use
-/// [`Prefix::stop`] to actually end a session.
-pub struct Session {
-    /// The `umu-run` child process.
-    child: Child,
-    /// The prefix this session is running against.
-    prefix: Prefix,
-    /// When the child was spawned, so [`Session::wait`] can log how long
-    /// the session ran without asking the OS for the child's own start time.
-    started_at: Instant,
-}
+/// What the session's process is called in its exit's log lines: what
+/// decanter starts here, for a Linux program run natively too.
+pub(crate) const LAUNCHER: &str = "umu-run";
 
-impl Session {
-    /// The `umu-run` process, not the game: umu execs into the runtime
-    /// container and Proton starts the game below that. Useful for logging
-    /// and for [`Session::wait`], not as a handle on the game itself.
-    #[inline]
-    #[must_use]
-    pub fn launcher_pid(&self) -> Option<u32> {
-        self.child.id()
-    }
+/// What a live session is found and stopped by: its prefix.
+pub(crate) type Tracked = Prefix;
 
-    #[inline]
-    #[must_use]
-    pub const fn prefix(&self) -> &Prefix {
-        &self.prefix
-    }
-
-    /// The launcher's pipes, once each, when the launch asked for
-    /// [`Launch::capture_output`]; `None` otherwise. The game inherits
-    /// them, so they stay open until the last process in the prefix is
-    /// gone — read them to the end, or the game blocks on a full pipe.
-    #[inline]
-    pub const fn take_output(&mut self) -> (Option<ChildStdout>, Option<ChildStderr>) {
-        (self.child.stdout.take(), self.child.stderr.take())
-    }
-
-    /// Waits for the whole session: the launcher first, then anything it
-    /// left running in the prefix.
-    ///
-    /// A non-zero launcher exit is reported, but only after the prefix has
-    /// gone idle — the games that fail this way have usually started
-    /// something that is still up.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the launcher can't be waited on, or if it
-    /// exits with a non-zero status.
-    #[inline]
-    pub async fn wait(self) -> anyhow::Result<()> {
-        let status = match self.wait_status().await {
-            Ok(status) => status,
-            Err(err) => return Err(err),
-        };
-        if !status.success() {
-            bail!("umu-run exited with {status}");
-        }
-        Ok(())
-    }
-
-    /// [`Session::wait`] for a caller that records how the launcher ended
-    /// rather than treating a non-zero exit as its own failure.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the launcher can't be waited on.
-    #[inline]
-    pub async fn wait_status(mut self) -> anyhow::Result<ExitStatus> {
-        let pid = self.child.id();
-        let status = match self.child.wait().await.context("waiting for umu-run") {
-            Ok(status) => status,
-            Err(err) => {
-                tracing::error!(pid, prefix = %self.prefix.path.display(), "failed to wait for umu-run");
-                return Err(err);
-            }
-        };
-        let elapsed = self.started_at.elapsed();
-        if status.success() {
-            tracing::info!(pid, exit_code = status.code(), elapsed = ?elapsed, "umu-run exited");
-        } else {
-            tracing::error!(pid, exit_code = status.code(), elapsed = ?elapsed, "umu-run exited with a failure status");
-        }
-        self.prefix.wait_until_idle().await;
-        live_lock().remove(&self.prefix.path);
-        Ok(status)
-    }
-}
-
-/// A launch with its `umu-run` command built but not started, so a caller
-/// can record the command before it runs. [`Prepared::spawn`] starts it.
-pub struct Prepared {
-    /// `umu-run` with everything [`prepare`] put on it.
-    command: Command,
-    /// What it was prepared from, for the spawn's own log lines.
-    launch: Launch,
-    /// The prefix it runs against, handed to the [`Session`].
-    prefix: Prefix,
-    /// What the command starts (`umu-run`, or a native program itself),
-    /// named when the spawn fails.
-    program: PathBuf,
-}
-
-impl Prepared {
-    /// The command as it will be spawned: program, arguments, working
-    /// directory and the environment decanter sets on top of its own.
-    #[inline]
-    pub const fn command_mut(&mut self) -> &mut Command {
-        &mut self.command
-    }
-
-    /// Starts the command, returning as soon as umu is running.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `umu-run` fails to spawn.
-    #[inline]
-    pub fn spawn(mut self) -> anyhow::Result<Session> {
-        let child = match self
-            .command
-            .spawn()
-            .with_context(|| format!("spawning {}", self.program.display()))
-        {
-            Ok(child) => child,
-            Err(err) => {
-                tracing::error!(
-                    executable = %self.launch.executable.display(),
-                    game_id = %self.launch.game_id,
-                    native = self.launch.native,
-                    "failed to spawn the game's command"
-                );
-                return Err(err);
-            }
-        };
-        let started_at = Instant::now();
-
-        tracing::info!(
-            pid = child.id(),
-            game_id = %self.launch.game_id,
-            proton = ?self.launch.proton,
-            "launched game process"
-        );
-
-        live_lock().insert(self.prefix.path.clone());
-
-        Ok(Session {
-            child,
-            prefix: self.prefix,
-            started_at,
-        })
-    }
-}
-
-/// Starts `launch` in its prefix, returning as soon as umu is running.
-///
-/// # Errors
-///
-/// Returns an error off Linux, without a prefix, if `launch.executable`
-/// isn't a bare command and doesn't exist as a host file, if its working
-/// directory can't be resolved, or if `umu-run` fails to spawn.
-#[inline]
-pub async fn start(launch: Launch) -> anyhow::Result<Session> {
-    match prepare(launch).await {
-        Ok(prepared) => prepared.spawn(),
-        Err(err) => Err(err),
-    }
-}
-
-/// [`start`] up to the spawn: everything that can fail before the process
-/// exists, with the command in hand for a caller to look at first.
-///
-/// # Errors
-///
-/// Returns an error off Linux, without a prefix, if `launch.executable`
-/// isn't a bare command and doesn't exist as a host file, or if its working
-/// directory can't be resolved.
-#[inline]
-pub async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
+/// `umu-run` against the launch's prefix, or a Linux program as itself.
+pub(crate) async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     if !crate::available() {
         bail!(
             "Proton runs only on Linux, cannot start {}",
             launch.executable.display()
         );
     }
-    let Some(prefix) = launch.prefix.take() else {
+    let Some(prefix) = launch.prefix.clone() else {
         tracing::warn!(executable = %launch.executable.display(), game_id = %launch.game_id, "rejecting launch: no prefix");
         bail!("no prefix to run {} in", launch.executable.display());
     };
@@ -244,7 +73,7 @@ pub async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     tracing::debug!(working_directory = %working_directory.display(), "resolved working directory for launch");
 
     if launch.native {
-        return Ok(prepare_native(prefix, launch, &working_directory));
+        return Ok(prepare_native(&prefix, launch, &working_directory));
     }
 
     let umu_run_path = ensure_umu_run().await.context("ensuring umu-run is available")?;
@@ -323,9 +152,69 @@ pub async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     Ok(Prepared {
         command,
         launch,
-        prefix,
         program: umu_run_path,
     })
+}
+
+pub(crate) fn spawn_failed(launch: &Launch) {
+    tracing::error!(
+        executable = %launch.executable.display(),
+        game_id = %launch.game_id,
+        native = launch.native,
+        "failed to spawn the game's command"
+    );
+}
+
+/// The launch's prefix, which every process of the session runs against.
+pub(crate) fn spawned(child: &Child, launch: &Launch) -> Option<Tracked> {
+    tracing::info!(
+        pid = child.id(),
+        game_id = %launch.game_id,
+        proton = ?launch.proton,
+        "launched game process"
+    );
+    launch.prefix.clone()
+}
+
+/// `umu-run`'s exit, then anything it left running in the prefix.
+pub(crate) async fn wait_status(mut session: Session) -> anyhow::Result<ExitStatus> {
+    let pid = session.child.id();
+    let status = match session.child.wait().await.context("waiting for umu-run") {
+        Ok(status) => status,
+        Err(err) => {
+            tracing::error!(pid, prefix = ?session.prefix.as_ref().map(Prefix::path), "failed to wait for umu-run");
+            return Err(err);
+        }
+    };
+    let elapsed = session.started_at.elapsed();
+    if status.success() {
+        tracing::info!(pid, exit_code = status.code(), elapsed = ?elapsed, "umu-run exited");
+    } else {
+        tracing::error!(pid, exit_code = status.code(), elapsed = ?elapsed, "umu-run exited with a failure status");
+    }
+    if let Some(prefix) = session.prefix.as_ref() {
+        prefix.wait_until_idle().await;
+    }
+    live_lock().remove(&session.key);
+    Ok(status)
+}
+
+/// [`Prefix::stop`] on the session's prefix.
+pub(crate) async fn stop(key: &str) {
+    let prefix = live_lock().get(key).cloned();
+    let Some(prefix) = prefix else {
+        tracing::debug!(key, "session has exited");
+        return;
+    };
+    if let Err(err) = prefix.stop().await {
+        tracing::error!(key, error = %format_args!("{err:#}"), "stop failed");
+    }
+}
+
+/// The same as [`stop`]: a prefix's processes only ever get `SIGTERM`, which
+/// Wine shuts a prefix down cleanly on, and nothing here kills one outright.
+pub(crate) async fn end(key: &str) {
+    stop(key).await;
 }
 
 /// `program` started in the game's own scope and under GameMode when the
@@ -352,7 +241,7 @@ fn wrapped(program: &Path, launch: &mut Launch) -> Command {
 
 /// A Linux program started as itself, tagged with [`SESSION_ENV`] so the
 /// session's processes are found the way a prefix's are.
-fn prepare_native(prefix: Prefix, mut launch: Launch, working_directory: &Path) -> Prepared {
+fn prepare_native(prefix: &Prefix, mut launch: Launch, working_directory: &Path) -> Prepared {
     let executable = launch.executable.clone();
     let mut command = wrapped(&executable, &mut launch);
     // As under umu: decanter's own library path and allocator settings are
@@ -378,7 +267,6 @@ fn prepare_native(prefix: Prefix, mut launch: Launch, working_directory: &Path) 
     Prepared {
         command,
         launch,
-        prefix,
         program: executable,
     }
 }

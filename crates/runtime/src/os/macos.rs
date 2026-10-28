@@ -40,7 +40,7 @@ impl Group {
 }
 
 /// What a live session's processes are found by.
-pub(super) struct Tracked {
+pub(crate) struct Tracked {
     /// The game's process group, whose id is the pid of the process
     /// decanter started, since [`command`] makes it the group's leader.
     /// `None` for a pid no group may be signalled by: the session then

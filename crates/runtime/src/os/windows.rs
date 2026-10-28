@@ -20,7 +20,7 @@ use super::native::Remaining;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// What a live session's processes are found by.
-pub(super) struct Tracked {
+pub(crate) struct Tracked {
     /// `None` when the game couldn't be put in one: the session is then
     /// `pid` and its tree, as `taskkill /T` finds it.
     job: Option<Job>,

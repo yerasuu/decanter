@@ -8,15 +8,13 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Instant;
 
 use anyhow::Context as _;
-use futures_util::future::join_all;
 use tokio::time::sleep;
 
-use super::start;
-use crate::{Launch, Prefix, Proton};
+use crate::session::live_lock;
+use crate::{Launch, Prefix, Proton, start};
 
 /// How often [`Prefix::wait_until_idle`] re-checks for leftover processes.
 /// Only reached after the launcher already exited, so it costs one
@@ -116,7 +114,7 @@ impl Prefix {
         tracing::debug!(prefix = %self.path.display(), "stopping prefix");
         // Dropped from the live set first: a stop that is already under
         // way shouldn't be started a second time by a shutdown racing it.
-        live_lock().remove(&self.path);
+        live_lock().retain(|_, prefix| prefix.path != self.path);
         // Re-signals every tick rather than sweeping once: a process that
         // appears after the first sweep (a game re-execing itself during
         // shutdown, which GOG's own launchers do) would otherwise never
@@ -176,45 +174,12 @@ fn proc_entries() -> Option<fs::ReadDir> {
         .ok()
 }
 
-/// The prefixes decanter has started something in and not seen finish.
-///
-/// Kept apart from whatever the UI is showing, because this is what
-/// shutdown reads: a game outlives the launcher that started it — umu
-/// execs into a container and Proton detaches — so nothing stops on its
-/// own when decanter goes away. Closing the app has to go and stop them.
-fn live() -> &'static Mutex<HashSet<PathBuf>> {
-    static LIVE: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
-    LIVE.get_or_init(Default::default)
-}
-
-/// Locks [`live`], recovering a poisoned lock rather than discarding its
-/// contents: a panic while holding it must not make `stop_all()` believe no
-/// games are running and leave them alive.
-pub(crate) fn live_lock() -> MutexGuard<'static, HashSet<PathBuf>> {
-    live().lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 /// Every prefix with a session in flight.
 #[inline]
 #[must_use]
 pub fn live_prefixes() -> Vec<Prefix> {
-    live_lock().iter().cloned().map(Prefix::new).collect()
-}
-
-/// Stops everything decanter started, at once.
-///
-/// For shutdown. Concurrent rather than one after another: each stop waits
-/// out its own prefix, and closing the app shouldn't take as long as the
-/// sum of them.
-#[inline]
-pub async fn stop_all() {
-    let prefixes = live_prefixes();
-    if prefixes.is_empty() {
-        return;
-    }
-    tracing::info!(count = prefixes.len(), "stopping running games");
-    let stopping = prefixes.iter().map(Prefix::stop);
-    join_all(stopping).await;
+    let paths: HashSet<PathBuf> = live_lock().values().map(|prefix| prefix.path.clone()).collect();
+    paths.into_iter().map(Prefix::new).collect()
 }
 
 /// Whether a `/proc/<pid>/environ` blob belongs to a process running
