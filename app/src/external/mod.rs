@@ -15,6 +15,7 @@ pub mod art;
 pub mod import;
 #[cfg(proton)]
 pub mod launchers;
+pub mod probe;
 pub mod size;
 pub mod transfer;
 #[cfg(proton)]
