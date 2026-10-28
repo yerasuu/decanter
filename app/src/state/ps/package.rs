@@ -255,9 +255,7 @@ pub(super) async fn settings_now(root: &Root, cx: &AsyncApp) -> Choice {
     };
     Choice {
         selected: settings.text(SELECTED_KEY).and_then(|tag| tag.parse::<Version>().ok()),
-        selected_build: settings
-            .text(SELECTED_KEY)
-            .and_then(|commit| commit.parse::<Commit>().ok()),
+        selected_build: settings.text(SELECTED_KEY).and_then(Commit::try_new),
         pinned: settings.flag(PINNED_KEY, false),
         manual_folder: settings.text(FOLDER_KEY).map(str::to_owned),
     }
@@ -467,9 +465,7 @@ pub(super) async fn for_play(
     settings: &LauncherSettings,
     cx: &mut AsyncApp,
 ) -> Result<std::path::PathBuf, Text> {
-    if let Some(commit) = settings
-        .text(SELECTED_KEY)
-        .and_then(|commit| commit.parse::<Commit>().ok())
+    if let Some(commit) = settings.text(SELECTED_KEY).and_then(Commit::try_new)
         && decanter_ps::os::windows::winbuild::built_commit(root, &commit)
             .await
             .is_some()

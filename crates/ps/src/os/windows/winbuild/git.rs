@@ -228,12 +228,12 @@ fn head_of(refs: &str) -> Result<Head, Error> {
     let Some(listed) = commit_of(&format!("refs/heads/{branch}")) else {
         return Err(Error::Rejected(format!("no commit listed for {branch}")));
     };
-    match listed.parse::<Commit>() {
-        Ok(commit) => Ok(Head {
+    match Commit::try_new(listed) {
+        Some(commit) => Ok(Head {
             branch: branch.to_owned(),
             commit,
         }),
-        Err(_) => Err(Error::Rejected(format!(
+        None => Err(Error::Rejected(format!(
             "not a full commit for {branch}: {:?}",
             listed.chars().take(80).collect::<String>()
         ))),
@@ -292,7 +292,7 @@ fn gitlink(listed: &str) -> Option<String> {
     let mut fields = meta.split(' ');
     match (fields.next(), fields.next(), fields.next(), fields.next(), lines.next()) {
         (Some("160000"), Some("commit"), Some(commit), None, None)
-            if path == IMGUI_PATH && commit.parse::<Commit>().is_ok() =>
+            if path == IMGUI_PATH && Commit::try_new(commit).is_some() =>
         {
             Some(commit.to_owned())
         }

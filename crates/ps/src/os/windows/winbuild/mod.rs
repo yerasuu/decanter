@@ -23,17 +23,15 @@ pub mod pins;
 pub mod run;
 pub mod toolchain;
 
-use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
+pub use decanter_core::runner::Commit;
 use decanter_core::runner::{Progress, Stage};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt as _;
 
-use crate::os::linux::prebuilt;
 use crate::os::windows::package;
 use crate::paths::Root;
 use crate::remote::RemoteError;
@@ -110,46 +108,6 @@ pub enum Error {
     Package(package::Error),
     #[error("{0}")]
     Io(#[from] io::Error),
-}
-
-/// A full commit as git prints it ([`prebuilt::valid_commit`]): it goes into git's arguments, a folder
-/// name and a record.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Commit(String);
-
-#[derive(Debug, thiserror::Error)]
-#[error("not a full commit")]
-pub struct InvalidCommit;
-
-impl FromStr for Commit {
-    type Err = InvalidCommit;
-
-    fn from_str(commit: &str) -> Result<Self, Self::Err> {
-        if prebuilt::valid_commit(commit) {
-            Ok(Self(commit.to_owned()))
-        } else {
-            Err(InvalidCommit)
-        }
-    }
-}
-
-impl fmt::Display for Commit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl Commit {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// The twelve characters psport's programs report (`PS_COMMIT`).
-    #[must_use]
-    pub fn short(&self) -> &str {
-        self.0.get(..12).unwrap_or(&self.0)
-    }
 }
 
 /// What a build is asked for: the branch of [`git::REMOTE`] and its commit, both as the remote
@@ -510,7 +468,7 @@ fn sweep_staging(builds: &Path, base: &Path, own: &str) {
         else {
             continue;
         };
-        let (Ok(commit), Ok(owner)) = (commit.parse::<Commit>(), owner.parse::<u32>()) else {
+        let (Some(commit), Ok(owner)) = (Commit::try_new(commit), owner.parse::<u32>()) else {
             continue;
         };
         if owner == pid {
@@ -702,7 +660,7 @@ pub async fn built(root: &Root) -> Vec<Built> {
         let Some(commit) = name
             .to_str()
             .and_then(|name| name.strip_suffix(".json"))
-            .and_then(|commit| commit.parse::<Commit>().ok())
+            .and_then(Commit::try_new)
         else {
             continue;
         };
