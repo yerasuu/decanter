@@ -234,6 +234,11 @@ pub(crate) const fn steam_compat_dir() -> Option<PathBuf> {
     None
 }
 
+/// No Proton builds to list: Proton runs only on Linux.
+pub(crate) const fn proton_status() -> Status {
+    Status::Unsupported
+}
+
 /// No umu-run to get: it runs Windows games under Proton, which is Linux's.
 pub(crate) const fn umu_status() -> Status {
     Status::Unsupported

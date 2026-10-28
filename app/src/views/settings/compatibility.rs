@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 use decanter_core::capabilities::Feature;
+use decanter_core::runner::Runner;
 use gpui::{Context, Div, Entity, IntoElement, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
@@ -49,7 +50,11 @@ impl CompatibilityTab {
     }
 
     fn reload(&mut self) {
-        self.runners = decanter_runtime::steam_runners();
+        self.runners = decanter_runtime::runner::status(Runner::Proton)
+            .installed()
+            .iter()
+            .map(|installed| installed.pin.to_string())
+            .collect();
         self.current = crate::core::db()
             .inspect_err(|err| tracing::warn!(error = %err, "failed to open db, default proton unknown"))
             .ok()
@@ -103,8 +108,14 @@ impl CompatibilityTab {
                     Err(err) => tracing::warn!(tool, error = %err, "could not check tool release"),
                 }
             }
-            let umu_proton_installed =
-                matches!(&umu_proton, Ok(Some(release)) if decanter_runtime::steam_runner_exists(&release.tag));
+            let umu_proton_installed = umu_proton.as_ref().is_ok_and(|latest| {
+                latest.as_ref().is_some_and(|release| {
+                    decanter_runtime::runner::status(Runner::Proton)
+                        .installed()
+                        .iter()
+                        .any(|installed| installed.pin.to_string() == release.tag)
+                })
+            });
             let _ = this.update(cx, |this, cx| {
                 this.tools = Some(ToolChecks {
                     umu_run,

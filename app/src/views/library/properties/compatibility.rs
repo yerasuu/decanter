@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use decanter_core::InstalledGame;
 use decanter_core::capabilities::Feature;
+use decanter_core::runner::Runner;
 use gpui::{Context, Entity, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
@@ -53,7 +54,11 @@ impl CompatibilityTab {
             game.storefront == decanter_core::Storefront::Unspecified
                 && crate::core::executable_for(game).is_some_and(|path| crate::external::probe::is_native_linux(&path))
         });
-        self.runners = decanter_runtime::steam_runners();
+        self.runners = decanter_runtime::runner::status(Runner::Proton)
+            .installed()
+            .iter()
+            .map(|installed| installed.pin.to_string())
+            .collect();
         // A prefix that was never launched into doesn't exist yet, which is
         // the normal state for a game you installed but haven't opened.
         self.created = crate::core::prefix_for(account_id, product_id).is_some_and(|prefix| prefix.path().is_dir());

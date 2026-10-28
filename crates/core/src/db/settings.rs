@@ -46,7 +46,7 @@ impl Db {
     }
 
     /// The Proton build to launch with when a game has no per-game choice
-    /// of its own — a bare name from `decanter_runtime::steam_runners`, or
+    /// of its own — a bare name from `decanter_runtime::runner::status`, or
     /// `None` for `decanter_runtime::Proton::Latest`.
     pub fn default_proton(&self) -> Result<Option<String>> {
         let proton = self.setting("default_proton")?;

@@ -20,6 +20,9 @@ use std::path::PathBuf;
 pub enum Runner {
     /// `umu-run`, which runs Windows games under Proton on Linux.
     Umu,
+    /// The Proton builds Steam and umu keep, which umu downloads itself at
+    /// launch: decanter only lists them.
+    Proton,
 }
 
 /// A release name, checked where it enters (an answer from `GitHub`, a
@@ -57,6 +60,15 @@ pub enum Pin {
     Release(Tag),
 }
 
+impl fmt::Display for Pin {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Release(tag) => tag.fmt(f),
+        }
+    }
+}
+
 /// How what is installed got there.
 #[derive(Debug)]
 pub enum Origin {
@@ -79,6 +91,18 @@ pub enum Status {
     Absent,
     /// Sorted by pin, which is as close to a version order as release names get.
     Installed(Vec<Installed>),
+}
+
+impl Status {
+    /// Empty unless something is installed.
+    #[must_use]
+    #[inline]
+    pub fn installed(&self) -> &[Installed] {
+        match self {
+            Self::Installed(installed) => installed,
+            Self::Unsupported | Self::Absent => &[],
+        }
+    }
 }
 
 #[derive(Debug)]

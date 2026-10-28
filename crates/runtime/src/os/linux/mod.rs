@@ -19,7 +19,7 @@ use crate::{Launch, Prefix, Prepared, Session};
 
 use prefix::SESSION_ENV;
 pub(crate) use prefix::{live_prefixes, prefix_processes, processes_by_prefix, stop_prefix};
-pub(crate) use proton::steam_compat_dir;
+pub(crate) use proton::{proton_status, steam_compat_dir};
 pub(crate) use umu::{umu_prepare, umu_remove, umu_status, umu_update};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
