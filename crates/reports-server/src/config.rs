@@ -98,7 +98,8 @@ pub struct Storage {
     pub region: String,
     /// The Cloudflare account of an `r2` bucket.
     pub account_id: String,
-    /// Key prefix inside the bucket, so its user can be limited to it; `s3` and `r2` only.
+    /// Optional common root of the two partitions inside the bucket (`<prefix>/decanter/`, `<prefix>/psport/`), so
+    /// the bucket's user can be limited to it; `s3` and `r2` only.
     pub prefix: String,
     pub path_style: bool,
     /// Lets an `http://` endpoint through; credentials and objects then cross the network in the clear.
@@ -136,6 +137,11 @@ impl Default for Storage {
 /// The secrets the server runs with, read once at startup. No `Debug`, so none can reach a log by accident.
 pub struct Credentials {
     pub admin_key: String,
+    pub storage: StorageCredentials,
+}
+
+/// What opening the partitions takes, apart from the admin key, so `inspect` does not need that key.
+pub struct StorageCredentials {
     pub passphrase: String,
     /// Access key id and secret access key, for the `s3` and `r2` drivers.
     pub bucket_keys: Option<(String, String)>,
@@ -398,6 +404,22 @@ impl Config {
     ///
     /// A secret is missing, unreadable, readable by group or others, or too short.
     pub fn credentials(&self, env: &impl Fn(&str) -> Option<String>) -> Result<Credentials, ConfigError> {
+        let storage = self.storage_credentials(env)?;
+        Ok(Credentials {
+            admin_key: self.admin_key(env)?,
+            storage,
+        })
+    }
+
+    /// The passphrase and, for a bucket, its keys; none of them ever appears in an error.
+    ///
+    /// # Errors
+    ///
+    /// A secret is missing, unreadable, readable by group or others, or too short.
+    pub fn storage_credentials(
+        &self,
+        env: &impl Fn(&str) -> Option<String>,
+    ) -> Result<StorageCredentials, ConfigError> {
         let storage = &self.storage;
         let passphrase = SecretSource {
             what: "the storage passphrase",
@@ -430,8 +452,7 @@ impl Config {
                 .read(env)?,
             )),
         };
-        Ok(Credentials {
-            admin_key: self.admin_key(env)?,
+        Ok(StorageCredentials {
             passphrase,
             bucket_keys,
         })
@@ -773,7 +794,7 @@ mod tests {
         assert!(
             local
                 .credentials(&storage_env(&both))
-                .is_ok_and(|c| c.bucket_keys.is_none())
+                .is_ok_and(|c| c.storage.bucket_keys.is_none())
         );
 
         let dir = key_dir()?;
@@ -794,7 +815,7 @@ mod tests {
         s3.storage.secret_access_key_file = Some(PathBuf::from("$CREDENTIALS_DIRECTORY/secret_access_key"));
         let dir_text = dir.to_string_lossy().into_owned();
         let systemd = [with_id.as_slice(), &[("CREDENTIALS_DIRECTORY", dir_text.as_str())]].concat();
-        let keys = s3.credentials(&storage_env(&systemd))?.bucket_keys;
+        let keys = s3.credentials(&storage_env(&systemd))?.storage.bucket_keys;
         assert_eq!(keys, Some(("AKIA".to_owned(), "s3-secret".to_owned())));
         std::fs::remove_dir_all(&dir)?;
         Ok(())

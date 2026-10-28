@@ -51,26 +51,30 @@ get_per_ip_minute = 120
 # Wrong admin keys and wrong delete codes one address may make per window, then 429 with Retry-After.
 failures_per_ip = 10
 failure_window_secs = 600
-# At these caps the oldest unresolved reports (and attachments) are evicted instead of refusing uploads.
+# At these caps the oldest unresolved reports (and attachments) are evicted instead of refusing uploads. Each
+# partition (decanter, psport) applies them to its own totals, so the bucket holds up to twice these numbers.
 max_reports = 100000
 max_attachments = 2000
 
-# Where the reports, groups and attachments live: an S3-compatible bucket through s3db, encrypted at rest. The
-# default is driver = "local" with dir = "data" (one database file in a 0700 directory, for development).
+# Where the reports, groups and attachments live: an S3-compatible bucket through s3db, encrypted at rest, split in
+# two partitions by product, each its own s3db store: keys under decanter/ and psport/ (s3, r2), or the
+# subdirectories decanter and psport of dir (local). The default is driver = "local" with dir = "data" (one database
+# file per partition, in 0700 directories, for development).
 [storage]
 driver = "s3"                      # "s3" (MinIO or any S3), "r2" (Cloudflare R2, needs account_id) or "local"
 bucket = "decanter-reports"
 endpoint = "https://minio.example.lan:9000"   # empty for AWS itself
 region = "us-east-1"               # MinIO accepts any; AWS needs the bucket's own
-prefix = ""                        # on a shared bucket, a prefix the user is limited to (s3db-inspect then cannot
-                                   # decrypt; see docs/runbook.md); s3/r2 only
+prefix = ""                        # optional common root on a shared bucket: the partitions become <prefix>/decanter/
+                                   # and <prefix>/psport/, and the user can be limited to <prefix>/*; s3/r2 only
 path_style = true                  # MinIO without wildcard DNS needs it
 allow_insecure_http = false        # an http:// endpoint is refused unless this is true (keys and data in clear)
-# dir = "/var/lib/decanter-reports"  # the local driver's directory, created 0700
+# dir = "/var/lib/decanter-reports"  # the local driver's directory (partitions in dir/decanter, dir/psport), 0700
 
 # The three secrets are never in this file. Like the admin key, each comes from a file (a $CREDENTIALS_DIRECTORY
 # path from LoadCredential=, or an owner-only file) or, without one, from the environment variable named here.
-# Losing the passphrase makes the whole bucket unreadable: keep a copy offline.
+# One passphrase opens both partitions (each has its own encryption config derived from it). Losing it makes the
+# whole bucket unreadable: keep a copy offline.
 access_key_id_file = "$CREDENTIALS_DIRECTORY/s3_access_key_id"
 secret_access_key_file = "$CREDENTIALS_DIRECTORY/s3_secret_access_key"
 passphrase_file = "$CREDENTIALS_DIRECTORY/storage_passphrase"

@@ -26,7 +26,7 @@ pub use prefixed::Prefixed;
 pub use read::{AdminFilter, Filter, GroupRow};
 pub use write::{Attach, Change, Insert, NewReport};
 
-use crate::config::{Credentials, Driver, Storage};
+use crate::config::{Driver, Storage, StorageCredentials};
 use crate::ingest::MAX_ATTACHMENT_BYTES;
 use index::Entry;
 use model::Totals;
@@ -53,6 +53,12 @@ pub fn partition_dir(storage: &Storage, product: Product) -> std::path::PathBuf 
     storage.dir.join(product.name())
 }
 
+/// Whether the `local` driver has created this partition's database. Opening a missing one creates it, so the
+/// read-only tools look first. The file name is s3db's (private there, `s3db.redb` at the pinned tag).
+pub fn local_partition_exists(storage: &Storage, product: Product) -> bool {
+    partition_dir(storage, product).join("s3db.redb").is_file()
+}
+
 /// The key prefix of one partition in an S3 bucket: the optional common root, then the product.
 pub fn partition_prefix(storage: &Storage, product: Product) -> String {
     if storage.prefix.is_empty() {
@@ -69,7 +75,7 @@ pub fn partition_prefix(storage: &Storage, product: Product) -> String {
 /// # Errors
 ///
 /// The driver refuses its parameters (an `http://` endpoint without `allow_insecure_http`, say).
-pub fn connect(storage: &Storage, credentials: &Credentials, product: Product) -> Result<Arc<dyn Backend>> {
+pub fn connect(storage: &Storage, credentials: &StorageCredentials, product: Product) -> Result<Arc<dyn Backend>> {
     let (access_key_id, secret_access_key) = credentials.bucket_keys.clone().unwrap_or_default();
     let config = match storage.driver {
         Driver::Local => {

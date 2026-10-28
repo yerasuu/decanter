@@ -4,9 +4,11 @@
 mod admin;
 mod app;
 mod cache;
+mod check;
 mod config;
 mod html;
 mod ingest;
+mod inspect;
 mod limits;
 mod pages;
 mod perms;
@@ -21,33 +23,45 @@ use std::process::ExitCode;
 use tracing::level_filters::LevelFilter;
 
 use crate::app::{AppState, router};
-use crate::config::{Config, ConfigError, Credentials, Driver};
+use crate::config::{Config, ConfigError, Credentials, Driver, StorageCredentials};
 use crate::store::{Product, Store, Stores};
 
+enum Mode {
+    Serve,
+    Check,
+    Inspect(inspect::Request),
+}
+
 struct Args {
-    check_only: bool,
+    mode: Mode,
     config_path: Option<PathBuf>,
 }
 
-fn parse_args(args: impl Iterator<Item = String>, env: &impl Fn(&str) -> Option<String>) -> Result<Args, String> {
-    let mut check_only = false;
+fn parse_args(args: &[String], env: &impl Fn(&str) -> Option<String>) -> Result<Args, String> {
+    let env_path = || env("DECANTER_REPORTS_CONFIG").map(PathBuf::from);
+    if let Some(("inspect", rest)) = args.split_first().map(|(first, rest)| (first.as_str(), rest)) {
+        return Ok(Args {
+            mode: Mode::Inspect(inspect::parse(rest)?),
+            config_path: env_path(),
+        });
+    }
+    let mut mode = Mode::Serve;
     let mut config_path = None;
     for arg in args {
         match arg.as_str() {
-            "--check-config" => check_only = true,
+            "--check-config" => mode = Mode::Check,
             flag if flag.starts_with('-') => return Err(format!("unknown flag {flag}")),
             path if config_path.is_none() => config_path = Some(PathBuf::from(path)),
             _ => return Err("only one config path is accepted".to_owned()),
         }
     }
-    let config_path = config_path.or_else(|| env("DECANTER_REPORTS_CONFIG").map(PathBuf::from));
     Ok(Args {
-        check_only,
-        config_path,
+        mode,
+        config_path: config_path.or_else(env_path),
     })
 }
 
-async fn open_store(config: &Config, credentials: &Credentials, product: Product) -> Result<Store, String> {
+async fn open_store(config: &Config, credentials: &StorageCredentials, product: Product) -> Result<Store, String> {
     let name = product.name();
     if config.storage.driver == Driver::Local {
         let dir = store::partition_dir(&config.storage, product);
@@ -65,8 +79,8 @@ async fn open_state(config: Config, credentials: Credentials) -> Result<AppState
         let dir = &config.storage.dir;
         perms::private_dir(dir).map_err(|error| format!("cannot prepare {}: {error}", dir.display()))?;
     }
-    let decanter = open_store(&config, &credentials, Product::Decanter).await?;
-    let psport = open_store(&config, &credentials, Product::Psport).await?;
+    let decanter = open_store(&config, &credentials.storage, Product::Decanter).await?;
+    let psport = open_store(&config, &credentials.storage, Product::Psport).await?;
     Ok(AppState::new(
         config,
         &credentials.admin_key,
@@ -74,43 +88,18 @@ async fn open_state(config: Config, credentials: Credentials) -> Result<AppState
     ))
 }
 
-fn describe_storage(config: &Config) -> String {
-    let storage = &config.storage;
-    match storage.driver {
-        Driver::Local => format!("local directory {}", storage.dir.display()),
-        Driver::S3 | Driver::R2 => format!(
-            "bucket {} at {} (prefix {:?})",
-            storage.bucket,
-            if storage.endpoint.is_empty() {
-                "the provider"
-            } else {
-                storage.endpoint.as_str()
-            },
-            storage.prefix
-        ),
+/// The secrets are already validated; this makes one read-only round trip per partition and prints no secret.
+async fn check_config(config: &Config, credentials: &Credentials) -> Result<(), String> {
+    eprintln!("config ok: listening on {}", config.listen);
+    let (lines, passed) = check::partitions(config, &credentials.storage).await;
+    for line in lines {
+        eprintln!("{line}");
     }
-}
-
-/// Validates the secrets and, for a bucket, makes one read-only round trip; prints no secret.
-async fn check(config: &Config, credentials: &Credentials) -> Result<(), String> {
-    eprintln!(
-        "config ok: listening on {}, storage in {}",
-        config.listen,
-        describe_storage(config)
-    );
-    if config.storage.driver == Driver::Local {
-        return Ok(());
+    if passed {
+        Ok(())
+    } else {
+        Err("a partition check failed".to_owned())
     }
-    for product in Product::ALL {
-        let backend = store::connect(&config.storage, credentials, product)
-            .map_err(|error| format!("cannot set up the storage: {error:#}"))?;
-        match store::probe(backend.as_ref(), &credentials.passphrase).await {
-            Ok(true) => eprintln!("bucket reachable and the passphrase opens it"),
-            Ok(false) => eprintln!("bucket reachable, not initialized yet (the first start creates its encryption)"),
-            Err(error) => return Err(format!("bucket check failed: {error:#}")),
-        }
-    }
-    Ok(())
 }
 
 async fn shutdown_signal() {
@@ -143,15 +132,21 @@ async fn serve(state: AppState) -> Result<(), String> {
 
 async fn start() -> Result<Option<(Config, Credentials)>, String> {
     let env = |name: &str| std::env::var(name).ok();
-    let args = parse_args(std::env::args().skip(1), &env)?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = parse_args(&args, &env)?;
     let describe = |error: ConfigError| error.to_string();
     let config = Config::load(args.config_path.as_deref(), &env).map_err(describe)?;
+    if let Mode::Inspect(request) = &args.mode {
+        let credentials = config.storage_credentials(&env).map_err(describe)?;
+        inspect::run(&config, &credentials, request).await?;
+        return Ok(None);
+    }
     let credentials = config.credentials(&env).map_err(describe)?;
     for warning in config.warnings() {
         eprintln!("warning: {warning}");
     }
-    if args.check_only {
-        check(&config, &credentials).await?;
+    if matches!(args.mode, Mode::Check) {
+        check_config(&config, &credentials).await?;
         return Ok(None);
     }
     Ok(Some((config, credentials)))
