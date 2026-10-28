@@ -4,7 +4,7 @@ What the server is for, how its parts fit, what it trusts and what it never does
 configuration keys are in `README.md`, the deployment in `docs/deploy.md`, the day-to-day work in
 `docs/runbook.md`. The decisions behind this design are on decanter's board: #985, #986, #987, #988, #989, #991,
 #1033, #1034, #1037, #1038, #1041 to #1046, #1047, #1049, #1055, #1060 (tasks #982, #993, #994, #1039, #1040, #1048,
-#1056, #1064).
+#1056, #1062, #1063, #1064).
 
 ## Purpose
 
@@ -64,7 +64,8 @@ crate) groups duplicates; it ignores the game, so a group may span titles and th
 
 An optional **attachment** is the player's raw run log, up to 5 MiB, one per report. It is private by design: the
 client scrubs it with the same denylist as a best effort, the server stores it as an encrypted blob under a
-generated name, only the admin can download it, and it is deleted when the report is resolved or deleted. What the
+generated name, only the admin can download it or read it in the private viewer ("The private log viewer"), and it is deleted
+when the report is resolved or deleted. What the
 public sees of it is its **clean log** (next section), never the log itself.
 
 ## The public clean log
@@ -220,6 +221,49 @@ Encryption at rest is s3db's: every object is sealed (XChaCha20-Poly1305) under 
 from a passphrase (Argon2id) that the server reads as a credential, like the admin key; the bucket provider sees only
 object names and sizes. The bucket credentials and the passphrase are never in `config.toml`; losing the passphrase
 makes the bucket unreadable.
+
+## The private log viewer
+
+**Decision (#1060, #1061; task #1063).** The raw log a player attaches stays private, but a maintainer reads it in
+the browser instead of downloading it: `/admin/logs` behind the admin gate (session or Bearer, the same uniform 404
+without one), server-rendered, no script, read-only GETs. The attachment policy does not change (one per report,
+5 MiB, encrypted blob, deleted when the report is resolved or deleted). The code is `src/admin_logs/`,
+`src/logtext.rs`, `src/logdiff.rs` and the read functions in `src/store/logs.rs`.
+
+- **Which logs.** The attached reports come from each partition's `queue/attached` list, which holds about
+  `max_attachments` entries, read newest first; each entry is checked against its report like every other list. A
+  hidden report's log is left out of the list, the viewer, the search and the comparison (its download stays):
+  unknown, hidden and unattached ids give the same 404. Sizes come from the blob manifest, without reading the log.
+- **Rendering.** The bytes become text with lossy UTF-8; a log that is mostly NUL, other control bytes or invalid
+  UTF-8 in its first 64 KiB is shown as a size note with the download. Every line goes through `escape_html`; C0
+  and C1 controls, DEL, the bidirectional controls, the line separators and the zero-width characters are replaced
+  by a visible marker (`␛`, `<U+202E>`), so ANSI escapes, NUL and reordering tricks neither run nor hide text. A
+  line shows at most 2000 characters, then a marker with the number of bytes cut and the download link; a page
+  shows `logs.page_lines` lines. One pass over the log counts the lines and builds the list of highlighted lines
+  (the first 200), and renders only the page's lines, so a 5 MiB line and 5 MiB of one-character lines both cost
+  one linear pass (a test checks the time grows linearly). The render runs on the blocking pool.
+- **Highlighting.** A line is classed by markers in its first 4 KiB: fault (`Guest fault`, `Host fault`,
+  `mprotect failed`, `VirtualProtect failed`), calls (`Calls: summary`), error (`<Error>`, `<Critical>`, `ERROR`),
+  failed (`failed`, `stub`, `unimplemented`, `not implemented`, any case), warning (`<Warning>`, `WARN`), in that
+  order. Each class has a colour and a text marker (`FALLO`, `LLAMADAS`, `ERROR`, `FALLIDA`, `AVISO`), so the colour
+  is never the only sign.
+- **Search.** The query is 1 to 200 characters without controls, matched as a substring with ASCII case ignored
+  (no regex), with 2 lines of context. Logs are encrypted blobs, so a search costs one read per log and is confined
+  to one title or one fingerprint (a whole-bucket search is refused). It reads the scope newest first, one log at a
+  time (a log is held in memory only while it is scanned, on the blocking pool), and stops at
+  `logs.search_max_logs` logs, `logs.search_max_mib` MiB read or `logs.search_max_matches` matching lines; the
+  page says which cap stopped it and how many of the scope's logs it read. One search runs at a time per session
+  (the Bearer key counts as one session), else 429 with `Retry-After`. An index of error lines built at upload was
+  not needed at this scale (a scope holds at most `max_attachments` logs per partition).
+- **Comparison.** `logdiff` is the server's own: both logs' lines are interned to integers, the common head and
+  tail are trimmed, and Myers' algorithm runs on the rest with the edit distance capped at 1000 (its trace costs
+  O(D²) memory, about 8 MB at the cap; the work is O((N+M)·D)). Past `logs.diff_max_lines` lines in both logs, or
+  past 1000 edits, it compares line by line at the same position, streaming both logs, and keeps the first 500
+  differing rows while counting all. With "ignorar" checked, times (`HH:MM:SS`, ISO dates and date-times with
+  zone), `0x` numbers of 4 or more hex digits, bare hex runs of 8 or more with a digit, decimal numbers of more than
+  4 digits and the `# ended`, `# duration`, `# exit` lines compare equal (only for the comparison: the rows show the
+  real text, equal runs A's). Rows carry both line numbers, linked to the viewer; equal runs fold to 3 lines of
+  context.
 
 ## Lifecycle of a report
 

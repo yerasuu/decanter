@@ -33,6 +33,38 @@ curl -s -b "$J" -H "Origin: $B" -H "X-CSRF-Token: $T" -X POST $B/admin/reports/$
 curl -s -b "$J" -H "Origin: $B" -d "csrf=$T" $B/admin/logout; rm -f "$J"
 ```
 
+## Reading the logs
+
+The logs players attach are private: read them under `/admin/logs` (the "Logs adjuntos" link of `/admin`), with
+the session or the key. Logs of hidden reports are not listed there; download them by id
+(`/admin/reports/<id>/attachment`).
+
+- **Find the log of a game.** `/admin/logs?title=CUSA03173` lists that game's logs, newest first, with size, day
+  and failure kind; narrow with `product`, `day`, `kind` (`crash`, `stop`, `error`, `exit`, `missing`) or a
+  `fingerprint` (all reports of one failure, any game). "ver" opens a log: numbered lines, faults, errors, warnings,
+  `Calls: summary` and failed or stub calls highlighted with a marker word and listed at the top with links,
+  `logs.page_lines` (2000) lines per page. Control characters show as markers (`␛`, `<U+202E>`); a line longer than
+  2000 characters is cut with a link to the download, which is the exact file.
+- **Search.** From the list or a log page, or `/admin/logs/search?q=Guest+fault&title=CUSA03173`: the matching
+  lines with two lines around, each linked to its line in the log. A search needs a title or a fingerprint; it
+  reads at most `logs.search_max_logs` (50) logs, `logs.search_max_mib` (64) MiB and shows at most
+  `logs.search_max_matches` (500) lines, and says "La búsqueda paró en el tope…: buscados N de M logs" when a cap
+  cut it: add a day, a kind or a product to see the rest. One search at a time per session (429 otherwise).
+- **Compare two runs.** In the list, pick A and B on two rows and "Comparar A con B", or on a log page enter the
+  other id, or `/admin/logs/diff?a=$A&b=$B&normalize=1`. Changed (`~`), removed from A (`−`) and added in B (`+`)
+  lines show with the line numbers of both logs and the counts on top; equal stretches fold to three lines of
+  context. Keep "ignorar horas, direcciones y números largos" checked to compare two runs of the same game (times,
+  addresses, long numbers and the `# ended`/`# duration`/`# exit` lines then compare equal). Two very long or very
+  different logs (more than `logs.diff_max_lines` lines together, or more than 1000 differing lines) are compared
+  line by line at the same position and the page says so.
+
+```sh
+curl -s -H "$A" "$B/admin/logs?title=CUSA03173"                       # HTML, like the browser
+curl -s -H "$A" "$B/admin/logs/search?q=Guest%20fault&title=CUSA03173"
+curl -s -H "$A" "$B/admin/logs/diff?a=$ID1&b=$ID2&normalize=1"
+curl -s -H "$A" -o log.bin "$B/admin/reports/$ID1/attachment"         # the raw file
+```
+
 ## List
 
 ```sh

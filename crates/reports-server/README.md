@@ -48,6 +48,10 @@ tag; `.cargo/config.toml` makes cargo fetch it with the system git.
 | `POST /admin/groups/<fingerprint>/hide`, `/restore`, `/resolve` | admin | 204 for every report of the group, in both partitions; 404 if neither holds one |
 | `DELETE /admin/groups/<fingerprint>`, or `POST .../delete` for a form | admin | 204; deletes the group's reports and their attachments |
 | `GET /admin/reports/<id>/attachment` | admin | the file as `application/octet-stream`, `Content-Disposition: attachment` |
+| `GET /admin/logs?product=&title=&day=&kind=&fingerprint=&page=` | admin | HTML list of the visible reports with an attached log, newest first, 50 per page: id, product, title and game, day, kind, template, size, links to the viewer, the report and the download, and A/B choices for a comparison; filters as the admin list plus `kind` (lowercase letters), 400 otherwise |
+| `GET /admin/logs/<id>?page=N` | admin | the log as numbered text, `logs.page_lines` lines per page, ERROR / WARN / fault / `Calls: summary` / failed-stub-unimplemented lines highlighted with a text marker and listed at the top; 404 for an unknown, hidden or unattached id |
+| `GET /admin/logs/search?q=&title=&fingerprint=&product=&day=&kind=` | admin | lines holding `q` (1 to 200 characters, ASCII case ignored) with 2 lines of context, in the logs of one title or fingerprint (400 without one), newest first, within `logs.search_max_*`; 429 while the same session runs another search |
+| `GET /admin/logs/diff?a=<id>&b=<id>&normalize=1` | admin | the two logs side by side: changed, removed and added lines with both line numbers and counts; `normalize` ignores times, addresses and long numbers; 404 unless both logs are readable |
 
 Public pages (everything but `/healthz` and `/admin`) are rate limited per client: 429 with `Retry-After`.
 
@@ -82,7 +86,8 @@ curl -s -H "$A" -X POST $B/admin/groups/$FP/hide          # also /restore and /r
 curl -s -H "$A" -X DELETE $B/admin/groups/$FP
 ```
 
-In a browser: open `$B/admin/login`, enter the key, and `/admin` lists the reports with their actions.
+In a browser: open `$B/admin/login`, enter the key, and `/admin` lists the reports with their actions; its
+"Logs adjuntos" link opens the log viewer (`docs/runbook.md`, "Reading the logs").
 
 ## Configuration
 
@@ -110,6 +115,9 @@ partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runb
 | `log_level` | `info` | `DECANTER_REPORTS_LOG` |
 | `admin.session_idle_secs` / `session_max_secs` | 1800 / 28800 | `DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS`, `_ADMIN_SESSION_MAX_SECS` |
 | `admin.max_sessions` | 16 (a login past it ends the oldest session) | `DECANTER_REPORTS_ADMIN_MAX_SESSIONS` |
+| `logs.page_lines` | 2000 lines of a log per page (100 to 20000) | `DECANTER_REPORTS_LOGS_PAGE_LINES` |
+| `logs.search_max_logs` / `search_max_mib` / `search_max_matches` | 50 / 64 / 500 per search (1 to 1000 / 1024 / 10000) | `DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS`, `_LOGS_SEARCH_MAX_MIB`, `_LOGS_SEARCH_MAX_MATCHES` |
+| `logs.diff_max_lines` | 20000 lines of both logs together, above which a comparison is positional (100 to 200000) | `DECANTER_REPORTS_LOGS_DIFF_MAX_LINES` |
 | `storage.driver` | `local` (`s3`, `r2`) | `DECANTER_REPORTS_STORAGE_DRIVER` |
 | `storage.dir` | `data` (local driver only; partitions in `<dir>/decanter` and `<dir>/psport`) | `DECANTER_REPORTS_STORAGE_DIR` |
 | `storage.bucket`, `endpoint`, `region`, `account_id` (r2) | empty | `DECANTER_REPORTS_STORAGE_BUCKET`, `_STORAGE_ENDPOINT`, `_STORAGE_REGION`, `_STORAGE_ACCOUNT_ID` |
@@ -197,6 +205,11 @@ and hold no report contents and no addresses.
   `Origin` equal to `public_url`'s (loopback origins only while `public_url` is empty or loopback); Bearer requests
   need neither. The admin pages send `Cache-Control: no-store` and `Referrer-Policy: same-origin` (with
   `no-referrer` a browser would post `Origin: null`). The key, session ids and CSRF tokens are never logged.
+- **Log viewer.** The raw logs stay private: only the admin pages under `/admin/logs` show them, as escaped text
+  with control and bidirectional characters shown as visible markers, lines cut at 2000 characters, pages of
+  `logs.page_lines` lines, every pass over a log linear and the heavy ones off the async workers. Searches are
+  confined to one title or fingerprint and capped in logs, bytes and matches, one per session at a time; a
+  comparison runs a diff bounded in lines and edits. Hidden reports' logs stay out of it (their download remains).
 
 Not covered by the server: a report that passes validation is public. What that guarantee is worth is the schema's
 (see #1033 and #1034), not this server's.

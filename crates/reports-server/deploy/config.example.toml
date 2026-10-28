@@ -4,7 +4,8 @@
 # _RESOLVED_RETENTION_DAYS, _INDEX_CACHE_SECS, _MAX_CONNECTIONS, _HEADER_TIMEOUT_SECS, _SHUTDOWN_GRACE_SECS,
 # _LIMIT_PER_IP_HOUR, _LIMIT_PER_IP_DAY, _LIMIT_GLOBAL_HOUR, _LIMIT_GET_PER_IP_MINUTE,
 # _LIMIT_FAILURES_PER_IP, _LIMIT_FAILURE_WINDOW_SECS; for [admin]: _ADMIN_SESSION_IDLE_SECS,
-# _ADMIN_SESSION_MAX_SECS, _ADMIN_MAX_SESSIONS; for [storage]: _STORAGE_DRIVER, _STORAGE_DIR,
+# _ADMIN_SESSION_MAX_SECS, _ADMIN_MAX_SESSIONS; for [logs]: _LOGS_PAGE_LINES, _LOGS_SEARCH_MAX_LOGS,
+# _LOGS_SEARCH_MAX_MIB, _LOGS_SEARCH_MAX_MATCHES, _LOGS_DIFF_MAX_LINES; for [storage]: _STORAGE_DRIVER, _STORAGE_DIR,
 # _STORAGE_BUCKET, _STORAGE_ENDPOINT, _STORAGE_REGION, _STORAGE_ACCOUNT_ID, _STORAGE_PREFIX, _STORAGE_PATH_STYLE,
 # _STORAGE_ALLOW_INSECURE_HTTP, _ACCESS_KEY_ID_ENV, _ACCESS_KEY_ID_FILE, _SECRET_ACCESS_KEY_ENV,
 # _SECRET_ACCESS_KEY_FILE, _PASSPHRASE_ENV, _PASSPHRASE_FILE.
@@ -65,6 +66,17 @@ session_idle_secs = 1800
 session_max_secs = 28800
 # Sessions held at once; a login past it ends the oldest.
 max_sessions = 16
+
+# The private log viewer under /admin/logs: what one page, one search and one comparison may cost.
+[logs]
+# Lines of a log per page (100 to 20000).
+page_lines = 2000
+# A search (always within one title or fingerprint) stops at the first of these: logs read, MiB read, matching lines.
+search_max_logs = 50
+search_max_mib = 64
+search_max_matches = 500
+# Lines of both logs together above which a comparison is line by line at the same position instead of a diff.
+diff_max_lines = 20000
 
 # Where the reports, groups and attachments live: an S3-compatible bucket through s3db, encrypted at rest, split in
 # two partitions by product, each its own s3db store: keys under decanter/ and psport/ (s3, r2), or the
