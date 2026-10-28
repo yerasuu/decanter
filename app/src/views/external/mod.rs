@@ -6,14 +6,11 @@
 
 mod form;
 
-#[cfg(proton)]
 use std::collections::{HashMap, HashSet};
-#[cfg(proton)]
 use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
 use decanter_core::capabilities::Feature;
-#[cfg(proton)]
 use gpui::Task;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, ObjectFit, Subscription, Window, div, img, prelude::*, px, rgb,
@@ -22,7 +19,6 @@ use rust_i18n::t;
 
 use crate::capabilities::Caps;
 use crate::external::art;
-#[cfg(proton)]
 use crate::external::launchers::Detected;
 use crate::i18n::Text;
 use crate::state::AppState;
@@ -54,9 +50,7 @@ pub struct ExternalView {
     form: Option<(Entity<GameForm>, Subscription)>,
     /// Games a launcher installed in one of `games`' prefixes that aren't
     /// in the library yet, by the id of the game owning that prefix.
-    #[cfg(proton)]
     found: HashMap<String, Vec<Detected>>,
-    #[cfg(proton)]
     _scan: Option<Task<()>>,
     api_key: Entity<TextInput>,
     key_status: Option<Text>,
@@ -65,8 +59,9 @@ pub struct ExternalView {
 impl ExternalView {
     pub fn new(cx: &mut Context<Self>) -> Self {
         // Nothing can resume a copy from a previous session's form.
-        #[cfg(proton)]
-        if let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.as_deref() {
+        if crate::launch::in_prefixes()
+            && let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.as_deref()
+        {
             crate::external::import::abandon_all(profile_id);
         }
         let state = AppState::get(cx).clone();
@@ -94,9 +89,7 @@ impl ExternalView {
             profile_id: None,
             games: Vec::new(),
             form: None,
-            #[cfg(proton)]
             found: HashMap::new(),
-            #[cfg(proton)]
             _scan: None,
             api_key,
             key_status: None,
@@ -114,7 +107,6 @@ impl ExternalView {
             .as_deref()
             .map(crate::external::list)
             .unwrap_or_default();
-        #[cfg(proton)]
         self.scan(cx);
         let editing = editing.and_then(|id| self.games.iter().find(|game| game.game_id == id).cloned());
         self.form = self
@@ -126,7 +118,6 @@ impl ExternalView {
     }
 
     /// A fresh form for a game a launcher installed in `host_id`'s prefix.
-    #[cfg(proton)]
     fn start_hosted(&mut self, host_id: &str, found: Detected, cx: &mut Context<Self>) {
         let (Some(profile_id), Some(host)) = (
             self.profile_id.clone(),
@@ -155,10 +146,10 @@ impl ExternalView {
 
     /// Looks through each prefix the profile's external games own for games
     /// a launcher there installed, off the UI thread: it reads every
-    /// prefix's registry.
-    #[cfg(proton)]
+    /// prefix's registry. Nothing to look through where games run without
+    /// one.
     fn scan(&mut self, cx: &mut Context<Self>) {
-        let Some(profile_id) = self.profile_id.clone() else {
+        let Some(profile_id) = self.profile_id.clone().filter(|_| crate::launch::in_prefixes()) else {
             self.found.clear();
             return;
         };
@@ -202,7 +193,6 @@ impl ExternalView {
             .as_deref()
             .map(crate::external::list)
             .unwrap_or_default();
-        #[cfg(proton)]
         self.scan(cx);
         AppState::get(cx)
             .library
@@ -318,7 +308,6 @@ impl ExternalView {
                     )
                     .into_any_element(),
             );
-            #[cfg(proton)]
             for (found_index, found) in self.found.get(&game.game_id).into_iter().flatten().enumerate() {
                 let (host, found_game) = (game.game_id.clone(), found.clone());
                 rows.push(
@@ -401,7 +390,6 @@ impl Render for ExternalView {
         let tabs = crate::widgets::tabs("external-tabs", &items, self.tab, move |tab, _, cx| {
             entity.update(cx, |this, cx| {
                 // A launcher may have installed something since the last look.
-                #[cfg(proton)]
                 if tab == Tab::Games && this.tab != Tab::Games {
                     this.scan(cx);
                 }

@@ -70,6 +70,12 @@ impl Kind {
     }
 }
 
+/// Whether games here run in a prefix of their own, which everything about
+/// prefixes and Proton (their settings, tabs and imports) exists for.
+pub fn in_prefixes() -> bool {
+    Kind::host() == Kind::Umu
+}
+
 /// A launch resolved before anything is synced or spawned, so a game with
 /// nowhere to run fails before its cloud saves are touched.
 struct Planned {

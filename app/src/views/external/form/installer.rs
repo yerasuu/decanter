@@ -1,13 +1,11 @@
-use gpui::Context;
-#[cfg(not(proton))]
-use gpui::{Div, div, prelude::*, px};
+use std::borrow::Cow;
+
+use gpui::{Context, Div, div, prelude::*, px};
 use rust_i18n::t;
 
-use super::GameForm;
+use super::{GameForm, Rows};
 use crate::i18n::Text;
-#[cfg(not(proton))]
 use crate::theme;
-#[cfg(not(proton))]
 use crate::widgets::{ButtonKind, button};
 
 pub(super) enum Installer {
@@ -18,14 +16,18 @@ pub(super) enum Installer {
     Failed(Text),
 }
 
-#[cfg(proton)]
-const INSTALLER_EXTENSIONS: &[&str] = &["exe"];
-#[cfg(not(proton))]
-const INSTALLER_EXTENSIONS: &[&str] = &["exe", "msi"];
+/// Under Proton only a Windows program; run natively, Windows' own
+/// installer packages too.
+fn installer_extensions() -> &'static [&'static str] {
+    if crate::launch::in_prefixes() {
+        &["exe"]
+    } else {
+        &["exe", "msi"]
+    }
+}
 
 impl GameForm {
     pub(super) fn run_installer(&mut self, cx: &mut Context<Self>) {
-        #[cfg(proton)]
         let (profile_id, id, proton, library_root) = (
             self.profile_id.clone(),
             self.id.clone(),
@@ -35,7 +37,7 @@ impl GameForm {
         self._work = Some(cx.spawn(async move |this, cx| {
             let Some(file) = rfd::AsyncFileDialog::new()
                 .set_title(t!("external.form.installer.pick_title"))
-                .add_filter(t!("external.form.installer.filter"), INSTALLER_EXTENSIONS)
+                .add_filter(t!("external.form.installer.filter"), installer_extensions())
                 .pick_file()
                 .await
             else {
@@ -47,11 +49,8 @@ impl GameForm {
                 this.error = None;
                 cx.notify();
             });
-            #[cfg(proton)]
             let result =
                 crate::external::run_installer(&profile_id, &id, &installer, proton, library_root.as_deref()).await;
-            #[cfg(not(proton))]
-            let result = crate::external::run_installer(&installer).await;
             let _ = this.update(cx, |this, cx| {
                 this.installer = match result {
                     Ok(()) => Installer::Done,
@@ -67,16 +66,31 @@ impl GameForm {
 
     /// Where the executable picker opens: Program Files once an installer
     /// ran, since installers don't say where they put the game.
-    #[cfg(not(proton))]
-    pub(super) fn executable_start(&self) -> Option<std::path::PathBuf> {
+    pub(super) fn native_executable_start(&self) -> Option<std::path::PathBuf> {
         matches!(self.installer, Installer::Done)
             .then(|| std::env::var_os("ProgramFiles"))
             .flatten()
             .map(std::path::PathBuf::from)
     }
 
-    #[cfg(not(proton))]
-    pub(super) fn installer_row(&self, cx: &Context<Self>) -> Div {
+    /// Whether the form is busy, its save button's label and its rows, for a
+    /// game run as the system's own program: no prefix to pick or import.
+    pub(super) fn native_rows(&self, cx: &Context<Self>) -> (bool, Cow<'static, str>, Rows) {
+        (
+            matches!(self.installer, Installer::Running),
+            if self.editing {
+                t!("external.form.save.edit")
+            } else {
+                t!("external.form.save.add")
+            },
+            Rows {
+                installer: (!self.editing).then(|| self.native_installer_row(cx)),
+                ..Rows::default()
+            },
+        )
+    }
+
+    fn native_installer_row(&self, cx: &Context<Self>) -> Div {
         let running = matches!(self.installer, Installer::Running);
         let status = match &self.installer {
             Installer::Idle => theme::muted(t!("external.form.installer.hint_native")),

@@ -70,8 +70,9 @@ impl GameForm {
         self.search = Search::Searching;
         self.error = None;
         // The same name finds its protonfixes entry too.
-        #[cfg(proton)]
-        self.search_umu(cx);
+        if crate::launch::in_prefixes() {
+            self.search_umu(cx);
+        }
         cx.notify();
         self._work = Some(cx.spawn(async move |this, cx| {
             let found = crate::external::art::search(&name).await;

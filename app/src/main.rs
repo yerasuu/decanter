@@ -212,11 +212,9 @@ fn open_library(chosen: Option<std::path::PathBuf>) {
     if let Some(root) = chosen {
         decanter_core::bootstrap::set_override(root);
     }
-    #[cfg(proton)]
-    let migrated = decanter_core::migrate::run(Some(decanter_runtime::umu_run_path));
-    #[cfg(not(proton))]
-    let migrated = decanter_core::migrate::run(None);
-    match migrated {
+    let umu_run_path = crate::launch::in_prefixes()
+        .then_some::<fn(&std::path::Path) -> std::path::PathBuf>(decanter_runtime::umu_run_path);
+    match decanter_core::migrate::run(umu_run_path) {
         Ok(outcome) => tracing::debug!(?outcome, "checked for data to migrate"),
         Err(err) => tracing::error!(%err, "cannot move decanter's data into the library, still using the old folder"),
     }

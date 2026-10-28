@@ -91,8 +91,7 @@ impl From<Error> for Text {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// Only an imported prefix is ever copied, and nothing is imported on Windows.
-    #[cfg(proton)]
+    /// Only an imported prefix is ever copied.
     Copy,
     Move,
 }
@@ -129,7 +128,6 @@ pub fn bring(src: &Path, dst: &Path, mode: Mode, on_progress: impl FnMut(MovePro
 
 /// Deletes `dst`'s staging directory, if an import left one behind — off
 /// the calling thread, since it can be tens of GB.
-#[cfg(proton)]
 pub fn discard_staging(dst: &Path) {
     let staging = staging_for(dst);
     if staging.exists() {
@@ -139,7 +137,6 @@ pub fn discard_staging(dst: &Path) {
 
 /// Deletes every staging directory directly under `dir` — a profile's
 /// `compatdata`, where only an import still being set up could use one.
-#[cfg(proton)]
 pub fn discard_all_staging(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -154,7 +151,6 @@ pub fn discard_all_staging(dir: &Path) {
         .for_each(|entry| remove_in_background(entry.path()));
 }
 
-#[cfg(proton)]
 fn remove_in_background(staging: PathBuf) {
     std::thread::spawn(move || match std::fs::remove_dir_all(&staging) {
         Ok(()) => tracing::info!(dir = %staging.display(), "removed an abandoned prefix copy"),

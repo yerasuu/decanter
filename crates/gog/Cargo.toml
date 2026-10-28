@@ -28,12 +28,10 @@ url.workspace = true
 futures-util.workspace = true
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
+# Where a native game's save folders are (`save_location::UserFolders::native`).
+dirs.workspace = true
 
 # `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
 # default — pinning the same `curl` crate here with these features unifies
 # the whole build onto a vendored, statically-linked copy of both instead.
 curl = { workspace = true, features = ["static-curl", "static-ssl"] }
-
-[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
-# Where a native game's save folders are (`save_location::UserFolders::native`).
-dirs.workspace = true

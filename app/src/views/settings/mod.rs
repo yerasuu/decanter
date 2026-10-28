@@ -7,10 +7,8 @@
 //! games are added from Biblioteca instead (see `crate::views::external`).
 
 mod account;
-#[cfg(proton)]
 mod compatibility;
 mod debug;
-#[cfg(proton)]
 mod game_tools;
 mod general;
 
@@ -23,7 +21,6 @@ use rust_i18n::t;
 use crate::state::AppState;
 use crate::theme;
 use account::AccountTab;
-#[cfg(proton)]
 use compatibility::CompatibilityTab;
 use general::GeneralTab;
 
@@ -31,7 +28,6 @@ use general::GeneralTab;
 enum Tab {
     General,
     Account,
-    #[cfg(proton)]
     Compatibility,
 }
 
@@ -41,7 +37,6 @@ enum Tab {
 enum Body {
     General(Entity<GeneralTab>),
     Account(Entity<AccountTab>),
-    #[cfg(proton)]
     Compatibility(Entity<CompatibilityTab>),
 }
 
@@ -86,7 +81,6 @@ impl SettingsView {
         self.body = self.profile.clone().map(|profile_id| match self.tab {
             Tab::General => Body::General(cx.new(GeneralTab::new)),
             Tab::Account => Body::Account(cx.new(|cx| AccountTab::new(profile_id, cx))),
-            #[cfg(proton)]
             Tab::Compatibility => Body::Compatibility(cx.new(CompatibilityTab::new)),
         });
         cx.notify();
@@ -96,12 +90,13 @@ impl SettingsView {
 impl Render for SettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let items = [
+        let mut items = vec![
             (Tab::General, t!("settings.tabs.general")),
             (Tab::Account, t!("settings.tabs.account")),
-            #[cfg(proton)]
-            (Tab::Compatibility, t!("settings.tabs.compatibility")),
         ];
+        if crate::launch::in_prefixes() {
+            items.push((Tab::Compatibility, t!("settings.tabs.compatibility")));
+        }
         let tabs = crate::widgets::tabs("settings-tabs", &items, self.tab, move |tab, _, cx| {
             entity.update(cx, |this, cx| this.select(tab, cx));
         })
@@ -112,7 +107,6 @@ impl Render for SettingsView {
             (Err(err), _) => theme::error(t!("settings.storage_error", error = err)).into_any_element(),
             (Ok(()), Some(Body::General(tab))) => tab.clone().into_any_element(),
             (Ok(()), Some(Body::Account(tab))) => tab.clone().into_any_element(),
-            #[cfg(proton)]
             (Ok(()), Some(Body::Compatibility(tab))) => tab.clone().into_any_element(),
             // Shell's onboarding gate means this can't actually happen any
             // more — a profile always exists by the time any screen renders —

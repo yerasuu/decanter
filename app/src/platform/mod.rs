@@ -20,10 +20,8 @@ use macos as os;
 #[cfg(windows)]
 use windows as os;
 
-#[cfg(not(target_os = "linux"))]
-pub use os::without_console;
 pub use os::{
     CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, exit_signal, hostname,
     keep_platform, own_process_group, refresh_tray, replace_process, restrict_to_owner, set_app_identity, spawn_tray,
-    status_notifier_host, with_window_icon,
+    status_notifier_host, with_window_icon, without_console,
 };

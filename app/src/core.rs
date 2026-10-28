@@ -401,17 +401,14 @@ pub async fn detect_cloud_save_locations(
         .map_err(Text::verbatim)
 }
 
-/// The account folders a game sees: the ones inside its prefix under Proton.
-#[cfg(proton)]
+/// The account folders a game sees: the ones inside its prefix under
+/// Proton, else the user's own (Windows and macOS).
 fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, Text> {
-    prefix_for(account_id, game_id)
-        .map(|prefix| decanter_gog::save_location::UserFolders::in_prefix(&prefix.drive_c()))
-        .ok_or_else(|| Text::new("messages.errors.prefix"))
-}
-
-/// The account folders a game sees: the user's own on Windows and macOS.
-#[cfg(not(proton))]
-fn user_folders(account_id: &str, game_id: &str) -> Result<decanter_gog::save_location::UserFolders, Text> {
+    if crate::launch::in_prefixes() {
+        return prefix_for(account_id, game_id)
+            .map(|prefix| decanter_gog::save_location::UserFolders::in_prefix(&prefix.drive_c()))
+            .ok_or_else(|| Text::new("messages.errors.prefix"));
+    }
     decanter_gog::save_location::UserFolders::native().ok_or_else(|| {
         tracing::warn!(account_id, game_id, "could not resolve this account's folders");
         Text::new("messages.errors.user_folders")

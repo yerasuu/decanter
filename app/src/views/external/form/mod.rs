@@ -4,9 +4,7 @@
 
 mod art;
 mod installer;
-#[cfg(proton)]
 mod prefix;
-#[cfg(proton)]
 mod umu;
 
 use decanter_core::{GameArt, InstalledGame};
@@ -55,7 +53,6 @@ pub struct GameForm {
     installer: installer::Installer,
     /// The prefix import and UMU entry, which only a game run under Proton
     /// has.
-    #[cfg(proton)]
     wine: prefix::Wine,
 }
 
@@ -76,7 +73,6 @@ impl GameForm {
         let executable = cx.new(|cx| TextInput::new(Text::new("external.form.executable"), cx));
         let Some(game) = editing else {
             return Self {
-                #[cfg(proton)]
                 wine: prefix::Wine::new(&profile_id, None),
                 profile_id,
                 id: uuid::Uuid::new_v4().to_string(),
@@ -101,7 +97,6 @@ impl GameForm {
             executable.update(cx, |input, cx| input.set_text(path.to_string_lossy().into_owned(), cx));
         }
         Self {
-            #[cfg(proton)]
             wine: prefix::Wine::new(&profile_id, game.proton),
             profile_id,
             id: game.game_id,
@@ -128,7 +123,6 @@ impl GameForm {
     /// A new game a launcher installed in `host`'s prefix: filled in from
     /// what was found, running in that prefix with `host`'s Proton, and its
     /// art and UMU entry already being looked up by name.
-    #[cfg(proton)]
     pub fn hosted(
         profile_id: String,
         host: &InstalledGame,
@@ -160,7 +154,11 @@ impl GameForm {
     /// nothing. After an installer ran it opens where that installer most
     /// likely put the game.
     fn pick_executable(&mut self, cx: &mut Context<Self>) {
-        let start = self.executable_start();
+        let start = if crate::launch::in_prefixes() {
+            self.prefix_executable_start()
+        } else {
+            self.native_executable_start()
+        };
         cx.spawn(async move |this, cx| {
             let mut dialog = rfd::AsyncFileDialog::new()
                 .set_title(t!("external.form.pick_exe.title"))
@@ -207,7 +205,6 @@ impl GameForm {
             prefix_of: self.prefix_of.clone(),
             library_root: self.library_root.clone(),
         };
-        #[cfg(proton)]
         let Some(draft) = self.import_on_save(draft, cx) else {
             return;
         };
@@ -220,21 +217,11 @@ impl GameForm {
 
 impl Render for GameForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        #[cfg(proton)]
-        let (busy, save_label, rows) = (self.busy(), self.save_label(), self.wine_rows(cx));
-        #[cfg(not(proton))]
-        let (busy, save_label, rows) = (
-            matches!(self.installer, installer::Installer::Running),
-            if self.editing {
-                t!("external.form.save.edit")
-            } else {
-                t!("external.form.save.add")
-            },
-            Rows {
-                installer: (!self.editing).then(|| self.installer_row(cx)),
-                ..Rows::default()
-            },
-        );
+        let (busy, save_label, rows) = if crate::launch::in_prefixes() {
+            (self.busy(), self.save_label(), self.wine_rows(cx))
+        } else {
+            self.native_rows(cx)
+        };
         div()
             .flex()
             .flex_col()

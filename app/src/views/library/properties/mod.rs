@@ -18,7 +18,6 @@
 //! outcome, so the work finishes and only its result is dropped.
 
 mod cloud_saves;
-#[cfg(proton)]
 mod compatibility;
 mod dlc;
 mod general;
@@ -53,7 +52,6 @@ enum Tab {
     Dlc,
     Betas,
     Versions,
-    #[cfg(proton)]
     Compatibility,
 }
 
@@ -67,7 +65,6 @@ impl Tab {
             Self::Dlc => t!("library.properties.tabs.dlc"),
             Self::Betas => t!("library.properties.tabs.betas"),
             Self::Versions => t!("library.properties.tabs.versions"),
-            #[cfg(proton)]
             Self::Compatibility => t!("library.properties.tabs.compatibility"),
         }
     }
@@ -81,17 +78,12 @@ const TABS: &[Tab] = &[
     Tab::Dlc,
     Tab::Betas,
     Tab::Versions,
-    #[cfg(proton)]
     Tab::Compatibility,
 ];
 
 /// What an external game has to show: nothing GOG-side (builds, branches,
 /// DLC, cloud saves) applies to a file someone pointed at.
-const EXTERNAL_TABS: &[Tab] = &[
-    Tab::General,
-    #[cfg(proton)]
-    Tab::Compatibility,
-];
+const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
@@ -147,10 +139,16 @@ impl PropertiesWindow {
     }
 
     fn tabs(&self) -> &'static [Tab] {
-        if self.target.storefront == Storefront::Unspecified {
+        let tabs = if self.target.storefront == Storefront::Unspecified {
             EXTERNAL_TABS
         } else {
             TABS
+        };
+        if crate::launch::in_prefixes() {
+            tabs
+        } else {
+            // Kept last in both lists so that it's the one dropped here.
+            tabs.strip_suffix(&[Tab::Compatibility]).unwrap_or(tabs)
         }
     }
 
@@ -207,7 +205,6 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
         Tab::Betas => cx.new(|cx| releases::BetasTab::new(target, cx)).into(),
         Tab::Versions => cx.new(|cx| releases::VersionsTab::new(target, cx)).into(),
-        #[cfg(proton)]
         Tab::Compatibility => cx.new(|cx| compatibility::CompatibilityTab::new(target, cx)).into(),
     }
 }

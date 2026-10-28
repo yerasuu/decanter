@@ -65,7 +65,7 @@ impl Drop for GameForm {
 impl GameForm {
     /// Where the executable picker opens: the imported prefix's `C:`, or
     /// this game's after an installer ran there.
-    pub(super) fn executable_start(&self) -> Option<std::path::PathBuf> {
+    pub(super) fn prefix_executable_start(&self) -> Option<std::path::PathBuf> {
         match (&self.wine.import_from, &self.installer) {
             (Some(picked), _) => crate::external::import::wine_root(picked).map(|root| root.join("drive_c")),
             (None, Installer::Done) => {
@@ -144,7 +144,7 @@ impl GameForm {
     pub(super) fn wine_rows(&self, cx: &Context<Self>) -> Rows {
         Rows {
             folder: self.folder_row(cx),
-            installer: (!self.editing && self.prefix_of.is_none()).then(|| self.installer_row(cx)),
+            installer: (!self.editing && self.prefix_of.is_none()).then(|| self.prefix_installer_row(cx)),
             umu: Some(self.umu_section(cx)),
             progress: self.wine.importing.then(|| self.import_progress()),
         }
@@ -178,7 +178,7 @@ impl GameForm {
         .detach();
     }
 
-    pub(super) fn installer_row(&self, cx: &Context<Self>) -> Div {
+    fn prefix_installer_row(&self, cx: &Context<Self>) -> Div {
         let running = matches!(self.installer, Installer::Running);
         // One or the other: an imported prefix replaces the game's own,
         // which an installer has already written into.

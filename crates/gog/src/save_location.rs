@@ -56,7 +56,6 @@ impl UserFolders {
     }
 
     /// Wine's layout for `steamuser`, the account Proton runs every game as.
-    #[cfg(proton)]
     #[inline]
     #[must_use]
     pub fn in_prefix(drive_c: &Path) -> Self {
@@ -79,7 +78,6 @@ impl UserFolders {
     /// ([Storage](https://docs.gog.com/sdk-storage/)); GOG documents no
     /// template names, so `APPLICATION_SUPPORT` is the one Heroic reads
     /// ([save_sync.ts](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/main/src/backend/save_sync.ts)).
-    #[cfg(not(proton))]
     #[inline]
     #[must_use]
     pub fn native() -> Option<Self> {

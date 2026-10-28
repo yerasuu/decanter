@@ -12,14 +12,11 @@
 
 pub mod art;
 pub mod dropped;
-#[cfg(proton)]
 pub mod import;
-#[cfg(proton)]
 pub mod launchers;
 pub mod probe;
 pub mod size;
 pub mod transfer;
-#[cfg(proton)]
 pub mod umu;
 
 use std::path::{Path, PathBuf};
@@ -230,12 +227,27 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), RemoveError> {
     tracing::info!(profile_id, id, "external game removed");
     Ok(())
 }
+/// Runs a setup program for `id` and waits for it to finish: in the game's
+/// prefix where games run in one, else as the system's own program.
+pub async fn run_installer(
+    profile_id: &str,
+    id: &str,
+    installer: &Path,
+    proton: Option<String>,
+    library_root: Option<&Path>,
+) -> Result<(), Text> {
+    if crate::launch::in_prefixes() {
+        run_installer_in_prefix(profile_id, id, installer, proton, library_root).await
+    } else {
+        run_installer_natively(installer).await
+    }
+}
+
 /// Runs a setup program inside `id`'s prefix and waits for it, and for
 /// anything it left running there, to finish. The prefix is the one the
 /// game will then launch in, so whatever the installer writes under
 /// `C:\` — files, registry keys, runtimes — is there for the game.
-#[cfg(proton)]
-pub async fn run_installer(
+async fn run_installer_in_prefix(
     profile_id: &str,
     id: &str,
     installer: &Path,
@@ -277,8 +289,7 @@ pub async fn run_installer(
 /// for whatever a bootstrapper hands the install over to before exiting.
 /// The path travels in the environment so that no quoting can reach the
 /// script.
-#[cfg(not(proton))]
-pub async fn run_installer(installer: &Path) -> Result<(), Text> {
+async fn run_installer_natively(installer: &Path) -> Result<(), Text> {
     let is_msi = match installer
         .extension()
         .and_then(|extension| extension.to_str())
@@ -336,7 +347,6 @@ pub async fn run_installer(installer: &Path) -> Result<(), Text> {
 
 /// Where an installer run through [`run_installer`] puts things, for the
 /// executable picker to start in.
-#[cfg(proton)]
 pub fn drive_c(profile_id: &str, id: &str, library_root: Option<&Path>) -> Option<PathBuf> {
     prefix_in(profile_id, id, library_root).map(|prefix| prefix.drive_c())
 }
@@ -352,7 +362,6 @@ pub fn library_in(profile_id: &str, root: Option<&Path>) -> Result<decanter_core
 
 /// The prefix `id` has, or gets, in the folder it's being added to — before
 /// its manifest exists to say where it lives.
-#[cfg(proton)]
 fn prefix_in(profile_id: &str, id: &str, root: Option<&Path>) -> Option<decanter_runtime::Prefix> {
     library_in(profile_id, root)
         .ok()?
