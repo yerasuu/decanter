@@ -6,7 +6,12 @@
 //! thread.
 
 use std::fs;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
+
+/// Far above any real `param.sfo` or `param.json` (a few KB), so a folder
+/// handed over by the user can't make a scan read a huge file whole.
+const PARAM_LIMIT: u64 = 1 << 20;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Platform {
@@ -43,6 +48,21 @@ impl Game {
     }
 }
 
+/// Why a folder handed over as a dump is not one decanter can add.
+#[derive(Debug, thiserror::Error)]
+pub enum Refusal {
+    #[error("not a folder")]
+    NotFolder,
+    /// No `sce_sys/param.sfo` or `sce_sys/param.json` that parses.
+    #[error("no readable sce_sys/param.sfo or sce_sys/param.json")]
+    NotDump,
+    #[error("unusable title id {0:?}")]
+    TitleId(String),
+    /// A game, not an update on its own, without its executable.
+    #[error("no eboot.bin")]
+    NoEboot,
+}
+
 /// Values of a PS4 `param.sfo`, as `(key, value)` with integers rendered in decimal.
 fn read_sfo(data: &[u8]) -> Option<Vec<(String, String)>> {
     let u16_at = |at: usize| Some(u16::from_le_bytes(data.get(at..at + 2)?.try_into().ok()?));
@@ -69,8 +89,20 @@ fn read_sfo(data: &[u8]) -> Option<Vec<(String, String)>> {
         .collect()
 }
 
+fn read_param(path: &Path) -> Option<Vec<u8>> {
+    let mut data = Vec::new();
+    fs::File::open(path)
+        .ok()?
+        .take(PARAM_LIMIT + 1)
+        .read_to_end(&mut data)
+        .ok()?;
+    u64::try_from(data.len())
+        .is_ok_and(|len| len <= PARAM_LIMIT)
+        .then_some(data)
+}
+
 fn read_ps4(dir: &Path) -> Option<Game> {
-    let values = read_sfo(&fs::read(dir.join("sce_sys/param.sfo")).ok()?)?;
+    let values = read_sfo(&read_param(&dir.join("sce_sys/param.sfo"))?)?;
     let get = |key: &str| {
         values
             .iter()
@@ -93,7 +125,7 @@ fn read_ps4(dir: &Path) -> Option<Game> {
 }
 
 fn read_ps5(dir: &Path) -> Option<Game> {
-    let json: serde_json::Value = serde_json::from_slice(&fs::read(dir.join("sce_sys/param.json")).ok()?).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&read_param(&dir.join("sce_sys/param.json"))?).ok()?;
     let text = |value: &serde_json::Value| value.as_str().unwrap_or_default().to_owned();
     let localized = &json["localizedParameters"];
     let language = localized["defaultLanguage"].as_str().unwrap_or("en-US");
@@ -116,14 +148,42 @@ fn valid_title_id(title_id: &str) -> bool {
     (1..=16).contains(&title_id.len()) && title_id.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
-fn read_game(dir: &Path) -> Option<Game> {
-    let game = read_ps4(dir).or_else(|| read_ps5(dir))?;
+fn read(dir: &Path) -> Result<Game, Refusal> {
+    let game = read_ps4(dir).or_else(|| read_ps5(dir)).ok_or(Refusal::NotDump)?;
     if valid_title_id(&game.title_id) {
-        Some(game)
+        Ok(game)
     } else {
-        tracing::warn!(dir = %dir.display(), title_id = game.title_id, "dump skipped: unusable title id");
-        None
+        Err(Refusal::TitleId(game.title_id))
     }
+}
+
+/// The dump in `dir` as a scan lists it, whether it can run or not.
+pub fn read_game(dir: &Path) -> Option<Game> {
+    read(dir)
+        .inspect_err(|refusal| {
+            if let Refusal::TitleId(title_id) = refusal {
+                tracing::warn!(dir = %dir.display(), title_id, "dump skipped: unusable title id");
+            }
+        })
+        .ok()
+}
+
+/// Checks a folder the user hands over as a dump, once, before anything
+/// copies it: its metadata parses with a usable title id, and a game (an
+/// update on its own needs none) has its `eboot.bin`. Nothing else read
+/// from the metadata may name a path.
+///
+/// # Errors
+/// [`Refusal`] says what is missing.
+pub fn inspect(dir: &Path) -> Result<Game, Refusal> {
+    if !dir.is_dir() {
+        return Err(Refusal::NotFolder);
+    }
+    let game = read(dir)?;
+    if !game.is_update() && !dir.join("eboot.bin").is_file() {
+        return Err(Refusal::NoEboot);
+    }
+    Ok(game)
 }
 
 /// Dumps in each root and its direct subfolders, sorted by title then version.
