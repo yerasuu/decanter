@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use decanter_core::runner::{Progress, Runner, Stage};
 use decanter_ps::bbport::tools::{self, BadLoader, DllCheck, Fsr411Failure, Unsupported};
 use decanter_ps::bbport::{GROUPS, values};
+use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::JobKind;
-use decanter_runtime::runner;
 use futures::StreamExt as _;
 use futures::channel::{mpsc, oneshot};
 use futures::future::{self, Either};
@@ -21,6 +21,7 @@ use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 use super::Ps;
 use super::jobs::{self, JobKey};
 use crate::i18n::Text;
+use crate::runners;
 
 /// How a DLL check ended, for the view to act on.
 pub enum DllOutcome {
@@ -74,7 +75,7 @@ impl Ps {
                 }
             };
             cx.update(|cx| on_checked(DllOutcome::Building, cx));
-            let recorder = match prepare_recorder(&this, cx).await {
+            let recorder = match prepare_recorder(&this, &root, cx).await {
                 Ok(recorder) => recorder,
                 Err(notice) => {
                     let _ = this.update(cx, |this, cx| {
@@ -179,8 +180,12 @@ fn with_recorder(recorder: Option<&Recorder>, mut command: tokio::process::Comma
 /// decanter's `umu-run` and GE-Proton, each installed unless it is there, with
 /// their progress shown in the FSR row; `None` where the recording needs no
 /// Proton, and otherwise what the user is told, a cancel included.
-async fn prepare_recorder(this: &WeakEntity<Ps>, cx: &mut AsyncApp) -> Result<Option<Recorder>, (Text, bool)> {
-    if !runner::support(Runner::GeProton).is_offered() {
+async fn prepare_recorder(
+    this: &WeakEntity<Ps>,
+    root: &Root,
+    cx: &mut AsyncApp,
+) -> Result<Option<Recorder>, (Text, bool)> {
+    if !runners::support(Runner::GeProton).is_offered() {
         return Ok(None);
     }
     let (cancel, cancelled) = oneshot::channel();
@@ -208,7 +213,7 @@ async fn prepare_recorder(this: &WeakEntity<Ps>, cx: &mut AsyncApp) -> Result<Op
             let _ = sender.unbounded_send((runner, progress));
         }
     };
-    let prepared = future::select(Box::pin(get_recorder(report)), cancelled).await;
+    let prepared = future::select(Box::pin(get_recorder(root, report)), cancelled).await;
     let _ = this.update(cx, |this, cx| {
         this.fsr_cancel = None;
         this.fsr_runner = None;
@@ -217,20 +222,34 @@ async fn prepare_recorder(this: &WeakEntity<Ps>, cx: &mut AsyncApp) -> Result<Op
     match prepared {
         Either::Left((Ok(recorder), _)) => Ok(Some(recorder)),
         Either::Left((Err(err), _)) => {
-            tracing::warn!(error = %format!("{err:#}"), "FSR 4.1.1: decanter's Proton is not ready");
-            Err((
-                Text::new("ps.fsr.failures.proton_not_ready").arg("error", format!("{err:#}")),
-                true,
-            ))
+            tracing::warn!(error = %err, "FSR 4.1.1: decanter's Proton is not ready");
+            Err((err.text(), true))
         }
         Either::Right(_) => Err((Text::new("ps.fsr.cancelled"), false)),
     }
 }
 
-async fn get_recorder(mut report: impl FnMut(Runner, Progress) + Send) -> anyhow::Result<Recorder> {
-    let umu = runner::update(Runner::Umu, &mut |progress| report(Runner::Umu, progress)).await?;
-    let umu_dir = decanter_runtime::umu_run_dir(&umu.path).await?;
-    let proton = runner::update(Runner::GeProton, &mut |progress| report(Runner::GeProton, progress)).await?;
+async fn get_recorder(
+    root: &Root,
+    mut report: impl FnMut(Runner, Progress) + Send,
+) -> Result<Recorder, runners::Error> {
+    let umu = runners::update(
+        root,
+        Runner::Umu,
+        &mut |progress| report(Runner::Umu, progress),
+        &mut |_| {},
+    )
+    .await?;
+    let umu_dir = decanter_runtime::umu_run_dir(&umu.path)
+        .await
+        .map_err(|err| runners::Error::Prepare(Runner::Umu, err.into()))?;
+    let proton = runners::update(
+        root,
+        Runner::GeProton,
+        &mut |progress| report(Runner::GeProton, progress),
+        &mut |_| {},
+    )
+    .await?;
     Ok(Recorder {
         umu_dir,
         proton: proton.path,

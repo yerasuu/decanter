@@ -8,6 +8,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
+use decanter_core::capabilities::Support;
 use decanter_core::runner::{Installed, Pin, Progress, Runner, Stage, Status};
 use decanter_ps::os::windows::winbuild;
 use decanter_ps::paths::Root;
@@ -87,6 +88,13 @@ pub async fn latest(runner: Runner) -> Result<Option<Release>, ReleaseError> {
     }
 }
 
+pub const fn support(runner: Runner) -> Support {
+    match runner {
+        Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Raven => decanter_runtime::runner::support(runner),
+        Runner::Psport | Runner::AnyPs5 => decanter_ps::runner::support(runner),
+    }
+}
+
 /// What is installed, read from disk only.
 pub async fn status(root: &Root, runner: Runner) -> Status {
     match runner {
@@ -141,6 +149,30 @@ pub async fn prepare(
                 error,
                 log: decanter_ps::runner::log_path(root, runner, pin),
             }),
+    }
+}
+
+/// Brings the runner to the version decanter wants, which for a pinned one is its pin rather than
+/// the newest release.
+///
+/// # Errors
+///
+/// As [`prepare`], and when the releases cannot be listed.
+pub async fn update(
+    root: &Root,
+    runner: Runner,
+    on_progress: &mut dyn FnMut(Progress),
+    on_line: &mut dyn FnMut(String),
+) -> Result<Installed, Error> {
+    match runner {
+        Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Raven => {
+            decanter_runtime::runner::update(runner, on_progress)
+                .await
+                .map_err(|err| Error::Prepare(runner, err))
+        }
+        Runner::Psport | Runner::AnyPs5 => decanter_ps::runner::update(root, runner, on_progress, on_line)
+            .await
+            .map_err(|error| Error::Port { error, log: None }),
     }
 }
 
