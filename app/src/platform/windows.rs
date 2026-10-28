@@ -36,6 +36,11 @@ pub async fn create_private_dir(dir: &Path) -> io::Result<()> {
     tokio::fs::create_dir_all(dir).await
 }
 
+/// No copy of decanter's own is ever run here, so nothing is trusted as one.
+pub const fn is_owner_only(_path: &Path) -> bool {
+    false
+}
+
 /// `CREATE_NO_WINDOW`, so a console program decanter runs doesn't flash a
 /// console window over everything.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;

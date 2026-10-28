@@ -11,6 +11,7 @@
 //! re-permissions decanter's files), which it then runs.
 
 use std::borrow::Cow;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -41,6 +42,8 @@ const PROGRESS_STEP: u64 = 1024 * 1024;
 const MANAGED_DIR: &str = "dev.decanter.Decanter";
 /// The tag the managed copy was installed from, beside it.
 const VERSION_FILE: &str = "version";
+/// Longer than any tag decanter writes, so a garbled file is read no further.
+const MAX_VERSION: u64 = 64;
 
 static RESTART: OnceLock<PathBuf> = OnceLock::new();
 
@@ -433,6 +436,97 @@ async fn write_version(dir: &Path, tag: &str) -> Result<(), InstallError> {
     Ok(())
 }
 
+enum ManagedCopy {
+    Absent,
+    /// This process runs from it.
+    Running,
+    Newer(PathBuf),
+    /// Holds a release no newer than this process.
+    Stale(PathBuf),
+}
+
+/// decanter's own copy, `managed`, measured against the AppImage this
+/// process runs from.
+fn managed_copy(appimage: &Path, managed: &Path) -> ManagedCopy {
+    let copy = match managed.canonicalize() {
+        Ok(copy) => copy,
+        Err(err) => {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(managed = %managed.display(), %err, "cannot read decanter's own copy");
+            }
+            return ManagedCopy::Absent;
+        }
+    };
+    if copy == appimage {
+        return ManagedCopy::Running;
+    }
+    let Some(running) = crate::releases::version(env!("CARGO_PKG_VERSION")) else {
+        return ManagedCopy::Absent;
+    };
+    match managed_version(managed) {
+        Some(installed) if installed > running => ManagedCopy::Newer(copy),
+        Some(_) => ManagedCopy::Stale(copy),
+        None => ManagedCopy::Absent,
+    }
+}
+
+/// The release decanter's own copy was installed from, only when the copy,
+/// its folder and its `version` file are this user's alone: nothing anyone
+/// else could have written is ever run. `None` too while an install is
+/// between its rename and its `version` file.
+fn managed_version(managed: &Path) -> Option<(u64, u64, u64)> {
+    let Some(dir) = managed.parent() else {
+        return None;
+    };
+    let version = dir.join(VERSION_FILE);
+    let trusted = crate::platform::is_owner_only(dir)
+        && crate::platform::is_owner_only(managed)
+        && managed.is_file()
+        && crate::platform::is_owner_only(&version)
+        && version.is_file();
+    if !trusted {
+        tracing::warn!(managed = %managed.display(), "decanter's own copy isn't this user's alone or has no version, not using it");
+        return None;
+    }
+    let mut text = String::with_capacity(16);
+    if let Err(err) = std::fs::File::open(&version).and_then(|file| file.take(MAX_VERSION).read_to_string(&mut text)) {
+        tracing::warn!(version = %version.display(), %err, "cannot read the version of decanter's own copy");
+        return None;
+    }
+    let parsed = text.trim().strip_prefix('v').and_then(crate::releases::version);
+    if parsed.is_none() {
+        tracing::warn!(version = %version.display(), text = text.trim(), "decanter's own copy has no vX.Y.Z version");
+    }
+    parsed
+}
+
+/// The first thing `main` does, before the arguments are parsed (a newer
+/// release may take ones this one doesn't): an AppImage that isn't decanter's
+/// own copy runs that copy instead while it holds a newer release, so the
+/// user's own menu entry and the game entries written from this AppImage
+/// start the update. Returns only when there's none, or it couldn't start.
+pub fn hand_over() {
+    let (Some(appimage), Some(managed)) = (running_appimage(), managed_path()) else {
+        return;
+    };
+    let ManagedCopy::Newer(copy) = managed_copy(&appimage, &managed) else {
+        return;
+    };
+    tracing::info!(from = %appimage.display(), to = %copy.display(), "handing over to decanter's own newer copy");
+    let err = start(&copy);
+    tracing::error!(appimage = %copy.display(), %err, "cannot start decanter's own copy, running this AppImage");
+}
+
+/// Replaces this process with `appimage`, with the same arguments. Only
+/// returns when it couldn't.
+fn start(appimage: &Path) -> std::io::Error {
+    let mut command = Command::new(appimage);
+    command.args(std::env::args_os().skip(1));
+    // The new AppRun sets its own; inheriting ours would stack them.
+    decanter_core::strip_launcher_env(&mut command);
+    crate::platform::replace_process(&mut command)
+}
+
 /// Starts `appimage` in place of this process once decanter has gone
 /// through its normal shutdown; see [`restart_if_requested`].
 pub fn restart_after_quit(appimage: PathBuf) {
@@ -448,11 +542,7 @@ pub fn restart_if_requested() {
     let Some(appimage) = RESTART.get() else {
         return;
     };
-    let mut command = Command::new(appimage);
-    command.args(std::env::args_os().skip(1));
-    // The new AppRun sets its own; inheriting ours would stack them.
-    decanter_core::strip_launcher_env(&mut command);
     tracing::info!(appimage = %appimage.display(), "restarting into the updated AppImage");
-    let err = crate::platform::replace_process(&mut command);
+    let err = start(appimage);
     tracing::error!(appimage = %appimage.display(), %err, "cannot start the updated AppImage");
 }

@@ -4,13 +4,13 @@ mod shortcut;
 mod tray;
 
 use std::io;
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, LazyLock};
 
-use nix::unistd::{AccessFlags, access};
+use nix::unistd::{AccessFlags, access, getuid};
 pub use tray::{refresh_tray, spawn_tray};
 
 /// What Ajustes says the switch for closing a game listens to: the pads
@@ -143,6 +143,14 @@ pub async fn create_private_dir(dir: &Path) -> io::Result<()> {
     builder.recursive(true).mode(0o700);
     builder.create(dir).await?;
     tokio::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).await
+}
+
+/// Whether only this user can change `path`: theirs, not writable by group
+/// or others, and not a symlink, whose target anyone could swap.
+pub fn is_owner_only(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| {
+        !metadata.file_type().is_symlink() && metadata.uid() == getuid().as_raw() && metadata.mode() & 0o022 == 0
+    })
 }
 
 /// A console program opens no window of its own here.

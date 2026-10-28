@@ -43,6 +43,11 @@ pub async fn create_private_dir(dir: &Path) -> io::Result<()> {
     tokio::fs::create_dir_all(dir).await
 }
 
+/// No copy of decanter's own is ever run here, so nothing is trusted as one.
+pub const fn is_owner_only(_path: &Path) -> bool {
+    false
+}
+
 /// A console program opens no window of its own here.
 pub const fn without_console(_command: &mut tokio::process::Command) {}
 

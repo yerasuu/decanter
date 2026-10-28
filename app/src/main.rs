@@ -134,6 +134,7 @@ rust_i18n::i18n!("locales", fallback = "es");
 
 fn main() {
     logs::init();
+    self_update::hand_over();
     let cli = cli::Cli::parse();
     open_library(cli.library);
     logs::open();

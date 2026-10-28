@@ -22,6 +22,6 @@ use windows as os;
 
 pub use os::{
     CLOSE_GAME_HINT, CLOSE_GAME_LABEL, CloseWatch, NATIVE_FRAME_CONTROLS, check_writable, create_private_dir,
-    exit_signal, hostname, keep_platform, own_process_group, refresh_tray, replace_process, restrict_to_owner,
-    set_app_identity, spawn_tray, status_notifier_host, with_window_icon, without_console,
+    exit_signal, hostname, is_owner_only, keep_platform, own_process_group, refresh_tray, replace_process,
+    restrict_to_owner, set_app_identity, spawn_tray, status_notifier_host, with_window_icon, without_console,
 };

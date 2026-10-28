@@ -147,7 +147,7 @@ pub enum Standing {
 }
 
 /// `MAJOR.MINOR.PATCH`, the shape `CARGO_PKG_VERSION` and decanter's `v` tags share.
-fn version(text: &str) -> Option<(u64, u64, u64)> {
+pub fn version(text: &str) -> Option<(u64, u64, u64)> {
     let mut parts = text.split('.').map(|part| {
         (!part.is_empty() && part.len() <= 9 && part.bytes().all(|byte| byte.is_ascii_digit()))
             .then(|| part.parse().ok())

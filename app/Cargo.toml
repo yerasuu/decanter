@@ -44,7 +44,7 @@ minisign-verify.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni.workspace = true
-nix = { workspace = true, features = ["fs", "inotify"] }
+nix = { workspace = true, features = ["fs", "inotify", "user"] }
 zbus.workspace = true
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
