@@ -741,3 +741,32 @@ ps.report.note: Aquí ves exactamente lo que contiene el informe. No se envía n
 ps.report.save: Guardar informe
 ps.report.close: Cerrar
 ps.report.building: Preparando el informe…
+ps.report.privacy: El informe es público y se conserva hasta que se resuelva. No lleva rutas, nombres ni cuentas. Podrás borrarlo con el código que recibirás. No hay cuenta, y no se guarda tu IP salvo lo necesario para limitar el ritmo de envíos.
+ps.report.send.off: El envío de informes está desactivado en los ajustes
+ps.report.send.no_log: Esta ejecución no tiene registro que adjuntar
+ps.report.send.dry_run: 'No se ha enviado nada. Se enviaría el informe de arriba a %{server}. Añade --yes para enviarlo.'
+ps.report.send.dry_run_log: 'No se ha enviado nada. Se enviaría el informe de arriba a %{server}, con tu registro en privado. Añade --yes para enviarlo.'
+ps.report.send.duplicate: 'Este informe ya se envió ese día: %{url}. No se envía otra vez; bórralo antes si quieres enviarlo de nuevo.'
+ps.report.send.sent: 'Informe enviado: %{url}'
+ps.report.send.code: 'Código de borrado: %{code}'
+ps.report.send.unrecorded: 'No se pudo apuntar el código en la biblioteca; guárdalo tú: %{error}'
+ps.report.send.log_attached: Registro adjuntado en privado
+ps.report.send.log_failed: 'El informe se envió, pero el registro no: %{error}'
+ps.report.send.sent_without_log: El informe se envió, pero el registro no
+ps.report.send.none_sent: No se ha enviado ningún informe desde esta biblioteca
+ps.report.send.delete_dry_run: 'No se ha borrado nada. Se borraría el informe %{id} del servidor. Añade --yes para borrarlo.'
+ps.report.send.deleted: 'Informe %{id} borrado del servidor'
+ps.report.send.gone: 'El servidor ya no tiene el informe %{id}; se quita de la lista'
+ps.report.send.errors.address: 'La dirección del servidor de informes no es válida (%{address}): debe ser https://, o http://127.0.0.1:PUERTO / http://localhost:PUERTO para desarrollo'
+ps.report.send.errors.network: 'No se pudo hablar con el servidor de informes: %{error}'
+ps.report.send.errors.rejected: 'El servidor rechazó el informe (campo: regla): %{fields}'
+ps.report.send.errors.rate_limited.wait: 'Demasiados envíos: el servidor pide esperar %{seconds} s'
+ps.report.send.errors.rate_limited.later: 'Demasiados envíos: inténtalo más tarde'
+ps.report.send.errors.too_large: El informe es demasiado grande para el servidor
+ps.report.send.errors.unsupported_type: El servidor no acepta este tipo de contenido
+ps.report.send.errors.status: 'El servidor respondió con el código %{status}'
+ps.report.send.errors.answer: La respuesta del servidor no es válida; no se ha guardado nada
+ps.report.send.errors.not_found: El servidor no tiene ese informe o el código no coincide
+ps.report.send.errors.conflict: Ese informe ya tiene un registro adjunto o ya está resuelto
+ps.report.send.errors.unknown_report: 'No hay ningún informe %{id} en la lista de enviados'
+ps.report.send.errors.registry: 'No se pudo leer o escribir la lista de enviados %{path}: %{error}'

@@ -1,16 +1,19 @@
 //! Error reports built from the local files and saved inside the library (decisions #982, #991).
 //!
 //! Everything goes through `decanter-report`: the closed schema, the closed message vocabulary and
-//! the machine's own names ([`identity`]) the builders keep out. This phase never sends anything;
-//! the report is shown as it would go out and the player saves it to a file.
+//! the machine's own names ([`identity`]) the builders keep out. A report is shown as it would go
+//! out; it leaves the machine only through [`send`], on the player's confirmation, and only once
+//! per press.
 //!
 //! Blocking file I/O throughout: off the UI thread.
 
 mod host;
 mod identity;
+pub mod send;
+pub mod sent;
 
 use std::fs::{self, OpenOptions};
-use std::io::{self, Read as _, Write as _};
+use std::io::{self, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 
 use decanter_ps::failures::Failure;
@@ -26,8 +29,26 @@ use crate::i18n::Text;
 /// file is a runaway output.
 const MAX_LOG_BYTES: u64 = 32 * 1024 * 1024;
 
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Product {
+    Decanter,
+    Psport,
+}
+
+impl Product {
+    /// The partition letter of the ids the server hands out for this product.
+    pub const fn id_letter(self) -> char {
+        match self {
+            Self::Decanter => 'd',
+            Self::Psport => 'p',
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Built {
+    pub product: Product,
     /// Pretty-printed: exactly what would go out, and what is saved.
     pub json: String,
     pub fingerprint: String,
@@ -41,6 +62,29 @@ pub enum Error {
     Serialize(serde_json::Error),
     Exists(PathBuf),
     Write { path: PathBuf, err: io::Error },
+}
+
+/// The private attachment: the failure's run log, scrubbed and cut to its last [`send::MAX_ATTACHMENT`] bytes.
+pub fn attachment(log: &Path) -> Result<Vec<u8>, Error> {
+    let tail = || -> io::Result<Vec<u8>> {
+        let mut file = fs::File::open(log)?;
+        let len = file.metadata()?.len();
+        file.seek(SeekFrom::Start(len.saturating_sub(send::MAX_ATTACHMENT as u64)))?;
+        let mut bytes = Vec::new();
+        file.take(send::MAX_ATTACHMENT as u64).read_to_end(&mut bytes)?;
+        Ok(bytes)
+    };
+    let bytes = tail().map_err(|err| Error::Read {
+        what: "ps.report.what.run_log",
+        err,
+    })?;
+    let text = String::from_utf8_lossy(&bytes);
+    let scrubbed = decanter_report::scrub_log(&identity::collect(), &text);
+    let mut start = scrubbed.len().saturating_sub(send::MAX_ATTACHMENT);
+    while !scrubbed.is_char_boundary(start) {
+        start += 1;
+    }
+    Ok(scrubbed.into_bytes().split_off(start))
 }
 
 impl Error {
@@ -86,11 +130,12 @@ fn read_capped(path: &Path, what: &'static str) -> Result<String, Error> {
 }
 
 fn finish(report: &Report) -> Result<Built, Error> {
-    let date = match report {
-        Report::Decanter(report) => report.date.clone(),
-        Report::Psport(report) => report.date.clone(),
+    let (product, date) = match report {
+        Report::Decanter(report) => (Product::Decanter, report.date.clone()),
+        Report::Psport(report) => (Product::Psport, report.date.clone()),
     };
     Ok(Built {
+        product,
         json: serde_json::to_string_pretty(report).map_err(Error::Serialize)?,
         fingerprint: fingerprint(report),
         date,
@@ -156,7 +201,7 @@ fn logs_dir() -> PathBuf {
     decanter_core::bootstrap::library_data_dir(decanter_ps::paths::active().library()).join("logs")
 }
 
-fn reports_dir() -> PathBuf {
+pub fn reports_dir() -> PathBuf {
     decanter_core::bootstrap::library_data_dir(decanter_ps::paths::active().library()).join("reports")
 }
 

@@ -94,5 +94,6 @@ fn profiles_and_accounts(identity: &mut Identity) {
             Err(err) => tracing::warn!(%err, "could not list a profile's accounts for the report's identity"),
         }
         identity.extra.push(profile.name);
+        identity.extra.push(profile.id);
     }
 }

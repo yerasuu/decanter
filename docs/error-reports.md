@@ -5,9 +5,10 @@ without the player's logs. Reports are meant to become public pages on the
 receiving server (decisions #985, #988, #989), so a report is built to hold
 nothing private rather than cleaned afterwards.
 
-Status: the client builds, previews and saves reports. **Nothing is sent**: the
-server (#993) does not exist yet, and sending arrives with it, with a button the
-player presses after seeing exactly what goes out (#982).
+Status: the client builds, previews, saves and, when the player asks, sends reports
+to the report server (`crates/reports-server`, decisions #1041, #1043, #1046).
+Nothing is ever sent automatically: every send is one press and one confirmation,
+and there are no retries or background sends.
 
 ## What a report contains
 
@@ -65,8 +66,72 @@ field and the rule that failed, never the value.
   another; `--product decanter` reports a failure of decanter's day log (`--day
   YYYY-MM-DD` picks the day). `--print` shows the JSON as it would go out and
   saves only when `--out FILE` is also given.
-- Window: PS, Fallos, a failure's details, **Informe de errores**. The panel shows
-  the exact JSON (nothing is sent) and **Guardar informe** saves it.
+- Window: **Reportar errores** on a failure's details in PS, Fallos, and on the
+  banner of a failed run on the game's page. The panel shows the exact JSON and
+  **Guardar informe** saves it; nothing is sent from there.
 - The default file is `<library>/decanter/reports/<date>-<fingerprint>.json`,
   inside the library like the rest of decanter's data. An existing file is never
   replaced. The fingerprint groups the same failure on the same commit.
+
+## Sending
+
+The report that was previewed, byte for byte, goes to `POST /v1/reports` on the report
+server, which validates it again with the same crate and publishes it as a public page. The
+player gets back the page's address and a **delete code**.
+
+- Window: under the preview, the privacy notice and a **Enviar informe** button that asks for a
+  last confirmation. Afterwards the panel shows the public address (copy, open), the code, and
+  **Borrar informe enviado**. The button is hidden when sending is turned off in the settings.
+- Command line: `decanter ps report --send` shows the report and what would be sent, and sends
+  only with `--yes`; without it nothing touches the network. `--attach-log` (with `--send --yes`)
+  adds the log. `--sent` lists what this library has sent (never the codes) and
+  `--delete ID --yes` deletes one, using the code kept in the library. A hidden `--server URL`
+  replaces the configured address, with the same restrictions, for development.
+- A report with the same fingerprint and day as one already sent is not sent again: the answer
+  is the earlier report's address. Delete it first to send it anew.
+- Errors are shown as the server gave them: a rejected report lists every field and rule (never
+  a value), a rate limit says how long to wait, and a network failure shows its message.
+
+### The server and the setting
+
+The address is compiled in (`https://reports.yerasuu.com`) and can be replaced by the advanced
+setting `report_server` in decanter's settings (the `settings` table of the library's database).
+An empty value turns sending off. There is no environment variable for it. Only `https://`
+addresses are accepted, plus `http://127.0.0.1:PORT` and `http://localhost:PORT` for a local
+server. Redirects are never followed, the request times out after 30 s and the answer is read up
+to 16 KiB. The answer is checked before anything is kept: the id is `d` (decanter) or `p`
+(psport) plus 32 lowercase hex characters and matches the report's product, the delete code is
+32 hex characters, the fingerprint is 16 hex characters, and the address is the configured host
+with the path `/r/<id>`; otherwise the send counts as failed and nothing is stored.
+
+### The registry and deletion
+
+`<library>/decanter/reports/sent.jsonl` holds one line per sent report: `id`, `delete_code`,
+`url`, `fingerprint`, `product` and `day`. The file is created readable by its owner only
+(0600 where the platform supports it) because the delete code is in it. Deleting asks the server
+that holds the report (the one in its `url`) with the code; the line is then removed. If the
+server no longer knows the report (for instance after its retention) the line is removed too.
+Neither the code nor the report is ever written to decanter's logs.
+
+### The optional log
+
+A checkbox, **Adjuntar el registro completo para quien mantiene (no se publica)**, off by
+default, sends the failure's run log after the report was accepted, with the report's delete
+code. Before it leaves, the log is passed through the identity list (user, host, home folders,
+accounts, profile names: `decanter_report::scrub_log`) and cut to its last 5 MiB. That list is
+best effort: the log may hold names it does not know, which is why the file is private. The
+server stores it encrypted, only whoever maintains the server can read it, there is one per
+report, and it is deleted when the report is resolved or deleted. If the log cannot be attached
+the report stays sent and the player is told so.
+
+### Privacy notice
+
+The same text the window shows before the confirm button:
+
+> The report is public and is kept until it is resolved. It holds no paths, names or accounts.
+> You can delete it with the code you will get. There is no account, and your IP is kept only as
+> long as the rate limit needs it.
+
+In Spanish: *El informe es público y se conserva hasta que se resuelva. No lleva rutas, nombres
+ni cuentas. Podrás borrarlo con el código que recibirás. No hay cuenta, y no se guarda tu IP
+salvo lo necesario para limitar el ritmo de envíos.*

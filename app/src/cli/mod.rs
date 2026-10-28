@@ -140,7 +140,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
     tracing::debug!("opened db for cli command");
 
     match cmd {
-        Cmd::Ps { cmd } => ps::run(&db, cmd)?,
+        Cmd::Ps { cmd } => ps::run(&db, cmd).await?,
         Cmd::Library { account_id } => {
             tracing::debug!(account_id, "listing gog library");
             let library = crate::core::library_for_account(&account_id).map_err(|err| anyhow::anyhow!(err))?;

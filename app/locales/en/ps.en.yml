@@ -741,3 +741,32 @@ ps.report.note: This is exactly what the report contains. Nothing is sent, and t
 ps.report.save: Save report
 ps.report.close: Close
 ps.report.building: Preparing the report…
+ps.report.privacy: The report is public and is kept until it is resolved. It holds no paths, names or accounts. You can delete it with the code you will get. There is no account, and your IP is kept only as long as the rate limit needs it.
+ps.report.send.off: Sending reports is turned off in the settings
+ps.report.send.no_log: This run has no log to attach
+ps.report.send.dry_run: 'Nothing was sent. The report above would be sent to %{server}. Add --yes to send it.'
+ps.report.send.dry_run_log: 'Nothing was sent. The report above would be sent to %{server}, with your log privately. Add --yes to send it.'
+ps.report.send.duplicate: 'This report was already sent that day: %{url}. It is not sent again; delete it first to send it anew.'
+ps.report.send.sent: 'Report sent: %{url}'
+ps.report.send.code: 'Delete code: %{code}'
+ps.report.send.unrecorded: 'Couldn''t note the code in the library; keep it yourself: %{error}'
+ps.report.send.log_attached: Log attached, privately
+ps.report.send.log_failed: 'The report was sent, but the log was not: %{error}'
+ps.report.send.sent_without_log: The report was sent, but the log was not
+ps.report.send.none_sent: No report has been sent from this library
+ps.report.send.delete_dry_run: 'Nothing was deleted. Report %{id} would be deleted from the server. Add --yes to delete it.'
+ps.report.send.deleted: 'Report %{id} deleted from the server'
+ps.report.send.gone: 'The server no longer has report %{id}; it is removed from the list'
+ps.report.send.errors.address: 'The report server address isn''t valid (%{address}): it must be https://, or http://127.0.0.1:PORT / http://localhost:PORT for development'
+ps.report.send.errors.network: 'Couldn''t talk to the report server: %{error}'
+ps.report.send.errors.rejected: 'The server rejected the report (field: rule): %{fields}'
+ps.report.send.errors.rate_limited.wait: 'Too many reports: the server asks you to wait %{seconds} s'
+ps.report.send.errors.rate_limited.later: 'Too many reports: try again later'
+ps.report.send.errors.too_large: The report is too large for the server
+ps.report.send.errors.unsupported_type: The server doesn't accept this content type
+ps.report.send.errors.status: 'The server answered with status %{status}'
+ps.report.send.errors.answer: The server's answer isn't valid; nothing was stored
+ps.report.send.errors.not_found: The server has no such report, or the code doesn't match
+ps.report.send.errors.conflict: That report already has a log attached or is already resolved
+ps.report.send.errors.unknown_report: 'There is no report %{id} in the list of sent reports'
+ps.report.send.errors.registry: 'Couldn''t read or write the list of sent reports %{path}: %{error}'

@@ -1,6 +1,6 @@
 //! `decanter ps ...`: the PS section's headless commands.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use clap::{Subcommand, ValueEnum};
@@ -8,12 +8,15 @@ use decanter_core::Db;
 use decanter_ps::failures::Log;
 
 use crate::i18n::Text;
+use crate::report::send::{self, Deleted, Server, Submitted};
+use crate::report::sent::{self, Entry};
 use crate::report::{self, Built};
 
 #[derive(Subcommand)]
 pub enum PsCmd {
-    /// Builds an error report from a recorded failure and saves it, or prints it, without sending
-    /// anything: the report holds no paths, names or accounts, and this shows exactly what it holds.
+    /// Builds an error report from a recorded failure and saves it, or prints it: the report holds no
+    /// paths, names or accounts, and this shows exactly what it holds. Nothing leaves the machine
+    /// unless `--send --yes` is given.
     Report {
         #[arg(long, value_enum, default_value = "psport")]
         product: Product,
@@ -33,6 +36,25 @@ pub enum PsCmd {
         /// An existing file is never replaced.
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Shows the report and what would be sent; with `--yes` it is sent, publicly, to the report
+        /// server (the address is in the settings).
+        #[arg(long, conflicts_with_all = ["sent", "delete"])]
+        send: bool,
+        /// Confirms `--send` or `--delete`; without it nothing touches the network.
+        #[arg(long)]
+        yes: bool,
+        /// With `--send --yes`: also sends the run's log, privately, for whoever maintains the server.
+        #[arg(long, requires_all = ["send", "yes"])]
+        attach_log: bool,
+        /// Lists the reports sent from this library, without their delete codes.
+        #[arg(long, conflicts_with_all = ["send", "delete"])]
+        sent: bool,
+        /// Deletes a sent report from the server, using the code kept in the library; needs `--yes`.
+        #[arg(long, value_name = "ID", value_parser = report_id, conflicts_with_all = ["send", "sent"])]
+        delete: Option<String>,
+        /// For development: a server other than the settings' one, `https://` or `http://127.0.0.1:PORT`.
+        #[arg(long, hide = true, value_parser = server_address)]
+        server: Option<String>,
     },
 }
 
@@ -50,13 +72,27 @@ fn title_id(value: &str) -> Result<String, String> {
     }
 }
 
+fn report_id(value: &str) -> Result<String, String> {
+    if send::is_id(value) {
+        Ok(value.to_owned())
+    } else {
+        Err(format!("{value} isn't a report id"))
+    }
+}
+
+fn server_address(value: &str) -> Result<String, String> {
+    Server::parse(value)
+        .map(|_| value.to_owned())
+        .map_err(|_| format!("{value} isn't an accepted server address"))
+}
+
 fn day(value: &str) -> Result<String, String> {
     chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map(|_| value.to_owned())
         .map_err(|_| format!("{value} isn't a day as YYYY-MM-DD"))
 }
 
-pub fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<()> {
+pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<()> {
     crate::i18n::init();
     let PsCmd::Report {
         product,
@@ -65,14 +101,33 @@ pub fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<()> {
         day,
         print,
         out,
+        send,
+        yes,
+        attach_log,
+        sent,
+        delete,
+        server,
     } = cmd;
     let Some(profile) = db.active_profile().context("reading the active profile")? else {
         bail!("{}", Text::new("ps.report.errors.no_profile"));
     };
     let library = crate::core::library_for_profile(&profile.id).map_err(|err| anyhow::anyhow!(err))?;
     decanter_ps::paths::use_library(library.root());
+    if sent {
+        return list_sent();
+    }
+    if let Some(id) = delete {
+        return delete_sent(&id, yes).await;
+    }
+    let server = if send {
+        let server = send::resolve(send::setting(db).as_deref(), server.as_deref())
+            .map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+        Some(server.ok_or_else(|| anyhow::anyhow!("{}", Text::new("ps.report.send.off")))?)
+    } else {
+        None
+    };
     let nth = usize::try_from(failure - 1).unwrap_or(usize::MAX);
-    let built = match product {
+    let (built, log) = match product {
         Product::Psport => {
             let path = decanter_ps::paths::active().profile(&profile.id).join("failures.jsonl");
             let records = Log::load(path);
@@ -85,27 +140,123 @@ pub fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<()> {
             let Some(picked) = picked else {
                 bail!("{}", report::Error::NoFailure.text());
             };
-            report::psport(picked)
+            (report::psport(picked), picked.log.clone())
         }
-        Product::Decanter => report::day_failures(day.as_deref()).and_then(|failures| {
-            failures
-                .iter()
-                .rev()
-                .nth(nth)
-                .map_or(Err(report::Error::NoFailure), report::decanter)
-        }),
+        Product::Decanter => (
+            report::day_failures(day.as_deref()).and_then(|failures| {
+                failures
+                    .iter()
+                    .rev()
+                    .nth(nth)
+                    .map_or(Err(report::Error::NoFailure), report::decanter)
+            }),
+            None,
+        ),
     };
-    deliver(built, print, out)
+    let built = built.map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+    if attach_log && log.is_none() {
+        bail!("{}", Text::new("ps.report.send.no_log"));
+    }
+    match server {
+        Some(server) => {
+            send_report(
+                &built,
+                &server,
+                yes,
+                log.filter(|_| attach_log).as_deref(),
+                out.as_deref(),
+            )
+            .await
+        }
+        None => deliver(&built, print, out.as_deref()),
+    }
 }
 
-fn deliver(built: Result<Built, report::Error>, print: bool, out: Option<PathBuf>) -> anyhow::Result<()> {
-    let built = built.map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+fn deliver(built: &Built, print: bool, out: Option<&Path>) -> anyhow::Result<()> {
     if print {
         println!("{}", built.json);
     }
     if !print || out.is_some() {
-        let path = report::save(&built, out.as_deref()).map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+        let path = report::save(built, out).map_err(|err| anyhow::anyhow!("{}", err.text()))?;
         println!("{}", Text::new("ps.report.saved").arg("path", path.display()));
+    }
+    Ok(())
+}
+
+async fn send_report(
+    built: &Built,
+    server: &Server,
+    yes: bool,
+    log: Option<&Path>,
+    out: Option<&Path>,
+) -> anyhow::Result<()> {
+    println!("{}", built.json);
+    if let Some(out) = out {
+        let path = report::save(built, Some(out)).map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+        println!("{}", Text::new("ps.report.saved").arg("path", path.display()));
+    }
+    if !yes {
+        let key = if log.is_some() {
+            "ps.report.send.dry_run_log"
+        } else {
+            "ps.report.send.dry_run"
+        };
+        println!("{}", Text::new(key).arg("server", server.origin()));
+        println!("{}", Text::new("ps.report.privacy"));
+        return Ok(());
+    }
+    match send::submit(built, server, log)
+        .await
+        .map_err(|err| anyhow::anyhow!("{}", err.text()))?
+    {
+        Submitted::Duplicate(earlier) => {
+            bail!("{}", Text::new("ps.report.send.duplicate").arg("url", earlier.url));
+        }
+        Submitted::Sent {
+            entry,
+            unrecorded,
+            attached,
+        } => {
+            println!("{}", Text::new("ps.report.send.sent").arg("url", &entry.url));
+            println!("{}", Text::new("ps.report.send.code").arg("code", &entry.delete_code));
+            if let Some(err) = unrecorded {
+                eprintln!("{}", Text::new("ps.report.send.unrecorded").text("error", err.text()));
+            }
+            match attached {
+                Some(Ok(())) => println!("{}", Text::new("ps.report.send.log_attached")),
+                Some(Err(err)) => {
+                    eprintln!("{}", Text::new("ps.report.send.log_failed").text("error", err.text()));
+                    bail!("{}", Text::new("ps.report.send.sent_without_log"));
+                }
+                None => {}
+            }
+            Ok(())
+        }
+    }
+}
+
+fn list_sent() -> anyhow::Result<()> {
+    let entries = sent::load().map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+    if entries.is_empty() {
+        println!("{}", Text::new("ps.report.send.none_sent"));
+    }
+    for Entry { id, url, day, .. } in entries {
+        println!("{id}\t{day}\t{url}");
+    }
+    Ok(())
+}
+
+async fn delete_sent(id: &str, yes: bool) -> anyhow::Result<()> {
+    if !yes {
+        println!("{}", Text::new("ps.report.send.delete_dry_run").arg("id", id));
+        return Ok(());
+    }
+    match send::delete(id)
+        .await
+        .map_err(|err| anyhow::anyhow!("{}", err.text()))?
+    {
+        Deleted::Removed => println!("{}", Text::new("ps.report.send.deleted").arg("id", id)),
+        Deleted::Gone => println!("{}", Text::new("ps.report.send.gone").arg("id", id)),
     }
     Ok(())
 }

@@ -90,3 +90,14 @@ fn message_key(failure: &schema::Failure) -> String {
     });
     format!("{}[{}]{cause}", message.template, named(&message.slots))
 }
+
+/// A run's log with every token that holds an identity string replaced, for the private attachment.
+///
+/// Line by line, since a match never spans lines and the guard folds its whole input in memory.
+/// Best effort: a name `identity` does not list passes through, which is why the attachment is
+/// private and never published.
+#[must_use]
+pub fn scrub_log(identity: &Identity, log: &str) -> String {
+    let guard = identity::Guard::new(identity);
+    log.split_inclusive('\n').map(|line| guard.scrub(line)).collect()
+}
