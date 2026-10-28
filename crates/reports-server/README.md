@@ -5,8 +5,8 @@ pages. One Rust binary, no database (everything in an S3-compatible bucket throu
 accounts, no JavaScript. It speaks plain HTTP on loopback; a tunnel in
 front exposes the port and terminates TLS (see `docs/deploy.md`).
 
-Design decisions live in decanter's board: #985, #986, #987, #988, #989, #991, #1033, #1034, #1047, #1049, #1055
-(tasks #993, #1048, #1056). `docs/design.md` has the data model.
+Design decisions live in decanter's board: #985, #986, #987, #988, #989, #991, #1033, #1034, #1047, #1049, #1055,
+#1060 (tasks #993, #1048, #1056, #1064). `docs/design.md` has the data model.
 
 ## How it works
 
@@ -32,9 +32,10 @@ tag; `.cargo/config.toml` makes cargo fetch it with the system git.
 |---|---|---|
 | `POST /v1/reports` | anyone, rate limited, `Content-Type: application/json` | 201 `{id, delete_code, url, fingerprint}`; 422 `{rejections:[{path, rule}]}`; 413 above 64 KiB; 415 without the JSON content type; 429 with `Retry-After` |
 | `DELETE /v1/reports/<id>` | owner, header `X-Delete-Code` | 204; 404 for an unknown id or a wrong code (identical); 429 once the address has made too many wrong codes |
-| `PUT /v1/reports/<id>/attachment` | owner, header `X-Delete-Code`, rate limited | 204; one per report, up to 5 MiB, private; 409 if there is one or the report is resolved |
+| `PUT /v1/reports/<id>/attachment` | owner, header `X-Delete-Code`, rate limited | 204; one per report, up to 5 MiB, private; 409 if there is one or the report is resolved; also builds the report's public clean log |
 | `GET /` | public | reports grouped by fingerprint, both partitions merged; `?product=decanter\|psport` reads one; `&title=CUSA00000&resolved=0\|1&page=N` |
-| `GET /r/<id>` | public | one report: every field as escaped text, plus the raw JSON |
+| `GET /r/<id>` | public | one report: its message as readable text, every field as escaped text, a summary of its clean log with a link, plus the raw JSON |
+| `GET /r/<id>/log` | public | the report's clean log: the attachment's lines that match a template of the report vocabulary, rebuilt from template and slots, with line numbers and the count of omitted lines; 404 without an attachment ever sent |
 | `GET /g/<fingerprint>` | public | the reports of one group, from every partition that holds it |
 | `GET /healthz` | public | `ok` |
 | `GET /admin/login` | public, rate limited like a page | the login form (no script) |
@@ -50,7 +51,8 @@ tag; `.cargo/config.toml` makes cargo fetch it with the system git.
 
 Public pages (everything but `/healthz` and `/admin`) are rate limited per client: 429 with `Retry-After`.
 
-Hidden reports answer 404 on the public pages. Resolved reports stay public, marked, and lose their attachment.
+Hidden reports answer 404 on the public pages, their clean log too. Resolved reports stay public, marked, and lose
+their attachment but keep their clean log.
 "admin" means a valid key in `Authorization: Bearer`, or a browser session from `/admin/login` (see "Security
 model"); a session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
 from a form field `csrf` or the header `X-CSRF-Token` (sent back on every session answer), and an `Origin` (or
@@ -64,6 +66,7 @@ B=http://127.0.0.1:8787
 curl -s -X POST -H 'Content-Type: application/json' --data-binary @report.json $B/v1/reports          # keep the delete_code: it is shown once
 curl -s -X DELETE -H "X-Delete-Code: $CODE" $B/v1/reports/$ID
 curl -s -X PUT -H "X-Delete-Code: $CODE" --data-binary @game.log $B/v1/reports/$ID/attachment
+curl -s $B/r/$ID/log                                      # the public clean version of that log
 
 A="Authorization: Bearer $DECANTER_REPORTS_ADMIN_KEY"
 curl -s -H "$A" $B/admin/reports
@@ -139,7 +142,11 @@ and hold no report contents and no addresses.
 - **Never stored.** IP addresses, user agents, request headers, times finer than a day. The delete code is stored
   only as a SHA-256 hash; the admin key only as a hash in memory. Rejected reports are not stored and their values
   are not echoed or logged. Attachments are the one private, optional exception: kept in the
-  bucket as encrypted blobs under generated names, never served except to the admin, never parsed.
+  bucket as encrypted blobs under generated names, never served except to the admin. The server reads them once,
+  at upload, through `decanter_report::clean_log` to build their public **clean log**: only lines that are instances
+  of the report vocabulary's templates, kept as template id and typed slots (with stricter slot rules than reports,
+  `docs/design.md`), never text of the log; it is re-validated by `validate_clean_log` on every read and not shown
+  if it fails.
 - **Rate limits.** In memory only, per client address; restarting resets them. Uploads and attachment uploads
   share one per-address counter (`per_ip_hour`, `per_ip_day`; IPv6 by /48) that counts every request, rejected or
   not. The `global_hour` cap for the whole server is spent only by reports that passed validation and by

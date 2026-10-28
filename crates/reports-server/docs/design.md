@@ -3,7 +3,8 @@
 What the server is for, how its parts fit, what it trusts and what it never does. The endpoints and the
 configuration keys are in `README.md`, the deployment in `docs/deploy.md`, the day-to-day work in
 `docs/runbook.md`. The decisions behind this design are on decanter's board: #985, #986, #987, #988, #989, #991,
-#1033, #1034, #1037, #1038, #1041 to #1046, #1047, #1049, #1055 (tasks #982, #993, #994, #1039, #1040, #1048, #1056).
+#1033, #1034, #1037, #1038, #1041 to #1046, #1047, #1049, #1055, #1060 (tasks #982, #993, #994, #1039, #1040, #1048,
+#1056, #1064).
 
 ## Purpose
 
@@ -63,7 +64,58 @@ crate) groups duplicates; it ignores the game, so a group may span titles and th
 
 An optional **attachment** is the player's raw run log, up to 5 MiB, one per report. It is private by design: the
 client scrubs it with the same denylist as a best effort, the server stores it as an encrypted blob under a
-generated name, only the admin can download it, and it is deleted when the report is resolved or deleted.
+generated name, only the admin can download it, and it is deleted when the report is resolved or deleted. What the
+public sees of it is its **clean log** (next section), never the log itself.
+
+## The public clean log
+
+**Decision (#1060, task #1064).** When an attachment is accepted, and only then, the server builds a public, clean
+version of it with `decanter_report::clean_log` and the vocabulary of the report's product (the id's letter picks
+it): the attachment is read as text with lossy UTF-8 (one NUL byte marks it as not a text log, which gives an empty
+clean log), and each line is matched against the same closed templates a report's `failure.message` must be. A
+psport line is matched as it is; a decanter line only when it is a `WARN` or `ERROR` of decanter's own modules,
+rebuilt as the day-log source reads it (message, `job=`, `exit=`, `: <error>`). A line is kept as its number, its
+template id and its typed slots; every other line is dropped and only counted.
+
+**Guarantee.** The clean log holds no text of the log by construction: what a page shows is rebuilt from the
+template's literal pattern and the slot values, with `…` where the line had text a `{_}` reads and discards. The
+slots of a kept line pass the vocabulary's own shape rules and a stricter public rule (`is_public_slot` in
+`crates/report/src/clean.rs`), because the server has no identity list (#1033, #1034) and a shape cannot tell a
+one-word user, host or device name from a technical word: a call name must not be a lone plain word (`deck`,
+`Yerasuu`, `DELL`) unless it is a listed technical one (`Open`, `main`), nor a snake-case name of plain words with
+an unlisted head (`john_smith`), nor carry id-like digits (a run of four, or more than two groups) or start a
+`::` part with a digit (an IPv6 address); an image must be a listed system image, a `lib…` one or a lowercase name
+with a version in it (`vulkan-1.dll`), never a plain executable name taken from a path; a constant needs an `_`
+(`VK_ERROR_DEVICE_LOST`, not `DELL` or `S2522HG`); a valid-usage id must read `VUID-<vk…>-<words>-<5 digits>` with
+listed or camel-case words. The stored form (`CleanLog`, closed JSON, unknown fields refused) is re-validated by
+`decanter_report::validate_clean_log` every time a page reads it: shape, product, counts, increasing line numbers,
+every template and slot against the vocabulary and the public rule. One that fails is not shown: the page answers
+500 and the log line `stored clean log refused by the validator` names nothing of it.
+
+**Limits.** At most 2000 kept lines; once reached, the rest of the log is not examined and the page says so. Only
+the first 5 MiB are read (the attachment cap), a line longer than 4096 bytes is counted without being matched, and
+the work is linear in the input (about half a second for 5 MiB of short lines; the cap stops a log of matching
+lines at once); it runs on a blocking thread at upload. The stored form is at most 1 MiB. The residual, measured
+with a seeded battery of user, host, display and pad names, paths, ids, addresses, tokens, times, MACs and Steam ids
+in every slot and position: a private string *inside* a longer identifier (`sceYerasuuOpen`, `pthread_yerasuu`,
+`yerasuu2`, a camel-case word of a valid-usage id) passes, as no shape rule can tell it apart; number slots (up to
+nine digits) remain a small numeric channel. The client's denylist (#1041) scrubs the attachment before it is sent,
+which is what covers that residual for an honest sender. A sender can also fill the clean log with lines of their
+choosing in the allowed shapes, as with any report field.
+
+**Storage and lifecycle.** The clean log is a blob of its own collection, `cleanlogs/<id>-<random>`, in the report's
+partition, named by a field of the report (`clean_log`). Both blobs (attachment and clean log) are written before
+the one transaction that names them, as attachments always were; a failed transaction removes both and the sweep
+removes any blob of either collection no report names. A blob and not a field of `Report`, so the report object stays
+small for the lists that load reports, and the 256 KiB object limit is never near. It follows the report: hidden
+with it (404), kept when the report is resolved or its attachment is evicted at `max_attachments` (it holds only
+allow-listed data, the decision #988 publishes), replaced if a new attachment is sent after an eviction, and removed
+when the report is deleted, by its owner, the maintainer, the caps or the retention sweep. It counts in no cap of its
+own: there is at most one per report.
+
+**Pages.** `GET /r/<id>/log` shows the counts, a note explaining what is shown, and a table of line number, readable
+text and template id; `GET /r/<id>` shows the counts and a link. Both are rate limited, escaped and served with the
+same headers as every page; the raw attachment stays reachable only through the admin route.
 
 ## Data model
 
@@ -91,8 +143,8 @@ The entities below exist once per partition.
 
 - **`Report`** (`reports/<id>`, `#[derive(Entity)]`): `delete_hash`, `fingerprint`, `product`, `title_id`,
   `game_name`, `failure_kind`, `template_id`, `message`, `created_day`, `received_day`, `hidden`, `resolved_at`,
-  `attachment` (blob name or none), the validated `json`, plus `seq` (insertion order), `deleted` and `tracked`
-  (below).
+  `attachment` (blob name or none), `clean_log` (blob name of the public clean log, or none), the validated `json`,
+  plus `seq` (insertion order), `deleted` and `tracked` (below).
 - **`Group`** (`groups/<fingerprint>`): over the group's visible reports (not hidden, not deleted) the report count,
   the resolved count, the hidden count, the first and last `created_day`, the latest `received_day`, the product,
   kind and latest message, and per title its report and resolved counts and its game names with their counts.
@@ -101,6 +153,7 @@ The entities below exist once per partition.
   than a day) and `sweep` (the last sweep's day and sequence, so the sweep only cleans up inserts that cannot still
   be running).
 - **Attachments**: `Blob`s (`attachments/<id>-<random>`), at most 5 MiB, named by the server, never by input.
+- **Clean logs**: `Blob`s (`cleanlogs/<id>-<random>`), at most 1 MiB, the stored `CleanLog` of each attachment.
 - **Indexes**: s3db `MultiIndex`es under `idx/`, whose member names sort the way they are read, because object
   stores list keys in ascending order only. Newest first by inverted day and sequence: all reports (`all`, by received
   day), by fingerprint (`fp`), by product, by title. Oldest first: unresolved reports (`queue/open`), attached ones
@@ -176,9 +229,10 @@ makes the bucket unreadable.
    path and rule that failed, never the value, and stores nothing.
 2. **Visible.** Public at `/r/<id>` and in its group at once, and in the merged index and its product's filtered
    one. The index is cached for a few seconds.
-3. **Attachment (optional).** `PUT` with the delete code; refused once resolved.
-4. **Resolved.** A maintainer marks it (or the whole group). It stays public, marked, loses its attachment and is
-   deleted `resolved_retention_days` later (default 90).
+3. **Attachment (optional).** `PUT` with the delete code; refused once resolved. Its clean log is built and stored
+   in the same transaction and published at `/r/<id>/log`.
+4. **Resolved.** A maintainer marks it (or the whole group). It stays public, marked, loses its attachment (keeps
+   its clean log) and is deleted `resolved_retention_days` later (default 90).
 5. **Hidden or deleted.** The maintainer hides a report (404 on the public pages, kept for review) or deletes it;
    the player deletes their own with the code.
 6. **Expiry.** Unresolved reports are deleted after `retention_days` (default 365). At `max_reports` and
@@ -256,6 +310,6 @@ and a credential for the admin key, or in a rootless container.
 - Real unit start under systemd with `DynamicUser`, `PrivateUsers` and `LoadCredential` (now four credentials), the
   container image build (its secrets' modes) and the forged-header check through the real tunnel are untested.
 - Reports with several failures of one run (today one report per run; a new schema version would be needed).
-- Readable template text on the pages (the crate keeps its vocabulary private today, so pages show the template
-  id and the slots).
+- ~~Readable template text on the pages~~: done (#1064); a message the crate cannot render still shows as its
+  template id and slots.
 - A second adversarial pass over the validator before the automatic publication is enabled.

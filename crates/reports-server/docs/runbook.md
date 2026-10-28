@@ -52,9 +52,14 @@ start with their product's letter (`d…` decanter, `p…` psport), so the id ro
 curl -s -H "$A" -X POST   $B/admin/reports/$ID/hide        # 404 on the public pages; undo with /restore
 curl -s -H "$A" -X POST   $B/admin/reports/$ID/restore
 curl -s -H "$A" -X POST   $B/admin/reports/$ID/resolve     # marks it, deletes its attachment, starts its retention
-curl -s -H "$A" -X DELETE $B/admin/reports/$ID             # removes it and its attachment
+curl -s -H "$A" -X DELETE $B/admin/reports/$ID             # removes it, its attachment and its clean log
 curl -s -H "$A" -o log.bin $B/admin/reports/$ID/attachment # the private log, as a download
 ```
+
+A report with an attachment also has a public clean log at `/r/<id>/log` (`docs/design.md`, "The public clean
+log"). Resolving keeps it, since it holds only allow-listed lines; hiding hides it with the report; deleting removes
+it. There is no route to remove the clean log alone: if one ever shows something it should not, hide the report
+(the page answers 404 at once) and delete it, then fix the vocabulary in `crates/report`.
 
 ## A flooded group, in bulk
 
@@ -81,7 +86,8 @@ Hide first, delete when sure. Each call clears the cached index at once.
 - A full *bucket* (MinIO's quota, or its disk) shows as `500 internal` on uploads and `request failed` in the log
   (writes to the bucket failing). Look at the usage (`mc du home/decanter-reports`), delete the flooded group,
   or raise the quota (`mc quota set home/decanter-reports --size ...`). Size it for `max_reports` x 64 KiB plus
-  `max_attachments` x 5 MiB, twice (the caps are per partition), plus small index objects.
+  `max_attachments` x 5 MiB, twice (the caps are per partition), plus small index objects and up to `max_reports`
+  clean logs of a few kilobytes each (at most 1 MiB; a 2000-line log of failures is a few hundred kilobytes).
 - An unreachable bucket shows the same way. `GET /healthz` answers 200 regardless (it does not touch the bucket);
   `decanter-reports --check-config` with the same credentials makes one read-only round trip per partition and says
   what fails, one line each.
@@ -133,8 +139,8 @@ attachment names): treat the output as private as the bucket. Attachments are bl
 `GET /admin/reports/<id>/attachment` instead.
 
 Layout of each partition: `reports/<id>.json`, `groups/<fingerprint>.json`, `meta/totals.json`,
-`meta/sequence.json`, `meta/sweep.json`, `attachments/` (blobs), `idx/` (the ordered lists) and `.conf/` (encryption
-config and transaction records).
+`meta/sequence.json`, `meta/sweep.json`, `attachments/` (blobs), `cleanlogs/` (blobs: the public clean logs),
+`idx/` (the ordered lists) and `.conf/` (encryption config and transaction records).
 
 ## What to watch
 
@@ -152,6 +158,7 @@ The log has no addresses, codes or report contents, only counts; storage lines n
 | `stale transactions recovered` | a transaction was cut off; repeated lines mean the bucket is failing |
 | `retention sweep` with `orphans` or `repaired` above 0 | leftovers of failed writes cleaned up; a steady stream means writes keep failing halfway |
 | `report rejected` counts | uploads failing validation: a client bug or probing |
+| `stored clean log refused by the validator` | a stored clean log no longer passes the crate's rules (a vocabulary change, or tampering in the bucket); its page answers 500 and shows nothing |
 | 429 at the tunnel (no log line: the process does not log them) | per-address, global or failure limits; a sustained rate means abuse or a wrong `client_ip_header` (everyone counted as the tunnel) |
 
 Also: the bucket's usage against its quota, the number of unresolved groups on `/`, and that `GET /healthz`
