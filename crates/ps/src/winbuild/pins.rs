@@ -121,19 +121,13 @@ pub fn tools() -> [Archive; 3] {
 /// [MinGit](https://github.com/git-for-windows/git/wiki/MinGit), Git for Windows' build for applications
 /// that drive git, which every branch check and build runs instead of any git the user has: the one
 /// place a new release is pinned, from the release page of `tag`, whose notes list each asset's
-/// SHA-256 (the procedure is in `docs/windows-support.md`). Until `sha256` is one, every check and
-/// build stops with [`super::Error::NotPinned`] before anything is downloaded.
+/// SHA-256 (the procedure is in `docs/windows-support.md`).
 pub const MINGIT: MinGit = MinGit {
-    tag: "v2.51.0.windows.1",
-    version: "2.51.0",
-    sha256: MINGIT_SHA256,
-    size: 0,
+    tag: "v2.56.0.windows.4",
+    version: "2.56.0.4",
+    sha256: "e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877",
+    size: 39_846_926,
 };
-
-/// XXX: not taken yet, since the session that added MinGit had no network: the SHA-256 of
-/// `MinGit-<version>-64-bit.zip` from [`MINGIT`]'s release notes, checked with `sha256sum`, set
-/// together with its `size`.
-const MINGIT_SHA256: &str = "unpinned";
 
 pub struct MinGit {
     /// The release's tag, `v<git version>.windows.<n>`.
@@ -145,8 +139,9 @@ pub struct MinGit {
     pub size: u64,
 }
 
-/// [`MINGIT`]'s zip, which has its files at the top. Its caps are bounds for a git distribution until
-/// the pinned zip is measured (entries, unpacked bytes, the largest file), as the others were.
+/// [`MINGIT`]'s zip, which has its files at the top. Measured for 2.56.0.4: 378 entries (375 files),
+/// 96,237,338 bytes unpacked, the largest file 9,413,944 bytes, the longest path 63 characters, no
+/// name beyond printable ASCII; the caps leave room for a later release, not for another kind of archive.
 #[must_use]
 pub fn mingit() -> Archive {
     let pin = &MINGIT;
@@ -163,9 +158,9 @@ pub fn mingit() -> Archive {
         key,
         names: Names::Toolchain,
         limits: Limits {
-            entries: 4_000,
-            unpacked_bytes: 512 << 20,
-            file_bytes: 64 << 20,
+            entries: 1_000,
+            unpacked_bytes: 256 << 20,
+            file_bytes: 32 << 20,
         },
         required: vec!["cmd/git.exe".to_owned()],
     }

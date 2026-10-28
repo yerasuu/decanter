@@ -351,7 +351,7 @@ release pages on 2026-10-24:
 | CMake 4.4.4 | [cmake-4.4.4-windows-x86_64.zip](https://github.com/Kitware/CMake/releases/tag/v4.4.4), 54,400,562 B | `bace36e9…c536` | `cmake-4.4.4-SHA-256.txt` of the release, signed by Kitware |
 | Ninja 1.13.2 | [ninja-win.zip](https://github.com/ninja-build/ninja/releases/tag/v1.13.2), 291,570 B | `07fc8261…dc65` | the asset's digest in GitHub's releases API |
 | psport toolchain 1 | [psport-toolchain-win32-1-x86_64.zip](https://github.com/yerasuu/psport/releases/tag/toolchain-win32-1), 317,092,630 B | `4f9ee32b…87d0` | the release's `.zip.sha256`, matching the asset's digest in GitHub's API and the downloaded zip |
-| MinGit 2.51.0 | [MinGit-2.51.0-64-bit.zip](https://github.com/git-for-windows/git/releases/tag/v2.51.0.windows.1), size not taken yet | not taken yet (`pins::MINGIT_SHA256`) | the SHA-256 the release notes list for the asset, matching `sha256sum` of the downloaded zip |
+| MinGit 2.56.0.4 | [MinGit-2.56.0.4-64-bit.zip](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4), 39,846,926 bytes | `e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877` (the release's own digest, matching `sha256sum` of the downloaded zip) | the SHA-256 the release notes list for the asset, matching `sha256sum` of the downloaded zip |
 
 The published manifest (`psport-toolchain-win32-1-x86_64.json`, schema 1,
 psport commit `f3c6bb653`) names the three tools by the SHA-256, sizes and
@@ -433,7 +433,7 @@ junctions. Per archive, sized from what each holds:
 | llvm-mingw | 9,299 entries, 749,515,686 B, largest 77.7 MB | 12,000 | 1 GiB | 128 MiB | plain |
 | CMake | 8,979 entries, 143,310,580 B, largest 33.9 MB | 12,000 | 256 MiB | 64 MiB | toolchain |
 | Ninja | 1 file, 603,648 B | 4 | 4 MiB | 4 MiB | plain |
-| MinGit | not measured yet (no top folder: `Top::Flat`) | 4,000 | 512 MiB | 64 MiB | toolchain |
+| MinGit | 378 entries (375 files), 96,237,338 bytes unpacked, largest file 9,413,944 bytes, longest path 63 (no top folder: `Top::Flat`) | 1,000 | 256 MiB | 32 MiB | toolchain |
 | toolchain 1 | 54,558 entries (51,863 files), 1,070,375,859 B, largest 33.1 MB, longest path 159 | 80,000 | 1.5 GiB | 256 MiB | toolchain |
 
 *Toolchain* names (`Names::Toolchain`) add only inner spaces (never first
