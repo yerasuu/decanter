@@ -8,7 +8,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use decanter_core::runner::{Installed, Pin, Progress, Runner, Stage};
+use decanter_core::runner::{Installed, Pin, Progress, Runner, Stage, Status};
 use decanter_ps::os::windows::winbuild;
 use decanter_ps::paths::Root;
 use rust_i18n::t;
@@ -26,6 +26,7 @@ pub enum Error {
         error: decanter_ps::runner::Error,
         log: Option<PathBuf>,
     },
+    Confirm(Runner, io::Error),
     RemoveRelease(Runner, io::Error),
     RemoveBuild(Runner, io::Error),
 }
@@ -35,7 +36,7 @@ impl fmt::Display for Error {
         match self {
             Self::Prepare(_, err) => write!(f, "{err:#}"),
             Self::Port { error, .. } => error.fmt(f),
-            Self::RemoveRelease(_, err) | Self::RemoveBuild(_, err) => err.fmt(f),
+            Self::Confirm(_, err) | Self::RemoveRelease(_, err) | Self::RemoveBuild(_, err) => err.fmt(f),
         }
     }
 }
@@ -53,6 +54,9 @@ impl Error {
                     "log",
                     log.as_ref().map_or_else(String::new, |log| log.display().to_string()),
                 ),
+            Self::Confirm(Runner::Psport | Runner::AnyPs5, err) => {
+                Text::new("ps.branch.errors.confirm").arg("error", err)
+            }
             Self::RemoveRelease(Runner::Psport | Runner::AnyPs5, err) => {
                 Text::new("ps.package.errors.delete").arg("error", err)
             }
@@ -63,8 +67,10 @@ impl Error {
                 Text::new("raven.errors.remove_build").arg("error", err)
             }
             // Nothing in the UI prepares a port through `decanter_runtime` nor removes the runners
-            // umu and decanter's FSR recording use, so no text was written for them.
+            // umu and decanter's FSR recording use, and a runner of `decanter_runtime` fails its
+            // confirmation as its preparation, so no text was written for them.
             Self::Prepare(Runner::Psport | Runner::AnyPs5, _)
+            | Self::Confirm(Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Raven, _)
             | Self::RemoveRelease(Runner::Umu | Runner::Proton | Runner::GeProton, _)
             | Self::RemoveBuild(Runner::Umu | Runner::Proton | Runner::GeProton, _) => Text::verbatim(self),
         }
@@ -78,6 +84,35 @@ pub async fn latest(runner: Runner) -> Result<Option<Release>, ReleaseError> {
         Runner::Umu => releases::latest(decanter_runtime::UMU_LAUNCHER_REPO).await,
         Runner::Proton => releases::latest(decanter_runtime::UMU_PROTON_REPO).await,
         Runner::GeProton | Runner::Raven | Runner::Psport | Runner::AnyPs5 => Ok(None),
+    }
+}
+
+/// What is installed, read from disk only.
+pub async fn status(root: &Root, runner: Runner) -> Status {
+    match runner {
+        Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Raven => decanter_runtime::runner::status(runner),
+        Runner::Psport | Runner::AnyPs5 => decanter_ps::runner::status(root, runner).await,
+    }
+}
+
+/// Records the owner's yes to building `pin`, which [`prepare`] asks for before it builds a
+/// [`Pin::Commit`] of a runner of `decanter_runtime`; a port's is recorded with the branch it was
+/// listed on, so for a port this only checks it.
+///
+/// # Errors
+///
+/// Fails if this system cannot get the runner, `pin` is not the one decanter pins, or the
+/// confirmation cannot be written or is not there.
+pub async fn confirm(root: &Root, runner: Runner, pin: &Pin) -> Result<(), Error> {
+    match runner {
+        Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Raven => {
+            decanter_runtime::runner::confirm(runner, pin)
+                .await
+                .map_err(|err| Error::Prepare(runner, anyhow::Error::new(err).context("recording the confirmation")))
+        }
+        Runner::Psport | Runner::AnyPs5 => decanter_ps::runner::confirm(root, runner, pin)
+            .await
+            .map_err(|err| Error::Confirm(runner, err)),
     }
 }
 
@@ -125,6 +160,16 @@ pub async fn remove(root: &Root, runner: Runner, pin: &Pin) -> Result<(), Error>
         Pin::Release(_) => Error::RemoveRelease(runner, err),
         Pin::Commit(_) => Error::RemoveBuild(runner, err),
     })
+}
+
+/// The log of the last build of `pin`; `None` for a runner that is only ever downloaded.
+pub fn log_path(root: &Root, runner: Runner, pin: &Pin) -> Option<PathBuf> {
+    match runner {
+        Runner::Umu | Runner::Proton | Runner::GeProton | Runner::Raven => {
+            decanter_runtime::runner::log_path(runner, pin)
+        }
+        Runner::Psport | Runner::AnyPs5 => decanter_ps::runner::log_path(root, runner, pin),
+    }
 }
 
 /// What a preparation of `runner` shows while it runs, and how far along its bar is, where it has

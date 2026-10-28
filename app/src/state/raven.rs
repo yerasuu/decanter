@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
 use decanter_core::runner::{Commit, Pin, Progress, Runner, Stage};
+use decanter_ps::paths;
 use decanter_runtime::runner;
 use futures::StreamExt as _;
 use futures::channel::mpsc;
@@ -16,6 +17,7 @@ use gpui::{App, AppContext as _, AsyncApp, Context, Entity, Global, Task, WeakEn
 
 use super::AppState;
 use crate::i18n::Text;
+use crate::runners;
 
 /// The end of a failed build's log the section shows; the whole of it is in the file.
 const SHOWN_LINES: usize = 12;
@@ -118,7 +120,7 @@ impl Raven {
 
     /// The build log of the pinned commit, where there is a library to keep it in.
     pub fn log_path() -> Option<PathBuf> {
-        runner::raven_pin().and_then(|pin| runner::log_path(Runner::Raven, &pin))
+        runner::raven_pin().and_then(|pin| runners::log_path(&paths::active(), Runner::Raven, &pin))
     }
 
     fn sync_profile(&mut self, cx: &mut Context<Self>) {
@@ -213,14 +215,15 @@ impl Raven {
         self.removing = true;
         self.error = None;
         cx.notify();
+        let root = paths::active();
         cx.spawn(async move |this, cx| {
-            let removed = runner::remove(Runner::Raven, &pin).await;
+            let removed = runners::remove(&root, Runner::Raven, &pin).await;
             let _ = this.update(cx, |this, cx| {
                 this.removing = false;
                 this.log_tail.clear();
                 if let Err(err) = removed {
                     tracing::warn!(%err, "could not remove Raven");
-                    this.error = Some(Text::new("raven.errors.remove_build").arg("error", err));
+                    this.error = Some(err.text());
                 }
                 cx.notify();
             });
@@ -295,9 +298,10 @@ fn notice(outcome: Vec<(String, Result<InstalledGame, Text>)>) -> Option<(Vec<Te
 }
 
 async fn reload(this: &WeakEntity<Raven>, cx: &mut AsyncApp) {
+    let root = paths::active();
     let built = cx
         .background_spawn(async move {
-            let status = runner::status(Runner::Raven);
+            let status = runners::status(&root, Runner::Raven).await;
             let installed = status.installed().iter().find_map(|installed| match &installed.pin {
                 Pin::Commit(commit) => Some(commit.clone()),
                 Pin::Release(_) => None,
@@ -347,18 +351,16 @@ async fn build(this: &WeakEntity<Raven>, pin: &Pin, cx: &mut AsyncApp) {
             let _ = sender.unbounded_send(progress);
         }
     };
-    let built = match runner::confirm(Runner::Raven, pin).await {
-        Ok(()) => runner::prepare(Runner::Raven, pin, &mut report).await,
-        Err(err) => Err(anyhow::Error::new(err).context("recording the confirmation")),
+    let root = paths::active();
+    let built = match runners::confirm(&root, Runner::Raven, pin).await {
+        Ok(()) => runners::prepare(&root, Runner::Raven, pin, &mut report, &mut |_| {}).await,
+        Err(err) => Err(err),
     };
     let (error, log_tail) = match built {
         Ok(_) => (None, Vec::new()),
         Err(err) => {
-            tracing::warn!(error = %format_args!("{err:#}"), "Raven build failed");
-            (
-                Some(Text::new("raven.build.failed").arg("error", format!("{err:#}"))),
-                log_tail().await,
-            )
+            tracing::warn!(error = %err, "Raven build failed");
+            (Some(err.text()), log_tail().await)
         }
     };
     // Reloaded before `building` is cleared: dropping that task is dropping this one.

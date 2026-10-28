@@ -6,12 +6,13 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
-use decanter_core::runner::{Progress, Stage};
+use decanter_core::runner::{Progress, Runner};
 use decanter_ps::process::{Job, State};
 use decanter_runtime::runner;
 use gpui::{AnyElement, App, Context, Div, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use crate::runners;
 use crate::state::{AppState, Raven};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, progress_bar};
@@ -177,38 +178,10 @@ fn confirmation(raven: &Entity<Raven>) -> AnyElement {
 }
 
 fn progress(progress: Option<&Progress>) -> Div {
-    let (text, fraction): (Cow<'static, str>, Option<f64>) = match progress {
-        None => (t!("raven.build.stage.starting"), None),
-        Some(progress) => match (&progress.stage, progress.total) {
-            (Stage::Sources, _) => (t!("raven.build.stage.sources"), None),
-            (Stage::Downloading, Some(total)) => (
-                t!(
-                    "raven.build.stage.downloading_total",
-                    received = crate::format::bytes(progress.received),
-                    total = crate::format::bytes(total)
-                ),
-                Some(progress.received as f64 / total.max(1) as f64),
-            ),
-            (Stage::Downloading, None) => (
-                t!(
-                    "raven.build.stage.downloading",
-                    received = crate::format::bytes(progress.received)
-                ),
-                None,
-            ),
-            // Raven's build never verifies nor assembles anything: those read as the step nearest them.
-            (Stage::Unpacking | Stage::Verifying, _) => (t!("raven.build.stage.unpacking"), None),
-            (Stage::Configuring | Stage::Assembling, _) => (t!("raven.build.stage.configuring"), None),
-            (Stage::Compiling, total) => (
-                t!(
-                    "raven.build.stage.compiling",
-                    done = progress.received,
-                    total = total.unwrap_or_default()
-                ),
-                total.map(|total| progress.received as f64 / total.max(1) as f64),
-            ),
-        },
-    };
+    let (text, fraction) = progress.map_or_else(
+        || (t!("raven.build.stage.starting"), None),
+        |progress| runners::progress(Runner::Raven, progress),
+    );
     div()
         .flex()
         .flex_col()
