@@ -1,7 +1,8 @@
 //! Text search across the attached logs of one scope (a title or a fingerprint). Logs live as encrypted blobs, so a
 //! search costs one read per log: it reads the scope newest first, one log at a time, and stops at
 //! `logs.search_max_logs`, `logs.search_max_mib` or `logs.search_max_matches`, saying which on the page. One search
-//! runs at a time per session (and one for the Bearer key), so a maintainer cannot pile them up against uploads.
+//! runs at a time per account, whether through its sessions or its Bearer key, so a maintainer cannot pile them up
+//! against uploads.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -25,15 +26,13 @@ use crate::store::{LogFilter, LogRow};
 pub const MAX_QUERY_CHARS: usize = 200;
 /// Characters of a matching or context line shown.
 const LINE_CHARS: usize = 500;
-/// The key a Bearer search runs under: the key is one maintainer, like a session.
-const BEARER: Hash = [0; 32];
 
 #[derive(Default)]
 pub struct Searches {
     running: Mutex<HashSet<Hash>>,
 }
 
-/// Holds a session's slot until the search ends, however it ends.
+/// Holds an account's slot until the search ends, however it ends.
 pub struct Running<'a> {
     searches: &'a Searches,
     key: Hash,
@@ -63,8 +62,8 @@ impl Drop for Running<'_> {
 }
 
 #[must_use]
-pub fn session_key(admin: &Admin) -> Hash {
-    admin.csrf.as_deref().map_or(BEARER, |csrf| sha256(csrf.as_bytes()))
+pub fn slot_key(admin: &Admin) -> Hash {
+    sha256(admin.user.as_bytes())
 }
 
 #[derive(Deserialize)]
@@ -242,7 +241,7 @@ pub async fn search(admin: Admin, State(state): State<AppState>, Query(params): 
              no se hace.",
         );
     }
-    let Some(_running) = state.log_searches.try_begin(session_key(&admin)) else {
+    let Some(_running) = state.log_searches.try_begin(slot_key(&admin)) else {
         return busy();
     };
     let needle = query.to_ascii_lowercase();

@@ -2,6 +2,7 @@
 //! `run_update` transaction for each change to reports together with their group and the totals, so the counters
 //! never drift from the reports they count, even when requests race.
 
+mod accounts;
 mod index;
 mod logs;
 mod maintain;
@@ -19,6 +20,11 @@ use s3db::txn_update::{UpdateOp, run_update};
 use s3db::{Backend, Blob, Cipher, Singleton, bootstrap};
 use serde::Serialize;
 
+#[cfg(test)]
+pub use accounts::test_accounts;
+pub use accounts::{
+    AccountStore, Changed as AccountChange, ID_HEX, KEY_PREFIX, NAME_RULE, Role, Roster, User, is_name,
+};
 pub use logs::{LogFilter, LogRow};
 pub use model::Report;
 #[cfg(test)]
@@ -53,39 +59,75 @@ pub const STALE_TRANSACTION: Duration = Duration::from_secs(60);
 const BUCKET_RETRIES: u32 = 3;
 const BUCKET_RETRY_BACKOFF: Duration = Duration::from_millis(100);
 
-/// The `local` driver's directory of one partition.
-pub fn partition_dir(storage: &Storage, product: Product) -> std::path::PathBuf {
-    storage.dir.join(product.name())
+/// One s3db store of the bucket: a product's reports, or the maintainers' accounts. Each has its own encryption
+/// config, opened by the same passphrase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Section {
+    Reports(Product),
+    Accounts,
 }
 
-/// Whether the `local` driver has created this partition's database. Opening a missing one creates it, so the
-/// read-only tools look first. The file name is s3db's (private there, `s3db.redb` at the pinned tag).
-pub fn local_partition_exists(storage: &Storage, product: Product) -> bool {
-    partition_dir(storage, product).join("s3db.redb").is_file()
-}
+impl Section {
+    pub const ALL: [Self; 3] = [
+        Self::Reports(Product::Decanter),
+        Self::Reports(Product::Psport),
+        Self::Accounts,
+    ];
 
-/// The key prefix of one partition in an S3 bucket: the optional common root, then the product.
-pub fn partition_prefix(storage: &Storage, product: Product) -> String {
-    if storage.prefix.is_empty() {
-        product.name().to_owned()
-    } else {
-        format!("{}/{}", storage.prefix, product.name())
+    /// The directory or key prefix, and the name in messages.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Reports(product) => product.name(),
+            Self::Accounts => "accounts",
+        }
     }
 }
 
-/// The backend of `product`'s partition, built from `credentials`. The S3 drivers get the key prefix and transport
+impl From<Product> for Section {
+    fn from(product: Product) -> Self {
+        Self::Reports(product)
+    }
+}
+
+/// The `local` driver's directory of one section.
+pub fn partition_dir(storage: &Storage, section: impl Into<Section>) -> std::path::PathBuf {
+    storage.dir.join(section.into().name())
+}
+
+/// Whether the `local` driver has created this section's database. Opening a missing one creates it, so the
+/// read-only tools look first. The file name is s3db's (private there, `s3db.redb` at the pinned tag).
+pub fn local_partition_exists(storage: &Storage, section: impl Into<Section>) -> bool {
+    partition_dir(storage, section).join("s3db.redb").is_file()
+}
+
+/// The key prefix of one section in an S3 bucket: the optional common root, then the section.
+pub fn partition_prefix(storage: &Storage, section: impl Into<Section>) -> String {
+    let name = section.into().name();
+    if storage.prefix.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{}/{name}", storage.prefix)
+    }
+}
+
+/// The backend of one section, built from `credentials`. The S3 drivers get the key prefix and transport
 /// retries only: s3db's full resilience stack journals writes on local disk, and the server keeps no local state
 /// with them.
 ///
 /// # Errors
 ///
 /// The driver refuses its parameters (an `http://` endpoint without `allow_insecure_http`, say).
-pub fn connect(storage: &Storage, credentials: &StorageCredentials, product: Product) -> Result<Arc<dyn Backend>> {
+pub fn connect(
+    storage: &Storage,
+    credentials: &StorageCredentials,
+    section: impl Into<Section>,
+) -> Result<Arc<dyn Backend>> {
+    let section = section.into();
     let (access_key_id, secret_access_key) = credentials.bucket_keys.clone().unwrap_or_default();
     let config = match storage.driver {
         Driver::Local => {
             return s3db::build_backend(&s3db::BackendConfig::Local(s3db::LocalParams {
-                bucket: partition_dir(storage, product).to_string_lossy().into_owned(),
+                bucket: partition_dir(storage, section).to_string_lossy().into_owned(),
                 engine: s3db::LocalEngine::Redb,
             }));
         }
@@ -107,7 +149,7 @@ pub fn connect(storage: &Storage, credentials: &StorageCredentials, product: Pro
     };
     let backend = Arc::new(Prefixed::new(
         s3db::build_backend(&config)?,
-        &partition_prefix(storage, product),
+        &partition_prefix(storage, section),
     ));
     Ok(Arc::new(s3db::RetryBackend::new(
         backend,
@@ -139,17 +181,22 @@ pub async fn probe(backend: &dyn Backend, passphrase: &str) -> Result<bool> {
     Ok(true)
 }
 
-/// Whether the partition already has its encryption config. Creates nothing: a local partition that does not exist
-/// is not opened, and a bucket is only read.
+/// Whether the section already has its encryption config. Creates nothing: a local section that does not exist is
+/// not opened, and a bucket is only read.
 ///
 /// # Errors
 ///
 /// The driver refuses its parameters or the bucket cannot be read.
-pub async fn is_initialised(storage: &Storage, credentials: &StorageCredentials, product: Product) -> Result<bool> {
-    if storage.driver == Driver::Local && !local_partition_exists(storage, product) {
+pub async fn is_initialised(
+    storage: &Storage,
+    credentials: &StorageCredentials,
+    section: impl Into<Section>,
+) -> Result<bool> {
+    let section = section.into();
+    if storage.driver == Driver::Local && !local_partition_exists(storage, section) {
         return Ok(false);
     }
-    let backend = connect(storage, credentials, product)?;
+    let backend = connect(storage, credentials, section)?;
     let (_, etag) = backend.get(bootstrap::ENCRYPTION_META_KEY).await?;
     Ok(etag.is_some())
 }

@@ -1,24 +1,56 @@
 # Maintainer runbook
 
-Commands for the person running the server. `B` is the base URL, `A` the admin header. There is no admin key to
-configure: admin accounts and their keys arrive with #1153, and until an admin account exists every `/admin` route
-answers 404 to everyone and the log repeats hourly `no admin accounts: admin access is disabled until an admin
-account exists`. Without a valid key every `/admin` route answers 404; an address that fails the key (or a delete code) `failures_per_ip` times in
+Commands for the people running the server. `B` is the base URL, `A` the admin header. Every maintainer has an
+account and a key of their own ("Maintainer accounts" below); there is no key in the configuration. Without a valid
+key every `/admin` route answers 404; an address that fails a key (or a delete code) `failures_per_ip` times in
 `failure_window_secs` gets 429 on all `/admin/` paths until the window passes.
 
 ```sh
 B=https://reports.example.org            # or http://127.0.0.1:8787 on the host
-A="Authorization: Bearer $KEY"             # KEY: an admin account's key (#1153)
+A="Authorization: Bearer $KEY"             # KEY: your account's key, drk_<8 hex>_<64 hex>
 ```
+
+## Maintainer accounts
+
+Accounts live encrypted in the bucket (`accounts/`) and are managed with the binary, with the server's own
+configuration and secrets. Under Compose prefix each command with `docker compose run --rm --no-deps
+decanter-reports`; under systemd run it as root with the credential overrides of `--check-config`
+(`docs/deploy.md`). With the `local` driver the server must be stopped first (the command says so when the
+database is locked); with `s3` or `r2` it may keep running.
+
+```sh
+decanter-reports user add ana --role viewer     # prints ana's key once on stdout; give it to her privately
+decanter-reports user list                      # name, role, created, last login, state; never a key or hash
+decanter-reports user role ana --role admin     # viewer or admin
+decanter-reports user reset ana                 # a new key, printed once; the old one stops working
+decanter-reports user remove ana
+```
+
+A name is 1 to 32 characters among `a-z`, `0-9` and `-`, and unique. Only `add` and `reset` write to standard output,
+and only the key, so `KEY=$(decanter-reports user add ...)` captures it whole; the key is never logged and the
+server keeps only its SHA-256. `remove` and `role` refuse to leave no admin. The server re-reads the accounts every
+15 s: a new account works at once, and after `remove`, `reset` or `role` the old key and the sessions opened with it
+(or, for `role`, their rights) change within 15 s, without a restart.
+
+- **`viewer`** reads everything under `/admin`: the lists, the rows, attachments, the log viewer, search and diff.
+  Its page shows no buttons; a change it sends answers 403 `{"error":"role"}`.
+- **`admin`** also hides, restores, resolves and deletes.
+
+**Lost key.** Of one person: an admin runs `user reset <name>` and hands over the new key. Of every admin: whoever
+holds the configuration and secrets (`.env`, or the credential files) runs `user add <new name> --role admin`, then
+removes or resets the old accounts. **Lost passphrase:** the bucket, accounts included, is unreadable; there is no
+recovery.
 
 ## In a browser
 
 Open `$B/admin/login`, paste the key and send: the server sets the session cookie and opens `/admin`, the list with
 filters (product, title, received day, fingerprint, page) and, per report, buttons to hide or restore, resolve and
 delete (delete asks for its checkbox first). Filtering by a fingerprint adds the same buttons for the whole group.
-"Cerrar sesión" ends the session. A session ends after `admin.session_idle_secs` (30 min) without a request, after
-`admin.session_max_secs` (8 h) in any case, when a login past `admin.max_sessions` (16) pushes it out, and on every
-restart of the server; then any `/admin` page answers the plain 404: go back to `/admin/login`. Those 404s count
+A viewer gets the same page without the buttons. The page says whose session it is ("Sesión de ana (lectura)" or
+"(administración)"). "Cerrar sesión" ends the session. A session ends after `admin.session_idle_secs` (30 min) without
+a request, after `admin.session_max_secs` (8 h) in any case, when the same account logs in past
+`admin.max_sessions_per_user` (4) or, past `admin.max_sessions` (16), the account holding the most sessions does, when
+its account is removed or its key reset, and on every restart of the server; then any `/admin` page answers the plain 404: go back to `/admin/login`. Those 404s count
 against the failure budget like a wrong key, so do not reload an expired page in a loop.
 
 The cookie is `Secure`: a browser returns it only over HTTPS, so through the public URL it works behind the tunnel
@@ -51,7 +83,7 @@ the session or the key. Logs of hidden reports are not listed there; download th
   lines with two lines around, each linked to its line in the log. A search needs a title or a fingerprint; it
   reads at most `logs.search_max_logs` (50) logs, `logs.search_max_mib` (64) MiB and shows at most
   `logs.search_max_matches` (500) lines, and says "La búsqueda paró en el tope…: buscados N de M logs" when a cap
-  cut it: add a day, a kind or a product to see the rest. One search at a time per session (429 otherwise).
+  cut it: add a day, a kind or a product to see the rest. One search at a time per account (429 otherwise).
 - **Compare two runs.** In the list, pick A and B on two rows and "Comparar A con B", or on a log page enter the
   other id, or `/admin/logs/diff?a=$A&b=$B&normalize=1`. Changed (`~`), removed from A (`−`) and added in B (`+`)
   lines show with the line numbers of both logs and the counts on top; equal stretches fold to three lines of
@@ -178,8 +210,10 @@ Layout of each partition: `reports/<id>.json`, `groups/<fingerprint>.json`, `met
 
 ## What to watch
 
-The log has no addresses, codes or report contents, only counts; storage lines name their partition
-(`product="decanter"` or `"psport"`). With `journalctl -u decanter-reports`:
+The log has no addresses, codes, keys or report contents, only counts; storage lines name their partition
+(`product="decanter"` or `"psport"`), and every line of an admin request names the account and its role
+(`admin{user=ana role=viewer}: ...`, and `user=` / `role=` on the session lines). With
+`journalctl -u decanter-reports`:
 
 | Look for | Means |
 |---|---|
@@ -190,6 +224,9 @@ The log has no addresses, codes or report contents, only counts; storage lines n
 | `shutdown grace elapsed` | connections were cut at restart |
 | `loose permissions narrowed` | something widened the local driver's directory; find out what |
 | `stale transactions recovered` | a transaction was cut off; repeated lines mean the bucket is failing |
+| `no admin account` (hourly) | nobody can change reports; create one with `user add <name> --role admin` |
+| `account refresh failed` | the accounts could not be re-read; the server keeps the previous list until it can |
+| `admin session ended: account removed, disabled or given a new key` | a `user remove` or `user reset` took effect |
 | `retention sweep` with `orphans` or `repaired` above 0 | leftovers of failed writes cleaned up; a steady stream means writes keep failing halfway |
 | `report rejected` counts | uploads failing validation: a client bug or probing |
 | `stored clean log refused by the validator` | a stored clean log no longer passes the crate's rules (a vocabulary change, or tampering in the bucket); its page answers 500 and shows nothing |

@@ -47,8 +47,8 @@ bodies are capped in size and read time.
 
 All state lives in one S3-compatible bucket through [s3db](https://git.yerasuu.com/yerasuu/s3db): reports, groups,
 counters and the private attachments, every object encrypted under a key derived from a passphrase. The bucket is
-split by product (#1055): every key the server writes is under `decanter/` or `psport/` (each an s3db store of its
-own), behind the optional root `prefix`. The owner's bucket is a MinIO (or similar) on the home server. Create a
+split by product (#1055): every report key the server writes is under `decanter/` or `psport/`, and the maintainers'
+accounts are under `accounts/` (#1153), each an s3db store of its own, behind the optional root `prefix`. The owner's bucket is a MinIO (or similar) on the home server. Create a
 bucket of its own and a user that can reach only that bucket, with the MinIO client (`mc`; check the commands against
 the version installed):
 
@@ -72,8 +72,8 @@ mc admin policy attach home decanter-reports --user decanter-reports
 
 The user name is the access key id and the generated password the secret access key; write both into the credential
 files below and nowhere else. The server needs `ListBucket` (every list is a prefix listing) and get, put and delete
-on the objects; nothing else. `decanter-reports/*` covers both partitions, `decanter-reports/decanter/*` and
-`decanter-reports/psport/*`. s3db writes with conditional requests (`If-Match`, `If-None-Match`), which MinIO
+on the objects; nothing else. `decanter-reports/*` covers the three stores, `decanter-reports/decanter/*`,
+`decanter-reports/psport/*` and `decanter-reports/accounts/*`. s3db writes with conditional requests (`If-Match`, `If-None-Match`), which MinIO
 supports.
 
 - **Addressing.** `path_style = true` (`https://minio:9000/bucket/key`) unless MinIO answers on wildcard DNS
@@ -83,21 +83,25 @@ supports.
   (`rustls-native-certs`), so a private CA must be installed there. A plain `http://` endpoint is refused unless
   `allow_insecure_http = true`, which is only for MinIO on the same host.
 - **Region.** MinIO accepts any; `us-east-1` is the usual value.
-- **Partitions.** Without a root prefix the keys are `decanter/...` and `psport/...`. Each partition holds its own
-  s3db bookkeeping: `decanter/.conf/encryption.json` and `psport/.conf/encryption.json` (a salt and the data key
-  wrapped by the passphrase; both written by the first start, from the same passphrase) and each one's transaction
-  records under `<partition>/.conf/txn-update`. Nothing is written at the bucket's top level.
-- **Root prefix.** On a bucket shared with something else, `prefix = "decanter-reports"` puts both partitions under
-  it (`decanter-reports/decanter/`, `decanter-reports/psport/`); then restrict the policy to the two of them:
+- **Stores.** Without a root prefix the keys are `decanter/...`, `psport/...` and `accounts/...`. Each store holds
+  its own s3db bookkeeping: `<store>/.conf/encryption.json` (a salt and the data key wrapped by the passphrase;
+  written by the first start, or for `accounts/` by the first `user add` if that comes first, always from the same
+  passphrase) and its transaction records under `<store>/.conf/txn-update`. Nothing is written at the bucket's top
+  level.
+- **Root prefix.** On a bucket shared with something else, `prefix = "decanter-reports"` puts the three stores under
+  it (`decanter-reports/decanter/`, `decanter-reports/psport/`, `decanter-reports/accounts/`); then restrict the
+  policy to them:
 
   ```json
   { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::<bucket>"],
-    "Condition": {"StringLike": {"s3:prefix": ["decanter-reports/decanter/*", "decanter-reports/psport/*"]}} },
+    "Condition": {"StringLike": {"s3:prefix": ["decanter-reports/decanter/*", "decanter-reports/psport/*",
+      "decanter-reports/accounts/*"]}} },
   { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-    "Resource": ["arn:aws:s3:::<bucket>/decanter-reports/decanter/*", "arn:aws:s3:::<bucket>/decanter-reports/psport/*"] }
+    "Resource": ["arn:aws:s3:::<bucket>/decanter-reports/decanter/*", "arn:aws:s3:::<bucket>/decanter-reports/psport/*",
+      "arn:aws:s3:::<bucket>/decanter-reports/accounts/*"] }
   ```
 
-  Without a root prefix on a shared bucket, the same policy names `decanter/*` and `psport/*`. Neither layout can be
+  Without a root prefix on a shared bucket, the same policy names `decanter/*`, `psport/*` and `accounts/*`. Neither layout can be
   decrypted by `s3db-inspect` (it knows no prefix); `decanter-reports inspect` can (`docs/runbook.md`).
 - **Quota.** A bucket quota (`mc quota set home/decanter-reports --size 20GiB`) bounds what a flood can take. The
   caps apply per partition, so size it for twice `max_reports` reports (64 KiB each at most, plus small index
@@ -114,11 +118,11 @@ decanter-reports secret > /etc/decanter-reports/storage.passphrase   # 64 hex ch
 fresh empty volume would otherwise give a second key to a bucket that already has one. Serving without a passphrase
 stops with an error that names `secret`.
 
-The first start writes each partition's encryption config (`decanter/.conf/encryption.json` and
-`psport/.conf/encryption.json`: a salt and the data key wrapped by a key derived from the passphrase with Argon2id),
-both from this one passphrase. The server never creates one partition's encryption while the other partition is
-initialized and the passphrase does not open it: the start stops naming that partition, and `--check-config` says
-so on the uninitialized one's line. **Losing the passphrase makes the whole bucket unreadable**: there
+The first start writes each store's encryption config (`decanter/.conf/encryption.json`,
+`psport/.conf/encryption.json` and `accounts/.conf/encryption.json`: a salt and the data key wrapped by a key derived
+from the passphrase with Argon2id), all from this one passphrase. Neither the server nor a `user` command ever
+creates one store's encryption while another store is initialized and the passphrase does not open it: they stop
+naming that store, and `--check-config` says so on the uninitialized ones' lines. **Losing the passphrase makes the whole bucket unreadable**: there
 is no recovery and no back door. Keep a copy offline (a password manager, paper in a safe), apart from the bucket's
 backups. Changing it later is s3db's `bootstrap::change_passphrase` on each partition, which rewraps the data key
 without re-encrypting the objects; this server has no command for it yet.
@@ -148,8 +152,9 @@ DECANTER_REPORTS_SECRET_ACCESS_KEY_FILE=/etc/decanter-reports/s3.secret_access_k
 `LoadCredential=` lines provide. Any other secret file is refused when group or others can read it (mode `& 0o077`);
 a secret from `$CREDENTIALS_DIRECTORY` or from an environment variable is not mode-checked. Run `--check-config` as
 root for the check above (the overrides replace the credential paths). It prints no secret, and one line per
-partition: it reads that partition's `.conf/encryption.json` once and says whether it is reachable, whether it is
-initialized, and whether the passphrase opens it. It writes nothing; a failing partition makes it exit non-zero.
+store: it reads that store's `.conf/encryption.json` once and says whether it is reachable, whether it is
+initialized, and whether the passphrase opens it; the `accounts` line also counts the admins and viewers and warns
+when there is no admin. It writes nothing; a failing store makes it exit non-zero (a missing admin does not).
 Outside a container it also warns when a secret comes from an environment variable (every process of the same user
 can read a process's environment); inside one (`/.dockerenv` or `/run/.containerenv` present) it does not.
 
@@ -157,17 +162,32 @@ can read a process's environment); inside one (`/.dockerenv` or `/run/.container
 config ok: listening on 127.0.0.1:8787
 partition decanter: bucket decanter-reports at https://minio.example.lan:9000, prefix decanter/: reachable, the passphrase opens it
 partition psport: bucket decanter-reports at https://minio.example.lan:9000, prefix psport/: reachable, not initialized yet (the first start creates its encryption)
+accounts: bucket decanter-reports at https://minio.example.lan:9000, prefix accounts/: reachable, the passphrase opens it; 1 admin, 2 viewers
 ```
 
-There is no admin credential to configure: admin accounts arrive with #1153, and until one exists `/admin` answers
-the same 404 as an unknown path to everyone, and the log repeats hourly `no admin accounts: admin access is disabled
-until an admin account exists`.
+### The first admin
+
+There is no admin credential in the configuration: maintainers are accounts in the bucket, managed with the binary
+(`docs/runbook.md`, "Maintainer accounts"). Until an admin account exists nobody can change reports (with no account
+at all `/admin` answers everyone the 404 of an unknown path), and the log repeats hourly `no admin account: ...
+create one with decanter-reports user add <name> --role admin`. Create the first one with the same configuration and
+secrets as the server; with Compose, which needs no shell in the image:
+
+```sh
+docker compose run --rm --no-deps decanter-reports user add owner --role admin
+```
+
+It prints the key, `drk_<8 hex>_<64 hex>`, once on standard output and nothing else there; the server keeps only its
+SHA-256. Keep it in a password manager: it is the login at `/admin/login` ("Clave de acceso") and the Bearer key for
+scripts. A running server sees the new account at once (and every change within 15 s). Under systemd run
+`decanter-reports user add owner --role admin` as root with the credential overrides of `--check-config` above.
 
 With `driver = "local"` (development, or a single host without MinIO) each partition is one database file, in
 `storage.dir/decanter` and `storage.dir/psport`, created `0700` (a looser existing directory is narrowed with a
 warning in the log); the process sets umask `077`, so the files are `0600`. The passphrase is still required: the
 local files are encrypted the same way. `--check-config` does not open a local partition the server has not created
-yet, and needs the server stopped (the database file is locked while it runs).
+yet, and needs the server stopped (the database file is locked while it runs), and so does every `user` command:
+it says so when the database is locked. The accounts are in `storage.dir/accounts`.
 
 ## systemd
 
@@ -346,15 +366,17 @@ image digests are placeholders to fill in before the first release.
 
 ## Before exposing it
 
-- `--check-config` passes without warnings, and `curl .../admin/reports` answers the same 404 as an unknown path
-  (until admin accounts exist, #1153, with or without a Bearer key).
+- `--check-config` passes without warnings, its `accounts` line counts at least one admin, and `curl
+  .../admin/reports` answers the same 404 as an unknown path without a Bearer key and 200 with an admin's key.
+- A viewer's key opens `/admin` read-only: a hide answers 403 `{"error":"role"}`. After `user remove` or `user reset`,
+  the old key and its sessions answer the plain 404 within 15 s.
 - `public_url` is the exact `https://` address the browser shows (the admin session's origin check compares it), and
   a login through the tunnel at `<public_url>/admin/login` opens `/admin`; after a restart of the service the same
   browser gets the plain 404 on `/admin` (sessions live in memory only).
 - A valid report is accepted and one with a private path is refused with 422 (see README, "Try it").
 - The forged-header test in the requirements above passes through the real tunnel.
 - A burst of `GET /` from one address ends in 429 with `Retry-After` while `GET /healthz` still answers 200.
-- `--check-config` says both partitions are reachable and the passphrase opens them; the passphrase has an offline
+- `--check-config` says the three stores are reachable and the passphrase opens them; the passphrase has an offline
   copy.
 - The bucket quota leaves room for twice `max_reports` (64 KiB each at most) plus twice `max_attachments` (5 MiB each
   at most): the caps are per partition.

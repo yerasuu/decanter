@@ -1,7 +1,8 @@
-//! Browser sessions of the maintainer: login with an admin key, a `__Host-` cookie, a CSRF token per session, and
-//! the gate that lets an `/admin` request through with either a valid Bearer key or a valid session.
+//! Browser sessions of the maintainers: login with an account's key, a `__Host-` cookie, a CSRF token per session,
+//! and the gate that lets an `/admin` request through with either a valid Bearer key or a valid session, carrying
+//! who made it and with which role.
 //!
-//! Sessions live in memory only, so a restart logs every maintainer out. Neither the key, a session id nor a CSRF
+//! Sessions live in memory only, so a restart logs every maintainer out. Neither a key, a session id nor a CSRF
 //! token is ever logged; ids are kept only as their SHA-256.
 
 use std::collections::HashMap;
@@ -19,12 +20,15 @@ use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
+use tracing::Instrument as _;
 
+use crate::accounts::Identity;
 use crate::app::{AppState, api_error, internal, not_found};
 use crate::config::{AdminSessions, Config};
 use crate::html::layout;
 use crate::limits::client_ip;
 use crate::secrets::{Hash, is_hex_token, matches, random_hex_256, sha256};
+use crate::store::Role;
 
 pub const LOGIN_PATH: &str = "/admin/login";
 const COOKIE_NAME: &str = "__Host-session";
@@ -35,10 +39,12 @@ const TOKEN_HEX: usize = 64;
 /// Admin forms carry a token and a return path, nothing more; a larger body is not one of them.
 const MAX_FORM_BYTES: usize = 4096;
 
-/// Proof that the gate let the request through. `csrf` is the session's token when a session authenticated it, for
-/// the forms a page renders; a Bearer request has none.
+/// Proof that the gate let the request through, and whose request it is. `user` is the account's name; `csrf` is
+/// the session's token when a session authenticated it, for the forms a page renders; a Bearer request has none.
 #[derive(Clone)]
 pub struct Admin {
+    pub user: String,
+    pub role: Role,
     pub csrf: Option<String>,
 }
 
@@ -50,7 +56,44 @@ impl FromRequestParts<AppState> for Admin {
     }
 }
 
+/// Proof that the account may change reports: the gate inserts it for the `admin` role only, and every handler that
+/// hides, restores, resolves or deletes takes it, so one that forgot the check would not compile. Built nowhere
+/// else, hence the private field.
+#[derive(Clone)]
+pub struct CanChange(());
+
+const READ_ONLY: &str = "Tu cuenta es de solo lectura: no puede ocultar, resolver ni borrar.";
+
+/// A viewer's change answers 403 (it is a known account, so the uniform 404 would only confuse it): JSON for a
+/// tool, a page for a form.
+fn role_refused(parts: &Parts) -> Response {
+    let is_form = parts
+        .headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/x-www-form-urlencoded"));
+    if !is_form {
+        return forbidden("role");
+    }
+    let body = format!("<p>{READ_ONLY}</p><p><a href=\"/admin\">Volver</a></p>");
+    (StatusCode::FORBIDDEN, Html(layout("Administración", &body))).into_response()
+}
+
+impl FromRequestParts<AppState> for CanChange {
+    type Rejection = Response;
+
+    fn from_request_parts(parts: &mut Parts, _: &AppState) -> impl Future<Output = Result<Self, Response>> + Send {
+        let outcome = match (parts.extensions.get::<Self>(), parts.extensions.get::<Admin>()) {
+            (Some(proof), _) => Ok(proof.clone()),
+            (None, Some(_)) => Err(role_refused(parts)),
+            (None, None) => Err(not_found()),
+        };
+        std::future::ready(outcome)
+    }
+}
+
 struct Session {
+    identity: Identity,
     csrf: String,
     csrf_hash: Hash,
     created: Instant,
@@ -59,6 +102,7 @@ struct Session {
 
 /// A live session as the gate needs it.
 struct Live {
+    identity: Identity,
     csrf: String,
     csrf_hash: Hash,
 }
@@ -67,32 +111,8 @@ pub struct Sessions {
     idle: Duration,
     max_age: Duration,
     cap: usize,
+    per_user: usize,
     by_id_hash: Mutex<HashMap<Hash, Session>>,
-}
-
-/// The keys that open `/admin`, kept as SHA-256. Nothing fills it until admin accounts exist (#1153), so until then
-/// every key matches nothing and `/admin` answers the uniform 404 to everyone.
-#[derive(Default)]
-pub struct AdminKeys(Vec<Hash>);
-
-impl AdminKeys {
-    #[cfg(test)]
-    pub fn single(key: &str) -> Self {
-        Self(vec![sha256(key.as_bytes())])
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Every stored hash is compared, so the time taken does not say which one matched.
-    fn matches(&self, candidate: &[u8]) -> bool {
-        let mut found = false;
-        for hash in &self.0 {
-            found |= matches(hash, candidate);
-        }
-        found
-    }
 }
 
 const NO_ADMINS_EVERY: Duration = Duration::from_hours(1);
@@ -100,11 +120,43 @@ const NO_ADMINS_EVERY: Duration = Duration::from_hours(1);
 /// Repeats in the log, hourly, why `/admin` refuses everyone, since the 404 itself must not say so.
 pub async fn warn_without_admins(state: AppState) {
     loop {
-        if state.admin_keys.is_empty() {
-            tracing::warn!("no admin accounts: admin access is disabled until an admin account exists");
+        if !state.accounts.has_admin() {
+            tracing::warn!(
+                "no admin account: nobody can hide, resolve or delete reports, and without any account /admin \
+                 refuses everyone; create one with `decanter-reports user add <name> --role admin`"
+            );
         }
         tokio::time::sleep(NO_ADMINS_EVERY).await;
     }
+}
+
+/// The session to end so a new one fits: within its own user past the per-user cap, else the oldest session of
+/// whoever holds the most, so one person's logins never end another's while others hold fewer.
+fn eviction(sessions: &HashMap<Hash, Session>, user: &str, per_user: usize, cap: usize) -> Option<Hash> {
+    let oldest_of = |id: &str| {
+        sessions
+            .iter()
+            .filter(|(_, session)| session.identity.id == id)
+            .min_by_key(|(_, session)| session.created)
+            .map(|(key, _)| *key)
+    };
+    let own = sessions.values().filter(|session| session.identity.id == user).count();
+    if own >= per_user {
+        return oldest_of(user);
+    }
+    if sessions.len() < cap {
+        return None;
+    }
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for session in sessions.values() {
+        *counts.entry(session.identity.id.as_str()).or_default() += 1;
+    }
+    let busiest = counts.values().copied().max().unwrap_or_default();
+    sessions
+        .values()
+        .filter(|session| counts.get(session.identity.id.as_str()) == Some(&busiest))
+        .min_by_key(|session| session.created)
+        .and_then(|session| oldest_of(&session.identity.id))
 }
 
 impl Sessions {
@@ -114,6 +166,7 @@ impl Sessions {
             idle: Duration::from_secs(settings.session_idle_secs.into()),
             max_age: Duration::from_secs(settings.session_max_secs.into()),
             cap: settings.max_sessions as usize,
+            per_user: settings.max_sessions_per_user as usize,
             by_id_hash: Mutex::new(HashMap::new()),
         }
     }
@@ -123,15 +176,17 @@ impl Sessions {
             && now.saturating_duration_since(session.created) < self.max_age
     }
 
-    /// Opens a session and answers its id; past the cap the session created first is ended.
+    /// Opens a session for `identity` and answers its id. Past `max_sessions_per_user` that user's oldest session
+    /// ends; past `max_sessions` the oldest of whoever holds the most.
     ///
     /// # Errors
     ///
     /// The operating system's random source is unavailable.
-    pub fn open(&self, now: Instant) -> Result<String, getrandom::Error> {
+    pub fn open(&self, identity: &Identity, now: Instant) -> Result<String, getrandom::Error> {
         let id = random_hex_256()?;
         let csrf = random_hex_256()?;
         let session = Session {
+            identity: identity.clone(),
             csrf_hash: sha256(csrf.as_bytes()),
             csrf,
             created: now,
@@ -139,22 +194,20 @@ impl Sessions {
         };
         let mut sessions = self.by_id_hash.lock().unwrap_or_else(PoisonError::into_inner);
         sessions.retain(|_, session| self.is_alive(session, now));
-        let mut evicted = 0_usize;
-        while sessions.len() >= self.cap {
-            let Some(oldest) = sessions
-                .iter()
-                .min_by_key(|(_, session)| session.created)
-                .map(|(key, _)| *key)
-            else {
-                break;
-            };
-            sessions.remove(&oldest);
-            evicted += 1;
+        let mut ended = Vec::new();
+        while let Some(key) = eviction(&sessions, &identity.id, self.per_user, self.cap) {
+            if let Some(gone) = sessions.remove(&key) {
+                ended.push(gone.identity);
+            }
         }
         sessions.insert(sha256(id.as_bytes()), session);
         drop(sessions);
-        if evicted > 0 {
-            tracing::info!(evicted, "admin sessions at max_sessions: oldest ended");
+        for gone in ended {
+            tracing::info!(
+                user = %gone.name,
+                role = %gone.role.name(),
+                "admin session ended: max_sessions_per_user or max_sessions reached"
+            );
         }
         Ok(id)
     }
@@ -166,12 +219,38 @@ impl Sessions {
         let live = sessions.get_mut(&sha256(id.as_bytes())).map(|session| {
             session.last_seen = now;
             Live {
+                identity: session.identity.clone(),
                 csrf: session.csrf.clone(),
                 csrf_hash: session.csrf_hash,
             }
         });
         drop(sessions);
         live
+    }
+
+    /// Ends the sessions whose account `current` no longer knows as active with the generation they opened with,
+    /// and gives the rest their account's present role, so a role change applies without a new login.
+    pub fn revalidate(&self, current: impl Fn(&str) -> Option<(Role, u32)>) {
+        let mut ended = Vec::new();
+        let mut sessions = self.by_id_hash.lock().unwrap_or_else(PoisonError::into_inner);
+        sessions.retain(|_, session| match current(&session.identity.id) {
+            Some((role, generation)) if generation == session.identity.generation => {
+                session.identity.role = role;
+                true
+            }
+            _ => {
+                ended.push(session.identity.clone());
+                false
+            }
+        });
+        drop(sessions);
+        for gone in ended {
+            tracing::info!(
+                user = %gone.name,
+                role = %gone.role.name(),
+                "admin session ended: account removed, disabled or given a new key"
+            );
+        }
     }
 
     fn close(&self, id: &str) -> bool {
@@ -186,6 +265,16 @@ impl Sessions {
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.by_id_hash.lock().unwrap_or_else(PoisonError::into_inner).len()
+    }
+
+    #[cfg(test)]
+    pub fn of_user(&self, name: &str) -> usize {
+        self.by_id_hash
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .filter(|session| session.identity.name == name)
+            .count()
     }
 }
 
@@ -206,13 +295,13 @@ fn session_cookie(headers: &HeaderMap) -> Option<&str> {
         .filter(|value| is_hex_token(value, TOKEN_HEX))
 }
 
-fn bearer_matches(state: &AppState, headers: &HeaderMap) -> bool {
+fn bearer_key(headers: &HeaderMap) -> Option<&str> {
     headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split_once(' '))
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-        .is_some_and(|(_, key)| state.admin_keys.matches(key.trim().as_bytes()))
+        .map(|(_, key)| key.trim())
 }
 
 /// `scheme://authority` of an absolute http(s) URL, lowercased; `None` for anything else, `null` included.
@@ -327,6 +416,22 @@ fn no_store(response: &mut Response) {
     headers.insert(REFERRER_POLICY, HeaderValue::from_static("same-origin"));
 }
 
+/// Hands the handlers who the request is from: [`Admin`] always, [`CanChange`] for the `admin` role only. Every
+/// log line of the request carries the account's name and role through the span it runs in.
+async fn admitted(request: Request, next: Next, identity: &Identity, csrf: Option<String>) -> Response {
+    let mut request = request;
+    let span = tracing::info_span!("admin", user = %identity.name, role = %identity.role.name());
+    if identity.role == Role::Admin {
+        request.extensions_mut().insert(CanChange(()));
+    }
+    request.extensions_mut().insert(Admin {
+        user: identity.name.clone(),
+        role: identity.role,
+        csrf,
+    });
+    next.run(request).instrument(span).await
+}
+
 /// Lets an `/admin` request through with a valid Bearer key (unchanged, no CSRF) or a valid session cookie; with a
 /// session every method but GET and HEAD also needs a same-origin `Origin` and the session's CSRF token, from the
 /// `X-CSRF-Token` header or the `csrf` form field. With neither credential, every path under `/admin` except the
@@ -338,9 +443,10 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
         return next.run(request).await;
     }
     let now = Instant::now();
-    if bearer_matches(&state, request.headers()) {
-        request.extensions_mut().insert(Admin { csrf: None });
-        return next.run(request).await;
+    if let Some(key) = bearer_key(request.headers())
+        && let Some(identity) = state.accounts.verify(key).await
+    {
+        return admitted(request, next, &identity, None).await;
     }
     let live = session_cookie(request.headers()).and_then(|id| state.sessions.touch(id, now));
     let Some(live) = live else {
@@ -376,10 +482,7 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
         return_to = field("return").filter(|path| safe_return(path));
         request = Request::from_parts(parts, Body::from(body));
     }
-    request.extensions_mut().insert(Admin {
-        csrf: Some(live.csrf.clone()),
-    });
-    let mut response = next.run(request).await;
+    let mut response = admitted(request, next, &live.identity, Some(live.csrf.clone())).await;
     if let Some(path) = return_to.filter(|_| response.status() == StatusCode::NO_CONTENT)
         && let Ok(location) = HeaderValue::from_str(&path)
     {
@@ -403,7 +506,7 @@ fn cookie(value: &str, max_age: u64) -> Option<HeaderValue> {
 
 pub async fn login_form() -> Response {
     let body = format!(
-        "<form method=\"post\" action=\"{LOGIN_PATH}\"><label>Clave de administración\
+        "<form method=\"post\" action=\"{LOGIN_PATH}\"><label>Clave de acceso\
          <input type=\"password\" name=\"key\" autocomplete=\"current-password\" required></label>\
          <button type=\"submit\">Entrar</button></form>"
     );
@@ -412,7 +515,8 @@ pub async fn login_form() -> Response {
     response
 }
 
-/// A wrong key, a missing one and a cross-site post all answer the uniform 404 and count as a failure.
+/// A wrong key, a missing one, a disabled or removed account and a cross-site post all answer the uniform 404 and
+/// count as a failure.
 pub async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -428,11 +532,15 @@ pub async fn login(
     } else {
         None
     };
-    if !key.is_some_and(|key| state.admin_keys.matches(key.trim().as_bytes())) {
+    let identity = match key {
+        Some(key) => state.accounts.verify(key.trim()).await,
+        None => None,
+    };
+    let Some(identity) = identity else {
         record_failure(&state, &parts.headers, Some(peer), now);
         return not_found();
-    }
-    let id = match state.sessions.open(now) {
+    };
+    let id = match state.sessions.open(&identity, now) {
         Ok(id) => id,
         Err(error) => return internal("session_open", &error),
     };
@@ -442,7 +550,8 @@ pub async fn login(
         response.headers_mut().insert(SET_COOKIE, value);
     }
     no_store(&mut response);
-    tracing::info!("admin session opened");
+    state.accounts.record_login(&identity.id).await;
+    tracing::info!(user = %identity.name, role = %identity.role.name(), "admin session opened");
     response
 }
 
@@ -471,14 +580,28 @@ mod tests {
             session_idle_secs: idle,
             session_max_secs: max,
             max_sessions: cap,
+            max_sessions_per_user: cap,
         })
+    }
+
+    fn who(name: &str) -> Identity {
+        Identity {
+            id: crate::secrets::hex(name.as_bytes()),
+            name: name.to_owned(),
+            role: Role::Admin,
+            generation: 0,
+        }
+    }
+
+    fn open(store: &Sessions, now: Instant) -> Result<String, getrandom::Error> {
+        store.open(&who("owner"), now)
     }
 
     #[test]
     fn ids_and_tokens_are_256_bits_and_differ() -> Result<(), getrandom::Error> {
         let store = sessions(60, 600, 4);
         let now = Instant::now();
-        let (a, b) = (store.open(now)?, store.open(now)?);
+        let (a, b) = (open(&store, now)?, open(&store, now)?);
         assert!(is_hex_token(&a, TOKEN_HEX) && is_hex_token(&b, TOKEN_HEX));
         assert_ne!(a, b);
         let (csrf_a, csrf_b) = (
@@ -495,7 +618,7 @@ mod tests {
     fn idle_session_ends_and_activity_keeps_it() -> Result<(), getrandom::Error> {
         let store = sessions(60, 600, 4);
         let t0 = Instant::now();
-        let id = store.open(t0)?;
+        let id = open(&store, t0)?;
         assert!(store.touch(&id, t0 + Duration::from_secs(59)).is_some());
         assert!(
             store.touch(&id, t0 + Duration::from_secs(118)).is_some(),
@@ -510,7 +633,7 @@ mod tests {
     fn active_session_still_ends_at_its_absolute_lifetime() -> Result<(), getrandom::Error> {
         let store = sessions(60, 150, 4);
         let t0 = Instant::now();
-        let id = store.open(t0)?;
+        let id = open(&store, t0)?;
         for step in 1..=2 {
             assert!(store.touch(&id, t0 + Duration::from_secs(50 * step)).is_some());
         }
@@ -522,10 +645,10 @@ mod tests {
     fn past_the_cap_the_oldest_session_ends() -> Result<(), getrandom::Error> {
         let store = sessions(60, 600, 2);
         let t0 = Instant::now();
-        let first = store.open(t0)?;
-        let second = store.open(t0 + Duration::from_secs(1))?;
+        let first = open(&store, t0)?;
+        let second = open(&store, t0 + Duration::from_secs(1))?;
         assert!(store.touch(&first, t0 + Duration::from_secs(2)).is_some());
-        let third = store.open(t0 + Duration::from_secs(3))?;
+        let third = open(&store, t0 + Duration::from_secs(3))?;
         assert_eq!(store.len(), 2);
         let now = t0 + Duration::from_secs(4);
         assert!(
@@ -540,9 +663,9 @@ mod tests {
     fn expired_sessions_are_swept_before_evicting_a_live_one() -> Result<(), getrandom::Error> {
         let store = sessions(10, 600, 2);
         let t0 = Instant::now();
-        store.open(t0)?;
-        let live = store.open(t0 + Duration::from_secs(8))?;
-        store.open(t0 + Duration::from_secs(12))?;
+        open(&store, t0)?;
+        let live = open(&store, t0 + Duration::from_secs(8))?;
+        open(&store, t0 + Duration::from_secs(12))?;
         assert!(store.touch(&live, t0 + Duration::from_secs(13)).is_some());
         Ok(())
     }
@@ -551,10 +674,66 @@ mod tests {
     fn closed_session_is_gone() -> Result<(), getrandom::Error> {
         let store = sessions(60, 600, 4);
         let now = Instant::now();
-        let id = store.open(now)?;
+        let id = open(&store, now)?;
         assert!(store.close(&id));
         assert!(!store.close(&id));
         assert!(store.touch(&id, now).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn per_user_cap_ends_only_that_users_oldest_and_the_global_cap_the_busiest() -> Result<(), getrandom::Error> {
+        let store = Sessions::new(&AdminSessions {
+            session_idle_secs: 60,
+            session_max_secs: 600,
+            max_sessions: 4,
+            max_sessions_per_user: 2,
+        });
+        let t0 = Instant::now();
+        let at = |secs| t0 + Duration::from_secs(secs);
+        let ana = store.open(&who("ana"), at(0))?;
+        let first = store.open(&who("owner"), at(1))?;
+        let second = store.open(&who("owner"), at(2))?;
+        let third = store.open(&who("owner"), at(3))?;
+        assert!(store.touch(&first, at(4)).is_none(), "owner's oldest ended");
+        assert!(store.touch(&ana, at(4)).is_some(), "ana's session stays");
+        assert!(store.touch(&second, at(4)).is_some() && store.touch(&third, at(4)).is_some());
+        let bo = store.open(&who("bo"), at(5))?;
+        store.open(&who("cy"), at(6))?;
+        assert_eq!(store.len(), 4);
+        assert!(
+            store.touch(&second, at(7)).is_none(),
+            "the busiest user gives up its oldest"
+        );
+        for kept in [&ana, &third, &bo] {
+            assert!(store.touch(kept, at(7)).is_some());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn revalidate_ends_gone_and_rekeyed_accounts_and_follows_roles() -> Result<(), getrandom::Error> {
+        let store = sessions(60, 600, 8);
+        let now = Instant::now();
+        let kept = store.open(&who("owner"), now)?;
+        let rekeyed = store.open(&who("ana"), now)?;
+        let removed = store.open(&who("bo"), now)?;
+        let owner_id = who("owner").id;
+        let ana_id = who("ana").id;
+        store.revalidate(|id| {
+            if id == owner_id {
+                Some((Role::Viewer, 0))
+            } else if id == ana_id {
+                Some((Role::Admin, 1))
+            } else {
+                None
+            }
+        });
+        assert!(store.touch(&rekeyed, now).is_none() && store.touch(&removed, now).is_none());
+        assert_eq!(
+            store.touch(&kept, now).map(|live| live.identity.role),
+            Some(Role::Viewer)
+        );
         Ok(())
     }
 

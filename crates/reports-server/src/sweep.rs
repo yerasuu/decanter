@@ -70,5 +70,11 @@ pub async fn recover(state: AppState) {
                 Err(error) => tracing::error!(product, %error, "transaction recovery failed"),
             }
         }
+        // A `user` command that died mid-transaction leaves its locks in the accounts store too.
+        match state.accounts.store().recover().await {
+            Ok(0) => {}
+            Ok(recovered) => tracing::warn!(store = "accounts", recovered, "stale transactions recovered"),
+            Err(error) => tracing::error!(store = "accounts", %error, "transaction recovery failed"),
+        }
     }
 }

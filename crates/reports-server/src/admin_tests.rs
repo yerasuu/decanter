@@ -1,5 +1,6 @@
 //! The admin session and the admin page through the whole router: login, cookie, CSRF, origin, logout, the uniform
-//! 404 and the page's escaping. Kept apart from `app`'s tests so the two suites grow without touching each other.
+//! 404, the page's escaping, the two roles and what a refresh of the accounts ends. Kept apart from `app`'s tests so
+//! the two suites grow without touching each other.
 
 use std::error::Error;
 use std::net::SocketAddr;
@@ -10,16 +11,17 @@ use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, Method, Request, StatusCode};
 use tower::ServiceExt;
 
+use crate::accounts::{Accounts, TEST_ADMIN_KEY, TEST_VIEWER_KEY, refresh_now, test_accounts};
 use crate::app::{AppState, router};
 use crate::config::Config;
 use crate::secrets::sha256;
-use crate::session::AdminKeys;
-use crate::store::{NewReport, Product, test_stores};
+use crate::store::{NewReport, Product, Role, test_stores};
 
 type Test = Result<(), Box<dyn Error>>;
 type Answer = (StatusCode, HeaderMap, Vec<u8>);
 
-const ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef-admin";
+const ADMIN_KEY: &str = TEST_ADMIN_KEY;
+const VIEWER_KEY: &str = TEST_VIEWER_KEY;
 const ORIGIN: &str = "http://127.0.0.1:8787";
 const FORM: (&str, &str) = ("content-type", "application/x-www-form-urlencoded");
 
@@ -41,17 +43,20 @@ struct Login {
 
 impl Harness {
     fn new(tweak: impl FnOnce(&mut Config)) -> Result<Self, Box<dyn Error>> {
-        Self::with_keys(AdminKeys::single(ADMIN_KEY), tweak)
+        Self::with_accounts(test_accounts, tweak)
     }
 
-    fn with_keys(keys: AdminKeys, tweak: impl FnOnce(&mut Config)) -> Result<Self, Box<dyn Error>> {
+    fn with_accounts(
+        accounts: impl FnOnce(&std::path::Path) -> Accounts,
+        tweak: impl FnOnce(&mut Config),
+    ) -> Result<Self, Box<dyn Error>> {
         let mut config = Config::default();
         config.limits.failures_per_ip = 1000;
         tweak(&mut config);
         let root = std::env::temp_dir().join(format!("decanter-reports-admin-{}", crate::secrets::random_hex()?));
         std::fs::create_dir_all(&root)?;
         Ok(Self {
-            state: AppState::new(config, keys, test_stores(&root)),
+            state: AppState::new(config, accounts(&root), test_stores(&root)),
             root,
         })
     }
@@ -88,12 +93,16 @@ impl Harness {
     }
 
     async fn login(&self) -> Result<Login, Box<dyn Error>> {
+        self.login_with(ADMIN_KEY).await
+    }
+
+    async fn login_with(&self, key: &str) -> Result<Login, Box<dyn Error>> {
         let (status, headers, _) = self
             .send(
                 Method::POST,
                 "/admin/login",
                 &[FORM, ("origin", ORIGIN)],
-                &format!("key={ADMIN_KEY}"),
+                &format!("key={key}"),
             )
             .await?;
         assert_eq!(status, StatusCode::SEE_OTHER);
@@ -133,6 +142,26 @@ impl Harness {
         };
         self.state.stores.get(product).insert(&new, 1000).await?;
         Ok(id)
+    }
+
+    async fn reads_with_cookie(&self, cookie: &str) -> Result<StatusCode, Box<dyn Error>> {
+        Ok(self
+            .send(Method::GET, "/admin/reports", &[("cookie", cookie)], "")
+            .await?
+            .0)
+    }
+
+    async fn reads_with_key(&self, key: &str) -> Result<StatusCode, Box<dyn Error>> {
+        let auth = format!("Bearer {key}");
+        Ok(self
+            .send(Method::GET, "/admin/reports", &[("authorization", &auth)], "")
+            .await?
+            .0)
+    }
+
+    async fn page_of(&self, login: &Login, uri: &str) -> Result<String, Box<dyn Error>> {
+        let (_, _, body) = self.send(Method::GET, uri, &[("cookie", &login.cookie)], "").await?;
+        Ok(String::from_utf8(body)?)
     }
 
     async fn is_hidden(&self, id: &str) -> Result<bool, Box<dyn Error>> {
@@ -472,7 +501,10 @@ async fn admin_page_escapes_hostile_values_and_carries_the_token_in_every_form()
 
 #[tokio::test]
 async fn without_admin_accounts_every_key_gets_the_uniform_404() -> Test {
-    let h = Harness::with_keys(AdminKeys::default(), |_| {})?;
+    let h = Harness::with_accounts(
+        |root| Accounts::new(crate::store::test_accounts(&root.join("accounts"))),
+        |_| {},
+    )?;
     let uniform = h.send(Method::GET, "/admin/nothing", &[], "").await?;
     let bearer = format!("Bearer {ADMIN_KEY}");
     let answer = h
@@ -489,5 +521,354 @@ async fn without_admin_accounts_every_key_gets_the_uniform_404() -> Test {
         .await?;
     assert_eq!(answer, uniform);
     assert_eq!(h.state.sessions.len(), 0);
+    Ok(())
+}
+
+fn error_of(body: &[u8]) -> String {
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value["error"].as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn a_viewer_reads_everything_and_changes_nothing() -> Test {
+    let h = Harness::new(|_| {})?;
+    let fp = "d".repeat(16);
+    let id = h.insert(Product::Decanter, &fp, "t", None).await?;
+    h.state
+        .stores
+        .get(Product::Decanter)
+        .attach(&id, b"raw log", b"", 10)
+        .await?;
+    let session = h.login_with(VIEWER_KEY).await?;
+    let cookie = ("cookie", session.cookie.as_str());
+    let bearer = format!("Bearer {VIEWER_KEY}");
+    for credentials in [vec![cookie], vec![("authorization", bearer.as_str())]] {
+        for path in [
+            "/admin".to_owned(),
+            "/admin/reports".to_owned(),
+            format!("/admin/reports/{id}/attachment"),
+            "/admin/logs".to_owned(),
+            format!("/admin/logs/{id}"),
+            format!("/admin/logs/search?q=raw&fingerprint={fp}"),
+            format!("/admin/logs/diff?a={id}&b={id}"),
+        ] {
+            let (status, ..) = h.send(Method::GET, &path, &credentials, "").await?;
+            assert_eq!(status, StatusCode::OK, "{path} {credentials:?}");
+        }
+    }
+    let changes = [
+        (Method::POST, format!("/admin/reports/{id}/hide")),
+        (Method::POST, format!("/admin/reports/{id}/restore")),
+        (Method::POST, format!("/admin/reports/{id}/resolve")),
+        (Method::POST, format!("/admin/reports/{id}/delete")),
+        (Method::DELETE, format!("/admin/reports/{id}")),
+        (Method::POST, format!("/admin/groups/{fp}/hide")),
+        (Method::POST, format!("/admin/groups/{fp}/restore")),
+        (Method::POST, format!("/admin/groups/{fp}/resolve")),
+        (Method::POST, format!("/admin/groups/{fp}/delete")),
+        (Method::DELETE, format!("/admin/groups/{fp}")),
+    ];
+    for (method, path) in &changes {
+        let (status, _, body) = h
+            .send(
+                method.clone(),
+                path,
+                &[cookie, ("origin", ORIGIN), ("x-csrf-token", &session.csrf)],
+                "",
+            )
+            .await?;
+        assert_eq!(
+            (status, error_of(&body)),
+            (StatusCode::FORBIDDEN, "role".to_owned()),
+            "{path}"
+        );
+        let (status, _, body) = h
+            .send(method.clone(), path, &[("authorization", bearer.as_str())], "")
+            .await?;
+        assert_eq!(
+            (status, error_of(&body)),
+            (StatusCode::FORBIDDEN, "role".to_owned()),
+            "{path}"
+        );
+    }
+    let form = format!("csrf={}&return=%2Fadmin", session.csrf);
+    let (status, _, page) = h
+        .send(
+            Method::POST,
+            &format!("/admin/reports/{id}/hide"),
+            &[cookie, ("origin", ORIGIN), FORM],
+            &form,
+        )
+        .await?;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a form gets the page, not a redirect");
+    assert!(String::from_utf8(page)?.contains("Tu cuenta es de solo lectura: no puede ocultar, resolver ni borrar."));
+    assert!(!h.is_hidden(&id).await?);
+    let rows = h
+        .state
+        .stores
+        .admin_list(&crate::store::AdminFilter::default(), 10, 0)
+        .await?;
+    assert!(rows.len() == 1 && rows.iter().all(|row| row.resolved_at.is_none() && row.has_attachment));
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_page_names_the_session_and_offers_actions_to_admins_only() -> Test {
+    let h = Harness::new(|_| {})?;
+    let fp = "e".repeat(16);
+    h.insert(Product::Psport, &fp, "t", Some("CUSA00001")).await?;
+    let uri = format!("/admin?fingerprint={fp}");
+    let viewer = h.page_of(&h.login_with(VIEWER_KEY).await?, &uri).await?;
+    assert!(viewer.contains("Sesión de <strong>ana</strong> (lectura)"), "{viewer}");
+    assert_eq!(viewer.matches("<form method=\"post\"").count(), 1, "logout only");
+    for action in ["/hide\"", "/restore\"", "/resolve\"", "/delete\""] {
+        assert!(!viewer.contains(action), "{action}");
+    }
+    let admin = h.page_of(&h.login().await?, &uri).await?;
+    assert!(admin.contains("Sesión de <strong>owner</strong> (administración)"));
+    assert!(admin.matches("<form method=\"post\"").count() >= 8);
+    let (_, _, login_form) = h.send(Method::GET, "/admin/login", &[], "").await?;
+    assert!(String::from_utf8(login_form)?.contains("Clave de acceso"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn remove_and_reset_end_sessions_and_keys_at_the_refresh() -> Test {
+    let h = Harness::with_accounts(
+        |root| Accounts::new(crate::store::test_accounts(&root.join("accounts"))),
+        |_| {},
+    )?;
+    let store = h.state.accounts.store();
+    let owner = store.add("owner", Role::Admin, "2026-10-28").await?.ok_or("owner")?;
+    let ana = store.add("ana", Role::Admin, "2026-10-28").await?.ok_or("ana")?;
+    let bo = store.add("bo", Role::Viewer, "2026-10-28").await?.ok_or("bo")?;
+    refresh_now(&h.state).await?;
+    let (owner_session, ana_session, bo_session) = (
+        h.login_with(&owner).await?,
+        h.login_with(&ana).await?,
+        h.login_with(&bo).await?,
+    );
+    assert!(matches!(store.remove("bo").await?, crate::store::AccountChange::Done));
+    let crate::store::AccountChange::Key(new_ana) = store.reset("ana").await? else {
+        return Err("reset gave no key".into());
+    };
+    assert!(matches!(
+        store.set_role("owner", Role::Viewer).await?,
+        crate::store::AccountChange::Done
+    ));
+    assert_eq!(
+        h.reads_with_key(&bo).await?,
+        StatusCode::OK,
+        "nothing changes before the refresh"
+    );
+    assert_eq!(h.reads_with_cookie(&ana_session.cookie).await?, StatusCode::OK);
+
+    refresh_now(&h.state).await?;
+    let uniform = h.send(Method::GET, "/admin/reports", &[], "").await?.0;
+    for (what, status) in [
+        ("bo's session", h.reads_with_cookie(&bo_session.cookie).await?),
+        ("bo's key", h.reads_with_key(&bo).await?),
+        ("ana's session", h.reads_with_cookie(&ana_session.cookie).await?),
+        ("ana's old key", h.reads_with_key(&ana).await?),
+    ] {
+        assert_eq!(status, uniform, "{what}");
+    }
+    assert_eq!(h.reads_with_key(&new_ana).await?, StatusCode::OK);
+    assert_eq!(
+        h.reads_with_cookie(&owner_session.cookie).await?,
+        StatusCode::OK,
+        "a role change keeps the session"
+    );
+    let id = h.insert(Product::Decanter, &"f".repeat(16), "t", None).await?;
+    let (status, ..) = h
+        .send(
+            Method::POST,
+            &format!("/admin/reports/{id}/hide"),
+            &[
+                ("cookie", &owner_session.cookie),
+                ("origin", ORIGIN),
+                ("x-csrf-token", &owner_session.csrf),
+            ],
+            "",
+        )
+        .await?;
+    assert_eq!(status, StatusCode::FORBIDDEN, "the session follows the new role");
+    assert_eq!(h.state.sessions.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_account_added_after_the_refresh_works_at_once() -> Test {
+    let h = Harness::with_accounts(
+        |root| Accounts::new(crate::store::test_accounts(&root.join("accounts"))),
+        |_| {},
+    )?;
+    let key = h
+        .state
+        .accounts
+        .store()
+        .add("late", Role::Viewer, "2026-10-28")
+        .await?
+        .ok_or("late")?;
+    let auth = format!("Bearer {key}");
+    let (status, ..) = h
+        .send(Method::GET, "/admin/reports", &[("authorization", &auth)], "")
+        .await?;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        h.state.accounts.current(key.get(4..12).unwrap_or_default()),
+        Some((Role::Viewer, 0))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_login_past_the_per_user_cap_ends_only_that_users_oldest() -> Test {
+    let h = Harness::new(|config| config.admin.max_sessions_per_user = 2)?;
+    let viewer = h.login_with(VIEWER_KEY).await?;
+    let first = h.login().await?;
+    let second = h.login().await?;
+    let third = h.login().await?;
+    assert_eq!(
+        (h.state.sessions.of_user("owner"), h.state.sessions.of_user("ana")),
+        (2, 1)
+    );
+    for (login, expected) in [
+        (viewer, StatusCode::OK),
+        (first, StatusCode::NOT_FOUND),
+        (second, StatusCode::OK),
+        (third, StatusCode::OK),
+    ] {
+        let (status, ..) = h
+            .send(Method::GET, "/admin/reports", &[("cookie", &login.cookie)], "")
+            .await?;
+        assert_eq!(status, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn unknown_id_and_wrong_secret_are_the_same_404_and_both_count() -> Test {
+    let h = Harness::new(|config| config.limits.failures_per_ip = 4)?;
+    let uniform = h
+        .send_from([198, 51, 100, 2], Method::GET, "/admin/nothing", &[], "")
+        .await?;
+    let secret = ADMIN_KEY.get(13..).unwrap_or_default();
+    let unknown_id = format!("drk_0000ffff_{secret}");
+    let wrong_secret = format!("{}{}", ADMIN_KEY.get(..13).unwrap_or_default(), "9".repeat(64));
+    for key in [&unknown_id, &wrong_secret] {
+        let auth = format!("Bearer {key}");
+        let answer = h
+            .send(Method::GET, "/admin/reports", &[("authorization", &auth)], "")
+            .await?;
+        assert_eq!(answer, uniform, "{key}");
+        let answer = h
+            .send(
+                Method::POST,
+                "/admin/login",
+                &[FORM, ("origin", ORIGIN)],
+                &format!("key={key}"),
+            )
+            .await?;
+        assert_eq!(answer, uniform, "{key}");
+    }
+    let (status, ..) = h.send(Method::GET, "/admin/login", &[], "").await?;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "all four misses spent the budget"
+    );
+    Ok(())
+}
+
+thread_local! {
+    static CAPTURED: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Writes into the calling thread's capture, if it started one, and nowhere otherwise.
+struct ThreadCapture;
+
+impl std::io::Write for ThreadCapture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        CAPTURED.with_borrow_mut(|captured| {
+            if let Some(captured) = captured {
+                captured.extend_from_slice(bytes);
+            }
+        });
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Captures what this thread logs (a `#[tokio::test]` runs on one thread). The subscriber is global, because a
+/// thread-scoped one loses events whose callsites other test threads already cached as uninteresting.
+fn capture_logs() {
+    static INSTALLED: std::sync::Once = std::sync::Once::new();
+    INSTALLED.call_once(|| {
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(|| ThreadCapture)
+            .with_ansi(false)
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    });
+    CAPTURED.with_borrow_mut(|captured| *captured = Some(Vec::new()));
+}
+
+fn captured_logs() -> String {
+    CAPTURED.with_borrow(|captured| String::from_utf8_lossy(captured.as_deref().unwrap_or_default()).into_owned())
+}
+
+#[tokio::test]
+async fn admin_log_lines_name_the_account_and_hold_no_secret() -> Test {
+    capture_logs();
+    let h = Harness::new(|_| {})?;
+    let id = h.insert(Product::Decanter, &"a".repeat(16), "t", None).await?;
+    let session = h.login().await?;
+    h.send(
+        Method::POST,
+        &format!("/admin/reports/{id}/hide"),
+        &[
+            ("cookie", &session.cookie),
+            ("origin", ORIGIN),
+            ("x-csrf-token", &session.csrf),
+        ],
+        "",
+    )
+    .await?;
+    let auth = format!("Bearer {VIEWER_KEY}");
+    h.send(Method::GET, "/admin/logs", &[("authorization", &auth)], "")
+        .await?;
+    let text = captured_logs();
+    let opened = text
+        .lines()
+        .find(|line| line.contains("admin session opened"))
+        .unwrap_or_default();
+    assert!(opened.contains("user=owner") && opened.contains("role=admin"), "{text}");
+    let changed = text
+        .lines()
+        .find(|line| line.contains("report changed"))
+        .unwrap_or_default();
+    assert!(
+        changed.contains("user=owner") && changed.contains("role=admin"),
+        "{text}"
+    );
+    let cookie_id = session.cookie.split('=').nth(1).unwrap_or_default();
+    let hash = crate::secrets::hex(&sha256(ADMIN_KEY.as_bytes()));
+    for secret in [
+        ADMIN_KEY,
+        VIEWER_KEY,
+        cookie_id,
+        session.csrf.as_str(),
+        hash.as_str(),
+        "203.0.113.7",
+    ] {
+        assert!(!secret.is_empty() && !text.contains(secret), "{secret} in {text}");
+    }
     Ok(())
 }

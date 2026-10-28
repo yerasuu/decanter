@@ -57,9 +57,10 @@ Public pages (everything but `/healthz` and `/admin`) are rate limited per clien
 
 Hidden reports answer 404 on the public pages, their clean log too. Resolved reports stay public, marked, and lose
 their attachment but keep their clean log.
-"admin" means a valid key in `Authorization: Bearer`, or a browser session from `/admin/login` (see "Security
-model"). Admin keys belong to admin accounts, which arrive with #1153: until an admin account exists no key is valid,
-so `/admin` is disabled; a session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
+"admin" means a maintainer account's key in `Authorization: Bearer`, or a browser session from `/admin/login` (see
+"Security model"); the accounts are made with `decanter-reports user add` ("Maintainer accounts" below). Both roles
+reach every `GET` above and the logout; the hide, restore, resolve and delete routes need the `admin` role, and a
+`viewer`'s call answers 403 `{"error":"role"}` and changes nothing. A session request that changes something (any method but GET and HEAD) also needs the session's CSRF token,
 from a form field `csrf` or the header `X-CSRF-Token` (sent back on every session answer), and an `Origin` (or
 `Referer`) of this server, else 403. A form action answers 303 back to the admin page instead of 204.
 Without a valid key or session every `/admin` route but the login form answers 404, not 401, and a wrong method on any path also answers 404 (with no `Allow` header). Every error is a small JSON `{"error": ...}`, also the framework's own (a repeated query key is `400 bad_request`).
@@ -73,7 +74,7 @@ curl -s -X DELETE -H "X-Delete-Code: $CODE" $B/v1/reports/$ID
 curl -s -X PUT -H "X-Delete-Code: $CODE" --data-binary @game.log $B/v1/reports/$ID/attachment
 curl -s $B/r/$ID/log                                      # the public clean version of that log
 
-A="Authorization: Bearer $KEY"                             # an admin account's key (#1153)
+A="Authorization: Bearer $KEY"                             # an admin account's key, drk_<8 hex>_<64 hex>
 curl -s -H "$A" $B/admin/reports
 curl -s -H "$A" -X POST $B/admin/reports/$ID/hide
 curl -s -H "$A" -X POST $B/admin/reports/$ID/restore
@@ -87,8 +88,23 @@ curl -s -H "$A" -X POST $B/admin/groups/$FP/hide          # also /restore and /r
 curl -s -H "$A" -X DELETE $B/admin/groups/$FP
 ```
 
-In a browser: open `$B/admin/login`, enter the key, and `/admin` lists the reports with their actions; its
-"Logs adjuntos" link opens the log viewer (`docs/runbook.md`, "Reading the logs").
+In a browser: open `$B/admin/login`, enter the key ("Clave de acceso"), and `/admin` lists the reports with their
+actions (none for a viewer); its "Logs adjuntos" link opens the log viewer (`docs/runbook.md`, "Reading the logs").
+
+## Maintainer accounts
+
+| Command | Does |
+|---|---|
+| `decanter-reports user add <name> --role viewer\|admin` | creates the account and prints its key once on standard output (nothing else goes there) |
+| `decanter-reports user list` | name, role, created and last login day, state; never a key or a hash |
+| `decanter-reports user reset <name>` | a new key, printed once; the old key and its sessions stop within 15 s |
+| `decanter-reports user role <name> --role viewer\|admin` | changes the role; open sessions follow within 15 s |
+| `decanter-reports user remove <name>` | removes the account; its key and sessions stop within 15 s |
+
+Names are `[a-z0-9-]{1,32}` and unique; `remove` and `role` refuse to leave no admin. The commands read the same
+configuration and secrets as the server (`DECANTER_REPORTS_CONFIG` and the environment); with the `local` driver the
+server must be stopped. Keys are `drk_<8 hex id>_<64 hex>`, 256 random bits, kept by the server only as SHA-256 in
+the encrypted `accounts/` store. `docs/runbook.md` has the first admin, lost keys and recovery.
 
 ## Configuration
 
@@ -114,7 +130,8 @@ partition, read-only, with the config from `DECANTER_REPORTS_CONFIG` (`docs/runb
 | `shutdown_grace_secs` | 5 | `DECANTER_REPORTS_SHUTDOWN_GRACE_SECS` |
 | `log_level` | `info` | `DECANTER_REPORTS_LOG` |
 | `admin.session_idle_secs` / `session_max_secs` | 1800 / 28800 | `DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS`, `_ADMIN_SESSION_MAX_SECS` |
-| `admin.max_sessions` | 16 (a login past it ends the oldest session) | `DECANTER_REPORTS_ADMIN_MAX_SESSIONS` |
+| `admin.max_sessions` | 16 (a login past it ends the oldest session of the account holding the most) | `DECANTER_REPORTS_ADMIN_MAX_SESSIONS` |
+| `admin.max_sessions_per_user` | 4 (an account's login past it ends that account's oldest session) | `DECANTER_REPORTS_ADMIN_MAX_SESSIONS_PER_USER` |
 | `logs.page_lines` | 2000 lines of a log per page (100 to 20000) | `DECANTER_REPORTS_LOGS_PAGE_LINES` |
 | `logs.search_max_logs` / `search_max_mib` / `search_max_matches` | 50 / 64 / 500 per search (1 to 1000 / 1024 / 10000) | `DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS`, `_LOGS_SEARCH_MAX_MIB`, `_LOGS_SEARCH_MAX_MATCHES` |
 | `logs.diff_max_lines` | 20000 lines of both logs together, above which a comparison is positional (100 to 200000) | `DECANTER_REPORTS_LOGS_DIFF_MAX_LINES` |
@@ -195,25 +212,29 @@ and hold no report contents and no addresses.
   expired session cookie included) and a failed login; past it every `/admin` path and every delete answers 429 with
   `Retry-After` for that address, known route or not, so the 429 names no route. Successes do not count. A
   maintainer locked out this way waits out the window or comes from another address.
-- **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase (each partition
-  has its own encryption config, opened by the same passphrase); the bucket keys and the passphrase are credentials,
-  read from owner-only files or the environment. The `local` driver's directory is 0700 and its file
-  0600 (one per partition); the process sets umask 077.
-- **Admin.** Admin keys, each compared in constant time after hashing both sides; 404 without one. There are none
-  until admin accounts exist (#1153), so admin access is disabled for now and the log says so hourly. For a browser,
-  `/admin/login` trades the key for a session: a 256-bit random id kept in memory only as its SHA-256 (so a
-  restart logs everyone out), ended after `admin.session_idle_secs` without a request or `admin.session_max_secs`
-  after login, at most `admin.max_sessions` at once (the oldest ends first), swept when expired. The cookie is
+- **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase (each store,
+  the two partitions and `accounts/`, has its own encryption config, opened by the same passphrase); the bucket keys
+  and the passphrase are credentials, read from owner-only files or the environment. The `local` driver's directory
+  is 0700 and its files 0600 (one per store); the process sets umask 077.
+- **Admin.** One account per maintainer, with a role (`viewer` reads, `admin` also changes) and a server-generated
+  key of 256 random bits kept only as its SHA-256; a key is found by its id and compared whole in constant time, and
+  an unknown id, a wrong secret and a removed or disabled account answer the same 404 after the same work and count
+  the same failure. The server re-reads the accounts every 15 s and then ends the sessions of removed, disabled or
+  re-keyed accounts. Without an admin account the log says so hourly. For a browser, `/admin/login` trades the key
+  for a session: a 256-bit random id kept in memory only as its SHA-256 (so a restart logs everyone out), ended
+  after `admin.session_idle_secs` without a request or `admin.session_max_secs` after login, at most
+  `admin.max_sessions_per_user` per account and `admin.max_sessions` in all, swept when expired. The cookie is
   `__Host-session` with `Secure; HttpOnly; SameSite=Strict; Path=/` and no `Domain`; a browser returns a `Secure`
   cookie only over HTTPS (or to `localhost`), so the login works only behind the TLS tunnel or on loopback.
   Every state-changing session request needs the session's own random CSRF token (constant-time compared) and an
   `Origin` equal to `public_url`'s (loopback origins only while `public_url` is empty or loopback); Bearer requests
   need neither. The admin pages send `Cache-Control: no-store` and `Referrer-Policy: same-origin` (with
-  `no-referrer` a browser would post `Origin: null`). The key, session ids and CSRF tokens are never logged.
+  `no-referrer` a browser would post `Origin: null`). Keys, session ids and CSRF tokens are never logged; every
+  admin log line names the account and its role, never an address.
 - **Log viewer.** The raw logs stay private: only the admin pages under `/admin/logs` show them, as escaped text
   with control and bidirectional characters shown as visible markers, lines cut at 2000 characters, pages of
   `logs.page_lines` lines, every pass over a log linear and the heavy ones off the async workers. Searches are
-  confined to one title or fingerprint and capped in logs, bytes and matches, one per session at a time; a
+  confined to one title or fingerprint and capped in logs, bytes and matches, one per account at a time; a
   comparison runs a diff bounded in lines and edits. Hidden reports' logs stay out of it (their download remains).
 
 Not covered by the server: a report that passes validation is public. What that guarantee is worth is the schema's

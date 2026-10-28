@@ -16,10 +16,11 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use serde_json::json;
 
+use crate::accounts::Accounts;
 use crate::cache::PageCache;
 use crate::config::Config;
 use crate::limits::{Limiter, Verdict, client_ip};
-use crate::session::{AdminKeys, LOGIN_PATH, Sessions, is_admin_path};
+use crate::session::{LOGIN_PATH, Sessions, is_admin_path};
 use crate::store::Stores;
 use crate::{admin, admin_logs, admin_ui, clean_page, ingest, pages, session};
 
@@ -30,7 +31,7 @@ pub struct Inner {
     pub index_cache: PageCache,
     /// Lets one request rebuild an expired index while the rest wait for its result instead of repeating the scan.
     pub index_gate: tokio::sync::Mutex<()>,
-    pub admin_keys: AdminKeys,
+    pub accounts: Accounts,
     pub sessions: Sessions,
     pub log_searches: admin_logs::Searches,
 }
@@ -48,7 +49,7 @@ impl std::ops::Deref for AppState {
 
 impl AppState {
     #[must_use]
-    pub fn new(config: Config, admin_keys: AdminKeys, stores: Stores) -> Self {
+    pub fn new(config: Config, accounts: Accounts, stores: Stores) -> Self {
         let limiter = Limiter::new(config.limits.clone());
         let index_cache = PageCache::new(config.index_cache_secs);
         let sessions = Sessions::new(&config.admin);
@@ -58,7 +59,7 @@ impl AppState {
             limiter,
             index_cache,
             index_gate: tokio::sync::Mutex::new(()),
-            admin_keys,
+            accounts,
             sessions,
             log_searches: admin_logs::Searches::default(),
         }))
@@ -250,14 +251,13 @@ mod tests {
     use super::{AppState, router};
     use crate::config::Config;
     use crate::secrets::sha256;
-    use crate::session::AdminKeys;
     use crate::store::{NewReport, Product, test_stores};
 
     type Test = Result<(), Box<dyn Error>>;
 
     const JSON: &[(&str, &str)] = &[("content-type", "application/json")];
 
-    const ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef-admin";
+    const ADMIN_KEY: &str = crate::accounts::TEST_ADMIN_KEY;
     const DECANTER: &str = r#"{"schema":2,"product":"decanter","date":"2026-10-21","decanter":{"version":"0.3.2","commit":"d61f1ff91d29"},"system":{"os":"linux"},"action":"build","failure":{"kind":"error","message":{"template":"decanter.job.failed","slots":[{"type":"choice","value":"build"},{"type":"number","value":1}]},"count":1}}"#;
     const PRIVATE_PATH: &str = r#"{"schema":2,"product":"decanter","date":"2026-10-21","decanter":{"version":"0.3.2"},"system":{"os":"linux","os_version":"/home/deck/games"},"action":"build","failure":{"kind":"error","count":1}}"#;
 
@@ -273,7 +273,7 @@ mod tests {
             let root = std::env::temp_dir().join(format!("decanter-reports-test-{}", crate::secrets::random_hex()?));
             std::fs::create_dir_all(&root)?;
             Ok(Self {
-                state: AppState::new(config, AdminKeys::single(ADMIN_KEY), test_stores(&root)),
+                state: AppState::new(config, crate::accounts::test_accounts(&root), test_stores(&root)),
                 root,
             })
         }

@@ -1,5 +1,6 @@
-//! The maintainer's side. Without the key or a session every route here answers 404, as if it did not exist; the
-//! check is `session::gate`, and [`Admin`] is the proof it passed.
+//! The maintainers' side. Without a key or a session every route here answers 404, as if it did not exist; the
+//! check is `session::gate`, [`Admin`] is the proof it passed and [`CanChange`] the proof of the `admin` role, which
+//! every handler that changes a report takes.
 
 use axum::extract::{Path, Query, State};
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
@@ -11,7 +12,7 @@ use serde::Deserialize;
 use crate::app::{AppState, api_error, internal, not_found, today};
 use crate::pages::is_title_id;
 use crate::secrets::is_hex_token;
-pub use crate::session::Admin;
+pub use crate::session::{Admin, CanChange};
 use crate::store::{AdminFilter, Change, Product};
 
 const MAX_LIST: u32 = 500;
@@ -109,35 +110,35 @@ async fn change_group(state: &AppState, fingerprint: &str, change: Change, what:
     }
 }
 
-pub async fn hide(_: Admin, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+pub async fn hide(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
     change_one(&state, id, Change::Hide, "hide").await
 }
 
-pub async fn restore(_: Admin, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+pub async fn restore(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
     change_one(&state, id, Change::Restore, "restore").await
 }
 
-pub async fn resolve(_: Admin, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+pub async fn resolve(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
     change_one(&state, id, Change::Resolve(today()), "resolve").await
 }
 
-pub async fn remove(_: Admin, State(state): State<AppState>, Path(id): Path<String>) -> Response {
+pub async fn remove(_: CanChange, State(state): State<AppState>, Path(id): Path<String>) -> Response {
     change_one(&state, id, Change::Delete, "delete").await
 }
 
-pub async fn hide_group(_: Admin, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
+pub async fn hide_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
     change_group(&state, &fingerprint, Change::Hide, "hide_group").await
 }
 
-pub async fn restore_group(_: Admin, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
+pub async fn restore_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
     change_group(&state, &fingerprint, Change::Restore, "restore_group").await
 }
 
-pub async fn resolve_group(_: Admin, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
+pub async fn resolve_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
     change_group(&state, &fingerprint, Change::Resolve(today()), "resolve_group").await
 }
 
-pub async fn remove_group(_: Admin, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
+pub async fn remove_group(_: CanChange, State(state): State<AppState>, Path(fingerprint): Path<String>) -> Response {
     change_group(&state, &fingerprint, Change::Delete, "delete_group").await
 }
 

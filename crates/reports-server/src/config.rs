@@ -70,8 +70,10 @@ pub struct AdminSessions {
     pub session_idle_secs: u32,
     /// Seconds after login at which a session ends however active it is.
     pub session_max_secs: u32,
-    /// Sessions held at once; a new login past it ends the oldest.
+    /// Sessions held at once; a new login past it ends the oldest of the account holding the most.
     pub max_sessions: u32,
+    /// Sessions one account holds at once; its new login past it ends its own oldest, never another account's.
+    pub max_sessions_per_user: u32,
 }
 
 /// The private log viewer's bounds: what one page, one search and one comparison may cost.
@@ -108,6 +110,7 @@ impl Default for AdminSessions {
             session_idle_secs: 1800,
             session_max_secs: 28_800,
             max_sessions: 16,
+            max_sessions_per_user: 4,
         }
     }
 }
@@ -336,6 +339,9 @@ impl Config {
         if let Some(v) = env("DECANTER_REPORTS_ADMIN_MAX_SESSIONS") {
             self.admin.max_sessions = parse("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", &v)?;
         }
+        if let Some(v) = env("DECANTER_REPORTS_ADMIN_MAX_SESSIONS_PER_USER") {
+            self.admin.max_sessions_per_user = parse("DECANTER_REPORTS_ADMIN_MAX_SESSIONS_PER_USER", &v)?;
+        }
         for (name, slot) in [
             ("DECANTER_REPORTS_LOGS_PAGE_LINES", &mut self.logs.page_lines),
             ("DECANTER_REPORTS_LOGS_SEARCH_MAX_LOGS", &mut self.logs.search_max_logs),
@@ -395,6 +401,9 @@ impl Config {
         }
         if !(1..=1024).contains(&admin.max_sessions) {
             return err("admin.max_sessions must be between 1 and 1024");
+        }
+        if !(1..=admin.max_sessions).contains(&admin.max_sessions_per_user) {
+            return err("admin.max_sessions_per_user must be between 1 and admin.max_sessions");
         }
         self.logs.validate()?;
         if self.public_url.ends_with('/') {
@@ -837,16 +846,24 @@ mod tests {
             ("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", "60"),
             ("DECANTER_REPORTS_ADMIN_SESSION_MAX_SECS", "120"),
             ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", "3"),
+            ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS_PER_USER", "2"),
         ]);
         let admin = Config::load(None, &env).map(|config| config.admin).ok();
         assert_eq!(
-            admin.map(|a| (a.session_idle_secs, a.session_max_secs, a.max_sessions)),
-            Some((60, 120, 3))
+            admin.map(|a| (
+                a.session_idle_secs,
+                a.session_max_secs,
+                a.max_sessions,
+                a.max_sessions_per_user
+            )),
+            Some((60, 120, 3, 2))
         );
         for (name, value) in [
             ("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", "0"),
             ("DECANTER_REPORTS_ADMIN_SESSION_IDLE_SECS", "28801"),
             ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS", "0"),
+            ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS_PER_USER", "0"),
+            ("DECANTER_REPORTS_ADMIN_MAX_SESSIONS_PER_USER", "17"),
         ] {
             assert!(
                 Config::load(None, &storage_env(&[(name, value)])).is_err(),

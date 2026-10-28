@@ -16,13 +16,12 @@ use tower::ServiceExt;
 use crate::app::{AppState, router};
 use crate::config::Config;
 use crate::secrets::sha256;
-use crate::session::AdminKeys;
 use crate::store::{Change, NewReport, Product, test_stores};
 
 type Test = Result<(), Box<dyn Error>>;
 type Answer = (StatusCode, HeaderMap, Vec<u8>);
 
-const ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef-admin";
+const ADMIN_KEY: &str = crate::accounts::TEST_ADMIN_KEY;
 const ORIGIN: &str = "http://127.0.0.1:8787";
 const FORM: (&str, &str) = ("content-type", "application/x-www-form-urlencoded");
 
@@ -64,7 +63,7 @@ impl Harness {
         let root = std::env::temp_dir().join(format!("decanter-reports-logs-{}", crate::secrets::random_hex()?));
         std::fs::create_dir_all(&root)?;
         let mut harness = Self {
-            state: AppState::new(config, AdminKeys::single(ADMIN_KEY), test_stores(&root)),
+            state: AppState::new(config, crate::accounts::test_accounts(&root), test_stores(&root)),
             root,
             cookie: String::new(),
             csrf: String::new(),
@@ -646,22 +645,29 @@ async fn search_caps_are_applied_and_said() -> Test {
 }
 
 #[tokio::test]
-async fn one_search_at_a_time_per_session() -> Test {
+async fn one_search_at_a_time_per_account() -> Test {
     let h = Harness::new(|_| {}).await?;
     h.insert(&PSPORT, Some(fault_log(1, 0).as_bytes())).await?;
     let uri = "/admin/logs/search?q=guest&title=CUSA03173";
-    let running = h.state.log_searches.try_begin(sha256(h.csrf.as_bytes()));
+    let running = h.state.log_searches.try_begin(sha256(b"owner"));
     assert!(running.is_some());
     let (status, headers, _) = h.get(uri).await?;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(header(&headers, "retry-after"), "5");
-    let auth = format!("Bearer {ADMIN_KEY}");
-    let (other, ..) = h.send(Method::GET, uri, &[("authorization", &auth)], "").await?;
+    let own = format!("Bearer {ADMIN_KEY}");
+    let (same, ..) = h.send(Method::GET, uri, &[("authorization", &own)], "").await?;
+    assert_eq!(
+        same,
+        StatusCode::TOO_MANY_REQUESTS,
+        "the account's key shares its sessions' slot"
+    );
+    let other = format!("Bearer {}", crate::accounts::TEST_VIEWER_KEY);
+    let (other, ..) = h.send(Method::GET, uri, &[("authorization", &other)], "").await?;
     assert_eq!(other, StatusCode::OK, "another maintainer is not held up");
     drop(running);
     assert!(h.page(uri).await?.contains("1 coincidencias"));
     assert!(
-        h.state.log_searches.try_begin(sha256(h.csrf.as_bytes())).is_some(),
+        h.state.log_searches.try_begin(sha256(b"owner")).is_some(),
         "a finished search frees its slot"
     );
     Ok(())

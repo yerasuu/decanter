@@ -13,7 +13,7 @@ launcher turns it into a small, closed, sanitized report and, if the player asks
 the report visible to everyone so that failures can be debugged in public, without a human in the loop and without
 the report ever containing private details. Address: `https://reports.yerasuu.com`.
 
-Non-goals: no accounts, no login for players, no telemetry, no crash upload in the background, no storage of IP
+Non-goals: no accounts or login for players (only the maintainers have accounts), no telemetry, no crash upload in the background, no storage of IP
 addresses, no raw logs in public, no moderation queue.
 
 ## The parts
@@ -214,6 +214,20 @@ least one more title than it tracks.
   down; SQLite ordered by the current maximum of the matching rows. Ties sort by fingerprint as before.
 - A title page sorts at most 10 000 groups of that title.
 
+**Accounts (#1153).** A third s3db store, `accounts/` (`<storage.dir>/accounts` for the `local` driver), beside the
+two partitions and opened by the same passphrase, is not a report `Product` and holds the maintainers:
+
+- **`User`** (`users/<id>`): `name` (`[a-z0-9-]{1,32}`), `role` (`viewer` or `admin`), `key_hash` (SHA-256 of the
+  whole key, hex), `generation` (raised by each reset), `created_day`, `last_login_day`, `disabled`, and `removed`
+  (set in the removing transaction, since a transaction cannot delete; the object goes right after). The id is 32
+  random bits as 8 hex characters, unique through the create-only write.
+- **`idx/name/<name>`** names the account's id; it is created in the same transaction as the account, so of two
+  `user add` with one name exactly one lands. An entry left by a crash after a removal is reclaimed by the next add.
+- **`meta/roster.json`** counts admins and viewers, updated in the transaction of every add, remove and role
+  change, so `remove` and `role` can refuse to leave no admin even when two run at once.
+
+Only days are kept. Nothing else of a maintainer is stored; log lines name the account (below).
+
 Days are UTC `YYYY-MM-DD`; nothing finer is stored, and no address or user agent. Ids (behind their product letter)
 and delete codes are 128-bit random values from the operating system; the delete code is shown once and only its
 SHA-256 hash is kept.
@@ -222,9 +236,10 @@ from a passphrase (Argon2id) that the server reads as a credential; the bucket p
 object names and sizes. The bucket credentials and the passphrase are never in `config.toml`; losing the passphrase
 makes the bucket unreadable. The passphrase is made by `decanter-reports secret` (256 bits from the operating system,
 as 64 hex characters), never by the serving process, since a fresh empty volume would otherwise give the bucket a
-second key (decisions #1150, #1151). For the same reason the server opens the partitions that already have their
-encryption first and never creates one partition's encryption while another is initialized and the passphrase does
-not open it.
+second key (decisions #1150, #1151). For the same reason the server opens the stores that already have their
+encryption first and never creates one store's encryption (a partition's or the accounts') while another is
+initialized and the passphrase does not open it; `user` commands, which open only the accounts store, probe the
+initialized partitions first under the same rule.
 
 ## The private log viewer
 
@@ -256,8 +271,8 @@ without one), server-rendered, no script, read-only GETs. The attachment policy 
   to one title or one fingerprint (a whole-bucket search is refused). It reads the scope newest first, one log at a
   time (a log is held in memory only while it is scanned, on the blocking pool), and stops at
   `logs.search_max_logs` logs, `logs.search_max_mib` MiB read or `logs.search_max_matches` matching lines; the
-  page says which cap stopped it and how many of the scope's logs it read. One search runs at a time per session
-  (the Bearer key counts as one session), else 429 with `Retry-After`. An index of error lines built at upload was
+  page says which cap stopped it and how many of the scope's logs it read. One search runs at a time per account
+  (its sessions and its Bearer key share the slot), else 429 with `Retry-After`. An index of error lines built at upload was
   not needed at this scale (a scope holds at most `max_attachments` logs per partition).
 - **Comparison.** `logdiff` is the server's own: both logs' lines are interned to integers, the common head and
   tail are trimmed, and Myers' algorithm runs on the rest with the edit distance capped at 1000 (its trace costs
@@ -303,20 +318,36 @@ Everything a client sends is hostile, including what looks like decanter's own o
 - **Abuse.** Per-address upload and read limits kept in memory only, a global cap spent only by valid reports, a
   failure limiter on wrong admin keys and wrong delete codes, bounded connections and header timeouts in the
   process, caps that evict instead of refusing, bulk actions by fingerprint for clean-up.
-- **Authentication.** Admin keys held as SHA-256, each compared in constant time (`session::AdminKeys`). The single
-  configured admin key is gone (decisions #1150, #1151); admin accounts and their keys arrive with #1153, and until
-  one exists no key matches, so admin access is disabled and the log says so hourly. Without a valid key, or a
-  session, every `/admin` route but the login form,
-  any wrong method and any unknown path answer the same 404 in the same bytes, and count as an authentication
-  failure. Players hold only their delete code.
+- **Authentication** (#1153, decisions #1150, #1151). Each maintainer has an account with a server-generated key,
+  `drk_<8 hex id>_<64 hex>` (256 random bits), printed once by `decanter-reports user add` or `user reset` and
+  stored only as its SHA-256; random keys need no password hashing. The server keeps the accounts in memory
+  (`accounts::Accounts`), re-read every 15 s, so a change made with the CLI applies within that time without a
+  restart. A key is looked up by its id and the whole key compared in constant time against the stored hash; an
+  id the map does not know costs at most one read of that one account (so a new account works at once), and a key
+  with no account is compared against a dummy hash, so an unknown id, a wrong secret, a disabled or a removed
+  account and a malformed key take the same work, answer the same 404 and count the same failure. There is no
+  per-account lockout, which would let anyone lock a maintainer out; the per-address failure budget stays. Without
+  an admin account the log says so hourly, naming `decanter-reports user add <name> --role admin`. Without a valid
+  key, or a session, every `/admin` route but the login form, any wrong method and any unknown path answer the
+  same 404 in the same bytes, and count as an authentication failure. Players hold only their delete code.
+- **Roles.** `viewer` reads everything under `/admin`: the lists, the rows, the attachments, the log viewer, search
+  and diff. `admin` also hides, restores, resolves and deletes. The gate hands handlers an `Admin { user, role,
+  csrf }` proof and, for `admin` only, a `CanChange` proof that every mutating handler takes, so one that forgot the
+  check would not compile. A viewer's change answers 403 `{"error":"role"}` (a page for a form) and changes
+  nothing; the admin page shows a viewer no action forms. Every log line of an admin request carries `user` and
+  `role` (the request runs in a span with both), never an address.
 - **Admin sessions** (#1060, #1062). A browser cannot send the Bearer header, so `POST /admin/login` trades a key
   (form field, same constant-time check, same-site `Origin` required) for a session: a 256-bit random id held in
-  memory only as its SHA-256, with an idle timeout and an absolute lifetime, a cap that ends the oldest session,
-  and expired entries swept on every login and lookup. A restart ends every session. The cookie is
+  memory only as its SHA-256 together with its account, role and key generation, with an idle timeout and an
+  absolute lifetime, and expired entries swept on every login and lookup. A login past
+  `admin.max_sessions_per_user` ends that account's oldest session; past the global `admin.max_sessions`, the
+  oldest session of the account holding the most, so one person's logins never end another's while others hold
+  fewer. Every refresh of the accounts ends the sessions of accounts removed, disabled or given a new key (the
+  generation moved) and gives the rest their account's present role. A restart ends every session. The cookie is
   `__Host-session` (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`), so it is never sent on a
   cross-site request, never readable by a script, and returned by a browser only over HTTPS or to `localhost`.
   One `session::gate` middleware in front of every route decides for all of `/admin`: a valid Bearer passes as
-  before; a valid session passes reads, and every other method only with the session's CSRF token (256 random
+  its account; a valid session passes reads, and every other method only with the session's CSRF token (256 random
   bits, from the `csrf` form field or `X-CSRF-Token`, constant-time compared) and an `Origin` (else `Referer`)
   equal to `public_url`'s origin, loopback only in development; anything else is the uniform 404. A failed CSRF or
   origin check with a valid session answers 403 and changes nothing. Handlers take an `Admin` proof the gate

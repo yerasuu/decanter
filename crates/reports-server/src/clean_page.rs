@@ -138,12 +138,11 @@ mod tests {
 
     use crate::app::{AppState, router};
     use crate::config::Config;
-    use crate::session::AdminKeys;
     use crate::store::{Product, test_stores};
 
     type Test = Result<(), Box<dyn Error>>;
 
-    const ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef-admin";
+    const ADMIN_KEY: &str = crate::accounts::TEST_ADMIN_KEY;
     const PSPORT: &str = r#"{"schema":2,"product":"psport","date":"2026-10-21","decanter":{"version":"0.3.2"},"psport":{"version":"0.1.0"},"system":{"os":"linux"},"game":{"title_id":"CUSA03173","name":"Bloodborne"},"failure":{"kind":"error","count":1}}"#;
     const DECANTER: &str = r#"{"schema":2,"product":"decanter","date":"2026-10-21","decanter":{"version":"0.3.2"},"system":{"os":"linux"},"action":"build","failure":{"kind":"error","count":1}}"#;
 
@@ -217,7 +216,11 @@ ERROR: cannot read /home/deck/data/Decanter/steamapps/psport/profiles/3cb00b65-3
             let root = std::env::temp_dir().join(format!("decanter-reports-clean-{}", crate::secrets::random_hex()?));
             std::fs::create_dir_all(&root)?;
             Ok(Self {
-                state: AppState::new(Config::default(), AdminKeys::single(ADMIN_KEY), test_stores(&root)),
+                state: AppState::new(
+                    Config::default(),
+                    crate::accounts::test_accounts(&root),
+                    test_stores(&root),
+                ),
                 root,
             })
         }

@@ -1,5 +1,6 @@
-//! The maintainer's page for a browser: the admin list with its filters, and every action as a form that carries
-//! the session's CSRF token. No script; the JSON routes stay for tools.
+//! The maintainers' page for a browser: the admin list with its filters and, for the `admin` role, every action as a
+//! form that carries the session's CSRF token; a viewer gets the same page without the forms. No script; the JSON
+//! routes stay for tools.
 
 use std::fmt::Write as _;
 
@@ -12,7 +13,7 @@ use crate::admin::{Admin, ListParams, parse_filter};
 use crate::app::{AppState, internal};
 use crate::html::{escape_html, layout};
 use crate::session::CSRF_FIELD;
-use crate::store::{AdminFilter, AdminRow, Product};
+use crate::store::{AdminFilter, AdminRow, Product, Role};
 
 const PAGE_SIZE: u32 = 50;
 const MAX_PAGE: u32 = 10_000;
@@ -111,7 +112,13 @@ fn filter_form(filter: &AdminFilter) -> String {
     )
 }
 
-fn row(report: &AdminRow, csrf: &str, return_to: &str) -> String {
+/// The session's forms and return path; `None` for a viewer, whose page offers no action.
+struct Forms<'a> {
+    csrf: &'a str,
+    return_to: &'a str,
+}
+
+fn row(report: &AdminRow, forms: Option<&Forms<'_>>) -> String {
     let id = escape_html(&report.id);
     let fingerprint = escape_html(&report.fingerprint);
     let mut state = String::new();
@@ -142,19 +149,38 @@ fn row(report: &AdminRow, csrf: &str, return_to: &str) -> String {
         escape_html(&report.template_id),
         escape_html(&report.received_day),
         escape_html(&report.created_day),
-        actions(
-            &format!("/admin/reports/{}", report.id),
-            csrf,
-            return_to,
-            report.hidden,
-            report.resolved_at.is_some()
+        forms.map_or_else(
+            || "&mdash;".to_owned(),
+            |forms| actions(
+                &format!("/admin/reports/{}", report.id),
+                forms.csrf,
+                forms.return_to,
+                report.hidden,
+                report.resolved_at.is_some()
+            )
         ),
     )
 }
 
-fn render(filter: &AdminFilter, rows: &[AdminRow], page: u32, has_next: bool, csrf: &str) -> String {
+fn session_line(admin: &Admin) -> String {
+    let role = match admin.role {
+        Role::Admin => "administración",
+        Role::Viewer => "lectura",
+    };
+    format!(
+        "<p>Sesión de <strong>{}</strong> ({role})</p>",
+        escape_html(&admin.user)
+    )
+}
+
+fn render(admin: &Admin, filter: &AdminFilter, rows: &[AdminRow], page: u32, has_next: bool) -> String {
     let return_to = admin_url(filter, page);
-    let mut body = String::new();
+    let csrf = admin.csrf.as_deref().unwrap_or_default();
+    let forms = (admin.role == Role::Admin).then_some(Forms {
+        csrf,
+        return_to: &return_to,
+    });
+    let mut body = session_line(admin);
     if !csrf.is_empty() {
         let _ = write!(
             body,
@@ -166,22 +192,24 @@ fn render(filter: &AdminFilter, rows: &[AdminRow], page: u32, has_next: bool, cs
     body.push_str("<p><a href=\"/admin/logs\">Logs adjuntos</a>: ver, buscar y comparar los logs de los informes</p>");
     body.push_str(&filter_form(filter));
     if let Some(fingerprint) = &filter.fingerprint {
-        let base = format!("/admin/groups/{fingerprint}");
-        let _ = write!(
-            body,
-            "<h2>Grupo <code>{}</code></h2><div>Todos sus informes, ocultos incluidos, en los dos productos: {}{}{}{}</div>",
-            escape_html(fingerprint),
-            action(&format!("{base}/hide"), "ocultar el grupo", csrf, &return_to, false),
-            action(
-                &format!("{base}/restore"),
-                "restaurar el grupo",
-                csrf,
-                &return_to,
-                false
-            ),
-            action(&format!("{base}/resolve"), "resolver el grupo", csrf, &return_to, false),
-            action(&format!("{base}/delete"), "borrar el grupo", csrf, &return_to, true),
-        );
+        let _ = write!(body, "<h2>Grupo <code>{}</code></h2>", escape_html(fingerprint));
+        if forms.is_some() {
+            let base = format!("/admin/groups/{fingerprint}");
+            let _ = write!(
+                body,
+                "<div>Todos sus informes, ocultos incluidos, en los dos productos: {}{}{}{}</div>",
+                action(&format!("{base}/hide"), "ocultar el grupo", csrf, &return_to, false),
+                action(
+                    &format!("{base}/restore"),
+                    "restaurar el grupo",
+                    csrf,
+                    &return_to,
+                    false
+                ),
+                action(&format!("{base}/resolve"), "resolver el grupo", csrf, &return_to, false),
+                action(&format!("{base}/delete"), "borrar el grupo", csrf, &return_to, true),
+            );
+        }
     }
     if rows.is_empty() {
         body.push_str("<p>No hay informes que coincidan.</p>");
@@ -192,7 +220,7 @@ fn render(filter: &AdminFilter, rows: &[AdminRow], page: u32, has_next: bool, cs
              </thead><tbody>",
         );
         for report in rows {
-            body.push_str(&row(report, csrf, &return_to));
+            body.push_str(&row(report, forms.as_ref()));
         }
         body.push_str("</tbody></table>");
     }
@@ -243,12 +271,6 @@ pub async fn page(admin: Admin, State(state): State<AppState>, Query(params): Qu
     };
     let has_next = rows.len() > PAGE_SIZE as usize;
     rows.truncate(PAGE_SIZE as usize);
-    let body = render(
-        &filter,
-        &rows,
-        page,
-        has_next,
-        admin.csrf.as_deref().unwrap_or_default(),
-    );
+    let body = render(&admin, &filter, &rows, page, has_next);
     Html(layout(TITLE, &body)).into_response()
 }
