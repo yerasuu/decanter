@@ -12,9 +12,8 @@ use std::path::{Path, PathBuf};
 pub const UMU_LAUNCHER_VERSION: &str = "1.4.4";
 
 /// Lower-case hex SHA-256 of [`UMU_LAUNCHER_VERSION`]'s `umu-launcher-<version>-zipapp.tar`, which
-/// its download must match: the asset's digest in GitHub's releases API. Until it is filled in,
-/// every download of `umu-run` refuses.
-pub const UMU_LAUNCHER_SHA256: &str = "";
+/// its download must match: the asset's digest in GitHub's releases API (430,080 bytes).
+pub const UMU_LAUNCHER_SHA256: &str = "eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851";
 
 /// The GitHub repository whose releases [`UMU_LAUNCHER_VERSION`] names.
 pub const UMU_LAUNCHER_REPO: &str = "Open-Wine-Components/umu-launcher";

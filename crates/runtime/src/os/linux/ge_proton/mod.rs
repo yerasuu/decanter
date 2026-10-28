@@ -20,17 +20,20 @@ const REPO: &str = "GloriousEggroll/proton-ge-custom";
 /// The one GE-Proton release decanter installs: pinned like `umu-run` and bumped only after
 /// psport's FSR 4.1.1 recording ran under it, since psport measured that some Proton builds don't
 /// start the DLL's FSR 4.1 at all (GE-Proton 11-6 does, 2026-10-07). `sha512` is the release's own
-/// `<tag>.sha512sum` and `size` its `<tag>.tar.gz` asset's bytes; until both are filled in every
-/// install refuses.
+/// `<asset>.sha512sum` and `size` its `<asset>.tar.gz` asset's bytes (the release publishes one per
+/// architecture); an install refuses while either is missing.
 const GE_PROTON: GeProtonPin = GeProtonPin {
     tag: "GE-Proton11-6",
-    sha512: "",
-    size: 0,
+    asset: "GE-Proton11-6-x86_64",
+    sha512: "543e3af57bb138b1be5a5b98bba4d39ca59340bfa34ec8c12144f3e16d7434ed75bd7a68eafc228b16695884629595af0905156e5227c1898f93cdbc92cb5fcb",
+    size: 533_700_853,
 };
 
 struct GeProtonPin {
     tag: &'static str,
-    /// Lower-case hex SHA-512 of `<tag>.tar.gz`.
+    /// The archive's name without `.tar.gz`, which is also the one folder inside it.
+    asset: &'static str,
+    /// Lower-case hex SHA-512 of `<asset>.tar.gz`.
     sha512: &'static str,
     size: u64,
 }
@@ -153,8 +156,9 @@ async fn install(folder: &Path, target: &Path, on_progress: &mut (dyn FnMut(Prog
     let staging = folder.join(format!(".{}.{pid}.part", pin.tag));
     let leftovers = Leftovers(vec![archive.clone(), staging.clone()]);
     let url = format!(
-        "https://github.com/{REPO}/releases/download/{tag}/{tag}.tar.gz",
-        tag = pin.tag
+        "https://github.com/{REPO}/releases/download/{tag}/{asset}.tar.gz",
+        tag = pin.tag,
+        asset = pin.asset
     );
     tracing::info!(url, "downloading GE-Proton");
     on_progress(Progress {
@@ -187,14 +191,14 @@ async fn install(folder: &Path, target: &Path, on_progress: &mut (dyn FnMut(Prog
         received: 0,
         total: None,
     });
-    unpack(&archive, &staging, pin.tag).await?;
+    unpack(&archive, &staging, pin.asset).await?;
     // A folder of the tag without `proton` is a copy cut short outside decanter's own staging.
     if let Err(err) = tokio::fs::remove_dir_all(target).await
         && err.kind() != io::ErrorKind::NotFound
     {
         return Err(err).context("removing an incomplete GE-Proton folder");
     }
-    tokio::fs::rename(staging.join(pin.tag), target)
+    tokio::fs::rename(staging.join(pin.asset), target)
         .await
         .context("moving GE-Proton into place")?;
     drop(leftovers);
