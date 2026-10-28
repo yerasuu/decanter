@@ -23,6 +23,9 @@ pub enum Runner {
     /// The Proton builds Steam and umu keep, which umu downloads itself at
     /// launch: decanter only lists them.
     Proton,
+    /// The one GE-Proton release decanter installs in the library itself, for
+    /// what needs a Proton build without Steam (psport's FSR 4.1.1 recording).
+    GeProton,
 }
 
 /// A release name, checked where it enters (an answer from `GitHub`, a

@@ -255,3 +255,27 @@ pub(crate) async fn umu_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::
 pub(crate) async fn umu_remove(_: &Pin) -> io::Result<()> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "umu-run runs only on Linux"))
 }
+
+pub(crate) async fn umu_on_path(_: &Path) -> io::Result<PathBuf> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "umu-run runs only on Linux"))
+}
+
+/// No GE-Proton to get: Proton runs only on Linux.
+pub(crate) const fn ge_proton_status() -> Status {
+    Status::Unsupported
+}
+
+pub(crate) async fn ge_proton_prepare(_: &Pin, _: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+    bail!("GE-Proton runs only on Linux")
+}
+
+pub(crate) async fn ge_proton_update(_: &mut (dyn FnMut(Progress) + Send)) -> anyhow::Result<Installed> {
+    bail!("GE-Proton runs only on Linux")
+}
+
+pub(crate) async fn ge_proton_remove(_: &Pin) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "GE-Proton runs only on Linux",
+    ))
+}

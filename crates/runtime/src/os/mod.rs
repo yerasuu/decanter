@@ -20,6 +20,7 @@ use native as backend;
 use windows as platform;
 
 pub(crate) use backend::{
-    LAUNCHER, Tracked, end, live_prefixes, prefix_processes, prepare, processes_by_prefix, proton_status, spawn_failed,
-    spawned, steam_compat_dir, stop, stop_prefix, umu_prepare, umu_remove, umu_status, umu_update, wait_status,
+    LAUNCHER, Tracked, end, ge_proton_prepare, ge_proton_remove, ge_proton_status, ge_proton_update, live_prefixes,
+    prefix_processes, prepare, processes_by_prefix, proton_status, spawn_failed, spawned, steam_compat_dir, stop,
+    stop_prefix, umu_on_path, umu_prepare, umu_remove, umu_status, umu_update, wait_status,
 };

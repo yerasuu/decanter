@@ -15,14 +15,14 @@ use decanter_core::runner::{Installed, Pin, Progress, Runner, Status};
 
 use crate::os;
 
-/// Why Proton builds are only listed: Steam and umu own `compatibilitytools.d`.
+/// Why Steam's Proton builds are only listed: Steam and umu own `compatibilitytools.d`.
 const UMU_INSTALLS_PROTON: &str = "Proton builds are installed by umu at launch or by the user, not by decanter";
 
 #[must_use]
 #[inline]
 pub const fn support(runner: Runner) -> Support {
     match runner {
-        Runner::Umu | Runner::Proton => platform::support(Feature::Proton),
+        Runner::Umu | Runner::Proton | Runner::GeProton => platform::support(Feature::Proton),
     }
 }
 
@@ -33,6 +33,7 @@ pub fn status(runner: Runner) -> Status {
     match runner {
         Runner::Umu => os::umu_status(),
         Runner::Proton => os::proton_status(),
+        Runner::GeProton => os::ge_proton_status(),
     }
 }
 
@@ -51,6 +52,7 @@ pub async fn prepare(
     match runner {
         Runner::Umu => os::umu_prepare(pin, on_progress).await,
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
+        Runner::GeProton => os::ge_proton_prepare(pin, on_progress).await,
     }
 }
 
@@ -66,6 +68,7 @@ pub async fn update(runner: Runner, on_progress: &mut (dyn FnMut(Progress) + Sen
     match runner {
         Runner::Umu => os::umu_update(on_progress).await,
         Runner::Proton => bail!(UMU_INSTALLS_PROTON),
+        Runner::GeProton => os::ge_proton_update(on_progress).await,
     }
 }
 
@@ -79,6 +82,7 @@ pub async fn remove(runner: Runner, pin: &Pin) -> io::Result<()> {
     match runner {
         Runner::Umu => os::umu_remove(pin).await,
         Runner::Proton => Err(io::Error::new(io::ErrorKind::Unsupported, UMU_INSTALLS_PROTON)),
+        Runner::GeProton => os::ge_proton_remove(pin).await,
     }
 }
 
@@ -88,6 +92,6 @@ pub async fn remove(runner: Runner, pin: &Pin) -> io::Result<()> {
 #[inline]
 pub const fn log_path(runner: Runner, _: &Pin) -> Option<PathBuf> {
     match runner {
-        Runner::Umu | Runner::Proton => None,
+        Runner::Umu | Runner::Proton | Runner::GeProton => None,
     }
 }

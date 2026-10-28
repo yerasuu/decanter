@@ -1,6 +1,7 @@
 //! Which umu-launcher release decanter runs games under Proton with, and
 //! where a library keeps its copy.
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// The umu-launcher release decanter downloads for itself on Linux. Pinned and
@@ -17,6 +18,20 @@ pub const UMU_LAUNCHER_SHA256: &str = "";
 
 /// The GitHub repository whose releases [`UMU_LAUNCHER_VERSION`] names.
 pub const UMU_LAUNCHER_REPO: &str = "Open-Wine-Components/umu-launcher";
+
+/// A folder holding only `umu-run`, as a link to `installed` (the copy
+/// [`crate::runner::prepare`] returned for [`Runner::Umu`]), to put first on
+/// `PATH` for a tool that looks for `umu-run` there, such as psport's FSR
+/// 4.1.1 recording: decanter's copy is named by its version.
+///
+/// [`Runner::Umu`]: decanter_core::runner::Runner::Umu
+///
+/// # Errors
+/// Fails off Linux, or when the folder or the link can't be made.
+#[inline]
+pub async fn umu_run_dir(installed: &Path) -> io::Result<PathBuf> {
+    crate::os::umu_on_path(installed).await
+}
 
 /// Where decanter keeps its own copy of `umu-run` in a library's data
 /// folder. Named by version, so a version bump downloads the new one.

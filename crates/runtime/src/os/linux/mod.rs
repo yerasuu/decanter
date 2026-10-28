@@ -2,6 +2,7 @@
 //! of its own, and Linux programs run as themselves, with the prefix's path
 //! only naming their session.
 
+mod ge_proton;
 mod prefix;
 mod proton;
 mod umu;
@@ -17,10 +18,11 @@ use crate::runner;
 use crate::session::live_lock;
 use crate::{Launch, Prefix, Prepared, Session};
 
+pub(crate) use ge_proton::{ge_proton_prepare, ge_proton_remove, ge_proton_status, ge_proton_update};
 use prefix::SESSION_ENV;
 pub(crate) use prefix::{live_prefixes, prefix_processes, processes_by_prefix, stop_prefix};
 pub(crate) use proton::{proton_status, steam_compat_dir};
-pub(crate) use umu::{umu_prepare, umu_remove, umu_status, umu_update};
+pub(crate) use umu::{umu_on_path, umu_prepare, umu_remove, umu_status, umu_update};
 
 /// What Proton sets `WINEDEBUG` to under `PROTON_LOG=1` (its `proton`
 /// script, `Session.init_session`).

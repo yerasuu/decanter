@@ -135,6 +135,32 @@ pub(crate) async fn umu_remove(pin: &Pin) -> io::Result<()> {
     }
 }
 
+/// A folder holding only `umu-run`, a link to `installed`, the copy [`umu_prepare`] returned: for a
+/// tool that looks for `umu-run` on `PATH` (psport's FSR 4.1.1 recording), since decanter's copy is
+/// named by its version.
+pub(crate) async fn umu_on_path(installed: &Path) -> io::Result<PathBuf> {
+    let (Some(bin), Some(name)) = (installed.parent(), installed.file_name()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} is no umu-run copy", installed.display()),
+        ));
+    };
+    let dir = bin.join("path");
+    tokio::fs::create_dir_all(&dir).await?;
+    let link = dir.join("umu-run");
+    let target = Path::new("..").join(name);
+    if tokio::fs::read_link(&link).await.is_ok_and(|current| current == target) {
+        return Ok(dir);
+    }
+    match tokio::fs::remove_file(&link).await {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    tokio::fs::symlink(&target, &link).await?;
+    Ok(dir)
+}
+
 fn pinned_path() -> anyhow::Result<PathBuf> {
     let Some(data_dir) = decanter_core::bootstrap::data_dir() else {
         bail!("the active library isn't available");
