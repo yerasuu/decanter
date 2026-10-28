@@ -119,7 +119,6 @@ external.drop.refused.directory: es una carpeta; suelta el ejecutable del juego
 external.drop.refused.special: no es un archivo normal
 external.drop.refused.unreadable: 'no se puede leer (%{error})'
 external.drop.refused.library: es una biblioteca, no un programa
-external.drop.refused.not_executable: es un programa de Linux sin permiso de ejecución
 external.drop.refused.unsupported: 'no es un ejecutable que decanter sepa añadir: suelta un .exe de Windows, un ejecutable de Linux, un AppImage o un script con #!'
 external.drop.refused.unsupported_windows: 'no es un ejecutable que decanter sepa añadir: suelta un .exe'
 external.drop.refused.other_system: es un programa para otro sistema

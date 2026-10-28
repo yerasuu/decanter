@@ -119,7 +119,6 @@ external.drop.refused.directory: a folder; drop the game's executable
 external.drop.refused.special: not a regular file
 external.drop.refused.unreadable: 'can''t be read (%{error})'
 external.drop.refused.library: a library, not a program
-external.drop.refused.not_executable: a Linux program without the permission to run
 external.drop.refused.unsupported: 'not an executable decanter can add: drop a Windows .exe, a Linux executable, an AppImage or a #! script'
 external.drop.refused.unsupported_windows: 'not an executable decanter can add: drop an .exe'
 external.drop.refused.other_system: a program for another system

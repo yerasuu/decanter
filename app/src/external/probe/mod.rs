@@ -58,8 +58,6 @@ pub enum Refusal {
     Unreadable(std::io::Error),
     #[error("a library, not a program")]
     Library,
-    #[error("a Linux program without the permission to run")]
-    NotExecutable,
     #[error("not a program decanter knows")]
     Unsupported,
 }
@@ -126,27 +124,20 @@ pub fn probe(path: &Path) -> Result<Found, Refusal> {
             pe::Header::Other => Err(Refusal::Unsupported),
         };
     }
-    let has_exec_bit = has_exec_bit(&metadata);
-    let is_appimage_name = executable
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("appimage"));
-    // An AppImage without the permission to run is still taken: the launch gives it that
-    // permission (see `launch::linux_native::allow_to_run`).
-    if magic == b"\x7fELF" {
-        if is_shared_object_name(&executable) {
-            return Err(Refusal::Library);
-        }
-        match elf::read(&mut source) {
-            Some(elf::Elf::Program { is_appimage }) if has_exec_bit || is_appimage || is_appimage_name => {}
-            Some(elf::Elf::Program { .. }) => return Err(Refusal::NotExecutable),
-            Some(elf::Elf::Other) | None => return Err(Refusal::Unsupported),
-        }
-    } else if magic.starts_with(b"#!") {
-        if !has_exec_bit {
-            return Err(Refusal::NotExecutable);
-        }
-    } else {
+    // The launch gives a registered program the permission to run (see
+    // `launch::linux_native::allow_to_run`), so a missing exec bit is no reason to refuse.
+    if magic.starts_with(b"#!") {
+        return Ok(linux(executable));
+    }
+    if magic != b"\x7fELF" {
         return Err(Refusal::Unsupported);
+    }
+    if is_shared_object_name(&executable) {
+        return Err(Refusal::Library);
+    }
+    match elf::read(&mut source) {
+        Some(elf::Elf::Program) => {}
+        Some(elf::Elf::Other) | None => return Err(Refusal::Unsupported),
     }
     Ok(linux(executable))
 }
@@ -223,17 +214,6 @@ fn appimage_name(executable: &Path) -> Option<String> {
         })
         .unwrap_or(stem.len());
     sanitize(stem.get(..cut).unwrap_or(&stem))
-}
-
-#[cfg(unix)]
-fn has_exec_bit(metadata: &std::fs::Metadata) -> bool {
-    use std::os::unix::fs::PermissionsExt as _;
-    metadata.permissions().mode() & 0o111 != 0
-}
-
-#[cfg(not(unix))]
-const fn has_exec_bit(_: &std::fs::Metadata) -> bool {
-    false
 }
 
 /// `title`, else the nearest folder that names the game, else the file's

@@ -201,7 +201,6 @@ fn localized(refusal: &Refusal) -> Text {
         Refusal::Special => Text::new("external.drop.refused.special"),
         Refusal::Unreadable(err) => Text::new("external.drop.refused.unreadable").arg("error", err),
         Refusal::Library => Text::new("external.drop.refused.library"),
-        Refusal::NotExecutable => Text::new("external.drop.refused.not_executable"),
         Refusal::Unsupported if crate::launch::in_prefixes() => Text::new("external.drop.refused.unsupported"),
         Refusal::Unsupported => Text::new("external.drop.refused.unsupported_windows"),
     }

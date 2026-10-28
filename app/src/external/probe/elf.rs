@@ -1,5 +1,5 @@
 //! A Linux program's ELF header: whether it is something to run rather
-//! than a library or an object file, and whether it is an AppImage.
+//! than a library or an object file.
 
 use super::source::Source;
 
@@ -11,7 +11,7 @@ const MAX_PROGRAM_HEADERS: usize = 256;
 
 pub(super) enum Elf {
     /// Something to run: `ET_EXEC`, or `ET_DYN` with an interpreter (a PIE).
-    Program { is_appimage: bool },
+    Program,
     /// A shared library or an object file.
     Other,
 }
@@ -57,7 +57,7 @@ pub(super) fn read(source: &mut Source) -> Option<Elf> {
     let is_appimage = matches!(header.get(8..11), Some(b"AI\x01" | b"AI\x02"));
     let kind = half(16)?;
     if kind == ET_EXEC || kind == ET_DYN && is_appimage {
-        return Some(Elf::Program { is_appimage });
+        return Some(Elf::Program);
     }
     if kind != ET_DYN {
         return Some(Elf::Other);
@@ -76,9 +76,5 @@ pub(super) fn read(source: &mut Source) -> Option<Elf> {
     let has_interpreter = headers
         .chunks_exact(entry_size)
         .any(|entry| word(entry, 0) == Some(PT_INTERP));
-    Some(if has_interpreter {
-        Elf::Program { is_appimage }
-    } else {
-        Elf::Other
-    })
+    Some(if has_interpreter { Elf::Program } else { Elf::Other })
 }
