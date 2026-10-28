@@ -9,7 +9,7 @@ use std::{fs, io};
 use tokio::process::Command;
 
 /// Whether this system runs psport this way rather than through `run.sh`.
-pub const IN_USE: bool = crate::platform::DIRECT_LAUNCH;
+pub const IN_USE: bool = crate::os::DIRECT_LAUNCH;
 
 /// The [`super::LauncherSettings`] key the folder is kept under, as the user picked it.
 pub const FOLDER_KEY: &str = "psport_exe_dir";

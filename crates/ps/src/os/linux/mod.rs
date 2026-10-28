@@ -5,5 +5,7 @@ pub mod builds;
 pub mod bundle;
 pub mod cmake_cache;
 pub mod prebuilt;
+#[cfg(target_os = "linux")]
+pub(super) mod sys;
 pub mod toolchain;
 pub mod updater;

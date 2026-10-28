@@ -32,7 +32,6 @@ pub mod library;
 pub mod mapping;
 pub mod os;
 pub mod paths;
-mod platform;
 pub mod port;
 pub mod process;
 pub mod remote;

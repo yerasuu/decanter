@@ -54,7 +54,7 @@ fn git_command(repo: &Path) -> Command {
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null());
     decanter_core::strip_launcher_env(command.as_std_mut());
-    crate::platform::without_console(&mut command);
+    crate::os::without_console(&mut command);
     command
 }
 

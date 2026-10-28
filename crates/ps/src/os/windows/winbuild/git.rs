@@ -20,9 +20,9 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use super::{Commit, Error, Head, Log, Stage, pins, toolchain};
+use crate::os;
 use crate::os::linux::updater;
 use crate::paths::Root;
-use crate::platform;
 use crate::port::Port;
 use crate::remote::RemoteError;
 
@@ -88,7 +88,7 @@ const OPTIONS: [&str; 15] = [
 ];
 
 /// Where hooks are looked for: nowhere.
-const NO_HOOKS: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
+const NO_HOOKS: &str = os::NULL_DEVICE;
 
 /// git in `dir`, its working folder and `-C`, never looking above `ceiling` for a repository
 /// ([`GIT_CEILING_DIRECTORIES`](https://git-scm.com/docs/git#Documentation/git.txt-GITCEILINGDIRECTORIES)).
@@ -102,12 +102,7 @@ fn command(git: &Path, dir: &Path, ceiling: &Path) -> Command {
             command.arg(option);
         }
     }
-    // MinGit names its CA bundle in its system configuration, which `GIT_CONFIG_NOSYSTEM` leaves out,
-    // so certificates are checked against Windows' own store instead
-    // ([http.sslBackend](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httpsslBackend)).
-    if cfg!(windows) {
-        command.args(["-c", "http.sslBackend=schannel"]);
-    }
+    command.args(os::GIT_TLS_OPTIONS);
     command.arg("-C").arg(dir).current_dir(dir).env_clear();
     for name in ENV {
         if let Some(value) = std::env::var_os(name) {
@@ -126,7 +121,7 @@ fn command(git: &Path, dir: &Path, ceiling: &Path) -> Command {
         .env("GIT_CEILING_DIRECTORIES", ceiling.parent().unwrap_or(ceiling))
         .stdin(Stdio::null())
         .kill_on_drop(true);
-    platform::without_console(&mut command);
+    os::without_console(&mut command);
     command
 }
 

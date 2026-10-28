@@ -1,5 +1,5 @@
 //! Running a build's tool (`cmake.exe`, `ninja.exe`) confined: by absolute path, with no shell, in
-//! a clean environment ([`platform::build_env`]), inside a Job Object ([`platform::confine`]), and
+//! a clean environment ([`os::build_env`]), inside a Job Object ([`os::confine`]), and
 //! ended whole when it runs past its time or starts too many processes.
 
 use std::ffi::OsString;
@@ -15,7 +15,7 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use super::{Error, Log, MAX_LINE_BYTES};
-use crate::platform;
+use crate::os;
 
 /// How often the job's processes are counted and its time checked.
 const POLL: Duration = Duration::from_millis(500);
@@ -69,7 +69,7 @@ pub async fn run(spec: Step<'_>, log: &mut Log<'_>) -> Result<(), Error> {
             });
         }
     };
-    let mut confined = match platform::confine(&child) {
+    let mut confined = match os::confine(&child) {
         Ok(confined) => Some(confined),
         Err(err) => {
             let _ = child.start_kill();
@@ -190,18 +190,13 @@ fn command(program: &Path, args: &[OsString], dir: &Path, env: &[(&'static str, 
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    platform::own_process_group(&mut command);
-    platform::without_console(&mut command);
+    os::own_process_group(&mut command);
+    os::without_console(&mut command);
     command
 }
 
 /// Why the step must end now, if it ran past its time or holds too many processes.
-fn past_bounds(
-    step: &'static str,
-    bounds: Bounds,
-    started: Instant,
-    confined: Option<&platform::Confined>,
-) -> Option<Error> {
+fn past_bounds(step: &'static str, bounds: Bounds, started: Instant, confined: Option<&os::Confined>) -> Option<Error> {
     if started.elapsed() > bounds.timeout {
         return Some(Error::TimedOut {
             step,
@@ -209,7 +204,7 @@ fn past_bounds(
         });
     }
     confined
-        .map(platform::Confined::processes)
+        .map(os::Confined::processes)
         .filter(|&count| count > bounds.max_processes)
         .map(|count| Error::TooManyProcesses { step, count })
 }

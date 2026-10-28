@@ -1,4 +1,7 @@
-//! Linux: process groups and signals.
+//! macOS: process groups and signals.
+//!
+//! No port is built, fetched or installed here: `PsBuilds` and `PsDownloads` are unavailable on macOS
+//! ([`decanter_core::platform::support`]), so this system has the jobs' system calls and nothing else.
 
 use std::ffi::OsString;
 use std::io;
@@ -14,6 +17,12 @@ use crate::process::JobKind;
 
 /// The port runs from a checkout, a fetched build or a bundle, through `run.sh`.
 pub const DIRECT_LAUNCH: bool = false;
+
+/// Where nothing is read from, such as git's hooks.
+pub const NULL_DEVICE: &str = "/dev/null";
+
+/// git's own certificate store serves here.
+pub const GIT_TLS_OPTIONS: &[&str] = &[];
 
 /// So a stop reaches everything the job started: `run.sh` and the game,
 /// nix-shell and what runs inside it, or a build's tools.
@@ -36,10 +45,9 @@ pub fn signal_of(status: ExitStatus) -> Option<(i32, bool)> {
     status.signal().map(|signal| (signal, status.core_dumped()))
 }
 
-/// libarchive's `bsdtar`, which reads zip archives where GNU `tar` doesn't: psport's Windows package
-/// is only installed on Windows, but its checks run the same here.
+/// The system's `tar` is libarchive's bsdtar, which reads zip archives.
 pub fn zip_tar() -> PathBuf {
-    PathBuf::from("bsdtar")
+    PathBuf::from("/usr/bin/tar")
 }
 
 /// Only Windows opens a console for a console program started from a window.

@@ -18,8 +18,8 @@ use tokio::process::Command;
 
 use crate::bbport::Names;
 use crate::failures::CallReport;
+use crate::os;
 use crate::paths::Root;
-use crate::platform;
 use crate::process::JobKind;
 
 /// Logs kept per job kind and target; older ones are deleted when a new one starts.
@@ -165,7 +165,7 @@ pub fn describe_exit(exit: Option<ExitStatus>) -> String {
     let Some(status) = exit else {
         return "none".to_owned();
     };
-    match (status.code(), platform::signal_of(status)) {
+    match (status.code(), os::signal_of(status)) {
         (Some(code), _) => format!("code {code}"),
         (None, Some((signal, true))) => format!("signal {signal} (core dumped)"),
         (None, Some((signal, false))) => format!("signal {signal}"),

@@ -19,6 +19,14 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// checkout, toolchain or `run.sh` here.
 pub const DIRECT_LAUNCH: bool = true;
 
+/// Where nothing is read from, such as git's hooks.
+pub const NULL_DEVICE: &str = "NUL";
+
+/// Git for Windows' `MinGit` names its CA bundle in its system configuration, which `GIT_CONFIG_NOSYSTEM` leaves out,
+/// so certificates are checked against Windows' own store instead
+/// ([http.sslBackend](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httpsslBackend)).
+pub const GIT_TLS_OPTIONS: &[&str] = &["-c", "http.sslBackend=schannel"];
+
 /// Process groups are a Unix job-control idea; a game's Job Object is its
 /// session's, made where the app starts it.
 pub const fn own_process_group(_command: &mut Command) {}

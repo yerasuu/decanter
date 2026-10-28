@@ -36,7 +36,7 @@ use crate::os::linux::prebuilt;
 use crate::os::windows::package;
 use crate::paths::Root;
 use crate::remote::RemoteError;
-use crate::{archive, download, platform};
+use crate::{archive, download, os};
 
 /// The configure step: CMake checks the compiler and reads the toolchain package.
 const CONFIGURE: run::Bounds = run::Bounds {
@@ -566,7 +566,7 @@ async fn steps(
     if let Err(err) = git::checkout(&tools.git, &work(root), &sources, head, log).await {
         return Err(err);
     }
-    let env = platform::build_env(&temp);
+    let env = os::build_env(&temp);
     on_stage(Stage::Configuring);
     let configure = [
         "-S".into(),

@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::platform;
+use crate::os;
 
 /// Lines kept per job; older ones are dropped so a chatty game can't grow
 /// its log without bound.
@@ -109,7 +109,7 @@ impl Job {
             return;
         };
         self.stop_requested = true;
-        platform::terminate_group(pid, self.kind);
+        os::terminate_group(pid, self.kind);
     }
 }
 
@@ -175,7 +175,7 @@ fn wrapped(mut wrapper: std::process::Command, original: &Command) -> Command {
 /// merged into events; the last event is always [`Event::Exited`].
 /// Must be called inside the tokio runtime.
 pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
-    platform::own_process_group(&mut command);
+    os::own_process_group(&mut command);
     let mut child = match command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

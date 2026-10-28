@@ -706,7 +706,7 @@ async fn rev_parse_head(repo: &Path, flags: &[&str]) -> String {
     let mut git = tokio::process::Command::new("git");
     git.arg("-C").arg(repo).arg("rev-parse").args(flags).arg("HEAD");
     decanter_core::strip_launcher_env(git.as_std_mut());
-    crate::platform::without_console(&mut git);
+    crate::os::without_console(&mut git);
     git.output()
         .await
         .ok()

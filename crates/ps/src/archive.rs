@@ -1,4 +1,4 @@
-//! Zip archives from the network, read with the system's `tar` ([`platform::zip_tar`]) and checked
+//! Zip archives from the network, read with the system's `tar` ([`os::zip_tar`]) and checked
 //! before and after it extracts anything: psport's Windows package ([`crate::os::windows::package`]) and the
 //! pieces of the Windows toolchain ([`crate::os::windows::winbuild`]).
 //!
@@ -16,7 +16,7 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
-use crate::platform;
+use crate::os;
 
 const MAX_NAME_BYTES: usize = 128;
 
@@ -131,14 +131,14 @@ pub async fn unpack(
 
 /// `tar` with `args`, its listing as text. Nothing it reads is ever run.
 async fn tar(args: &[&OsStr]) -> Result<String, Error> {
-    let mut command = Command::new(platform::zip_tar());
+    let mut command = Command::new(os::zip_tar());
     command
         .args(args)
         .env("LC_ALL", "C")
         .stdin(Stdio::null())
         .kill_on_drop(true);
     decanter_core::strip_launcher_env(command.as_std_mut());
-    platform::without_console(&mut command);
+    os::without_console(&mut command);
     let output = match command.output().await {
         Ok(output) => output,
         Err(err) => return Err(Error::Tar(err.to_string())),

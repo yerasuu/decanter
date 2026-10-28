@@ -9,7 +9,7 @@ use std::path::Path;
 
 use tokio::process::Command;
 
-use crate::platform;
+use crate::os;
 
 #[derive(Clone, Copy)]
 pub enum Names {
@@ -39,7 +39,7 @@ impl Names {
     /// A direct launch has no `run.sh` to tell by: its builds all come after both renames.
     fn of_script(script: Option<&str>) -> Self {
         match script {
-            _ if platform::DIRECT_LAUNCH => Self::Psport,
+            _ if os::DIRECT_LAUNCH => Self::Psport,
             Some(script) if script.contains("psport.ini") => Self::Psport,
             Some(script) if script.contains("PS_PROBE") => Self::EarlyPsport,
             _ => Self::Bbport,
@@ -106,5 +106,5 @@ pub fn single_memory_model_blocking(port_dir: &Path) -> bool {
 
 /// A direct launch's builds all come after the removal, with no `run.sh` to tell by.
 fn is_single_memory_model(script: Option<&str>) -> bool {
-    platform::DIRECT_LAUNCH || script.is_some_and(|text| text.contains("Memory model: the PC one, the only one now"))
+    os::DIRECT_LAUNCH || script.is_some_and(|text| text.contains("Memory model: the PC one, the only one now"))
 }
