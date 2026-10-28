@@ -1,9 +1,12 @@
-//! CMake build directories inside a port checkout that the checkout moved
-//! away from.
+//! CMake build directories inside a port checkout that can no longer be
+//! configured.
 //!
 //! A `CMakeCache.txt` records the absolute directory it was created in, and
 //! CMake refuses to configure from anywhere else. The PS folder follows the
-//! library, so a checkout built before a move would never build again.
+//! library, so a checkout built before a move would never build again. It
+//! also records the nix store paths its pkg-config lookups found, and a
+//! garbage collection that removes one makes CMake fail at the generate step
+//! with `includes non-existent path`.
 
 use std::fs;
 use std::io;
@@ -15,12 +18,18 @@ const MAX_DEPTH: usize = 3;
 const CACHE_DIR_KEY: &str = "CMAKE_CACHEFILE_DIR:INTERNAL=";
 
 /// Removes each cache (and its `CMakeFiles/`) that names another directory
-/// than its own, so the next configure starts fresh; sources stay, compiled
-/// objects go with `CMakeFiles/`. Returns the build directories it reset. File
-/// I/O over the checkout's top levels: off the UI thread.
-pub fn forget_moved(checkout: &Path) -> io::Result<Vec<PathBuf>> {
+/// than its own or a nix store path that is gone, so the next configure starts
+/// fresh; sources stay, compiled objects go with `CMakeFiles/`. Returns the
+/// build directories it reset. File I/O over the checkout's top levels: off the
+/// UI thread.
+pub fn forget_stale(checkout: &Path) -> io::Result<Vec<PathBuf>> {
     let mut reset = Vec::new();
-    walk(checkout, 0, &moved, &mut reset)?;
+    walk(
+        checkout,
+        0,
+        &|dir, cache| moved(dir, cache) || names_missing_store_path(cache),
+        &mut reset,
+    )?;
     Ok(reset)
 }
 
@@ -43,6 +52,27 @@ fn moved(dir: &Path, cache: &str) -> bool {
                     (Ok(physical), Ok(here)) if physical == here
                 )
         })
+}
+
+/// Whether the cache names a nix store object that no longer exists, which a
+/// garbage collection does to the toolchain of an older build.
+fn names_missing_store_path(cache: &str) -> bool {
+    const STORE: &str = "/nix/store/";
+    cache.match_indices(STORE).any(|(at, _)| {
+        let object: String = cache[at + STORE.len()..]
+            .chars()
+            .take_while(|c| !matches!(c, '/' | ';' | '"' | '\'' | ':' | '\\') && !c.is_whitespace())
+            .collect();
+        // A store object is `<32 base32 characters>-<name>`; anything else is text that merely
+        // starts like a path.
+        object.len() > 33
+            && object.as_bytes().get(32) == Some(&b'-')
+            && object
+                .bytes()
+                .take(32)
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+            && !Path::new(STORE).join(&object).exists()
+    })
 }
 
 fn walk(dir: &Path, depth: usize, stale: &dyn Fn(&Path, &str) -> bool, reset: &mut Vec<PathBuf>) -> io::Result<()> {

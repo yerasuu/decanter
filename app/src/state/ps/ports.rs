@@ -503,12 +503,12 @@ pub(super) async fn build(
     set_stage(this, port, Stage::Building, cx);
     let for_reset = port.checkout(root);
     match cx
-        .background_spawn(async move { decanter_ps::os::linux::cmake_cache::forget_moved(&for_reset) })
+        .background_spawn(async move { decanter_ps::os::linux::cmake_cache::forget_stale(&for_reset) })
         .await
     {
         Ok(reset) => {
             for dir in reset {
-                tracing::info!(port = port.name(), dir = %dir.display(), "CMake cache from before a move reset");
+                tracing::info!(port = port.name(), dir = %dir.display(), "stale CMake cache reset");
             }
         }
         Err(err) => return Err(PortError::CmakeCache(err)),
