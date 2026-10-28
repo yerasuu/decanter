@@ -51,10 +51,12 @@ server). A new licence is an owner decision: it is added to the allow-list in th
 
 ## What decanter is not
 
-decanter does not link or ship the programs it runs. Wine/Proton (through umu-run), psport, AnyPS5 and any other
-runtime are separate programs started as their own processes, built or downloaded on the user's machine. They keep
-their own terms: psport is GPL-2.0-only (https://github.com/yerasuu/psport, its own LICENSES.md); decanter neither
-relicenses them nor includes their source or binaries in a release.
+decanter does not link or ship the programs it runs. Wine/Proton (through umu-run), psport, AnyPS5, Raven and any
+other runtime are separate programs started as their own processes, built or downloaded on the user's machine. They
+keep their own terms: psport is GPL-2.0-only (https://github.com/yerasuu/psport, its own LICENSES.md) and Raven, built
+from a pinned commit only when the user asks for it in its section, is GPL-3.0-or-later
+(https://github.com/mirkobrombin/raven); decanter neither relicenses them nor includes their source or binaries in a
+release.
 
 ## Release contents
 

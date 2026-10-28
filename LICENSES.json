@@ -5,7 +5,8 @@
   "license_references": {
     "LicenseRef-psport-separate-work": "psport is a separate project under GPL-2.0-only, built or downloaded by decanter at run time and run as its own process. It is not linked into decanter and no psport source or binary is distributed in a decanter release.",
     "LicenseRef-Cargo-Dependencies": "Third-party Rust crates declare their own SPDX expressions in their Cargo.toml. scripts/licenses.py inventories them from cargo metadata and refuses an expression that has no alternative on its allow-list.",
-    "LicenseRef-gog-crate": "The external crate gog 0.5.0 (https://git.sr.ht/~nicohman/gogapi-rs) declares GPL-3.0 in its Cargo.toml and is linked into decanter-gog, so the combined decanter binaries are distributed under GPL-3.0 terms. Source files that are GPL-3.0-or-later by themselves keep that notice."
+    "LicenseRef-gog-crate": "The external crate gog 0.5.0 (https://git.sr.ht/~nicohman/gogapi-rs) declares GPL-3.0 in its Cargo.toml and is linked into decanter-gog, so the combined decanter binaries are distributed under GPL-3.0 terms. Source files that are GPL-3.0-or-later by themselves keep that notice.",
+    "LicenseRef-raven-separate-work": "Raven (https://github.com/mirkobrombin/raven) is a separate project under GPL-3.0-or-later, cloned at a pinned commit and built on the user's machine only when they ask for it in the Raven section, and run as its own process. It is not linked into decanter and no Raven source or binary is distributed in a decanter release."
   },
   "components": [
     {
@@ -130,6 +131,13 @@
       "license": "LicenseRef-psport-separate-work",
       "review": "reviewed",
       "provenance": "Built from https://github.com/yerasuu/psport at run time (GPL-2.0-only) and run as a separate process; decanter only starts it and reads its logs. AnyPS5, when used, is likewise a separate work under its own licence."
+    },
+    {
+      "name": "Raven",
+      "paths": [],
+      "license": "LicenseRef-raven-separate-work",
+      "review": "reviewed",
+      "provenance": "Built from https://github.com/mirkobrombin/raven at run time (GPL-3.0-or-later; crates/runtime/src/runner.rs RAVEN_COMMIT) after the user confirms it, and run as a separate process; decanter only starts it and keeps its build log."
     }
   ]
 }

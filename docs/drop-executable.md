@@ -18,6 +18,11 @@ Each file is classified by its first bytes, not its extension
 | AppImage | ELF with `AI\x01`/`AI\x02` at offset 8, or an `.AppImage` name | itself; without the permission to run it is added and the notice says to `chmod +x` it, since decanter never changes the file |
 | Script | `#!` with the permission to run | itself (Linux only) |
 
+While the Raven section is shown ([raven.md](raven.md)), every dropped file
+goes to Raven's programs instead: a Windows program is added there with its
+own Raven prefix, anything else is refused in the section's notice, and the
+library is untouched.
+
 A folder that `decanter_ps::library::inspect` takes for a PS dump, where the
 PS section is offered, goes to the PS section's «Añadir volcado…» instead:
 the same Copiar/Mover question, progress and cancel. Only the first dump of a
