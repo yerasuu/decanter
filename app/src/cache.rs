@@ -36,7 +36,6 @@ pub fn game_dir(folder: &Path, group: &str, id: &str) -> Option<PathBuf> {
 
 /// The shader cache variables for a PC game's launch, pointed into its
 /// cache folder in the location of the library folder holding it.
-#[cfg(proton)]
 pub fn launch_env(game: &decanter_core::InstalledGame) -> Vec<(String, String)> {
     let folder = match crate::core::library_for_account(&game.account_id) {
         Ok(library) => library

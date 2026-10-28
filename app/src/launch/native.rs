@@ -12,12 +12,13 @@ use std::time::SystemTime;
 use decanter_core::{GameSystem, InstalledGame, platform};
 use decanter_ps::process::Job;
 use decanter_ps::run_log::RunLog;
-use decanter_runtime::{Launch, Prepared};
+use decanter_runtime::Launch;
 use gpui::{AsyncApp, Entity};
 use rust_i18n::t;
 
-/// What a run that never started couldn't start, for its log.
-pub(super) const LAUNCHER: &str = "the game";
+use super::Planned;
+
+const LAUNCHER: &str = "the game";
 
 /// The imports through which a game reaches `DirectX` 7: `DirectDraw` and
 /// `Direct3D`'s immediate mode.
@@ -29,15 +30,6 @@ const DX7_HINT: &str = "# hint: the game imports DirectX 7 (DirectDraw) and ende
 /// An executable as it was when its imports were read: a game updated in
 /// place is read again.
 type ImportsKey = (PathBuf, u64, Option<SystemTime>);
-
-/// A launch resolved before anything is synced or spawned.
-pub(super) struct Planned {
-    launch: Launch,
-    /// Where decanter-hook writes this session's unlocks; GOG games only.
-    pub(super) achievement_log: Option<PathBuf>,
-    /// Header lines for the run's log.
-    pub(super) facts: Vec<(&'static str, String)>,
-}
 
 pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) -> Option<Planned> {
     // The executable's own folder, which is where most games load their
@@ -51,7 +43,7 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
         ("game_id", game.game_id.clone()),
         ("working_directory", working_directory.display().to_string()),
     ];
-    let mut launch = Launch::new(executable, session_key(account_id, &game.game_id));
+    let mut launch = Launch::new(executable, super::session_key(account_id, &game.game_id));
     launch.working_directory = Some(working_directory);
     launch.capture_output = true;
     // decanter-hook is a Windows DLL: a macOS build has nothing that would
@@ -62,8 +54,10 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
         .flatten();
     Some(Planned {
         launch,
+        launcher: LAUNCHER,
         achievement_log,
         facts,
+        mangohud: None,
     })
 }
 
@@ -79,23 +73,12 @@ fn achievement_log(account_id: &str, game: &InstalledGame, launch: &mut Launch) 
         }
     };
     let path = decanter_gog::hook::achievement_log_path(&library, account_id, &game.game_id)?;
-    launch
-        .env
-        .push(("DECANTER_PRODUCT_ID".to_owned(), game.game_id.clone()));
-    launch
-        .env
-        .push(("DECANTER_ACHIEVEMENT_LOG".to_owned(), path.display().to_string()));
+    super::hook_env(launch, &game.game_id, &path);
     Some(path)
 }
 
-impl Planned {
-    pub(super) async fn prepare(self) -> anyhow::Result<Prepared> {
-        decanter_runtime::prepare(self.launch).await
-    }
-}
-
 pub(super) async fn stop(account_id: &str, game_id: &str) {
-    let key = session_key(account_id, game_id);
+    let key = super::session_key(account_id, game_id);
     if !decanter_runtime::is_live(&key) {
         tracing::warn!(account_id, game_id, "cannot stop, no running session");
         return;
@@ -106,14 +89,8 @@ pub(super) async fn stop(account_id: &str, game_id: &str) {
 
 /// Whether `game_id` of `account_id` has a session decanter started and
 /// hasn't seen exit.
-pub fn is_running(account_id: &str, game_id: &str) -> bool {
-    decanter_runtime::is_live(&session_key(account_id, game_id))
-}
-
-/// Per account, the same as a game's manifest: two profiles owning one
-/// game run it as two sessions.
-fn session_key(account_id: &str, game_id: &str) -> String {
-    format!("{account_id}/{game_id}")
+pub(super) fn is_running(account_id: &str, game_id: &str) -> bool {
+    decanter_runtime::is_live(&super::session_key(account_id, game_id))
 }
 
 /// Points at a `DirectDraw` wrapper when a game importing `DirectX` 7 ends with

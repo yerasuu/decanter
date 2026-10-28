@@ -6,34 +6,148 @@
 //! task, not a view's: it writes to `running`, which swaps the button that
 //! started it out of existence.
 //!
-//! How a game is started and stopped is the backend's: Proton in a prefix
-//! of its own (`proton`), or the executable itself on Windows and macOS
-//! (`native`).
+//! How a game is started is its [`Kind`]'s, one module each with the same
+//! functions: Proton in a prefix of its own (`umu`), a Linux program run as
+//! itself (`linux_native`), or the system's own program on Windows and
+//! macOS (`native`). Every kind is built on every system; which one a game
+//! takes is decided when it launches, from the system and the game's file.
 
-#[cfg(not(proton))]
+mod linux_native;
 mod native;
-#[cfg(not(proton))]
 mod pe;
-#[cfg(proton)]
-mod proton;
+mod umu;
 
-#[cfg(not(proton))]
-use native as backend;
-#[cfg(not(proton))]
-pub use native::is_running;
-#[cfg(proton)]
-use proton as backend;
-#[cfg(proton)]
-pub use proton::reset_prefix;
+use std::path::{Path, PathBuf};
 
-use decanter_core::InstalledGame;
+pub use umu::reset_prefix;
+
+use decanter_core::capabilities::Feature;
+use decanter_core::{InstalledGame, platform};
 use decanter_ps::process::{self, Event, Job, JobKind};
 use decanter_ps::run_log::{RunLog, describe_exit};
+use decanter_runtime::{Launch, Prepared};
 use gpui::{AppContext as _, AsyncApp, Entity};
 use rust_i18n::t;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::state::Background;
+
+/// How one game is started.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// A Windows program under Proton through `umu-run`, in its own prefix.
+    Umu,
+    /// A Linux program run as itself, its prefix only naming its session.
+    LinuxNative,
+    /// A program of the system's own (Windows, macOS), from its folder.
+    Native,
+}
+
+impl Kind {
+    /// The kind a Windows game takes here: under Proton where the system
+    /// offers it (Linux), else as the program it is.
+    fn host() -> Self {
+        if platform::support(Feature::Proton).is_offered() {
+            Self::Umu
+        } else {
+            Self::Native
+        }
+    }
+
+    /// Read from the file rather than kept in the manifest: what decides is
+    /// what the executable is now, and only an external game can be a Linux
+    /// program.
+    fn of(game: &InstalledGame, executable: &Path) -> Self {
+        let host = Self::host();
+        if host == Self::Umu
+            && game.storefront == decanter_core::Storefront::Unspecified
+            && crate::external::probe::is_native_linux(executable)
+        {
+            Self::LinuxNative
+        } else {
+            host
+        }
+    }
+}
+
+/// A launch resolved before anything is synced or spawned, so a game with
+/// nowhere to run fails before its cloud saves are touched.
+struct Planned {
+    launch: Launch,
+    /// What a run that never started couldn't start, for its log.
+    launcher: &'static str,
+    /// Where decanter-hook writes this session's unlocks; GOG games only.
+    achievement_log: Option<PathBuf>,
+    /// Header lines for the run's log.
+    facts: Vec<(&'static str, String)>,
+    /// The game's key, its library's root and whether MangoHud logs from
+    /// the start, when it runs with MangoHud.
+    mangohud: Option<(String, PathBuf, bool)>,
+}
+
+impl Planned {
+    fn plan(kind: Kind, account_id: &str, game: &InstalledGame, executable: PathBuf) -> Option<Self> {
+        match kind {
+            Kind::Umu => umu::plan(account_id, game, executable),
+            Kind::LinuxNative => linux_native::plan(account_id, game, executable),
+            Kind::Native => native::plan(account_id, game, executable),
+        }
+    }
+
+    async fn prepare(mut self) -> anyhow::Result<Prepared> {
+        if let Some((key, library_root, autostart_log)) = self.mangohud.take() {
+            self.launch.env.extend(
+                crate::game_tools::mangohud_env(&key, &library_root, autostart_log)
+                    .await
+                    .map(|(name, value)| (name.to_owned(), value)),
+            );
+        }
+        decanter_runtime::prepare(self.launch).await
+    }
+}
+
+/// Per account, the same as a game's manifest: two profiles owning one
+/// game run it as two sessions.
+fn session_key(account_id: &str, game_id: &str) -> String {
+    format!("{account_id}/{game_id}")
+}
+
+/// What a game gets on Linux however it starts there: GameMode, MangoHud,
+/// its scope's name, captured output and its shader caches. MangoHud's
+/// variables wait for [`Planned::prepare`], since reading them awaits.
+fn session_tools(account_id: &str, game: &InstalledGame, launch: &mut Launch) -> Option<(String, PathBuf, bool)> {
+    let key = crate::taskbar::key(game.storefront, &game.game_id);
+    let (mangohud, gamemoded) = crate::core::db()
+        .map(|db| {
+            (
+                crate::game_tools::mangohud(&db, &key),
+                crate::game_tools::gamemoded(&db, &key),
+            )
+        })
+        .unwrap_or_default();
+    launch.gamemoded = gamemoded;
+    let mangohud = mangohud.and_then(|autostart_log| match crate::core::library_for_account(account_id) {
+        Ok(library) => Some((key.clone(), library.root().to_path_buf(), autostart_log)),
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "no library to log MangoHud to, starting without it");
+            None
+        }
+    });
+    launch.identity = Some((key, game.name.clone()));
+    launch.capture_output = true;
+    launch.env.extend(crate::cache::launch_env(game));
+    mangohud
+}
+
+/// Tells decanter-hook which product it records for and where to write,
+/// which is what lets decanter find what it wrote afterwards.
+fn hook_env(launch: &mut Launch, game_id: &str, achievement_log: &Path) {
+    launch.env.push(("DECANTER_PRODUCT_ID".to_owned(), game_id.to_owned()));
+    launch.env.push((
+        "DECANTER_ACHIEVEMENT_LOG".to_owned(),
+        achievement_log.display().to_string(),
+    ));
+}
 
 fn set_running(background: &Entity<Background>, game_id: &str, running: bool, cx: &mut AsyncApp) {
     background.update(cx, |background, cx| {
@@ -65,9 +179,9 @@ pub async fn start(
         tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
         return None;
     }
-    #[cfg(not(proton))]
+    let kind = Kind::of(&game, &executable);
     let hinted = executable.clone();
-    let Some(mut planned) = backend::plan(&account_id, &game, executable) else {
+    let Some(mut planned) = Planned::plan(kind, &account_id, &game, executable) else {
         return None;
     };
 
@@ -86,8 +200,10 @@ pub async fn start(
     cx.update(|cx| crate::closing::started(target.clone(), game.name.clone(), cx));
     let started = std::time::Instant::now();
     let (exit, log) = crate::run_log::follow(&job, events, log, &game.game_id, cx).await;
-    #[cfg(not(proton))]
-    let log = backend::hint_after_failure(&hinted, exit, &job, log, &game.game_id, cx).await;
+    let log = match kind {
+        Kind::Native => native::hint_after_failure(&hinted, exit, &job, log, &game.game_id, cx).await,
+        Kind::Umu | Kind::LinuxNative => log,
+    };
     crate::run_log::finish(log, exit, &game.game_id).await;
     cx.update(|cx| crate::closing::ended(&target, cx));
     set_running(&background, &game.game_id, false, cx);
@@ -111,11 +227,12 @@ pub async fn start(
 async fn spawn(
     account_id: &str,
     game: &InstalledGame,
-    mut planned: backend::Planned,
+    mut planned: Planned,
     background: &Entity<Background>,
     cx: &mut AsyncApp,
 ) -> Option<(Entity<Job>, UnboundedReceiver<Event>, Option<RunLog>)> {
     let facts = core::mem::take(&mut planned.facts);
+    let launcher = planned.launcher;
     let mut prepared = match planned.prepare().await {
         Ok(prepared) => prepared,
         Err(err) => {
@@ -140,7 +257,7 @@ async fn spawn(
             tracing::error!(game_id = %game.game_id, error = %format_args!("{err:#}"), "launch failed");
             let reason = format!("{err:#}");
             if let Some(log) = log {
-                crate::run_log::abandon(log, &game.game_id, backend::LAUNCHER, &reason).await;
+                crate::run_log::abandon(log, &game.game_id, launcher, &reason).await;
             }
             let job = cx.new(|_| Job::failed(JobKind::Game, t!("ps.jobs.start_error", error = reason).into_owned()));
             background.update(cx, |background, cx| {
@@ -298,7 +415,21 @@ pub async fn stop(account_id: String, game_id: String, background: Entity<Backgr
             job.update(cx, |job, _| job.stop_requested = true);
         }
     });
-    backend::stop(&account_id, &game_id).await;
+    // By the system's kind, not the game's: a Linux program's session is named
+    // after its prefix, so the prefix's stop reaches it too.
+    match Kind::host() {
+        Kind::Umu | Kind::LinuxNative => umu::stop(&account_id, &game_id).await,
+        Kind::Native => native::stop(&account_id, &game_id).await,
+    }
+}
+
+/// Whether `game_id` of `account_id` is still running, which moving its
+/// files has to wait for.
+pub fn is_running(account_id: &str, game_id: &str) -> bool {
+    match Kind::host() {
+        Kind::Umu | Kind::LinuxNative => umu::is_running(account_id, game_id),
+        Kind::Native => native::is_running(account_id, game_id),
+    }
 }
 
 /// Stops every game decanter started.

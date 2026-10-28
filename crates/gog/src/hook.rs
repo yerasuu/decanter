@@ -9,7 +9,6 @@ use anyhow::Context as _;
 use decanter_core::capabilities::Feature;
 use decanter_core::platform;
 use decanter_core::{Db, HookDiagnostic, Storefront};
-#[cfg(not(proton))]
 use decanter_core::{Library, bootstrap};
 
 /// The proxy DLL, cross-compiled from `crates/hook` by this crate's own
@@ -89,19 +88,17 @@ pub async fn deploy(install_root: &Path, relative_paths: &[String]) -> anyhow::R
 /// shared across every account that owns the game (see
 /// `decanter_core::Library`'s own doc), but the prefix, and so this log,
 /// already isn't.
-#[cfg(proton)]
 #[must_use]
-pub fn achievement_log_path(prefix: &decanter_runtime::Prefix) -> PathBuf {
+pub fn achievement_log_in_prefix(prefix: &decanter_runtime::Prefix) -> PathBuf {
     prefix.path().join("decanter-hook.jsonl")
 }
 
-/// Where decanter tells a running game's hook to write its own log on
-/// Windows.
+/// Where decanter tells a running game's hook to write its own log when
+/// the game runs as itself, on Windows.
 ///
-/// There is no prefix there, so it goes in decanter's folder in the
+/// There is no prefix then, so it goes in decanter's folder in the
 /// library, one file per account and game since the install directory is
 /// shared across accounts. `None` for ids that can't be part of a file name.
-#[cfg(not(proton))]
 #[must_use]
 #[inline]
 pub fn achievement_log_path(library: &Library, account_id: &str, product_id: &str) -> Option<PathBuf> {

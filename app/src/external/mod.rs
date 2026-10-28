@@ -32,7 +32,6 @@ use crate::i18n::Text;
 /// The umu `GAMEID` every external game runs as: umu's own "unknown game"
 /// id, which lets protonfixes look the game up in the UMU database rather
 /// than under an id no database has.
-#[cfg(proton)]
 pub const UMU_ID: &str = "umu-default";
 
 /// Every external game in `profile_id`. An unreadable library reads as

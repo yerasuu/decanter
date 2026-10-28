@@ -435,7 +435,6 @@ pub fn record_cloud_save_sync(account_id: &str, product_id: &str, last_sync: i64
 
 /// Where a game runs: its own prefix, per account, created by umu on first
 /// launch.
-#[cfg(proton)]
 pub fn prefix_for(account_id: &str, game_id: &str) -> Option<decanter_runtime::Prefix> {
     let Some(library) = library_for_account(account_id).ok() else {
         tracing::debug!(account_id, game_id, "no prefix, library unavailable");
@@ -486,14 +485,12 @@ pub fn executable_for(game: &InstalledGame) -> Option<std::path::PathBuf> {
 
 /// Which Proton a game runs on: its own pin, else the app-wide default,
 /// else whatever umu resolves.
-#[cfg(proton)]
 pub fn proton_for(game: &InstalledGame) -> decanter_runtime::Proton {
     proton_or_default(game.proton.clone())
 }
 
 /// `pin` if there is one, else the app-wide default, else whatever umu
 /// resolves — [`proton_for`] without a manifest to read the pin from.
-#[cfg(proton)]
 pub fn proton_or_default(pin: Option<String>) -> decanter_runtime::Proton {
     let pinned = pin.or_else(|| {
         // `db()` already warned about why, if it failed.
