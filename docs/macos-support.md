@@ -12,9 +12,9 @@ real Mac yet: Play is marked as being tested.
 
 ## How it works
 
-- **Launch backend**: `cfg(proton)` is set on Linux only, so macOS builds
-  the native backend, as Windows does (`decanter_runtime::native`,
-  `app/src/launch/native.rs`). A game's program starts directly as the
+- **Launch kind**: the capability table offers no Proton here, so a game
+  takes the `native` launch kind, as on Windows (`app/src/launch/native.rs`
+  over `decanter_runtime`'s `os/native.rs` and `os/macos.rs`). A game's program starts directly as the
   leader of a process group of its own
   ([`process_group(0)`](https://docs.rs/tokio/1.53.2/tokio/process/struct.Command.html#method.process_group)).
   The session lasts while anything in the group runs (signal 0 to the group,

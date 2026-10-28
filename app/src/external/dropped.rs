@@ -119,7 +119,7 @@ fn runnable(path: &Path) -> Result<Found, Text> {
 fn runs_here(kind: Kind) -> bool {
     match kind {
         Kind::Windows => platform::game_system() == GameSystem::Windows,
-        Kind::Linux => cfg!(proton),
+        Kind::Linux => crate::launch::in_prefixes(),
     }
 }
 
@@ -209,7 +209,7 @@ fn localized(refusal: &Refusal) -> Text {
         Refusal::Unreadable(err) => Text::new("external.drop.refused.unreadable").arg("error", err),
         Refusal::Library => Text::new("external.drop.refused.library"),
         Refusal::NotExecutable => Text::new("external.drop.refused.not_executable"),
-        Refusal::Unsupported if cfg!(proton) => Text::new("external.drop.refused.unsupported"),
+        Refusal::Unsupported if crate::launch::in_prefixes() => Text::new("external.drop.refused.unsupported"),
         Refusal::Unsupported => Text::new("external.drop.refused.unsupported_windows"),
     }
 }

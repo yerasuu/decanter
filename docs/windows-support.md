@@ -103,12 +103,14 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     it because of the AppUserModelID above (`set_app_identity`). The text
     is `closing.notice.*` in the locales, `body_keyboard` for the
     keyboard-only body.
-- **The launch backend** is named once per crate by its `build.rs`:
-  `cfg(proton)` for code that only exists with Proton, `umu-run` and
-  prefixes (`decanter-runtime`, `decanter-gog`, the app), `not(proton)` for
-  the native backend, which Windows and macOS share (sessions per OS in
-  `decanter_runtime::native`: a Job Object, a process group). It is set on
-  Linux only. Which system's builds a game installs from is
+- **The launch kind** is chosen per launch, not per build: every system
+  compiles the same `app/src/launch`, one module per kind with the same
+  functions (`umu` for Proton in a prefix, `linux_native`, `native`), and
+  `Kind::of` picks one from the capability table (`Feature::Proton`, on
+  Linux only) and the game's file. Views, installers and the CLI ask
+  `launch::in_prefixes`. `decanter_runtime` has one interface on every
+  system, its per-OS parts under `os/` (sessions in `os/native.rs`: a Job
+  Object, a process group). Which system's builds a game installs from is
   `decanter_core::platform::game_system` (Windows builds on Linux and
   Windows, macOS builds on macOS). `decanter-gog` also sets `cfg(galaxy_hook)` when its build
   script built `Galaxy64.dll` (Linux, x86_64 Windows).

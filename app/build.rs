@@ -5,10 +5,6 @@
 //! `keys/release.pub`, so a key that doesn't parse fails the build instead
 //! of shipping a decanter that can never verify a release. Empty, the build
 //! goes on without one and the updater says so.
-//!
-//! `cfg(proton)` names the launch backend once for the crate, as in
-//! `decanter-runtime`'s build script: Proton through `umu-run` on Linux, or
-//! native programs (Windows, macOS) where it's off.
 
 #![expect(
     clippy::print_stdout,
@@ -20,10 +16,6 @@ use std::path::PathBuf;
 fn main() -> Result<(), String> {
     println!("cargo::rerun-if-changed=locales");
     println!("cargo::rerun-if-changed=../keys/release.pub");
-    println!("cargo::rustc-check-cfg=cfg(proton)");
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
-        println!("cargo::rustc-cfg=proton");
-    }
 
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").ok_or("cargo didn't set CARGO_MANIFEST_DIR")?;
     let out_dir = std::env::var_os("OUT_DIR").ok_or("cargo didn't set OUT_DIR")?;

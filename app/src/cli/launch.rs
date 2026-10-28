@@ -39,7 +39,12 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
         tracing::error!(account_id, product_id, "installed but has no launch executable set");
         bail!("{product_id} is installed but has no launch executable set");
     };
-    let (session, achievement_log) = start(db, &library, &game, install_dir.join(executable)).await?;
+    let executable = install_dir.join(executable);
+    let (session, achievement_log) = if crate::launch::in_prefixes() {
+        start_in_prefix(db, &library, &game, executable).await?
+    } else {
+        start_natively(&library, &game, executable).await?
+    };
     tracing::info!(pid = session.launcher_pid(), "launched");
 
     session.wait().await.context("running program")?;
@@ -59,8 +64,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
 
 /// Starts `game` in its prefix, with decanter-hook told where to write;
 /// the session and that log.
-#[cfg(proton)]
-async fn start(
+async fn start_in_prefix(
     db: &decanter_core::Db,
     library: &Library,
     game: &InstalledGame,
@@ -120,9 +124,7 @@ async fn start(
 
 /// Starts `game`'s executable from its own folder, with decanter-hook told
 /// where to write; the session and that log.
-#[cfg(not(proton))]
-async fn start(
-    _: &decanter_core::Db,
+async fn start_natively(
     library: &Library,
     game: &InstalledGame,
     executable: PathBuf,
