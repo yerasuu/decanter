@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-10-28",
+  "original_code_license": "GPL-3.0-or-later; AGPL-3.0-or-later for crates/reports-server",
+  "license_references": {
+    "LicenseRef-psport-separate-work": "psport is a separate project under GPL-2.0-only, built or downloaded by decanter at run time and run as its own process. It is not linked into decanter and no psport source or binary is distributed in a decanter release.",
+    "LicenseRef-Cargo-Dependencies": "Third-party Rust crates declare their own SPDX expressions in their Cargo.toml. scripts/licenses.py inventories them from cargo metadata and refuses an expression that has no alternative on its allow-list.",
+    "LicenseRef-gog-crate": "The external crate gog 0.5.0 (https://git.sr.ht/~nicohman/gogapi-rs) declares GPL-3.0 in its Cargo.toml and is linked into decanter-gog, so the combined decanter binaries are distributed under GPL-3.0 terms. Source files that are GPL-3.0-or-later by themselves keep that notice."
+  },
+  "components": [
+    {
+      "name": "decanter application, libraries and build tooling",
+      "paths": [
+        "app",
+        "crates/core",
+        "crates/gog",
+        "crates/ps",
+        "crates/runtime",
+        "crates/report",
+        "scripts",
+        "tools",
+        "shell.nix",
+        "index.html",
+        ".github"
+      ],
+      "license": "GPL-3.0-or-later",
+      "review": "reviewed",
+      "provenance": "LICENSE; the binaries combine it with the external gog crate, see LicenseRef-gog-crate"
+    },
+    {
+      "name": "decanter documentation and screenshots",
+      "paths": [
+        "docs",
+        "README.md",
+        "CHANGELOG.md",
+        "tag-changelog"
+      ],
+      "license": "GPL-3.0-or-later",
+      "review": "pending",
+      "provenance": "Written for this repository. The screenshots in docs/screenshots show the application and may show cover art of games the owner has: confirm they carry nothing that is not ours before a release ships them."
+    },
+    {
+      "name": "Galaxy64.dll achievement proxy",
+      "paths": [
+        "crates/hook"
+      ],
+      "license": "GPL-3.0-or-later",
+      "review": "reviewed",
+      "provenance": "crates/hook/Cargo.toml. A Windows DLL cross-compiled from this crate by crates/gog/build.rs and embedded in decanter; it runs inside the Wine/Proton prefix of a GOG game, as the game's own Galaxy64.dll."
+    },
+    {
+      "name": "Report server",
+      "paths": [
+        "crates/reports-server"
+      ],
+      "license": "AGPL-3.0-or-later",
+      "review": "reviewed",
+      "provenance": "crates/reports-server/LICENSE. A separate binary with its own Cargo workspace and Cargo.lock. It links the s3db storage engine (AGPL-3.0-or-later, https://git.yerasuu.com/yerasuu/s3db, pinned by tag) and decanter-report (GPL-3.0-or-later). Not part of the decanter application or its releases."
+    },
+    {
+      "name": "Inter font",
+      "paths": [
+        "app/assets/fonts/Inter.ttf"
+      ],
+      "license": "OFL-1.1",
+      "review": "reviewed",
+      "provenance": "Copyright 2016 The Inter Project Authors; InterVariable 4.1 from nixpkgs (app/assets/fonts/README). Bundled in the binary; keep the copyright and license notices."
+    },
+    {
+      "name": "JetBrains Mono fonts",
+      "paths": [
+        "app/assets/fonts/JetBrainsMono-Regular.ttf",
+        "app/assets/fonts/JetBrainsMono-SemiBold.ttf",
+        "app/assets/fonts/JetBrainsMono-Bold.ttf"
+      ],
+      "license": "OFL-1.1",
+      "review": "reviewed",
+      "provenance": "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono); version 2.304 from nixpkgs. Bundled in the binary; keep the notices."
+    },
+    {
+      "name": "Oswald font",
+      "paths": [
+        "app/assets/fonts/Oswald.ttf"
+      ],
+      "license": "OFL-1.1",
+      "review": "reviewed",
+      "provenance": "Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont); variable font, google-fonts 2026-03-13, from nixpkgs. Bundled in the binary; keep the notices."
+    },
+    {
+      "name": "Twemoji bitmaps",
+      "paths": [
+        "app/assets/emoji"
+      ],
+      "license": "CC-BY-4.0",
+      "review": "reviewed",
+      "provenance": "Twemoji graphics, Copyright Twitter, Inc and other contributors (app/assets/emoji/README), extracted from SteamOS's twemoji.ttf. Attribution is required: it is given in LICENSES.md and in the notices that travel with every package; the application has no About screen yet."
+    },
+    {
+      "name": "decanter artwork",
+      "paths": [
+        "app/assets/decanter.png",
+        "app/assets/favicon.ico"
+      ],
+      "license": "GPL-3.0-or-later",
+      "review": "pending",
+      "provenance": "The application's own logo and icon. The owner has not recorded a separate licence for the artwork: GPL-3.0-or-later is assumed until they decide."
+    },
+    {
+      "name": "Rust dependencies of the decanter workspace",
+      "paths": [
+        "Cargo.lock"
+      ],
+      "license": "LicenseRef-Cargo-Dependencies",
+      "review": "generated",
+      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified; the gog crate under GPL-3.0."
+    },
+    {
+      "name": "Rust dependencies of the report server",
+      "paths": [
+        "crates/reports-server/Cargo.lock"
+      ],
+      "license": "LicenseRef-Cargo-Dependencies",
+      "review": "generated",
+      "provenance": "python3 scripts/licenses.py inventory (cargo metadata inside crates/reports-server); s3db and its s3db-crypto and s3db-macros crates are AGPL-3.0-or-later."
+    },
+    {
+      "name": "psport and the PS4 ports",
+      "paths": [],
+      "license": "LicenseRef-psport-separate-work",
+      "review": "reviewed",
+      "provenance": "Built from https://github.com/yerasuu/psport at run time (GPL-2.0-only) and run as a separate process; decanter only starts it and reads its logs. AnyPS5, when used, is likewise a separate work under its own licence."
+    }
+  ]
+}

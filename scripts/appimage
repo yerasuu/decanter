@@ -85,6 +85,19 @@ loader="$(cc -print-file-name="$loader_name")"
 cp -L -- "$loader" "$app_dir/usr/lib/$loader_name"
 chmod -R u+w "$app_dir/usr/lib"
 
+# The notices that must travel with the libraries above (LICENSES.md, "Release contents"):
+# decanter's own terms and the store path of every library the AppDir carries, whose
+# name and version identify the package whose licence and source apply to it.
+notices="$app_dir/usr/share/licenses/decanter"
+mkdir -p "$notices"
+cp -r LICENSE LICENSES LICENSES.json LICENSES.md "$notices/"
+{
+    "$loader" --list "$binary" | awk '/=> \// { print $3 }'
+    echo "$loader"
+} | while read -r lib; do
+    printf '%s\t%s\n' "$(basename "$lib")" "$(readlink -f -- "$lib")"
+done | sort > "$notices/BUNDLED-LIBRARIES.txt"
+
 # The placeholders keep the script itself quoted, so nothing in it
 # expands here.
 sed -e "s|@LOADER@|$loader_name|g" -e "s|@ARCH@|$arch|g" > "$app_dir/AppRun" <<'APPRUN'
