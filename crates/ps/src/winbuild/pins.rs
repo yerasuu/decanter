@@ -1,7 +1,8 @@
 //! What a Windows build downloads, each piece pinned here by SHA-256 and checked before anything in
-//! it is read: llvm-mingw, CMake and Ninja from their upstream releases, and psport's toolchain package
-//! (`toolchain-win32-N`, psport's `docs/en/WINDOWS_TOOLCHAIN.md`). The package's `manifest.json`
-//! must name the same three tools by the same hashes ([`super::toolchain`]).
+//! it is read: llvm-mingw, CMake and Ninja from their upstream releases, psport's toolchain package
+//! (`toolchain-win32-N`, psport's `docs/en/WINDOWS_TOOLCHAIN.md`), and MinGit, the git decanter runs.
+//! The package's `manifest.json` must name the same three tools by the same hashes
+//! ([`super::toolchain`]); MinGit is decanter's own and not in it.
 
 use crate::archive::{Limits, Names};
 
@@ -115,6 +116,62 @@ pub fn tools() -> [Archive; 3] {
             required: vec!["ninja.exe".to_owned()],
         },
     ]
+}
+
+/// [MinGit](https://github.com/git-for-windows/git/wiki/MinGit), Git for Windows' build for applications
+/// that drive git, which every branch check and build runs instead of any git the user has: the one
+/// place a new release is pinned, from the release page of `tag`, whose notes list each asset's
+/// SHA-256 (the procedure is in `docs/windows-support.md`). Until `sha256` is one, every check and
+/// build stops with [`super::Error::NotPinned`] before anything is downloaded.
+pub const MINGIT: MinGit = MinGit {
+    tag: "v2.51.0.windows.1",
+    version: "2.51.0",
+    sha256: MINGIT_SHA256,
+    size: 0,
+};
+
+/// XXX: not taken yet, since the session that added MinGit had no network: the SHA-256 of
+/// `MinGit-<version>-64-bit.zip` from [`MINGIT`]'s release notes, checked with `sha256sum`, set
+/// together with its `size`.
+const MINGIT_SHA256: &str = "unpinned";
+
+pub struct MinGit {
+    /// The release's tag, `v<git version>.windows.<n>`.
+    pub tag: &'static str,
+    /// As the asset names it: the git version, with `.<n>` after it from the second Windows release on.
+    pub version: &'static str,
+    pub sha256: &'static str,
+    /// Bytes of the zip, as its release lists it.
+    pub size: u64,
+}
+
+/// MinGit's git, below its folder: the launcher that puts MinGit's own folders on `PATH` first.
+pub const MINGIT_GIT: &str = "cmd/git.exe";
+
+/// [`MINGIT`]'s zip, which has its files at the top. Its caps are bounds for a git distribution until
+/// the pinned zip is measured (entries, unpacked bytes, the largest file), as the others were.
+#[must_use]
+pub fn mingit() -> Archive {
+    let pin = &MINGIT;
+    let key = format!("MinGit-{}-64-bit", pin.version);
+    Archive {
+        name: "MinGit".to_owned(),
+        url: format!(
+            "https://github.com/git-for-windows/git/releases/download/{tag}/{key}.zip",
+            tag = pin.tag
+        ),
+        sha256: pin.sha256.to_owned(),
+        size: Some(pin.size),
+        folder: String::new(),
+        key,
+        names: Names::Toolchain,
+        limits: Limits {
+            entries: 4_000,
+            unpacked_bytes: 512 << 20,
+            file_bytes: 64 << 20,
+        },
+        required: vec![MINGIT_GIT.to_owned()],
+    }
 }
 
 /// The manifest's names for [`tools`], in the same order.
