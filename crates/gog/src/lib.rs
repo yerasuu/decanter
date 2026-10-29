@@ -29,7 +29,6 @@ mod install;
 mod library;
 mod mods;
 mod orders;
-mod product;
 pub mod save_location;
 mod session;
 mod steam_export;

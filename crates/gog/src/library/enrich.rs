@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use futures_util::StreamExt;
 
-use crate::api::client::{Image, Localized, Sessionless, parse_release_date};
+use crate::api::client::{Image, Localized, PRODUCT_BATCH, Product, Sessionless, parse_release_date};
 
 use super::{Batch, GameKind, LibraryEntry};
 
@@ -49,7 +49,6 @@ pub async fn enrich_games(
     let profile = account_id.to_string();
     let dates = tokio::spawn(async move { crate::orders::purchase_dates(&profile).await });
 
-    let http = crate::http_client();
     let catalog = match Sessionless::new() {
         Ok(catalog) => catalog,
         Err(err) => {
@@ -99,7 +98,7 @@ pub async fn enrich_games(
         on_batch(batch);
     }
 
-    apply_products(&mut all, &http, on_batch).await;
+    apply_products(&mut all, &catalog, on_batch).await;
 
     // Best-effort: an undocumented endpoint going quiet should cost the
     // purchase dates, not the library. Narrower than the ranking from
@@ -151,29 +150,42 @@ pub async fn enrich_games(
 /// (background art, most often) a GamesDB-indexed entry's own release
 /// record still left blank.
 ///
-/// Asked in batches of [`crate::product::BATCH`]. One request per entry
+/// Asked in batches of [`PRODUCT_BATCH`]. One request per entry
 /// turned a few hundred products into a few hundred round trips, which on
 /// a real library was the slowest thing in the whole fetch.
-async fn apply_products(all: &mut [LibraryEntry], http: &reqwest::Client, on_batch: &mut impl FnMut(Batch)) {
+async fn apply_products(all: &mut [LibraryEntry], catalog: &Sessionless, on_batch: &mut impl FnMut(Batch)) {
     // Every entry: a base game GamesDB covered perfectly is still the only
     // place its DLC are listed, and its own release record can still be
     // missing a field GOG's product API has.
     let every: Vec<usize> = (0..all.len()).collect();
     let mut parents: HashMap<String, String> = HashMap::new();
 
-    for chunk in every.chunks(crate::product::BATCH) {
+    for chunk in every.chunks(PRODUCT_BATCH) {
         // A delisted product is simply absent from the response, so
         // results are matched back by id rather than by position.
         let mut wanted: HashMap<String, usize> = HashMap::new();
         let mut ids = Vec::with_capacity(chunk.len());
         for index in chunk {
-            if let Ok(id) = all[*index].game.id.parse::<i64>() {
+            if let Some(id) = all[*index].game.id.parse::<i64>().ok().filter(|id| *id > 0) {
                 ids.push(id);
                 wanted.insert(id.to_string(), *index);
             }
         }
 
-        let products = crate::product::fetch_many(http, &ids).await;
+        let products = match catalog.products(&ids).await {
+            Ok(products) => {
+                tracing::debug!(
+                    requested = ids.len(),
+                    returned = products.len(),
+                    "fetched GOG product batch"
+                );
+                products
+            }
+            Err(err) => {
+                tracing::debug!(requested = ids.len(), %err, "GOG product batch failed");
+                Vec::new()
+            }
+        };
         let mut batch: Batch = Vec::new();
         for product in products {
             let Some(index) = wanted.get(&product.id.to_string()).copied() else {
@@ -290,7 +302,7 @@ async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, catalog: &Sessio
 /// numeric id, which is not a title at all. Returns whether anything was
 /// actually filled, so a caller isn't left re-emitting entries that gained
 /// nothing.
-fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> bool {
+fn apply_product(entry: &mut LibraryEntry, product: Product) -> bool {
     let mut changed = false;
     if let Some(title) = product.title.filter(|title| !title.trim().is_empty())
         && entry.game.title == entry.game.id
@@ -301,7 +313,7 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> 
     if entry.game.description.is_none()
         && let Some(lead) = product.description.lead
     {
-        let text = crate::product::html_to_text(&lead);
+        let text = html_to_text(&lead);
         entry.game.description = (!text.is_empty()).then_some(text);
         changed = changed || entry.game.description.is_some();
     }
@@ -310,7 +322,7 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> 
         changed = changed || entry.game.release_date.is_some();
     }
     if entry.game.background_url.is_none() {
-        entry.game.background_url = product.images.background.as_deref().and_then(crate::product::image_url);
+        entry.game.background_url = product.images.background.as_deref().and_then(image_url);
         changed = changed || entry.game.background_url.is_some();
     }
     if entry.game.icon_url.is_none() {
@@ -319,7 +331,7 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> 
             .icon
             .as_deref()
             .or(product.images.logo.as_deref())
-            .and_then(crate::product::image_url);
+            .and_then(image_url);
         changed = changed || entry.game.icon_url.is_some();
     }
     changed
@@ -333,7 +345,7 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> 
 /// reports bundles, and a fair number of plain games, as `isGame: false`,
 /// so they land as extras — which hides them from the default library view
 /// and refuses to install them.
-fn apply_product_facts(entry: &mut LibraryEntry, product: &crate::product::Product) -> bool {
+fn apply_product_facts(entry: &mut LibraryEntry, product: &Product) -> bool {
     let mut changed = false;
 
     if let Some(installable) = product.is_installable
@@ -364,4 +376,61 @@ fn apply_product_facts(entry: &mut LibraryEntry, product: &crate::product::Produ
     }
 
     changed
+}
+
+/// Turns GOG's scheme-less image path into a URL.
+///
+/// Unlike the owned-products listing, these paths carry no size suffix —
+/// the store serves whatever the base hash points at. Some of them (a
+/// logo path like `..._glx_logo.jpg`) already carry an extension; a bare
+/// hash doesn't. Appending `.jpg` unconditionally doubled it on the ones
+/// that already had one, which the CDN then 404s on.
+fn image_url(path: &str) -> Option<String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return None;
+    }
+    let base = path.strip_prefix("//").unwrap_or(path);
+    let has_extension = [".jpg", ".jpeg", ".png"].iter().any(|ext| base.ends_with(ext));
+    Some(if has_extension {
+        format!("https://{base}")
+    } else {
+        format!("https://{base}.jpg")
+    })
+}
+
+/// Strips tags and unescapes the handful of entities GOG's descriptions
+/// actually contain.
+///
+/// The field is HTML and the detail pane renders text, so without this a
+/// description shows up with its markup in it. Deliberately not a real
+/// parser: the alternative is an HTML dependency for one short paragraph
+/// per game, and anything this mangles is still readable prose.
+fn html_to_text(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            // A tag boundary is a word boundary: `a<br>b` is two lines,
+            // not `ab`.
+            '>' => {
+                in_tag = false;
+                text.push(' ');
+            }
+            _ if in_tag => {}
+            _ => text.push(c),
+        }
+    }
+
+    let text = text
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+
+    // Collapse the whitespace the tag stripping just introduced.
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }

@@ -51,6 +51,7 @@
 mod auth;
 mod catalog;
 mod error;
+mod galaxy_products;
 mod gamesdb;
 mod http;
 mod products;
@@ -59,6 +60,7 @@ mod user;
 pub use auth::{Token, CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
 pub use catalog::{CatalogMods, CatalogProduct};
 pub use error::Error;
+pub use galaxy_products::{ContentSystems, Description, Dlc, Images, Product, PRODUCT_BATCH};
 pub use gamesdb::{parse_release_date, Company, GameDetails, Genre, Image, Localized, Release};
 pub use http::{Client, Sessionless};
 pub use products::ProductsPage;

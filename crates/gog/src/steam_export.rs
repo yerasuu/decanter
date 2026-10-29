@@ -195,7 +195,7 @@ async fn download_artwork(
 }
 
 /// GOG serves mostly `.jpg`, occasionally `.png` (see
-/// `crate::product::image_url`'s own extension check) — sniffed from the
+/// `library::enrich::image_url`'s own extension check) — sniffed from the
 /// URL rather than the response, since GOG's CDN doesn't reliably set
 /// `Content-Type` for these.
 fn extension_from_url(url: &str) -> &'static str {
