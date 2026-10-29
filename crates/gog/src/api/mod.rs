@@ -1,4 +1,5 @@
-// Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0; see VENDOR.md for provenance and the changes made here.
+// SPDX-License-Identifier: GPL-3.0-only
+// Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0-only; see api/VENDOR.md
 //! This crate provides an easy interface to communicate with the not-so-easy (unofficial) GOG API.
 //! Many thanks to [Yepoleb](https://github.com/Yepoleb), who made
 //! [this](https://gogapidocs.readthedocs.io/en/latest/index.html) very helpful set of docs.

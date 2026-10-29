@@ -50,7 +50,7 @@ pub use updates::{Branch, check_all_updates, check_update, list_branches, list_b
 
 /// Propagates a `Result`'s error out of the enclosing `anyhow::Result` fn,
 /// same as `?` — kept as a macro so every call site across this crate's mix
-/// of error types (reqwest, `gog`'s error-chain-based errors mapped by
+/// of error types (reqwest, `api`'s error-chain-based errors mapped by
 /// hand, serde_json, rusqlite via decanter-core) reads the same way.
 #[macro_export]
 macro_rules! achv_try {

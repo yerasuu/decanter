@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0-only; see api/VENDOR.md
 use serde::{Deserialize, Serialize};
 use serde_json::value::{Map, Value};
 use status::*;

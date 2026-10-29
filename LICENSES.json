@@ -26,16 +26,16 @@
       ],
       "license": "GPL-3.0-or-later",
       "review": "reviewed",
-      "provenance": "LICENSE; the binaries combine it with the GPL-3.0-only gog client in crates/gogapi, so they cannot be offered under \"or later\" (kb #1073)"
+      "provenance": "LICENSE. crates/gog (decanter-gog) is a mixed crate with a per-file rule: it contains the GPL-3.0-only gog client in crates/gog/src/api, whose files say so in their SPDX headers, and its Cargo.toml declares GPL-3.0-or-later AND GPL-3.0-only. The binaries combine decanter's code with that client, so they cannot be offered under \"or later\" (kb #1073)"
     },
     {
       "name": "gog client library (gogapi)",
       "paths": [
-        "crates/gogapi"
+        "crates/gog/src/api"
       ],
       "license": "GPL-3.0-only",
       "review": "reviewed",
-      "provenance": "Based on gog 0.5.0 (gogapi-rs) by nicohman <nicohman@demenses.net>, GPL-3.0; upstream https://git.sr.ht/~nicohman/gogapi-rs. Incorporated from the crates.io package on 2026-10-29, see crates/gogapi/VENDOR.md. Copyright nicohman. Its Cargo.toml declares GPL-3.0 and its LICENSE is the GPL version 3 text with no or-later grant, so it is GPL-3.0-only. It is linked into decanter-gog, so the combined decanter binaries are distributed under GPL-3.0-only terms (kb #1073) although decanter's own files keep their GPL-3.0-or-later notices. Maintained here since upstream has had no commits since 2020-09-10 and no release since 2023-02-23."
+      "provenance": "Based on gog 0.5.0 (gogapi-rs) by nicohman <nicohman@demenses.net>, GPL-3.0; upstream https://git.sr.ht/~nicohman/gogapi-rs. Incorporated from the crates.io package on 2026-10-29, see crates/gog/src/api/VENDOR.md. Copyright nicohman. The published Cargo.toml declares GPL-3.0 and its LICENSE (kept as crates/gog/src/api/LICENSE) is the GPL version 3 text with no or-later grant, so it is GPL-3.0-only. It is the api module of decanter-gog (crates/gog/src/api, every file headed SPDX-License-Identifier: GPL-3.0-only), so the combined decanter binaries are distributed under GPL-3.0-only terms (kb #1073) although decanter's own files keep their GPL-3.0-or-later notices. Maintained here since upstream has had no commits since 2020-09-10 and no release since 2023-02-23."
     },
     {
       "name": "decanter documentation and screenshots",
@@ -122,7 +122,7 @@
       ],
       "license": "LicenseRef-Cargo-Dependencies",
       "review": "generated",
-      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified; the gog crate under GPL-3.0."
+      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified. The gog crate is no longer a dependency: it is the api module of decanter-gog (crates/gog/src/api), listed as its own component."
     },
     {
       "name": "Rust dependencies of the report server",

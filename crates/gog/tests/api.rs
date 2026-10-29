@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0-only; see api/VENDOR.md
 // Upstream style, kept as published (see src/api/VENDOR.md): the workspace's clippy groups are not applied to it.
 #![allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
 use decanter_gog::api::gog::FilterParam::*;

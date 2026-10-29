@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0-only; see api/VENDOR.md
 //! This function is designed to extract the component parts of a GOG Linux installer script. It is almost an exact port of the implementation found [here](https://github.com/Yepoleb/gogextract), and the ideas belong to him. Thanks for the original implementation.
 use crate::api::error::*;
 use regex::*;

@@ -37,8 +37,8 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "37faef81
 anyhow = "1.0.104"
 chrono = "0.4.45"
 clap = "4.6.7"
-# `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
-# default — see crates/gog for the features that vendor both instead.
+# decanter-gog's `api` module builds `curl` against the system's libcurl/OpenSSL
+# by default — see crates/gog for the features that vendor both instead.
 curl = "0.4.51"
 dirs = "7.0.0"
 error-chain = "0.12.4"

@@ -1,7 +1,9 @@
 [package]
 name = "decanter-gog"
 version.workspace = true
-license.workspace = true
+# Mixed crate: src/api is gog 0.5.0 by nicohman, GPL-3.0-only (see src/api/VENDOR.md); the rest is
+# decanter's GPL-3.0-or-later, so each file's SPDX header decides and the crate carries both.
+license = "GPL-3.0-or-later AND GPL-3.0-only"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -34,7 +36,7 @@ log.workspace = true
 regex.workspace = true
 select.workspace = true
 
-# `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
-# default — pinning the same `curl` crate here with these features unifies
-# the whole build onto a vendored, statically-linked copy of both instead.
+# The `api` module's `curl` builds against the system's libcurl/OpenSSL by
+# default — these features move the whole build onto a vendored,
+# statically-linked copy of both instead.
 curl = { workspace = true, features = ["static-curl", "static-ssl"] }

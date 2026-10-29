@@ -178,6 +178,10 @@ def check_crates(manifest, problems):
         if license_value is None or isinstance(license_value, dict):
             license_value = workspace_license
         expected = by_path.get(member)
+        # A mixed crate (decanter-gog holds the GPL-3.0-only api module) declares its own licence AND that of every
+        # component in its source tree, so its Cargo.toml cannot drop the stricter terms of those files.
+        for nested in sorted({by_path[path] for path in by_path if path.startswith(member + "/src/")} - {expected}):
+            expected = f"{expected} AND {nested}"
         if expected and expected != license_value:
             problems.append(f"{member}: Cargo.toml says {license_value} but LICENSES.json says {expected}")
 
