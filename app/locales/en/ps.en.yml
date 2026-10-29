@@ -14,6 +14,7 @@ ps.log.full: Full log
 ps.log.tab_log: 'Log (%{count})'
 ps.log.tab_metrics: 'Performance (%{count})'
 ps.log.no_metrics: 'This run printed no performance lines. psport prints them only with "Measure performance" on.'
+ps.log.no_frame_stats: 'There are no frame statistics: turn on "Measure performance" to see FPS and timings.'
 ps.jobs.clone: clone
 ps.jobs.build: build
 ps.jobs.update: update

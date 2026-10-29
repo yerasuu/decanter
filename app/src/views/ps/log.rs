@@ -32,6 +32,9 @@ pub struct LogView {
     /// are reused, so no line is copied.
     log_rows: Vec<usize>,
     metric_rows: Vec<usize>,
+    /// psport prints the other digests (`Layer memory:`) without `PS_FRAME_STATS`, so only this
+    /// line tells whether the FPS and timings are being measured.
+    has_frame_stats: bool,
     /// Shows "Copiado" until the job writes again.
     copied: bool,
 }
@@ -52,6 +55,7 @@ impl LogView {
             tab: Tab::Log,
             log_rows: Vec::new(),
             metric_rows: Vec::new(),
+            has_frame_stats: false,
             copied: false,
         };
         view.index(cx);
@@ -61,10 +65,12 @@ impl LogView {
     fn index(&mut self, cx: &Context<Self>) {
         self.log_rows.clear();
         self.metric_rows.clear();
+        self.has_frame_stats = false;
         let lines = &self.job.read(cx).lines;
         for (index, is_metric) in classify(lines.iter().map(String::as_str)).enumerate() {
             if is_metric {
                 self.metric_rows.push(index);
+                self.has_frame_stats |= lines[index].starts_with("Frame stats: ");
             } else {
                 self.log_rows.push(index);
             }
@@ -138,6 +144,7 @@ impl Render for LogView {
         });
         let tabs = self.tabs(cx);
         let empty = self.tab == Tab::Metrics && self.metric_rows.is_empty();
+        let no_frame_stats = self.tab == Tab::Metrics && !empty && !self.has_frame_stats;
         let count = self.rows().len();
         let log_file = job.log_file.clone();
         let view = cx.entity();
@@ -193,14 +200,18 @@ impl Render for LogView {
                             .child(t!("ps.log.full"))
                     })),
             )
-            .when(empty, |panel| {
+            .when(empty || no_frame_stats, |panel| {
                 panel.child(
                     div()
                         .px_3()
                         .py_2()
                         .text_size(px(11.5))
                         .text_color(rgb(theme::TEXT_MUTED))
-                        .child(t!("ps.log.no_metrics")),
+                        .child(if empty {
+                            t!("ps.log.no_metrics")
+                        } else {
+                            t!("ps.log.no_frame_stats")
+                        }),
                 )
             })
             .child(

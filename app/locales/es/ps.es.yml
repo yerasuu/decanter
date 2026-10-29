@@ -14,6 +14,7 @@ ps.log.full: Registro completo
 ps.log.tab_log: 'Registro (%{count})'
 ps.log.tab_metrics: 'Rendimiento (%{count})'
 ps.log.no_metrics: 'Esta partida no imprimió líneas de rendimiento. psport las imprime solo con «Medir el rendimiento» activado.'
+ps.log.no_frame_stats: 'No hay estadísticas de fotogramas: activa «Medir el rendimiento» para ver FPS y tiempos.'
 ps.jobs.clone: clonar
 ps.jobs.build: compilar
 ps.jobs.update: actualizar
