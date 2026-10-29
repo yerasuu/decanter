@@ -10,7 +10,7 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
 name = "gog"
 version = "0.5.0"
 authors = ["nicohman <nicohman@demenses.net>"]
@@ -25,35 +25,34 @@ license = "GPL-3.0-only"
 repository = "https://git.sr.ht/~nicohman/gogapi-rs"
 
 [dependencies.curl]
-version = "0.4.44"
+version = "0.4.51"
 
 [dependencies.error-chain]
 version = "0.12.4"
 
 [dependencies.log]
-version = "0.4.17"
+version = "0.4.34"
 
 [dependencies.regex]
-version = "1.7.0"
+version = "1.13.1"
 
 [dependencies.reqwest]
-version = "0.11.13"
+version = "0.13.5"
 features = [
     "blocking",
     "cookies",
+    "form",
 ]
 
 [dependencies.select]
-version = "0.6.0"
+version = "0.6.1"
 
 [dependencies.serde]
-version = "1.0.152"
-
-[dependencies.serde_derive]
-version = "1.0.152"
+version = "1.0.229"
+features = ["derive"]
 
 [dependencies.serde_json]
-version = "1.0.91"
+version = "1.0.154"
 
 [dependencies.time]
-version = "0.3.17"
+version = "0.3.55"
