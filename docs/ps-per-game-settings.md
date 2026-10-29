@@ -3,11 +3,12 @@
 Status: accepted (kb #1275, D1-D9). Analysis of `develop` at `123e5ab` and of the bbport checkout
 under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phases 1 (per-title ini,
 `crates/ps/src/bbport/port_ini.rs`), 2 (per-title launch settings,
-`crates/ps/src/bbport/settings/title.rs`) and 3 (online and system modules switches per game) are
-implemented; the rest is not yet.
+`crates/ps/src/bbport/settings/title.rs`), 3 (online and system modules switches per game) and 4
+(mods and patches per game, `crates/ps/src/bbport/mods.rs`, `ModFiles`) are implemented; the rest is
+not yet.
 
 Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
-`mods_dir`/`patches_dir` (until phase 4). A title's file is made from the shared one the first time
+`mods_dir`/`patches_dir` (until phase 4, which made them each title's). A title's file is made from the shared one the first time
 it is needed, after a backup of the shared one, and the shared file is not rewritten (step 4 below
 waits for phase 5): its global keys are what a new title copies until the defaults page exists, and
 what an older port's launches read (D6).
@@ -22,6 +23,21 @@ account and its servers. The system modules switch is `sys_modules` in the title
 Graphics › Extras; absent, it is on for every title but Bloodborne (D7), so nothing changes until
 the user turns it. An older port's launches, with no title file, still read the shared file for all
 of these.
+
+Phase 4 as built: everything about a game's mods and patches is the title's, the folders included
+(`ModFiles::of_title`): `titles/<TITLE_ID>/mods.json` and `patches.json` are copies of the shared
+files made the first time the title's Mods tab or launch asks for them, after a backup of the shared
+pair into `backups/per-game-settings-<date>/` before the first title takes its copy (a shared file
+that does not exist is not copied, and the title's is written on its first change); the shared files
+are never rewritten. `mods_dir` and `patches_dir` left `SHARED`; a title's file carries `format: 3`,
+and one of an earlier format (or made now) takes the shared folder setting once, or, when that was
+never set, the shared data folder's `mods/` or `patches/` where it exists, so the mods a user already
+had keep loading in every game that loaded them; otherwise a title's folders default to `mods/` and
+`patches/` inside its own folder. Mods are not copied or moved: two titles can still point at one
+folder and keep separate order and switches. `mods-effective/` and `mods-effective.json` are built in
+the title's folder at each launch, and `PS_PATCHES_DIR`/`PS_PATCHES_CONFIG` come from the title. The
+Mods tab shows the selected title's and says whose they are; an older port or an unusual title id
+keeps the shared files, as before.
 
 ## The owner's rule
 

@@ -1,23 +1,25 @@
 //! Mods: bbport's mods in load order and its external patches, each
-//! switchable, from folders that can be moved. Read with bbport's own
-//! discovery rules, so bbport is made ready first if it isn't.
+//! switchable, from folders that can be moved, all of them the title's own
+//! ([`ModFiles`]). Read with bbport's own discovery rules, so bbport is made
+//! ready first if it isn't.
 
 use std::path::PathBuf;
 
 use decanter_ps::bbport::LauncherSettings;
+use decanter_ps::bbport::mods::{FOLDER_KEYS, ModFiles};
 use decanter_ps::bbport::tools::{self, ExternalPatch, ModProfile, PatchProfile};
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use super::scope_note;
 use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
 
 struct Found {
-    mods_dir: PathBuf,
-    patches_dir: PathBuf,
+    files: ModFiles,
     mods: Result<Vec<String>, String>,
     patches: Result<Vec<ExternalPatch>, String>,
     mod_profile: ModProfile,
@@ -26,22 +28,37 @@ struct Found {
 
 pub struct ModsView {
     ps: Entity<Ps>,
+    title_id: Option<String>,
     found: Option<Result<Found, Text>>,
     error: Option<Text>,
 }
 
 impl ModsView {
-    pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        let mut this = Self {
+    pub const fn new(ps: Entity<Ps>) -> Self {
+        Self {
             ps,
+            title_id: None,
             found: None,
             error: None,
-        };
-        this.refresh(cx);
-        this
+        }
+    }
+
+    /// Reads `title_id`'s mods and patches unless they are the ones shown; another title's go at
+    /// once, so nothing is shown or saved for the wrong one meanwhile.
+    pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
+        if self.title_id.as_deref() == Some(title_id) && self.found.is_some() {
+            return;
+        }
+        self.title_id = Some(title_id.to_owned());
+        self.found = None;
+        self.error = None;
+        self.refresh(cx);
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
         let root = decanter_ps::paths::active();
         let prepared = self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, &root, cx));
         cx.spawn(async move |this, cx| {
@@ -49,35 +66,47 @@ impl ModsView {
                 Ok(toolchain) => toolchain,
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
-                        this.found = Some(Err(Text::new("ps.errors.bbport_not_ready").text("error", err)));
-                        cx.notify();
+                        if this.title_id.as_deref() == Some(title_id.as_str()) {
+                            this.found = Some(Err(Text::new("ps.errors.bbport_not_ready").text("error", err)));
+                            cx.notify();
+                        }
                     });
                     return;
                 }
             };
             let read = cx.background_spawn({
                 let root = root.clone();
+                let title_id = title_id.clone();
                 async move {
-                    let settings = LauncherSettings::load(&root);
-                    let data = root.bbport_data();
-                    let dir = |key: &str, fallback: &str| {
-                        settings.text(key).map_or_else(|| data.join(fallback), PathBuf::from)
-                    };
-                    (
-                        dir("mods_dir", "mods"),
-                        dir("patches_dir", "patches"),
-                        ModProfile::load(&ModProfile::path(&root)),
-                        PatchProfile::load(&PatchProfile::path(&root)),
-                    )
+                    let settings = LauncherSettings::of_title(&root, &title_id)?;
+                    let files = ModFiles::of_title(&root, &title_id, &settings)?;
+                    let profiles = (
+                        ModProfile::load(&files.mods_config),
+                        PatchProfile::load(&files.patches_config),
+                    );
+                    std::io::Result::Ok((files, profiles))
                 }
             });
-            let (mods_dir, patches_dir, mod_profile, patch_profile) = read.await;
-            let mods = tools::discover_mods(&root, &toolchain, &mods_dir).await;
-            let patches = tools::discover_patches(&root, &toolchain, &patches_dir).await;
+            let (files, (mod_profile, patch_profile)) = match read.await {
+                Ok(read) => read,
+                Err(err) => {
+                    let _ = this.update(cx, |this, cx| {
+                        if this.title_id.as_deref() == Some(title_id.as_str()) {
+                            this.found = Some(Err(Text::new("ps.scope.read_error").arg("error", err)));
+                            cx.notify();
+                        }
+                    });
+                    return;
+                }
+            };
+            let mods = tools::discover_mods(&root, &toolchain, &files.mods_dir).await;
+            let patches = tools::discover_patches(&root, &toolchain, &files.patches_dir).await;
             let _ = this.update(cx, |this, cx| {
+                if this.title_id.as_deref() != Some(title_id.as_str()) {
+                    return;
+                }
                 this.found = Some(Ok(Found {
-                    mods_dir,
-                    patches_dir,
+                    files,
                     mods,
                     patches,
                     mod_profile,
@@ -93,8 +122,8 @@ impl ModsView {
         let Some(Ok(found)) = &self.found else {
             return;
         };
-        let profile = found.mod_profile.clone();
-        let task = cx.background_spawn(async move { profile.save(&ModProfile::path(&decanter_ps::paths::active())) });
+        let (profile, path) = (found.mod_profile.clone(), found.files.mods_config.clone());
+        let task = cx.background_spawn(async move { profile.save(&path) });
         self.after_save(task, "mods.json", cx);
     }
 
@@ -102,8 +131,8 @@ impl ModsView {
         let Some(Ok(found)) = &self.found else {
             return;
         };
-        let profile = found.patch_profile.clone();
-        let task = cx.background_spawn(async move { profile.save(&PatchProfile::path(&decanter_ps::paths::active())) });
+        let (profile, path) = (found.patch_profile.clone(), found.files.patches_config.clone());
+        let task = cx.background_spawn(async move { profile.save(&path) });
         self.after_save(task, "patches.json", cx);
     }
 
@@ -163,6 +192,9 @@ impl ModsView {
     }
 
     fn pick_dir(&self, key: &'static str, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await else {
                 return;
@@ -170,7 +202,9 @@ impl ModsView {
             let path = folder.path().to_string_lossy().into_owned();
             let saved = cx
                 .background_spawn(async move {
-                    LauncherSettings::edit(&decanter_ps::paths::active(), |settings| settings.set_text(key, &path))
+                    LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
+                        settings.set_text(key, &path);
+                    })
                 })
                 .await;
             let _ = this.update(cx, |this, cx| match saved {
@@ -330,11 +364,17 @@ impl Render for ModsView {
         };
         let mods = self.mods_rows(found, cx);
         let patches = self.patch_rows(found, cx);
-        let mods_folder = self.folder_row(t!("ps.mods.mods.folder").into(), found.mods_dir.clone(), "mods_dir", cx);
+        let [mods_key, patches_key] = FOLDER_KEYS;
+        let mods_folder = self.folder_row(
+            t!("ps.mods.mods.folder").into(),
+            found.files.mods_dir.clone(),
+            mods_key,
+            cx,
+        );
         let patches_folder = self.folder_row(
             t!("ps.mods.patches.folder").into(),
-            found.patches_dir.clone(),
-            "patches_dir",
+            found.files.patches_dir.clone(),
+            patches_key,
             cx,
         );
         div()
@@ -346,7 +386,14 @@ impl Render for ModsView {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(theme::muted(t!("ps.mods.description")).flex_1())
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .child(theme::muted(t!("ps.mods.description")))
+                            .child(theme::muted(scope_note(found.files.scope))),
+                    )
                     .child(
                         button("mods-refresh", ButtonKind::Secondary, t!("ps.mods.refresh"), false)
                             .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::{LauncherSettings, TITLES, path};
-use crate::bbport::{Names, direct, frame_gen, local_player, online, port_ini};
+use crate::bbport::{Names, direct, frame_gen, local_player, mods, online, port_ini};
 use crate::os::windows::package::{PINNED_KEY, SELECTED_KEY};
 use crate::paths::Root;
 use crate::port::Port;
@@ -21,8 +21,8 @@ use crate::title_id::TitleId;
 
 const FILE: &str = "settings.json";
 
-/// The exceptions of `docs/ps-per-game-settings.md` (E1-E3), and what later phases move.
-const SHARED: [&str; 11] = [
+/// The exceptions of `docs/ps-per-game-settings.md` (E1-E3).
+const SHARED: [&str; 9] = [
     // The shadNet account is who the user is, not how a game runs; whether a game plays online
     // is the game's.
     online::NPID,
@@ -36,18 +36,21 @@ const SHARED: [&str; 11] = [
     direct::FOLDER_KEY,
     SELECTED_KEY,
     PINNED_KEY,
-    // Shared until mods and patches are per game.
-    "mods_dir",
-    "patches_dir",
 ];
 
 /// What a title's file of an earlier format lacks: 1 (no field) is from before [`MOVED`].
-const FORMAT: u64 = 2;
+const FORMAT: u64 = 3;
 const FORMAT_KEY: &str = "format";
 
-/// The keys every title shared before [`FORMAT`] 2: a title's file of format 1 takes the shared
+/// The keys every title shared until each format: a title's file of an earlier one takes the shared
 /// values once, so the game keeps playing as it did.
-const MOVED: [&str; 4] = [online::ONLINE, online::UPNP, online::BBSC, online::BBSC_LOCAL_SERVER];
+const MOVED: [(u64, &[&str]); 2] = [
+    (
+        2,
+        &[online::ONLINE, online::UPNP, online::BBSC, online::BBSC_LOCAL_SERVER],
+    ),
+    (3, &mods::FOLDER_KEYS),
+];
 
 /// Keys of bbport's former GTK launcher that nothing reads: left in the shared file, never copied
 /// into a title's.
@@ -148,31 +151,42 @@ fn title_file(root: &Root, title_id: &str) -> io::Result<Option<PathBuf>> {
 /// the shared file was backed up when the first title took its copy, and is not written.
 fn catch_up(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
     let mut own = LauncherSettings::read_at(path, true)?;
-    if own.values.get(FORMAT_KEY).and_then(Value::as_u64) >= Some(FORMAT) {
+    let format = own.values.get(FORMAT_KEY).and_then(Value::as_u64).unwrap_or(1);
+    if format >= FORMAT {
         return Ok(());
     }
     let mut shared = LauncherSettings::read(root)?;
-    let mut copied = Vec::with_capacity(MOVED.len());
-    for key in MOVED {
-        if !own.values.contains_key(key)
-            && let Some(value) = shared.values.remove(key)
-        {
+    let mut copied = Vec::new();
+    for key in MOVED
+        .into_iter()
+        .filter(|&(since, _)| format < since)
+        .flat_map(|(_, keys)| keys.iter().copied())
+    {
+        if own.values.contains_key(key) {
+            continue;
+        }
+        let found = shared
+            .values
+            .remove(key)
+            .or_else(|| mods::former_folder(root, key).map(Value::from));
+        if let Some(value) = found {
             own.values.insert(key.into(), value);
             copied.push(key);
         }
     }
     own.values.insert(FORMAT_KEY.into(), FORMAT.into());
     own.write_at(root, path)?;
-    tracing::info!(title_id = id.as_str(), keys = ?copied, to = %path.display(), "title launch settings caught up with the online switches");
+    tracing::info!(title_id = id.as_str(), keys = ?copied, to = %path.display(), "title launch settings caught up with keys no longer shared");
     Ok(())
 }
 
 /// What `id` ran with before it had a file: the shared file's keys but those every title still
 /// shares and those nothing reads, its own `titles.<TITLE_ID>` entries on top (so a switch on for
-/// every title stays on). The shared file is backed up first, before the first title takes a
-/// copy, and fails the copy when it doesn't parse rather than give the title the port's defaults.
+/// every title stays on), and the shared data folder's mods and patches folders where it read
+/// those. The shared file is backed up first, before the first title takes a copy, and fails the
+/// copy when it doesn't parse rather than give the title the port's defaults.
 fn create(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
-    if !any_title_has_file(root) {
+    if !port_ini::any_title_has(root, FILE) {
         port_ini::back_up_shared(root, &[FILE])?;
     }
     let mut shared = LauncherSettings::read(root)?;
@@ -191,6 +205,13 @@ fn create(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
     if let Some(Value::Object(entries)) = own {
         values.extend(entries);
     }
+    for key in mods::FOLDER_KEYS {
+        if !values.contains_key(key)
+            && let Some(folder) = mods::former_folder(root, key)
+        {
+            values.insert(key.into(), folder.into());
+        }
+    }
     let copied = values.len();
     values.insert("created_from".into(), "migration".into());
     values.insert("created_on".into(), port_ini::today().into());
@@ -205,12 +226,4 @@ fn create(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
         Err(_) if path.is_file() => Ok(()),
         Err(err) => Err(err),
     }
-}
-
-fn any_title_has_file(root: &Root) -> bool {
-    fs::read_dir(root.titles())
-        .into_iter()
-        .flatten()
-        .flatten()
-        .any(|entry| entry.path().join(FILE).is_file())
 }

@@ -180,11 +180,10 @@ pub struct ModProfile {
     pub disabled: Vec<String>,
 }
 
-impl ModProfile {
-    pub fn path(root: &Root) -> PathBuf {
-        root.bbport_data().join("mods.json")
-    }
+pub(super) const MODS_FILE: &str = "mods.json";
+pub(super) const PATCHES_FILE: &str = "patches.json";
 
+impl ModProfile {
     /// File I/O, like [`ModProfile::save`]: off the UI thread.
     pub fn load(path: &Path) -> ModProfile {
         std::fs::read(path)
@@ -220,10 +219,6 @@ pub struct PatchProfile {
 }
 
 impl PatchProfile {
-    pub fn path(root: &Root) -> PathBuf {
-        root.bbport_data().join("patches.json")
-    }
-
     /// File I/O, like [`PatchProfile::save`]: off the UI thread.
     pub fn load(path: &Path) -> PatchProfile {
         std::fs::read(path)

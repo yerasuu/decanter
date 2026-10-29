@@ -11,7 +11,7 @@ use decanter_ps::bbport::GameLaunch;
 use decanter_ps::bbport::frame_gen::FrameGen;
 use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::local_player::{LocalPlayer, LocalPlayerError};
-use decanter_ps::bbport::mods::Mods;
+use decanter_ps::bbport::mods::{ModFiles, Mods};
 use decanter_ps::bbport::online::{self, Online, OnlineError};
 use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
 use decanter_ps::learned;
@@ -170,16 +170,18 @@ pub async fn launch_inputs(
         off_thread(move || {
             let port_ini = Bbport::title_ini(&root, &title_id)?;
             let settings = LauncherSettings::of_title(&root, &title_id)?;
+            let mod_files = ModFiles::of_title(&root, &title_id, &settings)?;
             io::Result::Ok((
                 settings,
                 learned::Store::load(&root).title(&title_id),
                 Ini::load(&port_ini.path).get("aspect_ratio").map(str::to_owned),
                 port_ini,
+                mod_files,
             ))
         })
         .await
     };
-    let (settings, learned, chosen_ratio, port_ini) = match read {
+    let (settings, learned, chosen_ratio, port_ini, mod_files) = match read {
         Ok(Ok(read)) => read,
         Ok(Err(err)) => return Err(LaunchError::TitleSettings(err)),
         Err(err) => return Err(err),
@@ -208,13 +210,15 @@ pub async fn launch_inputs(
         let ini_path = port_ini.path.clone();
         // The layout's button icons are built here when they need to be: a few
         // hundred milliseconds of decoding and encoding, off the UI thread.
-        match off_thread(move || bbport::mods::prepare(&root, &game_dir, &for_mods, &ini_path, detected)).await {
+        match off_thread(move || bbport::mods::prepare(&root, &game_dir, &for_mods, &mod_files, &ini_path, detected))
+            .await
+        {
             Ok(Ok(mods)) => mods,
             Ok(Err(err)) => return Err(LaunchError::Mods(err)),
             Err(err) => return Err(err),
         }
     } else {
-        Mods::off(root, &settings)
+        Mods::off(&mod_files)
     };
     let debug_dir = crate::debug_logs::ps_folder(settings.title_flag(&game.title_id, crate::debug_logs::TITLE_KEY));
     let user_dir = root.profile(profile_id).join("bbport/user");

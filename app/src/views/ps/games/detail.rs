@@ -228,9 +228,13 @@ impl DetailView {
         {
             graphics.update(cx, |graphics, cx| graphics.show_title(title_id, cx));
         }
-        if tab == Tab::Mods && self.mods.is_none() {
+        if tab == Tab::Mods
+            && let Some((Port::Bbport, title_id)) = &entry
+        {
             let ps = self.ps.clone();
-            self.mods = Some(cx.new(|cx| ModsView::new(ps, cx)));
+            self.mods
+                .get_or_insert_with(|| cx.new(|_| ModsView::new(ps)))
+                .update(cx, |mods, cx| mods.show_title(title_id, cx));
         }
         if tab == Tab::Online
             && let Some((Port::Bbport, title_id)) = &entry

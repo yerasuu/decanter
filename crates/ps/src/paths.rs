@@ -76,8 +76,9 @@ impl Root {
         self.join("toolchain")
     }
 
-    /// `PS_DATA_DIR`: the shared port ini and launch settings (what older ports use and a title's
-    /// own start from), mods, patches and the files `run.sh` generates. Shared by every profile.
+    /// `PS_DATA_DIR`: the shared port ini, launch settings, mod and patch choices (what older ports
+    /// use and a title's own start from), the mods and patches folders titles had before their
+    /// own, and the files `run.sh` generates. Shared by every profile.
     pub fn bbport_data(&self) -> PathBuf {
         self.join("bbport")
     }

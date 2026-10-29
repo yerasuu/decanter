@@ -152,6 +152,43 @@ fn create_from_shared(root: &Root, shared: &Path, path: &Path) -> io::Result<()>
     }
 }
 
+/// `name` in `id`'s own folder, a copy of the shared file the first time it is asked for, after a
+/// backup of the shared one before the first title takes its copy. With no shared file there is
+/// nothing to copy and the title's is left to its first save, since an empty file is not one the
+/// port can read.
+pub(super) fn title_copy(root: &Root, id: &TitleId, name: &str) -> io::Result<PathBuf> {
+    let path = root.title(id).join(name);
+    if path.exists() {
+        return Ok(path);
+    }
+    if !any_title_has(root, name) {
+        back_up_shared(root, &[name])?;
+    }
+    let shared = root.bbport_data().join(name);
+    let contents = match fs::read(&shared) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(path),
+        Err(err) => return Err(err),
+    };
+    match crate::files::write_atomic(&path, &contents) {
+        Ok(()) => {
+            tracing::info!(title_id = id.as_str(), from = %shared.display(), to = %path.display(), "title file created");
+            Ok(path)
+        }
+        // Another thread made the same copy at the same moment and renamed it first.
+        Err(_) if path.is_file() => Ok(path),
+        Err(err) => Err(err),
+    }
+}
+
+pub(super) fn any_title_has(root: &Root, name: &str) -> bool {
+    fs::read_dir(root.titles())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| entry.path().join(name).is_file())
+}
+
 /// `backups/per-game-settings-<date>/` with those of the shared files `names` there are in the
 /// port's data folder. A file already in it is kept, so a second attempt the same day never
 /// replaces the first copy.

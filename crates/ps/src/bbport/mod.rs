@@ -373,7 +373,6 @@ impl Bbport {
         let var = |suffix: &str| names.var(suffix);
         let port_reads = |key: &str| old_memory_model || !MEMORY_MODEL_SETTINGS.contains(&key);
         let data = self.root.bbport_data();
-        let path_or = |key: &str, fallback: PathBuf| settings.text(key).map_or(fallback, PathBuf::from);
         command
             .env(var("DATA_DIR"), &data)
             .env(var("USER_DIR"), user_dir)
@@ -381,8 +380,8 @@ impl Bbport {
             .env(var("MODS_DIR"), &mods.dir)
             .env(var("MODS_CONFIG"), &mods.config)
             .env(var("MODS_ENABLED"), if mods.enabled { "1" } else { "0" })
-            .env(var("PATCHES_DIR"), path_or("patches_dir", data.join("patches")))
-            .env(var("PATCHES_CONFIG"), data.join("patches.json"))
+            .env(var("PATCHES_DIR"), &mods.patches_dir)
+            .env(var("PATCHES_CONFIG"), &mods.patches_config)
             .env(var("LANGUAGE"), settings.text("language").unwrap_or("1"))
             .env(
                 var("FULLSCREEN"),
