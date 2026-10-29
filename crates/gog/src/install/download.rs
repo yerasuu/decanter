@@ -2,10 +2,14 @@
 //!
 //! A GOG file is a list of chunks, each its own signed CDN URL and each
 //! zlib-compressed; the file is those chunks decompressed and concatenated
-//! in order. Nothing here is resumable, and deliberately so — an install
-//! that fails or is cancelled throws its staging directory away
-//! ([`super::staging`]), so a retry always starts from nothing and there
-//! is no partial state to reconcile.
+//! in order. Every chunk is checked against the manifest's compressed MD5,
+//! inflated size and MD5 before it is written, so corruption on the way in
+//! is a failed try rather than a broken game.
+//!
+//! Nothing here is resumable, and deliberately so — an install that fails
+//! or is cancelled throws its staging directory away ([`super::staging`]),
+//! so a retry always starts from nothing and there is no partial state to
+//! reconcile.
 //!
 //! Concurrency is per install rather than process-wide: two installs
 //! running at once each get their own budget, which is worse for the disk
@@ -37,11 +41,42 @@ const CHUNK_ATTEMPTS: usize = 3;
 /// Grows with each retry, so a CDN that is briefly refusing isn't hammered.
 const RETRY_BACKOFF: Duration = Duration::from_millis(500);
 
-/// One chunk of a file: where to get it, and whether it needs inflating.
+/// One chunk of a file: where to get it, and what it must hash to. GOG's
+/// depot chunks are always zlib.
 #[derive(Debug, Clone)]
 pub(super) struct ChunkSource {
     pub(super) url: Url,
-    pub(super) compressed: bool,
+    /// Of the bytes as served, checked before spending work on inflating.
+    pub(super) compressed_md5: [u8; 16],
+    pub(super) md5: [u8; 16],
+    /// Inflated, at most [`super::plan::MAX_CHUNK_SIZE`].
+    pub(super) size: usize,
+}
+
+/// Which check a chunk failed: a failed try, retried like a dropped
+/// connection.
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+enum Mismatch {
+    #[error("more bytes than the chunk can compress to")]
+    Oversized,
+    #[error("compressed MD5 mismatch")]
+    CompressedMd5,
+    #[error("not valid zlib")]
+    Inflate,
+    #[error("inflated size mismatch")]
+    Size,
+    #[error("MD5 mismatch")]
+    Md5,
+}
+
+/// A chunk that failed its integrity check on every try. Names the file and
+/// never the URL, which is signed.
+#[derive(Debug, thiserror::Error)]
+#[error("{file} arrived corrupted: chunk {chunk} failed its integrity check ({check}) on every try")]
+pub(super) struct CorruptChunk {
+    file: String,
+    chunk: usize,
+    check: Mismatch,
 }
 
 /// What a download stopped by [`Cancel`] fails with, so a caller can tell
@@ -136,9 +171,17 @@ pub(super) async fn download_all(
         let cancel = cancel.clone();
         let progress = progress.clone();
         async move {
+            // A corrupt chunk already names its file, and is the message the
+            // user should see rather than a generic one wrapped around it.
             let bytes = download_file(client, &file, &destination, &cancel, index, &progress)
                 .await
-                .with_context(|| format!("{} failed to download", file.relative_path));
+                .map_err(|err| {
+                    if err.is::<CorruptChunk>() {
+                        err
+                    } else {
+                        err.context(format!("{} failed to download", file.relative_path))
+                    }
+                });
             (index, bytes)
         }
     }))
@@ -197,9 +240,18 @@ async fn download_file(
     );
 
     let mut written = 0u64;
-    for chunk in &file.chunks {
+    for (chunk_index, chunk) in file.chunks.iter().enumerate() {
         crate::achv_try!(cancel.check());
-        let bytes = crate::achv_try!(fetch_chunk(client, chunk, cancel).await);
+        let bytes = crate::achv_try!(fetch_chunk(client, chunk, cancel).await.map_err(|err| {
+            match err.downcast::<Mismatch>() {
+                Ok(check) => anyhow::Error::new(CorruptChunk {
+                    file: file.relative_path.clone(),
+                    chunk: chunk_index,
+                    check,
+                }),
+                Err(err) => err,
+            }
+        }));
         crate::achv_try!(
             tokio::io::AsyncWriteExt::write_all(&mut sink, &bytes)
                 .await
@@ -269,40 +321,82 @@ async fn fetch_chunk(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Can
 }
 
 async fn fetch_chunk_once(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Cancel) -> anyhow::Result<Vec<u8>> {
-    let response = crate::achv_try!(client.get(chunk.url.clone()).send().await);
-    let response = crate::achv_try!(response.error_for_status());
+    // `without_url`: the URL is signed, and these errors reach logs and the
+    // UI.
+    let response = crate::achv_try!(
+        client
+            .get(chunk.url.clone())
+            .send()
+            .await
+            .map_err(reqwest::Error::without_url)
+    );
+    let response = crate::achv_try!(response.error_for_status().map_err(reqwest::Error::without_url));
 
+    // Deflate grows incompressible data by a few bytes per 64 KiB block, so
+    // a body past this is not the chunk; stopping here also keeps a server
+    // that never stops sending from filling memory.
+    let max_compressed = chunk.size + chunk.size / 64 + 1024;
+    let expected = response
+        .content_length()
+        .and_then(|length| usize::try_from(length).ok())
+        .unwrap_or(0);
+    let mut raw = Vec::with_capacity(expected.min(max_compressed));
+    let mut compressed_md5 = md5::Context::new();
     // Streamed rather than `bytes()`, so a cancel lands mid-chunk instead
-    // of waiting for the whole thing.
+    // of waiting for the whole thing, and hashed as it arrives so the check
+    // costs no second pass over the buffer.
     let mut body = response.bytes_stream();
-    let mut raw = Vec::new();
     while let Some(part) = body.next().await {
         crate::achv_try!(cancel.check());
-        raw.extend_from_slice(&crate::achv_try!(part));
+        let part = crate::achv_try!(part.map_err(reqwest::Error::without_url));
+        if raw.len() + part.len() > max_compressed {
+            return Err(Mismatch::Oversized.into());
+        }
+        compressed_md5.consume(&part);
+        raw.extend_from_slice(&part);
+    }
+    if compressed_md5.finalize().0 != chunk.compressed_md5 {
+        return Err(Mismatch::CompressedMd5.into());
     }
 
-    if !chunk.compressed {
-        // `trace!`, not `debug!`: a file transfers hundreds to thousands of
-        // chunks, and logging each at `debug!` would flood the log for
-        // what a caller sees as one file finishing.
-        tracing::trace!(bytes = raw.len(), "fetched chunk");
-        return Ok(raw);
-    }
-    let decompressed = crate::achv_try!(inflate(&raw).context("chunk did not decompress"));
-    tracing::trace!(
-        compressed_bytes = raw.len(),
-        decompressed_bytes = decompressed.len(),
-        "fetched chunk"
+    let compressed_bytes = raw.len();
+    let (size, md5) = (chunk.size, chunk.md5);
+    // Inflating and hashing a chunk is CPU work of a few milliseconds, off
+    // the async workers so four files in flight don't stall the runtime.
+    let inflated = crate::achv_try!(
+        tokio::task::spawn_blocking(move || inflate_checked(&raw, size, md5))
+            .await
+            .context("chunk check worker panicked")
     );
-    Ok(decompressed)
+    let inflated = crate::achv_try!(inflated);
+    // `trace!`, not `debug!`: a file transfers hundreds to thousands of
+    // chunks, and logging each at `debug!` would flood the log for what a
+    // caller sees as one file finishing.
+    tracing::trace!(compressed_bytes, decompressed_bytes = inflated.len(), "fetched chunk");
+    Ok(inflated)
 }
 
-/// GOG's depot chunks are raw zlib. Synchronous: a chunk is a few
-/// megabytes at most, already fully in memory, and inflating it is far
-/// cheaper than the transfer that produced it.
-fn inflate(raw: &[u8]) -> anyhow::Result<Vec<u8>> {
-    let mut decoder = flate2::read::ZlibDecoder::new(raw);
-    let mut decompressed = Vec::new();
-    crate::achv_try!(decoder.read_to_end(&mut decompressed));
-    Ok(decompressed)
+/// Inflates a GOG depot chunk (raw zlib) and checks it against the
+/// manifest's size and MD5.
+fn inflate_checked(raw: &[u8], size: usize, md5: [u8; 16]) -> Result<Vec<u8>, Mismatch> {
+    let mut inflated = Vec::with_capacity(size);
+    // One byte past `size` tells a long chunk from a right one without
+    // inflating all of whatever it really is.
+    let limit = u64::try_from(size).map_or(u64::MAX, |size| size.saturating_add(1));
+    crate::achv_try!(
+        flate2::read::ZlibDecoder::new(raw)
+            .take(limit)
+            .read_to_end(&mut inflated)
+            .map_err(|err| {
+                tracing::debug!(error = %err, "chunk did not inflate");
+                Mismatch::Inflate
+            })
+    );
+    if inflated.len() != size {
+        return Err(Mismatch::Size);
+    }
+    if md5::compute(&inflated).0 != md5 {
+        return Err(Mismatch::Md5);
+    }
+    Ok(inflated)
 }

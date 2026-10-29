@@ -21,6 +21,11 @@ pub(super) struct PlannedFile {
     pub(super) is_executable: bool,
 }
 
+/// GOG's depot chunks inflate to about a megabyte (as `gogdl` reads them; GOG
+/// doesn't document it). The bound is far above that so no real chunk is
+/// refused, and only stops a broken manifest from sizing buffers.
+pub(super) const MAX_CHUNK_SIZE: usize = 64 * 1024 * 1024;
+
 pub(super) struct Plan {
     pub(super) system: GameSystem,
     pub(super) version: String,
@@ -109,8 +114,24 @@ pub(super) async fn plan(
             };
             let url =
                 crate::achv_try!(url::Url::parse(&url).with_context(|| format!("bad chunk URL for {relative_path}")));
+            // Checked here, where the manifest comes in, so the download
+            // compares fixed bytes and sizes buffers it can trust.
+            let (Some(compressed_md5), Some(md5)) = (parse_md5(&chunk.compressed_md5), parse_md5(&chunk.md5)) else {
+                anyhow::bail!("malformed chunk checksum in the GOG manifest for {relative_path}");
+            };
+            let chunk_size = crate::achv_try!(
+                usize::try_from(chunk.size)
+                    .ok()
+                    .filter(|&chunk_size| chunk_size <= MAX_CHUNK_SIZE)
+                    .with_context(|| format!("implausible chunk size {} for {relative_path}", chunk.size))
+            );
             size += chunk.size;
-            chunks.push(ChunkSource { url, compressed: true });
+            chunks.push(ChunkSource {
+                url,
+                compressed_md5,
+                md5,
+                size: chunk_size,
+            });
         }
 
         install_size_bytes = install_size_bytes.map(|total| total + size);
@@ -136,6 +157,25 @@ pub(super) async fn plan(
         install_size_bytes,
         files,
     })
+}
+
+/// A manifest's hex MD5, as bytes; `None` for anything but 32 hex digits.
+fn parse_md5(hex: &str) -> Option<[u8; 16]> {
+    let (pairs, rest) = hex.as_bytes().as_chunks::<2>();
+    if pairs.len() != 16 || !rest.is_empty() {
+        return None;
+    }
+    let mut digest = [0u8; 16];
+    for (byte, &[high, low]) in digest.iter_mut().zip(pairs) {
+        let (Some(high), Some(low)) = (char::from(high).to_digit(16), char::from(low).to_digit(16)) else {
+            return None;
+        };
+        let Ok(value) = u8::try_from(high * 16 + low) else {
+            return None;
+        };
+        *byte = value;
+    }
+    Some(digest)
 }
 
 /// The install directory, build id and every file of `content`'s depots.
