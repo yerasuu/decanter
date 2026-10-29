@@ -234,7 +234,11 @@ impl Sessionless {
         query: &[(&str, &str)],
         bearer: Option<&str>,
     ) -> Result<Vec<u8>, Error> {
-        let mut request = self.http.get(url).query(query);
+        let mut request = self.http.get(url);
+        // A URL that already carries its query keeps it byte for byte.
+        if !query.is_empty() {
+            request = request.query(query);
+        }
         if let Some(token) = bearer {
             request = request.bearer_auth(token);
         }

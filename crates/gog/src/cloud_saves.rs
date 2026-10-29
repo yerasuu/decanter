@@ -30,6 +30,7 @@ use std::time::{Duration, SystemTime};
 use chrono::{DateTime, SecondsFormat, Utc};
 use decanter_core::platform;
 
+use crate::api::client::Sessionless;
 use crate::depot;
 
 /// Base URL for GOG's Cloud Saves storage API.
@@ -106,23 +107,23 @@ pub(crate) struct BuildClient {
 /// selected build for `game_id` — shared by [`game_token`] (which exchanges
 /// it for a cloud-saves session) and save-location detection (which only
 /// needs the id, to look up `remote-config.gog.com`).
-pub(crate) async fn resolve_build_client(
-    http: &reqwest::Client,
-    access_token: &str,
-    game_id: i64,
-) -> Result<BuildClient> {
-    let builds = match depot::get_builds(http, access_token, game_id, platform::game_system()).await {
+pub(crate) async fn resolve_build_client(access_token: &str, game_id: i64) -> Result<BuildClient> {
+    let http = match Sessionless::new() {
+        Ok(http) => http,
+        Err(err) => return Err(anyhow::Error::new(err).context("building the GOG HTTP client")),
+    };
+    let builds = match depot::get_builds(&http, access_token, game_id, platform::game_system()).await {
         Ok(builds) => builds,
         Err(err) => {
             tracing::error!(game_id, error = %err, "gog builds lookup failed, aborting cloud saves client resolution");
-            return Err(anyhow::Error::new(err).context("GOG builds lookup failed"));
+            return Err(err.context("GOG builds lookup failed"));
         }
     };
     let build = match depot::select_build(&builds) {
         Some(build) => build,
         None => return Err(anyhow::anyhow!("no builds available for GOG game {game_id}")),
     };
-    let meta = match depot::get_build_meta(http, access_token, &build.link).await {
+    let meta = match http.build_meta(access_token, &build.link).await {
         Ok(meta) => meta,
         Err(err) => {
             tracing::error!(game_id, error = %err, "gog build manifest fetch failed, aborting cloud saves client resolution");
@@ -404,7 +405,7 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     let BuildClient {
         client_id,
         client_secret,
-    } = match resolve_build_client(&http, &access_token, game_id).await {
+    } = match resolve_build_client(&access_token, game_id).await {
         Ok(client) => client,
         Err(err) => return Err(err),
     };

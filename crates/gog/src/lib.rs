@@ -34,8 +34,8 @@ mod session;
 mod steam_export;
 mod updates;
 
+pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
-pub use depot::Build;
 pub use install::{
     BrokenFile, BrokenReason, Progress, VerifyReport, cancel, install, repair, uninstall, uninstall_dlc, verify,
 };

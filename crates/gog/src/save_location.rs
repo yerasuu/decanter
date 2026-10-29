@@ -169,7 +169,7 @@ pub async fn detect(
     );
 
     let build_client = crate::achv_try!(
-        crate::cloud_saves::resolve_build_client(&http, &access_token, game_id)
+        crate::cloud_saves::resolve_build_client(&access_token, game_id)
             .await
             .inspect_err(|err| tracing::error!(product_id, error = %err, "resolving cloud saves client failed, aborting save location detection"))
     );

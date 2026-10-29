@@ -7,6 +7,7 @@ use decanter_core::GameSystem;
 use decanter_runtime::sanitize_relative_path;
 
 use super::download::ChunkSource;
+use crate::api::client::{DepotFile, Sessionless};
 
 /// A file to fetch and where it goes, resolved from the depot manifest.
 pub(super) struct PlannedFile {
@@ -52,14 +53,14 @@ pub(super) async fn plan(
     build_id: Option<&str>,
     system: GameSystem,
 ) -> anyhow::Result<Plan> {
-    let http = crate::http_client();
+    let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
     let (install_directory, version, depot_files) = crate::achv_try!(
         resolve_depot_files(&http, access_token, build_owner, content, branch, build_id, system).await
     );
     // Signed for the content's own product: its chunks live under that
     // product's path, and a link signed for the build's owner is refused.
     let secure_link = crate::achv_try!(
-        crate::depot::get_secure_link(&http, access_token, content, "/")
+        http.secure_link(access_token, content, "/")
             .await
             .inspect_err(|err| tracing::error!(content, error = %err, "gog secure_link lookup failed, aborting plan"))
             .context("GOG secure_link lookup failed")
@@ -86,7 +87,7 @@ pub(super) async fn plan(
             // the whole thing instead.
             let Some(url) = secure_link
                 .iter()
-                .find_map(|entry| crate::depot::build_chunk_url(entry, &chunk.compressed_md5))
+                .find_map(|entry| entry.chunk_url(&chunk.compressed_md5))
             else {
                 tracing::error!(relative_path, "no usable gog cdn endpoint for a chunk, aborting plan");
                 anyhow::bail!("no usable GOG CDN endpoint for a chunk of {relative_path}");
@@ -130,14 +131,14 @@ pub(super) async fn plan(
     reason = "each names a different part of which build and depots to read"
 )]
 pub(super) async fn resolve_depot_files(
-    http: &reqwest::Client,
+    http: &Sessionless,
     access_token: &str,
     build_owner: i64,
     content: i64,
     branch: Option<&str>,
     build_id: Option<&str>,
     system: GameSystem,
-) -> anyhow::Result<(String, String, Vec<crate::depot::DepotFile>)> {
+) -> anyhow::Result<(String, String, Vec<DepotFile>)> {
     let builds = crate::achv_try!(
         crate::depot::get_builds(http, access_token, build_owner, system)
             .await
@@ -163,7 +164,7 @@ pub(super) async fn resolve_depot_files(
     };
 
     let meta = crate::achv_try!(
-        crate::depot::get_build_meta(http, access_token, &build.link)
+        http.build_meta(access_token, &build.link)
             .await
             .inspect_err(|err| tracing::error!(build_id = build.build_id, error = %err, "gog build manifest fetch failed, aborting plan"))
             .context("GOG build manifest fetch failed")
@@ -182,7 +183,7 @@ pub(super) async fn resolve_depot_files(
     let mut depot_files = Vec::new();
     for depot in depots {
         depot_files.extend(crate::achv_try!(
-            crate::depot::get_depot_files(http, &depot.manifest)
+            http.depot_files(&depot.manifest)
                 .await
                 .inspect_err(|err| tracing::error!(manifest = depot.manifest, error = %err, "gog depot manifest fetch failed, aborting plan"))
                 .context("GOG depot manifest fetch failed")
@@ -205,7 +206,7 @@ pub(super) async fn dlc_only_files(
     branch: Option<&str>,
     system: GameSystem,
 ) -> anyhow::Result<Vec<std::path::PathBuf>> {
-    let http = crate::http_client();
+    let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
     let (_, _, dlc_files) =
         crate::achv_try!(resolve_depot_files(&http, access_token, parent, dlc, branch, None, system).await);
     let (_, _, base_files) =

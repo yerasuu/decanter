@@ -7,7 +7,8 @@
 use anyhow::Context;
 use decanter_core::{InstalledGame, Storefront, platform};
 
-use crate::depot::{Build, get_builds, select_build_for_branch};
+use crate::api::client::{Build, Sessionless};
+use crate::depot::{get_builds, select_build_for_branch};
 
 /// One branch GOG offers for a game, and the build it currently points
 /// at. `name: None` is mainline — the branch every game has.
@@ -80,7 +81,7 @@ async fn fetch_builds(account_id: &str, game_id: i64) -> anyhow::Result<Vec<Buil
         })
         .await
     );
-    let http = crate::http_client();
+    let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
     let builds = get_builds(&http, &access_token, game_id, platform::game_system())
         .await
         .context("GOG builds lookup failed")?;

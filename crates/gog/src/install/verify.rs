@@ -3,7 +3,7 @@
 //!
 //! Verification touches only the network for the manifest itself — every
 //! byte comparison happens against the local disk. A depot chunk carries
-//! its own uncompressed size and MD5 ([`crate::depot::DepotChunk`]), so a
+//! its own uncompressed size and MD5 ([`crate::api::client::DepotChunk`]), so a
 //! file is read in exactly those slices, in order, and each slice hashed
 //! and compared. No re-download, no CDN chunk URLs, until something
 //! actually needs fixing.
@@ -16,6 +16,7 @@ use anyhow::Context;
 use decanter_core::{Storefront, platform};
 
 use super::plan::{manifest_relative_path, resolve_depot_files};
+use crate::api::client::{DepotChunk, Sessionless};
 use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
 
 /// One file that didn't match its manifest.
@@ -89,7 +90,7 @@ pub async fn verify(
         })
         .await
     );
-    let http = crate::http_client();
+    let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
 
     let branch = game.branch.as_deref();
     // Pinned to the build actually on disk, not whatever the branch
@@ -141,7 +142,7 @@ pub async fn verify(
 }
 
 async fn verify_content(
-    http: &reqwest::Client,
+    http: &Sessionless,
     access_token: &str,
     build_owner: i64,
     content: i64,
@@ -243,7 +244,7 @@ fn verification_target(path: &Path) -> Cow<'_, Path> {
 /// Reads `path` in the manifest's own chunk boundaries and hashes each
 /// slice. `Ok(false)` for a hash mismatch, `Err` for a file that couldn't
 /// even be read (missing, wrong size, permissions).
-fn verify_file(path: &Path, chunks: &[crate::depot::DepotChunk]) -> std::io::Result<bool> {
+fn verify_file(path: &Path, chunks: &[DepotChunk]) -> std::io::Result<bool> {
     use std::io::Read;
     let mut file = crate::achv_try!(std::fs::File::open(path));
     for chunk in chunks {
