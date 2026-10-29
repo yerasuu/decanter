@@ -23,14 +23,14 @@ services:
     labels:
       - traefik.enable=true
       - traefik.constraint-label=expose-public
-      - traefik.http.routers.decanter-reports.rule=Host(`${REPORTS_HOST}`)
+      - traefik.http.routers.decanter-reports.rule=Host(`${REPORTS_HOST:?set REPORTS_HOST in .env (run install.sh)}`)
       - traefik.http.routers.decanter-reports.entrypoints=websecure
       - traefik.http.routers.decanter-reports.tls=true
       - traefik.http.routers.decanter-reports.service=decanter-reports
       # Only the tunnel may reach this router: cf-connecting-ip is trusted for the per-IP limits, so a client that
       # connected to Traefik directly (from the LAN) could choose the address the limits count.
       - traefik.http.routers.decanter-reports.middlewares=decanter-reports-origin
-      - traefik.http.middlewares.decanter-reports-origin.ipallowlist.sourcerange=${TUNNEL_SOURCE}
+      - traefik.http.middlewares.decanter-reports-origin.ipallowlist.sourcerange=${TUNNEL_SOURCE:?set TUNNEL_SOURCE in .env (run install.sh)}
       - traefik.http.middlewares.decanter-reports-origin.ipallowlist.rejectstatuscode=404
       - traefik.http.services.decanter-reports.loadbalancer.server.port=8787
     networks:

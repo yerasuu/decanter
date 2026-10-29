@@ -6,7 +6,8 @@
 set -eu
 
 IMAGE_REPO=ghcr.io/yerasuu/decanter-reports
-ATTESTATION_OWNER=yerasuu
+ATTESTATION_REPO=yerasuu/decanter
+ATTESTATION_SIGNER_WORKFLOW=$ATTESTATION_REPO/.github/workflows/reports-image.yml
 NETWORK=expose-public
 
 die() {
@@ -41,13 +42,97 @@ ask_secret() {
     printf '%s\n' "$answer"
 }
 
-# A value that goes into .env between single quotes: Compose reads it literally, so only a quote or a line break
-# could break out of it.
+# Every value goes into .env between single quotes, which Compose reads literally: only a quote or a line break could
+# break out, and a quote cannot be escaped inside them (unverified for the pinned Compose), so both are refused.
 check_quotable() {
     case $2 in
     *"'"* | *'
 '*) die "$1 must not contain a single quote or a line break" ;;
     esac
+}
+
+# One IPv4 literal: four decimal fields of 0-255 without leading zeros, and not 0.0.0.0.
+is_ipv4() {
+    case $1 in
+    '' | *[!0-9.]* | .* | *. | *..*) return 1 ;;
+    esac
+    [ "$1" != 0.0.0.0 ] || return 1
+    (
+        IFS=.
+        set -f
+        # shellcheck disable=SC2086
+        set -- $1
+        [ "$#" -eq 4 ] || exit 1
+        for field in "$@"; do
+            case $field in
+            0 | [1-9] | [1-9][0-9] | [1-9][0-9][0-9]) [ "$field" -le 255 ] || exit 1 ;;
+            *) exit 1 ;;
+            esac
+        done
+    )
+}
+
+# One IPv6 literal in hex and colons (no embedded IPv4, no zone): groups of 1-4 digits, at most one "::", and not "::".
+is_ipv6() {
+    case $1 in
+    '' | *[!0-9A-Fa-f:]* | *:::* | :[!:]* | *[!:]:) return 1 ;;
+    *:*) ;;
+    *) return 1 ;;
+    esac
+    [ "$1" != "::" ] || return 1
+    compressed=no
+    case $1 in
+    *::*)
+        compressed=yes
+        case ${1#*::} in *::*) return 1 ;; esac
+        ;;
+    esac
+    (
+        IFS=:
+        set -f
+        # shellcheck disable=SC2086
+        set -- $1
+        groups=0
+        for group in "$@"; do
+            [ -n "$group" ] || continue
+            case $group in
+            ????? | *[!0-9A-Fa-f]*) exit 1 ;;
+            esac
+            groups=$((groups + 1))
+        done
+        if [ "$compressed" = yes ]; then [ "$groups" -le 7 ]; else [ "$groups" -eq 8 ]; fi
+    )
+}
+
+is_address() {
+    is_ipv4 "$1" || is_ipv6 "$1"
+}
+
+# An address, or an address with a prefix no shorter than /8 (IPv4) or /32 (IPv6): a wider range would let more than
+# the tunnel through the allow list.
+is_address_or_cidr() {
+    case $1 in
+    */*)
+        addr=${1%%/*}
+        prefix=${1#*/}
+        case $prefix in
+        '' | 0* | *[!0-9]*) return 1 ;;
+        esac
+        [ "${#prefix}" -le 3 ] || return 1
+        if is_ipv4 "$addr"; then
+            [ "$prefix" -ge 8 ] && [ "$prefix" -le 32 ]
+        elif is_ipv6 "$addr"; then
+            [ "$prefix" -ge 32 ] && [ "$prefix" -le 128 ]
+        else
+            return 1
+        fi
+        ;;
+    *) is_address "$1" ;;
+    esac
+}
+
+env_line() {
+    printf "%s='%s'\n" "$1" "$2"
 }
 
 [ "$#" -eq 1 ] || die "usage: $0 <version>   (for the tag reports-vX.Y.Z pass X.Y.Z)"
@@ -87,7 +172,8 @@ case $digest_image in
 *) die "could not resolve $tag_image to a digest (got '$digest_image')" ;;
 esac
 if command -v gh >/dev/null 2>&1; then
-    gh attestation verify "oci://$digest_image" --owner "$ATTESTATION_OWNER" || die "provenance attestation did not verify"
+    gh attestation verify "oci://$digest_image" --repo "$ATTESTATION_REPO" \
+        --signer-workflow "$ATTESTATION_SIGNER_WORKFLOW" || die "provenance attestation did not verify"
 else
     printf 'warning: gh is not installed, the provenance attestation of %s was NOT verified\n' "$digest_image" >&2
 fi
@@ -114,28 +200,51 @@ case $public_host in
 *[!0-9A-Za-z.-]*) die "the host name has characters a host cannot have" ;;
 esac
 case $s3_endpoint in
-https://*) ;;
-*) die "the S3 endpoint must start with https://" ;;
+https://?*) ;;
+*) die "the S3 endpoint must be an https:// URL" ;;
+esac
+case $s3_endpoint in
+*[!A-Za-z0-9._~:/%-]*) die "the S3 endpoint has characters a plain https:// URL does not need (spaces, quotes, @, ?, #)" ;;
+esac
+case $bucket in
+'' | *[!a-z0-9.-]*) die "the bucket name must be lowercase letters, digits, dots and hyphens" ;;
+esac
+case $region in
+'' | *[!a-z0-9.-]*) die "the region must be lowercase letters, digits, dots and hyphens" ;;
 esac
 
 # 4. Suggestions from what is attached to the network; the owner confirms them.
 printf 'Containers on %s:\n' "$NETWORK"
 docker network inspect "$NETWORK" --format '{{range .Containers}}  {{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'
+# Offers an address only when exactly one container matches, and says which, so the owner confirms it with Enter.
 suggest() {
-    docker network inspect "$NETWORK" \
+    matches=$(docker network inspect "$NETWORK" \
         --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}' |
-        awk -v pat="$1" '$1 ~ pat { split($2, a, "/"); print a[1]; exit }'
+        awk -v pat="$1" 'NF >= 2 && $1 ~ pat')
+    count=$(printf '%s\n' "$matches" | awk 'NF { n++ } END { print n + 0 }')
+    case $count in
+    0) printf 'no container on %s matches "%s"; type the address\n' "$NETWORK" "$1" >&2 ;;
+    1)
+        found_addr=${matches##* }
+        found_addr=${found_addr%%/*}
+        printf 'one container matches "%s": %s at %s (Enter accepts it)\n' "$1" "${matches%% *}" "$found_addr" >&2
+        printf '%s\n' "$found_addr"
+        ;;
+    *) printf 'several containers match "%s", none is chosen; type the address:\n%s\n' "$1" "$matches" >&2 ;;
+    esac
 }
 traefik_ip=$(ask "Traefik's address on $NETWORK (single address)" "$(suggest traefik)")
 tunnel_ip=$(ask "Address the tunnel connects from (address or CIDR)" "$(suggest cloudflared)")
 [ -n "$traefik_ip" ] || die "Traefik's address is required"
 [ -n "$tunnel_ip" ] || die "the tunnel's address is required"
+is_address "$traefik_ip" || die "Traefik's address must be one IPv4 or IPv6 address, not '$traefik_ip'"
+is_address_or_cidr "$tunnel_ip" ||
+    die "the tunnel's address must be one address or one CIDR (at least /8 for IPv4, /32 for IPv6), not '$tunnel_ip'"
 case $tunnel_ip in
 */*) ;;
+*:*) tunnel_ip="$tunnel_ip/128" ;;
 *) tunnel_ip="$tunnel_ip/32" ;;
 esac
-check_quotable "Traefik address" "$traefik_ip"
-check_quotable "tunnel address" "$tunnel_ip"
 
 # 6. The passphrase is made by the binary, never by the serving process.
 passphrase=$(docker run --rm --pull=never "$digest_image" secret)
@@ -149,20 +258,20 @@ tmp_env=$(mktemp ./.env.XXXXXX)
 trap 'rm -f -- "$tmp_env"' EXIT INT TERM
 {
     printf '# Written by install.sh for reports-v%s. Holds secrets: mode 0600, never in git.\n' "$version"
-    printf "REPORTS_IMAGE=%s\n" "$digest_image"
-    printf "REPORTS_HOST=%s\n" "$public_host"
-    printf "TUNNEL_SOURCE=%s\n" "$tunnel_ip"
-    printf "DECANTER_REPORTS_PUBLIC_URL=https://%s\n" "$public_host"
-    printf "DECANTER_REPORTS_TRUSTED_PROXIES=%s\n" "$traefik_ip"
-    printf "DECANTER_REPORTS_CLIENT_IP_HEADER=cf-connecting-ip\n"
-    printf "DECANTER_REPORTS_STORAGE_DRIVER=s3\n"
-    printf "DECANTER_REPORTS_STORAGE_ENDPOINT=%s\n" "$s3_endpoint"
-    printf "DECANTER_REPORTS_STORAGE_BUCKET=%s\n" "$bucket"
-    printf "DECANTER_REPORTS_STORAGE_REGION=%s\n" "$region"
-    printf "DECANTER_REPORTS_STORAGE_PATH_STYLE=true\n"
-    printf "DECANTER_REPORTS_S3_ACCESS_KEY_ID='%s'\n" "$access_key_id"
-    printf "DECANTER_REPORTS_S3_SECRET_ACCESS_KEY='%s'\n" "$secret_access_key"
-    printf "DECANTER_REPORTS_PASSPHRASE='%s'\n" "$passphrase"
+    env_line REPORTS_IMAGE "$digest_image"
+    env_line REPORTS_HOST "$public_host"
+    env_line TUNNEL_SOURCE "$tunnel_ip"
+    env_line DECANTER_REPORTS_PUBLIC_URL "https://$public_host"
+    env_line DECANTER_REPORTS_TRUSTED_PROXIES "$traefik_ip"
+    env_line DECANTER_REPORTS_CLIENT_IP_HEADER cf-connecting-ip
+    env_line DECANTER_REPORTS_STORAGE_DRIVER s3
+    env_line DECANTER_REPORTS_STORAGE_ENDPOINT "$s3_endpoint"
+    env_line DECANTER_REPORTS_STORAGE_BUCKET "$bucket"
+    env_line DECANTER_REPORTS_STORAGE_REGION "$region"
+    env_line DECANTER_REPORTS_STORAGE_PATH_STYLE true
+    env_line DECANTER_REPORTS_S3_ACCESS_KEY_ID "$access_key_id"
+    env_line DECANTER_REPORTS_S3_SECRET_ACCESS_KEY "$secret_access_key"
+    env_line DECANTER_REPORTS_PASSPHRASE "$passphrase"
 } >"$tmp_env"
 chmod 0600 "$tmp_env"
 # link fails instead of replacing a .env that appeared meanwhile.
@@ -178,7 +287,7 @@ check_out=$(docker compose run --rm --no-deps decanter-reports --check-config 2>
 }
 printf '%s\n' "$check_out"
 case $check_out in
-*"does not open it"*) die "the passphrase does not open the existing bucket; not starting" ;;
+*"the passphrase does not open this bucket"*) die "the passphrase does not open the existing bucket; not starting" ;;
 esac
 
 # 9. Shown once. Losing it makes the bucket unreadable.

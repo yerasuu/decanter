@@ -287,6 +287,10 @@ published on the host. There is no config file and no secret file: every setting
 
 The image is built only from a `reports-vX.Y.Z` tag by `.github/workflows/reports-image.yml` (linux/amd64, with a
 provenance attestation) and has no `latest` tag. The GHCR package is private until its owner makes it public.
+Before the first tag, set a tag protection rule (or a ruleset) in the repository settings so only the owner can create
+tags matching `reports-v*`: the workflow only checks that the tagged commit is on `main`. Also fill the workflow's
+`<sha>` placeholders and the base-image digests in the `Containerfile` (see above); a tag pushed before that publishes
+an image built from unpinned bases.
 
 **Installing.** Keep `.env` in a deployment folder outside the checkout, so it is never committed and the build
 context never sees it. Verify the script before running it, since it handles the bucket keys and the passphrase:
@@ -302,8 +306,12 @@ sh /path/to/decanter/crates/reports-server/deploy/install.sh 0.1.0
 
 `install.sh <version>` checks `docker`, Compose v2 and the `expose-public` network, copies `compose.yaml` into the
 deployment folder, pulls the tag, resolves it to a digest and runs `gh attestation verify` when `gh` exists (it warns
-when it does not). It asks for the host, the S3 endpoint, the bucket, the region and the two bucket keys (the secret is
-read without echo), suggests Traefik's and the tunnel's addresses from `docker network inspect expose-public`, and
+when it does not), pinned to the repository `yerasuu/decanter` and to the signing workflow `reports-image.yml`
+(`--repo`, `--signer-workflow`; the constants are at the top of the script). It asks for the host, the S3 endpoint, the bucket, the region and the two bucket keys (the secret is
+read without echo), suggests Traefik's and the tunnel's addresses from `docker network inspect expose-public` only when exactly one
+container matches, naming it (with several it suggests nothing), validates every answer (one address for Traefik; one
+address or CIDR for the tunnel, never wider than /8 for IPv4 or /32 for IPv6; an https:// endpoint; bucket and region
+in `[a-z0-9.-]`) and single-quotes every value of `.env`, and
 makes the passphrase with `docker run --rm <image> secret`. It writes `.env` under `umask 077` and never overwrites an
 existing one, runs `--check-config` (it stops if the passphrase does not open an initialised bucket), prints the
 passphrase once and waits for its last 6 characters, runs `docker compose up -d` and creates the first admin with
