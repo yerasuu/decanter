@@ -9,7 +9,7 @@ use gpui::{
 use rust_i18n::t;
 
 use super::{SIDEBAR_WIDTH, SidebarView};
-use crate::state::AppState;
+use crate::state::{AppState, DownloadKey};
 use crate::theme;
 use crate::views::library::data::{Collections, LibraryStats};
 use crate::views::library::filters::{
@@ -38,7 +38,7 @@ fn count_options(
     favorites: &HashSet<String>,
     stats: &LibraryStats,
     collections: &Collections,
-    pending_installs: &HashSet<String>,
+    pending_installs: &HashSet<DownloadKey>,
 ) -> Tallies {
     let mut tallies = Tallies::default();
     for entry in entries {

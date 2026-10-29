@@ -34,7 +34,8 @@ mod updates;
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
 pub use install::{
-    BrokenFile, BrokenReason, Progress, VerifyReport, cancel, install, repair, uninstall, uninstall_dlc, verify,
+    BrokenFile, BrokenReason, Cancelled, Progress, VerifyReport, cancel, install, repair, uninstall, uninstall_dlc,
+    verify,
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
 pub use mods::{GogMod, gog_mods};

@@ -6,7 +6,9 @@ use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane};
 use crate::i18n::Text;
+use crate::state::{AppState, DownloadKey, DownloadKind};
 use crate::theme;
+use crate::views::library::install::{self, DownloadJob, Ended};
 use crate::widgets::{ButtonKind, button};
 
 pub(super) struct LocalFilesTab {
@@ -102,6 +104,7 @@ impl LocalFilesTab {
             "file repair started"
         );
         cx.notify();
+        let state = AppState::get(cx).clone();
         cx.spawn(async move |this, cx| {
             let account_id = target.account_id.as_str();
             let product_id = target.product_id.as_str();
@@ -117,12 +120,27 @@ impl LocalFilesTab {
                 fail(Text::new("library.install.no_library"), cx);
                 return;
             };
-            if let Err(err) = decanter_gog::repair(&core_library, account_id, product_id, &broken).await {
-                tracing::error!(account_id, product_id, error = %err, "file repair failed");
-                fail(Text::verbatim(err), cx);
-                return;
+            let (on_progress, progress) = install::progress_channel();
+            let repair = decanter_gog::repair(&core_library, account_id, product_id, &broken, on_progress);
+            let job = DownloadJob {
+                key: DownloadKey::new(account_id, product_id),
+                title: target.title.clone(),
+                kind: DownloadKind::Repair,
+            };
+            match install::track(&state, job, progress, repair, cx).await {
+                Ended::Done(()) => tracing::info!(account_id, product_id, "file repair finished"),
+                Ended::Cancelled => {
+                    let _ = this.update(cx, |this, cx| {
+                        this.repairing = false;
+                        cx.notify();
+                    });
+                    return;
+                }
+                Ended::Failed(error) => {
+                    fail(error, cx);
+                    return;
+                }
             }
-            tracing::info!(account_id, product_id, "file repair finished");
             let outcome = decanter_gog::verify(&core_library, account_id, product_id).await;
             let _ = this.update(cx, |this, cx| {
                 match outcome {

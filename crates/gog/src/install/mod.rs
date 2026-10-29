@@ -26,6 +26,7 @@ mod staging;
 mod tracking;
 mod verify;
 
+pub use download::Cancelled;
 pub use tracking::cancel;
 pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 
@@ -33,7 +34,7 @@ use download::{Cancel, PlannedDownload, ProgressUpdate, download_all};
 use plan::Plan;
 use rate::RateTracker;
 use staging::{move_into_library, staging_root};
-use tracking::{InstallKey, active, cancel_requested};
+use tracking::{InstallKey, active, cancelled_while_queued, claim};
 
 /// Progress for the install as a whole, not for one file: several files
 /// transfer at once, so per-file numbers jump around and never add up to
@@ -100,14 +101,7 @@ pub async fn install(
     let key: InstallKey = (account_id.to_string(), product_id.to_string());
     tracing::info!(product_id, title, parent_id, branch, build_id, "starting gog install");
 
-    // A second install of the same game would enqueue a second writer for
-    // every one of its files. Nothing downstream guards against that, so
-    // stop whatever is already running first; a no-op when nothing is.
-    cancel(account_id, product_id).await;
-    // That call's job is stopping a *previous* run of this key, not
-    // recording a cancellation of the one about to start -- clear
-    // whatever it just set so this fresh attempt isn't stillborn.
-    cancel_requested().lock().await.remove(&key);
+    claim(account_id, product_id).await;
 
     // The depot API needs a live access token, renewed and stored first when it has expired.
     let access_token = crate::achv_try!(
@@ -154,9 +148,9 @@ pub async fn install(
     // "Queued" window the UI shows a Cancelar button for, before any
     // download exists for `cancel` to reach through `active()`. Honor a
     // cancel that landed during it here, instead of installing anyway.
-    if cancel_requested().lock().await.remove(&key) {
+    if cancelled_while_queued(&key).await {
         tracing::info!(product_id, "install cancelled before download started");
-        anyhow::bail!("install cancelled");
+        return Err(Cancelled.into());
     }
 
     install_into(
@@ -224,7 +218,17 @@ async fn install_into(
         }
     }
 
-    let per_file = crate::achv_try!(download_into_staging(&plan, &staging, key, product_id, on_progress).await);
+    let per_file = crate::achv_try!(
+        download_into_staging(
+            plan.downloads(),
+            plan.install_size_bytes,
+            &staging,
+            key,
+            product_id,
+            on_progress
+        )
+        .await
+    );
 
     let file_count = plan.files.len();
     let downloaded: u64 = per_file.iter().sum();
@@ -312,8 +316,12 @@ async fn install_into(
     Ok(())
 }
 
+/// Downloads `downloads` into `staging` under `key`'s cancel flag, reporting
+/// the whole set's progress; shared by installs and repairs so both are
+/// cancellable and visible the same way. `staging` is removed on failure.
 async fn download_into_staging(
-    plan: &Plan,
+    downloads: Vec<PlannedDownload>,
+    total_size: Option<u64>,
     staging: &Path,
     key: InstallKey,
     product_id: &str,
@@ -322,17 +330,7 @@ async fn download_into_staging(
     let in_flight = Cancel::default();
     active().lock().await.insert(key.clone(), in_flight.clone());
 
-    let file_count = plan.files.len();
-    let total_size = plan.install_size_bytes;
-    let downloads: Vec<PlannedDownload> = plan
-        .files
-        .iter()
-        .map(|file| PlannedDownload {
-            relative_path: file.relative_path.clone(),
-            chunks: file.chunks.clone(),
-            is_executable: file.is_executable,
-        })
-        .collect();
+    let file_count = downloads.len();
 
     // Every file reports its own running total; the loop below keeps the
     // latest per file and sums them, so what reaches the caller is the
@@ -363,11 +361,22 @@ async fn download_into_staging(
     // Cleared before any `?` below: leaving a stale entry would make the
     // next `cancel` for this game try to cancel a finished install.
     let outcome = worker.await;
-    active().lock().await.remove(&key);
+    {
+        // Only this run's own flag: a newer run of the same key may have
+        // claimed it meanwhile, and its entry is what a cancel must reach.
+        let mut active = active().lock().await;
+        if active.get(&key).is_some_and(|flag| flag.is_same(&in_flight)) {
+            active.remove(&key);
+        }
+    }
     match outcome {
         Ok(Ok(per_file)) => Ok(per_file),
         Ok(Err(err)) => {
-            tracing::error!(product_id, error = %err, "install download failed, aborting install");
+            if err.is::<Cancelled>() {
+                tracing::info!(product_id, "download cancelled, removing its staging");
+            } else {
+                tracing::error!(product_id, error = %err, "install download failed, aborting install");
+            }
             if let Err(err) = tokio::fs::remove_dir_all(staging).await {
                 tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a failed install");
             }

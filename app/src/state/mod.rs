@@ -13,7 +13,7 @@ use gpui::{App, AppContext as _, Entity, Global};
 use crate::i18n::Text;
 use crate::views::settings::Tab as SettingsTab;
 
-pub use background::{Background, InstallStatus};
+pub use background::{Background, Download, DownloadKey, DownloadKind, InstallStatus};
 pub use gog_library::{GogLibrary, LibraryState, ModsState};
 pub use ps::{
     Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
@@ -38,6 +38,9 @@ pub struct Session {
     /// Bumped to ask the shell for the "Juegos externos" page — from the
     /// library's sidebar or a game's menu, neither of which owns the shell.
     pub external_request: u32,
+    /// Bumped to ask the shell for Descargas, where a cancel asked for
+    /// from a game's menu is confirmed.
+    pub downloads_request: u32,
     /// The external game that request is to edit, if any.
     pub external_edit: Option<String>,
     /// The Ajustes tab some other view asks the shell to open; Ajustes clears
@@ -76,6 +79,7 @@ impl Session {
             library_home: 0,
             ps_home: 0,
             external_request: 0,
+            downloads_request: 0,
             external_edit: None,
             settings_request: None,
             raven,

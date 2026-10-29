@@ -6,9 +6,9 @@ use rust_i18n::t;
 use super::install_dialog::install_dialog;
 use super::{BarState, DetailView};
 use crate::capabilities::Caps;
-use crate::state::{AppState, InstallStatus};
+use crate::state::{AppState, Download, InstallStatus};
 use crate::theme;
-use crate::views::downloads::progress_lines;
+use crate::views::downloads::{cancel_action, progress_lines};
 use crate::views::library::install::{self, InstallRequest};
 use crate::views::library::{actions, open_properties};
 use crate::widgets::{ButtonKind, button, tooltip};
@@ -88,7 +88,8 @@ impl DetailView {
     fn install_action(&self, game: &Game, bar_state: BarState, window: &Window, cx: &Context<Self>) -> Vec<AnyElement> {
         let BarState {
             installable,
-            status,
+            download,
+            confirming_cancel,
             dlcs,
             ..
         } = bar_state;
@@ -103,19 +104,38 @@ impl DetailView {
         }
         let account_id = game.account_id.clone();
         let product_id = game.id.clone();
-        match status {
-            Some(status @ (InstallStatus::Queued | InstallStatus::Installing { .. })) => {
-                let current_file = match &status {
+        match download {
+            Some((
+                key,
+                Download {
+                    status: InstallStatus::Failed(err),
+                    ..
+                },
+            )) => vec![
+                theme::error(t!("library.detail.install.failed", error = err)).into_any_element(),
+                button(
+                    "install-dismiss",
+                    ButtonKind::Secondary,
+                    t!("library.detail.install.dismiss"),
+                    false,
+                )
+                .on_click(move |_, _, cx| actions::dismiss_install(&key, cx))
+                .into_any_element(),
+            ],
+            Some((key, download)) => {
+                let current_file = match &download.status {
                     InstallStatus::Installing { current_file, .. } => Some(current_file.clone()),
-                    InstallStatus::Queued | InstallStatus::Failed(_) => None,
+                    InstallStatus::Queued | InstallStatus::Cancelling { .. } | InstallStatus::Failed(_) => None,
                 };
-                vec![
+                let cancel = (!matches!(download.status, InstallStatus::Cancelling { .. }))
+                    .then(|| cancel_action(0, &key, &download, confirming_cancel));
+                let mut elements = vec![
                     div()
                         .flex()
                         .flex_col()
                         .gap(px(6.))
                         .min_w(px(220.))
-                        .children(progress_lines(&product_id, &status))
+                        .children(progress_lines(&key, &download.status))
                         .children(current_file.map(|file| {
                             div()
                                 .mt_1()
@@ -125,22 +145,10 @@ impl DetailView {
                                 .child(file)
                         }))
                         .into_any_element(),
-                    button("install-cancel", ButtonKind::Icon, t!("common.cancel"), false)
-                        .on_click(move |_, _, cx| actions::cancel_install(account_id.clone(), product_id.clone(), cx))
-                        .into_any_element(),
-                ]
+                ];
+                elements.extend(cancel);
+                elements
             }
-            Some(InstallStatus::Failed(err)) => vec![
-                theme::error(t!("library.detail.install.failed", error = err)).into_any_element(),
-                button(
-                    "install-dismiss",
-                    ButtonKind::Secondary,
-                    t!("library.detail.install.dismiss"),
-                    false,
-                )
-                .on_click(move |_, _, cx| actions::dismiss_install(&product_id, cx))
-                .into_any_element(),
-            ],
             // Nothing to choose: the files go to the shared library and the
             // prefix is derived from (profile, game) when the game first runs.
             None => {

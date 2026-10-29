@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use decanter_core::platform;
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
@@ -44,6 +44,13 @@ pub(super) struct ChunkSource {
     pub(super) compressed: bool,
 }
 
+/// What a download stopped by [`Cancel`] fails with, so a caller can tell
+/// the user's own cancel from a failure worth reporting.
+#[derive(Debug, thiserror::Error)]
+#[error("download cancelled")]
+#[non_exhaustive]
+pub struct Cancelled;
+
 /// Set to stop an install. Checked between chunks and between reads, so a
 /// cancel lands within one chunk's transfer rather than at the end of the
 /// file.
@@ -55,13 +62,17 @@ impl Cancel {
         self.0.store(true, Ordering::Relaxed);
     }
 
+    pub(super) fn is_same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
     pub(super) fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Relaxed)
     }
 
-    fn check(&self) -> anyhow::Result<()> {
+    fn check(&self) -> Result<(), Cancelled> {
         if self.is_cancelled() {
-            bail!("install cancelled");
+            return Err(Cancelled);
         }
         Ok(())
     }

@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use super::LibraryModel;
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{PlayState, Sort, pending_install_ids};
-use crate::state::AppState;
+use crate::state::{AppState, DownloadKey};
 use crate::theme;
 use derived::derive;
 use slots::{load_slots, save_slots};
@@ -86,7 +86,7 @@ struct ShelvesKey {
     /// leaves the sqlite reads above as they were.
     games: u64,
     installed_only: bool,
-    pending_installs: HashSet<String>,
+    pending_installs: HashSet<DownloadKey>,
     slots: u64,
     /// The source names and capsule lines are translated.
     locale: String,

@@ -2,3 +2,13 @@ downloads.title: Downloads
 downloads.empty: No downloads in progress.
 downloads.eta: '%{left} left'
 downloads.dismiss: Dismiss
+downloads.cancelling: Cancelling and deleting what was downloaded…
+downloads.cancel_confirm: Cancel the download of %{title}? The %{size} already downloaded will be deleted.
+downloads.cancel_confirm_empty: Cancel the download of %{title}?
+downloads.cancel_delete: Cancel and delete
+downloads.keep: Keep downloading
+downloads.kind.dlc: DLC
+downloads.kind.update: Update
+downloads.kind.branch_switch: Branch switch
+downloads.kind.rollback: Version change
+downloads.kind.repair: Repair

@@ -67,6 +67,7 @@ impl Shell {
     pub fn new(on_close: Rc<dyn Fn(&mut Window, &mut App)>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::get(cx).clone();
         let mut external_request = state.session.read(cx).external_request;
+        let mut downloads_request = state.session.read(cx).downloads_request;
         cx.observe_in(&state.session, window, move |this, session, window, cx| {
             this.reload_profiles();
             if this.page == Page::Raven && !raven_shown(cx) {
@@ -82,6 +83,11 @@ impl Shell {
                 if let Some(view) = &this.external {
                     view.update(cx, |view, cx| view.start(editing, cx));
                 }
+            }
+            let asked = session.read(cx).downloads_request;
+            if asked != downloads_request {
+                downloads_request = asked;
+                this.navigate(Page::Downloads, window, cx);
             }
             if session.read(cx).settings_request.is_some() {
                 this.navigate(Page::Settings, window, cx);
@@ -444,33 +450,29 @@ impl Shell {
     fn download_bar(cx: &App) -> Option<impl IntoElement + use<>> {
         let state = AppState::get(cx);
         let installing = &state.background.read(cx).installing;
-        let games = &state.library.read(cx).games;
-        // Only queued/downloading entries: a failure already has its own
-        // resolution step (Descartar) in the detail pane and Descargas.
+        // Only live entries: a failure already has its own resolution step
+        // (Descartar) in the detail pane and Descargas.
         let mut active: Vec<_> = installing
             .iter()
-            .filter(|(_, status)| !matches!(status, InstallStatus::Failed(_)))
+            .filter(|(_, download)| download.status.is_live())
             .collect();
         if active.is_empty() {
             return None;
         }
-        active.sort_by(|a, b| a.0.cmp(b.0));
-        let items = active.into_iter().map(|(product_id, status)| {
-            let title = games
-                .iter()
-                .find(|entry| entry.game.id == *product_id)
-                .map_or_else(|| product_id.clone(), |entry| entry.game.title.clone());
+        active.sort_by(|a, b| (&a.1.title, a.0).cmp(&(&b.1.title, b.0)));
+        let items = active.into_iter().map(|(key, download)| {
             let label = div()
                 .text_color(rgb(theme::TEXT_PRIMARY))
                 .font_weight(FontWeight::SEMIBOLD)
                 .whitespace_nowrap()
-                .child(t!("chrome.downbar.downloading", title = title));
+                .child(t!("chrome.downbar.downloading", title = download.title));
             let item = div().flex().flex_none().items_center().gap_2().child(label);
+            let status = &download.status;
             match status {
                 InstallStatus::Installing { bytes_per_second, .. } => {
                     let fraction = status.fraction();
                     item.child(div().w(px(110.)).child(progress_bar(
-                        SharedString::from(format!("dl-{product_id}")),
+                        SharedString::from(format!("dl-{}", key.id())),
                         Some(fraction.unwrap_or(1.)),
                         4.,
                     )))
@@ -483,6 +485,7 @@ impl Shell {
                         None => crate::format::rate(*bytes_per_second),
                     })
                 }
+                InstallStatus::Cancelling { .. } => item.child(t!("downloads.cancelling")),
                 InstallStatus::Queued | InstallStatus::Failed(_) => item.child(t!("common.queued")),
             }
         });
@@ -673,11 +676,7 @@ fn raven_shown(cx: &App) -> bool {
 /// records when it ends: switching library first sends them to another one.
 pub(crate) fn busy(cx: &App) -> bool {
     let background = AppState::get(cx).background.read(cx);
-    !background.running.is_empty()
-        || background
-            .installing
-            .values()
-            .any(|status| !matches!(status, InstallStatus::Failed(_)))
+    !background.running.is_empty() || background.installing.values().any(|download| download.status.is_live())
 }
 
 /// Makes `profile_id`, which lives in the library at `root`, active along

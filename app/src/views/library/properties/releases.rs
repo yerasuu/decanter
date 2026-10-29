@@ -11,7 +11,9 @@ use rust_i18n::t;
 
 use super::{Target, error_line, not_installed, pane};
 use crate::i18n::Text;
+use crate::state::{AppState, DownloadKey, DownloadKind};
 use crate::theme;
+use crate::views::library::install::{self, DownloadJob, Ended};
 use crate::widgets::{ButtonKind, button};
 
 /// `use_resource`'s three states: `None` while the first load runs, then
@@ -68,11 +70,16 @@ impl BetasTab {
             "branch switch started"
         );
         cx.notify();
+        let state = AppState::get(cx).clone();
         cx.spawn(async move |this, cx| {
             let account_id = target.account_id.as_str();
             let product_id = target.product_id.as_str();
             let Ok(core_library) = crate::core::library_for_account(account_id) else {
-                tracing::error!(account_id, product_id, "could not resolve library, branch switch aborted");
+                tracing::error!(
+                    account_id,
+                    product_id,
+                    "could not resolve library, branch switch aborted"
+                );
                 let _ = this.update(cx, |this, cx| {
                     this.error = Some(Text::new("library.install.no_library"));
                     this.switching = None;
@@ -80,7 +87,8 @@ impl BetasTab {
                 });
                 return;
             };
-            let outcome = decanter_gog::install(
+            let (on_progress, progress) = install::progress_channel();
+            let switch = decanter_gog::install(
                 &core_library,
                 account_id,
                 product_id,
@@ -88,20 +96,23 @@ impl BetasTab {
                 &target.title,
                 branch_name.as_deref(),
                 None,
-                |_| {},
-            )
-            .await;
+                on_progress,
+            );
+            let job = DownloadJob {
+                key: DownloadKey::new(account_id, product_id),
+                title: target.title.clone(),
+                kind: DownloadKind::BranchSwitch,
+            };
+            let outcome = install::track(&state, job, progress, switch, cx).await;
             let _ = this.update(cx, |this, cx| {
                 this.switching = None;
                 match outcome {
-                    Ok(()) => {
+                    Ended::Done(()) => {
                         tracing::info!(account_id, product_id, branch = branch_name, "branch switch finished");
                         this.load(cx);
                     }
-                    Err(err) => {
-                        tracing::error!(account_id, product_id, branch = branch_name, error = %err, "branch switch failed");
-                        this.error = Some(Text::verbatim(err));
-                    }
+                    Ended::Cancelled => {}
+                    Ended::Failed(error) => this.error = Some(error),
                 }
                 this.installed = crate::core::installed_game(account_id, product_id);
                 cx.notify();
@@ -221,6 +232,7 @@ impl VersionsTab {
             "build rollback started"
         );
         cx.notify();
+        let state = AppState::get(cx).clone();
         cx.spawn(async move |this, cx| {
             let account_id = target.account_id.as_str();
             let product_id = target.product_id.as_str();
@@ -233,7 +245,8 @@ impl VersionsTab {
                 });
                 return;
             };
-            let outcome = decanter_gog::install(
+            let (on_progress, progress) = install::progress_channel();
+            let rollback = decanter_gog::install(
                 &core_library,
                 account_id,
                 product_id,
@@ -241,20 +254,23 @@ impl VersionsTab {
                 &target.title,
                 branch.as_deref(),
                 Some(&target_build_id),
-                |_| {},
-            )
-            .await;
+                on_progress,
+            );
+            let job = DownloadJob {
+                key: DownloadKey::new(account_id, product_id),
+                title: target.title.clone(),
+                kind: DownloadKind::Rollback,
+            };
+            let outcome = install::track(&state, job, progress, rollback, cx).await;
             let _ = this.update(cx, |this, cx| {
                 this.installing = None;
                 match outcome {
-                    Ok(()) => {
+                    Ended::Done(()) => {
                         tracing::info!(account_id, product_id, target_build_id, "build rollback finished");
                         this.load(cx);
                     }
-                    Err(err) => {
-                        tracing::error!(account_id, product_id, target_build_id, error = %err, "build rollback failed");
-                        this.error = Some(Text::verbatim(err));
-                    }
+                    Ended::Cancelled => {}
+                    Ended::Failed(error) => this.error = Some(error),
                 }
                 this.installed = crate::core::installed_game(account_id, product_id);
                 cx.notify();

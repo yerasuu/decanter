@@ -12,6 +12,7 @@ use rust_i18n::t;
 
 use super::data::{Collections, LibraryStats};
 use super::filters::{SavedFilter, is_installed};
+use crate::state::DownloadKey;
 
 pub(super) struct Shelf {
     /// Stable across renders so a collapsed shelf stays collapsed.
@@ -30,7 +31,7 @@ pub(super) struct Shelf {
 }
 
 impl Shelf {
-    pub fn installed_count(&self, pending_installs: &HashSet<String>) -> usize {
+    pub fn installed_count(&self, pending_installs: &HashSet<DownloadKey>) -> usize {
         self.entries
             .iter()
             .filter(|entry| is_installed(&entry.game, pending_installs))
@@ -56,7 +57,7 @@ pub(super) fn build(
     collections: &Collections,
     favorites: &std::collections::HashSet<String>,
     stats: &LibraryStats,
-    pending_installs: &HashSet<String>,
+    pending_installs: &HashSet<DownloadKey>,
 ) -> Vec<Shelf> {
     let favorite_entries: Vec<LibraryEntry> = entries
         .iter()

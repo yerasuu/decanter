@@ -6,13 +6,15 @@ use anyhow::Context;
 use decanter_core::GameSystem;
 use decanter_runtime::sanitize_relative_path;
 
-use super::download::ChunkSource;
+use super::download::{ChunkSource, PlannedDownload};
 use crate::api::client::{DepotFile, Sessionless};
 
 /// A file to fetch and where it goes, resolved from the depot manifest.
 pub(super) struct PlannedFile {
     pub(super) relative_path: String,
     pub(super) chunks: Vec<ChunkSource>,
+    /// Inflated bytes, the sum of its chunks' sizes.
+    pub(super) size: u64,
     /// Needs the executable mode once it lands: only a macOS build's files
     /// say so, since a Windows build runs by extension, under Proton or
     /// natively.
@@ -25,6 +27,19 @@ pub(super) struct Plan {
     pub(super) install_directory: String,
     pub(super) install_size_bytes: Option<u64>,
     pub(super) files: Vec<PlannedFile>,
+}
+
+impl Plan {
+    pub(super) fn downloads(&self) -> Vec<PlannedDownload> {
+        self.files
+            .iter()
+            .map(|file| PlannedDownload {
+                relative_path: file.relative_path.clone(),
+                chunks: file.chunks.clone(),
+                is_executable: file.is_executable,
+            })
+            .collect()
+    }
 }
 
 /// Depot manifests address files with Windows separators
@@ -80,7 +95,7 @@ pub(super) async fn plan(
         .into_owned();
 
         let mut chunks = Vec::with_capacity(depot_file.chunks.len());
-        let mut file_size = Some(0u64);
+        let mut size = 0u64;
         for chunk in depot_file.chunks {
             // Skipping a chunk would write a file that's silently short —
             // an install that "succeeded" but produced a corrupt game. Fail
@@ -94,15 +109,16 @@ pub(super) async fn plan(
             };
             let url =
                 crate::achv_try!(url::Url::parse(&url).with_context(|| format!("bad chunk URL for {relative_path}")));
-            file_size = file_size.map(|total| total + chunk.size);
+            size += chunk.size;
             chunks.push(ChunkSource { url, compressed: true });
         }
 
-        install_size_bytes = install_size_bytes.zip(file_size).map(|(a, b)| a + b);
+        install_size_bytes = install_size_bytes.map(|total| total + size);
         let is_executable = system == GameSystem::MacOs && depot_file.flags.iter().any(|flag| flag == "executable");
         files.push(PlannedFile {
             relative_path,
             chunks,
+            size,
             is_executable,
         });
     }

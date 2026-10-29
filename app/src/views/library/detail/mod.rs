@@ -17,7 +17,7 @@ use gpui::{Context, Div, Entity, Pixels, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::{LibraryModel, actions, data};
-use crate::state::{AppState, Background, InstallStatus};
+use crate::state::{AppState, Background, Download, DownloadKey};
 use crate::theme;
 use crate::views::ps::log::LogView;
 use crate::widgets::tabs;
@@ -121,7 +121,9 @@ struct BarState {
     /// Not on `Game`: it's a fact about the product, and it lives on the
     /// library entry alongside `kind` and `parent_id`.
     installable: bool,
-    status: Option<InstallStatus>,
+    download: Option<(DownloadKey, Download)>,
+    /// That download's Cancelar is waiting for the user's confirmation.
+    confirming_cancel: bool,
     dlcs: Vec<(String, String)>,
 }
 
@@ -211,7 +213,14 @@ impl Render for DetailView {
         let background = state.background.read(cx);
         self.sync(&game, profile_id.as_deref(), background);
         let running = background.running.contains(&game.id);
-        let install_status = background.installing.get(&game.id).cloned();
+        let download = background
+            .installing
+            .iter()
+            .find(|(key, _)| key.is(&game.account_id, &game.id))
+            .map(|(key, download)| (key.clone(), download.clone()));
+        let confirming_cancel = download
+            .as_ref()
+            .is_some_and(|(key, _)| background.cancel_confirm.as_ref() == Some(key));
         let is_installed = game.install_state.as_ref().is_some_and(|install| install.installed);
         self.sync_log(&game, cx);
 
@@ -237,7 +246,8 @@ impl Render for DetailView {
             launch,
             running,
             installable,
-            status: install_status,
+            download,
+            confirming_cancel,
             dlcs,
         };
         let action_bar = self.action_bar(&game, bar, window, cx);

@@ -12,7 +12,7 @@ use rust_i18n::t;
 
 use super::data;
 use super::install::{self, InstallRequest};
-use crate::state::{AppState, InstallStatus};
+use crate::state::{AppState, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
 /// build of it: shown in place of Instalar and Jugar.
@@ -111,26 +111,68 @@ pub fn stop_game(account_id: String, game_id: String, cx: &mut App) {
 /// always comes from the base game it belongs to.
 pub fn start_install(request: InstallRequest, cx: &mut App) {
     let state = AppState::get(cx).clone();
-    let key = request.product_id.clone();
+    let key = DownloadKey::new(&request.account_id, &request.product_id);
+    let kind = if request.parent_id.is_some() {
+        DownloadKind::Dlc
+    } else {
+        DownloadKind::Install
+    };
+    // On screen at once, so Instalar can't be pressed twice before the
+    // task below gets to run.
+    let row = install::queued(request.title.clone(), kind);
     state.background.update(cx, |background, cx| {
-        background.installing.insert(key, InstallStatus::Queued);
+        background.installing.insert(key, row);
         cx.notify();
     });
     cx.spawn(async move |cx| install::install(request, state, cx).await)
         .detach();
 }
 
-pub fn cancel_install(account_id: String, product_id: String, cx: &mut App) {
-    let state = AppState::get(cx).clone();
-    cx.spawn(async move |cx| install::cancel_and_forget(account_id, product_id, state, cx).await)
+/// Cancelar only asks: confirming deletes what the download had already
+/// fetched (#1133), and the question shows how much that is.
+pub fn ask_cancel(key: DownloadKey, cx: &mut App) {
+    let background = AppState::get(cx).background.clone();
+    background.update(cx, |background, cx| {
+        background.cancel_confirm = Some(key);
+        cx.notify();
+    });
+}
+
+pub fn keep_download(cx: &mut App) {
+    let background = AppState::get(cx).background.clone();
+    background.update(cx, |background, cx| {
+        background.cancel_confirm = None;
+        cx.notify();
+    });
+}
+
+/// The confirmed cancel. The row stays as Cancelling until the download
+/// has stopped and its staging is gone; its own task then removes it.
+pub fn confirm_cancel(key: DownloadKey, cx: &mut App) {
+    let background = AppState::get(cx).background.clone();
+    background.update(cx, |background, cx| {
+        background.cancel_confirm = None;
+        if let Some(row) = background.installing.get_mut(&key) {
+            row.status = InstallStatus::Cancelling {
+                bytes_downloaded: row.status.bytes_downloaded(),
+            };
+        }
+        cx.notify();
+    });
+    tracing::info!(
+        account_id = key.account_id,
+        product_id = key.product_id,
+        "download cancel confirmed"
+    );
+    cx.spawn(async move |_| decanter_gog::cancel(&key.account_id, &key.product_id).await)
         .detach();
 }
 
-/// Drops a failed install's notice.
-pub fn dismiss_install(product_id: &str, cx: &mut App) {
+/// Drops a failed download's notice.
+pub fn dismiss_install(key: &DownloadKey, cx: &mut App) {
     let background = AppState::get(cx).background.clone();
     background.update(cx, |background, cx| {
-        background.installing.remove(product_id);
+        background.installing.remove(key);
         cx.notify();
     });
 }

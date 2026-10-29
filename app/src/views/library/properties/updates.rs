@@ -6,7 +6,9 @@ use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane, row, rows};
 use crate::i18n::Text;
+use crate::state::{AppState, DownloadKey, DownloadKind};
 use crate::theme;
+use crate::views::library::install::{self, DownloadJob, Ended};
 use crate::widgets::{ButtonKind, button};
 
 pub(super) struct UpdatesTab {
@@ -74,6 +76,7 @@ impl UpdatesTab {
             "update install started"
         );
         cx.notify();
+        let state = AppState::get(cx).clone();
         cx.spawn(async move |this, cx| {
             let account_id = target.account_id.as_str();
             let product_id = target.product_id.as_str();
@@ -90,7 +93,8 @@ impl UpdatesTab {
                 });
                 return;
             };
-            let outcome = decanter_gog::install(
+            let (on_progress, progress) = install::progress_channel();
+            let update = decanter_gog::install(
                 &core_library,
                 account_id,
                 product_id,
@@ -98,19 +102,22 @@ impl UpdatesTab {
                 &target.title,
                 None,
                 None,
-                |_| {},
-            )
-            .await;
+                on_progress,
+            );
+            let job = DownloadJob {
+                key: DownloadKey::new(account_id, product_id),
+                title: target.title.clone(),
+                kind: DownloadKind::Update,
+            };
+            let outcome = install::track(&state, job, progress, update, cx).await;
             let _ = this.update(cx, |this, cx| {
                 match outcome {
-                    Ok(()) => {
+                    Ended::Done(()) => {
                         tracing::info!(account_id, product_id, "update install finished");
                         this.result = Some(None);
                     }
-                    Err(err) => {
-                        tracing::error!(account_id, product_id, error = %err, "update install failed");
-                        this.error = Some(Text::verbatim(err));
-                    }
+                    Ended::Cancelled => {}
+                    Ended::Failed(error) => this.error = Some(error),
                 }
                 this.updating = false;
                 this.reload();

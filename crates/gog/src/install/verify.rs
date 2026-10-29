@@ -15,6 +15,7 @@ use std::path::Path;
 use anyhow::Context;
 use decanter_core::{Storefront, platform};
 
+use super::download::PlannedDownload;
 use super::plan::{manifest_relative_path, resolve_depot_files};
 use crate::api::client::{DepotChunk, Sessionless};
 use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
@@ -273,17 +274,22 @@ fn verify_file(path: &Path, chunks: &[DepotChunk]) -> std::io::Result<bool> {
 ///
 /// Runs the same plan → download → move pipeline [`super::install`] uses,
 /// just filtered down to the broken set — a repair is a small install, not
-/// a special case of one.
+/// a special case of one. So it reports through `on_progress` and stops on
+/// [`super::cancel`] for the same `(account_id, product_id)` the same way,
+/// failing with [`super::Cancelled`].
 pub async fn repair(
     library: &decanter_core::Library,
     account_id: &str,
     product_id: &str,
     broken: &[BrokenFile],
+    mut on_progress: impl FnMut(super::Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
     if broken.is_empty() {
         return Ok(());
     }
     tracing::info!(product_id, broken_count = broken.len(), "starting repair");
+    super::tracking::claim(account_id, product_id).await;
+    let key = (account_id.to_owned(), product_id.to_owned());
     let game = crate::achv_try!(
         library
             .read_manifest(account_id, Storefront::Gog, product_id)
@@ -302,14 +308,6 @@ pub async fn repair(
             .map(|token| token.access_token)
     );
 
-    let mut by_owner: HashMap<&str, Vec<&str>> = HashMap::new();
-    for file in broken {
-        by_owner
-            .entry(file.owner.as_str())
-            .or_default()
-            .push(file.relative_path.as_str());
-    }
-
     let staging = crate::achv_try!(super::staging::staging_root(
         &install_root,
         account_id,
@@ -321,52 +319,28 @@ pub async fn repair(
         }
     }
 
-    let system = platform::game_system();
-    let bundle_program = super::program::bundle_program(&game, system);
-    for (owner, wanted) in by_owner {
-        let owner_id: i64 = crate::achv_try!(owner.parse().context("GOG product id must be numeric"));
-        // Same build the game is actually on, not the branch's latest --
-        // see `verify`'s own note. A repair has to put back what was
-        // there, not silently upgrade the game while fixing it.
-        let plan = crate::achv_try!(
-            super::plan::plan(
-                &access_token,
-                game_id,
-                owner_id,
-                game.branch.as_deref(),
-                Some(game.build_id.as_str()),
-                system,
-            )
-            .await
-        );
-        let files: Vec<_> = plan
-            .files
-            .into_iter()
-            .filter(|file| wanted.contains(&file.relative_path.as_str()))
-            .collect();
-        if files.is_empty() {
-            continue;
-        }
+    let (downloads, total_size) = crate::achv_try!(plan_repair(&game, &access_token, game_id, broken).await);
 
-        let downloads: Vec<super::download::PlannedDownload> = files
-            .iter()
-            .map(|file| super::download::PlannedDownload {
-                relative_path: file.relative_path.clone(),
-                chunks: file.chunks.clone(),
-                is_executable: file.is_executable || bundle_program == Some(file.relative_path.as_str()),
-            })
-            .collect();
-        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-        tokio::spawn(async move { while rx.recv().await.is_some() {} });
-        crate::achv_try!(
-            super::download::download_all(downloads, &staging, super::download::Cancel::default(), tx)
-                .await
-                .inspect_err(
-                    |err| tracing::error!(product_id, owner, error = %err, "repair download failed, aborting repair")
-                )
-                .context("re-downloading broken files")
-        );
+    if super::tracking::cancelled_while_queued(&key).await {
+        tracing::info!(product_id, "repair cancelled before download started");
+        return Err(super::Cancelled.into());
     }
+    if downloads.is_empty() {
+        tracing::warn!(
+            product_id,
+            "no broken file is listed by the build any more, nothing to repair"
+        );
+        return Ok(());
+    }
+    crate::achv_try!(
+        super::download_into_staging(downloads, Some(total_size), &staging, key, product_id, &mut on_progress)
+            .await
+            .inspect_err(|err| {
+                if !err.is::<super::Cancelled>() {
+                    tracing::error!(product_id, error = %err, "repair download failed, aborting repair");
+                }
+            })
+    );
 
     crate::achv_try!(
         super::staging::move_into_library(&staging, &install_root)
@@ -381,4 +355,58 @@ pub async fn repair(
     }
     tracing::info!(product_id, "repair completed");
     Ok(())
+}
+
+/// Every broken file's download, planned per owner before any byte moves,
+/// so the progress total covers the whole repair and one cancel flag stops
+/// all of it. Also returns the bytes to download.
+async fn plan_repair(
+    game: &decanter_core::InstalledGame,
+    access_token: &str,
+    game_id: i64,
+    broken: &[BrokenFile],
+) -> anyhow::Result<(Vec<PlannedDownload>, u64)> {
+    let mut by_owner: HashMap<&str, Vec<&str>> = HashMap::new();
+    for file in broken {
+        by_owner
+            .entry(file.owner.as_str())
+            .or_default()
+            .push(file.relative_path.as_str());
+    }
+
+    let system = platform::game_system();
+    let bundle_program = super::program::bundle_program(game, system);
+    let mut downloads = Vec::with_capacity(broken.len());
+    let mut total_size = 0u64;
+    for (owner, wanted) in by_owner {
+        let owner_id: i64 = crate::achv_try!(owner.parse().context("GOG product id must be numeric"));
+        // Same build the game is actually on, not the branch's latest --
+        // see `verify`'s own note. A repair has to put back what was
+        // there, not silently upgrade the game while fixing it.
+        let plan = crate::achv_try!(
+            super::plan::plan(
+                access_token,
+                game_id,
+                owner_id,
+                game.branch.as_deref(),
+                Some(game.build_id.as_str()),
+                system,
+            )
+            .await
+        );
+        for file in plan
+            .files
+            .into_iter()
+            .filter(|file| wanted.contains(&file.relative_path.as_str()))
+        {
+            total_size += file.size;
+            let is_executable = file.is_executable || bundle_program == Some(file.relative_path.as_str());
+            downloads.push(PlannedDownload {
+                relative_path: file.relative_path,
+                chunks: file.chunks,
+                is_executable,
+            });
+        }
+    }
+    Ok((downloads, total_size))
 }

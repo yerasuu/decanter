@@ -6,7 +6,7 @@
 //! selected, which popup is open, the filters — so a change in one (a
 //! right-click in the browser, a click in the sidebar) shows in the others.
 
-mod actions;
+pub mod actions;
 mod browser;
 mod context_menu;
 mod data;

@@ -1,17 +1,22 @@
-//! Drives `decanter-gog`'s in-process install. The `installing` map is our
-//! own guard against starting a second install for the same game while
+//! Drives `decanter-gog`'s in-process downloads. The `installing` map is
+//! our own guard against starting a second install for the same game while
 //! one is in flight; `decanter-gog` keys its cancellable handles the same
-//! way.
+//! way, by (account, product). Every download, wherever it is started
+//! (library, updates, DLC, branches, versions, repair), goes through
+//! [`track`] so Descargas lists it and can cancel it.
 //!
 //! Every function here runs as an app-level task (`cx.spawn` on the app,
 //! detached), not a view's: an install outlives the button that started it.
 
-use std::time::Duration;
+use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use gpui::AsyncApp;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::i18n::Text;
-use crate::state::{AppState, InstallStatus};
+use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 const UI_UPDATE_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -33,13 +38,163 @@ pub struct InstallRequest {
     pub library_root: Option<std::path::PathBuf>,
 }
 
-fn set_status(state: &AppState, key: &str, status: Option<InstallStatus>, cx: &mut AsyncApp) {
+/// The row a tracked download shows in Descargas.
+pub struct DownloadJob {
+    pub key: DownloadKey,
+    pub title: String,
+    pub kind: DownloadKind,
+}
+
+/// How a tracked download ended. A cancel is the user's own doing, so the
+/// caller shows nothing for it.
+pub enum Ended<T> {
+    Done(T),
+    Cancelled,
+    Failed(Text),
+}
+
+/// A fresh `Queued` row, for a caller that wants it on screen before the
+/// task that [`track`]s it gets to run.
+pub fn queued(title: String, kind: DownloadKind) -> Download {
+    Download {
+        title,
+        kind,
+        run: next_run(),
+        status: InstallStatus::Queued,
+    }
+}
+
+fn next_run() -> u64 {
+    static RUN: AtomicU64 = AtomicU64::new(0);
+    RUN.fetch_add(1, Ordering::Relaxed)
+}
+
+/// The callback to hand `decanter_gog`'s download and the receiver to hand
+/// [`track`] with it.
+pub fn progress_channel() -> (
+    impl FnMut(decanter_gog::Progress) + Send + 'static,
+    UnboundedReceiver<decanter_gog::Progress>,
+) {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    // A closed receiver only means the row is gone; the download goes on.
+    (
+        move |progress| {
+            let _ = tx.send(progress);
+        },
+        rx,
+    )
+}
+
+/// Shows `work` as a row in Descargas, fed by `progress`, until it ends:
+/// every GOG download goes through here, so each one can be watched and
+/// cancelled the same way. A finished or cancelled download drops its row;
+/// a failed one leaves the failure on it until dismissed.
+pub async fn track<T>(
+    state: &AppState,
+    job: DownloadJob,
+    mut progress: UnboundedReceiver<decanter_gog::Progress>,
+    work: impl Future<Output = anyhow::Result<T>>,
+    cx: &mut AsyncApp,
+) -> Ended<T> {
+    let DownloadJob { key, title, kind } = job;
+    let run = next_run();
     state.background.update(cx, |background, cx| {
-        match status {
-            Some(status) => background.installing.insert(key.to_owned(), status),
-            None => background.installing.remove(key),
-        };
+        background.installing.insert(
+            key.clone(),
+            Download {
+                title,
+                kind,
+                run,
+                status: InstallStatus::Queued,
+            },
+        );
         cx.notify();
+    });
+
+    // A depot manifest can be thousands of tiny chunks — re-rendering on
+    // every one falls behind the transfer badly, so progress is throttled
+    // and rendering never becomes the bottleneck.
+    let mut last_ui_update = Instant::now()
+        .checked_sub(UI_UPDATE_INTERVAL)
+        .unwrap_or_else(Instant::now);
+    tokio::pin!(work);
+    let outcome = loop {
+        tokio::select! {
+            result = &mut work => break result,
+            Some(update) = progress.recv() => {
+                if last_ui_update.elapsed() >= UI_UPDATE_INTERVAL {
+                    report(state, &key, run, update, cx);
+                    last_ui_update = Instant::now();
+                }
+            }
+        }
+    };
+
+    let was_cancelled = state.background.update(cx, |background, _| {
+        background
+            .installing
+            .get(&key)
+            .is_some_and(|row| row.run == run && matches!(row.status, InstallStatus::Cancelling { .. }))
+    });
+    let ended = match outcome {
+        Ok(value) => Ended::Done(value),
+        // Whatever stopped a download the user had asked to stop, its
+        // staging is gone like a cancel's, so it reads as one.
+        Err(err) if was_cancelled || err.is::<decanter_gog::Cancelled>() => {
+            tracing::info!(
+                account_id = key.account_id,
+                product_id = key.product_id,
+                "download cancelled"
+            );
+            Ended::Cancelled
+        }
+        Err(err) => {
+            tracing::error!(
+                account_id = key.account_id,
+                product_id = key.product_id,
+                error = %err,
+                "download failed"
+            );
+            Ended::Failed(Text::verbatim(&err))
+        }
+    };
+    state.background.update(cx, |background, cx| {
+        if background.installing.get(&key).is_none_or(|row| row.run != run) {
+            return;
+        }
+        match &ended {
+            Ended::Failed(text) => {
+                if let Some(row) = background.installing.get_mut(&key) {
+                    row.status = InstallStatus::Failed(text.clone());
+                }
+            }
+            Ended::Done(_) | Ended::Cancelled => {
+                background.installing.remove(&key);
+            }
+        }
+        if background.cancel_confirm.as_ref() == Some(&key) {
+            background.cancel_confirm = None;
+        }
+        cx.notify();
+    });
+    ended
+}
+
+fn report(state: &AppState, key: &DownloadKey, run: u64, progress: decanter_gog::Progress, cx: &mut AsyncApp) {
+    state.background.update(cx, |background, cx| {
+        // A cancelling row keeps saying so until the download has stopped.
+        if let Some(row) = background.installing.get_mut(key)
+            && row.run == run
+            && !matches!(row.status, InstallStatus::Cancelling { .. })
+        {
+            row.status = InstallStatus::Installing {
+                current_file: progress.current_file,
+                bytes_downloaded: progress.bytes_downloaded,
+                total_bytes: progress.total_bytes,
+                bytes_per_second: progress.bytes_per_second,
+            };
+            cx.notify();
+        }
     });
 }
 
@@ -69,25 +224,28 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         dlc_count = dlcs.len(),
         "install started"
     );
+    let key = DownloadKey::new(&account_id, &product_id);
+    let kind = if parent_id.is_some() {
+        DownloadKind::Dlc
+    } else {
+        DownloadKind::Install
+    };
 
     let Ok(core_library) = crate::core::library_for_account(&account_id).map(|library| match &library_root {
         Some(root) => library.targeting(root),
         None => library,
     }) else {
         tracing::error!(account_id, product_id, "could not resolve library, install aborted");
-        set_status(
-            &state,
-            &product_id,
-            Some(InstallStatus::Failed(Text::new("library.install.no_library"))),
-            cx,
-        );
+        state.background.update(cx, |background, cx| {
+            let mut row = queued(title, kind);
+            row.status = InstallStatus::Failed(Text::new("library.install.no_library"));
+            background.installing.insert(key, row);
+            cx.notify();
+        });
         return;
     };
 
-    // A depot manifest can be thousands of tiny chunks — re-rendering on
-    // every one falls behind the transfer badly, so progress is throttled
-    // and rendering never becomes the bottleneck.
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_gog::Progress>();
+    let (on_progress, progress) = progress_channel();
     let install = decanter_gog::install(
         &core_library,
         &account_id,
@@ -96,48 +254,19 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         &title,
         branch.as_deref(),
         None,
-        move |progress| {
-            let _ = tx.send(progress);
-        },
+        on_progress,
     );
-
-    let mut last_ui_update = std::time::Instant::now()
-        .checked_sub(UI_UPDATE_INTERVAL)
-        .unwrap_or_else(std::time::Instant::now);
-    tokio::pin!(install);
-    let outcome = loop {
-        tokio::select! {
-            result = &mut install => break result,
-            Some(progress) = rx.recv() => {
-                if last_ui_update.elapsed() >= UI_UPDATE_INTERVAL {
-                    set_status(&state, &product_id, Some(InstallStatus::Installing {
-                        current_file: progress.current_file,
-                        bytes_downloaded: progress.bytes_downloaded,
-                        total_bytes: progress.total_bytes,
-                        bytes_per_second: progress.bytes_per_second,
-                    }), cx);
-                    last_ui_update = std::time::Instant::now();
-                }
-            }
-        }
+    let job = DownloadJob {
+        key,
+        title: title.clone(),
+        kind,
     };
-
-    if let Err(err) = outcome {
-        tracing::error!(account_id, product_id, error = %err, "install failed");
-        set_status(
-            &state,
-            &product_id,
-            Some(InstallStatus::Failed(Text::verbatim(&err))),
-            cx,
-        );
+    if !matches!(track(&state, job, progress, install, cx).await, Ended::Done(())) {
+        refresh_install_state(&state, &account_id, &product_id, cx);
         return;
     }
     tracing::info!(account_id, product_id, "install finished");
 
-    // Each DLC reports under its own key, so the game's own row stops
-    // showing progress once the game itself is down and each DLC shows
-    // its own. They go one at a time: they share a destination directory.
-    set_status(&state, &product_id, None, cx);
     refresh_install_state(&state, &account_id, &product_id, cx);
     let cached_art = cached_art(&state, &product_id, cx);
     sync_steam_shortcut_for(&account_id, &product_id, cached_art).await;
@@ -168,6 +297,9 @@ fn cached_art(state: &AppState, product_id: &str, cx: &AsyncApp) -> (Option<Stri
         .unwrap_or_default()
 }
 
+/// Each DLC reports under its own key, so the game's own row is gone once
+/// the game itself is down and each DLC shows its own. They go one at a
+/// time: they share a destination directory.
 async fn install_dlcs(
     core_library: &decanter_core::Library,
     account_id: &str,
@@ -178,8 +310,8 @@ async fn install_dlcs(
 ) {
     for (dlc_id, dlc_title) in dlcs {
         tracing::info!(account_id, product_id, dlc_id, dlc_title, "dlc install started");
-        set_status(state, &dlc_id, Some(InstallStatus::Queued), cx);
-        let outcome = decanter_gog::install(
+        let (on_progress, progress) = progress_channel();
+        let install = decanter_gog::install(
             core_library,
             account_id,
             &dlc_id,
@@ -187,35 +319,19 @@ async fn install_dlcs(
             &dlc_title,
             None,
             None,
-            |_| {},
-        )
-        .await;
-        match outcome {
-            // A DLC that failed is worth surfacing, but it doesn't undo
-            // the game that installed fine just before it.
-            Err(err) => {
-                tracing::error!(account_id, product_id, dlc_id, error = %err, "dlc install failed");
-                set_status(state, &dlc_id, Some(InstallStatus::Failed(Text::verbatim(&err))), cx);
-            }
-            Ok(()) => {
-                tracing::info!(account_id, product_id, dlc_id, "dlc install finished");
-                set_status(state, &dlc_id, None, cx);
-            }
+            on_progress,
+        );
+        let job = DownloadJob {
+            key: DownloadKey::new(account_id, &dlc_id),
+            title: dlc_title.clone(),
+            kind: DownloadKind::Dlc,
+        };
+        // A DLC that failed stays on its own row, but it doesn't undo the
+        // game that installed fine just before it.
+        if matches!(track(state, job, progress, install, cx).await, Ended::Done(())) {
+            tracing::info!(account_id, product_id, dlc_id, "dlc install finished");
         }
     }
-}
-
-pub async fn cancel(account_id: &str, product_id: &str) {
-    tracing::info!(account_id, product_id, "cancelling install");
-    decanter_gog::cancel(account_id, product_id).await;
-}
-
-/// Cancels and clears the row: cancelling only stops the transfer, and
-/// nothing else would clear it.
-pub async fn cancel_and_forget(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) {
-    cancel(&account_id, &product_id).await;
-    set_status(&state, &product_id, None, cx);
-    refresh_install_state(&state, &account_id, &product_id, cx);
 }
 
 pub async fn uninstall(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) -> Result<(), Text> {
@@ -301,4 +417,4 @@ async fn remove_steam_shortcut_for(account_id: &str, product_id: &str) {
 // Nothing to clean up here any more: a failed install never reaches the
 // library. Files land in a staging directory outside it and only move
 // across once every byte has arrived, and `decanter-gog` deletes that
-// staging directory on any failure or cancel.
+// staging directory on any failure or confirmed cancel.

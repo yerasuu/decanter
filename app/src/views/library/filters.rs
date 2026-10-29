@@ -19,7 +19,7 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use super::data::{Collections, LibraryStats};
-use crate::state::InstallStatus;
+use crate::state::{Download, DownloadKey};
 
 /// What slice of the library is on screen — the coarse "which shelf am I
 /// looking at" choice, not a constraint layered on top of one.
@@ -198,7 +198,7 @@ impl Filters {
         favorites: &HashSet<String>,
         stats: &LibraryStats,
         collections: &Collections,
-        pending_installs: &HashSet<String>,
+        pending_installs: &HashSet<DownloadKey>,
     ) -> bool {
         if let Some(collection_id) = &self.collection
             && !collections.contains(collection_id, &entry.game.id)
@@ -275,7 +275,7 @@ impl SavedFilter {
         favorites: &HashSet<String>,
         stats: &LibraryStats,
         collections: &Collections,
-        pending_installs: &HashSet<String>,
+        pending_installs: &HashSet<DownloadKey>,
     ) -> bool {
         // A DLC belongs under its game, not beside it — it shows in that
         // game's detail pane. Hidden here rather than in `KindSelection`
@@ -304,18 +304,19 @@ impl SavedFilter {
 /// A queued or downloading install counts as installed everywhere this is
 /// read — browsing shouldn't show a game as absent while it's actively
 /// arriving, only once it's genuinely gone (nothing running, no record).
-pub(super) fn is_installed(game: &Game, pending_installs: &HashSet<String>) -> bool {
-    game.install_state.as_ref().is_some_and(|state| state.installed) || pending_installs.contains(&game.id)
+pub(super) fn is_installed(game: &Game, pending_installs: &HashSet<DownloadKey>) -> bool {
+    game.install_state.as_ref().is_some_and(|state| state.installed)
+        || pending_installs.iter().any(|key| key.is(&game.account_id, &game.id))
 }
 
-/// Product ids currently queued or downloading -- a failed install isn't
-/// one of them, since it settled back to genuinely not-installed rather
-/// than being on its way to becoming one.
-pub(super) fn pending_install_ids(installing: &HashMap<String, InstallStatus>) -> HashSet<String> {
+/// Downloads currently queued or running -- a failed install isn't one of
+/// them, since it settled back to genuinely not-installed rather than being
+/// on its way to becoming one.
+pub(super) fn pending_install_ids(installing: &HashMap<DownloadKey, Download>) -> HashSet<DownloadKey> {
     installing
         .iter()
-        .filter(|(_, status)| !matches!(status, InstallStatus::Failed(_)))
-        .map(|(id, _)| id.clone())
+        .filter(|(_, download)| download.status.is_live())
+        .map(|(key, _)| key.clone())
         .collect()
 }
 

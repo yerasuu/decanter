@@ -9,7 +9,7 @@ use gpui::{
 use rust_i18n::t;
 
 use super::{CacheKey, SidebarView};
-use crate::state::{AppState, LibraryState};
+use crate::state::{AppState, DownloadKey, LibraryState};
 use crate::theme;
 use crate::views::library::context_menu::{MenuTarget, auto_tag};
 use crate::views::library::filters::{Filters, KindSelection, is_installed, pending_install_ids, sort_entries};
@@ -26,7 +26,7 @@ pub(super) struct RowsKey {
     query: String,
     filters: Filters,
     cache: Option<CacheKey>,
-    pending_installs: HashSet<String>,
+    pending_installs: HashSet<DownloadKey>,
     collapsed: HashSet<String>,
     renaming: Option<String>,
     state: LibraryState,

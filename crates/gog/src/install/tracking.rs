@@ -30,6 +30,24 @@ pub(super) fn cancel_requested() -> &'static Mutex<HashSet<InstallKey>> {
     REQUESTED.get_or_init(Default::default)
 }
 
+/// Claims `key` for a fresh run: a second download of the same product
+/// would enqueue a second writer for every one of its files, so whatever is
+/// already running is stopped first, and that stop is then forgotten so it
+/// doesn't also land on the run about to start.
+pub(super) async fn claim(account_id: &str, product_id: &str) {
+    cancel(account_id, product_id).await;
+    cancel_requested()
+        .lock()
+        .await
+        .remove(&(account_id.to_owned(), product_id.to_owned()));
+}
+
+/// Whether a cancel landed while `key` was still being planned, before any
+/// download existed for [`cancel`] to reach. Consumes it.
+pub(super) async fn cancelled_while_queued(key: &InstallKey) -> bool {
+    cancel_requested().lock().await.remove(key)
+}
+
 /// Cancels an in-flight install for this (profile, product). A no-op when
 /// nothing is running for that pair — safe to call defensively.
 pub async fn cancel(account_id: &str, product_id: &str) {

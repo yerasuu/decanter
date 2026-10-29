@@ -23,7 +23,7 @@ use super::shelf_popups;
 use super::{LibraryModel, LibraryPopup, LibraryView};
 use crate::capabilities::{Caps, testing_badge};
 use crate::i18n::Text;
-use crate::state::{AppState, InstallStatus};
+use crate::state::{AppState, DownloadKey, InstallStatus};
 use crate::widgets::{InputEvent, TextInput, menu, tooltip};
 
 /// What the menu acts on, and where to draw it. A list rather than one id
@@ -456,19 +456,20 @@ fn game_action_item(
 ) -> AnyElement {
     let account_id = entry.game.account_id.clone();
     let background = AppState::get(cx).background.read(cx);
-    let status = background.installing.get(&entry.game.id).cloned();
+    let is_downloading = background
+        .status(&entry.game.account_id, &entry.game.id)
+        .is_some_and(InstallStatus::is_live);
     let running = background.running.contains(&entry.game.id);
     let is_installed = entry.game.install_state.as_ref().is_some_and(|state| state.installed);
     let close = Rc::clone(close);
     let product_id = entry.game.id.clone();
 
-    if matches!(status, Some(InstallStatus::Queued | InstallStatus::Installing { .. })) {
+    // Descargas asks the question, with how much would be deleted.
+    if is_downloading {
         return menu::item("menu-action", false)
             .on_click(move |_, window, cx| {
-                let account_id = account_id.clone();
-                let product_id = product_id.clone();
-                cx.spawn(async move |_| super::install::cancel(&account_id, &product_id).await)
-                    .detach();
+                super::actions::ask_cancel(DownloadKey::new(&account_id, &product_id), cx);
+                crate::views::downloads::open(cx);
                 close(window, cx);
             })
             .child(t!("library.menu.cancel_install"))

@@ -13,7 +13,9 @@ use rust_i18n::t;
 
 use super::{Target, error_line, not_installed, pane};
 use crate::i18n::Text;
+use crate::state::{AppState, DownloadKey, DownloadKind};
 use crate::theme;
+use crate::views::library::install::{self, DownloadJob, Ended};
 use crate::widgets::checkbox;
 
 pub(super) struct DlcTab {
@@ -79,6 +81,7 @@ impl DlcTab {
             "dlc install state toggled"
         );
         cx.notify();
+        let state = AppState::get(cx).clone();
         cx.spawn(async move |this, cx| {
             let account_id = target.account_id.as_str();
             let parent_id = target.product_id.as_str();
@@ -97,7 +100,8 @@ impl DlcTab {
                 return;
             };
             let outcome = if on {
-                decanter_gog::install(
+                let (on_progress, progress) = install::progress_channel();
+                let dlc_install = decanter_gog::install(
                     &core_library,
                     account_id,
                     &dlc_id,
@@ -105,20 +109,29 @@ impl DlcTab {
                     &title,
                     None,
                     None,
-                    |_| {},
-                )
-                .await
+                    on_progress,
+                );
+                let job = DownloadJob {
+                    key: DownloadKey::new(account_id, &dlc_id),
+                    title: title.clone(),
+                    kind: DownloadKind::Dlc,
+                };
+                install::track(&state, job, progress, dlc_install, cx).await
             } else {
-                decanter_gog::uninstall_dlc(&core_library, account_id, &dlc_id, parent_id).await
+                match decanter_gog::uninstall_dlc(&core_library, account_id, &dlc_id, parent_id).await {
+                    Ok(()) => Ended::Done(()),
+                    Err(err) => {
+                        tracing::error!(account_id, dlc_id, error = %err, "dlc uninstall failed");
+                        Ended::Failed(Text::verbatim(err))
+                    }
+                }
             };
             let _ = this.update(cx, |this, cx| {
                 this.busy = None;
                 match outcome {
-                    Ok(()) => this.reload(),
-                    Err(err) => {
-                        tracing::error!(account_id, dlc_id, on, error = %err, "dlc install state change failed");
-                        this.error = Some(Text::verbatim(err));
-                    }
+                    Ended::Done(()) => this.reload(),
+                    Ended::Cancelled => {}
+                    Ended::Failed(error) => this.error = Some(error),
                 }
                 cx.notify();
             });

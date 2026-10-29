@@ -329,7 +329,7 @@ impl AccountTab {
                     library
                         .scan(&account.id)
                         .keys()
-                        .any(|id| background.running.contains(id) || background.installing.contains_key(id))
+                        .any(|id| background.running.contains(id) || background.status(&account.id, id).is_some())
                 })
             });
             if busy {
