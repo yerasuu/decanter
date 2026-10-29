@@ -26,8 +26,8 @@ const UMU_INSTALLS_PROTON: &str = "Proton builds are installed by umu at launch 
 const PS_PREPARES_PORTS: &str = "psport and AnyPS5 are prepared by decanter-ps";
 
 /// The commit of [mirkobrombin/raven](https://github.com/mirkobrombin/raven) decanter builds, the
-/// one its build was tried at (2026-10-27); bumped only after a build at the new one was tried.
-pub const RAVEN_COMMIT: &str = "1ce0c0324ce38202d49916b0b118d47d976768fb";
+/// one its build was tried at (2026-10-29); bumped only after a build at the new one was tried.
+pub const RAVEN_COMMIT: &str = "3179949f14330f14407a41cc923dc902b5aa2bb8";
 
 /// Everything of Raven's in the active library: its build, toolchain and
 /// build log, and the prefix and manifest of each program it runs.

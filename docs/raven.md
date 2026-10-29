@@ -20,7 +20,7 @@ construir» decanter:
 
 1. records the confirmation (`runner::confirm`), which the build requires;
 2. clones `github.com/mirkobrombin/raven` shallow at the pinned commit (`RAVEN_COMMIT` in
-   `crates/runtime/src/runner.rs`, 1ce0c0324ce38202d49916b0b118d47d976768fb, 2026-10-27) and checks that the
+   `crates/runtime/src/runner.rs`, 3179949f14330f14407a41cc923dc902b5aa2bb8, 2026-10-29) and checks that the
    checked-out commit is that one;
 3. enters Raven's own nix environment (`crates/runtime/src/os/linux/raven/raven.nix`, through `decanter-nix`:
    the host's tools when they cover it, else the system's nix, else nix-portable): CMake, Ninja, Python 3,
@@ -37,6 +37,9 @@ build, kills its process group and removes the folder. A failed build shows its 
 
 Measured in the feasibility spike (#1067): configure about 23 s (CMake downloads Notepad++, SQLite and BusyBox
 by hash), the runtime about 3 minutes, a 139 MB `raven` binary; a full build folder of all targets took 5.2 GB.
+At the current pin, on a 32-thread machine with the host's nix: configure about 21 s, the runtime about 26 s, a
+137 MB `raven` binary and a 613 MB build folder (the runtime target only); `native/raven` now also builds Raven's own
+`cmd.exe` and its command-line tools, and needs OpenSSL for its crypto code.
 
 ## Programs
 
