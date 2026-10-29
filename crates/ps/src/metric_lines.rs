@@ -4,7 +4,7 @@
 //! psport prints them every 5-10 s with `PS_FRAME_STATS=1`, mostly from the video out thread
 //! (`gpu/shadps4/core/libraries/videoout/driver.cpp`); the rest come from the sibling file named
 //! next to each prefix. Startup lines (`GPU memory:`, `Texture cache: VRAM budget`), warnings,
-//! errors and stalls are deliberately not here: they stay in the log.
+//! and errors are deliberately not here: they stay in the log.
 
 /// Prefixes that only a periodic digest uses.
 const PREFIXES: &[&str] = &[
@@ -56,6 +56,9 @@ const FIGURE_PREFIXES: &[&str] = &[
     "GPU profile: ",
     // vk_object_motion.cpp; "Object motion: off (...)" is the startup line
     "Object motion: ",
+    // vk_rasterizer.cpp: the per-frame stall breakdown ("Stall: 66.7 ms frame; ...") with four
+    // indented lines, one block per slow frame; it fills the log at a few frames a second
+    "Stall: ",
 ];
 
 /// The head line of a digest. Its indented continuation lines are not recognised here: see
