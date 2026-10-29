@@ -8,6 +8,7 @@ use decanter_ps::process::Job;
 use gpui::{AnyElement, Context, Entity, Subscription, Window, div, prelude::*, px};
 use rust_i18n::t;
 
+use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::runners;
 use crate::state::{DllOutcome, JobKey, Ps};
@@ -228,6 +229,8 @@ impl ExtrasView {
 
 impl Render for ExtrasView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let fsr_offered = !Caps::get(cx).ps_option_hidden("upscaler", "fsr411");
+        let fsr_row = fsr_offered.then(|| self.fsr_row(cx));
         div()
             .flex()
             .flex_col()
@@ -239,7 +242,7 @@ impl Render for ExtrasView {
                     .map(|(text, error)| if *error { theme::error(text) } else { theme::muted(text) }),
             )
             .child(
-                theme::card().child(self.fsr_row(cx)).child(
+                theme::card().children(fsr_row).child(
                     theme::compact_row(true)
                         .child(
                             div()

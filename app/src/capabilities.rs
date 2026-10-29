@@ -105,6 +105,12 @@ impl Caps {
             .collect()
     }
 
+    /// Whether psport's feature list marks this setting option unavailable here, as the settings
+    /// view leaves it out of its choices.
+    pub fn ps_option_hidden(&self, key: &str, value: &str) -> bool {
+        self.ps_hidden_options().contains(&(key, Some(value)))
+    }
+
     pub fn is_offered(&self, feature: Feature) -> bool {
         self.current.is_offered(feature)
     }
