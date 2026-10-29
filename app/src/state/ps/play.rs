@@ -2,26 +2,18 @@
 //! then the game run with its output scanned for failures, which go to the
 //! profile's own record.
 
-use std::io;
 use std::path::{Path, PathBuf};
 
 use decanter_core::capabilities::Feature;
-use decanter_core::{KeyringError, ShadnetSecret};
 use decanter_nix::Toolchain;
-use decanter_ps::anyps5::{self, AnyPs5};
-use decanter_ps::bbport::GameLaunch;
-use decanter_ps::bbport::frame_gen::{self, FrameGen};
-use decanter_ps::bbport::icons::IconStyle;
-use decanter_ps::bbport::local_player::{LocalPlayer, LocalPlayerError};
-use decanter_ps::bbport::mods::Mods;
-use decanter_ps::bbport::online::{self, Online, OnlineError};
-use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
+use decanter_ps::anyps5::AnyPs5;
+use decanter_ps::bbport::online;
+use decanter_ps::bbport::{self, LauncherSettings};
 use decanter_ps::failures::{self, Failure, Scanner, Summary};
-use decanter_ps::learned;
 use decanter_ps::library::Game;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::process::{self, JobKind};
+use decanter_ps::process::JobKind;
 use futures::future::Shared;
 use gpui::{AppContext as _, AsyncApp, Context, Task, WeakEntity};
 use tokio::process::Command;
@@ -32,6 +24,8 @@ use super::ports::Prepared;
 use super::vk_layer;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
+use crate::ps_play::launch::{self, LaunchError, Surroundings};
+use crate::ps_play::run;
 
 impl Ps {
     pub fn is_running(&self, key: &JobKey, cx: &gpui::App) -> bool {
@@ -62,7 +56,7 @@ impl Ps {
         let folder = self
             .library_of(dir)
             .map_or_else(|| root.library().to_owned(), |(folder, _)| folder.to_owned());
-        let failures_path = root.profile(&profile_id).join("failures.jsonl");
+        let failures_path = run::failures_path(&root, &profile_id);
         // Where psport.exe runs directly, or without the checkouts' builds, a port runs from a folder,
         // a package or a Windows build.
         let prepared = (!decanter_ps::bbport::direct::IN_USE && Caps::get(cx).is_offered(Feature::PsBuilds))
@@ -71,7 +65,7 @@ impl Ps {
         self.run_notices.remove(dir);
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let cache_dir = game_cache_dir(folder, &game.title_id, cx).await;
+            let cache_dir = launch::game_cache_dir(folder, &game.title_id).await;
             let started = match prepared {
                 Some(prepared) => {
                     let cache_dir = cache_dir.as_deref();
@@ -126,7 +120,7 @@ impl Ps {
                 record_frame_overlap_off(&this, &root, &game.title_id, line, cx).await;
             }
             if let Some(frame_gen) = finished.frame_gen {
-                record_frame_gen(&root, &game.title_id, frame_gen, cx).await;
+                run::save_frame_gen(&root, &game.title_id, frame_gen).await;
             }
             record_failures(&this, game.dir.clone(), failures_path, finished.failures, cx).await;
         })
@@ -212,7 +206,10 @@ async fn through_toolchain(
         }
     };
     let command = match port {
-        Port::Bbport => bbport_command(root, &toolchain, game, profile_id, cache_dir, cx).await,
+        Port::Bbport => {
+            let surroundings = surroundings(cx);
+            launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings).await
+        }
         Port::AnyPs5 => anyps5_command(this, root, &toolchain, game, profile_id, cache_dir, cx).await,
     };
     let command = command.map_err(|err| {
@@ -221,76 +218,25 @@ async fn through_toolchain(
     });
     let facts = jobs::port_facts(root, port, Some(&toolchain)).await;
     let (command, facts) = vk_layer::apply(this, root, &toolchain, &game.dir, command, facts, cx).await;
-    let mut command = match command {
+    let command = match command {
         Ok(command) => command,
         Err(err) => return Err(err),
     };
-    let key = game.key();
-    let (mangohud, gamemoded) = crate::core::db()
-        .map(|db| {
-            (
-                crate::game_tools::mangohud(&db, &key),
-                crate::game_tools::gamemoded(&db, &key),
-            )
-        })
-        .unwrap_or_default();
-    if let Some(autostart_log) = mangohud {
-        command.envs(crate::game_tools::mangohud_env(&key, root.library(), autostart_log).await);
-    }
-    if let Some(gamemoded) = gamemoded {
-        command = process::through_gamemode(command, &gamemoded);
-    }
-    Ok((
-        Launcher::Command(process::in_own_scope(command, &key, &game.title)),
-        facts,
-    ))
+    Ok((Launcher::Command(launch::around_port(root, game, command).await), facts))
 }
 
-/// Why a game could not be started: logged as it is, worded for the UI by
-/// [`LaunchError::localized`].
-#[derive(Debug, thiserror::Error)]
-pub(super) enum LaunchError {
-    #[error("mods setup failed: {0}")]
-    Mods(io::Error),
-    #[error("could not create {}: {err}", dir.display())]
-    CreateDir { dir: PathBuf, err: io::Error },
-    #[error("launch environment setup failed: {0}")]
-    Environment(io::Error),
-    #[error("conversion output setup failed: {0}")]
-    ConvertPrepare(io::Error),
-    #[error("conversion failed")]
-    ConvertFailed,
-    #[error("run directory setup failed at {}: {err}", dir.display())]
-    RunDir { dir: PathBuf, err: io::Error },
-    #[error("online settings unusable: {0}")]
-    Online(OnlineError),
-    /// Asking for the password at each launch instead is left for later: the launch refuses.
-    #[error("shadNet secrets unreadable: {0}")]
-    Keyring(String),
-    #[error("no shadNet password in the keyring for {0}")]
-    NoPassword(String),
-    #[error("local player unusable: {0}")]
-    LocalPlayer(LocalPlayerError),
-}
-
-impl LaunchError {
-    pub(super) fn localized(&self) -> Text {
-        match self {
-            Self::Mods(err) => Text::new("ps.play.mods_error").arg("error", err),
-            Self::CreateDir { dir, err } => Text::new("ps.errors.create_dir")
-                .arg("dir", dir.display())
-                .arg("error", err),
-            Self::Environment(err) => Text::new("ps.errors.environment").arg("error", err),
-            Self::ConvertPrepare(err) => Text::new("ps.play.convert_prepare_error").arg("error", err),
-            Self::ConvertFailed => Text::new("ps.play.convert_failed"),
-            Self::RunDir { dir, err } => Text::new("ps.play.prepare_error")
-                .arg("name", dir.display())
-                .arg("error", err),
-            Self::Online(err) => Text::new("ps.play.online_error").text("error", online_error(err)),
-            Self::Keyring(err) => Text::new("ps.play.online_keyring_error").arg("error", err),
-            Self::NoPassword(npid) => Text::new("ps.play.online_no_password").arg("npid", npid),
-            Self::LocalPlayer(err) => Text::new("ps.play.local_player_error").arg("value", err.value()),
-        }
+/// What a launch from the window takes from it: what the port's last report offers, and the ratio
+/// of the display the game opens on.
+pub(super) fn surroundings(cx: &mut AsyncApp) -> Surroundings<impl FnOnce() -> Option<&'static str>> {
+    let (is_online_offered, is_frame_gen_offered) = cx.update(|cx| {
+        let caps = Caps::get(cx);
+        (caps.is_offered(Feature::PsOnline), caps.is_offered(Feature::PsFrameGen))
+    });
+    let mut cx = cx.clone();
+    Surroundings {
+        is_online_offered,
+        is_frame_gen_offered,
+        display_ratio: move || display_aspect_ratio(&mut cx),
     }
 }
 
@@ -299,191 +245,6 @@ fn notify(this: &WeakEntity<Ps>, text: Text, error: bool, cx: &mut AsyncApp) {
         this.notice = Some((text, error));
         cx.notify();
     });
-}
-
-/// Everything a bbport launch reads besides the game and its cache folder, gathered before the
-/// launch borrows it ([`LaunchInputs::game_launch`]).
-pub(super) struct LaunchInputs {
-    pub(super) settings: LauncherSettings,
-    learned: learned::Title,
-    aspect_ratio: Option<&'static str>,
-    mods: Mods,
-    debug_dir: Option<PathBuf>,
-    user_dir: PathBuf,
-    online: Option<Online>,
-    local_player: Option<LocalPlayer>,
-    frame_gen: Option<FrameGen>,
-    menu_language: String,
-}
-
-impl LaunchInputs {
-    pub(super) fn game_launch<'inputs>(
-        &'inputs self,
-        game: &'inputs Game,
-        cache_dir: Option<&'inputs Path>,
-    ) -> GameLaunch<'inputs> {
-        GameLaunch {
-            game,
-            user_dir: &self.user_dir,
-            cache_dir,
-            debug_dir: self.debug_dir.as_deref(),
-            settings: &self.settings,
-            mods: &self.mods,
-            menu_language: &self.menu_language,
-            learned: &self.learned,
-            aspect_ratio: self.aspect_ratio,
-            online: self.online.as_ref(),
-            local_player: self.local_player.as_ref(),
-            frame_gen: self.frame_gen,
-        }
-    }
-}
-
-/// `toolchain` only tells the connected pads apart for the layout's button icons; without one the
-/// icons take their automatic style's default.
-pub(super) async fn launch_inputs(
-    root: &Root,
-    toolchain: Option<&Toolchain>,
-    game: &Game,
-    profile_id: &str,
-    cx: &mut AsyncApp,
-) -> Result<LaunchInputs, LaunchError> {
-    let (settings, learned, chosen_ratio) = {
-        let root = root.clone();
-        let title_id = game.title_id.clone();
-        cx.background_spawn(async move {
-            (
-                LauncherSettings::load(&root),
-                learned::Store::load(&root).title(&title_id),
-                Ini::load(&Bbport::ini_path(&root))
-                    .get("aspect_ratio")
-                    .map(str::to_owned),
-            )
-        })
-        .await
-    };
-    let aspect_ratio = match chosen_ratio.as_deref() {
-        None | Some("auto") => display_aspect_ratio(cx),
-        Some(_) => None,
-    };
-    let mods = if bbport::is_bloodborne(game) {
-        // The automatic icon style follows the pad bbport will read: the one
-        // picked in Mando, else the first connected.
-        let detected = match toolchain {
-            Some(toolchain) => {
-                let pads = Bbport::new(root.clone()).connected_gamepads(toolchain).await;
-                let chosen = settings.text("gamepad");
-                pads.iter()
-                    .find(|(guid, _)| Some(guid.as_str()) == chosen)
-                    .or_else(|| pads.first())
-                    .map(|(guid, name)| IconStyle::for_gamepad(guid, name))
-            }
-            None => None,
-        };
-        let game_dir = game.dir.clone();
-        let for_mods = settings.clone();
-        let root = root.clone();
-        // The layout's button icons are built here when they need to be: a few
-        // hundred milliseconds of decoding and encoding, off the UI thread.
-        let mods = cx
-            .background_spawn(async move { bbport::mods::prepare(&root, &game_dir, &for_mods, detected) })
-            .await;
-        match mods {
-            Ok(mods) => mods,
-            Err(err) => return Err(LaunchError::Mods(err)),
-        }
-    } else {
-        Mods::off(root, &settings)
-    };
-    let debug_dir = crate::debug_logs::ps_folder(settings.title_flag(&game.title_id, crate::debug_logs::TITLE_KEY));
-    let user_dir = root.profile(profile_id).join("bbport/user");
-    if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
-        return Err(LaunchError::CreateDir { dir: user_dir, err });
-    }
-    let online = match online_play(&settings, cx).await {
-        Ok(online) => online,
-        Err(err) => return Err(err),
-    };
-    let local_player = if bbport::is_bloodborne(game) {
-        match LocalPlayer::of_title(&settings, &game.title_id) {
-            Ok(player) => player,
-            Err(err) => return Err(LaunchError::LocalPlayer(err)),
-        }
-    } else {
-        None
-    };
-    let frame_gen = cx
-        .update(|cx| Caps::get(cx).is_offered(Feature::PsFrameGen))
-        .then(|| FrameGen::of_title(&settings, &game.title_id));
-    Ok(LaunchInputs {
-        settings,
-        learned,
-        aspect_ratio,
-        mods,
-        debug_dir,
-        user_dir,
-        online,
-        local_player,
-        frame_gen,
-        menu_language: rust_i18n::locale().to_string(),
-    })
-}
-
-async fn bbport_command(
-    root: &Root,
-    toolchain: &Toolchain,
-    game: &Game,
-    profile_id: &str,
-    cache_dir: Option<&Path>,
-    cx: &mut AsyncApp,
-) -> Result<Command, LaunchError> {
-    let inputs = match launch_inputs(root, Some(toolchain), game, profile_id, cx).await {
-        Ok(inputs) => inputs,
-        Err(err) => return Err(err),
-    };
-    Bbport::new(root.clone())
-        .launch_command(toolchain, &inputs.game_launch(game, cache_dir))
-        .await
-        .map_err(LaunchError::Environment)
-}
-
-/// Online play when it is on and the build has it, with the account's secrets from the keyring.
-async fn online_play(settings: &LauncherSettings, cx: &AsyncApp) -> Result<Option<Online>, LaunchError> {
-    if !settings.flag(online::ONLINE, false) {
-        return Ok(None);
-    }
-    if !cx.update(|cx| Caps::get(cx).is_offered(Feature::PsOnline)) {
-        tracing::warn!("online play is on, but this psport build has no online module: playing offline");
-        return Ok(None);
-    }
-    let mut online = match Online::from_settings(settings) {
-        Ok(Some(online)) => online,
-        Ok(None) => return Ok(None),
-        Err(err) => return Err(LaunchError::Online(err)),
-    };
-    let Some(npid) = online.npid().map(str::to_owned) else {
-        tracing::info!("online play without a shadNet account");
-        return Ok(Some(online));
-    };
-    let secrets = tokio::task::spawn_blocking(move || {
-        let password = decanter_core::load_shadnet(&npid, ShadnetSecret::Password)?;
-        let token = decanter_core::load_shadnet(&npid, ShadnetSecret::Token)?;
-        Ok::<_, KeyringError>((password, token))
-    })
-    .await;
-    let (password, token) = match secrets {
-        Ok(Ok(secrets)) => secrets,
-        Ok(Err(err)) => return Err(LaunchError::Keyring(err.to_string())),
-        Err(err) => return Err(LaunchError::Keyring(err.to_string())),
-    };
-    if password.is_none() {
-        tracing::warn!("online play with a shadNet NPID but no password in the keyring, not starting");
-        return Err(LaunchError::NoPassword(online.npid().unwrap_or_default().to_owned()));
-    }
-    match online.set_secrets(password, token) {
-        Ok(()) => Ok(Some(online)),
-        Err(err) => Err(LaunchError::Online(err)),
-    }
 }
 
 /// The ratio of the display the game opens on. decanter sets no `PS_DISPLAY`, so the port takes
@@ -562,50 +323,13 @@ async fn anyps5_command(
             return Err(LaunchError::ConvertFailed);
         }
     }
-    let run_dir = root.profile(profile_id).join("anyps5").join(&game.title_id);
-    let laid_out = {
-        let title_id = game.title_id.clone();
-        let run_dir = run_dir.clone();
-        let root = root.clone();
-        cx.background_spawn(async move { anyps5::prepare_run_dir(&AnyPs5::new(root), &title_id, &run_dir) })
-            .await
-    };
-    if let Err(err) = laid_out {
-        return Err(LaunchError::RunDir { dir: run_dir, err });
-    }
-    let mut command = match anyps5.run_command(toolchain, game, &run_dir).await {
-        Ok(command) => command,
-        Err(err) => return Err(LaunchError::Environment(err)),
-    };
-    // AnyPS5 has no cache of its own to root; only the drivers' follow the game.
-    if let Some(dir) = cache_dir {
-        command.envs(decanter_core::shader_cache_env(dir));
-    }
-    Ok(command)
-}
-
-/// The game's cache folder in the cache location of `folder`, the library
-/// folder holding its dump.
-async fn game_cache_dir(folder: PathBuf, title_id: &str, cx: &AsyncApp) -> Option<PathBuf> {
-    let title_id = title_id.to_owned();
-    cx.background_spawn(async move { crate::cache::game_dir(&folder, "ps", &title_id) })
-        .await
+    launch::anyps5_run_command(root, toolchain, game, profile_id, cache_dir).await
 }
 
 /// The port caught the game rewriting frames in flight and stopped overlapping them; the next
 /// run starts that way, so its first frames are not corrupted while the guard catches it again.
 async fn record_frame_overlap_off(this: &WeakEntity<Ps>, root: &Root, title_id: &str, line: String, cx: &mut AsyncApp) {
-    tracing::info!(
-        title_id,
-        line,
-        "the port turned frame overlap off: next runs start without it"
-    );
-    let saved = {
-        let (root, title_id) = (root.clone(), title_id.to_owned());
-        cx.background_spawn(async move { learned::Store::record_frame_overlap_off(&root, &title_id, line) })
-            .await
-    };
-    match saved {
+    match run::save_frame_overlap_off(root, title_id, line).await {
         Ok(()) => {
             let _ = this.update(cx, Ps::learned_changed);
         }
@@ -613,33 +337,6 @@ async fn record_frame_overlap_off(this: &WeakEntity<Ps>, root: &Root, title_id: 
             tracing::warn!(title_id, %err, "could not record that frame overlap is off for the title");
             notify(this, Text::new("ps.learned.save_error").arg("error", err), true, cx);
         }
-    }
-}
-
-/// The last choice made in the game's menu becomes the title's setting, so the Graphics tab shows it
-/// and the next run starts with it. Off removes the key, like the tab's own row.
-async fn record_frame_gen(root: &Root, title_id: &str, frame_gen: FrameGen, cx: &mut AsyncApp) {
-    let saved = {
-        let (root, title_id) = (root.clone(), title_id.to_owned());
-        cx.background_spawn(async move {
-            LauncherSettings::edit(&root, |settings| {
-                let value = if frame_gen == FrameGen::Off {
-                    ""
-                } else {
-                    frame_gen.value()
-                };
-                settings.set_title_text(&title_id, frame_gen::KEY, value);
-            })
-        })
-        .await
-    };
-    match saved {
-        Ok(()) => tracing::info!(
-            title_id,
-            value = frame_gen.value(),
-            "saved the frame generation chosen in the menu"
-        ),
-        Err(err) => tracing::warn!(title_id, %err, "could not save the frame generation chosen in the menu"),
     }
 }
 
@@ -664,12 +361,7 @@ async fn record_failures(this: &WeakEntity<Ps>, dir: PathBuf, path: PathBuf, fou
         .iter()
         .find(|failure| failure.kind == failures::Kind::Missing)
         .map(failure_message);
-    let saved = cx
-        .background_spawn(async move {
-            let mut log = failures::Log::load(path);
-            log.append(found)
-        })
-        .await;
+    let saved = run::save_failures(path, found).await;
     let (text, error) = match (saved, fatal) {
         (Err(err), _) => (Text::new("ps.failures.notice.save_error").arg("error", err), true),
         (Ok(()), Some(message)) => (Text::new("ps.failures.notice.crashed").text("message", message), true),
@@ -695,18 +387,6 @@ async fn record_failures(this: &WeakEntity<Ps>, dir: PathBuf, path: PathBuf, fou
         this.run_notices.insert(dir, (text, error));
         this.failures_changed(cx);
     });
-}
-
-/// Why an online setting can't be used, in the UI's language.
-pub fn online_error(err: &OnlineError) -> Text {
-    match err {
-        OnlineError::Server(value) => Text::new("ps.online.errors.server").arg("value", value),
-        OnlineError::Community(value) => Text::new("ps.online.errors.community").arg("value", value),
-        OnlineError::Webapi(value) => Text::new("ps.online.errors.webapi").arg("value", value),
-        OnlineError::NpidEmail => Text::new("ps.online.errors.npid_email"),
-        OnlineError::Npid(value) => Text::new("ps.online.errors.npid").arg("value", value),
-        OnlineError::Secret => Text::new("ps.online.errors.secret"),
-    }
 }
 
 /// A failure's message in the UI's language when decanter worded it, as the port printed it

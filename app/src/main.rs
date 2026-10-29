@@ -118,6 +118,7 @@ mod i18n;
 mod launch;
 mod logs;
 mod platform;
+mod ps_play;
 mod raven;
 mod releases;
 mod relocate;

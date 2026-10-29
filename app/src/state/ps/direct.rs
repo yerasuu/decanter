@@ -14,8 +14,8 @@ use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
 
 use super::Ps;
 use super::jobs::{JobKey, Launcher};
-use super::play::launch_inputs;
 use crate::i18n::Text;
+use crate::ps_play::launch::launch_inputs;
 
 /// What a direct launch is for: the game, whose profile plays it, and where its caches go.
 pub(super) struct Request<'launch> {
@@ -45,7 +45,8 @@ pub(super) async fn launch(
         tracing::warn!(port = port.name(), title_id = %game.title_id, "this port does not run without its toolchain here");
         return Err(Text::new("ps.play.direct.port_unavailable").arg("name", port.name()));
     }
-    let inputs = match launch_inputs(root, None, game, profile_id, cx).await {
+    let surroundings = super::play::surroundings(cx);
+    let inputs = match launch_inputs(root, None, game, profile_id, surroundings).await {
         Ok(inputs) => inputs,
         Err(err) => {
             tracing::warn!(title_id = %game.title_id, error = %err, "could not start game");

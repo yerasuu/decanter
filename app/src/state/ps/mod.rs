@@ -40,13 +40,14 @@ pub use fallback::Fallback;
 pub use fsr::DllOutcome;
 pub use jobs::{JobKey, label as job_label, target_name as job_target};
 use package::PackageState;
-pub use play::{failure_message, online_error};
+pub use play::failure_message;
 pub use ports::{PortState, Stage};
 pub use vk_layer::unavailable_text as vk_layer_unavailable_text;
 
 use super::AppState;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
+pub use crate::ps_play::launch::online_error;
 
 pub struct Ps {
     profile_id: Option<String>,

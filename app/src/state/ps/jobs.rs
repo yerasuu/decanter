@@ -4,20 +4,20 @@
 use std::borrow::Cow;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
 use std::time::Instant;
 
-use decanter_nix::Toolchain;
-use decanter_ps::bbport::frame_gen::FrameGen;
-use decanter_ps::failures::{self, CallReport, Failure, Scanner};
+use decanter_ps::failures::Scanner;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::{self, Event, Job, JobKind};
-use decanter_ps::run_log::{self, RunLog, describe_exit};
+use decanter_ps::run_log::{self, RunLog};
 use gpui::{AppContext as _, AsyncApp, Entity, WeakEntity};
 use rust_i18n::t;
 use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedReceiver;
+
+pub use crate::ps_play::run::{Finished, port_facts};
+use crate::ps_play::run::{finish_log, finished, game_target, log_lines, read_call_report, trace_end};
 
 use super::Ps;
 
@@ -34,23 +34,6 @@ pub enum JobKey {
     Fsr411,
 }
 
-pub struct Finished {
-    /// `None` when it never started or was killed by a signal.
-    pub code: Option<i32>,
-    /// What the scanner found, when the job had one.
-    pub failures: Vec<Failure>,
-    /// The port's line turning frame overlap off during the run, when it printed one.
-    pub frame_overlap_off: Option<String>,
-    /// The last frame generation the game's menu switched to during the run.
-    pub frame_gen: Option<FrameGen>,
-}
-
-impl Finished {
-    pub const fn succeeded(&self) -> bool {
-        matches!(self.code, Some(0))
-    }
-}
-
 /// What the UI calls a job of `kind`.
 pub fn label(kind: JobKind) -> Cow<'static, str> {
     match kind {
@@ -64,20 +47,6 @@ pub fn label(kind: JobKind) -> Cow<'static, str> {
         JobKind::Fsr411 => t!("ps.jobs.fsr411"),
         JobKind::VkLayer => t!("ps.jobs.vk_layer"),
     }
-}
-
-/// What a job's log header says about `port`: its commit before the job, when it is checked
-/// out, and the toolchain the job runs in, when it runs in one.
-pub async fn port_facts(root: &Root, port: Port, toolchain: Option<&Toolchain>) -> Vec<(&'static str, String)> {
-    let mut facts = vec![("port", port.name().to_owned())];
-    let commit = failures::full_commit_of(&port.checkout(root)).await;
-    if !commit.is_empty() {
-        facts.push(("port_commit", commit));
-    }
-    if let Some(toolchain) = toolchain {
-        facts.push(("toolchain", toolchain.id().to_owned()));
-    }
-    facts
 }
 
 /// How a job's process starts.
@@ -209,12 +178,7 @@ pub async fn run_launcher(
                 ps.jobs.insert(key, job);
                 cx.notify();
             });
-            return Finished {
-                code: None,
-                failures: Vec::new(),
-                frame_overlap_off: None,
-                frame_gen: None,
-            };
+            return Finished::none();
         }
     };
     let log_path = log.as_ref().map(|log| log.path().to_owned());
@@ -239,12 +203,7 @@ pub async fn run_launcher(
         })
         .is_err()
     {
-        return Finished {
-            code: None,
-            failures: Vec::new(),
-            frame_overlap_off: None,
-            frame_gen: None,
-        };
+        return Finished::none();
     }
     let mut batch = Vec::with_capacity(BATCH);
     let mut exit = None;
@@ -285,121 +244,11 @@ pub async fn run_launcher(
     finished(scanner, exit, stopped, log_path.as_deref(), report)
 }
 
-/// Ends the log, and copies it to the debug log folder when debug mode is on.
-async fn finish_log(
-    file: RunLog,
-    exit: Option<ExitStatus>,
-    report: Option<&CallReport>,
-    calls: Option<PathBuf>,
-    kind: JobKind,
-    target: &str,
-) {
-    let path = file.path().to_owned();
-    match file.finish(exit, report).await {
-        Ok(()) => crate::debug_logs::keep_job(path, calls).await,
-        Err(err) => tracing::warn!(job = kind.name(), target, %err, "could not finish the job's log file"),
-    }
-}
-
-fn finished(
-    scanner: Option<Scanner>,
-    exit: Option<ExitStatus>,
-    stopped: bool,
-    log: Option<&Path>,
-    report: Option<CallReport>,
-) -> Finished {
-    let frame_overlap_off = scanner
-        .as_ref()
-        .and_then(|scanner| scanner.frame_overlap_off().map(str::to_owned));
-    let frame_gen = scanner.as_ref().and_then(Scanner::frame_gen);
-    Finished {
-        code: exit.and_then(|status| status.code()),
-        failures: scanner.map_or_else(Vec::new, |scanner| scanner.exit(exit, stopped, log, report)),
-        frame_overlap_off,
-        frame_gen,
-    }
-}
-
 /// What a job's log files are named after ([`RunLog::start`]'s `target`).
 pub fn target_name(key: &JobKey) -> String {
     match key {
         JobKey::Port(port) => port.name().to_lowercase(),
-        JobKey::Game(dir) => dir
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+        JobKey::Game(dir) => game_target(dir),
         JobKey::Fsr411 => "fsr411".to_owned(),
-    }
-}
-
-async fn log_lines(log: &mut Option<RunLog>, batch: &[Event], kind: JobKind, target: &str) {
-    if let Some(file) = log.as_mut() {
-        for event in batch {
-            if let Event::Line(line) = event
-                && let Err(err) = file.line(line).await
-            {
-                tracing::warn!(job = kind.name(), target, %err, "the job's log file stopped taking lines");
-                *log = None;
-                break;
-            }
-        }
-    }
-}
-
-fn trace_end(
-    kind: JobKind,
-    target: &str,
-    exit: Option<ExitStatus>,
-    stopped: bool,
-    is_killed: bool,
-    started: Instant,
-    log: Option<&Path>,
-) {
-    let duration_ms = started.elapsed().as_millis();
-    let succeeded = exit.is_some_and(|status| status.success());
-    let exit = if is_killed {
-        format!(
-            "killed by decanter, exit code {:#010X}",
-            decanter_runtime::KILLED_EXIT_CODE
-        )
-    } else {
-        describe_exit(exit)
-    };
-    let log = log.map(|path| tracing::field::display(path.display()));
-    if is_killed {
-        tracing::warn!(
-            job = kind.name(),
-            target,
-            exit,
-            duration_ms,
-            log,
-            "job ended by decanter killing it after a stop request"
-        );
-    } else if succeeded || stopped {
-        tracing::info!(
-            job = kind.name(),
-            target,
-            exit,
-            stopped,
-            duration_ms,
-            log,
-            "job finished"
-        );
-    } else {
-        tracing::warn!(job = kind.name(), target, exit, duration_ms, log, "job failed");
-    }
-}
-
-/// `None` without a report: a port that predates it, or one that ended before writing it.
-async fn read_call_report(path: Option<&Path>) -> Option<CallReport> {
-    let Some(path) = path else {
-        return None;
-    };
-    match tokio::fs::read_to_string(path).await {
-        Ok(text) => CallReport::parse(&text),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
-        Err(err) => {
-            tracing::warn!(path = %path.display(), %err, "could not read the port's call report");
-            None
-        }
     }
 }
