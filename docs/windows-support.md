@@ -203,9 +203,7 @@ How it starts: `Bbport::direct_command` gives `psport.exe` the same
 `PS_*` environment `Bbport::launch_command` gives `run.sh` on Linux (one
 shared `game_env`), plus what `run.sh` itself adds around the program
 (`PS_CONFIG` pointing at the library's `psport.ini`, `PS_GPU_USER_DIR`
-from the final `PS_USER_DIR`,
-`PS_COPY_GPU_BUFFERS=1`, `PS_GPU_WRITE_TWINS=1`,
-`PS_GPU_WRITE_TWINS_MAX=65536`, unless already set) and the arguments
+from the final `PS_USER_DIR`, unless already set) and the arguments
 `run.sh` builds from that environment (`--game`, `--system-modules`/
 `--hle`/`--lle` with `PS_SYS_MODULES`, `--mods`/`--mods-config`/`--out`
 unless mods are off, `--patches-dir`, `--patches-config`, `--app0`,

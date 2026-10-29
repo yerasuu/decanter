@@ -100,16 +100,13 @@ fn is_on_local_drive(path: &Path) -> bool {
 /// What `run.sh` sets before the program unless the environment `command` will run with already
 /// has it (an empty variable counts as unset): the settings file in `config` (the program alone
 /// reads `psport.ini` in its working folder), the GPU library's user folder, which it reads as it
-/// loads before `--user` arrives, and the GPU defaults `run.sh` turns on. Called once the launch's
+/// loads before `--user` arrives. Called once the launch's
 /// own environment is set, since the user folder follows its final `PS_USER_DIR`.
 pub fn run_sh_defaults(command: &mut Command, config: &Path, data: &Path) {
     let user_dir = env_of(command, "PS_USER_DIR").unwrap_or_else(|| data.join("user").into_os_string());
     let defaults = [
         ("PS_CONFIG", config.as_os_str()),
         ("PS_GPU_USER_DIR", user_dir.as_os_str()),
-        ("PS_COPY_GPU_BUFFERS", "1".as_ref()),
-        ("PS_GPU_WRITE_TWINS", "1".as_ref()),
-        ("PS_GPU_WRITE_TWINS_MAX", "65536".as_ref()),
     ];
     for (name, value) in defaults {
         if env_of(command, name).is_none() {
