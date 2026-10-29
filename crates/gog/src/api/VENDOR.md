@@ -13,9 +13,22 @@ Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
   `README.upstream.md`, and the dependencies of `Cargo.toml` are in `crates/gog/Cargo.toml`.
 - Upstream shows no release since 2023-02-23 and no commits since 2020-09-10.
 - This directory is now maintained here, as the `api` module of `decanter-gog`.
-- Not every file here derives from it: the `client/` files marked `GPL-3.0-or-later` without a based-on line
-  are decanter's own code, moved in from `decanter-gog`'s other modules (phase 2 of `docs/own-gog-client-plan.md`),
-  and owe nothing to upstream.
+- Since phase 3 of `docs/own-gog-client-plan.md` none of upstream's source files remain: the blocking `Gog` client,
+  `token.rs`, `gog.rs`, `containers.rs`, `extract.rs`, `error.rs` and the upstream tests were removed. What still
+  derives from upstream is four files of the async client, ported from its calls and types, which keep
+  `SPDX-License-Identifier: GPL-3.0-only` and a based-on line:
+  - `client/auth.rs`: the `Token` fields and stored JSON format, the login code exchange and the refresh (from
+    `token.rs`);
+  - `client/user.rs`: user data and owned games (from `Gog::get_user_data` and `Gog::get_games`);
+  - `client/products.rs`: the filtered products endpoint and `ProductDetails` (from `Gog::get_filtered_products`
+    and `gog.rs`);
+  - `client/achievements.rs`: the achievements endpoint and type (from `Gog::achievements`, `AchievementList` and
+    `Achievement`).
+
+  `LICENSE` (upstream's GPL version 3 text) and `README.upstream.md` stay as the record of where they come from.
+- Every other file here is decanter's own code and carries `SPDX-License-Identifier: GPL-3.0-or-later` without a
+  based-on line: `mod.rs` (rewritten as the module root) and the `client/` files moved in from `decanter-gog`'s
+  other modules (phase 2 of `docs/own-gog-client-plan.md`); they owe nothing to upstream.
 
 ## Changes made in this repository
 
@@ -44,3 +57,10 @@ Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
 | `client/content.rs` (GPL-3.0-or-later): the metadata calls of decanter-gog's `depot.rs` (builds, build manifest, depot manifest, secure link) and its response types, as `Sessionless::builds`, `build_meta`, `depot_files` and `secure_link`, and `build_chunk_url` as `SecureLinkEntry::chunk_url`; `depot.rs` keeps the build and depot selection and the "no builds" error. Caps: 4 MiB for builds, 16 MiB zlib'd and 64 MiB inflated for a build manifest, 64 MiB and 256 MiB for a depot manifest, 1 MiB for a secure link. The secure link URL is built as before, byte for byte (`?_version=2&generation=2&path=/`, `path` raw), and `path` may only hold ASCII letters, digits and `/ _ - . ~`; `Sessionless::get_bytes` leaves a URL's own query untouched when given no query pairs. Stricter than before, for the owner to judge: redirects are followed only between `Host` entries and the answer must come from the host asked (before: any redirect; the same holds for the GamesDB and products calls); a build manifest link must be `https` on `gog.com` or under it, with no port or credentials (before: any URL); a depot manifest id must be hex digits and `/`, at most 128 bytes (before: unchecked); product ids must be positive; "no builds" is an empty `items` list (before: `total_count == 0`); chunk URL parameters are substituted in key order (`BTreeMap`, before: `HashMap` order); errors never quote a build manifest or secure link body | Phase 2 of `docs/own-gog-client-plan.md`; the access token is borrowed from `with_session` as in `client/orders.rs`. The CDN chunk downloads of `install/download.rs` stay outside the client | refactor(gog): move the content-system metadata into the api client |
 | `client/achievements.rs` (GPL-3.0-only, based on `Gog::achievements`, `AchievementList` and `Achievement`): `Client::achievements` on the new `gameplay.gog.com` host (`Host::Gameplay`), same path (`/clients/{product}/users/{user}/achievements`), the user id taken from the session; a positive product id and a numeric stored account id are checked first, the body is capped at 4 MiB and 401 and 403 read as a refused session. Only the fields decanter reads are kept (`achievement_id`, `visible` and `total_count` are no longer parsed) | Phase 3 of `docs/own-gog-client-plan.md`: `poll_achievements` moves off the blocking `Gog`; a non-2xx answer is now an `Error` by status instead of a JSON parse error of its body | refactor(gog): move session, login and library flows to the async client |
 | `client/orders.rs`: `orders_page` moves from `Sessionless` to `Client` | Phase 3 of `docs/own-gog-client-plan.md`: the order history renews and stores the session like every other `Client` call instead of bearing an access token borrowed from `with_session` | refactor(gog): move session, login and library flows to the async client |
+| `Gog` and its methods in `mod.rs` removed; `mod.rs` rewritten as the module root (`pub mod client;`), now decanter's own and `GPL-3.0-or-later` | Phase 3 of `docs/own-gog-client-plan.md`: installs, DLC uninstall, verify, repair, update checks, cloud saves and save location detection take their access token from `Client` (`session::live_token`), so nothing calls the blocking client any more | refactor(gog): remove the blocking gogapi client |
+| `token.rs` removed | Its `Token` was the stored session type; `client::Token` (in `client/auth.rs`) reads and writes the same JSON | refactor(gog): remove the blocking gogapi client |
+| `gog.rs` removed; `ProductDetails` moved to `client/products.rs` with only the fields decanter reads (`id`, `title`, `image`, `isGame`, `isMovie`), so a product missing an unread field (`slug`, `worksOn`, `rating`...) no longer fails its whole page | Nothing else in it was used once `Gog` was gone | refactor(gog): remove the blocking gogapi client |
+| `containers.rs`, `extract.rs` and `error.rs` (`error-chain`) removed | Used only by `Gog` | refactor(gog): remove the blocking gogapi client |
+| The upstream tests (`crates/gog/tests/api.rs`, from `tests/lib.rs`) and the two `rustfmt.toml` (here and in `crates/gog/tests`) removed | The tests exercised only the blocking client; the remaining files follow the workspace's formatting | refactor(gog): remove the blocking gogapi client |
+| `error-chain`, `select`, `curl`, `regex` and `log` dropped from `crates/gog/Cargo.toml` and `[workspace.dependencies]`, and `reqwest`'s `blocking`, `cookies` and `form` features from `decanter-gog` | Used only by the removed files | refactor(gog): remove the blocking gogapi client |
+| `#[rustfmt::skip]` and the clippy `allow` on `mod api` in `crates/gog/src/lib.rs` removed, and with them the lints `client/mod.rs` restated; the files are formatted by `cargo fmt` at the workspace's 120 columns | Nothing upstream-style is left, so the module is held to the workspace's lints and formatting like the rest of the crate | refactor(gog): remove the blocking gogapi client |

@@ -276,7 +276,7 @@ turned off in Ajustes > General.
 | `app` | The `decanter` binary: GPUI views, CLI, tray, desktop integration; `decanter-cli` (Windows), its console front end |
 | `crates/core` | Local state: database, libraries, profiles, accounts, credentials, migration |
 | `crates/gog` | GOG client: auth, library, installs, cloud saves, achievements, Steam export |
-| `crates/gog/src/api` | The GOG web API client, based on gogapi-rs (GPL-3.0-only; see its `VENDOR.md`) |
+| `crates/gog/src/api` | The GOG web API client; four of its files derive from gogapi-rs and stay GPL-3.0-only (see its `VENDOR.md`) |
 | `crates/runtime` | Proton launches through `umu-run` |
 | `crates/nix` | The nix toolchain a build runs in: host tools, the system's nix or nix-portable, pinned nixpkgs, Vulkan validation layer |
 | `crates/ps` | PS dumps, port builds and updates, the ports' nix recipes, runs, run logs, failures |
@@ -341,9 +341,9 @@ Without Nix, the same `cargo` commands need:
   [bbport](https://github.com/deadinside28/bloodborne_pc).
 - [AnyPS5](https://github.com/boykopovar/AnyPS5): runs PS5 dumps.
 - [gogapi-rs](https://git.sr.ht/~nicohman/gogapi-rs): the GOG web API client in
-  `crates/gog/src/api` is based on gogapi-rs, gog 0.5.0, by nicohman, GPL-3.0;
-  it keeps its licence: see `crates/gog/src/api/VENDOR.md` and
-  [LICENSES.md](LICENSES.md).
+  `crates/gog/src/api` grew out of gogapi-rs, gog 0.5.0, by nicohman, GPL-3.0;
+  the four files still derived from it keep its licence: see
+  `crates/gog/src/api/VENDOR.md` and [LICENSES.md](LICENSES.md).
 - [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher):
   runs Proton outside Steam.
 
@@ -352,5 +352,5 @@ Without Nix, the same `cargo` commands need:
 Decanter is free software under the GNU General Public License, version 3
 or (at your option) any later version: see [LICENSE](LICENSE). The ports it
 builds and runs keep their own licenses, and so do the components
-incorporated here, such as the GOG client in `crates/gog/src/api` (GPL-3.0,
-by nicohman).
+incorporated here, such as the files of the GOG client in `crates/gog/src/api`
+derived from gogapi-rs (GPL-3.0, by nicohman).
