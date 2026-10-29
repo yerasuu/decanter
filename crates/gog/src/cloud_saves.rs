@@ -411,9 +411,13 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
         user_id: String,
     }
 
-    let request = http.get(format!(
-        "{AUTH}/token?client_id={client_id}&client_secret={client_secret}&grant_type=refresh_token&refresh_token={refresh_token}&without_new_session=1"
-    ));
+    let request = http.get(format!("{AUTH}/token")).query(&[
+        ("client_id", client_id.as_str()),
+        ("client_secret", client_secret.as_str()),
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token.as_str()),
+        ("without_new_session", "1"),
+    ]);
     // The URL carries the client secret and the refresh token, and reqwest puts it in its errors.
     let response = match request.send().await {
         Ok(response) => response,
