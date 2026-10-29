@@ -223,6 +223,7 @@ ps.jobs.convert: conversión
 ps.jobs.log_error: 'No se pudo guardar el registro completo: %{error}'
 ps.jobs.start_error: 'No se pudo iniciar: %{error}'
 ps.errors.create_dir: 'No se pudo crear %{dir}: %{error}'
+ps.errors.library_missing: 'La biblioteca del perfil (%{path}) no existe. Elige su nueva ubicación en Ajustes › Cuenta › Cambiar ubicación, o vuelve a conectar su disco.'
 ps.games.library_error: 'No se pudo usar la carpeta de la biblioteca: %{error}'
 ps.layouts.read_error: 'No se pudieron leer los esquemas: %{error}'
 ps.play.prepare_error: 'No se pudo preparar %{name}: %{error}'

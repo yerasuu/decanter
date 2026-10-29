@@ -238,7 +238,14 @@ impl Ps {
         // settled before any scan, import or port reads a path.
         let lookup = cx.background_spawn({
             let profile_id = profile_id.clone();
-            async move { crate::core::library_for_profile(&profile_id).map(|library| library.root().to_owned()) }
+            async move {
+                if let Some(path) = crate::core::missing_library(&profile_id) {
+                    return Err(Text::new("ps.errors.library_missing").arg("path", path.display()));
+                }
+                crate::core::library_for_profile(&profile_id)
+                    .map(|library| library.root().to_owned())
+                    .map_err(|err| Text::new("ps.games.library_error").arg("error", err))
+            }
         });
         cx.spawn(async move |this, cx| {
             let root = lookup.await;
@@ -252,8 +259,8 @@ impl Ps {
                         this.rescan(cx);
                     }
                     Err(err) => {
-                        tracing::warn!(%err, "could not place the PS data in the profile's library");
-                        this.error = Some(Text::new("ps.games.library_error").arg("error", err));
+                        tracing::warn!(?err, "could not place the PS data in the profile's library");
+                        this.error = Some(err);
                         cx.notify();
                     }
                 }
@@ -288,6 +295,11 @@ impl Ps {
             .collect();
         let root = decanter_ps::paths::active();
         let task = cx.background_spawn(async move {
+            // Nothing is made under a primary folder that is gone, since that would bring back a stale
+            // path or fill the mount point of an unplugged disk.
+            if let Some(path) = crate::core::missing_library(&profile_id) {
+                return Err(Text::new("ps.errors.library_missing").arg("path", path.display()));
+            }
             // Read again on every scan, since a folder can be added or its
             // disk plugged in while the section is open.
             let library_roots = crate::core::library_for_profile(&profile_id).map_or_else(

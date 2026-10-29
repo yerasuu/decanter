@@ -139,6 +139,9 @@ async fn report_cmd(db: &Db, args: Report) -> anyhow::Result<()> {
     let Some(profile) = db.active_profile().context("reading the active profile")? else {
         bail!("{}", Text::new("ps.report.errors.no_profile"));
     };
+    if let Some(path) = crate::core::missing_library(&profile.id) {
+        bail!("{}", Text::new("ps.errors.library_missing").arg("path", path.display()));
+    }
     let library = crate::core::library_for_profile(&profile.id).map_err(|err| anyhow::anyhow!(err))?;
     decanter_ps::paths::use_library(library.root());
     if sent {

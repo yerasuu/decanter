@@ -223,6 +223,7 @@ ps.jobs.convert: conversion
 ps.jobs.log_error: 'Couldn''t save the full log: %{error}'
 ps.jobs.start_error: 'Couldn''t start: %{error}'
 ps.errors.create_dir: 'Couldn''t create %{dir}: %{error}'
+ps.errors.library_missing: 'The profile''s library (%{path}) does not exist. Choose its new location in Settings › Account › Change location, or plug its disk back in.'
 ps.games.library_error: 'Couldn''t use the library folder: %{error}'
 ps.layouts.read_error: 'Couldn''t read the layouts: %{error}'
 ps.play.prepare_error: 'Couldn''t prepare %{name}: %{error}'

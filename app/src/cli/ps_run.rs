@@ -151,6 +151,9 @@ async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, Str
         Ok(None) => return Err(Text::new("ps.report.errors.no_profile")),
         Err(err) => return Err(Text::new("ps.run.errors.profile").arg("error", err)),
     };
+    if let Some(path) = crate::core::missing_library(&profile.id) {
+        return Err(Text::new("ps.errors.library_missing").arg("path", path.display()));
+    }
     let library = match crate::core::library_for_profile(&profile.id) {
         Ok(library) => library,
         Err(err) => return Err(Text::new("ps.run.errors.library").arg("error", err)),

@@ -265,6 +265,14 @@ pub fn library_for_profile(profile_id: &str) -> Result<Library, StoreError> {
     Ok(primary.with_extra_roots(extra))
 }
 
+/// The library folder `profile_id` chose for itself when it is not there (moved by hand, or its disk
+/// unplugged), so callers can say so instead of reading it as a library with no games, or making it.
+pub fn missing_library(profile_id: &str) -> Option<std::path::PathBuf> {
+    let chosen = db().ok()?.profile_library_path(profile_id).ok().flatten()?;
+    let path = std::path::PathBuf::from(chosen);
+    (!path.is_dir()).then_some(path)
+}
+
 /// Makes `picked` (or the `steamapps` folder under it, the way Steam lays
 /// out a library folder) one more place `profile_id` keeps games, and
 /// returns that folder.
