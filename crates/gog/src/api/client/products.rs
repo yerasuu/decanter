@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// Based on gog 0.5.0 (gogapi-rs) by nicohman: the endpoint and `ProductDetails` come from its
-// `Gog::get_filtered_products`; the purchase-order sort from decanter-gog's library listing.
-//! The account's products as GOG's own library page lists them.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The account's games as the website's library page lists them, behind
+//! `embed.gog.com/account/getFilteredProducts`
+//! ([gogapidocs: Listing](https://gogapidocs.readthedocs.io/en/latest/listing.html)).
 
 use core::num::NonZeroU32;
 
@@ -17,14 +17,16 @@ const FILTERED_PRODUCTS: Call = Call {
     has_secrets: false,
 };
 
-/// One product of a [`ProductsPage`], with only the fields decanter reads.
+/// An owned product as the listing describes it; only what decanter reads, so a product missing
+/// some other field still parses.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ProductDetails {
     pub id: i64,
     pub title: String,
-    /// GOG's image URL without its size suffix and extension.
+    /// Protocol-relative and without size suffix or extension (`//images-2.gog.com/<hash>`): the
+    /// caller picks the size.
     pub image: String,
     pub is_game: bool,
     pub is_movie: bool,
@@ -37,15 +39,13 @@ pub struct ProductDetails {
 pub struct ProductsPage {
     #[serde(default)]
     pub products: Vec<ProductDetails>,
-    /// How many pages the listing has; 0 when GOG leaves it out.
+    /// 0 when GOG leaves it out.
     #[serde(default)]
     pub total_pages: u32,
 }
 
 impl Client {
-    /// One page of the owned games (`mediaType=1`), most recently purchased first, so that the
-    /// position across pages is the order they joined the library. Products GOG files under no
-    /// media type, such as some grants, are only in [`Client::owned_games`].
+    /// One page of the account's games, the most recently bought first; paging is the caller's.
     ///
     /// # Errors
     ///
@@ -53,6 +53,8 @@ impl Client {
     #[inline]
     pub async fn filtered_products(&self, page: NonZeroU32) -> Result<ProductsPage, Error> {
         let page_number = page.to_string();
+        // Neither value is documented: `mediaType=1` selects games and `date_purchased` sorts
+        // newest first, as GOG's own library page asks.
         let query = [
             ("mediaType", "1"),
             ("sortBy", "date_purchased"),
@@ -63,7 +65,7 @@ impl Client {
             Host::Embed,
             "/account/getFilteredProducts",
             &query,
-            Ok,
+            Ok::<ProductsPage, Error>,
         )
         .await
     }
