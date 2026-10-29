@@ -193,22 +193,21 @@ pub const fn executable_permissions() -> Option<Permissions> {
 /// The PS section plays psport's Windows package, downloaded from its releases,
 /// a build of psport's branch made here with the toolchain decanter pins
 /// (`decanter_ps::os::windows::winbuild`), or a psport.exe from a folder the
-/// user picks; no online play. It, the tray, the close-game shortcut and the
-/// Steam export wait for a run on a real Windows.
+/// user picks; no online play. The tray, the close-game shortcut and the Steam
+/// export wait for a run on a real Windows.
 #[must_use]
 #[inline]
 pub const fn support(feature: Feature) -> Support {
     match feature {
         Feature::GalaxyHook if !cfg!(target_arch = "x86_64") => Support::Unavailable(Reason::NotOnThisSystem),
-        Feature::Play | Feature::ExternalInstaller | Feature::GalaxyHook => Support::Available,
-        Feature::Tray
-        | Feature::CloseToTray
-        | Feature::PadClose
-        | Feature::SteamExport
+        Feature::Play
+        | Feature::ExternalInstaller
+        | Feature::GalaxyHook
         | Feature::PsSection
         | Feature::PsBuilds
         | Feature::PsDownloads
-        | Feature::PsPlay => Support::Testing,
+        | Feature::PsPlay => Support::Available,
+        Feature::Tray | Feature::CloseToTray | Feature::PadClose | Feature::SteamExport => Support::Testing,
         Feature::Proton
         | Feature::Prefixes
         | Feature::DesktopEntries
