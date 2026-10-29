@@ -12,8 +12,8 @@ use super::{Bbport, Ini, IniScope, LauncherSettings};
 use crate::paths::Root;
 
 /// What a title's settings view shows, read once when it shows the title: its own port ini
-/// ([`Bbport::title_ini`]) and the launch settings every title shares. File I/O: off the UI
-/// thread.
+/// ([`Bbport::title_ini`]) and launch settings ([`LauncherSettings::of_title`]). File I/O: off the
+/// UI thread.
 #[derive(Clone)]
 pub struct Values {
     title_id: String,
@@ -25,7 +25,8 @@ pub struct Values {
 
 impl Values {
     /// # Errors
-    /// Making the title's port ini ([`Bbport::title_ini`]).
+    /// Making the title's port ini ([`Bbport::title_ini`]) or launch settings
+    /// ([`LauncherSettings::of_title`]).
     pub fn load(root: &Root, title_id: &str) -> io::Result<Self> {
         let port_ini = Bbport::title_ini(root, title_id)?;
         Ok(Self {
@@ -33,11 +34,11 @@ impl Values {
             ini: Ini::load(&port_ini.path),
             ini_path: port_ini.path,
             scope: port_ini.scope,
-            launch: LauncherSettings::load(root),
+            launch: LauncherSettings::of_title(root, title_id)?,
         })
     }
 
-    /// The title these values were read for, which a save writes to.
+    /// The title these values were read for, whose files a save writes to.
     #[must_use]
     pub fn title_id(&self) -> &str {
         &self.title_id
@@ -126,7 +127,7 @@ impl Values {
     }
 
     /// A launch setting outside the table, shown at once; the caller saves
-    /// it with [`super::LauncherSettings::edit`].
+    /// it with [`super::LauncherSettings::edit_title`].
     pub fn set_launch_text(&mut self, key: &str, value: &str) {
         self.launch.set_text(key, value);
     }
@@ -162,20 +163,34 @@ fn apply_launch(launch: &mut LauncherSettings, setting: &Setting, value: &str) {
     }
 }
 
-/// Writes one setting into the files as they are now: a port ini key into `ini`, the title's
-/// ([`Values::ini_path`]). A controller's name is kept beside its GUID, to show it while it is
-/// unplugged.
-pub fn save(root: &Root, ini: &Path, setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
+/// Writes one setting of `title_id` into the files as they are now.
+///
+/// A port ini key goes into `ini`, the title's ([`Values::ini_path`]); a launch key into its
+/// launch settings, or the shared ones for a key every title shares. A controller's name is kept
+/// beside its GUID, to show it while it is unplugged.
+///
+/// # Errors
+/// Making the title's launch settings, or a file that can't be read, parsed or written.
+pub fn save(
+    root: &Root,
+    title_id: &str,
+    ini: &Path,
+    setting: &Setting,
+    value: &str,
+    gamepad_name: Option<&str>,
+) -> io::Result<()> {
+    let change = |launch: &mut LauncherSettings| {
+        apply_launch(launch, setting, value);
+        if let Some(name) = gamepad_name {
+            launch.set_text("gamepad_name", name);
+        }
+    };
+    // Through an edit, so a settings file that can't be read or parsed fails the save instead of
+    // being replaced by the defaults with this one change.
     match setting.store {
         Store::Ini => save_ini(ini, setting.key, value),
-        // Through `edit`, so a settings file that can't be read or parsed fails the save instead
-        // of being replaced by the defaults with this one change.
-        Store::Launcher => LauncherSettings::edit(root, |launch| {
-            apply_launch(launch, setting, value);
-            if let Some(name) = gamepad_name {
-                launch.set_text("gamepad_name", name);
-            }
-        }),
+        Store::Launcher if LauncherSettings::is_shared(setting.key) => LauncherSettings::edit(root, change),
+        Store::Launcher => LauncherSettings::edit_title(root, title_id, change),
     }
 }
 

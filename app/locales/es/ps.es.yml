@@ -268,8 +268,6 @@ ps.learned.save_error: 'No se pudo guardar lo aprendido del juego: %{error}'
 ps.learned.forget_error: 'No se pudo olvidar: %{error}'
 ps.detail.reading_keyboard: Leyendo el teclado…
 ps.scope.title: Estos ajustes son solo de este juego.
-ps.scope.graphics: 'Resolución de salida, relación de aspecto, cambio de resolución en caliente y los grupos Ratón, Teclado, Reescalado y Efectos del juego son solo de este juego; el resto, de momento, es común a todos los juegos.'
-ps.scope.gamepad: 'El esquema de botones es solo de este juego; el mando elegido y los iconos de botones, de momento, son comunes a todos los juegos.'
 ps.scope.older_port: 'Este port es anterior a los ajustes por juego: lo que cambies aquí vale para todos los juegos. Actualiza el port para que cada juego tenga los suyos.'
 ps.scope.unusual_title_id: 'El Title ID de este volcado no tiene el formato habitual, así que lo que cambies aquí vale para todos los juegos.'
 ps.scope.read_error: 'No se pudieron preparar los ajustes de este juego: %{error}'

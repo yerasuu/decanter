@@ -13,7 +13,8 @@ use crate::paths::Root;
 use crate::port::Port;
 use crate::title_id::TitleId;
 
-/// Whose settings a [`PortIni`] holds.
+/// Whose settings a [`PortIni`] holds, and the launch settings with it
+/// ([`super::LauncherSettings::of_title`]): a title keeps both files or neither.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IniScope {
     Title,
@@ -46,21 +47,9 @@ impl Bbport {
     pub fn title_ini(root: &Root, title_id: &str) -> io::Result<PortIni> {
         let names = Names::of_blocking(&Port::Bbport.checkout(root));
         let shared = shared_ini(root, names);
-        if !matches!(names, Names::Psport) {
-            return Ok(PortIni {
-                path: shared,
-                scope: IniScope::OlderPort,
-            });
-        }
-        let id = match title_id.parse::<TitleId>() {
+        let id = match own_title(names, title_id) {
             Ok(id) => id,
-            Err(err) => {
-                tracing::warn!(%err, "port settings shared with every title");
-                return Ok(PortIni {
-                    path: shared,
-                    scope: IniScope::UnusualTitleId,
-                });
-            }
+            Err(scope) => return Ok(PortIni { path: shared, scope }),
         };
         let path = root.title(&id).join(names.ini());
         if !path.exists() {
@@ -104,6 +93,18 @@ impl Bbport {
     }
 }
 
+/// The folder name `title_id`'s own settings live under, or why they stay in the shared files:
+/// a port spelled `names` that doesn't read `PS_CONFIG`, or an id no folder may be named after.
+pub(super) fn own_title(names: Names, title_id: &str) -> Result<TitleId, IniScope> {
+    if !matches!(names, Names::Psport) {
+        return Err(IniScope::OlderPort);
+    }
+    title_id.parse().map_err(|err| {
+        tracing::warn!(%err, "settings shared with every title");
+        IniScope::UnusualTitleId
+    })
+}
+
 /// The ini every title shared before each got its own, spelled as the checkout's port reads it
 /// (`names`). A port that reads `psport.ini` gets a copy of the `bbport.ini` an older one left, so
 /// the first edit here doesn't start from its defaults; the port makes the same copy at launch, and
@@ -133,7 +134,7 @@ fn forget_in(path: &Path) -> io::Result<()> {
 /// decanter no longer writes it for a port that reads `PS_CONFIG`.
 fn create_from_shared(root: &Root, shared: &Path, path: &Path) -> io::Result<()> {
     if !root.titles().exists() {
-        back_up_shared(root)?;
+        back_up_shared(root, &[Names::Psport.ini(), Names::Bbport.ini()])?;
     }
     let contents = match fs::read(shared) {
         Ok(contents) => contents,
@@ -151,17 +152,14 @@ fn create_from_shared(root: &Root, shared: &Path, path: &Path) -> io::Result<()>
     }
 }
 
-/// `backups/per-game-settings-<date>/` with the shared `psport.ini` and `bbport.ini` there are.
-/// A file already in it is kept, so a second attempt the same day never replaces the first copy.
-fn back_up_shared(root: &Root) -> io::Result<()> {
-    let day: String = crate::failures::format_time(crate::failures::unix_secs(std::time::SystemTime::now()))
-        .chars()
-        .take(10)
-        .collect();
-    let dir = root.backups().join(format!("per-game-settings-{day}"));
+/// `backups/per-game-settings-<date>/` with those of the shared files `names` there are in the
+/// port's data folder. A file already in it is kept, so a second attempt the same day never
+/// replaces the first copy.
+pub(super) fn back_up_shared(root: &Root, names: &[&str]) -> io::Result<()> {
+    let dir = root.backups().join(format!("per-game-settings-{}", today()));
     fs::create_dir_all(&dir)?;
     let mut copied = 0_usize;
-    for name in [Names::Psport.ini(), Names::Bbport.ini()] {
+    for &name in names {
         let (from, to) = (root.bbport_data().join(name), dir.join(name));
         if !from.is_file() || to.exists() {
             continue;
@@ -169,6 +167,14 @@ fn back_up_shared(root: &Root) -> io::Result<()> {
         fs::copy(&from, &to)?;
         copied = copied.saturating_add(1);
     }
-    tracing::info!(dir = %dir.display(), copied, "shared port settings backed up before per-title settings");
+    tracing::info!(dir = %dir.display(), copied, "shared settings backed up before per-title settings");
     Ok(())
+}
+
+/// `YYYY-MM-DD`, in UTC.
+pub(super) fn today() -> String {
+    crate::failures::format_time(crate::failures::unix_secs(std::time::SystemTime::now()))
+        .chars()
+        .take(10)
+        .collect()
 }

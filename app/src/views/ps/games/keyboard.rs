@@ -573,11 +573,7 @@ impl KeyboardView {
                         Target::Bbport => t!("ps.keyboard.description.bbport"),
                         Target::AnyPs5 => t!("ps.keyboard.description.anyps5"),
                     }))
-                    .child(
-                        div()
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(scope_note(self.scope, "ps.scope.title")),
-                    )
+                    .child(div().text_color(rgb(theme::TEXT_MUTED)).child(scope_note(self.scope)))
                     .child(
                         div()
                             .font_family(theme::MONO)

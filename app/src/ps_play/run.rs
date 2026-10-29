@@ -266,7 +266,7 @@ pub async fn save_frame_gen(root: &Root, title_id: &str, frame_gen: FrameGen) {
     let saved = {
         let (root, title_id) = (root.clone(), title_id.to_owned());
         tokio::task::spawn_blocking(move || {
-            LauncherSettings::edit(&root, |settings| {
+            LauncherSettings::edit_title(&root, &title_id, |settings| {
                 let value = if frame_gen == FrameGen::Off {
                     ""
                 } else {

@@ -145,7 +145,8 @@ pub fn merge_update(base: &Path, update: &Path, version: &str) -> io::Result<Pat
 /// dump; without one the port keeps its caches in `user_dir`. `debug_dir` turns the port's debug
 /// mode on, each run's logs gathered there under the port's own folder per host. `online` is online
 /// play, with its secrets, when it is on and the build has it. `config` is the title's own port
-/// ini ([`PortIni::config`]), `None` where the shared one is read.
+/// ini ([`PortIni::config`]), `None` where the shared one is read. `settings` are the title's
+/// ([`LauncherSettings::of_title`]).
 #[derive(Clone, Copy)]
 pub struct GameLaunch<'launch> {
     pub game: &'launch Game,
@@ -518,9 +519,9 @@ async fn query_port(mut command: Command, max: usize) -> io::Result<(ExitStatus,
 }
 
 /// The settings passed only when they differ from what the port does without them: values the
-/// user picked (empty means the port's own choice), switches off in the port unless set (for all
-/// titles or this one), and those on in the port unless told otherwise (camera cuts, image
-/// traps), for which only off is passed.
+/// user picked (empty means the port's own choice), switches off in the port unless set
+/// ([`LauncherSettings::switch_for`]), and those on in the port unless told otherwise (camera
+/// cuts, image traps), for which only off is passed.
 fn optional_env<'settings>(
     names: Names,
     settings: &'settings LauncherSettings,
@@ -547,7 +548,7 @@ fn optional_env<'settings>(
         ("vk_validation", "VK_VALIDATION"),
     ]
     .into_iter()
-    .filter(move |&(key, _)| port_reads(key) && (settings.flag(key, false) || settings.title_flag(title_id, key)))
+    .filter(move |&(key, _)| port_reads(key) && settings.switch_for(title_id, key))
     .map(move |(_, suffix)| (names.var(suffix), String::from("1")));
     let off = [("camera_cuts", "CAMERA_CUTS"), ("image_traps", "IMAGE_TRAPS")]
         .into_iter()

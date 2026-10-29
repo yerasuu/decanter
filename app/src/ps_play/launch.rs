@@ -47,8 +47,9 @@ pub enum LaunchError {
     NoPassword(String),
     #[error("local player unusable: {0}")]
     LocalPlayer(LocalPlayerError),
-    /// The title's own port ini could not be made from the shared one.
-    #[error("port settings of the title unusable: {0}")]
+    /// The title's own port ini or launch settings could not be made from the shared ones, or
+    /// its launch settings don't parse.
+    #[error("settings of the title unusable: {0}")]
     TitleSettings(io::Error),
     /// The settings or the mods were read on a blocking thread that did not finish.
     #[error("launch setup interrupted: {0}")]
@@ -167,14 +168,14 @@ pub async fn launch_inputs(
         let root = root.clone();
         let title_id = game.title_id.clone();
         off_thread(move || {
-            Bbport::title_ini(&root, &title_id).map(|port_ini| {
-                (
-                    LauncherSettings::load(&root),
-                    learned::Store::load(&root).title(&title_id),
-                    Ini::load(&port_ini.path).get("aspect_ratio").map(str::to_owned),
-                    port_ini,
-                )
-            })
+            let port_ini = Bbport::title_ini(&root, &title_id)?;
+            let settings = LauncherSettings::of_title(&root, &title_id)?;
+            io::Result::Ok((
+                settings,
+                learned::Store::load(&root).title(&title_id),
+                Ini::load(&port_ini.path).get("aspect_ratio").map(str::to_owned),
+                port_ini,
+            ))
         })
         .await
     };

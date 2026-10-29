@@ -1,7 +1,7 @@
 //! Gráficos: bbport's settings, grouped as its own launcher grouped them.
-//! The port ini's rows are the selected title's own ([`Bbport::title_ini`]); the launch settings
-//! are still shared by every title. They apply on the next start. The game effects are the
-//! selected title's, as the port lists them when it can.
+//! Every row is the selected title's own: its port ini ([`Bbport::title_ini`]) and launch
+//! settings ([`LauncherSettings::of_title`]). They apply on the next start. The game effects are
+//! the selected title's, as the port lists them when it can.
 
 use std::collections::HashMap;
 use std::io;
@@ -94,7 +94,6 @@ impl GraphicsView {
     pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
         self.title_id = Some(title_id.to_owned());
         self.load_values(title_id, cx);
-        self.load_frame_gen(title_id, cx);
         self.extras.update(cx, |extras, cx| extras.show_title(title_id, cx));
         cx.notify();
         let Some(toolchain) = self
@@ -151,31 +150,13 @@ impl GraphicsView {
                 }
                 match loaded {
                     Ok(values) => {
+                        this.frame_gen = FrameGen::of_title(values.launch(), &title_id);
                         this.values = Some(values);
                         this.error = None;
                     }
                     Err(err) => this.error = Some(Text::new("ps.scope.read_error").arg("error", err)),
                 }
                 cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    fn load_frame_gen(&self, title_id: &str, cx: &mut Context<Self>) {
-        let title_id = title_id.to_owned();
-        cx.spawn(async move |this, cx| {
-            let frame_gen = cx
-                .background_spawn({
-                    let title_id = title_id.clone();
-                    async move { FrameGen::of_title(&LauncherSettings::load(&decanter_ps::paths::active()), &title_id) }
-                })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                if this.title_id.as_deref() == Some(title_id.as_str()) {
-                    this.frame_gen = frame_gen;
-                    cx.notify();
-                }
             });
         })
         .detach();
@@ -188,7 +169,7 @@ impl GraphicsView {
         };
         self.frame_gen = frame_gen;
         let task = cx.background_spawn(async move {
-            LauncherSettings::edit(&decanter_ps::paths::active(), move |settings| {
+            LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
                 let value = if frame_gen == FrameGen::Off {
                     ""
                 } else {
@@ -232,8 +213,10 @@ impl GraphicsView {
         };
         values.set(setting, &value);
         let ini = values.ini_path().to_owned();
-        let task = cx
-            .background_spawn(async move { values::save(&decanter_ps::paths::active(), &ini, setting, &value, None) });
+        let title_id = values.title_id().to_owned();
+        let task = cx.background_spawn(async move {
+            values::save(&decanter_ps::paths::active(), &title_id, &ini, setting, &value, None)
+        });
         Self::after_save(task, cx);
     }
 
@@ -520,7 +503,7 @@ impl Render for GraphicsView {
             .flex_col()
             .gap_5()
             .child(theme::muted(t!("ps.graphics.description")))
-            .child(theme::muted(scope_note(values.scope(), "ps.scope.graphics")))
+            .child(theme::muted(scope_note(values.scope())))
             .children(self.error.as_ref().map(theme::error))
             .children(groups)
             .child(self.extras.clone())

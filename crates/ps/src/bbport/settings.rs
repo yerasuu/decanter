@@ -1,8 +1,11 @@
-//! What bbport is launched with, kept in its data directory.
+//! What bbport is launched with: each title's own file ([`title`]) and the shared one in the
+//! port's data directory.
+
+mod title;
 
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::names::{MEMORY_MODEL_SETTINGS, single_memory_model_blocking};
 use crate::paths::Root;
@@ -20,7 +23,12 @@ fn path(root: &Root) -> PathBuf {
 /// doesn't edit are kept as they are, except 0.3's memory model ones once the checkout's port
 /// ignores them.
 #[derive(Clone, Default)]
-pub struct LauncherSettings(serde_json::Map<String, serde_json::Value>);
+pub struct LauncherSettings {
+    values: serde_json::Map<String, serde_json::Value>,
+    /// Read from one title's own file, where that title's switches are top-level keys instead of
+    /// entries under `titles.<TITLE_ID>`.
+    is_title: bool,
+}
 
 impl LauncherSettings {
     /// A missing or unreadable file gives the defaults, an unreadable one said in the log. File
@@ -35,7 +43,7 @@ impl LauncherSettings {
                 return Self::default();
             }
         };
-        if settings.0.remove(LAUNCHER_PASSWORD).is_some() {
+        if settings.values.remove(LAUNCHER_PASSWORD).is_some() {
             match settings.clone().save(root) {
                 Ok(()) => tracing::info!("dropped the launcher's plaintext shadNet password from the port settings"),
                 Err(err) => {
@@ -46,8 +54,8 @@ impl LauncherSettings {
         settings
     }
 
-    /// One change against the file as it is now, for edits made outside
-    /// the settings table (folders, extra environment). Fails rather than
+    /// One change against the shared file as it is now, for the keys every title shares
+    /// ([`Self::is_shared`]); a title's own go through [`Self::edit_title`]. Fails rather than
     /// overwrite a file it can't read or parse.
     pub fn edit(root: &Root, change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
         let mut settings = match Self::read(root) {
@@ -58,47 +66,62 @@ impl LauncherSettings {
         settings.save(root)
     }
 
-    /// The defaults when there is no file yet.
     fn read(root: &Root) -> io::Result<Self> {
-        match fs::read(path(root)) {
+        Self::read_at(&path(root), false)
+    }
+
+    /// The defaults when there is no file yet. A file that doesn't parse names itself in the
+    /// error, since the user may have to find it.
+    fn read_at(path: &Path, is_title: bool) -> io::Result<Self> {
+        match fs::read(path) {
             Ok(data) => serde_json::from_slice(&data)
-                .map(Self)
-                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+                .map(|values| Self { values, is_title })
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", path.display()))),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self {
+                values: serde_json::Map::new(),
+                is_title,
+            }),
             Err(err) => Err(err),
         }
     }
 
-    pub fn save(mut self, root: &Root) -> std::io::Result<()> {
+    /// # Errors
+    /// Writing the shared file.
+    pub fn save(self, root: &Root) -> std::io::Result<()> {
+        self.write_at(root, &path(root))
+    }
+
+    fn write_at(mut self, root: &Root, path: &Path) -> io::Result<()> {
         if single_memory_model_blocking(&Port::Bbport.checkout(root)) {
-            self.0.retain(|key, _| !MEMORY_MODEL_SETTINGS.contains(&key.as_str()));
+            self.values
+                .retain(|key, _| !MEMORY_MODEL_SETTINGS.contains(&key.as_str()));
         }
         // psport's launcher keeps the shadNet password here in the clear; decanter keeps it in the
         // keyring only, so an imported file loses it on the first save.
-        self.0.remove(LAUNCHER_PASSWORD);
-        let text = serde_json::to_string_pretty(&self.0).map_err(std::io::Error::other)?;
-        crate::files::write_atomic(&path(root), text.as_bytes())
+        self.values.remove(LAUNCHER_PASSWORD);
+        let text = serde_json::to_string_pretty(&self.values).map_err(std::io::Error::other)?;
+        crate::files::write_atomic(path, text.as_bytes())
     }
 
     /// A non-empty string value.
     pub fn text(&self, key: &str) -> Option<&str> {
-        self.0.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        self.values.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty())
     }
 
     pub fn flag(&self, key: &str, default: bool) -> bool {
-        self.0.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+        self.values.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
     }
 
     pub fn set_text(&mut self, key: &str, value: &str) {
-        self.0.insert(key.into(), value.into());
+        self.values.insert(key.into(), value.into());
     }
 
     pub fn remove(&mut self, key: &str) {
-        self.0.remove(key);
+        self.values.remove(key);
     }
 
     pub fn number(&self, key: &str) -> Option<f64> {
-        self.0.get(key).and_then(|v| v.as_f64())
+        self.values.get(key).and_then(|v| v.as_f64())
     }
 
     /// Whole numbers stay JSON integers, as the former GTK launcher wrote them (`fps_limit`).
@@ -108,21 +131,28 @@ impl LauncherSettings {
         } else {
             value.into()
         };
-        self.0.insert(key.into(), value);
+        self.values.insert(key.into(), value);
     }
 
     pub fn set_flag(&mut self, key: &str, value: bool) {
-        self.0.insert(key.into(), value.into());
+        self.values.insert(key.into(), value.into());
     }
 
-    /// A switch of one game rather than of every game the port runs, under `titles.<TITLE_ID>`.
+    /// A switch of one game rather than of every game the port runs: a top-level key in the
+    /// title's own file, `titles.<TITLE_ID>` in the shared one.
     pub fn title_flag(&self, title_id: &str, key: &str) -> bool {
-        self.0
-            .get(TITLES)
-            .and_then(|titles| titles.get(title_id))
+        self.title_values(title_id)
             .and_then(|title| title.get(key))
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
+    }
+
+    /// A switch as it applies to `title_id`. In the title's own file that is its own value; in
+    /// the shared one, an older port's or an unusual id's, it is on for every title or for this
+    /// one, as it was before each title had a file.
+    #[must_use]
+    pub fn switch_for(&self, title_id: &str, key: &str) -> bool {
+        self.title_flag(title_id, key) || (!self.is_title && self.flag(key, false))
     }
 
     /// Off removes the key, and a title left with none, so the file keeps only what was turned on.
@@ -132,9 +162,7 @@ impl LauncherSettings {
 
     /// A non-empty text of one game, under `titles.<TITLE_ID>`.
     pub fn title_text(&self, title_id: &str, key: &str) -> Option<&str> {
-        self.0
-            .get(TITLES)
-            .and_then(|titles| titles.get(title_id))
+        self.title_values(title_id)
             .and_then(|title| title.get(key))
             .and_then(serde_json::Value::as_str)
             .filter(|text| !text.is_empty())
@@ -145,9 +173,26 @@ impl LauncherSettings {
         self.set_title_value(title_id, key, (!value.is_empty()).then(|| value.into()));
     }
 
+    fn title_values(&self, title_id: &str) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        if self.is_title {
+            return Some(&self.values);
+        }
+        self.values
+            .get(TITLES)
+            .and_then(|titles| titles.get(title_id))
+            .and_then(serde_json::Value::as_object)
+    }
+
     fn set_title_value(&mut self, title_id: &str, key: &str, value: Option<serde_json::Value>) {
         use serde_json::Value;
-        let mut titles = match self.0.remove(TITLES) {
+        if self.is_title {
+            match value {
+                Some(value) => self.values.insert(key.into(), value),
+                None => self.values.remove(key),
+            };
+            return;
+        }
+        let mut titles = match self.values.remove(TITLES) {
             Some(Value::Object(titles)) => titles,
             _ => serde_json::Map::new(),
         };
@@ -167,7 +212,7 @@ impl LauncherSettings {
             titles.insert(title_id.into(), values.into());
         }
         if !titles.is_empty() {
-            self.0.insert(TITLES.into(), titles.into());
+            self.values.insert(TITLES.into(), titles.into());
         }
     }
 }

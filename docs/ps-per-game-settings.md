@@ -1,8 +1,15 @@
 # PS section: per-game settings
 
 Status: accepted (kb #1275, D1-D9). Analysis of `develop` at `123e5ab` and of the bbport checkout
-under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phase 1 (per-title ini) is
-implemented (`crates/ps/src/bbport/port_ini.rs`); the rest is not yet.
+under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phase 1 (per-title ini,
+`crates/ps/src/bbport/port_ini.rs`) and phase 2 (per-title launch settings,
+`crates/ps/src/bbport/settings/title.rs`) are implemented; the rest is not yet.
+
+Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
+the online switches (until phase 3) and `mods_dir`/`patches_dir` (until phase 4). A title's file is
+made from the shared one the first time it is needed, after a backup of the shared one, and the
+shared file is not rewritten (step 4 below waits for phase 5): its global keys are what a new title
+copies until the defaults page exists, and what an older port's launches read (D6).
 
 ## The owner's rule
 

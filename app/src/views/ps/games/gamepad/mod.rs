@@ -357,8 +357,9 @@ impl GamepadView {
             return;
         };
         loaded.values.set_launch_text("button_icons", &style);
+        let title_id = loaded.values.title_id().to_owned();
         let task = cx.background_spawn(async move {
-            decanter_ps::bbport::LauncherSettings::edit(&decanter_ps::paths::active(), |settings| {
+            decanter_ps::bbport::LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
                 settings.set_text("button_icons", &style);
             })
         });
@@ -384,13 +385,21 @@ impl GamepadView {
         };
         loaded.values.set(setting, &guid);
         let ini = loaded.values.ini_path().to_owned();
+        let title_id = loaded.values.title_id().to_owned();
         let name = self
             .gamepads
             .iter()
             .find(|(known, _)| *known == guid)
             .map_or_else(String::new, |(_, name)| name.clone());
         let task = cx.background_spawn(async move {
-            values::save(&decanter_ps::paths::active(), &ini, setting, &guid, Some(&name))
+            values::save(
+                &decanter_ps::paths::active(),
+                &title_id,
+                &ini,
+                setting,
+                &guid,
+                Some(&name),
+            )
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -564,7 +573,7 @@ impl Render for GamepadView {
                             .flex_1()
                             .min_w_0()
                             .child(theme::muted(t!("ps.gamepad.description")))
-                            .child(theme::muted(scope_note(values.scope(), "ps.scope.gamepad"))),
+                            .child(theme::muted(scope_note(values.scope()))),
                     )
                     .child(self.mode_switch(cx)),
             )

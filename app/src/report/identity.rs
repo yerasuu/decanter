@@ -47,13 +47,13 @@ pub fn collect() -> Identity {
             .account_names
             .extend(decanter_core::steam::login_names(&steam_root));
     }
-    let settings = LauncherSettings::load(&decanter_ps::paths::active());
+    let root = decanter_ps::paths::active();
     identity
         .account_names
-        .extend(settings.text(online::NPID).map(str::to_owned));
+        .extend(LauncherSettings::load(&root).text(online::NPID).map(str::to_owned));
     identity
         .pad_names
-        .extend(settings.text("gamepad_name").map(str::to_owned));
+        .extend(LauncherSettings::every_text(&root, "gamepad_name"));
     identity
 }
 

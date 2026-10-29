@@ -115,8 +115,9 @@ impl Ps {
                     Some(setting) => {
                         let root = root.clone();
                         cx.background_spawn(async move {
-                            Bbport::title_ini(&root, &title_id)
-                                .and_then(|port_ini| values::save(&root, &port_ini.path, setting, "fsr411", None))
+                            Bbport::title_ini(&root, &title_id).and_then(|port_ini| {
+                                values::save(&root, &title_id, &port_ini.path, setting, "fsr411", None)
+                            })
                         })
                         .await
                     }

@@ -2,10 +2,13 @@
 //! --online-overrides`), with its switch and where its game server runs. Online play itself, its
 //! servers and the account are in the PS section's Ajustes.
 
+use std::io;
+
 use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::local_player::{self, LocalPlayer};
 use decanter_ps::bbport::online::{self, LocalServer};
 use decanter_ps::bbport::{Bbport, LauncherSettings};
+use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use gpui::{Context, Entity, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
@@ -113,16 +116,23 @@ impl OnlineTitleView {
                 .background_spawn({
                     let title_id = title_id.clone();
                     async move {
-                        LauncherSettings::load(&decanter_ps::paths::active())
-                            .title_text(&title_id, local_player::KEY)
-                            .map(str::to_owned)
+                        LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id)
+                            .map(|settings| settings.title_text(&title_id, local_player::KEY).map(str::to_owned))
                     }
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                if this.title_id.as_deref() == Some(title_id.as_str()) {
-                    this.local_player
-                        .update(cx, |input, cx| input.set_text(saved.unwrap_or_default(), cx));
+                if this.title_id.as_deref() != Some(title_id.as_str()) {
+                    return;
+                }
+                match saved {
+                    Ok(saved) => this
+                        .local_player
+                        .update(cx, |input, cx| input.set_text(saved.unwrap_or_default(), cx)),
+                    Err(err) => {
+                        this.error = Some(Text::new("ps.scope.read_error").arg("error", err));
+                        cx.notify();
+                    }
                 }
             });
         })
@@ -141,15 +151,21 @@ impl OnlineTitleView {
         }
         let value = value.to_owned();
         Self::save(
-            move |settings| settings.set_title_text(&title_id, local_player::KEY, &value),
+            move |root| {
+                LauncherSettings::edit_title(root, &title_id, |settings| {
+                    settings.set_title_text(&title_id, local_player::KEY, &value);
+                })
+            },
             cx,
         );
     }
 
-    fn save(change: impl FnOnce(&mut LauncherSettings) + Send + 'static, cx: &mut Context<Self>) {
+    /// `edit` is the title's own settings' ([`LauncherSettings::edit_title`]) or, for the online
+    /// switches every title still shares, the shared ones' ([`LauncherSettings::edit`]).
+    fn save(edit: impl FnOnce(&Root) -> io::Result<()> + Send + 'static, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let saved = cx
-                .background_spawn(async move { LauncherSettings::edit(&decanter_ps::paths::active(), change) })
+                .background_spawn(async move { edit(&decanter_ps::paths::active()) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.error = saved
@@ -164,13 +180,20 @@ impl OnlineTitleView {
 
     fn set_bbsc(&mut self, is_on: bool, cx: &mut Context<Self>) {
         self.is_bbsc = is_on;
-        Self::save(move |settings| settings.set_flag(online::BBSC, is_on), cx);
+        Self::save(
+            move |root| LauncherSettings::edit(root, |settings| settings.set_flag(online::BBSC, is_on)),
+            cx,
+        );
     }
 
     fn set_local_server(&mut self, mode: LocalServer, cx: &mut Context<Self>) {
         self.local_server = mode;
         Self::save(
-            move |settings| settings.set_text(online::BBSC_LOCAL_SERVER, mode.value()),
+            move |root| {
+                LauncherSettings::edit(root, |settings| {
+                    settings.set_text(online::BBSC_LOCAL_SERVER, mode.value());
+                })
+            },
             cx,
         );
     }

@@ -268,8 +268,6 @@ ps.learned.save_error: 'Couldn''t save what was learned about the game: %{error}
 ps.learned.forget_error: 'Couldn''t forget it: %{error}'
 ps.detail.reading_keyboard: Reading the keyboard…
 ps.scope.title: These settings are for this game only.
-ps.scope.graphics: 'Output resolution, aspect ratio, live resolution change and the Mouse, Keyboard, Upscaling and Game effects groups are for this game only; the rest is still shared by every game for now.'
-ps.scope.gamepad: 'The button layout is for this game only; the chosen controller and the button icons are still shared by every game for now.'
 ps.scope.older_port: 'This port predates per-game settings: what you change here applies to every game. Update the port to give each game its own.'
 ps.scope.unusual_title_id: 'This dump''s Title ID isn''t in the usual format, so what you change here applies to every game.'
 ps.scope.read_error: 'Couldn''t prepare this game''s settings: %{error}'

@@ -354,11 +354,10 @@ fn layout_name<'name>(id: &str, builtin: bool, name: &'name str) -> Cow<'name, s
     }
 }
 
-/// What a game's tab says about whose settings it shows: `own` is the tab's wording for the game's
-/// own port ini, since some tabs still show settings every game shares.
-fn scope_note(scope: IniScope, own: &'static str) -> Cow<'static, str> {
+/// What a game's tab says about whose settings it shows.
+fn scope_note(scope: IniScope) -> Cow<'static, str> {
     t!(match scope {
-        IniScope::Title => own,
+        IniScope::Title => "ps.scope.title",
         IniScope::OlderPort => "ps.scope.older_port",
         IniScope::UnusualTitleId => "ps.scope.unusual_title_id",
     })

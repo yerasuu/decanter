@@ -55,17 +55,23 @@ impl RunsView {
         cx.observe(&ps, |this, _, cx| this.sync_job(cx)).detach();
         let key = title_id.clone();
         let load = cx.background_spawn(async move {
-            let settings = LauncherSettings::load(&decanter_ps::paths::active());
-            (
-                settings.title_flag(&key, FRAME_STATS),
-                settings.title_flag(&key, crate::debug_logs::TITLE_KEY),
-            )
+            LauncherSettings::of_title(&decanter_ps::paths::active(), &key).map(|settings| {
+                (
+                    settings.title_flag(&key, FRAME_STATS),
+                    settings.title_flag(&key, crate::debug_logs::TITLE_KEY),
+                )
+            })
         });
         cx.spawn(async move |this, cx| {
-            let (measure, debug) = load.await;
+            let loaded = load.await;
             let _ = this.update(cx, |this, cx| {
-                this.measure = Some(measure);
-                this.debug = Some(debug);
+                match loaded {
+                    Ok((measure, debug)) => {
+                        this.measure = Some(measure);
+                        this.debug = Some(debug);
+                    }
+                    Err(err) => this.error = Some(Text::new("ps.scope.read_error").arg("error", err)),
+                }
                 cx.notify();
             });
         })
@@ -143,7 +149,7 @@ impl RunsView {
         self.error = None;
         let title_id = self.title_id.clone();
         let task = cx.background_spawn(async move {
-            LauncherSettings::edit(&decanter_ps::paths::active(), |settings| {
+            LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
                 settings.set_title_flag(&title_id, key, on);
             })
         });

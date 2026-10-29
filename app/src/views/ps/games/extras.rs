@@ -1,5 +1,5 @@
 //! What bbport's settings table can't hold: building FSR 4.1.1 from an AMD
-//! DLL, and free-form environment for the game.
+//! DLL, and free-form environment for the shown game alone.
 
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::tools::{self, Fsr411Progress};
@@ -44,18 +44,6 @@ impl ExtrasView {
             }
         })
         .detach();
-        let load = cx.background_spawn(async {
-            LauncherSettings::load(&decanter_ps::paths::active())
-                .text("extra_env")
-                .map(str::to_owned)
-        });
-        cx.spawn(async move |this, cx| {
-            let current = load.await.unwrap_or_default();
-            let _ = this.update(cx, |this, cx| {
-                this.env.update(cx, |input, cx| input.set_text(current, cx));
-            });
-        })
-        .detach();
         let mut this = Self {
             ps,
             fsr_problem: None,
@@ -76,7 +64,39 @@ impl ExtrasView {
         self.title_id = Some(title_id.to_owned());
         self.checked_at = None;
         self.fsr_problem = None;
+        self.message = None;
         self.check_fsr(cx);
+        self.load_env(title_id, cx);
+    }
+
+    /// Another title's text goes at once, so it is never saved as this one's.
+    fn load_env(&self, title_id: &str, cx: &mut Context<Self>) {
+        self.env.update(cx, |input, cx| input.set_text(String::new(), cx));
+        let title_id = title_id.to_owned();
+        cx.spawn(async move |this, cx| {
+            let loaded = cx
+                .background_spawn({
+                    let title_id = title_id.clone();
+                    async move {
+                        LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id)
+                            .map(|settings| settings.text("extra_env").map(str::to_owned).unwrap_or_default())
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.title_id.as_deref() != Some(title_id.as_str()) {
+                    return;
+                }
+                match loaded {
+                    Ok(current) => this.env.update(cx, |input, cx| input.set_text(current, cx)),
+                    Err(err) => {
+                        this.message = Some((Text::new("ps.scope.read_error").arg("error", err), true));
+                        cx.notify();
+                    }
+                }
+            });
+        })
+        .detach();
     }
 
     fn watch_fsr_job(&mut self, cx: &mut Context<Self>) {
@@ -128,8 +148,11 @@ impl ExtrasView {
     }
 
     fn save_env(&mut self, value: String, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
         let task = cx.background_spawn(async move {
-            LauncherSettings::edit(&decanter_ps::paths::active(), |settings| {
+            LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
                 settings.set_text("extra_env", &value);
             })
         });
