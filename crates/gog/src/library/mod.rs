@@ -80,6 +80,9 @@ pub struct LibraryEntry {
     /// states the relationship — a DLC's record says nothing about what it
     /// belongs to.
     pub parent_id: Option<String>,
+    /// Whether GOG lists this product among its mods. Set by the app from
+    /// [`crate::gog_mods`] when it merges the library, never by a fetch.
+    pub is_mod: bool,
 }
 
 /// A group of entries ready to show. Emitted as they resolve rather than

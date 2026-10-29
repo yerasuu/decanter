@@ -49,6 +49,7 @@ fn count_options(
             (PlayState::Played, played),
             (PlayState::Unplayed, !played),
             (PlayState::Favorite, favorites.contains(id)),
+            (PlayState::Mod, entry.is_mod),
         ] {
             if holds {
                 *tallies.states.entry(state).or_default() += 1;
@@ -374,6 +375,7 @@ fn state_group(entity: &Entity<SidebarView>, current: &Filters, tallies: &Tallie
             (PlayState::Played, "played", t!("library.filters.state.played")),
             (PlayState::Unplayed, "unplayed", t!("library.filters.state.unplayed")),
             (PlayState::Favorite, "favorite", t!("library.filters.state.favorite")),
+            (PlayState::Mod, "mod", t!("library.filters.state.mod")),
         ]
         .into_iter()
         .map(|(state, id, label)| {

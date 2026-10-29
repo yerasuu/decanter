@@ -14,7 +14,7 @@ use crate::i18n::Text;
 use crate::views::settings::Tab as SettingsTab;
 
 pub use background::{Background, InstallStatus};
-pub use gog_library::{GogLibrary, LibraryState};
+pub use gog_library::{GogLibrary, LibraryState, ModsState};
 pub use ps::{
     Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
     folder_error as ps_folder_error, job_label, job_target, online_error, vk_layer_unavailable_text,

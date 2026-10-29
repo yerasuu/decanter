@@ -78,6 +78,7 @@ pub fn entry(game: &InstalledGame) -> LibraryEntry {
         library_rank: None,
         installable: true,
         parent_id: None,
+        is_mod: false,
     }
 }
 

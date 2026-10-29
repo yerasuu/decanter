@@ -24,6 +24,7 @@ mod gamesdb;
 pub mod hook;
 mod install;
 mod library;
+mod mods;
 mod orders;
 mod product;
 pub mod save_location;
@@ -37,6 +38,7 @@ pub use install::{
     BrokenFile, BrokenReason, Progress, VerifyReport, cancel, install, repair, uninstall, uninstall_dlc, verify,
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
+pub use mods::{GogMod, gog_mods};
 pub use orders::purchase_dates;
 pub use session::{SessionState, check_session, renew_session};
 pub use steam_export::{remove_steam_shortcut, sync_steam_shortcut};

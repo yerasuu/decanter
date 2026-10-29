@@ -48,6 +48,7 @@ library.filters.state.installed: Instalados
 library.filters.state.played: Jugados
 library.filters.state.unplayed: Sin jugar
 library.filters.state.favorite: Favoritos
+library.filters.state.mod: Mods de GOG
 library.filters.achievements.title: Logros
 library.filters.achievements.note: Según lo que Decanter tiene en caché.
 library.filters.achievements.complete: Completados
@@ -221,3 +222,14 @@ library.session_renewal.later: Más tarde
 library.session_renewal.unreachable: GOG no responde ahora mismo; inténtalo más tarde.
 library.session_renewal.login: 'GOG ya no acepta esta sesión: vuelve a iniciar sesión con la cuenta de %{name}.'
 library.session_renewal.other_account: Has iniciado sesión como %{other}, no como %{name}. Inicia sesión con la cuenta de %{name}.
+library.mods.badge: Mod
+library.mods.badge_tooltip: Mod de GOG
+library.mods.open_list: MODS DE GOG
+library.mods.heading: MODS DE GOG
+library.mods.close: Volver a la biblioteca
+library.mods.note: 'GOG vende estos mods como productos gratuitos aparte, y para añadir uno necesitas su juego base. Añádelo en gog.com y aparecerá en tu biblioteca como un juego más.'
+library.mods.loading: Buscando los mods de GOG…
+library.mods.unavailable: 'La lista de mods de GOG no está disponible ahora mismo. Tu biblioteca no cambia; se volverá a intentar más tarde.'
+library.mods.none: GOG no ofrece ningún mod ahora mismo.
+library.mods.owned: En tu biblioteca
+library.mods.view: Ver en GOG

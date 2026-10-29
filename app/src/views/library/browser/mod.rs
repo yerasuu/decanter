@@ -102,6 +102,7 @@ struct Capsule {
     /// Marked on the art so a shelf can be scanned for starred games
     /// without opening any of them.
     favorite: bool,
+    is_mod: bool,
 }
 
 struct ShelfData {

@@ -203,6 +203,7 @@ fn base_entry(id: i64, product: Option<&gog::gog::ProductDetails>) -> LibraryEnt
         library_rank: None,
         installable: true,
         parent_id: None,
+        is_mod: false,
     }
 }
 

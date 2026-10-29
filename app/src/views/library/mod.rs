@@ -14,6 +14,7 @@ mod detail;
 mod filters;
 mod fmt;
 pub mod install;
+mod mods;
 pub mod properties;
 mod shelf_popups;
 mod shelves;
@@ -60,6 +61,9 @@ struct LibraryModel {
     /// `(id, current name)` — started from the shelf menu's "Renombrar".
     pub(crate) renaming: Option<(String, String)>,
     pub(crate) poll_status: PollStatus,
+    /// The GOG mods list stands in for the shelf browser while nothing is
+    /// selected.
+    pub(crate) mods_open: bool,
     /// The selected game's cached achievements, re-read after each poll.
     pub(crate) achievements: Option<Result<Vec<data::Achievement>, String>>,
     poll: Option<Task<()>>,
@@ -76,6 +80,7 @@ impl LibraryModel {
             if home != library_home {
                 library_home = home;
                 this.selected = None;
+                this.mods_open = false;
                 this.popup = None;
                 this.poll = None;
                 this.poll_status = PollStatus::Idle;
@@ -90,6 +95,7 @@ impl LibraryModel {
             filters: filters::Filters::default(),
             renaming: None,
             poll_status: PollStatus::Idle,
+            mods_open: false,
             achievements: None,
             poll: None,
         }
@@ -105,6 +111,14 @@ impl LibraryModel {
         cx.notify();
     }
 
+    pub fn show_mods(&mut self, open: bool, cx: &mut Context<Self>) {
+        if open {
+            self.select(None, cx);
+        }
+        self.mods_open = open;
+        cx.notify();
+    }
+
     /// Selects a game and polls GOG for its achievements right away — the
     /// cache still shows instantly, this just refreshes it. The status is
     /// tracked, not just the resulting cache, so the empty case can say
@@ -115,6 +129,9 @@ impl LibraryModel {
     /// whichever account's copy is actually on screen.
     pub fn select(&mut self, product_id: Option<String>, cx: &mut Context<Self>) {
         self.selected = product_id;
+        if self.selected.is_some() {
+            self.mods_open = false;
+        }
         // An external game has no achievements anywhere to poll.
         let account_id = self.selected.as_deref().and_then(|id| {
             AppState::get(cx)
@@ -212,6 +229,7 @@ impl Render for LibraryView {
             .selected
             .as_deref()
             .is_some_and(|id| state.library.read(cx).games.iter().any(|entry| entry.game.id == id));
+        let mods_open = self.model.read(cx).mods_open;
         let pane = match (selected, has_profile) {
             (true, true) => div()
                 .id("library-detail")
@@ -222,6 +240,7 @@ impl Render for LibraryView {
             // Nothing selected: the shelf browser stands in for an empty
             // pane, so the default view is the library rather than a
             // prompt to go find it.
+            (false, true) if mods_open => mods::pane(&self.model, cx).into_any_element(),
             (false, true) => self
                 .browser
                 .clone()

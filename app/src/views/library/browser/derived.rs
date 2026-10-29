@@ -71,6 +71,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
                         meta: capsule_meta(stats.seconds(&game.id), stats.completion(&game.id)).into(),
                         installed: is_installed(&game, pending_installs),
                         favorite: favorites.contains(&game.id),
+                        is_mod: entry.is_mod,
                         cover: game.cover_url.map(SharedString::from),
                         title: game.title.into(),
                         id: game.id.into(),

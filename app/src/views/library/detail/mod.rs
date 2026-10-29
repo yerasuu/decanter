@@ -205,6 +205,7 @@ impl Render for DetailView {
         };
         let game = entry.game.clone();
         let installable = entry.installable;
+        let is_mod = entry.is_mod;
         let dlcs: Vec<(String, String)> = dlcs_of(games, &game.id).collect();
         let profile_id = state.session.read(cx).active_profile.clone();
         let background = state.background.read(cx);
@@ -231,7 +232,7 @@ impl Render for DetailView {
         let collections = loaded.collections.clone();
         let launch = loaded.launch.clone();
 
-        let hero = hero(&game, unlocked, total, playtime, is_fav, cx);
+        let hero = hero(&game, (unlocked, total), playtime, is_fav, is_mod, cx);
         let bar = BarState {
             launch,
             running,

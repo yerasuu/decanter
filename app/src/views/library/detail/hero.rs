@@ -9,10 +9,10 @@ use crate::widgets::{ButtonKind, button, hero_stat, tooltip};
 
 pub(super) fn hero(
     game: &Game,
-    unlocked: usize,
-    total: usize,
+    (unlocked, total): (usize, usize),
     playtime: Playtime,
     is_fav: bool,
+    is_mod: bool,
     cx: &Context<DetailView>,
 ) -> Div {
     let storefront = game.storefront;
@@ -45,11 +45,19 @@ pub(super) fn hero(
                 .gap(px(6.))
                 // In a row of its own: the column stretches its children, which
                 // drew the badge as a bar across the whole hero.
-                .child(div().flex().child(if storefront == Storefront::Gog {
-                    theme::badge("GOG", true)
-                } else {
-                    theme::badge(t!("library.detail.external"), false)
-                }))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(6.))
+                        .child(if storefront == Storefront::Gog {
+                            theme::badge("GOG", true)
+                        } else {
+                            theme::badge(t!("library.detail.external"), false)
+                        })
+                        .when(is_mod, |badges| {
+                            badges.child(theme::badge(t!("library.mods.badge"), true))
+                        }),
+                )
                 // Beside the title rather than at the end of the action bar: it
                 // says something about the game, not something to do with it,
                 // and buried after DESINSTALAR is the last place anyone looks

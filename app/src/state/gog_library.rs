@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use decanter_core::{Game, InstallState};
-use decanter_gog::{Batch, LibraryEntry};
+use decanter_gog::{Batch, GogMod, LibraryEntry};
 use gpui::{AsyncApp, Context, Entity, Task, WeakEntity};
 
 use super::Session;
@@ -63,6 +63,15 @@ pub(crate) fn local_install_state(account_id: &str, product_id: &str) -> Option<
     })
 }
 
+/// GOG's mods catalog as the Mods list shows it. Nothing else waits on it:
+/// while it is anything but `Ready`, no game is marked as a mod.
+#[derive(Clone, PartialEq, Eq)]
+pub enum ModsState {
+    Loading,
+    Unavailable,
+    Ready(Vec<GogMod>),
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum LibraryState {
     Idle,
@@ -87,6 +96,9 @@ pub struct GogLibrary {
     /// Library folders whose disk isn't plugged in, as of the last look:
     /// their games read as not installed, which the view warns about.
     pub(crate) offline_folders: Vec<std::path::PathBuf>,
+    pub(crate) mods: ModsState,
+    /// The ids in `mods`, what [`merge`] marks owned games by.
+    mod_ids: HashSet<String>,
     profile: Option<String>,
     /// The active profile's GOG accounts, oldest first — the merge order.
     wanted: Vec<String>,
@@ -120,6 +132,8 @@ impl GogLibrary {
             state: LibraryState::Idle,
             enrich_progress: None,
             offline_folders: Vec::new(),
+            mods: ModsState::Loading,
+            mod_ids: HashSet::new(),
             profile: session.read(cx).active_profile.clone(),
             wanted: Vec::new(),
             by_account: HashMap::new(),
@@ -130,6 +144,7 @@ impl GogLibrary {
         this.reconcile(cx);
         cx.spawn(async move |this, cx| watch_library_folders(this, cx).await)
             .detach();
+        cx.spawn(async move |this, cx| watch_mods(this, cx).await).detach();
         this
     }
 
@@ -207,7 +222,7 @@ impl GogLibrary {
         if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
             entry.game.install_state = install_state;
         }
-        self.games = merge(&self.by_account, &self.wanted, &self.external);
+        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -216,7 +231,7 @@ impl GogLibrary {
     /// or removed — nothing about them needs the network.
     pub fn refresh_external(&mut self, cx: &mut Context<Self>) {
         self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
-        self.games = merge(&self.by_account, &self.wanted, &self.external);
+        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -254,7 +269,7 @@ impl GogLibrary {
         self.by_account.remove(account_id);
         self.closed_sessions.remove(account_id);
         self.wanted.retain(|wanted| wanted != account_id);
-        self.games = merge(&self.by_account, &self.wanted, &self.external);
+        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -338,7 +353,22 @@ impl GogLibrary {
             });
             self.tasks.insert(account_id, task);
         }
-        self.games = merge(&self.by_account, &self.wanted, &self.external);
+        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.revision = self.revision.wrapping_add(1);
+        cx.notify();
+    }
+
+    fn set_mods(&mut self, mods: Option<Vec<GogMod>>, cx: &mut Context<Self>) {
+        let mods = mods.map_or(ModsState::Unavailable, ModsState::Ready);
+        if mods == self.mods {
+            return;
+        }
+        self.mod_ids = match &mods {
+            ModsState::Ready(list) => list.iter().map(|product| product.id.clone()).collect(),
+            ModsState::Loading | ModsState::Unavailable => HashSet::new(),
+        };
+        self.mods = mods;
+        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -350,7 +380,7 @@ impl GogLibrary {
             return false;
         };
         *account_games = shown;
-        self.games = merge(&self.by_account, &self.wanted, &self.external);
+        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
         true
@@ -395,16 +425,35 @@ async fn watch_library_folders(this: WeakEntity<GogLibrary>, cx: &mut AsyncApp) 
     }
 }
 
+/// Hourly, so a request that failed is retried long before the day the
+/// cache lasts; a fresh cache answers without the network.
+const MODS_CHECK_INTERVAL: Duration = Duration::from_hours(1);
+
+async fn watch_mods(this: WeakEntity<GogLibrary>, cx: &mut AsyncApp) {
+    loop {
+        let mods = tokio::spawn(decanter_gog::gog_mods())
+            .await
+            .inspect_err(|err| tracing::warn!(%err, "GOG mods lookup task failed"))
+            .ok()
+            .flatten();
+        if this.update(cx, |library, cx| library.set_mods(mods, cx)).is_err() {
+            return;
+        }
+        cx.background_executor().timer(MODS_CHECK_INTERVAL).await;
+    }
+}
+
 /// Concatenates every account's games into one list, keeping the first
 /// copy of a product a given account owns — two accounts with the same
 /// game would otherwise show it twice. `order` decides which account's
 /// copy wins a duplicate (oldest account first, the order
 /// `decanter_core::Db::accounts_in_profile` returns). External games go
-/// last; they never duplicate anything.
+/// last; they never duplicate anything, and are never GOG mods.
 fn merge(
     by_account: &HashMap<String, Vec<LibraryEntry>>,
     order: &[String],
     external: &[LibraryEntry],
+    mod_ids: &HashSet<String>,
 ) -> Vec<LibraryEntry> {
     let mut seen = std::collections::HashSet::new();
     let mut merged = Vec::new();
@@ -414,7 +463,10 @@ fn merge(
         };
         for entry in account_games {
             if seen.insert((entry.game.storefront, entry.game.id.clone())) {
-                merged.push(entry.clone());
+                merged.push(LibraryEntry {
+                    is_mod: mod_ids.contains(&entry.game.id),
+                    ..entry.clone()
+                });
             }
         }
     }

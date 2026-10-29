@@ -54,6 +54,7 @@ fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
         library_rank: cached.library_rank,
         parent_id: cached.parent_id,
         installable: cached.installable,
+        is_mod: false,
         game: Game {
             account_id: account_id.to_owned(),
             install_state: super::gog_library::local_install_state(account_id, &cached.product_id),

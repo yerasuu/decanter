@@ -528,14 +528,30 @@ impl Render for SidebarView {
                     )
                     .children(self.scrollbar(cx)),
             )
+            .child(mods_footer(&self.model))
             .child(add_game_footer())
     }
 }
 
+fn mods_footer(model: &Entity<LibraryModel>) -> impl IntoElement {
+    let model = model.clone();
+    footer_row("open-gog-mods")
+        .on_click(move |_, _, cx| model.update(cx, |model, cx| model.show_mods(true, cx)))
+        .child(div().text_size(px(13.)).child("◆"))
+        .child(t!("library.mods.open_list"))
+}
+
 /// Steam's "+ Add a Game", at the foot of the list the same way.
 fn add_game_footer() -> impl IntoElement {
+    footer_row("add-external-game")
+        .on_click(|_, _, cx| crate::views::external::open(None, cx))
+        .child(div().text_size(px(16.)).child("+"))
+        .child(t!("library.sidebar.add_game"))
+}
+
+fn footer_row(id: &'static str) -> Stateful<gpui::Div> {
     div()
-        .id("add-external-game")
+        .id(id)
         .flex()
         .flex_none()
         .items_center()
@@ -549,7 +565,4 @@ fn add_game_footer() -> impl IntoElement {
         .text_color(rgb(theme::TEXT_MUTED))
         .cursor_pointer()
         .hover(|row| row.bg(rgb(theme::BG_PANEL_2)).text_color(rgb(theme::TEXT_BRIGHT)))
-        .on_click(|_, _, cx| crate::views::external::open(None, cx))
-        .child(div().text_size(px(16.)).child("+"))
-        .child(t!("library.sidebar.add_game"))
 }

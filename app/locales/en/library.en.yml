@@ -48,6 +48,7 @@ library.filters.state.installed: Installed
 library.filters.state.played: Played
 library.filters.state.unplayed: Unplayed
 library.filters.state.favorite: Favorites
+library.filters.state.mod: GOG mods
 library.filters.achievements.title: Achievements
 library.filters.achievements.note: Based on what Decanter has cached.
 library.filters.achievements.complete: Completed
@@ -221,3 +222,14 @@ library.session_renewal.later: Later
 library.session_renewal.unreachable: GOG isn't answering right now; try again later.
 library.session_renewal.login: 'GOG no longer accepts this session: log in again with %{name}''s account.'
 library.session_renewal.other_account: You logged in as %{other}, not %{name}. Log in with %{name}'s account.
+library.mods.badge: Mod
+library.mods.badge_tooltip: GOG mod
+library.mods.open_list: GOG MODS
+library.mods.heading: GOG MODS
+library.mods.close: Back to the library
+library.mods.note: 'GOG sells these mods as separate free products, and adding one needs its base game. Add it on gog.com and it shows up in your library like any other game.'
+library.mods.loading: Looking up GOG's mods…
+library.mods.unavailable: GOG's mods list isn't available right now. Your library is unchanged; it will be tried again later.
+library.mods.none: GOG offers no mods right now.
+library.mods.owned: In your library
+library.mods.view: View on GOG

@@ -483,6 +483,14 @@ fn cover_pips(capsule: &Capsule) -> Div {
                 t!("library.browser.favorite").into(),
             ))
         })
+        .when(capsule.is_mod, |pips| {
+            pips.child(pip(
+                "cover-mod",
+                "MOD",
+                theme::ACCENT_BLUE,
+                t!("library.mods.badge_tooltip").into(),
+            ))
+        })
 }
 
 fn pip(id: &'static str, glyph: &'static str, color: u32, label: SharedString) -> Stateful<Div> {

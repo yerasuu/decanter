@@ -93,6 +93,8 @@ pub(super) enum PlayState {
     Unplayed,
     Played,
     Favorite,
+    /// One of GOG's mods, owned as a game of its own.
+    Mod,
 }
 
 /// What to order the list by. Every option reads from data already held
@@ -226,6 +228,7 @@ impl Filters {
             PlayState::Unplayed => stats.seconds(&entry.game.id) == 0,
             PlayState::Played => stats.seconds(&entry.game.id) > 0,
             PlayState::Favorite => favorites.contains(&entry.game.id),
+            PlayState::Mod => entry.is_mod,
         })
     }
 }
