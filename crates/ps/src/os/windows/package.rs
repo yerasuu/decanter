@@ -727,6 +727,21 @@ pub async fn installed_version(root: &Root, version: &Version) -> Option<Install
     })
 }
 
+/// The packages of versions other than `keep`.
+///
+/// As Linux keeps only its release's bundle ([`crate::os::linux::bundle::remove_others`]). Records go
+/// before folders, so a folder half removed never reads as installed. Only `vX.Y.Z` names are touched, never a build's commit. Best effort,
+/// said in the log.
+pub async fn remove_others(root: &Root, keep: Option<&Version>) {
+    let other = |stem: &str| stem.parse::<Version>().is_ok_and(|version| Some(&version) != keep);
+    let packages = packages(root);
+    crate::files::remove_entries(&packages, "old Windows package record", |name| {
+        name.strip_suffix(".json").is_some_and(other)
+    })
+    .await;
+    crate::files::remove_entries(&packages, "old Windows package", other).await;
+}
+
 /// `version`'s record first, so a folder half removed never reads as installed.
 ///
 /// # Errors

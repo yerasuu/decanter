@@ -75,7 +75,7 @@ ps.ports.errors.record_build: 'Couldn''t record the build: %{error}'
 ps.ports.errors.download: 'Couldn''t download nix-portable: %{error}'
 ps.ports.errors.checksum: The nix-portable download doesn't match its pinned checksum
 ps.package.title: psport for Windows
-ps.package.description: 'Each tagged psport release carries its Windows package: decanter downloads it, checks it against the release''s checksum and size, and keeps it in the library. Jugar runs the version in use, which follows the newest release unless you choose another.'
+ps.package.description: 'Each tagged psport release carries its Windows package: decanter downloads it, checks it against the release''s checksum and size, and keeps it in the library. Jugar runs the version in use, which follows the newest release unless you choose another. Only the version or build in use stays: once another is in use, decanter removes the rest.'
 ps.package.in_use: 'In use: %{tag}'
 ps.package.in_use_pinned: 'In use: %{tag}, chosen by you: updates leave it'
 ps.package.in_use_folder: 'In use: the psport.exe folder chosen in Settings, %{dir}'
@@ -88,7 +88,7 @@ ps.package.published: 'published %{date}'
 ps.package.downloaded: 'downloaded %{date}'
 ps.package.badge_in_use: In use
 ps.package.badge_downloaded: Downloaded
-ps.package.download: Download
+ps.package.download: Download and use
 ps.package.use: Use
 ps.package.delete: Delete
 ps.package.confirm_delete.title: Delete this version?
@@ -730,7 +730,7 @@ ps.online.kept_existing: Saved. %{previous} keeps its password and token in the 
 ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.
 ps.play.local_player_error: The local player "%{value}" saved for this game isn't 1 to 10 digits. Fix it in the game's Online tab or clear it.
 ps.branch.title: psport's branch, built on this PC (Testing)
-ps.branch.description: 'decanter fetches the newest commit of psport''s branch with your git, downloads the toolchain it pins (llvm-mingw, CMake, Ninja and psport''s toolchain package, each checked against its SHA-256) and builds it here, with nothing else running from what it downloads. Building runs the branch''s own scripts with your rights, so each new commit asks for your confirmation first.'
+ps.branch.description: 'decanter fetches the newest commit of psport''s branch with your git, downloads the toolchain it pins (llvm-mingw, CMake, Ninja and psport''s toolchain package, each checked against its SHA-256) and builds it here, with nothing else running from what it downloads. Building runs the branch''s own scripts with your rights, so each new commit asks for your confirmation first. A build is in use as soon as it ends, and the builds and versions before it are removed with their logs.'
 ps.branch.toolchain.not_pinned: This decanter pins no toolchain package yet, so it can't build; a later version will.
 ps.branch.toolchain.installed: 'Toolchain: toolchain-win32-%{number}, downloaded and checked'
 ps.branch.toolchain.missing: 'Toolchain: toolchain-win32-%{number}, not downloaded yet (about 560 MB the first time, 2 GB on disk)'
@@ -738,6 +738,7 @@ ps.branch.head: 'Newest commit of %{branch}: %{commit} (%{remote})'
 ps.branch.check_error: 'Couldn''t ask for the branch: %{error}'
 ps.branch.check: Check the branch
 ps.branch.build: Build %{commit}
+ps.branch.retry: Retry %{commit}
 ps.branch.stop: Stop
 ps.branch.stopped: Build stopped; nothing it started is left running
 ps.branch.delete_toolchain: Delete the toolchain

@@ -1,6 +1,7 @@
 //! The Ports tab's card for psport's branch built on this machine ([`decanter_ps::os::windows::winbuild`]): the
 //! branch's newest commit, the confirmation asked before building a commit the first time, the
-//! build's progress and last lines, and the builds in the library to use or delete.
+//! build's progress and last lines, the failed build's log and its retry, and the builds in the
+//! library to use or delete.
 
 use decanter_core::runner::{Progress, Runner};
 use decanter_ps::os::windows::winbuild::{self, Built, Commit, Head};
@@ -43,6 +44,15 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         Some(Err(err)) => Some(t!("ps.branch.check_error", error = err)),
         None => None,
     };
+    let checked_at = state
+        .checked_at()
+        .filter(|_| !checking)
+        .map(|at| t!("ps.ports.checked_at", time = at.format("%H:%M").to_string()));
+    let failed_log = state
+        .failed()
+        .filter(|_| !busy)
+        .map(|failed| winbuild::log_path(&decanter_ps::paths::active(), &failed.commit));
+    let retry = state.failed().map(|failed| &failed.commit);
     let tampered = state.error().is_some_and(|err| err.is_or_wraps(TAMPERED))
         || state
             .head()
@@ -77,6 +87,7 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .child(theme::muted(t!("ps.branch.description")))
         .child(theme::muted(toolchain))
         .children(head.map(|head| div().child(SharedString::from(head))))
+        .children(checked_at.map(theme::muted))
         .children(state.confirming().map(|head| confirmation(ps, head)))
         .children(state.confirming_delete().map(|commit| delete_confirmation(ps, commit)))
         .children(
@@ -88,10 +99,12 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .children(lines)
         .when(deleting, |card| card.child(theme::muted(t!("ps.branch.deleting"))))
         .children(state.error().map(theme::error))
+        .children(failed_log.map(|path| super::ports::failed_log_link("ps-branch-failed-log", path)))
         .child(actions(
             ps,
             checking,
             can_build.filter(|_| !busy && !deleting),
+            retry,
             busy,
             state.is_toolchain_installed() && !deleting,
         ))
@@ -126,8 +139,15 @@ pub fn card(ps: &Entity<Ps>, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// Consultar, Compilar or Detener, and Borrar la toolchain.
-fn actions(ps: &Entity<Ps>, checking: bool, can_build: Option<Head>, busy: bool, has_toolchain: bool) -> Div {
+/// Consultar, Compilar (Reintentar for the commit that failed) or Detener, and Borrar la toolchain.
+fn actions(
+    ps: &Entity<Ps>,
+    checking: bool,
+    can_build: Option<Head>,
+    failed: Option<&Commit>,
+    busy: bool,
+    has_toolchain: bool,
+) -> Div {
     div()
         .flex()
         .gap_2()
@@ -150,13 +170,13 @@ fn actions(ps: &Entity<Ps>, checking: bool, can_build: Option<Head>, busy: bool,
         )
         .children(can_build.map(|head| {
             let ps = ps.clone();
-            button(
-                "ps-branch-build",
-                ButtonKind::Primary,
-                t!("ps.branch.build", commit = head.commit.short()),
-                false,
-            )
-            .on_click(move |_, _, cx| ps.update(cx, |ps, cx| ps.branch_build(&head, cx)))
+            let label = if failed == Some(&head.commit) {
+                t!("ps.branch.retry", commit = head.commit.short())
+            } else {
+                t!("ps.branch.build", commit = head.commit.short())
+            };
+            button("ps-branch-build", ButtonKind::Primary, label, false)
+                .on_click(move |_, _, cx| ps.update(cx, |ps, cx| ps.branch_build(&head, cx)))
         }))
         .when(busy, |row| {
             let ps = ps.clone();

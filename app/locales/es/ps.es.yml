@@ -75,7 +75,7 @@ ps.ports.errors.record_build: 'No se pudo registrar la compilación: %{error}'
 ps.ports.errors.download: 'No se pudo descargar nix-portable: %{error}'
 ps.ports.errors.checksum: La descarga de nix-portable no coincide con su suma fijada
 ps.package.title: psport para Windows
-ps.package.description: 'Cada versión etiquetada de psport trae su paquete para Windows: decanter lo descarga, lo comprueba con la suma y el tamaño de la versión y lo guarda en la biblioteca. Jugar usa la versión en uso, que sigue a la más reciente salvo que elijas otra.'
+ps.package.description: 'Cada versión etiquetada de psport trae su paquete para Windows: decanter lo descarga, lo comprueba con la suma y el tamaño de la versión y lo guarda en la biblioteca. Jugar usa la versión en uso, que sigue a la más reciente salvo que elijas otra. Solo se queda la versión o compilación en uso: en cuanto usas otra, decanter quita las demás.'
 ps.package.in_use: 'En uso: %{tag}'
 ps.package.in_use_pinned: 'En uso: %{tag}, elegida por ti: las actualizaciones no la cambian'
 ps.package.in_use_folder: 'En uso: la carpeta de psport.exe elegida en Ajustes, %{dir}'
@@ -88,7 +88,7 @@ ps.package.published: 'publicada el %{date}'
 ps.package.downloaded: 'descargada el %{date}'
 ps.package.badge_in_use: En uso
 ps.package.badge_downloaded: Descargada
-ps.package.download: Descargar
+ps.package.download: Descargar y usar
 ps.package.use: Usar
 ps.package.delete: Borrar
 ps.package.confirm_delete.title: ¿Borrar esta versión?
@@ -730,7 +730,7 @@ ps.online.kept_existing: Guardado. %{previous} conserva su contraseña y su toke
 ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online.
 ps.play.local_player_error: El jugador local «%{value}» guardado para este juego no son de 1 a 10 cifras. Corrígelo en la pestaña Online del juego o bórralo.
 ps.branch.title: Rama de psport, compilada en este PC (Pruebas)
-ps.branch.description: 'decanter obtiene el commit más reciente de la rama de psport con tu git, descarga la toolchain que fija (llvm-mingw, CMake, Ninja y el paquete de toolchain de psport, cada uno comprobado con su SHA-256) y la compila aquí, sin ejecutar nada más de lo que descarga. Compilar ejecuta los scripts de la propia rama con tus permisos, así que cada commit nuevo te pide confirmación antes.'
+ps.branch.description: 'decanter obtiene el commit más reciente de la rama de psport con tu git, descarga la toolchain que fija (llvm-mingw, CMake, Ninja y el paquete de toolchain de psport, cada uno comprobado con su SHA-256) y la compila aquí, sin ejecutar nada más de lo que descarga. Compilar ejecuta los scripts de la propia rama con tus permisos, así que cada commit nuevo te pide confirmación antes. Una compilación se usa en cuanto termina, y las compilaciones y versiones anteriores se quitan con sus registros.'
 ps.branch.toolchain.not_pinned: Esta versión de decanter aún no fija ningún paquete de toolchain, así que no puede compilar; lo hará una posterior.
 ps.branch.toolchain.installed: 'Toolchain: toolchain-win32-%{number}, descargada y comprobada'
 ps.branch.toolchain.missing: 'Toolchain: toolchain-win32-%{number}, aún sin descargar (unos 560 MB la primera vez, 2 GB en disco)'
@@ -738,6 +738,7 @@ ps.branch.head: 'Commit más reciente de %{branch}: %{commit} (%{remote})'
 ps.branch.check_error: 'No se pudo consultar la rama: %{error}'
 ps.branch.check: Consultar la rama
 ps.branch.build: Compilar %{commit}
+ps.branch.retry: Reintentar %{commit}
 ps.branch.stop: Detener
 ps.branch.stopped: Compilación detenida; no queda nada de lo que inició
 ps.branch.delete_toolchain: Borrar la toolchain

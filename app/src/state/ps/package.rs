@@ -10,7 +10,7 @@ use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::direct::FOLDER_KEY;
 use decanter_ps::download;
 use decanter_ps::os::windows::package::{self, Installed, Offer, PINNED_KEY, SELECTED_KEY, Version};
-use decanter_ps::os::windows::winbuild::Commit;
+use decanter_ps::os::windows::winbuild::{self, Commit};
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
 use futures::FutureExt as _;
@@ -155,13 +155,20 @@ impl Ps {
         else {
             return;
         };
+        let pinned = self.package.newest() != Some(version);
         let root = paths::active();
         cx.spawn(async move |this, cx| {
             let task = match start_install(&this, &root, offer, cx) {
                 Ok(task) => task,
                 Err(err) => return set_error(&this, Some(err), cx),
             };
-            let _ = task.await;
+            // Getting a version is using it, as a release on Linux runs once its bundle is in, so
+            // the next prune never takes a version just downloaded.
+            if let Ok(installed) = task.await
+                && let Err(err) = select(&this, &root, installed.version.tag(), pinned, cx).await
+            {
+                set_error(&this, Some(err), cx);
+            }
         })
         .detach();
     }
@@ -357,6 +364,8 @@ async fn check(this: &WeakEntity<Ps>, root: &Root, asked: Asked, cx: &mut AsyncA
     if let Some(newest) = follow {
         follow_newest(this, root, newest, cx).await;
     }
+    // Also what a choice made while a game ran left, and what decanter versions before the prune kept.
+    prune(this, root, cx).await;
 }
 
 /// `newest` installed and chosen, unless the user chose a version or a folder while it downloaded.
@@ -427,7 +436,45 @@ pub(super) async fn select(
     let _ = this.update(cx, |this, _| {
         this.package.selecting = this.package.selecting.saturating_sub(1);
     });
+    if result.is_ok() {
+        prune(this, root, cx).await;
+    }
     result
+}
+
+/// The packages and builds other than the one in use, with the builds' logs, removed without asking:
+/// decanter made all of them and only the one in use ever runs, as a port on Linux keeps the one build
+/// it runs and its release's bundle alone ([`decanter_ps::os::linux::bundle::remove_others`]). What
+/// the user deletes by hand asks first (#1133). Skipped while one may be running or arriving (a game
+/// or its launch, a build, a download, a delete, a choice being saved) and while none is in use; the
+/// next choice or check tries again.
+pub(super) async fn prune(this: &WeakEntity<Ps>, root: &Root, cx: &mut AsyncApp) {
+    let started = this.update(cx, |this, cx| {
+        let playing = !this.launching.is_empty() || this.jobs.values().any(|job| job.read(cx).is_running());
+        let branch = &this.branch;
+        let busy = playing
+            || this.package.install.is_some()
+            || this.package.selecting > 0
+            || branch.building().is_some()
+            || branch.is_deleting();
+        if busy {
+            return None;
+        }
+        this.branch.set_deleting(true);
+        Some(this.branch.failed().map(|head| head.commit.clone()))
+    });
+    let Ok(Some(keep_log)) = started else {
+        return;
+    };
+    let choice = settings_now(root, cx).await;
+    if choice.selected.is_some() || choice.selected_build.is_some() {
+        package::remove_others(root, choice.selected.as_ref()).await;
+        winbuild::remove_others(root, choice.selected_build.as_ref(), keep_log.as_ref()).await;
+    }
+    let _ = this.update(cx, |this, cx| {
+        this.branch.set_deleting(false);
+        this.branch_reload(cx);
+    });
 }
 
 /// The install of `offer` under way, or a new one; one version at a time, so another one waits for

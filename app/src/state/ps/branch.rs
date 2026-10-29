@@ -1,7 +1,8 @@
 //! psport's branch built on this machine where decanter runs `psport.exe` directly
 //! ([`decanter_ps::os::windows::winbuild`]): the newest commit of the branch, the owner's confirmation before
 //! the first build of each commit, the build's progress and output, the builds in the library, which
-//! one Jugar runs, and deleting them and the toolchain.
+//! one Jugar runs, and deleting them and the toolchain. A build is in use as soon as it ends, and the
+//! ones before it go ([`package::prune`]), as a port's checkout on Linux runs the one build it holds.
 
 use std::collections::VecDeque;
 
@@ -23,6 +24,7 @@ pub struct BranchState {
     /// The branch's newest commit, from the last check.
     head: Option<Result<Head, Text>>,
     checking: bool,
+    checked_at: Option<chrono::DateTime<chrono::Local>>,
     /// The commit whose confirmation the card is asking for.
     confirming: Option<Head>,
     /// The build running, which dropping stops: its tools end with their Job Object.
@@ -30,6 +32,9 @@ pub struct BranchState {
     stage: Option<Progress>,
     lines: VecDeque<String>,
     error: Option<Text>,
+    /// The last build that failed, until one succeeds: its log stays for the card's link, as the
+    /// failed commit on Linux ([`decanter_ps::os::linux::builds::Record`]).
+    failed: Option<Head>,
     built: Vec<Built>,
     toolchain_installed: bool,
     /// A delete under way, which a build or another delete waits out.
@@ -46,6 +51,14 @@ impl BranchState {
 
     pub const fn is_checking(&self) -> bool {
         self.checking
+    }
+
+    pub const fn checked_at(&self) -> Option<chrono::DateTime<chrono::Local>> {
+        self.checked_at
+    }
+
+    pub const fn failed(&self) -> Option<&Head> {
+        self.failed.as_ref()
     }
 
     pub const fn confirming(&self) -> Option<&Head> {
@@ -78,6 +91,11 @@ impl BranchState {
 
     pub const fn is_deleting(&self) -> bool {
         self.deleting
+    }
+
+    /// Held while [`package::prune`] removes builds, so no build or delete starts meanwhile.
+    pub(super) const fn set_deleting(&mut self, deleting: bool) {
+        self.deleting = deleting;
     }
 
     pub const fn confirming_delete(&self) -> Option<&Commit> {
@@ -121,6 +139,7 @@ impl Ps {
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.branch;
                 state.checking = false;
+                state.checked_at = Some(chrono::Local::now());
                 state.head = Some(head);
                 cx.notify();
             });
@@ -354,14 +373,21 @@ async fn run_build(this: &WeakEntity<Ps>, root: &Root, head: &Head, cx: &mut Asy
     };
     let pin = Pin::Commit(head.commit.clone());
     let result = runners::prepare(root, Runner::Psport, &pin, &mut on_progress, &mut on_line).await;
-    let error = result.as_ref().err().map(runners::Error::text);
+    let error = match &result {
+        Ok(_) => package::select(this, root, head.commit.as_str(), true, cx).await.err(),
+        Err(err) => Some(err.text()),
+    };
     // Reloaded before `building` is cleared: dropping that task is dropping this one, so nothing after would run.
     reload(this, root, cx).await;
     let _ = this.update(cx, |this, cx| {
         let state = &mut this.branch;
         state.building = None;
         state.stage = None;
+        state.failed = result.is_err().then(|| head.clone());
         state.error = error;
         cx.notify();
+        let root = root.clone();
+        cx.spawn(async move |this, cx| package::prune(&this, &root, cx).await)
+            .detach();
     });
 }

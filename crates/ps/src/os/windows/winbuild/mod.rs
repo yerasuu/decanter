@@ -728,14 +728,52 @@ pub async fn built_commit(root: &Root, commit: &Commit) -> Option<Built> {
     })
 }
 
-/// `commit`'s record first, so a folder half removed never reads as built.
+/// The builds of commits other than `keep` with their logs, and the work folders no build holds.
+///
+/// decanter made all of them, and only the build in use ever runs, as a port's checkout on Linux
+/// holds its one build. `keep_log` keeps one more log, the failed build's the card links to. Only
+/// names decanter gives are touched (a full commit, with `.json` or `.log`, or a work folder's hex
+/// digits, with `.lock`), records before folders so a folder half removed never reads as built.
+/// Best effort, said in the log.
+pub async fn remove_others(root: &Root, keep: Option<&Commit>, keep_log: Option<&Commit>) {
+    let other = |stem: &str| Commit::try_new(stem).is_some_and(|commit| Some(&commit) != keep);
+    let builds = builds(root);
+    crate::files::remove_entries(&builds, "old Windows build record", |name| {
+        name.strip_suffix(".json").is_some_and(other)
+    })
+    .await;
+    crate::files::remove_entries(&builds, "old Windows build", other).await;
+    let base = work(root);
+    crate::files::remove_entries(&base, "old Windows build log", |name| {
+        name.strip_suffix(".log")
+            .and_then(Commit::try_new)
+            .is_some_and(|commit| Some(&commit) != keep && Some(&commit) != keep_log)
+    })
+    .await;
+    // A build running here or in another decanter holds its folder's lock, so its folder stays.
+    let idle = |prefix: &str| {
+        prefix.len() == WORK_HEX
+            && prefix.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+            && !std::fs::File::options()
+                .write(true)
+                .open(base.join(format!("{prefix}.lock")))
+                .is_ok_and(|lock| matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)))
+    };
+    crate::files::remove_entries(&base, "Windows build work folder", |name| {
+        name.strip_suffix(".lock").map_or_else(|| idle(name), idle)
+    })
+    .await;
+}
+
+/// `commit`'s record first, so a folder half removed never reads as built, then its log.
 ///
 /// # Errors
-/// When either can't be removed; a missing one is not an error.
+/// When any can't be removed; a missing one is not an error.
 pub async fn remove(root: &Root, commit: &Commit) -> io::Result<()> {
     for result in [
         tokio::fs::remove_file(record_path(root, commit)).await,
         tokio::fs::remove_dir_all(dir(root, commit)).await,
+        tokio::fs::remove_file(log_path(root, commit)).await,
     ] {
         match result {
             Ok(()) => {}
