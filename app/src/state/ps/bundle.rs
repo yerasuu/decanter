@@ -10,45 +10,41 @@ use decanter_ps::os::linux::bundle;
 use decanter_ps::os::linux::updater;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use gpui::{AsyncApp, WeakEntity};
 
-use super::Ps;
 use super::channel;
-use super::ports::{PortState, Stage, set_stage};
+use super::ports::{Host, Stage, set_stage};
 
 /// The bundle of the release the checkout is on, installed already or downloaded now, and
 /// pointed at its own loader for wherever the library is. `None` sends the port down the nix
 /// path: Testing, a port without bundles, a checkout on no release tag, a release without a
 /// bundle, or a download, check or extraction that failed.
-pub(super) async fn ready(this: &WeakEntity<Ps>, port: Port, root: &Root, cx: &mut AsyncApp) -> Option<Toolchain> {
-    if port.release_downloads().is_none() || channel::load(this, port, root, cx).await != Channel::Release {
+pub(super) async fn ready(host: &mut impl Host, port: Port, root: &Root) -> Option<Toolchain> {
+    if port.release_downloads().is_none() || channel::load(host, port, root).await != Channel::Release {
         return None;
     }
     let bbport = Bbport::new(root.clone());
     let tag = if bbport.is_built_with(&Toolchain::Bundle).await {
         bbport.bundle_tag().await
     } else {
-        install(this, port, root, &bbport, cx).await
+        install(host, port, root, &bbport).await
     };
     let Some(tag) = tag else {
         return None;
     };
     if let Err(err) = bundle::relocate(&bundle::dir(root, port, &tag)).await {
         tracing::warn!(port = port.name(), tag, %err, "port bundle can't run from here; using the nix path");
-        set_stage(this, port, Stage::Resolving, cx);
+        set_stage(host, port, Stage::Resolving);
         return None;
     }
-    let _ = this.update(cx, |this, cx| {
-        let state = this.ports.entry(port).or_insert_with(PortState::new);
+    host.port(port, |state| {
         state.toolchain = Some((root.clone(), Toolchain::Bundle));
         state.origin = Some(Origin::Bundle);
         state.fell_back = false;
-        cx.notify();
     });
     Some(Toolchain::Bundle)
 }
 
-async fn install(this: &WeakEntity<Ps>, port: Port, root: &Root, bbport: &Bbport, cx: &mut AsyncApp) -> Option<String> {
+async fn install(host: &mut impl Host, port: Port, root: &Root, bbport: &Bbport) -> Option<String> {
     let checkout = port.checkout(root);
     let Some(commit) = updater::upstream_commit(&checkout).await else {
         return None;
@@ -72,19 +68,12 @@ async fn install(this: &WeakEntity<Ps>, port: Port, root: &Root, bbport: &Bbport
             return None;
         }
     };
-    set_stage(this, port, Stage::DownloadingBundle(0, None), cx);
-    let progress = this.clone();
-    let mut async_cx = cx.clone();
-    let installed = bundle::install(root, port, &tag, &published, move |received, total| {
-        set_stage(
-            &progress,
-            port,
-            Stage::DownloadingBundle(received, total),
-            &mut async_cx,
-        );
+    set_stage(host, port, Stage::DownloadingBundle(0, None));
+    let installed = bundle::install(root, port, &tag, &published, |received, total| {
+        set_stage(host, port, Stage::DownloadingBundle(received, total));
     })
     .await;
-    set_stage(this, port, Stage::Resolving, cx);
+    set_stage(host, port, Stage::Resolving);
     if let Err(err) = installed {
         tracing::warn!(port = port.name(), tag, %err, "port bundle not installed; using the nix cache");
         return None;

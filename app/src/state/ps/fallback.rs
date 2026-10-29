@@ -13,11 +13,11 @@ use decanter_ps::os::linux::updater;
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
 use decanter_ps::process::JobKind;
-use gpui::{AppContext as _, AsyncApp, Context, WeakEntity};
+use gpui::Context;
 
 use super::Ps;
-use super::jobs::{self, JobKey};
-use super::ports::{self, PortError, PortState, Stage, set_stage};
+use super::jobs;
+use super::ports::{self, Host, PortError, Stage, set_stage};
 
 /// The port runs on `good` because `failed` didn't build, for the Ports view.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,9 +32,9 @@ fn short(commit: &str) -> String {
     commit.get(..9).unwrap_or(commit).to_owned()
 }
 
-pub(super) async fn load(root: &Root, port: Port, cx: &AsyncApp) -> Record {
+pub(super) async fn load(host: &impl Host, root: &Root, port: Port) -> Record {
     let root = root.clone();
-    cx.background_spawn(async move { Record::load(&root, port) }).await
+    host.blocking(move || Record::load(&root, port)).await
 }
 
 impl Ps {
@@ -50,14 +50,9 @@ impl Ps {
 /// After a build of `port` failed: back on the last good commit and built there, when the
 /// checkout has one, sits elsewhere, and holds nothing local. `Err` is what the port's stage
 /// then says.
-pub(super) async fn recover(
-    this: &WeakEntity<Ps>,
-    port: Port,
-    root: &Root,
-    cx: &mut AsyncApp,
-) -> Result<Toolchain, PortError> {
+pub(super) async fn recover(host: &mut impl Host, port: Port, root: &Root) -> Result<Toolchain, PortError> {
     let checkout = port.checkout(root);
-    let record = load(root, port, cx).await;
+    let record = load(host, root, port).await;
     let Some(good) = record.good else {
         tracing::info!(
             port = port.name(),
@@ -89,19 +84,10 @@ pub(super) async fn recover(
         );
         return Err(PortError::Build);
     }
-    let failed_log = this
-        .update(cx, |this, cx| {
-            this.jobs
-                .get(&JobKey::Port(port))
-                .and_then(|job| job.read(cx).log_file.as_deref())
-                .and_then(|path| path.file_name())
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .ok()
-        .flatten();
+    let failed_log = host.last_log(port);
     let for_record = (root.clone(), head.clone());
-    let recorded = cx
-        .background_spawn(async move { Record::failed(&for_record.0, port, &for_record.1, failed_log) })
+    let recorded = host
+        .blocking(move || Record::failed(&for_record.0, port, &for_record.1, failed_log))
         .await;
     if let Err(err) = recorded {
         // Falls back all the same, since an unrecorded failure only costs another try on the update's next round.
@@ -114,19 +100,17 @@ pub(super) async fn recover(
         "build failed; putting the checkout back on the last commit that built"
     );
 
-    set_stage(this, port, Stage::RollingBack, cx);
+    set_stage(host, port, Stage::RollingBack);
     let facts = jobs::port_facts(root, port, None).await;
-    let finished = jobs::run(
-        this,
-        root,
-        JobKey::Port(port),
-        JobKind::Rollback,
-        facts,
-        updater::rollback_command(&checkout, &good),
-        None,
-        cx,
-    )
-    .await;
+    let finished = host
+        .run(
+            root,
+            port,
+            JobKind::Rollback,
+            facts,
+            updater::rollback_command(&checkout, &good),
+        )
+        .await;
     if !finished.succeeded() {
         return Err(PortError::Rollback(short(&good)));
     }
@@ -134,10 +118,8 @@ pub(super) async fn recover(
         Ok(toolchain) => toolchain,
         Err(err) => return Err(PortError::Toolchain(err)),
     };
-    let _ = this.update(cx, |this, _| {
-        this.ports.entry(port).or_insert_with(PortState::new).toolchain = Some((root.clone(), toolchain.clone()));
-    });
-    match ports::build(this, port, root, toolchain, cx).await {
+    host.port(port, |state| state.toolchain = Some((root.clone(), toolchain.clone())));
+    match ports::build(host, port, root, toolchain).await {
         Ok(toolchain) => {
             tracing::info!(
                 port = port.name(),
@@ -156,26 +138,21 @@ pub(super) async fn recover(
 
 /// Once preparing or rebuilding `port` ended: when it `built`, records the commit it built at and
 /// shows whether that is a fallback; a port that didn't build runs on nothing.
-pub(super) async fn settle(this: &WeakEntity<Ps>, port: Port, root: &Root, built: bool, cx: &mut AsyncApp) {
-    let fallback = if built { built_at(port, root, cx).await } else { None };
-    let _ = this.update(cx, |this, cx| {
-        this.ports.entry(port).or_insert_with(PortState::new).fallback = fallback;
-        cx.notify();
-    });
+pub(super) async fn settle(host: &mut impl Host, port: Port, root: &Root, built: bool) {
+    let fallback = if built { built_at(host, port, root).await } else { None };
+    host.port(port, |state| state.fallback = fallback);
 }
 
-async fn built_at(port: Port, root: &Root, cx: &AsyncApp) -> Option<Fallback> {
+async fn built_at(host: &impl Host, port: Port, root: &Root) -> Option<Fallback> {
     let checkout = port.checkout(root);
     if let Some(commit) = updater::upstream_commit(&checkout).await {
         let for_record = root.clone();
-        let recorded = cx
-            .background_spawn(async move { Record::built(&for_record, port, &commit) })
-            .await;
+        let recorded = host.blocking(move || Record::built(&for_record, port, &commit)).await;
         if let Err(err) = recorded {
             tracing::warn!(port = port.name(), %err, "could not record the commit the port built at");
         }
     }
-    let record = load(root, port, cx).await;
+    let record = load(host, root, port).await;
     let head = failures::full_commit_of(&checkout).await;
     match (&record.good, &record.failed) {
         (Some(good), Some(failed)) if *good == head => Some(Fallback {

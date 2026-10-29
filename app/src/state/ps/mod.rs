@@ -41,6 +41,7 @@ pub use fsr::DllOutcome;
 pub use jobs::{JobKey, label as job_label, target_name as job_target};
 use package::PackageState;
 pub use play::failure_message;
+pub(crate) use ports::{Host as PortHost, move_checkout, update_and_prepare};
 pub use ports::{PortState, Stage};
 pub use vk_layer::unavailable_text as vk_layer_unavailable_text;
 

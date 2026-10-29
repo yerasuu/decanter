@@ -810,9 +810,10 @@ ps.run.errors.library: 'No se pudo leer la biblioteca: %{error}'
 ps.run.errors.no_game: 'No hay ningún juego con el ID %{title} en la sección de PS'
 ps.run.errors.not_playable: '%{title} no se puede jugar tal como está; la sección de PS dice por qué'
 ps.run.errors.needs_convert: '%{title} aún no se ha convertido; juégalo una vez desde la ventana de decanter'
-ps.run.errors.port_not_ready: '%{port} aún no está compilado; abre la sección de PS de decanter para que se prepare'
-ps.run.errors.no_psport: No hay ningún psport.exe con el que jugar; elige una carpeta de psport.exe en PS › Ajustes o instala un paquete de psport para Windows desde la ventana de decanter
+ps.run.errors.port_not_ready: '%{port} aún no está compilado; prepáralo con decanter ps prepare o abre la sección de PS de decanter'
+ps.run.errors.no_psport: No hay ningún psport.exe con el que jugar; consigue uno con decanter ps prepare, elige una carpeta de psport.exe en PS › Ajustes o instala un paquete de psport para Windows desde la ventana de decanter
 ps.run.errors.start: 'No se pudo iniciar el juego: %{error}'
+ps.prepare.errors.timeout: 'El port no estaba listo tras %{secs} s; se ha detenido la tarea en curso'
 ps.report.save: Guardar informe
 ps.report.close: Cerrar
 ps.report.building: Preparando el informe…

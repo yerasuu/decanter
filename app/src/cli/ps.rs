@@ -6,6 +6,7 @@ use anyhow::{Context, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use decanter_core::Db;
 use decanter_ps::failures::Log;
+use decanter_ps::port::Port;
 
 use crate::i18n::Text;
 use crate::report::send::{self, Deleted, Server, Submitted};
@@ -35,6 +36,36 @@ pub enum PsCmd {
         #[arg(long = "env", value_name = "NAME=VALUE", value_parser = super::ps_run::env_pair)]
         env: Vec<(String, String)>,
     },
+    /// Gets a port ready to run, as the PS section does: clones it, or moves its checkout on as the
+    /// section's update check does, on the channel chosen in its Ajustes, then runs its release bundle,
+    /// fetches its CI build or builds it here, back on the last commit that built if the build fails.
+    /// Where psport.exe runs directly, it is the folder picked in Ajustes, the build or version chosen, or
+    /// the newest Windows package, downloaded. Only the port's repository, its releases and its build's
+    /// caches are reached. The jobs' output goes to their logs in the library; a line per step, a line a
+    /// minute while a job runs and a summary are printed. Exits 0 when the port is ready, 1 when it failed
+    /// or timed out, and 2 when it could not start.
+    Prepare {
+        #[arg(long, value_enum, default_value = "psport")]
+        port: PortName,
+        /// Stops the preparation after this many seconds, killing the job it is running.
+        #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..=super::ps_run::MAX_TIMEOUT))]
+        timeout: Option<u64>,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum PortName {
+    Psport,
+    Anyps5,
+}
+
+impl PortName {
+    const fn port(self) -> Port {
+        match self {
+            Self::Psport => Port::Bbport,
+            Self::Anyps5 => Port::AnyPs5,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -118,6 +149,7 @@ pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<i32> {
     match cmd {
         PsCmd::Report(args) => report_cmd(db, args).await.map(|()| 0),
         PsCmd::Run { title, timeout, env } => Ok(super::ps_run::run(db, &title, timeout, env).await.code()),
+        PsCmd::Prepare { port, timeout } => Ok(super::ps_prepare::run(db, port.port(), timeout).await.code()),
     }
 }
 

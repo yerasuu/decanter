@@ -20,6 +20,7 @@ use decanter_core::Db;
 mod install;
 mod launch;
 mod ps;
+mod ps_prepare;
 mod ps_run;
 
 #[derive(Parser)]
@@ -118,11 +119,11 @@ pub enum Cmd {
 /// runs — installing a second one here would panic (`tracing` only ever
 /// accepts one global default).
 pub fn run(cmd: Cmd) -> ! {
-    // `ps run` tells a game that could not start from one that failed while running.
+    // `ps run` and `ps prepare` tell what could not start from what failed once started.
     let error_code = if matches!(
         cmd,
         Cmd::Ps {
-            cmd: ps::PsCmd::Run { .. }
+            cmd: ps::PsCmd::Run { .. } | ps::PsCmd::Prepare { .. }
         }
     ) {
         ps_run::NOT_STARTED
