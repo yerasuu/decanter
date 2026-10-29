@@ -147,25 +147,35 @@ pub fn keep_download(cx: &mut App) {
 }
 
 /// The confirmed cancel. The row stays as Cancelling until the download
-/// has stopped and its staging is gone; its own task then removes it.
+/// has stopped and its staging is gone; its own task then removes it, or,
+/// for a paused one nothing runs, the discard does.
 pub fn confirm_cancel(key: DownloadKey, cx: &mut App) {
-    let background = AppState::get(cx).background.clone();
-    background.update(cx, |background, cx| {
+    let state = AppState::get(cx).clone();
+    let was_paused = state.background.update(cx, |background, cx| {
         background.cancel_confirm = None;
+        let mut was_paused = false;
         if let Some(row) = background.installing.get_mut(&key) {
+            was_paused = matches!(row.status, InstallStatus::Paused { .. });
             row.status = InstallStatus::Cancelling {
                 bytes_downloaded: row.status.bytes_downloaded(),
             };
         }
         cx.notify();
+        was_paused
     });
     tracing::info!(
         account_id = key.account_id,
         product_id = key.product_id,
+        was_paused,
         "download cancel confirmed"
     );
-    cx.spawn(async move |_| decanter_gog::cancel(&key.account_id, &key.product_id).await)
-        .detach();
+    if was_paused {
+        cx.spawn(async move |cx| install::discard_paused(key, state, cx).await)
+            .detach();
+    } else {
+        cx.spawn(async move |_| decanter_gog::cancel(&key.account_id, &key.product_id).await)
+            .detach();
+    }
 }
 
 /// Drops a failed download's notice.

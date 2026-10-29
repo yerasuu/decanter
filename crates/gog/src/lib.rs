@@ -34,8 +34,9 @@ mod updates;
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
 pub use install::{
-    BrokenFile, BrokenReason, Cancelled, PauseReason, Paused, Progress, VerifyReport, cancel, install, pause, repair,
-    uninstall, uninstall_dlc, verify,
+    BrokenFile, BrokenReason, Cancelled, NothingToResume, PauseReason, Paused, Progress, UnfinishedDownload,
+    VerifyReport, cancel, discard, install, pause, repair, resume, unfinished_downloads, uninstall, uninstall_dlc,
+    verify,
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
 pub use mods::{GogMod, gog_mods};

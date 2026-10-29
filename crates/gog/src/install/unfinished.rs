@@ -1,0 +1,184 @@
+//! Downloads a run left unfinished — paused, stopped by the network or a
+//! full disk, or cut short by a crash — found from their journals in each
+//! library folder's `downloading/`, the only place they are recorded.
+
+use std::path::{Path, PathBuf};
+
+use decanter_core::Library;
+
+use super::Progress;
+use super::journal::{self, Kind, PauseReason, Phase};
+use super::staging::{DOWNLOADING, staging_in};
+
+/// A download whose journal says it hasn't finished.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct UnfinishedDownload {
+    pub account_id: String,
+    pub product_id: String,
+    /// The base game, for a DLC.
+    pub parent_id: Option<String>,
+    pub title: String,
+    /// A repair carries on when the next one plans the same files, not
+    /// through [`resume`].
+    pub is_repair: bool,
+    /// A pinned build (a rollback), which a resume keeps.
+    pub build_id: Option<String>,
+    /// The journal's last pause, or [`PauseReason::ClosedUnexpectedly`] when
+    /// it ends without one.
+    pub reason: PauseReason,
+    pub bytes_done: u64,
+    pub total_bytes: u64,
+    /// The library folder it downloads into.
+    pub root: PathBuf,
+    /// Another decanter process (the CLI, say) is running it right now.
+    pub in_use: bool,
+}
+
+/// Every unfinished download in `library`'s folders, for the app to list as
+/// paused when it starts. A staging folder without a journal (from before
+/// journals) isn't one: nothing says what it holds.
+pub async fn unfinished_downloads(library: &Library) -> Vec<UnfinishedDownload> {
+    let mut found = Vec::new();
+    for root in library.roots() {
+        for account in subfolders(&root.join(DOWNLOADING)).await {
+            for staging in subfolders(&account).await {
+                if let Some(download) = unfinished(&root, &staging).await {
+                    found.push(download);
+                }
+            }
+        }
+    }
+    tracing::info!(count = found.len(), "scanned for unfinished downloads");
+    found
+}
+
+async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
+    let Some(journal::Found { header, folded, in_use }) = journal::inspect(staging).await else {
+        return None;
+    };
+    let request = &header.request;
+    let expected_dir = match request.kind {
+        Kind::Install => request.product_id.clone(),
+        Kind::Repair => format!("{}-repair", request.product_id),
+    };
+    // Found by its folder, so a header naming another download was copied
+    // or edited by hand, and resuming it would write somewhere else.
+    if staging_in(root, &request.account_id, &expected_dir).ok().as_deref() != Some(staging) {
+        tracing::warn!(staging = %staging.display(), "download journal names another download, skipping it");
+        return None;
+    }
+    let (reason, bytes_done) = match &folded {
+        // The library already records it; only the folder was left.
+        Some(folded) if folded.phase == Phase::Recorded => return None,
+        Some(folded) if folded.phase == Phase::Moving => (PauseReason::ClosedUnexpectedly, header.total_bytes),
+        Some(folded) => (
+            folded.paused.unwrap_or(PauseReason::ClosedUnexpectedly),
+            folded.bytes_done(&header),
+        ),
+        None => (PauseReason::ClosedUnexpectedly, 0),
+    };
+    Some(UnfinishedDownload {
+        account_id: request.account_id.clone(),
+        product_id: request.product_id.clone(),
+        parent_id: request.parent_id.clone(),
+        title: request.title.clone(),
+        is_repair: request.kind == Kind::Repair,
+        build_id: request.build_id.clone(),
+        reason,
+        bytes_done,
+        total_bytes: header.total_bytes,
+        root: root.to_path_buf(),
+        in_use,
+    })
+}
+
+async fn subfolders(dir: &Path) -> Vec<PathBuf> {
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(entries) => entries,
+        Err(err) => {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(dir = %dir.display(), error = %err, "couldn't list unfinished downloads");
+            }
+            return Vec::new();
+        }
+    };
+    let mut folders = Vec::new();
+    loop {
+        match entries.next_entry().await {
+            Ok(Some(entry)) => {
+                if entry.file_type().await.is_ok_and(|kind| kind.is_dir()) {
+                    folders.push(entry.path());
+                }
+            }
+            Ok(None) => break,
+            Err(err) => {
+                tracing::warn!(dir = %dir.display(), error = %err, "couldn't list unfinished downloads");
+                break;
+            }
+        }
+    }
+    folders
+}
+
+/// What [`resume`] fails with when no journal of the download is found.
+#[derive(Debug, thiserror::Error)]
+#[error("there is no unfinished download of it to resume")]
+#[non_exhaustive]
+pub struct NothingToResume;
+
+/// Carries on an unfinished download, in whichever library folder holds it.
+///
+/// It is planned again from the request its journal recorded, since chunk
+/// URLs expire, and carries on only while GOG still plans the same build.
+///
+/// # Errors
+/// [`NothingToResume`] when there is no journal of it; otherwise as
+/// [`super::install`].
+pub async fn resume(
+    library: &Library,
+    account_id: &str,
+    product_id: &str,
+    on_progress: impl FnMut(Progress) + Send + 'static,
+) -> anyhow::Result<()> {
+    for root in library.roots() {
+        let staging = crate::achv_try!(staging_in(&root, account_id, product_id));
+        let Some(found) = journal::inspect(&staging).await else {
+            continue;
+        };
+        let request = found.header.request;
+        tracing::info!(account_id, product_id, root = %root.display(), "resuming an unfinished download");
+        return super::install(
+            &library.clone().targeting(&root),
+            account_id,
+            product_id,
+            request.parent_id.as_deref(),
+            &request.title,
+            request.branch.as_deref(),
+            request.build_id.as_deref(),
+            on_progress,
+        )
+        .await;
+    }
+    Err(NothingToResume.into())
+}
+
+/// Deletes what `account_id`'s unfinished download of `product_id` (and of
+/// its repair) had fetched, in every library folder: the end of a confirmed
+/// cancel (#1133) of a download nothing is running.
+///
+/// # Errors
+/// When another decanter process runs it, or it can't be removed.
+pub async fn discard(library: &Library, account_id: &str, product_id: &str) -> anyhow::Result<()> {
+    for root in library.roots() {
+        for folder in [product_id.to_owned(), format!("{product_id}-repair")] {
+            let staging = crate::achv_try!(staging_in(&root, account_id, &folder));
+            if !tokio::fs::try_exists(&staging).await.unwrap_or(true) {
+                continue;
+            }
+            crate::achv_try!(journal::discard(&staging).await);
+            tracing::info!(account_id, product_id, staging = %staging.display(), "discarded an unfinished download");
+        }
+    }
+    Ok(())
+}

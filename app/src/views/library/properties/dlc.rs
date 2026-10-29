@@ -130,7 +130,7 @@ impl DlcTab {
                 this.busy = None;
                 match outcome {
                     Ended::Done(()) => this.reload(),
-                    Ended::Cancelled => {}
+                    Ended::Cancelled | Ended::Paused { .. } => {}
                     Ended::Failed(error) => this.error = Some(error),
                 }
                 cx.notify();

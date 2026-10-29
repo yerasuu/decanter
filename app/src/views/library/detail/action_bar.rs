@@ -125,7 +125,10 @@ impl DetailView {
             Some((key, download)) => {
                 let current_file = match &download.status {
                     InstallStatus::Installing { current_file, .. } => Some(current_file.clone()),
-                    InstallStatus::Queued | InstallStatus::Cancelling { .. } | InstallStatus::Failed(_) => None,
+                    InstallStatus::Queued
+                    | InstallStatus::Cancelling { .. }
+                    | InstallStatus::Paused { .. }
+                    | InstallStatus::Failed(_) => None,
                 };
                 let cancel = (!matches!(download.status, InstallStatus::Cancelling { .. }))
                     .then(|| cancel_action(0, &key, &download, confirming_cancel));

@@ -524,6 +524,23 @@ async fn clear(staging: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deletes the download in `staging`, which nothing in this process runs:
+/// the end of a confirmed cancel of a paused one.
+///
+/// # Errors
+/// [`LockError::Busy`] when another process runs it, or what stopped the removal.
+pub(super) async fn discard(staging: &Path) -> anyhow::Result<()> {
+    let lock = crate::achv_try!(decanter_runtime::journal::lock(staging));
+    crate::achv_try!(clear(staging).await);
+    drop(lock);
+    crate::achv_try!(
+        remove_dir(staging)
+            .await
+            .with_context(|| format!("removing {}", staging.display()))
+    );
+    Ok(())
+}
+
 async fn lock_waiting(staging: &Path) -> Result<StagingLock, LockError> {
     let deadline = Instant::now() + LOCK_WAIT;
     loop {
@@ -556,6 +573,32 @@ async fn read_header(staging: &Path) -> Result<Option<Header>, Discarded> {
         return Err(Discarded::Unreadable(format!("unsafe path {:?}", file.path)));
     }
     Ok(Some(header))
+}
+
+/// What a journal says without taking it, for listing downloads left unfinished.
+pub(super) struct Found {
+    pub(super) header: Header,
+    /// `None` when the log can't be read against the header: nothing of it would be kept.
+    pub(super) folded: Option<Folded>,
+    /// Another process owns it right now.
+    pub(super) in_use: bool,
+}
+
+pub(super) async fn inspect(staging: &Path) -> Option<Found> {
+    let header = match read_header(staging).await {
+        Ok(Some(header)) => header,
+        Ok(None) => return None,
+        Err(reason) => {
+            tracing::warn!(staging = %staging.display(), %reason, "skipping an unreadable download journal");
+            return None;
+        }
+    };
+    let in_use = matches!(decanter_runtime::journal::lock(staging), Err(LockError::Busy(_)));
+    let folded = decanter_runtime::journal::read_records(&staging.join(LOG))
+        .await
+        .ok()
+        .and_then(|lines| fold(&header, &lines));
+    Some(Found { header, folded, in_use })
 }
 
 /// What a resume needs to know of each file, owned so the check runs off the async workers.

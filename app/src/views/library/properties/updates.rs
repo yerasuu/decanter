@@ -116,7 +116,7 @@ impl UpdatesTab {
                         tracing::info!(account_id, product_id, "update install finished");
                         this.result = Some(None);
                     }
-                    Ended::Cancelled => {}
+                    Ended::Cancelled | Ended::Paused { .. } => {}
                     Ended::Failed(error) => this.error = Some(error),
                 }
                 this.updating = false;

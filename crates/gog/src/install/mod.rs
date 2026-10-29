@@ -10,6 +10,7 @@
 //! Split by concern: [`plan`] resolves what to download, [`download`]
 //! fetches it, [`staging`] is where it lands before the library,
 //! [`journal`] records how far it got so it can stop and carry on,
+//! [`unfinished`] finds the downloads that did stop,
 //! [`tracking`] is the process-wide bookkeeping [`cancel`] and [`pause`] need,
 //! [`program`] guesses which file launches the game once it's all in
 //! place, and [`rate`] smooths the transfer rate reported back.
@@ -26,11 +27,13 @@ mod program;
 mod rate;
 mod staging;
 mod tracking;
+mod unfinished;
 mod verify;
 
 pub use download::Cancelled;
 pub use journal::{PauseReason, Paused};
 pub use tracking::{cancel, pause};
+pub use unfinished::{NothingToResume, UnfinishedDownload, discard, resume, unfinished_downloads};
 pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 
 use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_all};

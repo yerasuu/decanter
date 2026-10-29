@@ -45,11 +45,16 @@ pub struct DownloadJob {
     pub kind: DownloadKind,
 }
 
-/// How a tracked download ended. A cancel is the user's own doing, so the
-/// caller shows nothing for it.
+/// How a tracked download ended. A cancel or a pause is the user's own
+/// doing or shown on its row, so the caller shows nothing for it.
 pub enum Ended<T> {
     Done(T),
     Cancelled,
+    /// Stopped with its data kept; the row says why.
+    Paused {
+        reason: decanter_gog::PauseReason,
+        bytes_done: u64,
+    },
     Failed(Text),
 }
 
@@ -136,28 +141,7 @@ pub async fn track<T>(
             .get(&key)
             .is_some_and(|row| row.run == run && matches!(row.status, InstallStatus::Cancelling { .. }))
     });
-    let ended = match outcome {
-        Ok(value) => Ended::Done(value),
-        // Whatever stopped a download the user had asked to stop, its
-        // staging is gone like a cancel's, so it reads as one.
-        Err(err) if was_cancelled || err.is::<decanter_gog::Cancelled>() => {
-            tracing::info!(
-                account_id = key.account_id,
-                product_id = key.product_id,
-                "download cancelled"
-            );
-            Ended::Cancelled
-        }
-        Err(err) => {
-            tracing::error!(
-                account_id = key.account_id,
-                product_id = key.product_id,
-                error = %err,
-                "download failed"
-            );
-            Ended::Failed(Text::verbatim(&err))
-        }
-    };
+    let ended = ended(&key, outcome, was_cancelled);
     state.background.update(cx, |background, cx| {
         if background.installing.get(&key).is_none_or(|row| row.run != run) {
             return;
@@ -166,6 +150,20 @@ pub async fn track<T>(
             Ended::Failed(text) => {
                 if let Some(row) = background.installing.get_mut(&key) {
                     row.status = InstallStatus::Failed(text.clone());
+                }
+            }
+            Ended::Paused { reason, bytes_done } => {
+                if let Some(row) = background.installing.get_mut(&key) {
+                    let total_bytes = if let InstallStatus::Installing { total_bytes, .. } = row.status {
+                        total_bytes
+                    } else {
+                        None
+                    };
+                    row.status = InstallStatus::Paused {
+                        reason: *reason,
+                        bytes_done: *bytes_done,
+                        total_bytes,
+                    };
                 }
             }
             Ended::Done(_) | Ended::Cancelled => {
@@ -178,6 +176,43 @@ pub async fn track<T>(
         cx.notify();
     });
     ended
+}
+
+fn ended<T>(key: &DownloadKey, outcome: anyhow::Result<T>, was_cancelled: bool) -> Ended<T> {
+    let err = match outcome {
+        Ok(value) => return Ended::Done(value),
+        Err(err) => err,
+    };
+    // Whatever stopped a download the user had asked to stop, its staging
+    // is gone like a cancel's, so it reads as one.
+    if was_cancelled || err.is::<decanter_gog::Cancelled>() {
+        tracing::info!(
+            account_id = key.account_id,
+            product_id = key.product_id,
+            "download cancelled"
+        );
+        return Ended::Cancelled;
+    }
+    if let Some(stop) = err.downcast_ref::<decanter_gog::Paused>() {
+        tracing::info!(
+            account_id = key.account_id,
+            product_id = key.product_id,
+            reason = ?stop.reason,
+            bytes_done = stop.bytes_done,
+            "download paused"
+        );
+        return Ended::Paused {
+            reason: stop.reason,
+            bytes_done: stop.bytes_done,
+        };
+    }
+    tracing::error!(
+        account_id = key.account_id,
+        product_id = key.product_id,
+        error = %err,
+        "download failed"
+    );
+    Ended::Failed(Text::verbatim(&err))
 }
 
 fn report(state: &AppState, key: &DownloadKey, run: u64, progress: decanter_gog::Progress, cx: &mut AsyncApp) {
@@ -195,6 +230,95 @@ fn report(state: &AppState, key: &DownloadKey, run: u64, progress: decanter_gog:
             };
             cx.notify();
         }
+    });
+}
+
+/// The confirmed cancel of a paused download: nothing is running it to
+/// delete its data and drop its row, so this does.
+pub async fn discard_paused(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
+    let outcome = match crate::core::library_for_account(&key.account_id) {
+        Ok(library) => decanter_gog::discard(&library, &key.account_id, &key.product_id)
+            .await
+            .inspect_err(|err| {
+                tracing::error!(
+                    account_id = key.account_id,
+                    product_id = key.product_id,
+                    error = %err,
+                    "deleting a paused download failed"
+                );
+            })
+            .map_err(Text::verbatim),
+        Err(err) => Err(Text::new("library.install.library_error").text("error", err.localized())),
+    };
+    state.background.update(cx, |background, cx| {
+        match outcome {
+            Ok(()) => {
+                background.installing.remove(&key);
+            }
+            Err(text) => {
+                if let Some(row) = background.installing.get_mut(&key) {
+                    row.status = InstallStatus::Failed(text);
+                }
+            }
+        }
+        cx.notify();
+    });
+}
+
+/// Lists the downloads a previous run left unfinished as paused rows, so
+/// what they keep on disk is visible and can be cancelled; installing the
+/// game again carries on from them.
+pub async fn list_unfinished(profile_id: String, state: AppState, cx: &mut AsyncApp) {
+    let library = match crate::core::library_for_profile(&profile_id) {
+        Ok(library) => library,
+        Err(err) => {
+            tracing::warn!(profile_id, %err, "could not resolve the library to look for unfinished downloads");
+            return;
+        }
+    };
+    let unfinished = decanter_gog::unfinished_downloads(&library).await;
+    state.background.update(cx, |background, cx| {
+        for download in unfinished {
+            // Another decanter process (the CLI) is running it; this one
+            // has nothing to show for it.
+            if download.in_use {
+                tracing::info!(
+                    account_id = download.account_id,
+                    product_id = download.product_id,
+                    "unfinished download is running in another process"
+                );
+                continue;
+            }
+            let kind = if download.is_repair {
+                DownloadKind::Repair
+            } else if download.parent_id.is_some() {
+                DownloadKind::Dlc
+            } else if library
+                .read_manifest(
+                    &download.account_id,
+                    decanter_core::Storefront::Gog,
+                    &download.product_id,
+                )
+                .is_none()
+            {
+                DownloadKind::Install
+            } else if download.build_id.is_some() {
+                DownloadKind::Rollback
+            } else {
+                DownloadKind::Update
+            };
+            let mut row = queued(download.title, kind);
+            row.status = InstallStatus::Paused {
+                reason: download.reason,
+                bytes_done: download.bytes_done,
+                total_bytes: Some(download.total_bytes),
+            };
+            background
+                .installing
+                .entry(DownloadKey::new(&download.account_id, &download.product_id))
+                .or_insert(row);
+        }
+        cx.notify();
     });
 }
 
@@ -414,7 +538,7 @@ async fn remove_steam_shortcut_for(account_id: &str, product_id: &str) {
     }
 }
 
-// Nothing to clean up here any more: a failed install never reaches the
-// library. Files land in a staging directory outside it and only move
-// across once every byte has arrived, and `decanter-gog` deletes that
-// staging directory on any failure or confirmed cancel.
+// Nothing to clean up here: a failed install never reaches the library.
+// Files land in a staging directory outside it and only move across once
+// every byte has arrived. `decanter-gog` keeps that directory, with its
+// journal, until the download finishes or a confirmed cancel deletes it.

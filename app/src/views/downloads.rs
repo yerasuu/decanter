@@ -73,7 +73,32 @@ pub fn progress_lines(key: &DownloadKey, status: &InstallStatus) -> Vec<gpui::An
             progress_bar(bar_id, None, 4.).into_any_element(),
             label(t!("downloads.cancelling").into_owned()),
         ],
+        InstallStatus::Paused {
+            reason,
+            bytes_done,
+            total_bytes,
+        } => {
+            let done = format::bytes(*bytes_done);
+            let progress = total_bytes.map_or_else(
+                || t!("downloads.paused_unsized", done = done.as_str()),
+                |total| t!("downloads.paused", done = done.as_str(), total = format::bytes(total)),
+            );
+            vec![
+                progress_bar(bar_id, status.fraction(), 4.).into_any_element(),
+                label(format!("{progress} · {}", pause_reason(*reason))),
+            ]
+        }
         InstallStatus::Failed(err) => vec![theme::error(err.clone()).into_any_element()],
+    }
+}
+
+fn pause_reason(reason: decanter_gog::PauseReason) -> std::borrow::Cow<'static, str> {
+    match reason {
+        decanter_gog::PauseReason::User => t!("downloads.paused_reason.user"),
+        decanter_gog::PauseReason::Network => t!("downloads.paused_reason.network"),
+        decanter_gog::PauseReason::DiskFull => t!("downloads.paused_reason.disk_full"),
+        decanter_gog::PauseReason::LibraryUnavailable => t!("downloads.paused_reason.library_unavailable"),
+        decanter_gog::PauseReason::ClosedUnexpectedly => t!("downloads.paused_reason.closed_unexpectedly"),
     }
 }
 
@@ -204,12 +229,9 @@ impl Render for DownloadsView {
                     )
                 }
                 InstallStatus::Cancelling { .. } => None,
-                InstallStatus::Queued | InstallStatus::Installing { .. } => Some(cancel_action(
-                    index,
-                    key,
-                    download,
-                    background.cancel_confirm.as_ref() == Some(key),
-                )),
+                InstallStatus::Queued | InstallStatus::Installing { .. } | InstallStatus::Paused { .. } => Some(
+                    cancel_action(index, key, download, background.cancel_confirm.as_ref() == Some(key)),
+                ),
             };
             theme::list_row(("download-row", index), index + 1 == count)
                 .items_start()

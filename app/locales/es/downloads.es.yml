@@ -12,3 +12,10 @@ downloads.kind.update: Actualización
 downloads.kind.branch_switch: Cambio de rama
 downloads.kind.rollback: Cambio de versión
 downloads.kind.repair: Reparación
+downloads.paused: En pausa · %{done} de %{total}
+downloads.paused_unsized: En pausa · %{done}
+downloads.paused_reason.user: La pausaste tú
+downloads.paused_reason.network: Sin conexión con GOG
+downloads.paused_reason.closed_unexpectedly: Decanter se cerró de forma inesperada
+downloads.paused_reason.disk_full: Disco lleno
+downloads.paused_reason.library_unavailable: La carpeta de la biblioteca no está disponible

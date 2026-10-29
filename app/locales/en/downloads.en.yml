@@ -12,3 +12,10 @@ downloads.kind.update: Update
 downloads.kind.branch_switch: Branch switch
 downloads.kind.rollback: Version change
 downloads.kind.repair: Repair
+downloads.paused: Paused · %{done} of %{total}
+downloads.paused_unsized: Paused · %{done}
+downloads.paused_reason.user: You paused it
+downloads.paused_reason.network: No connection to GOG
+downloads.paused_reason.closed_unexpectedly: Decanter closed unexpectedly
+downloads.paused_reason.disk_full: Disk full
+downloads.paused_reason.library_unavailable: The library folder is unavailable

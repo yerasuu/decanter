@@ -102,11 +102,20 @@ impl AppState {
         let session = cx.new(|_| Session::load());
         let background = cx.new(|_| Background::default());
         let library = cx.new(|cx| GogLibrary::new(&session, cx));
-        cx.set_global(Self {
+        let profile_id = session.read(cx).active_profile.clone();
+        let state = Self {
             session,
             background,
             library,
-        });
+        };
+        if let Some(profile_id) = profile_id {
+            let state = state.clone();
+            cx.spawn(async move |cx| {
+                crate::views::library::install::list_unfinished(profile_id, state, cx).await;
+            })
+            .detach();
+        }
+        cx.set_global(state);
     }
 
     pub fn get(cx: &App) -> &Self {

@@ -129,7 +129,7 @@ impl LocalFilesTab {
             };
             match install::track(&state, job, progress, repair, cx).await {
                 Ended::Done(()) => tracing::info!(account_id, product_id, "file repair finished"),
-                Ended::Cancelled => {
+                Ended::Cancelled | Ended::Paused { .. } => {
                     let _ = this.update(cx, |this, cx| {
                         this.repairing = false;
                         cx.notify();

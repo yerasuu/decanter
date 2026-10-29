@@ -74,6 +74,13 @@ pub enum InstallStatus {
     Cancelling {
         bytes_downloaded: u64,
     },
+    /// Stopped with its data kept in the library's `downloading/`; a later
+    /// install of it carries on from `bytes_done`.
+    Paused {
+        reason: decanter_gog::PauseReason,
+        bytes_done: u64,
+        total_bytes: Option<u64>,
+    },
     Failed(Text),
 }
 
@@ -85,6 +92,11 @@ impl InstallStatus {
                 bytes_downloaded,
                 total_bytes: Some(total),
                 ..
+            }
+            | InstallStatus::Paused {
+                bytes_done: bytes_downloaded,
+                total_bytes: Some(total),
+                ..
             } if *total > 0 => Some((*bytes_downloaded as f64 / *total as f64).clamp(0.0, 1.0)),
             _ => None,
         }
@@ -93,17 +105,21 @@ impl InstallStatus {
     /// What a cancel would delete, as far as the progress reported knows.
     pub const fn bytes_downloaded(&self) -> u64 {
         match self {
-            InstallStatus::Installing { bytes_downloaded, .. } | InstallStatus::Cancelling { bytes_downloaded } => {
-                *bytes_downloaded
-            }
+            InstallStatus::Installing { bytes_downloaded, .. }
+            | InstallStatus::Cancelling { bytes_downloaded }
+            | InstallStatus::Paused {
+                bytes_done: bytes_downloaded,
+                ..
+            } => *bytes_downloaded,
             InstallStatus::Queued | InstallStatus::Failed(_) => 0,
         }
     }
 
-    /// Queued, downloading or stopping: anything but a failure, which has
-    /// already settled back to what was there before.
+    /// Queued, downloading or stopping. A failure has settled back to what
+    /// was there before, and a paused download moves no bytes, so another
+    /// install of it can start.
     pub const fn is_live(&self) -> bool {
-        !matches!(self, InstallStatus::Failed(_))
+        !matches!(self, InstallStatus::Failed(_) | InstallStatus::Paused { .. })
     }
 }
 

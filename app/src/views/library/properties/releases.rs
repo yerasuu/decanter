@@ -111,7 +111,7 @@ impl BetasTab {
                         tracing::info!(account_id, product_id, branch = branch_name, "branch switch finished");
                         this.load(cx);
                     }
-                    Ended::Cancelled => {}
+                    Ended::Cancelled | Ended::Paused { .. } => {}
                     Ended::Failed(error) => this.error = Some(error),
                 }
                 this.installed = crate::core::installed_game(account_id, product_id);
@@ -269,7 +269,7 @@ impl VersionsTab {
                         tracing::info!(account_id, product_id, target_build_id, "build rollback finished");
                         this.load(cx);
                     }
-                    Ended::Cancelled => {}
+                    Ended::Cancelled | Ended::Paused { .. } => {}
                     Ended::Failed(error) => this.error = Some(error),
                 }
                 this.installed = crate::core::installed_game(account_id, product_id);
