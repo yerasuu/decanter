@@ -12,8 +12,9 @@ use rust_i18n::t;
 
 use crate::external::transfer::Progress;
 use crate::i18n::Text;
-use crate::state::{AppState, Ps};
+use crate::state::{AppState, Download, DownloadKey, Ps};
 use crate::theme;
+use crate::views::downloads;
 use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, stat_card, tooltip};
 
@@ -34,6 +35,9 @@ struct Folder {
     cache: PathBuf,
     cache_custom: bool,
     cache_size: Option<u64>,
+    /// What its `downloading/` holds: downloads left unfinished, and
+    /// whatever is downloading right now.
+    unfinished_size: u64,
 }
 
 struct Dump {
@@ -104,6 +108,16 @@ impl Folder {
                 .inspect_err(|err| tracing::warn!(dir = %cache.display(), %err, "could not measure the cache"))
                 .unwrap_or(0)
         });
+        let downloading = decanter_gog::downloading_dir(&root);
+        let unfinished_size = if present && downloading.is_dir() {
+            decanter_core::directory_size(&downloading)
+                .inspect_err(
+                    |err| tracing::warn!(dir = %downloading.display(), %err, "could not measure unfinished downloads"),
+                )
+                .unwrap_or(0)
+        } else {
+            0
+        };
         Self {
             root,
             primary,
@@ -115,6 +129,7 @@ impl Folder {
             cache,
             cache_custom,
             cache_size,
+            unfinished_size,
         }
     }
 }
@@ -179,8 +194,9 @@ pub struct StorageView {
 
 impl StorageView {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let session = AppState::get(cx).session.clone();
-        cx.observe(&session, |this, _, cx| this.rescan(cx)).detach();
+        let state = AppState::get(cx).clone();
+        cx.observe(&state.session, |this, _, cx| this.rescan(cx)).detach();
+        cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             folders: None,
             error: None,
@@ -350,6 +366,73 @@ impl StorageView {
                     b.on_click(cx.listener(move |_, _, _, cx| Self::change_cache(pick_root.clone(), true, cx)))
                 }),
             )
+    }
+
+    /// Descargas sin terminar: what the folder's `downloading/` holds, and
+    /// the downloads in it with what can be done with each — the same
+    /// buttons as in Descargas, the deleting one behind the same question.
+    fn unfinished_rows(index: usize, folder: &Folder, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        let background = AppState::get(cx).background.read(cx);
+        let mut rows: Vec<(&DownloadKey, &Download)> = background
+            .installing
+            .iter()
+            .filter(|(_, row)| row.root.as_deref() == Some(folder.root.as_path()))
+            .collect();
+        if rows.is_empty() && folder.unfinished_size == 0 {
+            return None;
+        }
+        rows.sort_by(|left, right| (&left.1.title, left.0).cmp(&(&right.1.title, right.0)));
+        let listed = rows.into_iter().enumerate().map(|(row, (key, download))| {
+            let id = index * 1_000 + row;
+            let confirming = background.cancel_confirm.as_ref() == Some(key);
+            div()
+                .flex()
+                .items_start()
+                .gap_4()
+                .pt_2()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(download.title.clone())
+                        .children(downloads::progress_lines(key, &download.status)),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_none()
+                        .gap_2()
+                        .children(downloads::download_actions(id, key, download, confirming)),
+                )
+        });
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .px(px(18.))
+                .py(px(10.))
+                .border_b_1()
+                .border_color(rgb(theme::LINE))
+                .child(
+                    div()
+                        .flex()
+                        .gap_4()
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(t!("storage.unfinished.title")),
+                        )
+                        .child(
+                            div()
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(crate::format::bytes(folder.unfinished_size)),
+                        ),
+                )
+                .children(listed),
+        )
     }
 
     fn remove_folder(&mut self, root: &Path, cx: &mut Context<Self>) {
@@ -671,6 +754,7 @@ impl StorageView {
                     }),
             )
             .child(Self::cache_row(index, folder, cx))
+            .children(Self::unfinished_rows(index, folder, cx))
             .children(folder.games.iter().enumerate().map(|(row, game)| {
                 let id = index * 10_000 + row;
                 theme::list_row(("storage-row", id), row + 1 == count)

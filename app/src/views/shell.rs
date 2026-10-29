@@ -486,9 +486,10 @@ impl Shell {
                     })
                 }
                 InstallStatus::Cancelling { .. } => item.child(t!("downloads.cancelling")),
-                InstallStatus::Queued | InstallStatus::Paused { .. } | InstallStatus::Failed(_) => {
-                    item.child(t!("common.queued"))
-                }
+                InstallStatus::Queued
+                | InstallStatus::Paused { .. }
+                | InstallStatus::Elsewhere { .. }
+                | InstallStatus::Failed(_) => item.child(t!("common.queued")),
             }
         });
         Some(

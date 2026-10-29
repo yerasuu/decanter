@@ -32,6 +32,7 @@ storage.legacy.confirm: Remove? This can't be undone
 storage.errors.legacy_busy: 'Another Decanter or a game that may be using them is running: close them first.'
 storage.errors.legacy: 'removing the old data: %{error}'
 storage.cache.title: Cache
+storage.unfinished.title: Unfinished downloads
 storage.cache.pick_title: Choose where this folder keeps its cache
 storage.cache.empty: empty
 storage.cache.default: Inside the folder · %{size}

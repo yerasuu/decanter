@@ -7,6 +7,14 @@ downloads.cancel_confirm: Cancel the download of %{title}? The %{size} already d
 downloads.cancel_confirm_empty: Cancel the download of %{title}?
 downloads.cancel_delete: Cancel and delete
 downloads.keep: Keep downloading
+downloads.pause: Pause
+downloads.resume: Resume
+downloads.pause_all: Pause all
+downloads.resume_all: Resume all
+downloads.delete: Delete
+downloads.stale: 'Download paused for %{days} days · %{size}'
+downloads.elsewhere: 'Running in another Decanter process · %{done} of %{total}'
+downloads.repair_resume: Repair again from Local files and it carries on where it stopped
 downloads.kind.dlc: DLC
 downloads.kind.update: Update
 downloads.kind.branch_switch: Branch switch
@@ -15,7 +23,8 @@ downloads.kind.repair: Repair
 downloads.paused: Paused · %{done} of %{total}
 downloads.paused_unsized: Paused · %{done}
 downloads.paused_reason.user: You paused it
-downloads.paused_reason.network: No connection to GOG
+downloads.paused_reason.network: No connection; it resumes on its own when the network is back
+downloads.paused_reason.app_closed: Decanter was closed
 downloads.paused_reason.closed_unexpectedly: Decanter closed unexpectedly
 downloads.paused_reason.disk_full: Disk full
 downloads.paused_reason.library_unavailable: The library folder is unavailable

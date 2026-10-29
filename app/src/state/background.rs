@@ -3,6 +3,8 @@
 //! the button that started the job, so the job outlives that view.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::time::SystemTime;
 
 use decanter_ps::process::Job;
 use gpui::{Context, Entity};
@@ -55,6 +57,9 @@ pub struct Download {
     /// same key started (which stops it) leaves the newer one's row alone.
     pub run: u64,
     pub status: InstallStatus,
+    /// The library folder it downloads into, once known: Almacenamiento
+    /// lists it there, and an unplugged one coming back resumes it.
+    pub root: Option<PathBuf>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -80,6 +85,14 @@ pub enum InstallStatus {
         reason: decanter_gog::PauseReason,
         bytes_done: u64,
         total_bytes: Option<u64>,
+        /// When it stopped, for the notice on downloads left paused for long.
+        since: Option<SystemTime>,
+    },
+    /// Another decanter process (the CLI) holds its journal and runs it;
+    /// this one can only show how far it had got.
+    Elsewhere {
+        bytes_done: u64,
+        total_bytes: u64,
     },
     Failed(Text),
 }
@@ -98,6 +111,10 @@ impl InstallStatus {
                 total_bytes: Some(total),
                 ..
             } if *total > 0 => Some((*bytes_downloaded as f64 / *total as f64).clamp(0.0, 1.0)),
+            InstallStatus::Elsewhere {
+                bytes_done,
+                total_bytes,
+            } if *total_bytes > 0 => Some((*bytes_done as f64 / *total_bytes as f64).clamp(0.0, 1.0)),
             _ => None,
         }
     }
@@ -110,6 +127,10 @@ impl InstallStatus {
             | InstallStatus::Paused {
                 bytes_done: bytes_downloaded,
                 ..
+            }
+            | InstallStatus::Elsewhere {
+                bytes_done: bytes_downloaded,
+                ..
             } => *bytes_downloaded,
             InstallStatus::Queued | InstallStatus::Failed(_) => 0,
         }
@@ -117,9 +138,12 @@ impl InstallStatus {
 
     /// Queued, downloading or stopping. A failure has settled back to what
     /// was there before, and a paused download moves no bytes, so another
-    /// install of it can start.
+    /// install of it can start; nor does this process run one elsewhere.
     pub const fn is_live(&self) -> bool {
-        !matches!(self, InstallStatus::Failed(_) | InstallStatus::Paused { .. })
+        !matches!(
+            self,
+            InstallStatus::Failed(_) | InstallStatus::Paused { .. } | InstallStatus::Elsewhere { .. }
+        )
     }
 }
 

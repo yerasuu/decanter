@@ -534,6 +534,7 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
         return;
     }
     stop_everything().await;
+    decanter_gog::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT).await;
 
     // Not `std::process::exit` -- that tears the process down while other
     // tokio worker threads (a still-in-flight GOG library fetch, say) may

@@ -1,7 +1,9 @@
 //! Every GOG download in flight, in one place — the same `installing` map
 //! the per-game action bar reads, listed instead of scattered across game
-//! pages and properties tabs so a download can be watched or cancelled
-//! without hunting for whatever started it.
+//! pages and properties tabs so a download can be watched, paused, resumed
+//! or cancelled without hunting for whatever started it.
+
+use std::time::{Duration, SystemTime};
 
 use gpui::{App, Context, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
@@ -11,6 +13,19 @@ use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus}
 use crate::theme;
 use crate::views::library::actions;
 use crate::widgets::{ButtonKind, button, progress_bar};
+
+/// A download paused this long gets a notice offering to resume or delete
+/// it (owner's decision, #1281); nothing deletes it on its own.
+const STALE_AFTER: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+
+/// Whole days `status` has been paused, once that is [`STALE_AFTER`] or more.
+pub fn stale_days(status: &InstallStatus) -> Option<u64> {
+    let InstallStatus::Paused { since: Some(since), .. } = status else {
+        return None;
+    };
+    let paused = SystemTime::now().duration_since(*since).ok()?;
+    (paused >= STALE_AFTER).then_some(paused.as_secs() / (24 * 60 * 60))
+}
 
 pub struct DownloadsView;
 
@@ -77,17 +92,38 @@ pub fn progress_lines(key: &DownloadKey, status: &InstallStatus) -> Vec<gpui::An
             reason,
             bytes_done,
             total_bytes,
+            ..
         } => {
             let done = format::bytes(*bytes_done);
             let progress = total_bytes.map_or_else(
                 || t!("downloads.paused_unsized", done = done.as_str()),
                 |total| t!("downloads.paused", done = done.as_str(), total = format::bytes(total)),
             );
-            vec![
+            let mut lines = vec![
                 progress_bar(bar_id, status.fraction(), 4.).into_any_element(),
                 label(format!("{progress} · {}", pause_reason(*reason))),
-            ]
+            ];
+            if let Some(days) = stale_days(status) {
+                lines.push(label(
+                    t!("downloads.stale", days = days, size = done.as_str()).into_owned(),
+                ));
+            }
+            lines
         }
+        InstallStatus::Elsewhere {
+            bytes_done,
+            total_bytes,
+        } => vec![
+            progress_bar(bar_id, status.fraction(), 4.).into_any_element(),
+            label(
+                t!(
+                    "downloads.elsewhere",
+                    done = format::bytes(*bytes_done),
+                    total = format::bytes(*total_bytes)
+                )
+                .into_owned(),
+            ),
+        ],
         InstallStatus::Failed(err) => vec![theme::error(err.clone()).into_any_element()],
     }
 }
@@ -98,6 +134,7 @@ fn pause_reason(reason: decanter_gog::PauseReason) -> std::borrow::Cow<'static, 
         decanter_gog::PauseReason::Network => t!("downloads.paused_reason.network"),
         decanter_gog::PauseReason::DiskFull => t!("downloads.paused_reason.disk_full"),
         decanter_gog::PauseReason::LibraryUnavailable => t!("downloads.paused_reason.library_unavailable"),
+        decanter_gog::PauseReason::AppClosed => t!("downloads.paused_reason.app_closed"),
         decanter_gog::PauseReason::ClosedUnexpectedly => t!("downloads.paused_reason.closed_unexpectedly"),
     }
 }
@@ -107,7 +144,13 @@ fn pause_reason(reason: decanter_gog::PauseReason) -> std::borrow::Cow<'static, 
 pub fn cancel_action(index: usize, key: &DownloadKey, download: &Download, confirming: bool) -> gpui::AnyElement {
     if !confirming {
         let key = key.clone();
-        return button(("cancel", index), ButtonKind::Icon, t!("common.cancel"), false)
+        // Long paused, what is left to do with it is keep it or delete it.
+        let label = if stale_days(&download.status).is_some() {
+            t!("downloads.delete")
+        } else {
+            t!("common.cancel")
+        };
+        return button(("cancel", index), ButtonKind::Icon, label, false)
             .on_click(move |_, _, cx| actions::ask_cancel(key.clone(), cx))
             .into_any_element();
     }
@@ -155,6 +198,84 @@ pub fn cancel_action(index: usize, key: &DownloadKey, download: &Download, confi
         .into_any_element()
 }
 
+/// What a download's row and its game's page offer: Pausar on one queued
+/// or running, Reanudar on one paused, and Cancelar on either; while a
+/// cancel waits for its answer, only that question. Nothing on one already
+/// stopping, failed, or run by another process.
+pub fn download_actions(
+    index: usize,
+    key: &DownloadKey,
+    download: &Download,
+    confirming: bool,
+) -> Vec<gpui::AnyElement> {
+    if matches!(
+        download.status,
+        InstallStatus::Cancelling { .. } | InstallStatus::Elsewhere { .. } | InstallStatus::Failed(_)
+    ) {
+        return Vec::new();
+    }
+    let cancel = cancel_action(index, key, download, confirming);
+    if confirming {
+        return vec![cancel];
+    }
+    let toggle = match download.status {
+        InstallStatus::Queued | InstallStatus::Installing { .. } => {
+            let key = key.clone();
+            Some(
+                button(("pause", index), ButtonKind::Secondary, t!("downloads.pause"), false)
+                    .on_click(move |_, _, cx| actions::pause_download(key.clone(), cx))
+                    .into_any_element(),
+            )
+        }
+        InstallStatus::Paused { .. } if actions::is_resumable(download) => {
+            let key = key.clone();
+            Some(
+                button(("resume", index), ButtonKind::Secondary, t!("downloads.resume"), false)
+                    .on_click(move |_, _, cx| actions::resume_download(key.clone(), cx))
+                    .into_any_element(),
+            )
+        }
+        InstallStatus::Paused { .. } => Some(
+            div()
+                .text_size(px(11.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .max_w(px(220.))
+                .child(t!("downloads.repair_resume"))
+                .into_any_element(),
+        ),
+        InstallStatus::Cancelling { .. } | InstallStatus::Elsewhere { .. } | InstallStatus::Failed(_) => None,
+    };
+    toggle.into_iter().chain(std::iter::once(cancel)).collect()
+}
+
+/// Pausar todo and Reanudar todo, once there are rows enough to want them.
+fn bulk_actions(entries: &[(&DownloadKey, &Download)]) -> Option<gpui::Div> {
+    if entries.len() < 2 {
+        return None;
+    }
+    let any_live = entries
+        .iter()
+        .any(|(_, row)| matches!(row.status, InstallStatus::Queued | InstallStatus::Installing { .. }));
+    let any_paused = entries.iter().any(|(_, row)| actions::is_resumable(row));
+    Some(
+        div()
+            .flex()
+            .gap_2()
+            .when(any_live, |bar| {
+                bar.child(
+                    button("pause-all", ButtonKind::Secondary, t!("downloads.pause_all"), false)
+                        .on_click(|_, _, cx| actions::pause_all(cx)),
+                )
+            })
+            .when(any_paused, |bar| {
+                bar.child(
+                    button("resume-all", ButtonKind::Secondary, t!("downloads.resume_all"), false)
+                        .on_click(|_, _, cx| actions::resume_all(cx)),
+                )
+            }),
+    )
+}
+
 fn kind_label(kind: DownloadKind) -> Option<std::borrow::Cow<'static, str>> {
     match kind {
         DownloadKind::Install => None,
@@ -176,7 +297,14 @@ impl Render for DownloadsView {
         let mut entries: Vec<(&DownloadKey, &Download)> = background.installing.iter().collect();
         entries.sort_by(|left, right| (&left.1.title, left.0).cmp(&(&right.1.title, right.0)));
 
-        let column = div().flex().flex_col().child(theme::h1(t!("downloads.title")));
+        let header = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_4()
+            .child(theme::h1(t!("downloads.title")))
+            .children(bulk_actions(&entries));
+        let column = div().flex().flex_col().child(header);
         if entries.is_empty() {
             return theme::page("downloads", column.child(theme::empty(t!("downloads.empty"))));
         }
@@ -210,12 +338,12 @@ impl Render for DownloadsView {
                         .child(current_file.clone()),
                 );
             }
-            let action = match &download.status {
+            let buttons = match &download.status {
                 // A failure is already over; the row is just a notice the
                 // user hasn't read yet, so it's dismissed, not cancelled.
                 InstallStatus::Failed(_) => {
                     let key = key.clone();
-                    Some(
+                    vec![
                         button(("dismiss", index), ButtonKind::Icon, t!("downloads.dismiss"), false)
                             .on_click(move |_, _, cx| {
                                 tracing::debug!(
@@ -226,17 +354,14 @@ impl Render for DownloadsView {
                                 actions::dismiss_install(&key, cx);
                             })
                             .into_any_element(),
-                    )
+                    ]
                 }
-                InstallStatus::Cancelling { .. } => None,
-                InstallStatus::Queued | InstallStatus::Installing { .. } | InstallStatus::Paused { .. } => Some(
-                    cancel_action(index, key, download, background.cancel_confirm.as_ref() == Some(key)),
-                ),
+                _ => download_actions(index, key, download, background.cancel_confirm.as_ref() == Some(key)),
             };
             theme::list_row(("download-row", index), index + 1 == count)
                 .items_start()
                 .child(main)
-                .child(div().flex_none().children(action))
+                .child(div().flex_none().flex().items_start().gap_2().children(buttons))
         });
         theme::page("downloads", column.child(theme::card().children(rows)))
     }

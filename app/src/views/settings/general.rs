@@ -1,6 +1,7 @@
 //! The UI language, window behaviour that isn't tied to any profile or
 //! game, closing a game from the controller or keyboard, the Steam export
-//! toggle and its pending-restart callout, whether GitHub has a newer
+//! toggle and its pending-restart callout, whether downloads carry on by
+//! themselves at the next start, whether GitHub has a newer
 //! decanter, which an AppImage can install over itself or into decanter's
 //! own copy, and debug mode.
 
@@ -26,6 +27,7 @@ pub struct GeneralTab {
     close_to_tray: bool,
     close_game_shortcut: bool,
     steam_export_enabled: bool,
+    resume_downloads: bool,
     raven: bool,
     steam_pending: bool,
     restarting_steam: bool,
@@ -52,6 +54,7 @@ impl GeneralTab {
             close_to_tray: false,
             close_game_shortcut: true,
             steam_export_enabled: true,
+            resume_downloads: true,
             raven: false,
             steam_pending: false,
             restarting_steam: false,
@@ -81,6 +84,12 @@ impl GeneralTab {
             .inspect_err(
                 |err| tracing::warn!(error = %err, "failed to read steam_export_enabled setting, defaulting to true"),
             )
+            .unwrap_or(true);
+        self.resume_downloads = crate::core::db()
+            .and_then(|db| db.resume_downloads_on_start().map_err(crate::core::StoreError::Query))
+            .inspect_err(|err| {
+                tracing::warn!(error = %err, "failed to read resume_downloads_on_start setting, defaulting to true");
+            })
             .unwrap_or(true);
         self.steam_pending = crate::core::steam_shortcuts_pending();
         self.raven = crate::core::db()
@@ -162,6 +171,20 @@ impl GeneralTab {
                 tracing::warn!(enabled, error = %err, "failed to open db, steam_export_enabled setting not saved");
             }
         }
+    }
+
+    fn set_resume_downloads(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved = crate::core::db().and_then(|db| {
+            db.set_resume_downloads_on_start(enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save resume_downloads_on_start setting");
+            return;
+        }
+        tracing::info!(enabled, "resume-downloads-on-start setting changed");
+        self.reload();
+        cx.notify();
     }
 
     fn restart_steam(&mut self, user_confirmed_closed: bool, cx: &mut Context<Self>) {
@@ -267,7 +290,7 @@ impl GeneralTab {
                 )
                 .on_click(move |_, _, cx| {
                     self_update::restart_after_quit(appimage.clone());
-                    cx.quit();
+                    crate::views::library::unfinished::quit(cx);
                 }),
             ));
         }
@@ -401,6 +424,18 @@ impl GeneralTab {
             .child(div().min_w_0().child(text.into()))
     }
 
+    fn downloads_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        column()
+            .child(Self::checkbox_row(
+                "resume-downloads",
+                self.resume_downloads,
+                t!("settings.general.downloads.resume_on_start"),
+                Self::set_resume_downloads,
+                cx,
+            ))
+            .child(theme::muted(t!("settings.general.downloads.resume_hint")))
+    }
+
     fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
         field_row().child(language_select(self.language, move |language, _, cx| {
@@ -489,6 +524,8 @@ impl Render for GeneralTab {
                     .children(callout),
                 cx,
             ))
+            .child(theme::h2(t!("settings.general.downloads.title")))
+            .child(self.downloads_section(cx))
             .child(theme::h2(t!("settings.general.raven.title")))
             .child(offered(
                 Feature::Raven,

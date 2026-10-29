@@ -3,12 +3,13 @@
 //! library folder's `downloading/`, the only place they are recorded.
 
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use decanter_core::Library;
 
-use super::Progress;
-use super::journal::{self, Kind, PauseReason, Phase};
+use super::journal::{self, Kind, PauseReason, Paused, Phase};
 use super::staging::{DOWNLOADING, staging_in};
+use super::{Cancelled, Progress};
 
 /// A download whose journal says it hasn't finished.
 #[derive(Debug, Clone)]
@@ -33,6 +34,16 @@ pub struct UnfinishedDownload {
     pub root: PathBuf,
     /// Another decanter process (the CLI, say) is running it right now.
     pub in_use: bool,
+    /// When its journal last recorded anything, which for a paused download
+    /// is when it paused.
+    pub paused_since: Option<SystemTime>,
+}
+
+/// Where every download of the library folder `root` is staged, for sizing what they hold.
+#[must_use]
+#[inline]
+pub fn downloading_dir(root: &Path) -> PathBuf {
+    root.join(DOWNLOADING)
 }
 
 /// Every unfinished download in `library`'s folders, for the app to list as
@@ -90,6 +101,7 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         total_bytes: header.total_bytes,
         root: root.to_path_buf(),
         in_use,
+        paused_since: journal::last_written(staging).await,
     })
 }
 
@@ -133,8 +145,9 @@ pub struct NothingToResume;
 /// URLs expire, and carries on only while GOG still plans the same build.
 ///
 /// # Errors
-/// [`NothingToResume`] when there is no journal of it; otherwise as
-/// [`super::install`].
+/// [`NothingToResume`] when there is no journal of it; [`Paused`] for the
+/// network when GOG couldn't be reached to plan it again, keeping it as it
+/// was; otherwise as [`super::install`].
 pub async fn resume(
     library: &Library,
     account_id: &str,
@@ -146,9 +159,13 @@ pub async fn resume(
         let Some(found) = journal::inspect(&staging).await else {
             continue;
         };
+        let bytes_done = found
+            .folded
+            .as_ref()
+            .map_or(0, |folded| folded.bytes_done(&found.header));
         let request = found.header.request;
         tracing::info!(account_id, product_id, root = %root.display(), "resuming an unfinished download");
-        return super::install(
+        let outcome = super::install(
             &library.clone().targeting(&root),
             account_id,
             product_id,
@@ -159,8 +176,36 @@ pub async fn resume(
             on_progress,
         )
         .await;
+        return match outcome {
+            // Before any byte moves a resume asks GOG for a session and a plan; offline, that is the
+            // same pause the download was in, not a failure that would end retrying it.
+            Err(err) if is_offline(&err) => {
+                tracing::info!(account_id, product_id, error = %err, "GOG unreachable while planning a resume, still paused");
+                Err(Paused {
+                    reason: PauseReason::Network,
+                    bytes_done,
+                    root: Some(root),
+                }
+                .into())
+            }
+            other => other,
+        };
     }
     Err(NothingToResume.into())
+}
+
+/// GOG or its CDN didn't answer, as opposed to refusing or no longer offering what was asked.
+fn is_offline(err: &anyhow::Error) -> bool {
+    if err.is::<Paused>() || err.is::<Cancelled>() {
+        return false;
+    }
+    // A 404 says the build or depot is gone, which waiting won't bring back.
+    err.chain()
+        .any(|cause| match cause.downcast_ref::<crate::api::client::Error>() {
+            Some(crate::api::client::Error::Network { .. }) => true,
+            Some(crate::api::client::Error::Unavailable { status, .. }) => *status == 429 || *status >= 500,
+            _ => cause.downcast_ref::<reqwest::Error>().is_some(),
+        })
 }
 
 /// Deletes what `account_id`'s unfinished download of `product_id` (and of

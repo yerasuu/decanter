@@ -9,6 +9,60 @@ that are the owner's.
 Code references are to `develop` at `123e5ab` (2026-10-29). Versions pinned in `Cargo.lock`:
 reqwest 0.13.5, tokio 1.54.1, md5 0.8.1.
 
+**Status.** The owner accepted every recommendation in §6 (#1281). Phases 0, 1 and 2 are
+integrated. Phase 3 is built as described below; nothing of it has been run yet.
+
+**Phase 3 as built.**
+
+- Buttons. Downloads, the game's action bar and Storage share `download_actions`
+  (`app/src/views/downloads.rs`): *Pausar* and *Cancelar* on a queued or running row, *Reanudar*
+  and *Cancelar* on a paused one, nothing while it is cancelling, failed or run by another process.
+  Downloads adds *Pausar todo* / *Reanudar todo* once it lists two or more rows. *Pausar* calls
+  `decanter_gog::pause`; *Reanudar* sets the row to Queued at once (so neither a second press nor
+  the watcher can start it twice) and runs `decanter_gog::resume`, which plans again from the
+  journal's request with the existing engine and so keeps every guarantee of phase 2.
+- Reasons. `PauseReason::AppClosed` is new (*Decanter se cerró*); the network reason now says it
+  resumes on its own. A resume that cannot reach GOG while planning (session refresh or plan, a
+  network error, a 5xx or a 429) stays `Paused{network}` instead of failing, so retrying never
+  turns a row into a failure. `Paused` carries the library folder (`root`) the download is in.
+- Clean quit. The window's ✕, the compositor's close, the tray's quit, a polite signal and the
+  self-update restart all go through `decanter_gog::pause_for_quit`: every running download is
+  stopped with `Stop::Quit`, recorded as `Paused{app closed}`, and the quit waits for that (a
+  counter of downloads not yet settled) for at most 2 s. A download whose plan lands during the
+  wait is paused before any byte moves.
+- Automatic resume (`app/src/views/library/unfinished.rs`, one app-level task):
+  - At startup, and whenever the active profile's set of present library folders changes (a disk
+    plugged in), the journals are scanned. A row new to the list resumes when its reason is
+    *app closed* or *closed unexpectedly* and `Reanudar las descargas al abrir Decanter` (Ajustes →
+    General → Descargas, setting `resume_downloads_on_start`, on by default) is on, or when its
+    reason is *library unavailable* (its folder is back, since it was found). Each found download
+    resumes this way at most once per run.
+  - A `Paused{network}` row is retried 15 s after it paused, then after 30 s, 60 s… capped at
+    5 min; a `Paused{library unavailable}` row is retried as soon as its folder is a directory
+    again, then on the same growing wait. The wait resets only once bytes move again. The retry
+    is the resume itself (session refresh and plan), not a separate probe.
+  - Never on their own: a user pause, a full disk, a repair.
+- Another process. A journal whose lock another process holds is listed as *En curso en otro
+  proceso de Decanter* with its progress and no buttons, scanned again every 30 s; when its folder
+  is gone the row goes and the game's install state is read again.
+- 14 days. A row paused 14 days or more (from the journal's last write, or the pause time in this
+  run) shows *Descarga en pausa desde hace N días · tamaño*, and its *Cancelar* reads *Eliminar*,
+  behind the same confirmation.
+- Storage. Each library folder card has *Descargas sin terminar* with the size of its
+  `downloading/` and the rows in that folder, with their progress and the same buttons.
+- Uninstall. With a paused download of the game listed, the confirmation adds *Se borrará también
+  la descarga en pausa (tamaño)*, and confirming discards it (`decanter_gog::discard`) before the
+  uninstall.
+
+**Left for phase 4** (deliberately): the one-active-download queue; build drift at resume (a new
+build still starts over, as in phase 2); the free-space check, and the shortfall and folder in the
+*Disco lleno* and *biblioteca no disponible* texts; *Reanudar* on a repair (it carries on by
+repairing again from Archivos locales, which the row says); journalling the DLC ticked to install
+after a game, so a resumed game install doesn't install them afterwards; discarding a paused DLC
+download when its game is uninstalled; listing staging folders without a journal in Storage with
+*Eliminar*; offering *Verify* after a resume from an unclean exit; recording *app closed* for a
+download still planning at quit (its journal keeps its previous last record).
+
 ## 1. Current behaviour
 
 ### 1.1 GOG installs (game, DLC, update, branch or build switch, repair)

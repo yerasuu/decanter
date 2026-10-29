@@ -32,6 +32,7 @@ storage.legacy.confirm: ¿Borrar? No se puede deshacer
 storage.errors.legacy_busy: 'Hay otro Decanter o un juego abierto que puede usarlos: ciérralos antes.'
 storage.errors.legacy: 'borrando los datos antiguos: %{error}'
 storage.cache.title: Caché
+storage.unfinished.title: Descargas sin terminar
 storage.cache.pick_title: Elige dónde guarda la caché esta carpeta
 storage.cache.empty: vacía
 storage.cache.default: Dentro de la carpeta · %{size}

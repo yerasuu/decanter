@@ -8,7 +8,7 @@ use super::{BarState, DetailView};
 use crate::capabilities::Caps;
 use crate::state::{AppState, Download, InstallStatus};
 use crate::theme;
-use crate::views::downloads::{cancel_action, progress_lines};
+use crate::views::downloads::{download_actions, progress_lines};
 use crate::views::library::install::{self, InstallRequest};
 use crate::views::library::{actions, open_properties};
 use crate::widgets::{ButtonKind, button, tooltip};
@@ -63,7 +63,23 @@ impl DetailView {
         }
         let account_id = game.account_id.clone();
         let product_id = game.id.clone();
-        let mut elements = vec![
+        // Uninstalling deletes a paused download of the game too (#1133), so
+        // the question says so before it is answered.
+        let paused = match AppState::get(cx).background.read(cx).status(&account_id, &product_id) {
+            Some(status @ InstallStatus::Paused { .. }) => Some(status.bytes_downloaded()),
+            _ => None,
+        };
+        let mut elements: Vec<AnyElement> = paused
+            .map(|bytes| {
+                theme::muted(t!(
+                    "library.detail.uninstall.paused_download",
+                    size = crate::format::bytes(bytes)
+                ))
+                .into_any_element()
+            })
+            .into_iter()
+            .collect();
+        elements.extend([
             button("uninstall-confirm", ButtonKind::Icon, confirm, false)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.uninstall(account_id.clone(), product_id.clone(), cx);
@@ -75,7 +91,7 @@ impl DetailView {
                     cx.notify();
                 }))
                 .into_any_element(),
-        ];
+        ]);
         if let Some(err) = &uninstall.error {
             elements.push(theme::error(err).into_any_element());
         }
@@ -128,10 +144,10 @@ impl DetailView {
                     InstallStatus::Queued
                     | InstallStatus::Cancelling { .. }
                     | InstallStatus::Paused { .. }
+                    | InstallStatus::Elsewhere { .. }
                     | InstallStatus::Failed(_) => None,
                 };
-                let cancel = (!matches!(download.status, InstallStatus::Cancelling { .. }))
-                    .then(|| cancel_action(0, &key, &download, confirming_cancel));
+                let buttons = download_actions(0, &key, &download, confirming_cancel);
                 let mut elements = vec![
                     div()
                         .flex()
@@ -149,7 +165,7 @@ impl DetailView {
                         }))
                         .into_any_element(),
                 ];
-                elements.extend(cancel);
+                elements.extend(buttons);
                 elements
             }
             // Nothing to choose: the files go to the shared library and the

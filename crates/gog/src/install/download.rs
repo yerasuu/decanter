@@ -109,6 +109,7 @@ const RUNNING: u8 = 0;
 const CANCEL: u8 = 1;
 const PAUSE: u8 = 2;
 const ABORT: u8 = 3;
+const QUIT: u8 = 4;
 
 /// Set to stop an install, and why. Checked between chunks and between
 /// reads, so a stop lands within one chunk's transfer rather than at the end
@@ -127,6 +128,13 @@ impl Cancel {
         let _ = self
             .0
             .compare_exchange(RUNNING, PAUSE, Ordering::Relaxed, Ordering::Relaxed);
+    }
+
+    /// decanter is quitting: kept like a pause, but not one the user asked for.
+    pub(super) fn quit(&self) {
+        let _ = self
+            .0
+            .compare_exchange(RUNNING, QUIT, Ordering::Relaxed, Ordering::Relaxed);
     }
 
     /// Another file failed: what the download ends with is that failure.
@@ -149,6 +157,7 @@ impl Cancel {
         match self.0.load(Ordering::Relaxed) {
             CANCEL => Some(Stop::Cancel),
             PAUSE => Some(Stop::Pause),
+            QUIT => Some(Stop::Quit),
             _ => None,
         }
     }

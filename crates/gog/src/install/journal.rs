@@ -48,6 +48,8 @@ pub enum PauseReason {
     /// No answer from GOG for the whole retry window, or a refused chunk URL, which the next
     /// plan signs again.
     Network,
+    /// decanter quit cleanly while it ran.
+    AppClosed,
     /// decanter stopped without pausing it: a crash, a kill, a power cut.
     ClosedUnexpectedly,
     DiskFull,
@@ -63,6 +65,8 @@ pub enum PauseReason {
 pub struct Paused {
     pub reason: PauseReason,
     pub bytes_done: u64,
+    /// The library folder it downloads into, so the app can tell when an unplugged one is back.
+    pub root: Option<PathBuf>,
 }
 
 /// How to plan this download again: the caller's own request, not what it resolved to.
@@ -599,6 +603,16 @@ pub(super) async fn inspect(staging: &Path) -> Option<Found> {
         .ok()
         .and_then(|lines| fold(&header, &lines));
     Some(Found { header, folded, in_use })
+}
+
+/// When the journal last recorded anything: for a paused download, when it paused.
+pub(super) async fn last_written(staging: &Path) -> Option<std::time::SystemTime> {
+    let written = match tokio::fs::metadata(staging.join(LOG)).await {
+        Ok(meta) => Ok(meta),
+        // The header is written before its log: a crash between the two leaves no log.
+        Err(_) => tokio::fs::metadata(staging.join(HEADER)).await,
+    };
+    written.and_then(|meta| meta.modified()).ok()
 }
 
 /// What a resume needs to know of each file, owned so the check runs off the async workers.

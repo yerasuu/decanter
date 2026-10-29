@@ -9,8 +9,9 @@
 //! detached), not a view's: an install outlives the button that started it.
 
 use std::future::Future;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use gpui::AsyncApp;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -54,6 +55,7 @@ pub enum Ended<T> {
     Paused {
         reason: decanter_gog::PauseReason,
         bytes_done: u64,
+        root: Option<PathBuf>,
     },
     Failed(Text),
 }
@@ -66,6 +68,7 @@ pub fn queued(title: String, kind: DownloadKind) -> Download {
         kind,
         run: next_run(),
         status: InstallStatus::Queued,
+        root: None,
     }
 }
 
@@ -104,6 +107,7 @@ pub async fn track<T>(
     let DownloadJob { key, title, kind } = job;
     let run = next_run();
     state.background.update(cx, |background, cx| {
+        let root = background.installing.get(&key).and_then(|row| row.root.clone());
         background.installing.insert(
             key.clone(),
             Download {
@@ -111,6 +115,7 @@ pub async fn track<T>(
                 kind,
                 run,
                 status: InstallStatus::Queued,
+                root,
             },
         );
         cx.notify();
@@ -152,7 +157,11 @@ pub async fn track<T>(
                     row.status = InstallStatus::Failed(text.clone());
                 }
             }
-            Ended::Paused { reason, bytes_done } => {
+            Ended::Paused {
+                reason,
+                bytes_done,
+                root,
+            } => {
                 if let Some(row) = background.installing.get_mut(&key) {
                     let total_bytes = if let InstallStatus::Installing { total_bytes, .. } = row.status {
                         total_bytes
@@ -163,7 +172,11 @@ pub async fn track<T>(
                         reason: *reason,
                         bytes_done: *bytes_done,
                         total_bytes,
+                        since: Some(SystemTime::now()),
                     };
+                    if root.is_some() {
+                        row.root.clone_from(root);
+                    }
                 }
             }
             Ended::Done(_) | Ended::Cancelled => {
@@ -204,6 +217,7 @@ fn ended<T>(key: &DownloadKey, outcome: anyhow::Result<T>, was_cancelled: bool) 
         return Ended::Paused {
             reason: stop.reason,
             bytes_done: stop.bytes_done,
+            root: stop.root.clone(),
         };
     }
     tracing::error!(
@@ -265,64 +279,7 @@ pub async fn discard_paused(key: DownloadKey, state: AppState, cx: &mut AsyncApp
     });
 }
 
-/// Lists the downloads a previous run left unfinished as paused rows, so
-/// what they keep on disk is visible and can be cancelled; installing the
-/// game again carries on from them.
-pub async fn list_unfinished(profile_id: String, state: AppState, cx: &mut AsyncApp) {
-    let library = match crate::core::library_for_profile(&profile_id) {
-        Ok(library) => library,
-        Err(err) => {
-            tracing::warn!(profile_id, %err, "could not resolve the library to look for unfinished downloads");
-            return;
-        }
-    };
-    let unfinished = decanter_gog::unfinished_downloads(&library).await;
-    state.background.update(cx, |background, cx| {
-        for download in unfinished {
-            // Another decanter process (the CLI) is running it; this one
-            // has nothing to show for it.
-            if download.in_use {
-                tracing::info!(
-                    account_id = download.account_id,
-                    product_id = download.product_id,
-                    "unfinished download is running in another process"
-                );
-                continue;
-            }
-            let kind = if download.is_repair {
-                DownloadKind::Repair
-            } else if download.parent_id.is_some() {
-                DownloadKind::Dlc
-            } else if library
-                .read_manifest(
-                    &download.account_id,
-                    decanter_core::Storefront::Gog,
-                    &download.product_id,
-                )
-                .is_none()
-            {
-                DownloadKind::Install
-            } else if download.build_id.is_some() {
-                DownloadKind::Rollback
-            } else {
-                DownloadKind::Update
-            };
-            let mut row = queued(download.title, kind);
-            row.status = InstallStatus::Paused {
-                reason: download.reason,
-                bytes_done: download.bytes_done,
-                total_bytes: Some(download.total_bytes),
-            };
-            background
-                .installing
-                .entry(DownloadKey::new(&download.account_id, &download.product_id))
-                .or_insert(row);
-        }
-        cx.notify();
-    });
-}
-
-fn refresh_install_state(state: &AppState, account_id: &str, product_id: &str, cx: &mut AsyncApp) {
+pub(super) fn refresh_install_state(state: &AppState, account_id: &str, product_id: &str, cx: &mut AsyncApp) {
     state.library.update(cx, |library, cx| {
         library.refresh_install_state(account_id, product_id, cx);
     });
@@ -390,16 +347,63 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         return;
     }
     tracing::info!(account_id, product_id, "install finished");
-
-    refresh_install_state(&state, &account_id, &product_id, cx);
-    let cached_art = cached_art(&state, &product_id, cx);
-    sync_steam_shortcut_for(&account_id, &product_id, cached_art).await;
-    if let Some(game) = crate::core::installed_game(&account_id, &product_id) {
-        crate::taskbar::sync_pc(&game).await;
-    }
+    landed(&state, &account_id, &product_id, cx).await;
 
     install_dlcs(&core_library, &account_id, &product_id, dlcs, &state, cx).await;
     refresh_install_state(&state, &account_id, &product_id, cx);
+}
+
+/// What a game that just installed gets beyond its files: a Steam shortcut and a taskbar entry.
+async fn landed(state: &AppState, account_id: &str, product_id: &str, cx: &mut AsyncApp) {
+    refresh_install_state(state, account_id, product_id, cx);
+    let cached_art = cached_art(state, product_id, cx);
+    sync_steam_shortcut_for(account_id, product_id, cached_art).await;
+    if let Some(game) = crate::core::installed_game(account_id, product_id) {
+        crate::taskbar::sync_pc(&game).await;
+    }
+}
+
+/// Reanudar: carries on `key`'s download from its journal, planned again
+/// since chunk URLs expire. The row already reads Queued, set by whoever
+/// asked, so it can't be asked twice.
+pub async fn resume(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
+    let Some((title, kind)) = state.background.read_with(cx, |background, _| {
+        background.installing.get(&key).map(|row| (row.title.clone(), row.kind))
+    }) else {
+        return;
+    };
+    let DownloadKey { account_id, product_id } = key.clone();
+    let library = match crate::core::library_for_account(&account_id) {
+        Ok(library) => library,
+        Err(err) => {
+            tracing::error!(account_id, product_id, %err, "could not resolve the library, resume aborted");
+            fail_row(&state, &key, Text::new("library.install.no_library"), cx);
+            return;
+        }
+    };
+    tracing::info!(account_id, product_id, "resuming download");
+    let (on_progress, progress) = progress_channel();
+    let work = async move { decanter_gog::resume(&library, &account_id, &product_id, on_progress).await };
+    let job = DownloadJob {
+        key: key.clone(),
+        title,
+        kind,
+    };
+    let is_done = matches!(track(&state, job, progress, work, cx).await, Ended::Done(()));
+    if is_done && kind == DownloadKind::Install {
+        landed(&state, &key.account_id, &key.product_id, cx).await;
+    } else {
+        refresh_install_state(&state, &key.account_id, &key.product_id, cx);
+    }
+}
+
+fn fail_row(state: &AppState, key: &DownloadKey, text: Text, cx: &mut AsyncApp) {
+    state.background.update(cx, |background, cx| {
+        if let Some(row) = background.installing.get_mut(key) {
+            row.status = InstallStatus::Failed(text);
+        }
+        cx.notify();
+    });
 }
 
 fn cached_art(state: &AppState, product_id: &str, cx: &AsyncApp) -> (Option<String>, Option<String>, Option<String>) {
@@ -458,12 +462,15 @@ async fn install_dlcs(
     }
 }
 
+/// Uninstalls the game, and with it a paused download of it (an update,
+/// say), which the confirmation the user answered named with its size.
 pub async fn uninstall(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) -> Result<(), Text> {
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
         crate::core::library_for_account(&account_id)
             .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))
     );
+    crate::achv_try!(discard_paused_with(&core_library, DownloadKey::new(&account_id, &product_id), &state, cx).await);
     crate::achv_try!(
         decanter_gog::uninstall(&core_library, &account_id, &product_id)
             .await
@@ -476,6 +483,37 @@ pub async fn uninstall(account_id: String, product_id: String, state: AppState, 
     refresh_install_state(&state, &account_id, &product_id, cx);
     remove_steam_shortcut_for(&account_id, &product_id).await;
     crate::taskbar::remove_pc(&account_id, decanter_core::Storefront::Gog, &product_id).await;
+    Ok(())
+}
+
+/// Deletes `key`'s paused download, if it has one, as part of uninstalling its game.
+async fn discard_paused_with(
+    core_library: &decanter_core::Library,
+    key: DownloadKey,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) -> Result<(), Text> {
+    let has_paused = state.background.read_with(cx, |background, _| {
+        background
+            .installing
+            .get(&key)
+            .is_some_and(|row| matches!(row.status, InstallStatus::Paused { .. }))
+    });
+    if !has_paused {
+        return Ok(());
+    }
+    let DownloadKey { account_id, product_id } = &key;
+    crate::achv_try!(
+        decanter_gog::discard(core_library, account_id, product_id)
+            .await
+            .map_err(Text::verbatim)
+            .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "discarding the paused download before uninstalling failed"))
+    );
+    tracing::info!(account_id, product_id, "paused download discarded with the uninstall");
+    state.background.update(cx, |background, cx| {
+        background.installing.remove(&key);
+        cx.notify();
+    });
     Ok(())
 }
 

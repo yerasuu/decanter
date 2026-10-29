@@ -7,6 +7,14 @@ downloads.cancel_confirm: ¿Cancelar la descarga de %{title}? Se borrarán %{siz
 downloads.cancel_confirm_empty: ¿Cancelar la descarga de %{title}?
 downloads.cancel_delete: Cancelar y borrar
 downloads.keep: Seguir
+downloads.pause: Pausar
+downloads.resume: Reanudar
+downloads.pause_all: Pausar todo
+downloads.resume_all: Reanudar todo
+downloads.delete: Eliminar
+downloads.stale: 'Descarga en pausa desde hace %{days} días · %{size}'
+downloads.elsewhere: 'En curso en otro proceso de Decanter · %{done} de %{total}'
+downloads.repair_resume: Vuelve a reparar desde Archivos locales y seguirá donde lo dejó
 downloads.kind.dlc: DLC
 downloads.kind.update: Actualización
 downloads.kind.branch_switch: Cambio de rama
@@ -15,7 +23,8 @@ downloads.kind.repair: Reparación
 downloads.paused: En pausa · %{done} de %{total}
 downloads.paused_unsized: En pausa · %{done}
 downloads.paused_reason.user: La pausaste tú
-downloads.paused_reason.network: Sin conexión con GOG
+downloads.paused_reason.network: Sin conexión; se reanudará sola cuando vuelva la red
+downloads.paused_reason.app_closed: Decanter se cerró
 downloads.paused_reason.closed_unexpectedly: Decanter se cerró de forma inesperada
 downloads.paused_reason.disk_full: Disco lleno
 downloads.paused_reason.library_unavailable: La carpeta de la biblioteca no está disponible

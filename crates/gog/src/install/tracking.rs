@@ -3,6 +3,8 @@
 //! [`cancel`] and [`pause`] need regardless of which phase an install is in.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
@@ -36,6 +38,8 @@ pub(super) enum Stop {
     Cancel,
     /// Kept on disk, to carry on from later.
     Pause,
+    /// decanter is quitting; kept, and resumed on its own at the next start.
+    Quit,
 }
 
 /// Claims `key` for a fresh run: a second download of the same product
@@ -92,4 +96,61 @@ pub async fn pause(account_id: &str, product_id: &str) {
         in_flight.pause();
     }
     tracing::debug!(account_id, product_id, was_active, "install pause requested");
+}
+
+/// Downloads between taking their stop flag and recording how they ended.
+///
+/// A quit waits on this rather than `active()`, which lets go of a download
+/// before its journal records the pause.
+static SETTLING: AtomicUsize = AtomicUsize::new(0);
+
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+/// decanter is quitting: a download starting now is paused before any byte moves.
+pub(super) fn is_quitting() -> bool {
+    QUITTING.load(Ordering::Acquire)
+}
+
+/// Held by a download from taking its stop flag until its journal records how it ended.
+pub(super) struct Settling(());
+
+impl Settling {
+    /// Counted until dropped.
+    pub(super) fn start() -> Self {
+        SETTLING.fetch_add(1, Ordering::AcqRel);
+        Self(())
+    }
+}
+
+impl Drop for Settling {
+    fn drop(&mut self) {
+        SETTLING.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Pauses every download this process runs because decanter is quitting.
+///
+/// Waits up to `wait` for their journals to record it, and returns whether
+/// all of them did; one that didn't is resumed as after a crash, which is safe.
+pub async fn pause_for_quit(wait: Duration) -> bool {
+    // Set before the running ones are collected, so a download whose plan
+    // lands meanwhile stops as soon as it takes its flag.
+    QUITTING.store(true, Ordering::Release);
+    let running: Vec<Cancel> = active().lock().await.values().cloned().collect();
+    for in_flight in &running {
+        in_flight.quit();
+    }
+    let deadline = Instant::now() + wait;
+    while SETTLING.load(Ordering::Acquire) > 0 {
+        if Instant::now() >= deadline {
+            tracing::warn!(
+                left = SETTLING.load(Ordering::Acquire),
+                "downloads still stopping at quit; they resume as after a crash"
+            );
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    tracing::info!(paused = running.len(), "downloads paused for quit");
+    true
 }

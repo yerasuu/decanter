@@ -32,8 +32,8 @@ mod verify;
 
 pub use download::Cancelled;
 pub use journal::{PauseReason, Paused};
-pub use tracking::{cancel, pause};
-pub use unfinished::{NothingToResume, UnfinishedDownload, discard, resume, unfinished_downloads};
+pub use tracking::{cancel, pause, pause_for_quit};
+pub use unfinished::{NothingToResume, UnfinishedDownload, discard, downloading_dir, resume, unfinished_downloads};
 pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 
 use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_all};
@@ -41,7 +41,7 @@ use journal::{Header, Journal, Kind, Opened, Request, Start};
 use plan::Plan;
 use rate::RateTracker;
 use staging::{move_into_library, staging_root};
-use tracking::{InstallKey, Stop, active, claim};
+use tracking::{InstallKey, Settling, Stop, active, claim};
 
 /// Progress for the install as a whole, not for one file: several files
 /// transfer at once, so per-file numbers jump around and never add up to
@@ -334,15 +334,21 @@ async fn fetch_into_staging(
         }) => (journal, header, starts),
         Err(err) => {
             tracing::error!(product_id, error = %err, "opening the download journal failed");
-            return Err(pause_reason(&err, staging)
-                .await
-                .map_or(err, |reason| Paused { reason, bytes_done: 0 }.into()));
+            return Err(pause_reason(&err, staging).await.map_or(err, |reason| {
+                Paused {
+                    reason,
+                    bytes_done: 0,
+                    root: library_root(staging),
+                }
+                .into()
+            }));
         }
     };
 
     // In `active()` before the queued check, so a stop landing between the
     // two still reaches the download.
     let in_flight = Cancel::default();
+    let _settling = Settling::start();
     active().lock().await.insert(key.clone(), in_flight.clone());
 
     // The session refresh and plan fetch before this are exactly the
@@ -351,6 +357,8 @@ async fn fetch_into_staging(
     match tracking::stop_while_queued(&key).await {
         Some(Stop::Cancel) => in_flight.cancel(),
         Some(Stop::Pause) => in_flight.pause(),
+        Some(Stop::Quit) => in_flight.quit(),
+        None if tracking::is_quitting() => in_flight.quit(),
         None => {}
     }
 
@@ -431,6 +439,7 @@ async fn settle(
             return Cancelled.into();
         }
         Some(Stop::Pause) => Some(PauseReason::User),
+        Some(Stop::Quit) => Some(PauseReason::AppClosed),
         None => pause_reason(&err, staging).await,
     };
     let Some(reason) = reason else {
@@ -441,7 +450,17 @@ async fn settle(
         tracing::warn!(product_id, error = %record_err, "couldn't record the pause; a resume treats it as a crash");
     }
     tracing::info!(product_id, ?reason, bytes_done, error = %err, "download paused");
-    Paused { reason, bytes_done }.into()
+    Paused {
+        reason,
+        bytes_done,
+        root: library_root(staging),
+    }
+    .into()
+}
+
+/// The library folder a staging folder (`<root>/downloading/<account>/<product>`) belongs to.
+fn library_root(staging: &Path) -> Option<std::path::PathBuf> {
+    staging.ancestors().nth(3).map(Path::to_path_buf)
 }
 
 /// The cause a resume can outlast, if `err` is one.
@@ -463,9 +482,7 @@ async fn pause_reason(err: &anyhow::Error, staging: &Path) -> Option<PauseReason
     }
     // An unplugged disk fails with whatever error its filesystem gives;
     // that the library folder is gone is what tells it apart.
-    let Some(library_root) = staging.ancestors().nth(3) else {
-        return None;
-    };
+    let library_root = library_root(staging)?;
     let is_there = tokio::fs::metadata(library_root).await.is_ok_and(|meta| meta.is_dir());
     (!is_there).then_some(PauseReason::LibraryUnavailable)
 }

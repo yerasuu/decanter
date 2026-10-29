@@ -19,6 +19,7 @@ pub mod properties;
 mod shelf_popups;
 mod shelves;
 mod sidebar;
+pub mod unfinished;
 
 use gpui::{Context, Entity, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb};
 use rust_i18n::t;

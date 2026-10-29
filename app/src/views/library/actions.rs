@@ -12,7 +12,7 @@ use rust_i18n::t;
 
 use super::data;
 use super::install::{self, InstallRequest};
-use crate::state::{AppState, DownloadKey, DownloadKind, InstallStatus};
+use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
 /// build of it: shown in place of Instalar and Jugar.
@@ -175,6 +175,73 @@ pub fn confirm_cancel(key: DownloadKey, cx: &mut App) {
     } else {
         cx.spawn(async move |_| decanter_gog::cancel(&key.account_id, &key.product_id).await)
             .detach();
+    }
+}
+
+/// Pausar: the download stops within one chunk and keeps what it has; its
+/// row turns paused once it has recorded that. A queued one pauses as soon
+/// as its plan is ready, before any byte moves.
+pub fn pause_download(key: DownloadKey, cx: &App) {
+    tracing::info!(
+        account_id = key.account_id,
+        product_id = key.product_id,
+        "download pause requested"
+    );
+    cx.spawn(async move |_| decanter_gog::pause(&key.account_id, &key.product_id).await)
+        .detach();
+}
+
+/// Reanudar, also what carries a download on by itself. Only a paused row
+/// that isn't a repair, which carries on from Archivos locales instead; it
+/// reads Queued at once, so a second press or the watcher can't start it
+/// twice.
+pub fn resume_download(key: DownloadKey, cx: &mut App) {
+    let state = AppState::get(cx).clone();
+    let resumable = state.background.update(cx, |background, cx| {
+        let Some(row) = background.installing.get_mut(&key) else {
+            return false;
+        };
+        if !is_resumable(row) {
+            return false;
+        }
+        row.status = InstallStatus::Queued;
+        cx.notify();
+        true
+    });
+    if resumable {
+        cx.spawn(async move |cx| install::resume(key, state, cx).await).detach();
+    }
+}
+
+pub fn is_resumable(download: &Download) -> bool {
+    matches!(download.status, InstallStatus::Paused { .. }) && download.kind != DownloadKind::Repair
+}
+
+pub fn pause_all(cx: &App) {
+    let live: Vec<DownloadKey> = AppState::get(cx)
+        .background
+        .read(cx)
+        .installing
+        .iter()
+        .filter(|(_, row)| matches!(row.status, InstallStatus::Queued | InstallStatus::Installing { .. }))
+        .map(|(key, _)| key.clone())
+        .collect();
+    for key in live {
+        pause_download(key, cx);
+    }
+}
+
+pub fn resume_all(cx: &mut App) {
+    let paused: Vec<DownloadKey> = AppState::get(cx)
+        .background
+        .read(cx)
+        .installing
+        .iter()
+        .filter(|(_, row)| is_resumable(row))
+        .map(|(key, _)| key.clone())
+        .collect();
+    for key in paused {
+        resume_download(key, cx);
     }
 }
 

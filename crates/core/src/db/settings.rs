@@ -45,6 +45,19 @@ impl Db {
         self.set_setting("close_game_shortcut", if enabled { "1" } else { "0" })
     }
 
+    /// Whether downloads that decanter's closing or a crash stopped carry on
+    /// by themselves at the next start — on by default (#1281); off is for a
+    /// metered link. A download the user paused never does.
+    pub fn resume_downloads_on_start(&self) -> Result<bool> {
+        let enabled = self.setting("resume_downloads_on_start")?.as_deref() != Some("0");
+        tracing::debug!(enabled, "read resume_downloads_on_start setting");
+        Ok(enabled)
+    }
+
+    pub fn set_resume_downloads_on_start(&self, enabled: bool) -> Result<()> {
+        self.set_setting("resume_downloads_on_start", if enabled { "1" } else { "0" })
+    }
+
     /// The Proton build to launch with when a game has no per-game choice
     /// of its own — a bare name from `decanter_runtime::runner::status`, or
     /// `None` for `decanter_runtime::Proton::Latest`.

@@ -21,8 +21,9 @@ pub fn spawn(cx: &App) {
                 // Games outlive decanter by design (see
                 // `launch::stop_everything`'s doc) — quitting from the tray
                 // is the same "just exit" a window close was before this
-                // setting existed.
-                TrayCommand::Quit => async_cx.update(|app| app.quit()),
+                // setting existed. Downloads pause first, to carry on at the
+                // next start.
+                TrayCommand::Quit => async_cx.update(crate::views::library::unfinished::quit),
             }
         }
     })

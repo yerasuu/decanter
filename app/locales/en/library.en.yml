@@ -103,6 +103,7 @@ library.detail.uninstall.uninstall: Uninstall
 library.detail.uninstall.confirm_uninstall: Confirm uninstall
 library.detail.uninstall.remove: Remove
 library.detail.uninstall.confirm_remove: Confirm removal
+library.detail.uninstall.paused_download: 'The paused download (%{size}) will be deleted too'
 library.detail.install.button: INSTALL
 library.detail.install.unavailable: GOG offers no download for this edition
 library.detail.install.failed: 'Install failed: %{error}'

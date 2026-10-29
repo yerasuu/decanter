@@ -151,7 +151,7 @@ impl Lifecycle {
             let quit = !lifecycle.closes_to_tray(cx) && !lifecycle.stopping.get();
             cx.global_mut::<Self>().main = None;
             if quit {
-                cx.quit();
+                library::unfinished::quit(cx);
             }
         })
         .detach();
@@ -190,7 +190,7 @@ fn close_main_window(window: &mut Window, cx: &mut App) {
         crate::launch::stop_everything().await;
         stopping.set(false);
         if !close_to_tray {
-            cx.update(|cx| cx.quit());
+            cx.update(library::unfinished::quit);
         }
     })
     .detach();

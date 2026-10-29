@@ -16,6 +16,9 @@ settings.general.close_game.hint_keyboard: Press Ctrl+Shift+F4 while playing. De
 settings.general.steam.title: Export to Steam
 settings.general.steam.add: Add every installed game to Steam's own library, with its cover and banner
 settings.general.steam.restart_hint: Steam has to be restarted to show the changes — it only reads its shortcuts at startup.
+settings.general.downloads.title: Downloads
+settings.general.downloads.resume_on_start: Resume downloads when Decanter opens
+settings.general.downloads.resume_hint: 'The ones stopped by closing Decanter or by an unexpected exit. The ones you paused wait for you to resume them, and the ones stopped by the network or an unplugged disk resume on their own when it is back.'
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Show the Raven section
 settings.general.raven.hint: 'Raven is an early-stage Windows runtime. With the section on you can build it in your library and try Windows programs with it; nothing is downloaded and GitHub is not contacted until you press Build or Check for updates in the section.'
