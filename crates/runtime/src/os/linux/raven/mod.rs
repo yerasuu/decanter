@@ -376,7 +376,7 @@ pub(crate) async fn raven_launch(mut launch: Launch) -> anyhow::Result<Launch> {
 // the spike's `missing PE module: msvcrt.dll` suggests.
 fn invocation(binary: &Path, executable: &Path, prefix: &Path) -> (&'static str, [(&'static str, PathBuf); 3]) {
     (
-        "exec \"$DECANTER_RAVEN\" --run-process \"$DECANTER_RAVEN_EXE\"",
+        "exec \"$DECANTER_RAVEN\" --run-process --execution=native \"$DECANTER_RAVEN_EXE\"",
         [
             ("DECANTER_RAVEN", binary.to_owned()),
             ("DECANTER_RAVEN_EXE", executable.to_owned()),
