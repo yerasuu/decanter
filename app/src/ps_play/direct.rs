@@ -56,6 +56,7 @@ pub async fn session(
     dir: PathBuf,
     overrides: &[(String, String)],
 ) -> Result<(Prepared, Vec<(&'static str, String)>), Text> {
+    let release = port_release(root, &dir);
     // Checked again at each launch: the folder may have been moved or emptied since it was picked.
     let folder = match tokio::task::spawn_blocking(move || Folder::try_new(dir)).await {
         Ok(Ok(folder)) => folder,
@@ -88,11 +89,23 @@ pub async fn session(
         tracing::warn!(title_id = %game.title_id, %err, "could not set up psport.exe's launch");
         return Err(Text::new("ps.errors.environment").arg("error", err));
     }
-    let facts = vec![
+    let mut facts = vec![
         ("port", Port::Bbport.name().to_owned()),
         ("psport_folder", folder.path().display().to_string()),
     ];
+    facts.extend(release);
     Ok((prepared, facts))
+}
+
+/// The version or commit `dir` holds when it is a package or a build of the library, from where it
+/// sits and what it is named, so a folder picked by hand says nothing.
+fn port_release(root: &Root, dir: &Path) -> Option<(&'static str, String)> {
+    let name = dir.file_name()?.to_str()?;
+    if let Some(version) = name.parse::<Version>().ok().filter(|v| package::dir(root, v) == dir) {
+        return Some(("port_version", version.tag().to_owned()));
+    }
+    let commit = Commit::try_new(name).filter(|commit| winbuild::dir(root, commit) == dir)?;
+    Some(("port_commit", commit.to_string()))
 }
 
 /// One session per dump folder, as one job per game.

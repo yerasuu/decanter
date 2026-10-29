@@ -132,6 +132,7 @@ impl GameLog {
                 self.decanter_commit = commit.strip_suffix(')').map(str::to_owned);
             }
             "port_commit" => self.psport_commit = Some(value.to_owned()),
+            "port_version" => self.psport_version = Some(value.strip_prefix('v').unwrap_or(value).to_owned()),
             "title_id" => self.title_id = Some(value.to_owned()),
             "version" => self.game_version = Some(value.to_owned()),
             "started" => self.day = value.get(..10).map(str::to_owned),

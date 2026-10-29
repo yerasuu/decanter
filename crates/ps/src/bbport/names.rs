@@ -49,7 +49,8 @@ impl Names {
     /// What `launch_command` chose for `command`, for variables added to it afterwards.
     pub fn of_command(command: &Command) -> Self {
         let psport = Self::Psport.var("PROBE");
-        if command.as_std().get_envs().any(|(key, _)| key == psport.as_str()) {
+        // A direct launch runs no script, so nothing sets PS_PROBE to tell it by.
+        if os::DIRECT_LAUNCH || command.as_std().get_envs().any(|(key, _)| key == psport.as_str()) {
             Self::Psport
         } else {
             Self::Bbport
