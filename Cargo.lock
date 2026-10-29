@@ -2409,8 +2409,6 @@ dependencies = [
 [[package]]
 name = "gog"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "088425f502d5a60f94a5f0003671602ec6042542bda5eaf6f6a6697a8028af5f"
 dependencies = [
  "curl",
  "error-chain",

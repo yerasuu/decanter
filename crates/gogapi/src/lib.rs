@@ -1,6 +1,16 @@
+// Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0; see VENDOR.md for provenance and the changes made here.
 //! This crate provides an easy interface to communicate with the not-so-easy (unofficial) GOG API.
 //! Many thanks to [Yepoleb](https://github.com/Yepoleb), who made
 //! [this](https://gogapidocs.readthedocs.io/en/latest/index.html) very helpful set of docs.
+// Not held to the workspace's lints: this is third-party code kept close to upstream, and its warnings (dead
+// `Id`, `return`s, `&String`, the cfg emitted by error-chain's macro) are not worth diverging from it.
+#![allow(
+    unexpected_cfgs,
+    dead_code,
+    clippy::needless_return,
+    clippy::needless_late_init,
+    clippy::ptr_arg
+)]
 use serde_json::json;
 mod containers;
 /// Provides error-handling logic

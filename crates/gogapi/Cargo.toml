@@ -21,7 +21,7 @@ keywords = [
     "games",
     "api",
 ]
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 repository = "https://git.sr.ht/~nicohman/gogapi-rs"
 
 [dependencies.curl]

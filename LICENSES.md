@@ -9,6 +9,7 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 
 | Component | Terms and source |
 | --- | --- |
+| gog client library (`crates/gogapi`) | GPL-3.0-only; `crates/gogapi/LICENSE`. Based on `gog` 0.5.0 (gogapi-rs) by nicohman, copyright nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`); incorporated from the crates.io package on 2026-10-29, see `crates/gogapi/VENDOR.md`; upstream is idle and it is maintained here |
 | decanter application and its crates (`app`, `crates/core`, `crates/gog`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE` |
 | Galaxy64.dll achievement proxy (`crates/hook`) | GPL-3.0-or-later; `crates/hook/Cargo.toml`. A Windows DLL built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a GOG game |
 | Report server (`crates/reports-server`) | AGPL-3.0-or-later; `crates/reports-server/LICENSE`. A separate binary with its own workspace; it links s3db (AGPL-3.0-or-later) and `decanter-report` |
@@ -24,10 +25,9 @@ About 850 crates build the decanter application and about 280 the report server.
 (often both, so the recipient may take either), the rest Unicode-3.0, BSD-2/3-Clause, ISC, Zlib, CC0-1.0 and
 similar permissive terms. Exceptions this review found:
 
-- `gog` 0.5.0 (`https://git.sr.ht/~nicohman/gogapi-rs`) declares **GPL-3.0** and is linked into `decanter-gog`.
-  The combined decanter binaries are therefore distributed under GPL-3.0 terms; the "or later" option cannot be
-  offered for the combination, although decanter's own files keep their notices. Confirm with the crate's author
-  whether "GPL-3.0" means "only" before the next release.
+- `gog` is no longer an external dependency: it is incorporated in `crates/gogapi` (GPL-3.0-only, see Components) and is
+  linked into `decanter-gog`. The combined decanter binaries are therefore distributed under GPL-3.0 terms; the "or
+  later" option cannot be offered for the combination, although decanter's own files keep their notices (kb #1073).
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.
