@@ -52,9 +52,21 @@ const FULL_ENRICH_INTERVAL: Duration = Duration::from_hours(24);
 /// one part of a `Game` that isn't catalog data, and the only part that
 /// changes without a trip to GOG.
 pub(crate) fn local_install_state(account_id: &str, product_id: &str) -> Option<InstallState> {
-    let Some(installed) = crate::core::installed_game(account_id, product_id) else {
-        return None;
-    };
+    install_state_of(crate::core::installed_game(account_id, product_id))
+}
+
+/// [`local_install_state`] for a pass over many games: `library` is resolved once by the caller
+/// (`None` when it is unavailable, which reads as nothing installed).
+pub(crate) fn local_install_state_in(
+    library: Option<&decanter_core::Library>,
+    account_id: &str,
+    product_id: &str,
+) -> Option<InstallState> {
+    install_state_of(library.and_then(|library| crate::core::installed_game_in(library, account_id, product_id)))
+}
+
+fn install_state_of(installed: Option<decanter_core::InstalledGame>) -> Option<InstallState> {
+    let installed = installed?;
     Some(InstallState {
         installed: true,
         installed_version: Some(installed.build_id),
@@ -246,8 +258,9 @@ impl GogLibrary {
             .map(crate::core::offline_library_folders)
             .unwrap_or_default();
         for (account_id, games) in &mut self.by_account {
+            let library = crate::core::library_for_account(account_id).ok();
             for entry in games.iter_mut() {
-                entry.game.install_state = local_install_state(account_id, &entry.game.id);
+                entry.game.install_state = local_install_state_in(library.as_ref(), account_id, &entry.game.id);
             }
         }
         self.refresh_external(cx);

@@ -403,6 +403,12 @@ pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> 
         );
         return None;
     };
+    installed_game_in(&library, account_id, game_id)
+}
+
+/// [`installed_game`] against a `library` the caller already resolved, so a pass over many games
+/// reads the profile's library settings once instead of once per game.
+pub fn installed_game_in(library: &Library, account_id: &str, game_id: &str) -> Option<InstalledGame> {
     // An external game's id is a uuid, never a GOG product id, so trying
     // both storefronts can't pick up the wrong game.
     library

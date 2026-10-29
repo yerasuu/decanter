@@ -47,7 +47,7 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
 /// Install state isn't cached — it's read live from decanter's own install
 /// record, so a game the cache remembers still shows as installed on the
 /// very first frame instead of flipping once the network fetch lands.
-fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
+fn to_entry(library: Option<&decanter_core::Library>, account_id: &str, cached: CachedGame) -> LibraryEntry {
     LibraryEntry {
         kind: kind_from_str(&cached.kind),
         purchased_at: cached.purchased_at,
@@ -57,7 +57,7 @@ fn to_entry(account_id: &str, cached: CachedGame) -> LibraryEntry {
         is_mod: false,
         game: Game {
             account_id: account_id.to_owned(),
-            install_state: super::gog_library::local_install_state(account_id, &cached.product_id),
+            install_state: super::gog_library::local_install_state_in(library, account_id, &cached.product_id),
             id: cached.product_id,
             title: cached.title,
             storefront: cached.storefront,
@@ -102,7 +102,11 @@ pub(super) fn load_cached_games(account_id: &str) -> Vec<LibraryEntry> {
         Vec::new()
     });
     tracing::debug!(account_id, count = cached.len(), "loaded cached games");
-    cached.into_iter().map(|cached| to_entry(account_id, cached)).collect()
+    let library = crate::core::library_for_account(account_id).ok();
+    cached
+        .into_iter()
+        .map(|cached| to_entry(library.as_ref(), account_id, cached))
+        .collect()
 }
 
 /// Best-effort — a cache write failing shouldn't interrupt the fetch, the
