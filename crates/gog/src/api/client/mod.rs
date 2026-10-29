@@ -51,6 +51,7 @@
 mod auth;
 mod catalog;
 mod error;
+mod gamesdb;
 mod http;
 mod products;
 mod user;
@@ -58,6 +59,7 @@ mod user;
 pub use auth::{Token, CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
 pub use catalog::{CatalogMods, CatalogProduct};
 pub use error::Error;
+pub use gamesdb::{parse_release_date, Company, GameDetails, Genre, Image, Localized, Release};
 pub use http::{Client, Sessionless};
 pub use products::ProductsPage;
 pub use user::User;

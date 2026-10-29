@@ -24,7 +24,6 @@ pub mod api;
 mod auth;
 pub mod cloud_saves;
 mod depot;
-mod gamesdb;
 pub mod hook;
 mod install;
 mod library;

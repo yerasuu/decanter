@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use futures_util::StreamExt;
 
-use crate::gamesdb::{self, Image, Localized};
+use crate::api::client::{Image, Localized, Sessionless, parse_release_date};
 
 use super::{Batch, GameKind, LibraryEntry};
 
@@ -50,6 +50,13 @@ pub async fn enrich_games(
     let dates = tokio::spawn(async move { crate::orders::purchase_dates(&profile).await });
 
     let http = crate::http_client();
+    let catalog = match Sessionless::new() {
+        Ok(catalog) => catalog,
+        Err(err) => {
+            tracing::warn!(account_id, %err, "GOG HTTP client unavailable, library enrichment skipped");
+            return;
+        }
+    };
 
     // Step one: GamesDB, which is per-id and has no batch endpoint, so
     // several at a time. Entries it actually indexed go out as they land;
@@ -57,10 +64,10 @@ pub async fn enrich_games(
     // unchanged, which would be a cache write per game for no change.
     let total = entries.len();
     let mut resolved = futures_util::stream::iter(entries.into_iter().map(|mut entry| {
-        let http = &http;
+        let catalog = &catalog;
         async move {
             let indexed = match entry.game.id.parse::<i64>() {
-                Ok(id) => apply_gamesdb(&mut entry.game, id, http).await,
+                Ok(id) => apply_gamesdb(&mut entry.game, id, catalog).await,
                 Err(_) => false,
             };
             (entry, indexed)
@@ -222,10 +229,11 @@ async fn apply_products(all: &mut [LibraryEntry], http: &reqwest::Client, on_bat
 /// Returns whether GamesDB actually had catalog data. A record with an
 /// empty `game` object is what a DLC looks like here — present, but with
 /// nothing on it, which is not the same as being indexed.
-async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, http: &reqwest::Client) -> bool {
+async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, catalog: &Sessionless) -> bool {
     // trace, not debug, since a single enrichment pass can make hundreds of
     // these calls — at debug level they'd drown out everything else.
-    let Ok(release) = gamesdb::fetch_release(http, id)
+    let Ok(release) = catalog
+        .gamesdb_release(id)
         .await
         .inspect_err(|err| tracing::trace!(id, %err, "GamesDB has no release"))
     else {
@@ -267,11 +275,7 @@ async fn apply_gamesdb(game: &mut decanter_core::Game, id: i64, http: &reqwest::
         .iter()
         .filter_map(|genre| genre.name.resolve())
         .collect();
-    game.release_date = release
-        .game
-        .first_release_date
-        .as_deref()
-        .and_then(gamesdb::parse_release_date);
+    game.release_date = release.game.first_release_date.as_deref().and_then(parse_release_date);
     game.rating = release.game.aggregated_rating.map(|score| score.to_string());
 
     game.release_date.is_some() || !game.genres.is_empty()
@@ -302,7 +306,7 @@ fn apply_product(entry: &mut LibraryEntry, product: crate::product::Product) -> 
         changed = changed || entry.game.description.is_some();
     }
     if entry.game.release_date.is_none() {
-        entry.game.release_date = product.release_date.as_deref().and_then(gamesdb::parse_release_date);
+        entry.game.release_date = product.release_date.as_deref().and_then(parse_release_date);
         changed = changed || entry.game.release_date.is_some();
     }
     if entry.game.background_url.is_none() {
