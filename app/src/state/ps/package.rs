@@ -532,28 +532,14 @@ async fn run_install(this: &WeakEntity<Ps>, root: &Root, offer: Offer, cx: &mut 
     result
 }
 
-/// The folder of the build or version Jugar runs, downloading the newest release first when neither
-/// is in the library yet.
+/// The folder of the newest release, downloaded, installed and chosen for Jugar, when neither a build
+/// nor a version chosen is in the library ([`crate::ps_play::direct::chosen_dir`]).
 #[cfg(windows)]
 pub(super) async fn for_play(
     this: &WeakEntity<Ps>,
     root: &Root,
-    settings: &LauncherSettings,
     cx: &mut AsyncApp,
 ) -> Result<std::path::PathBuf, Text> {
-    if let Some(commit) = settings.text(SELECTED_KEY).and_then(Commit::try_new)
-        && decanter_ps::os::windows::winbuild::built_commit(root, &commit)
-            .await
-            .is_some()
-    {
-        return Ok(decanter_ps::os::windows::winbuild::dir(root, &commit));
-    }
-    let selected = settings.text(SELECTED_KEY).and_then(|tag| tag.parse::<Version>().ok());
-    if let Some(version) = selected
-        && package::installed_version(root, &version).await.is_some()
-    {
-        return Ok(package::dir(root, &version));
-    }
     let offers = match package::offers(Port::Bbport).await {
         Ok(offers) => offers,
         Err(err) => {

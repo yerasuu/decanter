@@ -1,5 +1,6 @@
-//! A port job's run outside GPUI: its log file, its end, what the scanner made of it, and what a
-//! game's run leaves recorded (failures, what the port learned, the frame generation picked).
+//! A port job's run outside GPUI: how it starts ([`Launcher`]), its log file, its end, what the
+//! scanner made of it, and what a game's run leaves recorded (failures, what the port learned, the
+//! frame generation picked).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -13,8 +14,10 @@ use decanter_ps::failures::{self, CallReport, Failure, Log, Scanner};
 use decanter_ps::learned;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::process::{Event, JobKind};
+use decanter_ps::process::{self, Event, Job, JobKind};
 use decanter_ps::run_log::{RunLog, describe_exit};
+use tokio::process::Command;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 pub struct Finished {
     /// `None` when it never started or was killed by a signal.
@@ -39,6 +42,62 @@ impl Finished {
             failures: Vec::new(),
             frame_overlap_off: None,
             frame_gen: None,
+        }
+    }
+}
+
+/// How a job's process starts.
+pub enum Launcher {
+    /// In a process group of its own, which [`Job::stop`] ends.
+    Command(Command),
+    /// A game in a native session of its own (a Job Object), which only the session's stop reaches.
+    #[cfg(windows)]
+    Session(decanter_runtime::Prepared),
+}
+
+impl Launcher {
+    pub const fn command_mut(&mut self) -> &mut Command {
+        match self {
+            Self::Command(command) => command,
+            #[cfg(windows)]
+            Self::Session(prepared) => prepared.command_mut(),
+        }
+    }
+
+    pub fn program(&mut self) -> String {
+        self.command_mut().as_std().get_program().to_string_lossy().into_owned()
+    }
+
+    #[cfg(windows)]
+    pub fn session_key(&self) -> Option<String> {
+        match self {
+            Self::Command(_) => None,
+            Self::Session(prepared) => Some(prepared.key().to_owned()),
+        }
+    }
+
+    /// Must be called inside the tokio runtime, as [`process::spawn`].
+    pub fn spawn(self, kind: JobKind) -> io::Result<(Job, UnboundedReceiver<Event>)> {
+        match self {
+            Self::Command(command) => process::spawn(kind, command),
+            #[cfg(windows)]
+            Self::Session(prepared) => {
+                let mut session = match prepared.spawn() {
+                    Ok(session) => session,
+                    Err(err) => return Err(io::Error::other(format!("{err:#}"))),
+                };
+                let (stdout, stderr) = session.take_output();
+                let pid = session.launcher_pid();
+                Ok(process::follow(kind, pid, stdout, stderr, async move {
+                    session
+                        .wait_status()
+                        .await
+                        .inspect_err(|err| {
+                            tracing::warn!(job = kind.name(), error = %format_args!("{err:#}"), "could not wait for the session");
+                        })
+                        .ok()
+                }))
+            }
         }
     }
 }

@@ -2,21 +2,19 @@
 //! its own, so a chatty game redraws only the log that shows it.
 
 use std::borrow::Cow;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use decanter_ps::failures::Scanner;
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
-use decanter_ps::process::{self, Event, Job, JobKind};
+use decanter_ps::process::{Event, Job, JobKind};
 use decanter_ps::run_log::{self, RunLog};
 use gpui::{AppContext as _, AsyncApp, Entity, WeakEntity};
 use rust_i18n::t;
 use tokio::process::Command;
-use tokio::sync::mpsc::UnboundedReceiver;
 
-pub use crate::ps_play::run::{Finished, port_facts};
+pub use crate::ps_play::run::{Finished, Launcher, port_facts};
 use crate::ps_play::run::{finish_log, finished, game_target, log_lines, read_call_report, trace_end};
 
 use super::Ps;
@@ -46,62 +44,6 @@ pub fn label(kind: JobKind) -> Cow<'static, str> {
         JobKind::Convert => t!("ps.jobs.convert"),
         JobKind::Fsr411 => t!("ps.jobs.fsr411"),
         JobKind::VkLayer => t!("ps.jobs.vk_layer"),
-    }
-}
-
-/// How a job's process starts.
-pub enum Launcher {
-    /// In a process group of its own, which [`Job::stop`] ends.
-    Command(Command),
-    /// A game in a native session of its own (a Job Object), which only the session's stop reaches.
-    #[cfg(windows)]
-    Session(decanter_runtime::Prepared),
-}
-
-impl Launcher {
-    const fn command_mut(&mut self) -> &mut Command {
-        match self {
-            Self::Command(command) => command,
-            #[cfg(windows)]
-            Self::Session(prepared) => prepared.command_mut(),
-        }
-    }
-
-    fn program(&mut self) -> String {
-        self.command_mut().as_std().get_program().to_string_lossy().into_owned()
-    }
-
-    #[cfg(windows)]
-    fn session_key(&self) -> Option<String> {
-        match self {
-            Self::Command(_) => None,
-            Self::Session(prepared) => Some(prepared.key().to_owned()),
-        }
-    }
-
-    /// Must be called inside the tokio runtime, as [`process::spawn`].
-    fn spawn(self, kind: JobKind) -> io::Result<(Job, UnboundedReceiver<Event>)> {
-        match self {
-            Self::Command(command) => process::spawn(kind, command),
-            #[cfg(windows)]
-            Self::Session(prepared) => {
-                let mut session = match prepared.spawn() {
-                    Ok(session) => session,
-                    Err(err) => return Err(io::Error::other(format!("{err:#}"))),
-                };
-                let (stdout, stderr) = session.take_output();
-                let pid = session.launcher_pid();
-                Ok(process::follow(kind, pid, stdout, stderr, async move {
-                    session
-                        .wait_status()
-                        .await
-                        .inspect_err(|err| {
-                            tracing::warn!(job = kind.name(), error = %format_args!("{err:#}"), "could not wait for the session");
-                        })
-                        .ok()
-                }))
-            }
-        }
     }
 }
 

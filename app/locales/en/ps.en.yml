@@ -796,6 +796,7 @@ ps.run.errors.no_game: 'No game with title id %{title} in the PS section'
 ps.run.errors.not_playable: '%{title} can''t be played as it is; the PS section says why'
 ps.run.errors.needs_convert: '%{title} hasn''t been converted yet; play it once from decanter''s window'
 ps.run.errors.port_not_ready: '%{port} isn''t built yet; open decanter''s PS section so it gets prepared'
+ps.run.errors.no_psport: 'No psport.exe to play with; choose a psport.exe folder in PS › Settings, or install a psport Windows package from decanter''s window'
 ps.run.errors.start: 'Couldn''t start the game: %{error}'
 ps.report.save: Save report
 ps.report.close: Close

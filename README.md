@@ -240,14 +240,18 @@ and appends what failed to the profile's failures, where Fallos and
 `ps report` read them. It only runs what is ready: a port that is not built
 yet, or a PS5 game not converted yet, is reported, never prepared, so it
 downloads and builds nothing; online play stays off whatever the settings
-say. `--timeout` asks the game to stop after that many seconds and kills it
-15 seconds later if it is still running; the run is then a timeout, not a
-crash. `--env` passes up to 32 test variables (`PS_` names, printable ASCII
-values of at most 256 characters; online variables are refused). At the end
-it prints one block: `status` (`clean`, `failure`, `timeout` or `could not
-start`), the failures by kind, and the run log's path inside the library.
-It exits 0 for a clean run, 1 for a crash, `STOP:` or bad exit, or a
-timeout, and 2 when the game could not start.
+say. On Windows it runs `psport.exe` as Play does there, from the folder
+picked in PS > Ajustes, else from the Windows build or package in use; with
+neither in the library it does not start. `--timeout` asks the game to stop
+after that many seconds and kills it 15 seconds later if it is still running;
+on Windows Play's own stop already ends its session (the Job Object with every
+process in it) after about 10 seconds of requests to close. The run is then a
+timeout, not a crash. `--env` passes up to 32 test variables (`PS_` names,
+printable ASCII values of at most 256 characters; online variables are
+refused). At the end it prints one block: `status` (`clean`, `failure`,
+`timeout` or `could not start`), the failures by kind, and the run log's
+path inside the library. It exits 0 for a clean run, 1 for a crash, `STOP:`
+or bad exit, or a timeout, and 2 when the game could not start.
 
 Language: decanter follows `LC_ALL`, `LC_MESSAGES` or `LANG` (Spanish when
 it starts with `es`, English otherwise) unless one is chosen in

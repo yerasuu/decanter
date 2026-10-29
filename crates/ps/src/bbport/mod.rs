@@ -337,7 +337,9 @@ impl Bbport {
 
     /// `folder`'s `psport.exe` started as `command` with no `run.sh` in between: the environment
     /// of [`Self::game_env`], the defaults `run.sh` would add to it, and the arguments `run.sh`
-    /// builds from all of it ([`direct::arguments`]).
+    /// builds from all of it ([`direct::arguments`]). `overrides` go over the launch's own
+    /// variables before the defaults and the arguments are read, as variables a test exports
+    /// reach `run.sh`.
     ///
     /// # Errors
     /// Creating the folder the port links the game's mods in, or the game's cache folder.
@@ -346,6 +348,7 @@ impl Bbport {
         command: &mut Command,
         folder: &direct::Folder,
         launch: &GameLaunch<'_>,
+        overrides: &[(String, String)],
     ) -> io::Result<()> {
         let names = Names::Psport;
         let data = self.root.bbport_data();
@@ -361,6 +364,7 @@ impl Bbport {
             .env(names.var("PREBUILT"), "1")
             .env(names.var("PROBE"), folder.executable());
         self.game_env(command, names, false, launch).await;
+        command.envs(overrides.iter().map(|pair| (&pair.0, &pair.1)));
         direct::run_sh_defaults(command, &data.join(names.ini()), &data);
         command.args(direct::arguments(command, &data, &out, launch.local_player));
         Ok(())

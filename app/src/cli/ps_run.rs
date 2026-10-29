@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use decanter_core::Db;
 use decanter_core::capabilities::{Capabilities, Feature};
@@ -20,15 +20,17 @@ use decanter_ps::failures::{self, Kind, Scanner};
 use decanter_ps::library::{self, Game};
 use decanter_ps::paths::{self, Root};
 use decanter_ps::port::Port;
-use decanter_ps::process::{self, Event, Job, JobKind};
+use decanter_ps::process::{Event, Job, JobKind};
 use decanter_ps::run_log::{self, RunLog};
 use decanter_ps::status::{self, Entry, Status};
 use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::i18n::Text;
+#[cfg(windows)]
+use crate::ps_play::direct;
 use crate::ps_play::launch::{self, OnlinePlay, Surroundings};
-use crate::ps_play::run;
+use crate::ps_play::run::{self, Launcher};
 
 /// A week: a soak test longer than that is not what this command is for.
 pub const MAX_TIMEOUT: u64 = 7 * 24 * 60 * 60;
@@ -135,10 +137,14 @@ struct Ready {
     game: Game,
     port: Port,
     profile_id: String,
-    command: Command,
+    launcher: Launcher,
     facts: Vec<(&'static str, String)>,
 }
 
+/// How the game starts, and the facts for its log's header.
+type Started = Result<(Launcher, Vec<(&'static str, String)>), Text>;
+
+/// The title is looked up first, so an unknown one says so whatever else would stop it.
 async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, String)>) -> Result<Ready, Text> {
     let profile = match db.active_profile() {
         Ok(Some(profile)) => profile,
@@ -151,50 +157,70 @@ async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, Str
     };
     paths::use_library(library.root());
     let root = paths::active();
-    if bbport::direct::IN_USE || !Capabilities::detect().is_offered(Feature::PsBuilds) {
-        return Err(Text::new("ps.errors.builds_unavailable"));
-    }
     let library_roots = library.roots();
     let entry = match pick(scan(&root, &library_roots).await, title) {
         Ok(entry) => entry,
         Err(err) => return Err(err),
     };
     let (game, port) = (entry.game, entry.port.unwrap_or(Port::Bbport));
-    let Some(toolchain) = decanter_ps::os::linux::toolchain::ready(&root, port).await else {
-        tracing::warn!(port = port.name(), "port not built; decanter ps run never prepares it");
-        return Err(Text::new("ps.run.errors.port_not_ready").arg("port", port.name()));
-    };
     let folder = library_roots
         .iter()
         .find(|library_root| game.dir.starts_with(paths::games_in(library_root)))
         .cloned()
         .unwrap_or_else(|| root.library().to_owned());
     let cache_dir = launch::game_cache_dir(folder, &game.title_id).await;
+    // As Play: where psport.exe runs directly, or without the checkouts' builds, no toolchain runs it.
+    let is_built_here = !bbport::direct::IN_USE && Capabilities::detect().is_offered(Feature::PsBuilds);
+    let started = match is_built_here.then_some(port) {
+        Some(port) => through_toolchain(&root, port, &game, &profile.id, cache_dir.as_deref(), env).await,
+        #[cfg(windows)]
+        None => directly(&root, port, &game, &profile.id, cache_dir.as_deref(), &env).await,
+        #[cfg(not(windows))]
+        None => Err(Text::new("ps.errors.builds_unavailable")),
+    };
+    let (launcher, mut facts) = match started {
+        Ok(started) => started,
+        Err(err) => return Err(err),
+    };
+    facts.push(("run", "decanter ps run".to_owned()));
+    facts.extend(timeout.map(|secs| ("timeout", format!("{secs}s"))));
+    Ok(Ready {
+        root,
+        game,
+        port,
+        profile_id: profile.id,
+        launcher,
+        facts,
+    })
+}
+
+/// The port's built checkout in its toolchain, with what a run of the port adds around it.
+async fn through_toolchain(
+    root: &Root,
+    port: Port,
+    game: &Game,
+    profile_id: &str,
+    cache_dir: Option<&Path>,
+    env: Vec<(String, String)>,
+) -> Started {
+    let Some(toolchain) = decanter_ps::os::linux::toolchain::ready(root, port).await else {
+        tracing::warn!(port = port.name(), "port not built; decanter ps run never prepares it");
+        return Err(Text::new("ps.run.errors.port_not_ready").arg("port", port.name()));
+    };
     let command = match port {
         Port::Bbport => {
             let surroundings = Surroundings {
                 online: OnlinePlay::Off,
-                is_frame_gen_offered: is_frame_gen_offered(&root, &toolchain).await,
-                display_ratio: || {
-                    tracing::info!("no window to take the display's aspect ratio from, the port keeps its own");
-                    None
-                },
+                is_frame_gen_offered: is_frame_gen_offered(root, &toolchain).await,
+                display_ratio: no_display_ratio,
             };
-            launch::bbport_command(
-                &root,
-                &toolchain,
-                &game,
-                &profile.id,
-                cache_dir.as_deref(),
-                surroundings,
-            )
-            .await
+            launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings).await
         }
         Port::AnyPs5 => {
             if !AnyPs5::new(root.clone()).is_converted(&game.title_id).await {
                 return Err(Text::new("ps.run.errors.needs_convert").arg("title", &game.title_id));
             }
-            launch::anyps5_run_command(&root, &toolchain, &game, &profile.id, cache_dir.as_deref()).await
+            launch::anyps5_run_command(root, &toolchain, game, profile_id, cache_dir).await
         }
     };
     let mut command = match command {
@@ -205,27 +231,67 @@ async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, Str
         }
     };
     command.envs(env);
-    // The removal also covers what the shell running this command exported.
-    for names in [Names::Psport, Names::of_command(&command)] {
+    without_online(&mut command);
+    let mut facts = run::port_facts(root, port, Some(&toolchain)).await;
+    if let Some(fact) = validation_layer(root, &toolchain, &mut command).await {
+        facts.push(("vk_validation_layer", fact));
+    }
+    Ok((Launcher::Command(launch::around_port(root, game, command).await), facts))
+}
+
+/// `psport.exe` as Play starts it here, from the folder picked in Ajustes or the build or package in
+/// use; one that is not there yet is reported, never downloaded.
+#[cfg(windows)]
+async fn directly(
+    root: &Root,
+    port: Port,
+    game: &Game,
+    profile_id: &str,
+    cache_dir: Option<&Path>,
+    env: &[(String, String)],
+) -> Started {
+    if let Err(err) = direct::check_port(port, game) {
+        return Err(err);
+    }
+    let surroundings = Surroundings {
+        online: OnlinePlay::Off,
+        is_frame_gen_offered: Capabilities::detect().is_offered(Feature::PsFrameGen),
+        display_ratio: no_display_ratio,
+    };
+    let inputs = match launch::launch_inputs(root, None, game, profile_id, surroundings).await {
+        Ok(inputs) => inputs,
+        Err(err) => {
+            tracing::warn!(title_id = %game.title_id, error = %err, "could not start game");
+            return Err(err.localized());
+        }
+    };
+    let Some(dir) = direct::chosen_dir(root, &inputs.settings).await else {
+        tracing::warn!(
+            "no psport.exe folder picked and no Windows build or package in use; decanter ps run never downloads one"
+        );
+        return Err(Text::new("ps.run.errors.no_psport"));
+    };
+    let (mut prepared, facts) = match direct::session(root, game, &inputs, cache_dir, dir, env).await {
+        Ok(prepared) => prepared,
+        Err(err) => return Err(err),
+    };
+    without_online(prepared.command_mut());
+    Ok((Launcher::Session(prepared), facts))
+}
+
+fn no_display_ratio() -> Option<&'static str> {
+    tracing::info!("no window to take the display's aspect ratio from, the port keeps its own");
+    None
+}
+
+/// Online play's variables gone from the game's environment, those the shell running this command
+/// exported included.
+fn without_online(command: &mut Command) {
+    for names in [Names::Psport, Names::of_command(command)] {
         for suffix in ONLINE_VARS {
             command.env_remove(names.var(suffix));
         }
     }
-    let mut facts = run::port_facts(&root, port, Some(&toolchain)).await;
-    if let Some(fact) = validation_layer(&root, &toolchain, &mut command).await {
-        facts.push(("vk_validation_layer", fact));
-    }
-    facts.push(("run", "decanter ps run".to_owned()));
-    facts.extend(timeout.map(|secs| ("timeout", format!("{secs}s"))));
-    let command = launch::around_port(&root, &game, command).await;
-    Ok(Ready {
-        root,
-        game,
-        port,
-        profile_id: profile.id,
-        command,
-        facts,
-    })
 }
 
 /// The PS section's games as its scan lists them, from the folders that are there; none is made.
@@ -335,7 +401,7 @@ async fn play(ready: Ready, timeout: Option<u64>) -> Outcome {
         game,
         port,
         profile_id,
-        mut command,
+        mut launcher,
         mut facts,
     } = ready;
     crate::taskbar::sync_ps(root.library(), &game).await;
@@ -344,7 +410,8 @@ async fn play(ready: Ready, timeout: Option<u64>) -> Outcome {
     let kind = JobKind::Game;
     let target = run::game_target(&game.dir);
     facts.extend(scanner.facts());
-    let started_log = RunLog::start(&run_log::dir(&root), &target, kind, &facts, &mut command, true).await;
+    let logs = run_log::dir(&root);
+    let started_log = RunLog::start(&logs, &target, kind, &facts, launcher.command_mut(), true).await;
     let mut log = match started_log {
         Ok(log) => Some(log),
         Err(err) => {
@@ -353,9 +420,11 @@ async fn play(ready: Ready, timeout: Option<u64>) -> Outcome {
         }
     };
     let log_path = log.as_ref().map(|log| log.path().to_owned());
+    let log_file = log_path.as_deref();
     let calls_path = log.as_ref().and_then(|log| log.calls_path().map(Path::to_owned));
-    let program = command.as_std().get_program().to_string_lossy().into_owned();
-    let (mut job, mut events) = match process::spawn(kind, command) {
+    let program = launcher.program();
+    let ending = ending_of(&launcher);
+    let (job, mut events) = match launcher.spawn(kind) {
         Ok(spawned) => spawned,
         Err(err) => {
             tracing::warn!(job = kind.name(), target, program, %err, "could not start job");
@@ -364,31 +433,28 @@ async fn play(ready: Ready, timeout: Option<u64>) -> Outcome {
                 run::finish_log(file, None, None, None, kind, &target).await;
             }
             let why = Text::new("ps.run.errors.start").arg("error", err);
-            return summary(
-                Outcome::NotStarted,
-                &game.title_id,
-                &root,
-                log_path.as_deref(),
-                &[],
-                Some(&why),
-            );
+            return summary(Outcome::NotStarted, &game.title_id, &root, log_file, &[], Some(&why));
         }
     };
     tracing::info!(
         job = kind.name(),
         target,
         program,
-        log = log_path.as_deref().map(|path| tracing::field::display(path.display())),
+        log = log_file.map(|path| tracing::field::display(path.display())),
         "job started"
     );
     let started = Instant::now();
-    let (exit, is_timed_out) = follow(&mut job, &mut events, &mut log, &mut scanner, timeout, &target).await;
+    let mut running = Running { job, ending };
+    let (exit, is_timed_out) = follow(&mut running, &mut events, &mut log, &mut scanner, timeout, &target).await;
     let report = run::read_call_report(calls_path.as_deref()).await;
-    if let Some(file) = log {
+    let killed_at = killed_at(&running.ending);
+    if let Some(mut file) = log {
+        file.set_killed(killed_at, decanter_runtime::KILLED_EXIT_CODE);
         run::finish_log(file, exit, report.as_ref(), calls_path, kind, &target).await;
     }
-    run::trace_end(kind, &target, exit, is_timed_out, false, started, log_path.as_deref());
-    let finished = run::finished(Some(scanner), exit, is_timed_out, log_path.as_deref(), report);
+    let is_killed = killed_at.is_some();
+    run::trace_end(kind, &target, exit, is_timed_out, is_killed, started, log_file);
+    let finished = run::finished(Some(scanner), exit, is_timed_out, log_file, report);
     if let Some(line) = finished.frame_overlap_off
         && let Err(err) = run::save_frame_overlap_off(&root, &game.title_id, line).await
     {
@@ -414,15 +480,91 @@ async fn play(ready: Ready, timeout: Option<u64>) -> Outcome {
     {
         tracing::warn!(title_id = %game.title_id, %err, "could not record the run's failures");
         let why = Text::new("ps.failures.notice.save_error").arg("error", err);
-        return summary(outcome, &game.title_id, &root, log_path.as_deref(), &kinds, Some(&why));
+        return summary(outcome, &game.title_id, &root, log_file, &kinds, Some(&why));
     }
-    summary(outcome, &game.title_id, &root, log_path.as_deref(), &kinds, None)
+    summary(outcome, &game.title_id, &root, log_file, &kinds, None)
+}
+
+/// How the timeout reaches the game.
+enum Ending {
+    /// Its process group, with signals.
+    Group,
+    /// The session (a Job Object) `psport.exe` runs in, whose end kills every process in it.
+    #[cfg(windows)]
+    Session(String),
+}
+
+#[cfg(windows)]
+fn ending_of(launcher: &Launcher) -> Ending {
+    launcher.session_key().map_or(Ending::Group, Ending::Session)
+}
+
+#[cfg(not(windows))]
+const fn ending_of(_launcher: &Launcher) -> Ending {
+    Ending::Group
+}
+
+/// When decanter killed the game's session, since its exit code then reads like the game's own.
+#[cfg(windows)]
+fn killed_at(ending: &Ending) -> Option<SystemTime> {
+    match ending {
+        Ending::Group => None,
+        Ending::Session(key) => decanter_runtime::take_killed(key),
+    }
+}
+
+/// A process group's kill shows in its exit status as a signal.
+#[cfg(not(windows))]
+const fn killed_at(_ending: &Ending) -> Option<SystemTime> {
+    None
+}
+
+/// The running game, and how the timeout reaches it.
+struct Running {
+    job: Job,
+    ending: Ending,
+}
+
+impl Running {
+    /// Asks the game to close; a session's own stop also ends it if it won't, as Play's does.
+    fn stop(&mut self) {
+        match &self.ending {
+            Ending::Group => self.job.stop(),
+            #[cfg(windows)]
+            Ending::Session(key) => {
+                let key = key.clone();
+                tokio::spawn(async move { decanter_runtime::stop(&key).await });
+            }
+        }
+    }
+
+    fn kill(&mut self) {
+        match &self.ending {
+            Ending::Group => self.job.kill(),
+            #[cfg(windows)]
+            Ending::Session(key) => {
+                let key = key.clone();
+                tokio::spawn(async move { decanter_runtime::end(&key).await });
+            }
+        }
+    }
+}
+
+impl Ending {
+    /// What the run's log says was killed.
+    const fn killed(&self) -> &'static str {
+        match self {
+            Self::Group => "its process group",
+            #[cfg(windows)]
+            Self::Session(_) => "its session and every process in it",
+        }
+    }
 }
 
 /// The game's output into its log and the scanner until it ends, and at the timeout a stop request,
 /// then a kill once [`STOP_GRACE`] is over. How it exited, and whether the timeout ended it.
 async fn follow(
-    job: &mut Job,
+    running: &mut Running,
     events: &mut UnboundedReceiver<Event>,
     log: &mut Option<RunLog>,
     scanner: &mut Scanner,
@@ -439,7 +581,7 @@ async fn follow(
                 if received == 0 {
                     break;
                 }
-                run::log_lines(log, &batch, job.kind, target).await;
+                run::log_lines(log, &batch, running.job.kind, target).await;
                 for event in batch.drain(..) {
                     match event {
                         Event::Line(line) => scanner.line(&line),
@@ -448,15 +590,15 @@ async fn follow(
                 }
             }
             () = sleep_until(alarm), if alarm.is_some() => {
-                note(log, &timeout_line(timeout, is_timed_out), target).await;
+                note(log, &timeout_line(timeout, is_timed_out.then_some(&running.ending)), target).await;
                 if is_timed_out {
                     tracing::warn!(target, "game still running after the stop request, killing it");
-                    job.kill();
+                    running.kill();
                     alarm = None;
                 } else {
                     tracing::info!(target, "timeout reached, asking the game to stop");
                     is_timed_out = true;
-                    job.stop();
+                    running.stop();
                     alarm = Some(tokio::time::Instant::now() + STOP_GRACE);
                 }
             }
@@ -465,18 +607,19 @@ async fn follow(
     (exit, is_timed_out)
 }
 
-/// What the run's log says at the timeout, and again when the grace after it ran out.
-fn timeout_line(timeout: Option<u64>, is_grace_over: bool) -> String {
-    if is_grace_over {
-        format!(
-            "# timeout: still running {}s after the stop request, decanter killed its process group",
-            STOP_GRACE.as_secs()
-        )
-    } else {
-        format!(
+/// What the run's log says at the timeout, and again with what is killed once the grace after it ran
+/// out.
+fn timeout_line(timeout: Option<u64>, killing: Option<&Ending>) -> String {
+    match killing {
+        Some(ending) => format!(
+            "# timeout: still running {}s after the stop request, decanter killed {}",
+            STOP_GRACE.as_secs(),
+            ending.killed()
+        ),
+        None => format!(
             "# timeout: {}s reached, decanter asked the game to stop",
             timeout.unwrap_or_default()
-        )
+        ),
     }
 }
 

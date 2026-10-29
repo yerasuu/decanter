@@ -83,7 +83,9 @@ missing calls are recorded but leave the status `clean`, as they leave Play's ba
 crash, a `STOP:` or a bad exit makes it `failure` and the exit code 1. A run ended by
 `--timeout` is a `timeout`: the stop it asked for is not recorded as a crash, and the run log
 says when the timeout came and whether the game had to be killed. The command never connects to
-online services and never prepares a port or converts a game; see the README's CLI section.
+online services and never prepares a port or converts a game; on Windows it runs the `psport.exe`
+Play would (the folder picked in Ajustes, else the build or package in use) and never downloads
+one. See the README's CLI section.
 
 ## Sending
 
