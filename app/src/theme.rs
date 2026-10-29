@@ -42,7 +42,7 @@ pub const RADIUS_SM: f32 = 4.;
 /// leaves `RADIUS_SM`, so the items inside them sit concentric.
 pub const RADIUS_LG: f32 = 10.;
 
-pub const SANS: &str = "Inter";
+pub const SANS: &str = "Inter Variable";
 pub const DISPLAY: &str = "Oswald";
 pub const MONO: &str = "JetBrains Mono";
 
