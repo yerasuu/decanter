@@ -17,6 +17,10 @@ use anyhow::Context;
 use decanter_core::{CachedAchievement, Db, Storefront};
 use tokio::sync::Mutex as AsyncMutex;
 
+// Upstream style, kept as published (see api/VENDOR.md): the workspace's clippy groups are not applied to it.
+#[allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
+#[rustfmt::skip]
+pub mod api;
 mod auth;
 pub mod cloud_saves;
 mod depot;
@@ -58,12 +62,12 @@ macro_rules! achv_try {
     };
 }
 
-/// `gog`'s own requests carry the refresh token or the login code in the URL, and reqwest puts
-/// the URL in its errors; every `gog` error goes through this before it is worded or logged.
-pub(crate) fn without_secrets(err: gog::Error) -> gog::Error {
+/// `api`'s own requests carry the refresh token or the login code in the URL, and reqwest puts
+/// the URL in its errors; every `api` error goes through this before it is worded or logged.
+pub(crate) fn without_secrets(err: api::Error) -> api::Error {
     match err {
-        gog::Error(gog::ErrorKind::Network(network), state) => {
-            gog::Error(gog::ErrorKind::Network(network.without_url()), state)
+        api::Error(api::ErrorKind::Network(network), state) => {
+            api::Error(api::ErrorKind::Network(network.without_url()), state)
         }
         other => other,
     }
@@ -157,19 +161,19 @@ fn session_lock(account_id: &str) -> Arc<AsyncMutex<()>> {
     )
 }
 
-/// Runs `f` against a live, authenticated `gog::Gog` client built from the
+/// Runs `f` against a live, authenticated `api::Gog` client built from the
 /// stored session, then persists whatever `f` leaves in `client.token` —
 /// any authenticated call may have refreshed it, and a caller that skipped
 /// this would silently log itself out one token rotation later. That holds
-/// when `f` fails too: the `gog` crate refreshes before the request that then
+/// when `f` fails too: the `api` client refreshes before the request that then
 /// fails, and GOG may have spent the old refresh token by then.
 ///
-/// `f` runs inside `spawn_blocking`: `gog::Gog` holds its token in a
+/// `f` runs inside `spawn_blocking`: `api::Gog` holds its token in a
 /// `RefCell`, so it isn't `Send` across an `.await` the way an async
 /// closure would need.
 async fn with_session<T, F>(account_id: &str, f: F) -> anyhow::Result<T>
 where
-    F: FnOnce(&gog::Gog) -> anyhow::Result<T> + Send + 'static,
+    F: FnOnce(&api::Gog) -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
     let lock = session_lock(account_id);
@@ -180,10 +184,10 @@ where
         tracing::debug!(account_id, "no GOG session stored for this account");
     }
     let stored = stored.context("no GOG session for this account — log in first")?;
-    let started: gog::token::Token = achv_try!(serde_json::from_str(&stored).context("stored GOG session is corrupt"));
+    let started: api::token::Token = achv_try!(serde_json::from_str(&stored).context("stored GOG session is corrupt"));
     let (result, token) = achv_try!(
         tokio::task::spawn_blocking(move || {
-            let client = gog::Gog::new(started);
+            let client = api::Gog::new(started);
             let result = f(&client);
             (result, client.token.into_inner())
         })
@@ -216,7 +220,7 @@ pub async fn poll_achievements(
 
     let list = with_session(account_id, move |client| {
         let uid = client.uid();
-        // gog::Error is built on error-chain and isn't Sync, so it can't
+        // api::Error is built on error-chain and isn't Sync, so it can't
         // cross the `?`-to-anyhow boundary directly.
         client
             .achievements(numeric_id, uid)

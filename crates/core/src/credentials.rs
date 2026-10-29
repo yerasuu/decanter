@@ -2,7 +2,7 @@
 //!
 //! One entry per `(account, storefront)`, holding whatever that
 //! storefront's client needs to resume a session — for GOG, a serialized
-//! `gog::token::Token`. Never on disk in the clear: these are live
+//! `decanter_gog::api::token::Token`. Never on disk in the clear: these are live
 //! credentials to someone's game library and payment account. psport's
 //! online play signs in to a shadNet server, which no storefront owns: its
 //! password and token are filed under `shadnet/<NPID>/…` (decision #715).

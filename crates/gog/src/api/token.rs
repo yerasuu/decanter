@@ -1,4 +1,4 @@
-use crate::error::{ErrorKind::*, *};
+use crate::api::error::{ErrorKind::*, *};
 use log::{error, info, warn};
 use regex::*;
 use reqwest;

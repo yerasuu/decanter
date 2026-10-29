@@ -1492,12 +1492,15 @@ dependencies = [
  "decanter-core",
  "decanter-runtime",
  "dirs 7.0.0",
+ "error-chain",
  "flate2",
  "futures-util",
- "gog",
+ "log",
  "md5",
  "plist",
+ "regex",
  "reqwest",
+ "select",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -2399,21 +2402,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c4ee00b289aba7a9e5306d57c2d05499b2e5dc427f84ac708bd2c090212cf3e"
 dependencies = [
  "gl_generator",
-]
-
-[[package]]
-name = "gog"
-version = "0.5.0"
-dependencies = [
- "curl",
- "error-chain",
- "log",
- "regex",
- "reqwest",
- "select",
- "serde",
- "serde_json",
- "time",
 ]
 
 [[package]]

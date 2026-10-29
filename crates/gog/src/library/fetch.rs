@@ -9,6 +9,7 @@ use decanter_core::{Game, InstallState, Storefront};
 use serde::Deserialize;
 
 use super::{Batch, GameKind, LibraryEntry};
+use crate::api;
 
 const FILTERED_PRODUCTS_URL: &str = "https://embed.gog.com/account/getFilteredProducts";
 
@@ -16,7 +17,7 @@ const FILTERED_PRODUCTS_URL: &str = "https://embed.gog.com/account/getFilteredPr
 #[serde(rename_all = "camelCase")]
 struct FilteredProductsPage {
     #[serde(default)]
-    products: Vec<gog::gog::ProductDetails>,
+    products: Vec<api::gog::ProductDetails>,
     #[serde(default, rename = "totalPages")]
     total_pages: i64,
 }
@@ -33,7 +34,7 @@ struct FilteredProductsPage {
 /// an error the caller can shrug off (see `list_games`), not a panic.
 async fn each_product_page(
     access_token: &str,
-    mut on_page: impl AsyncFnMut(Vec<gog::gog::ProductDetails>),
+    mut on_page: impl AsyncFnMut(Vec<api::gog::ProductDetails>),
 ) -> anyhow::Result<()> {
     let http = crate::http_client();
     let mut page = 1;
@@ -178,7 +179,7 @@ pub async fn list_games(
 ///
 /// This is what pass one emits, and it is already enough to render a game
 /// in the library — title, art and category.
-fn base_entry(id: i64, product: Option<&gog::gog::ProductDetails>) -> LibraryEntry {
+fn base_entry(id: i64, product: Option<&api::gog::ProductDetails>) -> LibraryEntry {
     let kind = match product {
         Some(product) if product.is_movie => GameKind::Movie,
         Some(product) if product.is_game => GameKind::Game,

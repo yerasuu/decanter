@@ -157,7 +157,7 @@ pub mod status {
 pub mod connect {
     use serde::{Deserialize, Serialize};
 
-    use crate::gog::GMap;
+    use crate::api::gog::GMap;
 
     // A GOG Connect-linked steam account
     #[derive(Serialize, Deserialize, Debug)]

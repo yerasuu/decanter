@@ -1,11 +1,12 @@
+// Upstream style, kept as published (see src/api/VENDOR.md): the workspace's clippy groups are not applied to it.
+#![allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
+use decanter_gog::api::gog::FilterParam::*;
+use decanter_gog::api::gog::OS::*;
+use decanter_gog::api::gog::*;
+use decanter_gog::api::token::Token;
+use decanter_gog::api::*;
 use std::env::var_os;
 use std::fs::File;
-extern crate gog;
-use gog::gog::FilterParam::*;
-use gog::gog::OS::*;
-use gog::gog::*;
-use gog::token::Token;
-use gog::*;
 use std::io::Read;
 
 // Some tests need an owned game.
@@ -25,12 +26,14 @@ fn get_gog() -> Gog {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn get_games() {
     let gog = get_gog();
     gog.get_games().unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn get_pub_info() {
     let gog = get_gog();
     let exp: Vec<String> = vec![
@@ -42,30 +45,35 @@ fn get_pub_info() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn get_game_details() {
     let gog = get_gog();
     gog.get_game_details(OWNED_GAME_ID).unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn wishlist() {
     let gog = get_gog();
     gog.wishlist().unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn add_wishlist() {
     let gog = get_gog();
     gog.add_wishlist(1096313866).unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn rm_wishlist() {
     let gog = get_gog();
     gog.rm_wishlist(1096313866).unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn product() {
     let exp_game: Vec<String> = vec![
         "downloads".to_string(),
@@ -78,12 +86,14 @@ fn product() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn game_ratings() {
     let gog = get_gog();
     gog.game_ratings().unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn filtered() {
     let gog = get_gog();
     gog.get_filtered_products(FilterParams::from_one(MediaType(1)))
@@ -91,6 +101,7 @@ fn filtered() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn filtered_all() {
     let gog = get_gog();
     gog.get_all_filtered_products(FilterParams::from_one(MediaType(1)))
@@ -98,6 +109,7 @@ fn filtered_all() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn filtered_os() {
     let gog = get_gog();
     gog.get_filtered_products(FilterParams::from_one(OS(Linux)))
@@ -105,6 +117,7 @@ fn filtered_os() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn download() {
     let gog = get_gog();
     let details = gog.get_game_details(OWNED_GAME_ID).unwrap();
@@ -112,6 +125,7 @@ fn download() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn filtered_search() {
     let gog = get_gog();
     gog.get_filtered_products(FilterParams::from_one(Search("Not A Hero".to_string())))
@@ -119,6 +133,7 @@ fn filtered_search() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn filtered_unowned() {
     let gog = get_gog();
     gog.get_products(FilterParams::from_one(Search("Stellaris".to_string())))
@@ -126,6 +141,7 @@ fn filtered_unowned() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn connect_status() {
     let gog = get_gog();
     let uid = gog.get_user_data().unwrap().user_id;
@@ -140,12 +156,14 @@ fn connect_status() {
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn friends() {
     let gog = get_gog();
     gog.friends().unwrap();
 }
 
 #[test]
+#[ignore = "needs a GOG account and network"]
 fn extract_data() {
     let gog = get_gog();
     let details = gog.get_game_details(OWNED_GAME_ID).unwrap();
@@ -155,7 +173,7 @@ fn extract_data() {
 #[test]
 #[ignore]
 fn extract() {
-    use gog::extract::*;
+    use decanter_gog::api::extract::*;
     let mut in_file = File::open("beneath_a_steel_sky_en_gog_2_20150.sh").unwrap();
     extract(
         &mut in_file,

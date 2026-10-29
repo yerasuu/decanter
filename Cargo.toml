@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/gog", "crates/gogapi", "crates/nix", "crates/ps", "crates/report", "crates/runtime", "app"]
+members = ["crates/core", "crates/gog", "crates/nix", "crates/ps", "crates/report", "crates/runtime", "app"]
 # `app` is the workspace's only binary crate (decanter) — this is what lets
 # `cargo run`/`cargo build` from the workspace root pick it without an
 # explicit `-p`/`--package`.
@@ -41,19 +41,19 @@ clap = "4.6.7"
 # default — see crates/gog for the features that vendor both instead.
 curl = "0.4.51"
 dirs = "7.0.0"
+error-chain = "0.12.4"
 flate2 = "1.1.10"
 futures = "0.3.34"
 futures-util = "0.3.34"
 # Free disk space where nix's statvfs isn't used (Windows, macOS).
 fs4 = { version = "1.1.0", default-features = false }
-# Incorporated from the crates.io `gog` 0.5.0 (see crates/gogapi/VENDOR.md); keeps its package name.
-gog = { path = "crates/gogapi" }
 # The close-game shortcut on Windows and macOS; Linux registers it with
 # KGlobalAccel over D-Bus.
 global-hotkey = "0.9.0"
 image = "0.25.10"
 keyring = "4.2.0"
 ksni = "0.3.7"
+log = "0.4.34"
 md5 = "0.8.1"
 # Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
 # exactly so a new release of what decides which binary runs gets read first.
@@ -63,12 +63,14 @@ open = "5.4.5"
 # A macOS build's Info.plist, which names the app bundle's executable; XML or
 # binary, both of which bundles ship (decision #892).
 plist = { version = "1.10.3", default-features = false }
+regex = "1.13.1"
 # `default-tls` pulls in native-tls, which links the system's OpenSSL —
 # rustls is pure Rust, no system TLS library to find at build or link time.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
 rfd = "0.17.2"
 rusqlite = "0.41.0"
 rust-i18n = "4.2.4"
+select = "0.6.1"
 serde = "1.0.229"
 serde_json = "1.0.154"
 # Already in the graph through the TLS stack; listed for the nix-portable

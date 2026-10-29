@@ -13,12 +13,11 @@ workspace = true
 [dependencies]
 decanter-core.workspace = true
 decanter-runtime.workspace = true
-gog.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "fs", "sync", "time", "macros"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 anyhow.workspace = true
-reqwest = { workspace = true, features = ["json", "query", "stream", "charset", "system-proxy"] }
+reqwest = { workspace = true, features = ["json", "query", "stream", "charset", "system-proxy", "blocking", "cookies", "form"] }
 thiserror.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 md5.workspace = true
@@ -30,6 +29,10 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 # Where a native game's save folders are (`save_location::UserFolders::native`).
 dirs.workspace = true
+error-chain.workspace = true
+log.workspace = true
+regex.workspace = true
+select.workspace = true
 
 # `gog` (transitive) builds `curl` against the system's libcurl/OpenSSL by
 # default — pinning the same `curl` crate here with these features unifies

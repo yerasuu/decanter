@@ -11,7 +11,7 @@
 //!   counts: the only source that covers products GamesDB has never heard
 //!   of, and (unlike `orders.rs`'s order history) the only one that
 //!   orders gifts and dev grants alongside real purchases instead of
-//!   omitting them. `sortBy` isn't in the `gog` crate's typed
+//!   omitting them. `sortBy` isn't in the `api` module's typed
 //!   `FilterParam`, so this bypasses it for a raw request the same way
 //!   `orders.rs` already does for the orders endpoint.
 //! - `get_games` — the raw owned-id list. Kept because it can include ids

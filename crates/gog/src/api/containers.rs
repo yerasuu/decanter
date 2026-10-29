@@ -1,4 +1,4 @@
-use crate::gog::*;
+use crate::api::gog::*;
 use serde::{Deserialize, Serialize};
 use serde_json::value::Value;
 

@@ -1,6 +1,6 @@
 //! Whether an account's stored GOG session still works.
 //!
-//! Asked over decanter's own async client rather than the `gog` crate's,
+//! Asked over decanter's own async client rather than the blocking `api` module's,
 //! which never looks at HTTP status codes: a 503 page and a revoked token
 //! both reach its callers as "expected value at line 1 column 1". Here they
 //! read apart — a session GOG rejected is [`SessionState::Closed`], one that
@@ -10,11 +10,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context as _;
-use gog::token::Token;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
+use crate::api::token::Token;
 use crate::auth::{Account, GOG_CLIENT_ID, GOG_CLIENT_SECRET};
 
 const TOKEN_URL: &str = "https://auth.gog.com/token";

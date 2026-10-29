@@ -12,6 +12,8 @@
 
 use anyhow::Context as _;
 
+use crate::api;
+
 /// GOG Galaxy's public client ID, used by every third-party GOG client
 /// (Heroic, Minigalaxy, Lutris, ...) since GOG has no per-application
 /// client registration for this flow.
@@ -79,12 +81,12 @@ pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
 
     let (token, user) = crate::achv_try!(crate::achv_try!(
         tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let token = crate::achv_try!(gog::token::Token::from_login_code(&code).map_err(|err| anyhow::anyhow!(
+            let token = crate::achv_try!(api::token::Token::from_login_code(&code).map_err(|err| anyhow::anyhow!(
                 "GOG rejected the authorization code: {}",
                 crate::without_secrets(err)
             )));
             tracing::debug!("exchanged authorization code for a GOG session token");
-            let client = gog::Gog::new(token);
+            let client = api::Gog::new(token);
             let user = crate::achv_try!(
                 client
                     .get_user_data()

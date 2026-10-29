@@ -1,5 +1,5 @@
 //! A direct client for GOG's GamesDB API — public, unauthenticated, and
-//! the same catalog data Heroic uses. Not the `gog` crate's
+//! the same catalog data Heroic uses. Not the `api` module's
 //! `get_game_details`: that one hits `embed.gog.com/account/...` and rate
 //! limits hard under the one-call-per-owned-game pattern a full library
 //! listing needs.
@@ -9,7 +9,7 @@ use serde::Deserialize;
 const EXTERNAL_RELEASES_URL: &str = "https://gamesdb.gog.com/platforms/gog/external_releases";
 
 /// A GOG release as returned by `GET .../external_releases/{id}`, keyed by
-/// the same numeric product id `gog::get_games` returns for owned games.
+/// the same numeric product id `api::Gog::get_games` returns for owned games.
 #[derive(Debug, Deserialize)]
 pub struct Release {
     pub title: Localized,
@@ -94,7 +94,7 @@ pub fn parse_release_date(date: &str) -> Option<i64> {
 
 /// Fetches one release's catalog data by GOG product id.
 ///
-/// Async, unlike the `gog` crate's own calls: this runs once per owned
+/// Async, unlike the `api` module's own calls: this runs once per owned
 /// game, so the library's second pass fetches many of them at a time
 /// rather than one after another.
 pub async fn fetch_release(client: &reqwest::Client, id: i64) -> reqwest::Result<Release> {
