@@ -1,15 +1,27 @@
 # PS section: per-game settings
 
 Status: accepted (kb #1275, D1-D9). Analysis of `develop` at `123e5ab` and of the bbport checkout
-under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phase 1 (per-title ini,
-`crates/ps/src/bbport/port_ini.rs`) and phase 2 (per-title launch settings,
-`crates/ps/src/bbport/settings/title.rs`) are implemented; the rest is not yet.
+under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phases 1 (per-title ini,
+`crates/ps/src/bbport/port_ini.rs`), 2 (per-title launch settings,
+`crates/ps/src/bbport/settings/title.rs`) and 3 (online and system modules switches per game) are
+implemented; the rest is not yet.
 
 Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
-the online switches (until phase 3) and `mods_dir`/`patches_dir` (until phase 4). A title's file is
-made from the shared one the first time it is needed, after a backup of the shared one, and the
-shared file is not rewritten (step 4 below waits for phase 5): its global keys are what a new title
-copies until the defaults page exists, and what an older port's launches read (D6).
+`mods_dir`/`patches_dir` (until phase 4). A title's file is made from the shared one the first time
+it is needed, after a backup of the shared one, and the shared file is not rewritten (step 4 below
+waits for phase 5): its global keys are what a new title copies until the defaults page exists, and
+what an older port's launches read (D6).
+
+Phase 3 as built: `online`, `online_upnp`, `online_bbsc` and `online_bbsc_local_server` left
+`SHARED` and are each title's; the account (`online_npid`, `online_server`, `online_webapi`,
+`online_community`) and the dump folders stay shared (E1, E2). A title's file carries `format: 2`;
+one made by phase 2 (no `format`) takes those four keys from the shared file once, the first time
+it is read, where it lacks them, so each game plays online exactly as before. The switches sit in
+the game's Online tab, now shown for every bbport title, not only Bloodborne; Ajustes keeps the
+account and its servers. The system modules switch is `sys_modules` in the title's file, shown in
+Graphics › Extras; absent, it is on for every title but Bloodborne (D7), so nothing changes until
+the user turns it. An older port's launches, with no title file, still read the shared file for all
+of these.
 
 ## The owner's rule
 

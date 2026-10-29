@@ -22,17 +22,13 @@ use crate::title_id::TitleId;
 const FILE: &str = "settings.json";
 
 /// The exceptions of `docs/ps-per-game-settings.md` (E1-E3), and what later phases move.
-const SHARED: [&str; 15] = [
-    // The shadNet account is who the user is, not how a game runs.
+const SHARED: [&str; 11] = [
+    // The shadNet account is who the user is, not how a game runs; whether a game plays online
+    // is the game's.
     online::NPID,
     online::SERVER,
     online::WEBAPI,
     online::COMMUNITY,
-    // Shared until each game's Online tab has switches of its own.
-    online::ONLINE,
-    online::UPNP,
-    online::BBSC,
-    online::BBSC_LOCAL_SERVER,
     // Folders of the user's console dump, which have no per-game value.
     "sys_modules_dir",
     "sys_fonts_dir",
@@ -44,6 +40,14 @@ const SHARED: [&str; 15] = [
     "mods_dir",
     "patches_dir",
 ];
+
+/// What a title's file of an earlier format lacks: 1 (no field) is from before [`MOVED`].
+const FORMAT: u64 = 2;
+const FORMAT_KEY: &str = "format";
+
+/// The keys every title shared before [`FORMAT`] 2: a title's file of format 1 takes the shared
+/// values once, so the game keeps playing as it did.
+const MOVED: [&str; 4] = [online::ONLINE, online::UPNP, online::BBSC, online::BBSC_LOCAL_SERVER];
 
 /// Keys of bbport's former GTK launcher that nothing reads: left in the shared file, never copied
 /// into a title's.
@@ -132,10 +136,35 @@ fn title_file(root: &Root, title_id: &str) -> io::Result<Option<PathBuf>> {
         return Ok(None);
     };
     let path = root.title(&id).join(FILE);
-    if !path.exists() {
+    if path.exists() {
+        catch_up(root, &id, &path)?;
+    } else {
         create(root, &id, &path)?;
     }
     Ok(Some(path))
+}
+
+/// A file made before the [`MOVED`] keys were each title's takes the shared values it lacks, once;
+/// the shared file was backed up when the first title took its copy, and is not written.
+fn catch_up(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
+    let mut own = LauncherSettings::read_at(path, true)?;
+    if own.values.get(FORMAT_KEY).and_then(Value::as_u64) >= Some(FORMAT) {
+        return Ok(());
+    }
+    let mut shared = LauncherSettings::read(root)?;
+    let mut copied = Vec::with_capacity(MOVED.len());
+    for key in MOVED {
+        if !own.values.contains_key(key)
+            && let Some(value) = shared.values.remove(key)
+        {
+            own.values.insert(key.into(), value);
+            copied.push(key);
+        }
+    }
+    own.values.insert(FORMAT_KEY.into(), FORMAT.into());
+    own.write_at(root, path)?;
+    tracing::info!(title_id = id.as_str(), keys = ?copied, to = %path.display(), "title launch settings caught up with the online switches");
+    Ok(())
 }
 
 /// What `id` ran with before it had a file: the shared file's keys but those every title still
@@ -165,6 +194,7 @@ fn create(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
     let copied = values.len();
     values.insert("created_from".into(), "migration".into());
     values.insert("created_on".into(), port_ini::today().into());
+    values.insert(FORMAT_KEY.into(), FORMAT.into());
     let settings = LauncherSettings { values, is_title: true };
     match settings.write_at(root, path) {
         Ok(()) => {

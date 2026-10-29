@@ -1,9 +1,10 @@
 //! What bbport's settings table can't hold: building FSR 4.1.1 from an AMD
-//! DLL, and free-form environment for the shown game alone.
+//! DLL, and, for the shown game alone, free-form environment and whether it
+//! loads the user's system modules dump.
 
-use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::tools::{self, Fsr411Progress};
 use decanter_ps::bbport::values::Values;
+use decanter_ps::bbport::{LauncherSettings, SYS_MODULES};
 use decanter_ps::process::Job;
 use gpui::{AnyElement, Context, Entity, Subscription, Window, div, prelude::*, px};
 use rust_i18n::t;
@@ -13,7 +14,7 @@ use crate::i18n::Text;
 use crate::runners;
 use crate::state::{DllOutcome, JobKey, Ps};
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, TextInput, button};
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button, checkbox};
 
 pub struct ExtrasView {
     ps: Entity<Ps>,
@@ -23,6 +24,9 @@ pub struct ExtrasView {
     checked_at: Option<u32>,
     message: Option<(Text, bool)>,
     env: Entity<TextInput>,
+    /// Whether the title loads the system modules dump, and whether Ajustes has its folder;
+    /// `None` while they are read.
+    sys_modules: Option<(bool, bool)>,
     /// The build being watched, so its progress line follows its output.
     fsr_job: Option<(Entity<Job>, Subscription)>,
     /// Whose output size and preset the FSR check reads, and whose upscaler a build chooses.
@@ -50,6 +54,7 @@ impl ExtrasView {
             checked_at: None,
             message: None,
             env,
+            sys_modules: None,
             fsr_job: None,
             title_id: None,
         };
@@ -66,20 +71,27 @@ impl ExtrasView {
         self.fsr_problem = None;
         self.message = None;
         self.check_fsr(cx);
-        self.load_env(title_id, cx);
+        self.load_settings(title_id, cx);
     }
 
-    /// Another title's text goes at once, so it is never saved as this one's.
-    fn load_env(&self, title_id: &str, cx: &mut Context<Self>) {
+    /// Another title's text and switch go at once, so they are never saved as this one's.
+    fn load_settings(&mut self, title_id: &str, cx: &mut Context<Self>) {
         self.env.update(cx, |input, cx| input.set_text(String::new(), cx));
+        self.sys_modules = None;
         let title_id = title_id.to_owned();
         cx.spawn(async move |this, cx| {
             let loaded = cx
                 .background_spawn({
                     let title_id = title_id.clone();
                     async move {
-                        LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id)
-                            .map(|settings| settings.text("extra_env").map(str::to_owned).unwrap_or_default())
+                        LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id).map(|settings| {
+                            let env = settings.text("extra_env").map(str::to_owned).unwrap_or_default();
+                            let sys_modules = (
+                                settings.uses_sys_modules(&title_id),
+                                settings.text("sys_modules_dir").is_some(),
+                            );
+                            (env, sys_modules)
+                        })
                     }
                 })
                 .await;
@@ -88,7 +100,11 @@ impl ExtrasView {
                     return;
                 }
                 match loaded {
-                    Ok(current) => this.env.update(cx, |input, cx| input.set_text(current, cx)),
+                    Ok((env, sys_modules)) => {
+                        this.sys_modules = Some(sys_modules);
+                        this.env.update(cx, |input, cx| input.set_text(env, cx));
+                        cx.notify();
+                    }
                     Err(err) => {
                         this.message = Some((Text::new("ps.scope.read_error").arg("error", err), true));
                         cx.notify();
@@ -167,6 +183,56 @@ impl ExtrasView {
             });
         })
         .detach();
+    }
+
+    fn set_sys_modules(&mut self, is_on: bool, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
+        if let Some((uses, _)) = &mut self.sys_modules {
+            *uses = is_on;
+        }
+        let task = cx.background_spawn(async move {
+            LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
+                settings.set_flag(SYS_MODULES, is_on);
+            })
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.message = result
+                    .err()
+                    .map(|err| (Text::new("ps.extras.sys_modules.save_error").arg("error", err), true));
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn sys_modules_row(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let (is_on, has_folder) = self.sys_modules?;
+        let hint = if has_folder {
+            t!("ps.extras.sys_modules.hint")
+        } else {
+            t!("ps.extras.sys_modules.no_folder")
+        };
+        let toggle = div()
+            .id("ps-extras-sys-modules")
+            .flex()
+            .items_center()
+            .gap_3()
+            .cursor_pointer()
+            .child(checkbox(is_on))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(t!("ps.extras.sys_modules.title"))
+                    .child(theme::muted(hint).text_size(px(12.))),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| this.set_sys_modules(!is_on, cx)));
+        Some(theme::compact_row(false).child(toggle).into_any_element())
     }
 
     /// Asks for the DLL, or for its loader when the DLL needs one.
@@ -275,6 +341,7 @@ impl Render for ExtrasView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let fsr_offered = !Caps::get(cx).ps_option_hidden("upscaler", "fsr411");
         let fsr_row = fsr_offered.then(|| self.fsr_row(cx));
+        let sys_modules_row = self.sys_modules_row(cx);
         div()
             .flex()
             .flex_col()
@@ -286,7 +353,7 @@ impl Render for ExtrasView {
                     .map(|(text, error)| if *error { theme::error(text) } else { theme::muted(text) }),
             )
             .child(
-                theme::card().children(fsr_row).child(
+                theme::card().children(fsr_row).children(sys_modules_row).child(
                     theme::compact_row(true)
                         .child(
                             div()

@@ -40,7 +40,7 @@ pub use groups::{Control, GROUPS, Group, OPTION_FEATURES, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
 pub use names::{MEMORY_MODEL_SETTINGS, Names, single_memory_model_blocking};
 pub use port_ini::{IniScope, PortIni};
-pub use settings::LauncherSettings;
+pub use settings::{LauncherSettings, SYS_MODULES};
 
 use crate::learned;
 use crate::library::{Game, Platform};
@@ -63,7 +63,13 @@ pub const SUPPORTED_VERSION: &str = "01.09";
 pub const SUPPORTED_TITLE: &str = "CUSA03173";
 
 pub fn is_bloodborne(game: &Game) -> bool {
-    game.platform == Platform::Ps4 && BLOODBORNE_IDS.contains(&game.title_id.as_str())
+    game.platform == Platform::Ps4 && is_bloodborne_title(&game.title_id)
+}
+
+/// [`is_bloodborne`] for what knows only the title, such as a title's launch settings.
+#[must_use]
+pub fn is_bloodborne_title(title_id: &str) -> bool {
+    BLOODBORNE_IDS.contains(&title_id)
 }
 
 /// The `aspect_ratio` value nearest a `width` by `height` display, either way up: what the
@@ -405,11 +411,13 @@ impl Bbport {
         // first import the runtime lacks, so the log lists every one the title reaches.
         if !is_bloodborne(game) {
             command.env(var("SKIP_GAME_CHECK"), "1").env(var("PERMISSIVE"), "1");
-            // The user's own dump of the console's modules (Ajustes), which the fork links ahead of
-            // its own versions; Bloodborne keeps the path it is known to work on.
-            if let Some(dir) = settings.text("sys_modules_dir") {
-                command.env(var("SYS_MODULES"), dir);
-            }
+        }
+        // The user's own dump of the console's modules (Ajustes), which the fork links ahead of
+        // its own versions, where the title's switch lets it.
+        if settings.uses_sys_modules(&game.title_id)
+            && let Some(dir) = settings.text("sys_modules_dir")
+        {
+            command.env(var("SYS_MODULES"), dir);
         }
         // Ports from before `psport.ini` have no aspect ratio setting to override.
         command.envs(

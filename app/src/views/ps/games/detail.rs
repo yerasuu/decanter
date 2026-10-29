@@ -72,11 +72,12 @@ const BBPORT_TABS: [Tab; 8] = [
 ];
 
 /// Another PS4 title on bbport: its mods are Bloodborne's.
-const OTHER_PS4_TABS: [Tab; 6] = [
+const OTHER_PS4_TABS: [Tab; 7] = [
     Tab::Overview,
     Tab::Keyboard,
     Tab::Gamepad,
     Tab::Graphics,
+    Tab::Online,
     Tab::Performance,
     Tab::Log,
 ];

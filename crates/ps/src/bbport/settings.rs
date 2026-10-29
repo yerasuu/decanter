@@ -7,12 +7,15 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use super::is_bloodborne_title;
 use super::names::{MEMORY_MODEL_SETTINGS, single_memory_model_blocking};
 use crate::paths::Root;
 use crate::port::Port;
 
 const TITLES: &str = "titles";
 const LAUNCHER_PASSWORD: &str = "online_password";
+/// A title's switch for the user's system modules dump; the folder is `sys_modules_dir`, shared.
+pub const SYS_MODULES: &str = "sys_modules";
 
 fn path(root: &Root) -> PathBuf {
     root.bbport_data().join("settings.json")
@@ -136,6 +139,13 @@ impl LauncherSettings {
 
     pub fn set_flag(&mut self, key: &str, value: bool) {
         self.values.insert(key.into(), value.into());
+    }
+
+    /// Whether `title_id` loads the user's system modules dump when its folder is set. By default
+    /// every title but Bloodborne, which keeps the path it is known to work on.
+    #[must_use]
+    pub fn uses_sys_modules(&self, title_id: &str) -> bool {
+        self.flag(SYS_MODULES, !is_bloodborne_title(title_id))
     }
 
     /// A switch of one game rather than of every game the port runs: a top-level key in the

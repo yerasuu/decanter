@@ -144,7 +144,7 @@ ps.settings.games.title: Games folder
 ps.settings.games.description: 'Next to each of the profile''s library folders, on the same disk. "Add dump…", or dropping its folder on the window, copies or moves a dump into the main one, and the dumps of each folder show up on their own. Saves and settings always stay in the main one; the cache goes to the cache location of each game''s folder. To move a game between folders, or choose where its cache goes, use Storage.'
 ps.settings.sys_modules.title: System modules (optional)
 ps.settings.sys_modules.none: No folder
-ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder with your own dump of the console''s modules (*.sprx, like libSceNgs2.sprx), only to compare against the port''s own libraries (PS_LLE) or for a game that still needs a console module. decanter neither ships nor copies any.'
+ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder with your own dump of the console''s modules (*.sprx, like libSceNgs2.sprx), only to compare against the port''s own libraries (PS_LLE) or for a game that still needs a console module. Each game picks whether to load it in Graphics › Extras; by default every game but Bloodborne does. decanter neither ships nor copies any.'
 ps.settings.psport_folder.title: psport.exe folder
 ps.settings.psport_folder.none: No folder
 ps.settings.psport_folder.pick_title: Folder holding psport.exe
@@ -633,6 +633,10 @@ ps.extras.env.hint: Enter saves
 ps.extras.env.placeholder: NAME=value separated by spaces
 ps.extras.env.saved: Variables saved; they apply on the next start
 ps.extras.env.save_error: 'Couldn''t save the variables: %{error}'
+ps.extras.sys_modules.title: Load my system modules dump
+ps.extras.sys_modules.hint: The folder in the PS section's Settings, for this game only; applies on the next start
+ps.extras.sys_modules.no_folder: 'No system modules folder in the PS section''s Settings: nothing is loaded'
+ps.extras.sys_modules.save_error: 'Couldn''t save: %{error}'
 ps.extras.fsr.title: FSR 4.1.1 from your AMD DLL
 ps.extras.fsr.pick: Choose DLL…
 ps.extras.fsr.pick_upscaler: AMD upscaler DLL (amd_fidelityfx_upscaler_dx12.dll)
@@ -683,12 +687,13 @@ ps.runs.compiles: Compiles on the GPU thread
 ps.runs.pipelines: 'Pipelines compiled in the background: %{background}; draws that waited for theirs: %{waited}; draws skipped meanwhile: %{skipped}'
 ps.runs.method: psport measures in windows of about 5 s, not frame by frame. The 1% low is estimated from each window's worst frame (somewhat pessimistic above 30 FPS); the minimum is the best window's mean frame time and the maximum the run's worst frame. The dashed line is the average.
 ps.detail.tabs.online: Online
-ps.play.online_error: 'Couldn''t set up online play: %{error}. Fix it in the PS section''s Settings or turn online play off.'
-ps.play.online_keyring_error: Online play needs the shadNet password from the system keyring, which isn't available (%{error}). Open or unlock the keyring, or turn online play off in the PS section's Settings to play offline.
+ps.play.online_error: 'Couldn''t set up online play: %{error}. Fix it in the PS section''s Settings or turn online play off in the game''s Online tab.'
+ps.play.online_keyring_error: Online play needs the shadNet password from the system keyring, which isn't available (%{error}). Open or unlock the keyring, or turn online play off in the game's Online tab to play offline.
 ps.online.title: Online play
+ps.online.per_game: 'The account and servers every game shares. Each game turns online play on in its own Online tab.'
 ps.online.play: Play online
 ps.online.upnp: UPnP (open the port on the router automatically)
-ps.online.description: Off by default. When on, psport connects the game to the community server (messages, bloodstains, ghosts) and to a shadNet server (bells and summons). It applies on the next start.
+ps.online.description: 'This game only, off by default. When on, psport connects the game to the community server (messages, bloodstains, ghosts) and to a shadNet server (bells and summons), with the account in the PS section''s Settings. It applies on the next start.'
 ps.online.server: shadNet server
 ps.online.webapi: shadNet WebAPI
 ps.online.webapi_placeholder: 'Empty: the shadNet server''s own (port 31315)'
@@ -722,8 +727,7 @@ ps.online.errors.npid: the Online ID "%{value}" must be 3 to 16 letters, digits,
 ps.online.errors.secret: the saved password or token can't be passed to the game
 ps.online.errors.secret_without_npid: 'Type the Online ID first: the password and token are saved with it.'
 ps.online.title_querying: Reading the game's online data…
-ps.online.no_extension: 'This game has no co-op extension of its own in psport: online play is set up in the PS section''s Settings.'
-ps.online.off_in_settings: Online play is off in the PS section's Settings; this only applies when it's on.
+ps.online.no_extension: This game has no co-op extension of its own in psport.
 ps.online.bbsc.label: Seamless co-op (BBSC)
 ps.online.bbsc.note: Off by default. Every player in the session needs it on, and the community server must run BBSC's game server (Seamless Hunt's does).
 ps.online.bbsc.local.label: BBSC game server on this PC
@@ -737,7 +741,7 @@ ps.online.local_player.invalid: the local player "%{value}" must be 1 to 10 digi
 ps.online.local_player.note: Only needed to play co-op with two windows on this PC, each window with a different number (for example 1001 and 1002), so each one only touches its own saves. Leave empty for a single player. Press Enter to save.
 ps.online.no_password: 'There''s an Online ID saved with no password in the keyring: type it and press Save, or clear the Online ID to play without shadNet. Until then, online play won''t start.'
 ps.online.kept_existing: Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten.
-ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.
+ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off in the game's Online tab.
 ps.play.local_player_error: The local player "%{value}" saved for this game isn't 1 to 10 digits. Fix it in the game's Online tab or clear it.
 ps.play.title_settings_error: 'Couldn''t prepare this game''s settings: %{error}'
 ps.branch.title: psport's branch, built on this PC (Testing)

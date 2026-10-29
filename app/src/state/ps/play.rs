@@ -96,9 +96,12 @@ impl Ps {
             crate::taskbar::sync_ps(root.library(), &game).await;
             let commit = failures::commit_of(&port.checkout(&root)).await;
             let is_online = {
-                let root = root.clone();
-                cx.background_spawn(async move { LauncherSettings::load(&root).flag(online::ONLINE, false) })
-                    .await
+                let (root, title_id) = (root.clone(), game.title_id.clone());
+                cx.background_spawn(async move {
+                    LauncherSettings::of_title(&root, &title_id)
+                        .is_ok_and(|settings| settings.flag(online::ONLINE, false))
+                })
+                .await
             } && cx.update(|cx| Caps::get(cx).is_offered(Feature::PsOnline));
             let scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit, !is_online);
             let target = crate::closing::Target::Ps(game.dir.clone());

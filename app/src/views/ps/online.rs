@@ -1,6 +1,6 @@
-//! Ajustes' online group: psport's online play, its servers and the shadNet account. The
-//! password and token go to the keyring, never to the library (decision #715); the connection
-//! test runs only when clicked (decision #601).
+//! Ajustes' online group: the shadNet account and its servers, which every game shares; whether a
+//! game plays online is its own Online tab's. The password and token go to the keyring, never to
+//! the library (decision #715); the connection test runs only when clicked (decision #601).
 
 use decanter_core::ShadnetSecret;
 use decanter_core::capabilities::Feature;
@@ -13,7 +13,7 @@ use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::online_error;
 use crate::theme;
-use crate::widgets::{ButtonKind, TextInput, button, checkbox};
+use crate::widgets::{ButtonKind, TextInput, button};
 
 /// The text fields' settings keys, in the order they are shown.
 const FIELDS: [(&str, &str); 4] = [
@@ -31,8 +31,6 @@ struct Stored {
 }
 
 pub struct OnlineView {
-    is_on: bool,
-    is_upnp: bool,
     fields: [Entity<TextInput>; 4],
     password: Entity<TextInput>,
     token: Entity<TextInput>,
@@ -54,8 +52,6 @@ impl OnlineView {
             cx.new(|cx| TextInput::new(Text::new("ps.online.npid_placeholder"), cx)),
         ];
         let this = Self {
-            is_on: false,
-            is_upnp: true,
             fields,
             password: cx.new(|cx| TextInput::new("", cx).masked()),
             token: cx.new(|cx| TextInput::new(Text::new("ps.online.token_placeholder"), cx).masked()),
@@ -80,8 +76,6 @@ impl OnlineView {
                 .map(str::to_owned);
             let stored = stored_secrets(npid.clone()).await;
             let _ = this.update(cx, |this, cx| {
-                this.is_on = settings.flag(online::ONLINE, false);
-                this.is_upnp = settings.flag(online::UPNP, true);
                 for (field, (key, _)) in this.fields.iter().zip(FIELDS) {
                     let value = settings.text(key).unwrap_or_default().to_owned();
                     field.update(cx, |field, cx| field.set_text(value, cx));
@@ -104,29 +98,6 @@ impl OnlineView {
         };
         self.password
             .update(cx, |field, cx| field.set_placeholder(placeholder, cx));
-    }
-
-    fn set_flag(&mut self, key: &'static str, value: bool, cx: &mut Context<Self>) {
-        match key {
-            online::ONLINE => self.is_on = value,
-            _ => self.is_upnp = value,
-        }
-        cx.spawn(async move |this, cx| {
-            let saved = cx
-                .background_spawn(async move {
-                    LauncherSettings::edit(&decanter_ps::paths::active(), |settings| settings.set_flag(key, value))
-                })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                if let Err(err) = saved {
-                    tracing::warn!(key, %err, "could not save an online setting");
-                    this.message = Some((Text::new("ps.online.save_error").arg("error", err), true));
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
     }
 
     fn text(&self, index: usize, cx: &Context<Self>) -> String {
@@ -284,24 +255,6 @@ impl OnlineView {
         .detach();
     }
 
-    fn switch_row(
-        id: &'static str,
-        key: &'static str,
-        is_on: bool,
-        label: SharedString,
-        cx: &Context<Self>,
-    ) -> gpui::Stateful<gpui::Div> {
-        div()
-            .id(id)
-            .flex()
-            .items_center()
-            .gap_3()
-            .cursor_pointer()
-            .child(checkbox(is_on))
-            .child(label)
-            .on_click(cx.listener(move |this, _, _, cx| this.set_flag(key, !is_on, cx)))
-    }
-
     fn field_row(label: SharedString, field: Entity<TextInput>, last: bool) -> gpui::Div {
         theme::compact_row(last)
             .child(div().w(px(180.)).flex_none().child(label))
@@ -329,21 +282,6 @@ impl OnlineView {
 impl Render for OnlineView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let caps = Caps::get(cx);
-        let play = Self::switch_row(
-            "ps-online-on",
-            online::ONLINE,
-            self.is_on,
-            t!("ps.online.play").into(),
-            cx,
-        );
-        let play = caps.gate_or_reason(Feature::PsOnline, play);
-        let upnp = Self::switch_row(
-            "ps-online-upnp",
-            online::UPNP,
-            self.is_upnp,
-            t!("ps.online.upnp").into(),
-            cx,
-        );
         let has_saved = matches!(self.stored, Ok(stored) if stored.password || stored.token);
         let keyring_error = self.stored.as_ref().err().cloned();
         let lacks_password = self.saved_npid.is_some() && matches!(self.stored, Ok(stored) if !stored.password);
@@ -390,14 +328,10 @@ impl Render for OnlineView {
             .flex_col()
             .gap_4()
             .child(theme::h2(t!("ps.online.title")))
-            .child(
-                theme::card()
-                    .child(theme::compact_row(!is_offered).child(play))
-                    .when(is_offered, |card| card.child(theme::compact_row(true).child(upnp))),
-            )
+            .children(caps.reason(Feature::PsOnline).map(theme::muted))
             .when(is_offered, |column| {
                 column
-                    .child(theme::muted(t!("ps.online.description")))
+                    .child(theme::muted(t!("ps.online.per_game")))
                     .child(theme::card().child(account))
                     .child(theme::muted(t!("ps.online.account_description")))
                     .when(lacks_password, |column| {

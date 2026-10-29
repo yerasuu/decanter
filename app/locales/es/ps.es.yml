@@ -144,7 +144,7 @@ ps.settings.games.title: Carpeta de juegos
 ps.settings.games.description: 'Junto a cada carpeta de biblioteca del perfil, en su mismo disco. «Añadir volcado…», o soltar su carpeta en la ventana, copia o mueve un volcado a la principal, y los de cada carpeta aparecen solos. Las partidas y los ajustes se quedan siempre en la principal; la caché va a la ubicación de caché de la carpeta de cada juego. Para pasar un juego de una carpeta a otra, o elegir dónde va su caché, usa Almacenamiento.'
 ps.settings.sys_modules.title: Módulos del sistema (opcional)
 ps.settings.sys_modules.none: Sin carpeta
-ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. decanter no incluye ni copia ninguno.'
+ps.settings.sys_modules.description: 'Opcional: ningún juego lo necesita hoy. Una carpeta con tu propio volcado de los módulos de la consola (*.sprx, como libSceNgs2.sprx), solo para comparar con las bibliotecas propias del port (PS_LLE) o para un juego que todavía necesite un módulo de la consola. Cada juego elige si lo carga en Gráficos › Extras; por defecto, todos menos Bloodborne. decanter no incluye ni copia ninguno.'
 ps.settings.psport_folder.title: Carpeta de psport.exe
 ps.settings.psport_folder.none: Sin carpeta
 ps.settings.psport_folder.pick_title: Carpeta con psport.exe
@@ -633,6 +633,10 @@ ps.extras.env.hint: Enter guarda
 ps.extras.env.placeholder: NOMBRE=valor separadas por espacios
 ps.extras.env.saved: Variables guardadas; se aplican en el próximo arranque
 ps.extras.env.save_error: 'No se pudieron guardar las variables: %{error}'
+ps.extras.sys_modules.title: Cargar mi volcado de módulos del sistema
+ps.extras.sys_modules.hint: La carpeta de Ajustes de PS, solo para este juego; se aplica en el próximo arranque
+ps.extras.sys_modules.no_folder: 'Sin carpeta de módulos del sistema en Ajustes de PS: no se carga nada'
+ps.extras.sys_modules.save_error: 'No se pudo guardar: %{error}'
 ps.extras.fsr.title: FSR 4.1.1 desde tu DLL de AMD
 ps.extras.fsr.pick: Elegir DLL…
 ps.extras.fsr.pick_upscaler: DLL del reescalado de AMD (amd_fidelityfx_upscaler_dx12.dll)
@@ -683,12 +687,13 @@ ps.runs.compiles: Compilaciones en el hilo de GPU
 ps.runs.pipelines: 'Pipelines compilados en segundo plano: %{background}; draws que esperaron al suyo: %{waited}; draws omitidos mientras tanto: %{skipped}'
 ps.runs.method: psport mide en intervalos de unos 5 s, no fotograma a fotograma. El 1 % bajo se estima con el peor fotograma de cada intervalo (algo pesimista a más de 30 FPS); el mínimo es el tiempo medio del mejor intervalo y el máximo, el peor fotograma de la partida. La línea discontinua es la media.
 ps.detail.tabs.online: Online
-ps.play.online_error: 'No se pudo preparar el juego online: %{error}. Corrígelo en Ajustes de PS o desactiva el juego online.'
-ps.play.online_keyring_error: El juego online necesita la contraseña de shadNet del llavero del sistema, que no está disponible (%{error}). Abre o desbloquea el llavero, o desactiva el juego online en Ajustes de PS para jugar sin conexión.
+ps.play.online_error: 'No se pudo preparar el juego online: %{error}. Corrígelo en Ajustes de PS o desactiva el juego online en la pestaña Online del juego.'
+ps.play.online_keyring_error: El juego online necesita la contraseña de shadNet del llavero del sistema, que no está disponible (%{error}). Abre o desbloquea el llavero, o desactiva el juego online en la pestaña Online del juego para jugar sin conexión.
 ps.online.title: Juego online
+ps.online.per_game: 'La cuenta y los servidores que comparten todos los juegos. Cada juego activa el juego online en su pestaña Online.'
 ps.online.play: Jugar online
 ps.online.upnp: UPnP (abrir el puerto en el router automáticamente)
-ps.online.description: Desactivado por defecto. Con él activo, psport conecta el juego con el servidor de la comunidad (mensajes, manchas de sangre, fantasmas) y con un servidor shadNet (campanas e invocaciones). Se aplica en el siguiente arranque.
+ps.online.description: 'Solo para este juego, desactivado por defecto. Con él activo, psport conecta el juego con el servidor de la comunidad (mensajes, manchas de sangre, fantasmas) y con un servidor shadNet (campanas e invocaciones), con la cuenta de Ajustes de PS. Se aplica en el siguiente arranque.'
 ps.online.server: Servidor shadNet
 ps.online.webapi: WebAPI de shadNet
 ps.online.webapi_placeholder: 'Vacío: la del servidor shadNet (puerto 31315)'
@@ -722,8 +727,7 @@ ps.online.errors.npid: el Online ID «%{value}» debe tener de 3 a 16 letras, ci
 ps.online.errors.secret: la contraseña o el token guardados no se pueden pasar al juego
 ps.online.errors.secret_without_npid: 'Escribe primero el Online ID: la contraseña y el token se guardan con él.'
 ps.online.title_querying: Consultando los datos online del juego…
-ps.online.no_extension: 'Este juego no tiene un cooperativo propio en psport: el juego online se ajusta en Ajustes de PS.'
-ps.online.off_in_settings: El juego online está desactivado en Ajustes de PS; esto solo se aplica con él activo.
+ps.online.no_extension: Este juego no tiene un cooperativo propio en psport.
 ps.online.bbsc.label: Cooperativo sin cortes (BBSC)
 ps.online.bbsc.note: Desactivado por defecto. Todos los jugadores de la partida tienen que activarlo, y el servidor de la comunidad tiene que tener el servidor de juego de BBSC (el de Seamless Hunt lo tiene).
 ps.online.bbsc.local.label: Servidor de juego de BBSC en este equipo
@@ -737,7 +741,7 @@ ps.online.local_player.invalid: el jugador local «%{value}» debe tener de 1 a 
 ps.online.local_player.note: Solo hace falta para jugar en cooperativo con dos ventanas en este PC, cada ventana con un número distinto (por ejemplo 1001 y 1002), de modo que cada una solo toque sus propias partidas guardadas. Déjalo vacío si juegas solo. Pulsa Intro para guardar.
 ps.online.no_password: 'Hay un Online ID guardado sin contraseña en el llavero: escríbela y pulsa Guardar, o borra el Online ID para jugar sin shadNet. Mientras tanto, el juego online no arranca.'
 ps.online.kept_existing: Guardado. %{previous} conserva su contraseña y su token en el llavero, porque el nuevo Online ID ya tenía los suyos y no se han sobrescrito.
-ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online.
+ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online en la pestaña Online del juego.
 ps.play.local_player_error: El jugador local «%{value}» guardado para este juego no son de 1 a 10 cifras. Corrígelo en la pestaña Online del juego o bórralo.
 ps.play.title_settings_error: 'No se pudieron preparar los ajustes de este juego: %{error}'
 ps.branch.title: Rama de psport, compilada en este PC (Pruebas)

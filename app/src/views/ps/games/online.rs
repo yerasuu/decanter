@@ -1,14 +1,11 @@
-//! Online: the title's co-op extension, when the port declares one for it (`psport
-//! --online-overrides`), with its switch and where its game server runs. Online play itself, its
-//! servers and the account are in the PS section's Ajustes.
-
-use std::io;
+//! Online: whether the title plays online and opens its port on the router, and its co-op
+//! extension when the port declares one for it (`psport --online-overrides`), with its switch and
+//! where its game server runs. The account and its servers, shared by every game, are in Ajustes.
 
 use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::local_player::{self, LocalPlayer};
 use decanter_ps::bbport::online::{self, LocalServer};
 use decanter_ps::bbport::{Bbport, LauncherSettings};
-use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use gpui::{Context, Entity, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
@@ -30,6 +27,7 @@ pub struct OnlineTitleView {
     title_id: Option<String>,
     extension: Extension,
     is_online: bool,
+    is_upnp: bool,
     is_bbsc: bool,
     local_server: LocalServer,
     local_player: Entity<TextInput>,
@@ -38,7 +36,6 @@ pub struct OnlineTitleView {
 
 impl OnlineTitleView {
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
-        Self::load_settings(cx);
         let local_player = cx.new(|cx| TextInput::new(Text::new("ps.online.local_player.placeholder"), cx));
         cx.subscribe(&local_player, |this, input, event, cx| {
             if matches!(event, InputEvent::Submit) {
@@ -52,6 +49,7 @@ impl OnlineTitleView {
             title_id: None,
             extension: Extension::Asking,
             is_online: false,
+            is_upnp: true,
             is_bbsc: false,
             local_server: LocalServer::Off,
             local_player,
@@ -59,31 +57,15 @@ impl OnlineTitleView {
         }
     }
 
-    /// Again at each title shown, since Ajustes may have turned online play on or off meanwhile.
-    fn load_settings(cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
-            let settings = cx
-                .background_spawn(async { LauncherSettings::load(&decanter_ps::paths::active()) })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                this.is_online = settings.flag(online::ONLINE, false);
-                this.is_bbsc = settings.flag(online::BBSC, false);
-                this.local_server = LocalServer::of(&settings);
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
     /// Asks the port about `title_id` once it is built; a port that can't say shows nothing.
     pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
-        Self::load_settings(cx);
         if self.title_id.as_deref() == Some(title_id) && matches!(self.extension, Extension::Declared(_)) {
             return;
         }
         self.title_id = Some(title_id.to_owned());
         self.extension = Extension::Asking;
-        self.load_local_player(title_id, cx);
+        self.error = None;
+        self.load_settings(title_id, cx);
         cx.notify();
         let Some(toolchain) = self
             .ps
@@ -109,16 +91,20 @@ impl OnlineTitleView {
         .detach();
     }
 
-    fn load_local_player(&self, title_id: &str, cx: &mut Context<Self>) {
+    /// Another title's switches and text go at once, so they are never saved as this one's.
+    fn load_settings(&mut self, title_id: &str, cx: &mut Context<Self>) {
+        self.is_online = false;
+        self.is_upnp = true;
+        self.is_bbsc = false;
+        self.local_server = LocalServer::Off;
+        self.local_player
+            .update(cx, |input, cx| input.set_text(String::new(), cx));
         let title_id = title_id.to_owned();
         cx.spawn(async move |this, cx| {
             let saved = cx
                 .background_spawn({
                     let title_id = title_id.clone();
-                    async move {
-                        LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id)
-                            .map(|settings| settings.title_text(&title_id, local_player::KEY).map(str::to_owned))
-                    }
+                    async move { LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id) }
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
@@ -126,14 +112,20 @@ impl OnlineTitleView {
                     return;
                 }
                 match saved {
-                    Ok(saved) => this
-                        .local_player
-                        .update(cx, |input, cx| input.set_text(saved.unwrap_or_default(), cx)),
-                    Err(err) => {
-                        this.error = Some(Text::new("ps.scope.read_error").arg("error", err));
-                        cx.notify();
+                    Ok(settings) => {
+                        this.is_online = settings.flag(online::ONLINE, false);
+                        this.is_upnp = settings.flag(online::UPNP, true);
+                        this.is_bbsc = settings.flag(online::BBSC, false);
+                        this.local_server = LocalServer::of(&settings);
+                        let player = settings
+                            .title_text(&title_id, local_player::KEY)
+                            .unwrap_or_default()
+                            .to_owned();
+                        this.local_player.update(cx, |input, cx| input.set_text(player, cx));
                     }
+                    Err(err) => this.error = Some(Text::new("ps.scope.read_error").arg("error", err)),
                 }
+                cx.notify();
             });
         })
         .detach();
@@ -141,31 +133,31 @@ impl OnlineTitleView {
 
     /// Refused as typed when it isn't 1 to 10 digits; empty clears it.
     fn set_local_player(&mut self, value: &str, cx: &mut Context<Self>) {
-        let Some(title_id) = self.title_id.clone() else {
-            return;
-        };
         if let Err(err) = LocalPlayer::parse(value) {
             self.error = Some(Text::new("ps.online.local_player.invalid").arg("value", err.value()));
             cx.notify();
             return;
         }
         let value = value.to_owned();
-        Self::save(
-            move |root| {
-                LauncherSettings::edit_title(root, &title_id, |settings| {
-                    settings.set_title_text(&title_id, local_player::KEY, &value);
-                })
-            },
+        self.save(
+            move |settings, title_id| settings.set_title_text(title_id, local_player::KEY, &value),
             cx,
         );
     }
 
-    /// `edit` is the title's own settings' ([`LauncherSettings::edit_title`]) or, for the online
-    /// switches every title still shares, the shared ones' ([`LauncherSettings::edit`]).
-    fn save(edit: impl FnOnce(&Root) -> io::Result<()> + Send + 'static, cx: &mut Context<Self>) {
+    /// One change of the shown title's own settings ([`LauncherSettings::edit_title`]), named
+    /// now so a save that lands after another title is shown still goes to its own.
+    fn save(&self, change: impl FnOnce(&mut LauncherSettings, &str) + Send + 'static, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
         cx.spawn(async move |this, cx| {
             let saved = cx
-                .background_spawn(async move { edit(&decanter_ps::paths::active()) })
+                .background_spawn(async move {
+                    LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
+                        change(settings, &title_id);
+                    })
+                })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.error = saved
@@ -178,37 +170,78 @@ impl OnlineTitleView {
         cx.notify();
     }
 
-    fn set_bbsc(&mut self, is_on: bool, cx: &mut Context<Self>) {
-        self.is_bbsc = is_on;
-        Self::save(
-            move |root| LauncherSettings::edit(root, |settings| settings.set_flag(online::BBSC, is_on)),
-            cx,
-        );
+    fn set_flag(&mut self, key: &'static str, is_on: bool, cx: &mut Context<Self>) {
+        match key {
+            online::ONLINE => self.is_online = is_on,
+            online::UPNP => self.is_upnp = is_on,
+            _ => self.is_bbsc = is_on,
+        }
+        self.save(move |settings, _| settings.set_flag(key, is_on), cx);
     }
 
     fn set_local_server(&mut self, mode: LocalServer, cx: &mut Context<Self>) {
         self.local_server = mode;
-        Self::save(
-            move |root| {
-                LauncherSettings::edit(root, |settings| {
-                    settings.set_text(online::BBSC_LOCAL_SERVER, mode.value());
-                })
-            },
+        self.save(
+            move |settings, _| settings.set_text(online::BBSC_LOCAL_SERVER, mode.value()),
             cx,
         );
     }
 
-    fn bbsc(&self, cx: &Context<Self>) -> gpui::AnyElement {
-        let is_bbsc = self.is_bbsc;
-        let toggle = div()
-            .id("ps-online-bbsc")
+    fn switch(
+        id: &'static str,
+        key: &'static str,
+        is_on: bool,
+        label: SharedString,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(id)
             .flex()
             .items_center()
             .gap_3()
             .cursor_pointer()
-            .child(checkbox(is_bbsc))
-            .child(SharedString::from(t!("ps.online.bbsc.label")))
-            .on_click(cx.listener(move |this, _, _, cx| this.set_bbsc(!is_bbsc, cx)));
+            .child(checkbox(is_on))
+            .child(label)
+            .on_click(cx.listener(move |this, _, _, cx| this.set_flag(key, !is_on, cx)))
+    }
+
+    fn play(&self, caps: &Caps, cx: &Context<Self>) -> gpui::AnyElement {
+        let play = Self::switch(
+            "ps-online-on",
+            online::ONLINE,
+            self.is_online,
+            t!("ps.online.play").into(),
+            cx,
+        );
+        let upnp = Self::switch(
+            "ps-online-upnp",
+            online::UPNP,
+            self.is_upnp,
+            t!("ps.online.upnp").into(),
+            cx,
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                theme::card()
+                    .child(theme::compact_row(false).child(caps.gate_or_reason(Feature::PsOnline, play)))
+                    .child(theme::compact_row(true).child(upnp)),
+            )
+            .child(theme::muted(t!("ps.online.description")))
+            .into_any_element()
+    }
+
+    fn bbsc(&self, cx: &Context<Self>) -> gpui::AnyElement {
+        let is_bbsc = self.is_bbsc;
+        let toggle = Self::switch(
+            "ps-online-bbsc",
+            online::BBSC,
+            is_bbsc,
+            t!("ps.online.bbsc.label").into(),
+            cx,
+        );
         let entity = cx.entity();
         let select = Select::new(
             "ps-online-bbsc-local",
@@ -277,9 +310,7 @@ impl Render for OnlineTitleView {
             .flex_col()
             .gap_4()
             .max_w(px(760.))
-            .when(!self.is_online, |column| {
-                column.child(theme::muted(t!("ps.online.off_in_settings")))
-            })
+            .child(self.play(caps, cx))
             .child(body)
             .children(self.error.as_ref().map(theme::error))
             .into_any_element()
