@@ -17,6 +17,9 @@ use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, menu};
 
 pub(super) struct InstallDialog {
+    /// Spent by the confirm click, or by the install that starts at once
+    /// when there turns out to be nothing to choose.
+    request: Option<InstallRequest>,
     /// Every library folder the install could go in, with its free space.
     folders: Vec<(PathBuf, Option<u64>)>,
     /// The folder picked; `None` is the main one.
@@ -31,8 +34,19 @@ pub(super) struct InstallDialog {
     _fetch: Task<()>,
 }
 
+impl InstallDialog {
+    /// A dialog with neither another library folder nor another branch to
+    /// pick (nor a disk to warn about) would only ask to confirm what the
+    /// install button already said, so it is never shown.
+    fn has_choice(&self) -> bool {
+        let named_branch = matches!(&self.branches, Some(Ok(list)) if list.iter().any(|branch| branch.name.is_some()));
+        self.folders.len() > 1 || !self.offline.is_empty() || named_branch
+    }
+}
+
 impl DetailView {
-    pub(super) fn open_install_dialog(&mut self, account_id: String, product_id: String, cx: &mut Context<Self>) {
+    pub(super) fn open_install_dialog(&mut self, request: InstallRequest, cx: &mut Context<Self>) {
+        let (account_id, product_id) = (request.account_id.clone(), request.product_id.clone());
         let folders = crate::core::library_for_account(&account_id)
             .inspect_err(
                 |err| tracing::warn!(account_id, error = %err, "failed to resolve library root for install dialog"),
@@ -52,14 +66,22 @@ impl DetailView {
                 .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "failed to fetch branch list"))
                 .map_err(|err| err.to_string());
             let _ = this.update(cx, |this, cx| {
-                if let Some(dialog) = &mut this.local.dialog {
-                    dialog.branches = Some(result);
-                    cx.notify();
+                let Some(dialog) = &mut this.local.dialog else {
+                    return;
+                };
+                dialog.branches = Some(result);
+                if !dialog.has_choice() {
+                    let request = this.local.dialog.take().and_then(|mut dialog| dialog.request.take());
+                    if let Some(request) = request {
+                        actions::start_install(request, cx);
+                    }
                 }
+                cx.notify();
             });
         });
         let offline = AppState::get(cx).library.read(cx).offline_folders.clone();
         self.local.dialog = Some(InstallDialog {
+            request: Some(request),
             folders,
             folder: None,
             offline,
@@ -71,18 +93,14 @@ impl DetailView {
     }
 }
 
-/// Confirms an install before it starts, the way Steam does — where the
-/// files go, and which branch to install (mainline by default, same as
-/// Steam defaults to no beta opt-in). The library location shown here is
-/// whatever this account's profile already resolved to (its own chosen
-/// location, or the shared default) — informational, since changing it is
-/// a per-profile setting, not something to pick mid-install.
-pub(super) fn install_dialog(
-    dialog: &InstallDialog,
-    request: InstallRequest,
-    window: &Window,
-    cx: &Context<DetailView>,
-) -> AnyElement {
+/// Confirms an install before it starts, the way Steam does — which library
+/// folder it goes in and which branch to install (mainline by default, same
+/// as Steam defaults to no beta opt-in). `None` while there is nothing to
+/// choose, which is when the install starts without asking.
+pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Context<DetailView>) -> Option<AnyElement> {
+    if !dialog.has_choice() {
+        return None;
+    }
     let this = cx.entity().downgrade();
     let close: menu::Dismiss = Rc::new({
         let this = this.clone();
@@ -93,6 +111,7 @@ pub(super) fn install_dialog(
             });
         }
     });
+    let request = dialog.request.as_ref()?;
     let dlc_count = request.dlcs.len();
     let title = request.title.clone();
 
@@ -101,17 +120,18 @@ pub(super) fn install_dialog(
     let branch = branch_picker(dialog, this);
     let field_row = || div().flex().gap(px(10.)).mb_3().max_w(px(520.));
 
-    let chosen = dialog.chosen.clone();
-    let folder = dialog.folder.clone();
-    // A click handler is `Fn`, but the request is spent once: the dialog
-    // closes on the same click, so a second one never reaches it.
-    let request = std::cell::Cell::new(Some(request));
-    let confirm = cx.listener(move |this, _, _, cx| {
-        this.local.dialog = None;
+    let confirm = cx.listener(|this, _, _, cx| {
+        let dialog = this.local.dialog.take();
         cx.notify();
-        if let Some(mut request) = request.take() {
-            request.branch.clone_from(&chosen);
-            request.library_root.clone_from(&folder);
+        if let Some(InstallDialog {
+            request: Some(mut request),
+            chosen,
+            folder,
+            ..
+        }) = dialog
+        {
+            request.branch = chosen;
+            request.library_root = folder;
             actions::start_install(request, cx);
         }
     });
@@ -141,7 +161,7 @@ pub(super) fn install_dialog(
                     ),
             ),
     );
-    menu::modal(panel, window, dismiss)
+    Some(menu::modal(panel, window, dismiss))
 }
 
 fn dialog_frame(window: &Window) -> Div {

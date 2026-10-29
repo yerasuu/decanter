@@ -152,24 +152,30 @@ impl DetailView {
                         false,
                     )
                     .on_click(cx.listener({
-                        let account_id = account_id.clone();
-                        let product_id = product_id.clone();
-                        move |this, _, _, cx| this.open_install_dialog(account_id.clone(), product_id.clone(), cx)
+                        let title = game.title.clone();
+                        move |this, _, _, cx| {
+                            this.open_install_dialog(
+                                InstallRequest {
+                                    account_id: account_id.clone(),
+                                    product_id: product_id.clone(),
+                                    parent_id: None,
+                                    title: title.clone(),
+                                    branch: None,
+                                    dlcs: dlcs.clone(),
+                                    library_root: None,
+                                },
+                                cx,
+                            );
+                        }
                     }))
                     .into_any_element(),
                 ];
-                if let Some(dialog) = &self.local.dialog {
-                    let request = InstallRequest {
-                        account_id,
-                        product_id,
-                        parent_id: None,
-                        title: game.title.clone(),
-                        branch: None,
-                        dlcs,
-                        library_root: None,
-                    };
-                    elements.push(install_dialog(dialog, request, window, cx));
-                }
+                elements.extend(
+                    self.local
+                        .dialog
+                        .as_ref()
+                        .and_then(|dialog| install_dialog(dialog, window, cx)),
+                );
                 elements
             }
         }
