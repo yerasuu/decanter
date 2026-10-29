@@ -149,8 +149,8 @@ impl Ps {
         });
     }
 
-    /// DETENER: where `psport.exe` runs in a session of its own, the session is ended at once instead of
-    /// asked to close; elsewhere the same as [`Ps::stop`].
+    /// DETENER: where `psport.exe` runs in a session of its own, it is asked through its stop file instead
+    /// of its window, and the session ended if it hasn't after the grace; elsewhere the same as [`Ps::stop`].
     pub fn end(&mut self, key: &JobKey, cx: &mut Context<Self>) {
         #[cfg(windows)]
         if let JobKey::Game(dir) = key {

@@ -30,7 +30,6 @@ use super::platform as os;
 use crate::runner::RavenHead;
 use crate::session::{killed_lock, live_lock};
 use crate::{Launch, Prefix, Prepared, Session, is_live};
-pub(crate) use os::Tracked;
 
 /// How often [`crate::stop`] asks a session's processes to close again.
 const STOP_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -54,6 +53,14 @@ pub(super) enum Remaining {
 /// What the session's process is called in its exit's log lines.
 pub(crate) const LAUNCHER: &str = "the game";
 
+/// A live session ([`crate::session::live_lock`]).
+pub(crate) struct Tracked {
+    /// Every process in the session, as this system follows them.
+    processes: os::Tracked,
+    /// [`Launch::stop_file`], so a stop can create it and the session's end remove it.
+    stop_file: Option<PathBuf>,
+}
+
 /// The executable itself, which must exist as a file, run from its own
 /// directory unless the launch names another.
 pub(crate) async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
@@ -74,6 +81,9 @@ pub(crate) async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
         },
     };
 
+    if let Some(file) = launch.stop_file.as_deref() {
+        remove_stop_file(file, &launch.key).await;
+    }
     let mut command = os::command(&launch.executable);
     command
         .args(&launch.args)
@@ -110,7 +120,43 @@ pub(crate) fn spawn_failed(launch: &Launch) {
 pub(crate) fn spawned(child: &Child, launch: &Launch) -> Option<Tracked> {
     let spawned = child.id();
     tracing::info!(pid = spawned, key = %launch.key, "launched game process");
-    spawned.map(|pid| Tracked::new(child, pid, &launch.key))
+    spawned.map(|pid| Tracked {
+        processes: os::Tracked::new(child, pid, &launch.key),
+        stop_file: launch.stop_file.clone(),
+    })
+}
+
+/// Asks the game to end on its own by creating the file it watches for.
+async fn create_stop_file(file: &Path, key: &str) {
+    if let Some(dir) = file.parent()
+        && let Err(err) = tokio::fs::create_dir_all(dir).await
+    {
+        tracing::warn!(key, file = %file.display(), %err, "cannot make the stop file's folder; the game is asked to close only");
+        return;
+    }
+    match tokio::fs::write(file, b"").await {
+        Ok(()) => tracing::info!(key, file = %file.display(), "asked the game to stop through its stop file"),
+        Err(err) => {
+            tracing::warn!(key, file = %file.display(), %err, "cannot create the stop file; the game is asked to close only");
+        }
+    }
+}
+
+/// A stop file gone already is what was asked for, so only another failure is logged.
+async fn remove_stop_file(file: &Path, key: &str) {
+    match tokio::fs::remove_file(file).await {
+        Ok(()) => tracing::debug!(key, file = %file.display(), "removed the stop file"),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => tracing::warn!(key, file = %file.display(), %err, "cannot remove the stop file"),
+    }
+}
+
+/// Takes the session named `key` out of the live set, and the stop file it may have left with it.
+async fn forget(key: &str) {
+    let removed = live_lock().remove(key);
+    if let Some(file) = removed.and_then(|tracked| tracked.stop_file) {
+        remove_stop_file(&file, key).await;
+    }
 }
 
 /// The game's own exit, then that of every process it started, because a
@@ -121,13 +167,13 @@ pub(crate) async fn wait_status(mut session: Session) -> anyhow::Result<ExitStat
     let status = match waited {
         Ok(status) => status,
         Err(err) => {
-            live_lock().remove(&session.key);
+            forget(&session.key).await;
             tracing::error!(pid, key = %session.key, "failed to wait for the game");
             return Err(err);
         }
     };
     outlive_launcher(&session.key, status).await;
-    live_lock().remove(&session.key);
+    forget(&session.key).await;
     let elapsed = session.started_at.elapsed();
     let killed_at = killed_lock().get(&session.key).copied();
     if let Some(killed_at) = killed_at {
@@ -152,7 +198,7 @@ pub(crate) async fn wait_status(mut session: Session) -> anyhow::Result<ExitStat
 async fn outlive_launcher(key: &str, launcher_status: ExitStatus) {
     let mut is_announced = false;
     loop {
-        let remaining = live_lock().get(key).map(|tracked| tracked.remaining(key));
+        let remaining = live_lock().get(key).map(|tracked| tracked.processes.remaining(key));
         match remaining {
             None | Some(Remaining::Done) => return,
             Some(Remaining::Running(count)) => {
@@ -182,19 +228,30 @@ pub(crate) async fn end(key: &str) {
 }
 
 /// Ends the session after `polite_attempts` requests to close, each a
-/// [`STOP_POLL_INTERVAL`] apart.
+/// [`STOP_POLL_INTERVAL`] apart, its stop file created first when it has one.
 async fn end_after(key: &str, polite_attempts: u32) {
     tracing::debug!(key, polite_attempts, "stopping session");
-    for attempt in 0..=polite_attempts {
-        let is_forced = attempt == polite_attempts;
+    let stop_file = live_lock().get(key).and_then(|tracked| tracked.stop_file.clone());
+    if let Some(file) = stop_file.as_deref() {
+        create_stop_file(file, key).await;
+    }
+    // Even a session ended at once waits out the polite grace for a game that watches its stop file,
+    // since only an orderly exit writes what the game writes at its end (psport's exit summary).
+    let attempts = if stop_file.is_some() {
+        polite_attempts.max(POLITE_STOP_ATTEMPTS)
+    } else {
+        polite_attempts
+    };
+    for attempt in 0..=attempts {
+        let is_forced = attempt == attempts;
         let reached = live_lock().get_mut(key).map(|tracked| {
             if is_forced {
-                tracked.release()
+                Some(tracked.processes.release())
             } else {
-                tracked.targets()
+                (attempt < polite_attempts).then(|| tracked.processes.targets())
             }
         });
-        let Some(targets) = reached else {
+        let Some(closing) = reached else {
             tracing::debug!(key, "session has exited");
             return;
         };
@@ -202,7 +259,9 @@ async fn end_after(key: &str, polite_attempts: u32) {
             killed_lock().insert(key.to_owned(), SystemTime::now());
             tracing::warn!(key, "session did not close by itself; killing it");
         }
-        os::close(targets, is_forced).await;
+        if let Some(targets) = closing {
+            os::close(targets, is_forced).await;
+        }
         sleep(STOP_POLL_INTERVAL).await;
     }
     if is_live(key) {

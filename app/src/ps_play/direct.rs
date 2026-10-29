@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use decanter_ps::bbport::direct::{FOLDER_KEY, Folder};
-use decanter_ps::bbport::{Bbport, LauncherSettings};
+use decanter_ps::bbport::{Bbport, LauncherSettings, Names};
 use decanter_ps::library::Game;
 use decanter_ps::os::windows::package::{self, SELECTED_KEY, Version};
 use decanter_ps::os::windows::winbuild::{self, Commit};
@@ -68,6 +68,8 @@ pub async fn session(
     };
     let mut launch = Launch::new(folder.executable(), session_key(&game.dir));
     launch.capture_output = true;
+    let stop_file = stop_file(root, game);
+    launch.stop_file = Some(stop_file.clone());
     let mut prepared = match decanter_runtime::prepare(launch).await {
         Ok(prepared) => prepared,
         Err(err) => {
@@ -89,6 +91,7 @@ pub async fn session(
         tracing::warn!(title_id = %game.title_id, %err, "could not set up psport.exe's launch");
         return Err(Text::new("ps.errors.environment").arg("error", err));
     }
+    prepared.command_mut().env(Names::Psport.var("STOP_FILE"), stop_file);
     let mut facts = vec![
         ("port", Port::Bbport.name().to_owned()),
         ("psport_folder", folder.path().display().to_string()),
@@ -106,6 +109,12 @@ fn port_release(root: &Root, dir: &Path) -> Option<(&'static str, String)> {
     }
     let commit = Commit::try_new(name).filter(|commit| winbuild::dir(root, commit) == dir)?;
     Some(("port_commit", commit.to_string()))
+}
+
+/// What `psport.exe` watches for to end in order, with its exit summary, when Detener or a timeout asks
+/// it to: the session's Job Object can only kill it. One per title, as its saves are.
+fn stop_file(root: &Root, game: &Game) -> PathBuf {
+    root.bbport_data().join("out").join(format!("stop-{}", game.title_id))
 }
 
 /// One session per dump folder, as one job per game.

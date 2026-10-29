@@ -244,7 +244,8 @@ pub async fn stop(key: &str) {
 
 /// [`stop`] without the polite requests where the system can end a session
 /// outright: for a player who asked for the game to go now rather than to
-/// close.
+/// close. A game with a [`crate::Launch::stop_file`] is still asked through it
+/// and given [`stop`]'s grace, since it ends at once and in order when asked so.
 #[inline]
 pub async fn end(key: &str) {
     os::end(key).await;

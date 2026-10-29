@@ -10,7 +10,8 @@ use crate::proton::Proton;
 /// What only one system's backend reads is plain data here too, so that a
 /// launch is built the same way everywhere: the Proton fields (`prefix`,
 /// `proton`, `game_id`, `store`, `dll_overrides`) and the Linux ones
-/// (`native`, `gamemoded`, `identity`) are ignored on Windows and macOS.
+/// (`native`, `gamemoded`, `identity`) are ignored on Windows and macOS, and
+/// `stop_file` on Linux.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Launch {
@@ -58,6 +59,12 @@ pub struct Launch {
     /// is how a new prefix gets made.
     pub prefix: Option<Prefix>,
     pub proton: Proton,
+    /// A file the game watches for, whose creation asks it to end on its own, for a game nothing
+    /// else asks in a way it heeds: a Job Object can only be killed, and a window's close may not
+    /// reach the game. Created at the first request of [`crate::stop`], before the others, and
+    /// removed before the spawn and once the session has ended, so a stale one can't end the next
+    /// run at its start.
+    pub stop_file: Option<PathBuf>,
     /// umu's `STORE`, used alongside `game_id` to look up protonfixes.
     pub store: Option<String>,
     /// Defaults to the executable's own directory. Games that load data
@@ -126,6 +133,7 @@ impl Launch {
             native: false,
             prefix: None,
             store: None,
+            stop_file: None,
             proton: Proton::default(),
             dll_overrides: Vec::new(),
             env: Vec::new(),

@@ -67,7 +67,7 @@ pub(super) async fn launch(
 pub(super) enum Ending {
     /// Asked to close first, so the game can save, and ended if it won't.
     Polite,
-    /// Ended at once.
+    /// Asked only through its stop file, which `psport.exe` ends in order on, and ended if it won't.
     Now,
 }
 
