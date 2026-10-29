@@ -13,6 +13,8 @@
     clippy::ptr_arg
 )]
 use serde_json::json;
+/// The async client that replaces `Gog`, added by decanter
+pub mod client;
 mod containers;
 /// Provides error-handling logic
 mod error;
