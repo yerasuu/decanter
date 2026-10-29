@@ -16,15 +16,15 @@ use std::path::{Path, PathBuf};
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 
-const CATALOG_URL: &str = "https://catalog.gog.com/v1/catalog";
-const CATALOG_HOST: &str = "catalog.gog.com";
+use crate::api::client::Sessionless;
+
 const STORE_HOST: &str = "www.gog.com";
 /// One page of the catalog: GOG listed 30 mods in 2026-10.
 const MAX_MODS: usize = 100;
 const MAX_ID_DIGITS: usize = 20;
 const MAX_TITLE_CHARS: usize = 200;
 const MAX_LINK_BYTES: usize = 512;
-const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
+const MAX_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const CACHE_TTL_SECS: i64 = 24 * 60 * 60;
 const CACHE_FILE: &str = "gog-mods.json";
 
@@ -41,27 +41,6 @@ pub struct GogMod {
 struct CacheFile {
     fetched_at: i64,
     mods: Vec<GogMod>,
-}
-
-#[derive(Deserialize)]
-struct CatalogPage {
-    #[serde(default)]
-    products: Vec<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CatalogProduct {
-    id: CatalogId,
-    title: String,
-    store_link: String,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum CatalogId {
-    Text(String),
-    Number(u64),
 }
 
 /// GOG's mods, from a cache younger than a day or else from the catalog.
@@ -105,53 +84,25 @@ fn cache_path() -> Option<PathBuf> {
 }
 
 async fn fetch() -> anyhow::Result<Vec<GogMod>> {
-    let response = crate::http_client()
-        .get(CATALOG_URL)
-        .query(&[
-            ("tags", "in:mod"),
-            // Price and region aren't kept, but GOG's store always sends them and the tag was measured with them.
-            ("countryCode", "ES"),
-            ("locale", "en-US"),
-            ("currencyCode", "EUR"),
-            ("order", "asc:title"),
-        ])
-        .query(&[("limit", MAX_MODS)])
-        .send()
+    let client = Sessionless::new().context("building the GOG HTTP client")?;
+    let page = client
+        .catalog_mods(MAX_MODS)
         .await
-        .context("requesting the GOG catalog")?
-        .error_for_status()
-        .context("GOG catalog answered with an error")?;
-    let answered = response.url();
-    anyhow::ensure!(
-        answered.scheme() == "https" && answered.host_str() == Some(CATALOG_HOST),
-        "GOG catalog redirected to {}",
-        answered.host_str().unwrap_or_default()
+        .context("requesting the GOG catalog")?;
+    let mods = validated(
+        page.products
+            .into_iter()
+            .filter_map(|product| checked(product.id, &product.title, &product.store_link)),
     );
-    anyhow::ensure!(
-        response
-            .content_length()
-            .is_none_or(|length| usize::try_from(length).is_ok_and(|bytes| bytes <= MAX_BODY_BYTES)),
-        "GOG catalog answer is too large"
-    );
-    let body = response.bytes().await.context("reading the GOG catalog answer")?;
-    anyhow::ensure!(body.len() <= MAX_BODY_BYTES, "GOG catalog answer is too large");
-    let page: CatalogPage = serde_json::from_slice(&body).context("GOG catalog answer is not the expected JSON")?;
-    let listed = page.products.len();
-    let mods = validated(page.products.into_iter().filter_map(catalog_product));
-    if mods.len() < listed {
-        tracing::warn!(listed, kept = mods.len(), "GOG catalog products dropped by validation");
+    if mods.len() < page.listed {
+        tracing::warn!(
+            listed = page.listed,
+            kept = mods.len(),
+            "GOG catalog products dropped by validation"
+        );
     }
     tracing::info!(count = mods.len(), "GOG mods catalog fetched");
     Ok(mods)
-}
-
-fn catalog_product(raw: serde_json::Value) -> Option<GogMod> {
-    let product: CatalogProduct = serde_json::from_value(raw).ok()?;
-    let id = match product.id {
-        CatalogId::Text(id) => id,
-        CatalogId::Number(id) => id.to_string(),
-    };
-    checked(id, &product.title, &product.store_link)
 }
 
 /// Deduplicated by id and capped, so a hostile or broken answer can't grow
@@ -208,7 +159,7 @@ async fn read_cache(path: &Path) -> Option<CacheFile> {
             return None;
         }
     };
-    if raw.len() > MAX_BODY_BYTES {
+    if raw.len() > MAX_CACHE_BYTES {
         tracing::warn!(path = %path.display(), "GOG mods cache is too large, ignoring it");
         return None;
     }

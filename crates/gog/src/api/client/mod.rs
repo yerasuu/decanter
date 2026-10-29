@@ -49,13 +49,15 @@
 )]
 
 mod auth;
+mod catalog;
 mod error;
 mod http;
 mod products;
 mod user;
 
 pub use auth::{Token, CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
+pub use catalog::{CatalogMods, CatalogProduct};
 pub use error::Error;
-pub use http::Client;
+pub use http::{Client, Sessionless};
 pub use products::ProductsPage;
 pub use user::User;

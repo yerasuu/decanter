@@ -13,6 +13,9 @@ Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
   `README.upstream.md`, and the dependencies of `Cargo.toml` are in `crates/gog/Cargo.toml`.
 - Upstream shows no release since 2023-02-23 and no commits since 2020-09-10.
 - This directory is now maintained here, as the `api` module of `decanter-gog`.
+- Not every file here derives from it: the `client/` files marked `GPL-3.0-or-later` without a based-on line
+  are decanter's own code, moved in from `decanter-gog`'s other modules (phase 2 of `docs/own-gog-client-plan.md`),
+  and owe nothing to upstream.
 
 ## Changes made in this repository
 
@@ -34,3 +37,4 @@ Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
 | Licence per file in `client/`: `auth.rs`, `user.rs` and `products.rs` GPL-3.0-only with a based-on line (ported from this module's `token.rs` and `Gog`), `mod.rs`, `http.rs` and `error.rs` GPL-3.0-or-later (from decanter-gog's own code) | Each file states its own terms, as in the rest of this mixed crate | feat(gog): add an async client core to the api module |
 | The client core's `client.rs` is `client/http.rs` | So the path does not read `client::client` | feat(gog): add an async client core to the api module |
 | `client/` stays under the `#[rustfmt::skip]` of `mod api` and is formatted by hand with this directory's `rustfmt.toml` (`rustfmt --edition 2024 --config-path crates/gog/src/api/ crates/gog/src/api/client/mod.rs`) | Skipping the old files one by one inside `mod.rs` would still let `cargo fmt` reformat `mod.rs` itself, and `#![rustfmt::skip]` as an inner attribute is unstable | feat(gog): add an async client core to the api module |
+| `client/catalog.rs` (GPL-3.0-or-later): the `catalog.gog.com` mods request of decanter-gog's `mods.rs`, as `Sessionless::catalog_mods`; `Sessionless` (no session, an access token borrowed per call), the `Api`, `Catalog`, `Cdn`, `ContentSystem` and `GamesDb` hosts, and the answer-from-the-host-asked check in `client/http.rs` | Phase 2 of `docs/own-gog-client-plan.md`: one HTTP client, error type and set of size caps for every GOG host; the cache and the checks of what is kept stay in `mods.rs` | refactor(gog): move the mods catalog into the api client |

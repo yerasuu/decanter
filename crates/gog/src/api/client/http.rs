@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The one HTTP client and the one session every async call shares. Derived from `decanter-gog`'s
-//! `session.rs` (status codes read apart, refresh and retry) and its `http_client`.
+//! `session.rs` (status codes read apart, refresh and retry), its `http_client`, and the catalog
+//! request of its `mods.rs` (the answer must come from the host asked).
 
 use core::time::Duration;
 
-use reqwest::{redirect, RequestBuilder, StatusCode};
+use reqwest::{redirect, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use tokio::sync::RwLock;
 
@@ -14,17 +15,35 @@ use super::Error;
 /// Every host this client talks to, so the redirect policy and the URLs come from one list.
 #[derive(Clone, Copy)]
 pub(super) enum Host {
+    Api,
     Auth,
+    Catalog,
+    Cdn,
+    ContentSystem,
     Embed,
+    GamesDb,
 }
 
 impl Host {
-    const ALL: [Self; 2] = [Self::Auth, Self::Embed];
+    const ALL: [Self; 7] = [
+        Self::Api,
+        Self::Auth,
+        Self::Catalog,
+        Self::Cdn,
+        Self::ContentSystem,
+        Self::Embed,
+        Self::GamesDb,
+    ];
 
-    const fn name(self) -> &'static str {
+    pub(super) const fn name(self) -> &'static str {
         match self {
+            Self::Api => "api.gog.com",
             Self::Auth => "auth.gog.com",
+            Self::Catalog => "catalog.gog.com",
+            Self::Cdn => "gog-cdn-fastly.gog.com",
+            Self::ContentSystem => "content-system.gog.com",
             Self::Embed => "embed.gog.com",
+            Self::GamesDb => "gamesdb.gog.com",
         }
     }
 
@@ -166,6 +185,70 @@ impl Client {
     }
 }
 
+/// A client with no session of its own.
+///
+/// It serves GOG's public endpoints and the calls that bear an access token their caller borrows
+/// from a session it keeps itself, until that session moves onto [`Client`] (phase 3 of
+/// `docs/own-gog-client-plan.md`). The token is sent as it is: a rejection is the caller's to
+/// renew.
+pub struct Sessionless {
+    http: reqwest::Client,
+}
+
+impl Sessionless {
+    /// # Errors
+    ///
+    /// [`Error::Setup`] when the HTTP client cannot be built.
+    #[inline]
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self {
+            http: http_client()?,
+        })
+    }
+
+    /// Sends a GET to `host` and reads its 2xx body as `T`.
+    pub(super) async fn get<T>(
+        &self,
+        call: &Call,
+        host: Host,
+        path: &str,
+        query: &[(&str, &str)],
+        bearer: Option<&str>,
+    ) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        let body = self
+            .get_bytes(call, &host.url(path), host.name(), query, bearer)
+            .await?;
+        parse(call, &body)
+    }
+
+    /// Sends a GET to `url`, whose host must be `host`, and returns its 2xx body. A redirect may
+    /// only stay on that host, so that an answer from elsewhere is never read as this one's.
+    pub(super) async fn get_bytes(
+        &self,
+        call: &Call,
+        url: &str,
+        host: &str,
+        query: &[(&str, &str)],
+        bearer: Option<&str>,
+    ) -> Result<Vec<u8>, Error> {
+        let mut request = self.http.get(url).query(query);
+        if let Some(token) = bearer {
+            request = request.bearer_auth(token);
+        }
+        let response = receive(request, call).await?;
+        if response.url().host_str() != Some(host) {
+            return Err(Error::Malformed {
+                call: call.name,
+                reason: "answered from another host".to_owned(),
+            });
+        }
+        read(response, call).await
+    }
+}
+
 /// reqwest's own default has no timeout, so an answer GOG stalls on would hang the caller
 /// forever; every call here is a small JSON round trip, so one flat timeout covers the whole
 /// request. Redirects stay on GOG's hosts over HTTPS, since the bearer token rides along.
@@ -196,7 +279,13 @@ pub(super) async fn send<T>(request: RequestBuilder, call: &Call) -> Result<T, E
 where
     T: DeserializeOwned,
 {
-    let mut response = request
+    let response = receive(request, call).await?;
+    parse(call, &read(response, call).await?)
+}
+
+/// Sends `request` and keeps the answer when its status is a success.
+async fn receive(request: RequestBuilder, call: &Call) -> Result<Response, Error> {
+    let response = request
         .send()
         .await
         .map_err(|err| Error::network(call.name, err))?;
@@ -213,6 +302,11 @@ where
             status: status.as_u16(),
         });
     }
+    Ok(response)
+}
+
+/// The body of `response`, refused once it grows past `call.max_body` bytes.
+async fn read(mut response: Response, call: &Call) -> Result<Vec<u8>, Error> {
     let too_large = || Error::Malformed {
         call: call.name,
         reason: format!("body larger than {} bytes", call.max_body),
@@ -234,7 +328,15 @@ where
         }
         body.extend_from_slice(&chunk);
     }
-    serde_json::from_slice(&body).map_err(|err| Error::Malformed {
+    Ok(body)
+}
+
+/// Reads `body` as `T`, quoting none of it when `call.has_secrets`.
+pub(super) fn parse<T>(call: &Call, body: &[u8]) -> Result<T, Error>
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_slice(body).map_err(|err| Error::Malformed {
         call: call.name,
         reason: if call.has_secrets {
             format!(
