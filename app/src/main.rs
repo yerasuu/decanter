@@ -228,6 +228,7 @@ fn open_library(chosen: Option<std::path::PathBuf>) {
         Err(err) => tracing::error!(%err, "cannot move decanter's data into the library, still using the old folder"),
     }
     decanter_core::bootstrap::hold_shared();
+    core::forget_redundant_library_paths();
 }
 
 /// Whether closing the window should leave decanter in the tray instead of

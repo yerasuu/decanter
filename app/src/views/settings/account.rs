@@ -643,14 +643,18 @@ fn repoint_profiles(profile_id: &str, old_path: &str, new_path: &str) -> Result<
             .rebase_library_caches(std::path::Path::new(old_path), std::path::Path::new(new_path))
             .map_err(crate::core::StoreError::Query)
     );
-    profiles
-        .iter()
-        .filter(|profile| profile.id == profile_id || profile.library_path.as_deref() == Some(old_path))
-        .try_for_each(|profile| {
-            moved_db
-                .set_profile_library_path(&profile.id, Some(new_path))
-                .map_err(crate::core::StoreError::Query)
-        })
+    crate::achv_try!(
+        profiles
+            .iter()
+            .filter(|profile| profile.id == profile_id || profile.library_path.as_deref() == Some(old_path))
+            .try_for_each(|profile| {
+                moved_db
+                    .set_profile_library_path(&profile.id, Some(new_path))
+                    .map_err(crate::core::StoreError::Query)
+            })
+    );
+    crate::core::forget_redundant_library_paths();
+    Ok(())
 }
 
 impl Render for AccountTab {

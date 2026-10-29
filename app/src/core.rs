@@ -7,7 +7,7 @@
 //! for the query they're making, the way `library::data` always has. Whether
 //! the database opened at all is resolved once, in `state::Session`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use decanter_core::{Db, InstalledGame, Library, Profile, Storefront};
 
@@ -103,7 +103,7 @@ pub fn create_profile(name: &str, library_path: Option<&str>) -> Result<Profile,
         );
         None
     } else {
-        library_path
+        library_path.filter(|path| !is_database_root(Path::new(path)))
     };
     let db = db()?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -192,6 +192,49 @@ pub fn library() -> Result<Library, StoreError> {
         None => {
             tracing::warn!("the active library isn't available");
             Err(no_library())
+        }
+    }
+}
+
+/// Whether `path` is the library the open database lives in, which a profile reaches with its
+/// library path unset.
+fn is_database_root(path: &Path) -> bool {
+    decanter_core::bootstrap::active_root().is_some_and(|root| root == path)
+}
+
+/// Unsets every profile's library path that names the library its database lives in. Unset reads
+/// the same, and keeps following that library when it moves; spelled out, the path goes stale
+/// once the folder moves outside decanter, and the profile then finds none of its games there.
+pub fn forget_redundant_library_paths() {
+    if decanter_core::bootstrap::active_root().is_none() {
+        return;
+    }
+    // `db()` already warned about why, if it failed.
+    let Ok(db) = db() else {
+        return;
+    };
+    let profiles = match db.list_profiles() {
+        Ok(profiles) => profiles,
+        Err(err) => {
+            tracing::warn!(%err, "cannot list profiles to check their library paths");
+            return;
+        }
+    };
+    for profile in profiles.iter().filter(|profile| {
+        profile
+            .library_path
+            .as_deref()
+            .is_some_and(|path| is_database_root(Path::new(path)))
+    }) {
+        match db.set_profile_library_path(&profile.id, None) {
+            Ok(()) => tracing::info!(
+                profile_id = %profile.id,
+                path = profile.library_path.as_deref(),
+                "profile's library path is its database's own library, now unset to follow it"
+            ),
+            Err(err) => {
+                tracing::warn!(profile_id = %profile.id, %err, "cannot unset the profile's redundant library path");
+            }
         }
     }
 }
