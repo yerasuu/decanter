@@ -8,9 +8,12 @@ ps.log.finished: '%{label}: finished'
 ps.log.exited: '%{label}: exited with code %{code}'
 ps.log.stopped: '%{label}: stopped'
 ps.log.interrupted: '%{label}: interrupted'
-ps.log.copy: Copy log
+ps.log.copy: Copy full log
 ps.log.copied: Copied
 ps.log.full: Full log
+ps.log.tab_log: 'Log (%{count})'
+ps.log.tab_metrics: 'Performance (%{count})'
+ps.log.no_metrics: 'This run printed no performance lines. psport prints them only with "Measure performance" on.'
 ps.jobs.clone: clone
 ps.jobs.build: build
 ps.jobs.update: update

@@ -3,10 +3,11 @@
 //! Virtualized: a job keeps up to 5000 lines and only the ones on screen
 //! are laid out, so a game logging every frame costs a few rows a redraw.
 
+use decanter_ps::metric_lines::classify;
 use decanter_ps::process::{Job, State};
 use gpui::{
-    ClipboardItem, Context, Entity, ScrollStrategy, SharedString, UniformListScrollHandle, Window, div, prelude::*, px,
-    rgb, uniform_list,
+    ClipboardItem, Context, Div, Entity, ScrollStrategy, SharedString, UniformListScrollHandle, Window, div,
+    prelude::*, px, rgb, uniform_list,
 };
 
 use rust_i18n::t;
@@ -14,9 +15,23 @@ use rust_i18n::t;
 use crate::state::job_label;
 use crate::theme;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Log,
+    Metrics,
+}
+
 pub struct LogView {
     job: Entity<Job>,
     scroll: UniformListScrollHandle,
+    tab: Tab,
+    /// Indices into the job's lines for each tab, rebuilt when the job changes (not on every
+    /// redraw): the job drops its oldest line once it is full, which shifts every index, so
+    /// keeping them across changes would need the job to count what it dropped. A pass over at
+    /// most 5000 lines of prefix checks is cheaper than the redraw it precedes, and the buffers
+    /// are reused, so no line is copied.
+    log_rows: Vec<usize>,
+    metric_rows: Vec<usize>,
     /// Shows "Copiado" until the job writes again.
     copied: bool,
 }
@@ -24,20 +39,68 @@ pub struct LogView {
 impl LogView {
     pub fn new(job: Entity<Job>, cx: &mut Context<Self>) -> Self {
         let scroll = UniformListScrollHandle::new();
-        cx.observe(&job, |this, job, cx| {
-            let lines = job.read(cx).lines.len();
-            if lines > 0 {
-                this.scroll.scroll_to_item(lines - 1, ScrollStrategy::Bottom);
-            }
+        cx.observe(&job, |this, _, cx| {
+            this.index(cx);
+            this.scroll_to_end();
             this.copied = false;
             cx.notify();
         })
         .detach();
-        Self {
+        let mut view = Self {
             job,
             scroll,
+            tab: Tab::Log,
+            log_rows: Vec::new(),
+            metric_rows: Vec::new(),
             copied: false,
+        };
+        view.index(cx);
+        view
+    }
+
+    fn index(&mut self, cx: &Context<Self>) {
+        self.log_rows.clear();
+        self.metric_rows.clear();
+        let lines = &self.job.read(cx).lines;
+        for (index, is_metric) in classify(lines.iter().map(String::as_str)).enumerate() {
+            if is_metric {
+                self.metric_rows.push(index);
+            } else {
+                self.log_rows.push(index);
+            }
         }
+    }
+
+    fn rows(&self) -> &[usize] {
+        match self.tab {
+            Tab::Log => &self.log_rows,
+            Tab::Metrics => &self.metric_rows,
+        }
+    }
+
+    fn scroll_to_end(&self) {
+        if let Some(last) = self.rows().len().checked_sub(1) {
+            self.scroll.scroll_to_item(last, ScrollStrategy::Bottom);
+        }
+    }
+
+    fn tabs(&self, cx: &Context<Self>) -> Div {
+        let items = [
+            (Tab::Log, t!("ps.log.tab_log", count = self.log_rows.len())),
+            (Tab::Metrics, t!("ps.log.tab_metrics", count = self.metric_rows.len())),
+        ];
+        let entity = cx.entity();
+        crate::widgets::tabs("ps-log-tabs", &items, self.tab, move |tab, _, cx| {
+            entity.update(cx, |this, cx| this.select(tab, cx));
+        })
+        .px_3()
+        .pt_2()
+    }
+
+    fn select(&mut self, tab: Tab, cx: &mut Context<Self>) {
+        self.tab = tab;
+        self.scroll_to_end();
+        cx.notify();
     }
 
     /// The status line and every kept line, built only when asked for:
@@ -73,8 +136,11 @@ impl Render for LogView {
             State::Exited(None) if job.stop_requested => t!("ps.log.stopped", label = label),
             State::Exited(None) => t!("ps.log.interrupted", label = label),
         });
-        let count = job.lines.len();
+        let tabs = self.tabs(cx);
+        let empty = self.tab == Tab::Metrics && self.metric_rows.is_empty();
+        let count = self.rows().len();
         let log_file = job.log_file.clone();
+        let view = cx.entity();
         let source = self.job.clone();
         div()
             .size_full()
@@ -85,6 +151,7 @@ impl Render for LogView {
             .border_color(rgb(theme::LINE))
             .rounded(px(theme::RADIUS))
             .overflow_hidden()
+            .child(tabs)
             .child(
                 div()
                     .flex()
@@ -126,11 +193,22 @@ impl Render for LogView {
                             .child(t!("ps.log.full"))
                     })),
             )
+            .when(empty, |panel| {
+                panel.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .text_size(px(11.5))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child(t!("ps.log.no_metrics")),
+                )
+            })
             .child(
                 uniform_list("ps-log", count, move |range, _, cx| {
+                    let rows = view.read(cx).rows();
                     let lines = &source.read(cx).lines;
                     range
-                        .filter_map(|index| lines.get(index))
+                        .filter_map(|row| lines.get(*rows.get(row)?))
                         .map(|line| {
                             theme::mono()
                                 .px_3()

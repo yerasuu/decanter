@@ -8,9 +8,12 @@ ps.log.finished: '%{label}: terminado'
 ps.log.exited: '%{label}: terminó con código %{code}'
 ps.log.stopped: '%{label}: detenido'
 ps.log.interrupted: '%{label}: interrumpido'
-ps.log.copy: Copiar registro
+ps.log.copy: Copiar registro completo
 ps.log.copied: Copiado
 ps.log.full: Registro completo
+ps.log.tab_log: 'Registro (%{count})'
+ps.log.tab_metrics: 'Rendimiento (%{count})'
+ps.log.no_metrics: 'Esta partida no imprimió líneas de rendimiento. psport las imprime solo con «Medir el rendimiento» activado.'
 ps.jobs.clone: clonar
 ps.jobs.build: compilar
 ps.jobs.update: actualizar
