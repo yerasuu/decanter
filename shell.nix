@@ -72,6 +72,14 @@ pkgs.mkShell {
   # without this failed with "cannot find -l:libpthread.a". `windows.pthreads`
   # is nixpkgs' separate winpthreads package that actually has it.
   CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-L ${mingw.windows.pthreads}/lib";
+  # aws-lc-sys (rustls' crypto) compiles C for the target through the `cc`
+  # crate, which reads the target-suffixed variables. Without them it
+  # looks for the host's `gcc`/`ar`, and its C sources need winpthreads'
+  # `pthread.h`, which is passed here by flag for the same reason as above:
+  # a buildInput would leak it into the native build.
+  CC_x86_64_pc_windows_gnu = "${mingw.buildPackages.gcc}/bin/x86_64-w64-mingw32-gcc";
+  AR_x86_64_pc_windows_gnu = "${mingw.buildPackages.gcc.bintools.bintools}/bin/x86_64-w64-mingw32-ar";
+  CFLAGS_x86_64_pc_windows_gnu = "-I${mingw.windows.pthreads}/include";
 
   # `mkShell` pulls in its own stdenv gcc even though nothing above lists
   # it as a buildInput, so the native Linux build links against

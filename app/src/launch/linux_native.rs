@@ -61,8 +61,3 @@ pub(super) fn allow_to_run(executable: &Path) -> std::io::Result<()> {
     tracing::info!(path = %executable.display(), "gave the program the permission to run");
     Ok(())
 }
-
-#[cfg(not(unix))]
-pub(super) const fn allow_to_run(_: &Path) -> std::io::Result<()> {
-    Ok(())
-}

@@ -344,6 +344,7 @@ async fn spawn(
 }
 
 /// [`linux_native::allow_to_run`], with why it couldn't shown where the game's runs are.
+#[cfg(unix)]
 fn allowed_to_run(game_id: &str, executable: &Path, background: &Entity<Background>, cx: &mut AsyncApp) -> bool {
     let Err(err) = linux_native::allow_to_run(executable) else {
         return true;
@@ -352,6 +353,11 @@ fn allowed_to_run(game_id: &str, executable: &Path, background: &Entity<Backgrou
     let reason = t!("external.errors.exec_bit", path = executable.display(), error = err);
     show_failure(background, game_id, &reason, cx);
     false
+}
+
+#[cfg(not(unix))]
+const fn allowed_to_run(_: &str, _: &Path, _: &Entity<Background>, _: &mut AsyncApp) -> bool {
+    true
 }
 
 /// Puts why `game_id` never started where its runs show, since no run of it began.
