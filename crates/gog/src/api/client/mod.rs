@@ -54,6 +54,7 @@ mod error;
 mod galaxy_products;
 mod gamesdb;
 mod http;
+mod orders;
 mod products;
 mod user;
 
@@ -63,5 +64,6 @@ pub use error::Error;
 pub use galaxy_products::{ContentSystems, Description, Dlc, Images, Product, PRODUCT_BATCH};
 pub use gamesdb::{parse_release_date, Company, GameDetails, Genre, Image, Localized, Release};
 pub use http::{Client, Sessionless};
+pub use orders::{Order, OrdersPage};
 pub use products::ProductsPage;
 pub use user::User;
