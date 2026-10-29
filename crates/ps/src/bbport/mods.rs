@@ -93,11 +93,13 @@ fn icon_base(root: &Root, game_dir: &Path, settings: &LauncherSettings) -> PathB
 
 /// The folder and order bbport loads mods from. Without the icons, the
 /// user's own as they are. `detected` is the style of the pad in use, for
-/// the automatic setting. File I/O and the icons' build: off the UI thread.
+/// the automatic setting; `port_ini` is the title's, whose pad layout the icons follow. File I/O
+/// and the icons' build: off the UI thread.
 pub fn prepare(
     root: &Root,
     game_dir: &Path,
     settings: &LauncherSettings,
+    port_ini: &Path,
     detected: Option<IconStyle>,
 ) -> io::Result<Mods> {
     let enabled = settings.flag("mods_enabled", true);
@@ -108,7 +110,12 @@ pub fn prepare(
             enabled,
         });
     };
-    let icons = match icons::prepare(root, &pad::from_ini(root), style, &icon_base(root, game_dir, settings)) {
+    let icons = match icons::prepare(
+        root,
+        &pad::from_ini(port_ini),
+        style,
+        &icon_base(root, game_dir, settings),
+    ) {
         Ok(icons) => icons,
         Err(err) => return Err(err),
     };

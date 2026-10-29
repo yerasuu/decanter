@@ -1,7 +1,8 @@
 # PS section: per-game settings
 
-Status: proposal (kb #1275). Read-only analysis of `develop` at `123e5ab` and of the bbport checkout
-under `<library>/psport/ports/bbport` (psport with `psport.ini`). Nothing here is implemented yet.
+Status: accepted (kb #1275, D1-D9). Analysis of `develop` at `123e5ab` and of the bbport checkout
+under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phase 1 (per-title ini) is
+implemented (`crates/ps/src/bbport/port_ini.rs`); the rest is not yet.
 
 ## The owner's rule
 

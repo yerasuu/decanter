@@ -1,6 +1,6 @@
 //! Building FSR 4.1.1 from the user's AMD DLL: checked by bbport's own
 //! inspector first, recorded under Proton by bbport's script, and chosen as
-//! the upscaler once it succeeds.
+//! the upscaler of the game it was asked from once it succeeds.
 //!
 //! The recording runs under decanter's own GE-Proton and `umu-run`, prepared
 //! here first, so the user never installs a Proton build or opens Steam for it.
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use decanter_core::runner::{Progress, Runner, Stage};
 use decanter_ps::bbport::tools::{self, BadLoader, DllCheck, Fsr411Failure, Unsupported};
-use decanter_ps::bbport::{GROUPS, values};
+use decanter_ps::bbport::{Bbport, GROUPS, values};
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use decanter_ps::process::JobKind;
@@ -36,6 +36,7 @@ impl Ps {
         &mut self,
         upscaler: PathBuf,
         loader: Option<PathBuf>,
+        title_id: String,
         cx: &mut Context<Self>,
         on_checked: impl FnOnce(DllOutcome, &mut gpui::App) + 'static,
     ) {
@@ -113,8 +114,11 @@ impl Ps {
                 let chosen = match upscaler {
                     Some(setting) => {
                         let root = root.clone();
-                        cx.background_spawn(async move { values::save(&root, setting, "fsr411", None) })
-                            .await
+                        cx.background_spawn(async move {
+                            Bbport::title_ini(&root, &title_id)
+                                .and_then(|port_ini| values::save(&root, &port_ini.path, setting, "fsr411", None))
+                        })
+                        .await
                     }
                     None => Ok(()),
                 };

@@ -7,6 +7,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
+use crate::title_id::TitleId;
+
 /// Set by [`use_library`] whenever the active profile is known; read when
 /// something starts, written once per profile switch.
 static ACTIVE: RwLock<Option<Root>> = RwLock::new(None);
@@ -74,10 +76,19 @@ impl Root {
         self.join("toolchain")
     }
 
-    /// `PS_DATA_DIR`: `bbport.ini`, the launch settings, mods, patches and the
-    /// files `run.sh` generates. Shared by every profile.
+    /// `PS_DATA_DIR`: the shared port ini (what older ports read and a title's own starts from),
+    /// the launch settings, mods, patches and the files `run.sh` generates. Shared by every profile.
     pub fn bbport_data(&self) -> PathBuf {
         self.join("bbport")
+    }
+
+    /// Each title's own settings, which no other title reads, shared by every profile.
+    pub(crate) fn title(&self, title_id: &TitleId) -> PathBuf {
+        self.titles().join(title_id.as_str())
+    }
+
+    pub(crate) fn titles(&self) -> PathBuf {
+        self.join("titles")
     }
 
     /// AnyPS5 conversions, one directory per title, shared by every profile.

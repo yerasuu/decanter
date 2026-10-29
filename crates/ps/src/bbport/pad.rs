@@ -1,5 +1,5 @@
 //! Gamepad layouts for bbport: which physical button reaches which PS4
-//! input, as the `pad.<input>=<SDL button>` lines of `bbport.ini`.
+//! input, as the `pad.<input>=<SDL button>` lines of a title's port ini.
 //!
 //! A layout stores only the inputs it moves away from bbport's built-in
 //! mapping, so the default layout writes no line at all and follows
@@ -7,11 +7,11 @@
 //! `pad.` line, so switching never leaves a stray binding behind.
 
 use std::io;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Bbport, Ini};
-use crate::paths::Root;
+use super::Ini;
 
 const PREFIX: &str = "pad.";
 
@@ -301,20 +301,19 @@ impl PadLayout {
         }
     }
 
-    /// Against `bbport.ini` as it is now, like every other edit of it. File
-    /// I/O: off the UI thread.
-    pub fn save_to_ini(&self, root: &Root) -> io::Result<()> {
-        let path = Bbport::ini_path(root);
-        let mut ini = Ini::load(&path);
+    /// Against the title's port ini `path` as it is now, like every other edit of it. File I/O:
+    /// off the UI thread.
+    pub fn save_to_ini(&self, path: &Path) -> io::Result<()> {
+        let mut ini = Ini::load(path);
         self.apply(&mut ini);
-        ini.save(&path)
+        ini.save(path)
     }
 }
 
-/// What `bbport.ini` holds now as an unsaved layout, so a hand-edited set
+/// What the port ini `path` holds now as an unsaved layout, so a hand-edited set
 /// of `pad.` lines can be copied into one. File I/O: off the UI thread.
-pub fn from_ini(root: &Root) -> PadLayout {
-    let ini = Ini::load(&Bbport::ini_path(root));
+pub fn from_ini(path: &Path) -> PadLayout {
+    let ini = Ini::load(path);
     let mut lines: Vec<(String, String)> = ini
         .prefixed(PREFIX)
         .map(|(key, value)| (key[PREFIX.len()..].to_owned(), value.to_owned()))
@@ -329,10 +328,10 @@ pub fn from_ini(root: &Root) -> PadLayout {
     }
 }
 
-/// The id of the layout among `layouts` that `bbport.ini` holds now, `None`
+/// The id of the layout among `layouts` that the port ini `path` holds now, `None`
 /// when its `pad.` lines match none. File I/O: off the UI thread.
-pub fn current<'a>(root: &Root, layouts: impl IntoIterator<Item = &'a PadLayout>) -> Option<String> {
-    let ini = Ini::load(&Bbport::ini_path(root));
+pub fn current<'a>(path: &Path, layouts: impl IntoIterator<Item = &'a PadLayout>) -> Option<String> {
+    let ini = Ini::load(path);
     layouts
         .into_iter()
         .find(|layout| layout.matches(&ini))

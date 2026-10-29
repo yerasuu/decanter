@@ -13,12 +13,13 @@ use gpui::{
 };
 use rust_i18n::t;
 
+use decanter_ps::bbport::IniScope;
 use decanter_ps::bbport::pad::INPUTS;
 use decanter_ps::keys::sdl_key_name;
 use decanter_ps::layouts::{self, KeyLayout, Store};
 use decanter_ps::mapping::{Action, Mapping, MouseButton, Refusal, Source, Target, Wheel};
 
-use super::layout_name;
+use super::{layout_name, scope_note};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::theme;
@@ -157,6 +158,7 @@ const CUSTOM: &str = "custom";
 pub struct KeyboardView {
     target: Target,
     path: PathBuf,
+    scope: IniScope,
     defaults: Mapping,
     mapping: Mapping,
     saved: Mapping,
@@ -171,7 +173,14 @@ pub struct KeyboardView {
 }
 
 impl KeyboardView {
-    pub fn new(target: Target, path: PathBuf, mapping: Mapping, store: Store, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        target: Target,
+        path: PathBuf,
+        scope: IniScope,
+        mapping: Mapping,
+        store: Store,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let current = layouts::current_keys(target, &mapping, &store.key_layouts(target));
         let name = cx.new(|cx| TextInput::new(Text::new("ps.layouts.name_placeholder"), cx));
         cx.subscribe(&name, |this, name, event, cx| {
@@ -184,6 +193,7 @@ impl KeyboardView {
         let mut this = Self {
             target,
             path,
+            scope,
             defaults: target.defaults(),
             saved: mapping.clone(),
             mapping,
@@ -563,6 +573,11 @@ impl KeyboardView {
                         Target::Bbport => t!("ps.keyboard.description.bbport"),
                         Target::AnyPs5 => t!("ps.keyboard.description.anyps5"),
                     }))
+                    .child(
+                        div()
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(scope_note(self.scope, "ps.scope.title")),
+                    )
                     .child(
                         div()
                             .font_family(theme::MONO)

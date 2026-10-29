@@ -12,6 +12,7 @@ mod mods;
 mod online;
 mod runs;
 
+use decanter_ps::bbport::IniScope;
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::Status;
 use std::borrow::Cow;
@@ -351,6 +352,16 @@ fn layout_name<'name>(id: &str, builtin: bool, name: &'name str) -> Cow<'name, s
         (true, "") => t!("ps.layouts.custom"),
         _ => Cow::Borrowed(name),
     }
+}
+
+/// What a game's tab says about whose settings it shows: `own` is the tab's wording for the game's
+/// own port ini, since some tabs still show settings every game shares.
+fn scope_note(scope: IniScope, own: &'static str) -> Cow<'static, str> {
+    t!(match scope {
+        IniScope::Title => own,
+        IniScope::OlderPort => "ps.scope.older_port",
+        IniScope::UnusualTitleId => "ps.scope.unusual_title_id",
+    })
 }
 
 /// A file of the dump's `sce_sys`, as the art cache takes it.

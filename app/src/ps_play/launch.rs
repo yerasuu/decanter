@@ -47,6 +47,9 @@ pub enum LaunchError {
     NoPassword(String),
     #[error("local player unusable: {0}")]
     LocalPlayer(LocalPlayerError),
+    /// The title's own port ini could not be made from the shared one.
+    #[error("port settings of the title unusable: {0}")]
+    TitleSettings(io::Error),
     /// The settings or the mods were read on a blocking thread that did not finish.
     #[error("launch setup interrupted: {0}")]
     Interrupted(io::Error),
@@ -69,6 +72,7 @@ impl LaunchError {
             Self::Keyring(err) => Text::new("ps.play.online_keyring_error").arg("error", err),
             Self::NoPassword(npid) => Text::new("ps.play.online_no_password").arg("npid", npid),
             Self::LocalPlayer(err) => Text::new("ps.play.local_player_error").arg("value", err.value()),
+            Self::TitleSettings(err) => Text::new("ps.play.title_settings_error").arg("error", err),
         }
     }
 }
@@ -106,6 +110,8 @@ pub struct Surroundings<F> {
 /// launch borrows it ([`LaunchInputs::game_launch`]).
 pub struct LaunchInputs {
     pub(crate) settings: LauncherSettings,
+    /// The title's own port ini, `None` where the port reads the shared one.
+    config: Option<PathBuf>,
     learned: learned::Title,
     aspect_ratio: Option<&'static str>,
     mods: Mods,
@@ -127,6 +133,7 @@ impl LaunchInputs {
             game,
             user_dir: &self.user_dir,
             cache_dir,
+            config: self.config.as_deref(),
             debug_dir: self.debug_dir.as_deref(),
             settings: &self.settings,
             mods: &self.mods,
@@ -160,18 +167,20 @@ pub async fn launch_inputs(
         let root = root.clone();
         let title_id = game.title_id.clone();
         off_thread(move || {
-            (
-                LauncherSettings::load(&root),
-                learned::Store::load(&root).title(&title_id),
-                Ini::load(&Bbport::ini_path(&root))
-                    .get("aspect_ratio")
-                    .map(str::to_owned),
-            )
+            Bbport::title_ini(&root, &title_id).map(|port_ini| {
+                (
+                    LauncherSettings::load(&root),
+                    learned::Store::load(&root).title(&title_id),
+                    Ini::load(&port_ini.path).get("aspect_ratio").map(str::to_owned),
+                    port_ini,
+                )
+            })
         })
         .await
     };
-    let (settings, learned, chosen_ratio) = match read {
-        Ok(read) => read,
+    let (settings, learned, chosen_ratio, port_ini) = match read {
+        Ok(Ok(read)) => read,
+        Ok(Err(err)) => return Err(LaunchError::TitleSettings(err)),
         Err(err) => return Err(err),
     };
     let aspect_ratio = match chosen_ratio.as_deref() {
@@ -195,9 +204,10 @@ pub async fn launch_inputs(
         let game_dir = game.dir.clone();
         let for_mods = settings.clone();
         let root = root.clone();
+        let ini_path = port_ini.path.clone();
         // The layout's button icons are built here when they need to be: a few
         // hundred milliseconds of decoding and encoding, off the UI thread.
-        match off_thread(move || bbport::mods::prepare(&root, &game_dir, &for_mods, detected)).await {
+        match off_thread(move || bbport::mods::prepare(&root, &game_dir, &for_mods, &ini_path, detected)).await {
             Ok(Ok(mods)) => mods,
             Ok(Err(err)) => return Err(LaunchError::Mods(err)),
             Err(err) => return Err(err),
@@ -227,6 +237,7 @@ pub async fn launch_inputs(
         .then(|| FrameGen::of_title(&settings, &game.title_id));
     Ok(LaunchInputs {
         settings,
+        config: port_ini.config().map(Path::to_path_buf),
         learned,
         aspect_ratio,
         mods,

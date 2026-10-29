@@ -1,29 +1,56 @@
 //! The settings table's values, across the two files they live in.
 //!
 //! Each change is written on its own, against the files as they are on
-//! disk then: `bbport.ini` is also written by the bindings editor and by
-//! bbport's in-game menu, and a save from a stale copy would undo theirs.
+//! disk then: the port ini is also written by the bindings editor and by
+//! the port's in-game menu, and a save from a stale copy would undo theirs.
 
 use std::io;
+use std::path::{Path, PathBuf};
 
 use super::groups::{Control, Setting, Store};
-use super::{Bbport, Ini, LauncherSettings};
+use super::{Bbport, Ini, IniScope, LauncherSettings};
 use crate::paths::Root;
 
-/// What the settings view shows, read once when it opens. File I/O: off
-/// the UI thread.
-#[derive(Clone, Default)]
+/// What a title's settings view shows, read once when it shows the title: its own port ini
+/// ([`Bbport::title_ini`]) and the launch settings every title shares. File I/O: off the UI
+/// thread.
+#[derive(Clone)]
 pub struct Values {
+    title_id: String,
+    ini_path: PathBuf,
+    scope: IniScope,
     ini: Ini,
     launch: LauncherSettings,
 }
 
 impl Values {
-    pub fn load(root: &Root) -> Self {
-        Self {
-            ini: Ini::load(&Bbport::ini_path(root)),
+    /// # Errors
+    /// Making the title's port ini ([`Bbport::title_ini`]).
+    pub fn load(root: &Root, title_id: &str) -> io::Result<Self> {
+        let port_ini = Bbport::title_ini(root, title_id)?;
+        Ok(Self {
+            title_id: title_id.to_owned(),
+            ini: Ini::load(&port_ini.path),
+            ini_path: port_ini.path,
+            scope: port_ini.scope,
             launch: LauncherSettings::load(root),
-        }
+        })
+    }
+
+    /// The title these values were read for, which a save writes to.
+    #[must_use]
+    pub fn title_id(&self) -> &str {
+        &self.title_id
+    }
+
+    /// The port ini the values were read from, which a save writes to.
+    #[must_use]
+    pub fn ini_path(&self) -> &Path {
+        &self.ini_path
+    }
+
+    pub const fn scope(&self) -> IniScope {
+        self.scope
     }
 
     pub const fn launch(&self) -> &LauncherSettings {
@@ -135,11 +162,12 @@ fn apply_launch(launch: &mut LauncherSettings, setting: &Setting, value: &str) {
     }
 }
 
-/// Writes one setting into the files as they are now. A controller's name
-/// is kept beside its GUID, to show it while it is unplugged.
-pub fn save(root: &Root, setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
+/// Writes one setting into the files as they are now: a port ini key into `ini`, the title's
+/// ([`Values::ini_path`]). A controller's name is kept beside its GUID, to show it while it is
+/// unplugged.
+pub fn save(root: &Root, ini: &Path, setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
     match setting.store {
-        Store::Ini => save_ini(root, setting.key, value),
+        Store::Ini => save_ini(ini, setting.key, value),
         // Through `edit`, so a settings file that can't be read or parsed fails the save instead
         // of being replaced by the defaults with this one change.
         Store::Launcher => LauncherSettings::edit(root, |launch| {
@@ -152,9 +180,8 @@ pub fn save(root: &Root, setting: &Setting, value: &str, gamepad_name: Option<&s
 }
 
 /// [`save`] for a port ini key outside the table.
-pub fn save_ini(root: &Root, key: &str, value: &str) -> io::Result<()> {
-    let path = Bbport::ini_path(root);
-    let mut ini = Ini::load(&path);
+pub fn save_ini(path: &Path, key: &str, value: &str) -> io::Result<()> {
+    let mut ini = Ini::load(path);
     ini.set(key, value);
-    ini.save(&path)
+    ini.save(path)
 }

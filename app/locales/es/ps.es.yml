@@ -265,6 +265,12 @@ ps.learned.forget_tooltip: La próxima ejecución vuelve a solapar frames; si el
 ps.learned.save_error: 'No se pudo guardar lo aprendido del juego: %{error}'
 ps.learned.forget_error: 'No se pudo olvidar: %{error}'
 ps.detail.reading_keyboard: Leyendo el teclado…
+ps.scope.title: Estos ajustes son solo de este juego.
+ps.scope.graphics: 'Resolución de salida, relación de aspecto, cambio de resolución en caliente y los grupos Ratón, Teclado, Reescalado y Efectos del juego son solo de este juego; el resto, de momento, es común a todos los juegos.'
+ps.scope.gamepad: 'El esquema de botones es solo de este juego; el mando elegido y los iconos de botones, de momento, son comunes a todos los juegos.'
+ps.scope.older_port: 'Este port es anterior a los ajustes por juego: lo que cambies aquí vale para todos los juegos. Actualiza el port para que cada juego tenga los suyos.'
+ps.scope.unusual_title_id: 'El Title ID de este volcado no tiene el formato habitual, así que lo que cambies aquí vale para todos los juegos.'
+ps.scope.read_error: 'No se pudieron preparar los ajustes de este juego: %{error}'
 ps.detail.explain.needs_convert: La primera vez se convierte con AnyPS5 antes de arrancar.
 ps.detail.explain.needs_merge: 'Hay una actualización 1.09 junto a este volcado. Fusionarla crea una copia jugable al lado, con enlaces duros: no ocupa espacio extra y el volcado original no cambia.'
 ps.detail.explain.has_playable: Ya tienes la copia 1.09 en %{dir}; juega con esa.
@@ -322,7 +328,7 @@ ps.keyboard.assign: + Asignar
 ps.keyboard.reset_all: Restaurar todo
 ps.keyboard.hint.own: 'Tu esquema: + Asignar y pulsa la tecla; Guardar lo escribe. Enter guarda el nombre.'
 ps.keyboard.hint.custom: El archivo tiene teclas editadas a mano; cópialas como nuevo para guardarlas como esquema.
-ps.keyboard.description.bbport: Teclado para bbport (líneas key. de bbport.ini). Quitar todas las teclas de una acción la deja sin asignar.
+ps.keyboard.description.bbport: Teclado para bbport (líneas key. del archivo de abajo). Quitar todas las teclas de una acción la deja sin asignar.
 ps.keyboard.description.anyps5: Teclado y ratón para AnyPS5. El mando funciona siempre sin configurar.
 ps.keyboard.capture: Pulsa una tecla, un botón del ratón o mueve la rueda
 ps.gamepad.inputs.cross.label: ✕
@@ -382,7 +388,7 @@ ps.gamepad.buttons.paddle1: Pala 1
 ps.gamepad.buttons.paddle2: Pala 2
 ps.gamepad.buttons.paddle3: Pala 3
 ps.layouts.code_vein: Estilo Code Vein
-ps.gamepad.description: Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier esquema.
+ps.gamepad.description: Ajustes de bbport. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier esquema.
 ps.gamepad.reading: Leyendo la configuración del mando…
 ps.gamepad.save_error: 'No se pudo guardar: %{error}'
 ps.gamepad.controller.title: Mando
@@ -588,7 +594,7 @@ ps.graphics.gpu_profile.label: Perfil de GPU en el registro
 ps.graphics.gpu_profile.note: PS_GPU_PROFILE
 ps.graphics.vk_validation.label: Capas de validación de Vulkan
 ps.graphics.vk_validation.note: Ralentiza mucho
-ps.graphics.description: Ajustes de bbport, comunes a todas tus copias de Bloodborne. Se aplican en el próximo arranque.
+ps.graphics.description: Ajustes de bbport. Se aplican en el próximo arranque.
 ps.graphics.reading: Leyendo los ajustes…
 ps.graphics.no_limit: Sin límite
 ps.graphics.save_error: 'No se pudo guardar: %{error}'
@@ -603,7 +609,7 @@ ps.vk_layer.reasons.setup: No se pudo preparar su entorno de nix; mira el regist
 ps.vk_layer.reasons.build: nix no pudo descargarla ni compilarla (¿sin conexión?); mira su registro.
 ps.fsr.checking: Comprobando la DLL…
 ps.fsr.check_error: 'No se pudo comprobar la DLL: %{error}'
-ps.fsr.built: FSR 4.1.1 compilado y elegido como reescalado
+ps.fsr.built: FSR 4.1.1 compilado y elegido como reescalado de este juego
 ps.fsr.built_not_chosen: 'FSR 4.1.1 compilado, pero no se pudo elegir: %{error}'
 ps.fsr.cancelled: Compilación de FSR 4.1.1 cancelada
 ps.fsr.unsupported.fsr40: '%{name}: FSR %{version}, la FSR 4.0.x oficial de AMD, que solo funciona en RDNA4 y no se puede grabar bajo Proton en otras GPU. Hace falta FSR 4.1.x (FSR4_LATEST de OptiScaler o la DLL de un juego con FSR 4.1)'
@@ -733,6 +739,7 @@ ps.online.no_password: 'Hay un Online ID guardado sin contraseña en el llavero:
 ps.online.kept_existing: Guardado. %{previous} conserva su contraseña y su token en el llavero, porque el nuevo Online ID ya tenía los suyos y no se han sobrescrito.
 ps.play.online_no_password: El Online ID %{npid} no tiene contraseña en el llavero. Escríbela en Ajustes de PS, borra el Online ID para jugar sin shadNet o desactiva el juego online.
 ps.play.local_player_error: El jugador local «%{value}» guardado para este juego no son de 1 a 10 cifras. Corrígelo en la pestaña Online del juego o bórralo.
+ps.play.title_settings_error: 'No se pudieron preparar los ajustes de este juego: %{error}'
 ps.branch.title: Rama de psport, compilada en este PC (Pruebas)
 ps.branch.description: 'decanter obtiene el commit más reciente de la rama de psport con tu git, descarga la toolchain que fija (llvm-mingw, CMake, Ninja y el paquete de toolchain de psport, cada uno comprobado con su SHA-256) y la compila aquí, sin ejecutar nada más de lo que descarga. Compilar ejecuta los scripts de la propia rama con tus permisos, así que cada commit nuevo te pide confirmación antes. Una compilación se usa en cuanto termina, y las compilaciones y versiones anteriores se quitan con sus registros.'
 ps.branch.toolchain.not_pinned: Esta versión de decanter aún no fija ningún paquete de toolchain, así que no puede compilar; lo hará una posterior.

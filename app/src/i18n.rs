@@ -184,7 +184,7 @@ pub fn set(language: Option<Language>, cx: &mut gpui::App) {
         cx.background_spawn(async {
             let root = decanter_ps::paths::active();
             if let Err(err) = decanter_ps::bbport::Bbport::forget_menu_language(&root) {
-                tracing::warn!(error = %err, "could not drop the in-game menu's language from bbport.ini");
+                tracing::warn!(error = %err, "could not drop the in-game menu's language from every port ini");
             }
         })
         .detach();

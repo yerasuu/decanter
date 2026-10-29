@@ -1,6 +1,6 @@
 //! Staged edits, as Steam Input keeps them: on the drawing, rebinds and
 //! restores pile up in a draft of the configuration in use and reach
-//! `bbport.ini` only on Aplicar, and Cancelar drops them. The draft lives
+//! the game's port ini only on Aplicar, and Cancelar drops them. The draft lives
 //! as long as the view, so leaving the tab keeps it. A template takes edits
 //! too: since templates are never written, applying them makes a new
 //! configuration of the user's own.

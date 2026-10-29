@@ -265,6 +265,12 @@ ps.learned.forget_tooltip: The next run overlaps frames again; if the game rewri
 ps.learned.save_error: 'Couldn''t save what was learned about the game: %{error}'
 ps.learned.forget_error: 'Couldn''t forget it: %{error}'
 ps.detail.reading_keyboard: Reading the keyboard…
+ps.scope.title: These settings are for this game only.
+ps.scope.graphics: 'Output resolution, aspect ratio, live resolution change and the Mouse, Keyboard, Upscaling and Game effects groups are for this game only; the rest is still shared by every game for now.'
+ps.scope.gamepad: 'The button layout is for this game only; the chosen controller and the button icons are still shared by every game for now.'
+ps.scope.older_port: 'This port predates per-game settings: what you change here applies to every game. Update the port to give each game its own.'
+ps.scope.unusual_title_id: 'This dump''s Title ID isn''t in the usual format, so what you change here applies to every game.'
+ps.scope.read_error: 'Couldn''t prepare this game''s settings: %{error}'
 ps.detail.explain.needs_convert: The first time, it's converted with AnyPS5 before starting.
 ps.detail.explain.needs_merge: 'There''s a 1.09 update next to this dump. Merging it creates a playable copy alongside, with hard links: it takes no extra space and the original dump stays unchanged.'
 ps.detail.explain.has_playable: You already have the 1.09 copy at %{dir}; play that one.
@@ -322,7 +328,7 @@ ps.keyboard.assign: + Assign
 ps.keyboard.reset_all: Reset all
 ps.keyboard.hint.own: 'Your layout: + Assign and press the key; Save writes it. Enter saves the name.'
 ps.keyboard.hint.custom: The file has hand-edited keys; copy them as new to save them as a layout.
-ps.keyboard.description.bbport: Keyboard for bbport (key. lines in bbport.ini). Removing every key from an action leaves it unbound.
+ps.keyboard.description.bbport: Keyboard for bbport (key. lines in the file below). Removing every key from an action leaves it unbound.
 ps.keyboard.description.anyps5: Keyboard and mouse for AnyPS5. The controller always works without setup.
 ps.keyboard.capture: Press a key or a mouse button, or move the wheel
 ps.gamepad.inputs.cross.label: ✕
@@ -382,7 +388,7 @@ ps.gamepad.buttons.paddle1: Paddle 1
 ps.gamepad.buttons.paddle2: Paddle 2
 ps.gamepad.buttons.paddle3: Paddle 3
 ps.layouts.code_vein: Code Vein style
-ps.gamepad.description: bbport settings, shared by all your Bloodborne copies. They apply on the next start. The sticks move the character and the camera in any layout.
+ps.gamepad.description: bbport settings. They apply on the next start. The sticks move the character and the camera in any layout.
 ps.gamepad.reading: Reading the controller setup…
 ps.gamepad.save_error: 'Couldn''t save: %{error}'
 ps.gamepad.controller.title: Controller
@@ -588,7 +594,7 @@ ps.graphics.gpu_profile.label: GPU profile in the log
 ps.graphics.gpu_profile.note: PS_GPU_PROFILE
 ps.graphics.vk_validation.label: Vulkan validation layers
 ps.graphics.vk_validation.note: Slows things down a lot
-ps.graphics.description: bbport settings, shared by all your Bloodborne copies. They apply on the next start.
+ps.graphics.description: bbport settings. They apply on the next start.
 ps.graphics.reading: Reading the settings…
 ps.graphics.no_limit: No limit
 ps.graphics.save_error: 'Couldn''t save: %{error}'
@@ -603,7 +609,7 @@ ps.vk_layer.reasons.setup: Couldn't set up its nix environment; see decanter's l
 ps.vk_layer.reasons.build: nix couldn't download or build it (offline?); see its log.
 ps.fsr.checking: Checking the DLL…
 ps.fsr.check_error: 'Couldn''t check the DLL: %{error}'
-ps.fsr.built: FSR 4.1.1 built and chosen as the upscaler
+ps.fsr.built: FSR 4.1.1 built and chosen as this game's upscaler
 ps.fsr.built_not_chosen: 'FSR 4.1.1 built, but couldn''t be chosen: %{error}'
 ps.fsr.cancelled: FSR 4.1.1 build cancelled
 ps.fsr.unsupported.fsr40: '%{name}: FSR %{version}, AMD''s official FSR 4.0.x, which only works on RDNA4 and can''t be recorded under Proton on other GPUs. FSR 4.1.x is needed (OptiScaler''s FSR4_LATEST or the DLL from a game with FSR 4.1)'
@@ -733,6 +739,7 @@ ps.online.no_password: 'There''s an Online ID saved with no password in the keyr
 ps.online.kept_existing: Saved. %{previous} keeps its password and token in the keyring, since the new Online ID already had its own and they weren't overwritten.
 ps.play.online_no_password: The Online ID %{npid} has no password in the keyring. Type it in the PS section's Settings, clear the Online ID to play without shadNet, or turn online play off.
 ps.play.local_player_error: The local player "%{value}" saved for this game isn't 1 to 10 digits. Fix it in the game's Online tab or clear it.
+ps.play.title_settings_error: 'Couldn''t prepare this game''s settings: %{error}'
 ps.branch.title: psport's branch, built on this PC (Testing)
 ps.branch.description: 'decanter fetches the newest commit of psport''s branch with your git, downloads the toolchain it pins (llvm-mingw, CMake, Ninja and psport''s toolchain package, each checked against its SHA-256) and builds it here, with nothing else running from what it downloads. Building runs the branch''s own scripts with your rights, so each new commit asks for your confirmation first. A build is in use as soon as it ends, and the builds and versions before it are removed with their logs.'
 ps.branch.toolchain.not_pinned: This decanter pins no toolchain package yet, so it can't build; a later version will.

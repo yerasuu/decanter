@@ -1,7 +1,7 @@
 //! Mando: which controller bbport reads and which configuration its
 //! buttons follow ([`config`]). The bindings show as a list or on a drawing
 //! of the pad ([`visual`]), whichever the user keeps: the list writes an
-//! edit to `bbport.ini` at once, the drawing stages edits until they are
+//! edit to the game's port ini at once, the drawing stages edits until they are
 //! applied ([`staged`]). Everything applies on the next start.
 
 mod config;
@@ -18,14 +18,14 @@ use gpui::{AnyElement, Context, Div, Entity, FontWeight, SharedString, Window, d
 use rust_i18n::t;
 use staged::Scope;
 
-use super::layout_name;
+use super::{layout_name, scope_note};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{InputEvent, Select, TextInput, select::SelectStyle, tooltip};
 
-/// The layout select's value while `bbport.ini` holds `pad.` lines no
+/// The layout select's value while the port ini holds `pad.` lines no
 /// layout has.
 const CUSTOM: &str = "custom";
 
@@ -51,11 +51,12 @@ impl Mode {
     }
 }
 
+/// One title's: [`Values::ini_path`] is the file its layout is written to.
 struct Loaded {
     store: Store,
-    /// The id of the layout in `bbport.ini`; `None` when it matches none.
+    /// The id of the layout in the port ini; `None` when it matches none.
     current: Option<String>,
-    /// `bbport.ini`'s own `pad.` lines, for copying when they match none.
+    /// The port ini's own `pad.` lines, for copying when they match none.
     custom: PadLayout,
     values: Values,
 }
@@ -68,6 +69,8 @@ impl Loaded {
 }
 
 pub struct GamepadView {
+    /// The shown title, whose settings `loaded` holds once read.
+    title_id: Option<String>,
     loaded: Option<Result<Loaded, Text>>,
     /// Connected controllers `(GUID, name)`, read when the view opens.
     gamepads: Vec<(String, String)>,
@@ -96,27 +99,6 @@ impl GamepadView {
                 let text = name.read(cx).text().trim().to_owned();
                 this.rename(text, cx);
             }
-        })
-        .detach();
-        let load = cx.background_spawn(async {
-            let store = match Store::load() {
-                Ok(store) => store,
-                Err(err) => return Err(Text::new("ps.layouts.read_error").arg("error", err)),
-            };
-            Ok(Loaded {
-                current: pad::current(&decanter_ps::paths::active(), &store.pad_layouts()),
-                custom: pad::from_ini(&decanter_ps::paths::active()),
-                values: Values::load(&decanter_ps::paths::active()),
-                store,
-            })
-        });
-        cx.spawn(async move |this, cx| {
-            let loaded = load.await;
-            let _ = this.update(cx, |this, cx| {
-                this.loaded = Some(loaded);
-                this.sync_name(cx);
-                cx.notify();
-            });
         })
         .detach();
         let mode = cx.background_spawn(async {
@@ -156,6 +138,7 @@ impl GamepadView {
             .detach();
         }
         Self {
+            title_id: None,
             loaded: None,
             gamepads: Vec::new(),
             name,
@@ -165,6 +148,51 @@ impl GamepadView {
             draft: None,
             scope: Scope::Game,
         }
+    }
+
+    /// Reads `title_id`'s settings again, since its in-game menu writes the same file. Another
+    /// title's go at once, with the drawing's unapplied edits, so none is shown or written for the
+    /// wrong one.
+    pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
+        if self.title_id.as_deref() != Some(title_id) {
+            self.title_id = Some(title_id.to_owned());
+            self.loaded = None;
+            self.draft = None;
+            self.selected = None;
+        }
+        let title_id = title_id.to_owned();
+        let load = cx.background_spawn({
+            let title_id = title_id.clone();
+            async move {
+                let store = match Store::load() {
+                    Ok(store) => store,
+                    Err(err) => return Err(Text::new("ps.layouts.read_error").arg("error", err)),
+                };
+                let values = match Values::load(&decanter_ps::paths::active(), &title_id) {
+                    Ok(values) => values,
+                    Err(err) => return Err(Text::new("ps.scope.read_error").arg("error", err)),
+                };
+                Ok(Loaded {
+                    current: pad::current(values.ini_path(), &store.pad_layouts()),
+                    custom: pad::from_ini(values.ini_path()),
+                    values,
+                    store,
+                })
+            }
+        });
+        cx.spawn(async move |this, cx| {
+            let loaded = load.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.title_id.as_deref() != Some(title_id.as_str()) {
+                    return;
+                }
+                this.loaded = Some(loaded);
+                this.sync_name(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     fn choose_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
@@ -253,7 +281,7 @@ impl GamepadView {
         self.name.update(cx, |input, cx| input.set_text(name, cx));
     }
 
-    /// Makes `layout` the one in use: written into `bbport.ini`, and the
+    /// Makes `layout` the one in use: written into the shown title's port ini, and the
     /// store saved first when it changed. Both off the UI thread.
     fn apply(&mut self, layout: PadLayout, store_changed: bool, cx: &mut Context<Self>) {
         let Some(loaded) = self.loaded_mut() else {
@@ -261,13 +289,14 @@ impl GamepadView {
         };
         loaded.current = Some(layout.id.clone());
         let store = store_changed.then(|| loaded.store.clone());
+        let ini = loaded.values.ini_path().to_owned();
         let task = cx.background_spawn(async move {
             if let Some(store) = store
                 && let Err(err) = store.save()
             {
                 return Err(err);
             }
-            layout.save_to_ini(&decanter_ps::paths::active())
+            layout.save_to_ini(&ini)
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -354,13 +383,15 @@ impl GamepadView {
             return;
         };
         loaded.values.set(setting, &guid);
+        let ini = loaded.values.ini_path().to_owned();
         let name = self
             .gamepads
             .iter()
             .find(|(known, _)| *known == guid)
             .map_or_else(String::new, |(_, name)| name.clone());
-        let task = cx
-            .background_spawn(async move { values::save(&decanter_ps::paths::active(), setting, &guid, Some(&name)) });
+        let task = cx.background_spawn(async move {
+            values::save(&decanter_ps::paths::active(), &ini, setting, &guid, Some(&name))
+        });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -526,7 +557,15 @@ impl Render for GamepadView {
                     .flex()
                     .items_start()
                     .gap_4()
-                    .child(theme::muted(t!("ps.gamepad.description")).flex_1().min_w_0())
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .child(theme::muted(t!("ps.gamepad.description")))
+                            .child(theme::muted(scope_note(values.scope(), "ps.scope.gamepad"))),
+                    )
                     .child(self.mode_switch(cx)),
             )
             .children(self.error.as_ref().map(theme::error))

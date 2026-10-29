@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use decanter_ps::anyps5::AnyPs5;
-use decanter_ps::bbport::{self, Bbport};
+use decanter_ps::bbport::{self, Bbport, IniScope};
 use decanter_ps::failures::Log;
 use decanter_ps::learned::{self, FrameOverlap};
 use decanter_ps::mapping::Target;
@@ -85,10 +85,10 @@ pub struct DetailView {
     runs: Option<Entity<RunsView>>,
     /// The bindings of `selected`, read when its Controles tab opens.
     controls: Option<Result<Entity<KeyboardView>, Text>>,
-    /// Shared by every Bloodborne copy, so kept across selections.
+    /// Kept across selections and told which title is selected, whose settings it shows.
     gamepad: Option<Entity<GamepadView>>,
-    /// Shared by every Bloodborne copy, so kept across selections; told which title is selected
-    /// for its effects.
+    /// Kept across selections and told which title is selected, whose settings and effects it
+    /// shows.
     graphics: Option<Entity<GraphicsView>>,
     mods: Option<Entity<ModsView>>,
     online: Option<Entity<OnlineTitleView>>,
@@ -203,6 +203,11 @@ impl DetailView {
             let ps = self.ps.clone();
             self.gamepad = Some(cx.new(|cx| GamepadView::new(&ps, cx)));
         }
+        if tab == Tab::Gamepad
+            && let (Some(gamepad), Some((Port::Bbport, title_id))) = (&self.gamepad, &entry)
+        {
+            gamepad.update(cx, |gamepad, cx| gamepad.show_title(title_id, cx));
+        }
         if tab == Tab::Graphics && self.graphics.is_none() {
             let ps = self.ps.clone();
             self.graphics = Some(cx.new(|cx| GraphicsView::new(&ps, cx)));
@@ -234,21 +239,25 @@ impl DetailView {
     }
 
     fn load_controls(&mut self, port: Port, title_id: String, cx: &mut Context<Self>) {
-        let (target, path) = match port {
-            Port::Bbport => (Target::Bbport, Bbport::ini_path(&decanter_ps::paths::active())),
-            Port::AnyPs5 => (
-                Target::AnyPs5,
-                AnyPs5::binds_path(&decanter_ps::paths::active(), &title_id),
-            ),
+        let target = match port {
+            Port::Bbport => Target::Bbport,
+            Port::AnyPs5 => Target::AnyPs5,
         };
         let selected = self.selected.clone();
-        let read_path = path.clone();
         let task = cx.background_spawn(async move {
+            let root = decanter_ps::paths::active();
+            let (path, scope) = match port {
+                Port::Bbport => match Bbport::title_ini(&root, &title_id) {
+                    Ok(port_ini) => (port_ini.path, port_ini.scope),
+                    Err(err) => return Err(Text::new("ps.scope.read_error").arg("error", err)),
+                },
+                Port::AnyPs5 => (AnyPs5::binds_path(&root, &title_id), IniScope::Title),
+            };
             let store =
                 decanter_ps::layouts::Store::load().map_err(|err| Text::new("ps.layouts.read_error").arg("error", err));
-            decanter_ps::binds::read(target, &read_path)
+            decanter_ps::binds::read(target, &path)
                 .map_err(Text::verbatim)
-                .and_then(|mapping| store.map(|store| (mapping, store)))
+                .and_then(|mapping| store.map(|store| (path, scope, mapping, store)))
         });
         cx.spawn(async move |this, cx| {
             let mapping = task.await;
@@ -257,9 +266,9 @@ impl DetailView {
                 if this.selected != selected {
                     return;
                 }
-                this.controls = Some(
-                    mapping.map(|(mapping, store)| cx.new(|cx| KeyboardView::new(target, path, mapping, store, cx))),
-                );
+                this.controls = Some(mapping.map(|(path, scope, mapping, store)| {
+                    cx.new(|cx| KeyboardView::new(target, path, scope, mapping, store, cx))
+                }));
                 cx.notify();
             });
         })

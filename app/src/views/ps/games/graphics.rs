@@ -1,6 +1,6 @@
 //! Gráficos: bbport's settings, grouped as its own launcher grouped them.
-//! They are bbport's and not the game folder's, so every Bloodborne copy
-//! shares them; they apply on the next start. The game effects are the
+//! The port ini's rows are the selected title's own ([`Bbport::title_ini`]); the launch settings
+//! are still shared by every title. They apply on the next start. The game effects are the
 //! selected title's, as the port lists them when it can.
 
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude
 use rust_i18n::t;
 
 use super::extras::ExtrasView;
+use super::scope_note;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{Ps, vk_layer_unavailable_text};
@@ -40,6 +41,8 @@ struct PortEffects {
 
 pub struct GraphicsView {
     ps: Entity<Ps>,
+    /// The shown title's, read again each time it is shown, since its in-game menu writes the same
+    /// file.
     values: Option<Values>,
     /// The checkout's port has only the PC memory model, so the old one's settings are left out.
     single_memory_model: bool,
@@ -61,12 +64,11 @@ impl GraphicsView {
             let root = decanter_ps::paths::active();
             let single_memory_model = single_memory_model_blocking(&Port::Bbport.checkout(&root));
             let vk_layer_unavailable = validation::last_unavailable_blocking(&root.toolchain());
-            (Values::load(&root), single_memory_model, vk_layer_unavailable)
+            (single_memory_model, vk_layer_unavailable)
         });
         cx.spawn(async move |this, cx| {
-            let (values, single_memory_model, vk_layer_unavailable) = load.await;
+            let (single_memory_model, vk_layer_unavailable) = load.await;
             let _ = this.update(cx, |this, cx| {
-                this.values = Some(values);
                 this.single_memory_model = single_memory_model;
                 this.vk_layer_unavailable = vk_layer_unavailable;
                 cx.notify();
@@ -91,7 +93,9 @@ impl GraphicsView {
     /// binary; until then, and with a port that cannot list them, Bloodborne's table stays.
     pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
         self.title_id = Some(title_id.to_owned());
+        self.load_values(title_id, cx);
         self.load_frame_gen(title_id, cx);
+        self.extras.update(cx, |extras, cx| extras.show_title(title_id, cx));
         cx.notify();
         let Some(toolchain) = self
             .ps
@@ -120,6 +124,37 @@ impl GraphicsView {
                 }
                 if let Some(sections) = sections {
                     this.effects.insert(title_id, PortEffects { build, sections });
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Another title's values go at once, so nothing is shown or written for the wrong one while
+    /// this title's are read.
+    fn load_values(&mut self, title_id: &str, cx: &mut Context<Self>) {
+        if self.values.as_ref().is_some_and(|values| values.title_id() != title_id) {
+            self.values = None;
+        }
+        let title_id = title_id.to_owned();
+        cx.spawn(async move |this, cx| {
+            let loaded = cx
+                .background_spawn({
+                    let title_id = title_id.clone();
+                    async move { Values::load(&decanter_ps::paths::active(), &title_id) }
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.title_id.as_deref() != Some(title_id.as_str()) {
+                    return;
+                }
+                match loaded {
+                    Ok(values) => {
+                        this.values = Some(values);
+                        this.error = None;
+                    }
+                    Err(err) => this.error = Some(Text::new("ps.scope.read_error").arg("error", err)),
                 }
                 cx.notify();
             });
@@ -196,8 +231,9 @@ impl GraphicsView {
             return;
         };
         values.set(setting, &value);
-        let task =
-            cx.background_spawn(async move { values::save(&decanter_ps::paths::active(), setting, &value, None) });
+        let ini = values.ini_path().to_owned();
+        let task = cx
+            .background_spawn(async move { values::save(&decanter_ps::paths::active(), &ini, setting, &value, None) });
         Self::after_save(task, cx);
     }
 
@@ -206,7 +242,8 @@ impl GraphicsView {
             return;
         };
         values.set_ini(&key, value);
-        let task = cx.background_spawn(async move { values::save_ini(&decanter_ps::paths::active(), &key, value) });
+        let ini = values.ini_path().to_owned();
+        let task = cx.background_spawn(async move { values::save_ini(&ini, &key, value) });
         Self::after_save(task, cx);
     }
 
@@ -442,7 +479,10 @@ fn group(title: String, notes: Vec<String>, rows: Vec<(String, Option<String>, A
 impl Render for GraphicsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(values) = self.values.clone() else {
-            return theme::muted(t!("ps.graphics.reading")).into_any_element();
+            return self.error.as_ref().map_or_else(
+                || theme::muted(t!("ps.graphics.reading")).into_any_element(),
+                |error| theme::error(error).into_any_element(),
+            );
         };
         let hidden = Caps::get(cx).ps_hidden_options();
         let key_stick_offered = Caps::get(cx).is_offered(Feature::PsKeyStick);
@@ -480,6 +520,7 @@ impl Render for GraphicsView {
             .flex_col()
             .gap_5()
             .child(theme::muted(t!("ps.graphics.description")))
+            .child(theme::muted(scope_note(values.scope(), "ps.scope.graphics")))
             .children(self.error.as_ref().map(theme::error))
             .children(groups)
             .child(self.extras.clone())

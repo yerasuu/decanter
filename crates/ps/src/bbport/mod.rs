@@ -18,6 +18,7 @@ pub mod mods;
 mod names;
 pub mod online;
 pub mod pad;
+mod port_ini;
 mod settings;
 pub mod tools;
 pub mod values;
@@ -38,6 +39,7 @@ pub use features::{HostFeatures, host_features};
 pub use groups::{Control, GROUPS, Group, OPTION_FEATURES, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
 pub use names::{MEMORY_MODEL_SETTINGS, Names, single_memory_model_blocking};
+pub use port_ini::{IniScope, PortIni};
 pub use settings::LauncherSettings;
 
 use crate::learned;
@@ -142,12 +144,14 @@ pub fn merge_update(base: &Path, update: &Path, version: &str) -> io::Result<Pat
 /// `cache_dir` is the game's own cache folder, in the location of the library folder holding its
 /// dump; without one the port keeps its caches in `user_dir`. `debug_dir` turns the port's debug
 /// mode on, each run's logs gathered there under the port's own folder per host. `online` is online
-/// play, with its secrets, when it is on and the build has it.
+/// play, with its secrets, when it is on and the build has it. `config` is the title's own port
+/// ini ([`PortIni::config`]), `None` where the shared one is read.
 #[derive(Clone, Copy)]
 pub struct GameLaunch<'launch> {
     pub game: &'launch Game,
     pub user_dir: &'launch Path,
     pub cache_dir: Option<&'launch Path>,
+    pub config: Option<&'launch Path>,
     pub debug_dir: Option<&'launch Path>,
     pub settings: &'launch LauncherSettings,
     pub mods: &'launch mods::Mods,
@@ -235,36 +239,6 @@ impl Bbport {
             || self.checkout.clone(),
             |store_path| toolchain.store_path_on_host(&self.root.toolchain(), &store_path),
         )
-    }
-
-    /// Spelled as the checkout's port reads it. A port that reads `psport.ini` gets a copy of the
-    /// `bbport.ini` an older one left, so the first edit here doesn't start from its defaults; the
-    /// port makes the same copy at launch, and an older tag keeps reading `bbport.ini`.
-    pub fn ini_path(root: &Root) -> PathBuf {
-        let names = Names::of_blocking(&Port::Bbport.checkout(root));
-        let path = root.bbport_data().join(names.ini());
-        let older = root.bbport_data().join(Names::EarlyPsport.ini());
-        if matches!(names, Names::Psport) && !path.exists() && older.exists() {
-            match fs::copy(&older, &path) {
-                Ok(_) => tracing::info!(from = %older.display(), to = %path.display(), "port settings copied"),
-                Err(err) => tracing::warn!(from = %older.display(), %err, "port settings not copied"),
-            }
-        }
-        path
-    }
-
-    /// Drops the in-game menu's language, so the next run follows
-    /// `PS_MENU_LANGUAGE` again: the menu writes `menu_language` whenever it
-    /// saves any setting, which would otherwise keep it in the language that
-    /// was current then. File I/O: off the UI thread.
-    pub fn forget_menu_language(root: &Root) -> io::Result<()> {
-        let path = Self::ini_path(root);
-        let mut ini = Ini::load(&path);
-        if ini.get("menu_language").is_none() {
-            return Ok(());
-        }
-        ini.remove("menu_language");
-        ini.save(&path)
     }
 
     pub async fn build_command(&self, toolchain: &Toolchain) -> io::Result<Command> {
@@ -378,6 +352,7 @@ impl Bbport {
             game,
             user_dir,
             cache_dir,
+            config,
             debug_dir,
             settings,
             mods,
@@ -416,6 +391,11 @@ impl Bbport {
         // The port picks the memory model itself (the PC model on AMD GPUs); the setting only forces
         // the PC model on other GPUs, so off must not pass PC_MODEL=0 and hold AMD on the old one.
         command.envs(cache_dir.map(|dir| (var("CACHE_DIR"), dir)));
+        command.envs(
+            config
+                .filter(|_| matches!(names, Names::Psport))
+                .map(|path| (var("CONFIG"), path)),
+        );
         command.envs(debug_dir.into_iter().flat_map(|dir| debug_env(names, dir)));
         if port_reads("pc_model") && settings.flag("pc_model", false) {
             command.env(var("PC_MODEL"), "1");

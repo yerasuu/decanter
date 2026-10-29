@@ -25,6 +25,8 @@ pub struct ExtrasView {
     env: Entity<TextInput>,
     /// The build being watched, so its progress line follows its output.
     fsr_job: Option<(Entity<Job>, Subscription)>,
+    /// Whose output size and preset the FSR check reads, and whose upscaler a build chooses.
+    title_id: Option<String>,
 }
 
 impl ExtrasView {
@@ -61,9 +63,20 @@ impl ExtrasView {
             message: None,
             env,
             fsr_job: None,
+            title_id: None,
         };
         this.check_fsr(cx);
         this
+    }
+
+    pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
+        if self.title_id.as_deref() == Some(title_id) {
+            return;
+        }
+        self.title_id = Some(title_id.to_owned());
+        self.checked_at = None;
+        self.fsr_problem = None;
+        self.check_fsr(cx);
     }
 
     fn watch_fsr_job(&mut self, cx: &mut Context<Self>) {
@@ -81,19 +94,24 @@ impl ExtrasView {
 
     /// Against the output size and preset chosen now, whenever a build ends.
     fn check_fsr(&mut self, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
         let revision = self.ps.read(cx).fsr_revision();
         if self.checked_at == Some(revision) {
             return;
         }
         self.checked_at = Some(revision);
-        let task = cx.background_spawn(async {
-            let values = Values::load(&decanter_ps::paths::active());
+        let task = cx.background_spawn(async move {
+            let values = Values::load(&decanter_ps::paths::active(), &title_id)
+                .inspect_err(|err| tracing::warn!(title_id, %err, "FSR 4.1.1 check without the title's settings"))
+                .ok();
             let setting = |key| {
                 decanter_ps::bbport::GROUPS
                     .iter()
                     .flat_map(|group| group.settings)
                     .find(|setting| setting.key == key)
-                    .and_then(|setting| values.get(setting))
+                    .and_then(|setting| values.as_ref()?.get(setting))
             };
             let output = setting("output_res").unwrap_or_else(|| "1920x1080".to_owned());
             let preset = setting("preset").unwrap_or_else(|| "4".to_owned());
@@ -146,6 +164,9 @@ impl ExtrasView {
             };
             let chosen = file.path().to_owned();
             let _ = this.update(cx, |this, cx| {
+                let Some(title_id) = this.title_id.clone() else {
+                    return;
+                };
                 let (upscaler, loader) = match upscaler {
                     Some(upscaler) => (upscaler, Some(chosen)),
                     None => (chosen, None),
@@ -153,7 +174,7 @@ impl ExtrasView {
                 this.message = Some((Text::new("ps.fsr.checking"), false));
                 let view = cx.entity().downgrade();
                 this.ps.update(cx, |ps, cx| {
-                    ps.build_fsr411(upscaler, loader, cx, move |outcome, cx| {
+                    ps.build_fsr411(upscaler, loader, title_id, cx, move |outcome, cx| {
                         let _ = view.update(cx, |this, cx| {
                             match outcome {
                                 DllOutcome::Building => this.message = None,

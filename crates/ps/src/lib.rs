@@ -39,3 +39,4 @@ pub mod remote;
 pub mod run_log;
 pub mod runner;
 pub mod status;
+pub mod title_id;
