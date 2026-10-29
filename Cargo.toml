@@ -1,6 +1,15 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/gog", "crates/nix", "crates/ps", "crates/report", "crates/runtime", "app"]
+members = [
+    "crates/core",
+    "crates/gog",
+    "crates/mods",
+    "crates/nix",
+    "crates/ps",
+    "crates/report",
+    "crates/runtime",
+    "app",
+]
 # `app` is the workspace's only binary crate (decanter) — this is what lets
 # `cargo run`/`cargo build` from the workspace root pick it without an
 # explicit `-p`/`--package`.
@@ -26,6 +35,7 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 decanter-core = { path = "crates/core" }
 decanter-gog = { path = "crates/gog" }
+decanter-mods = { path = "crates/mods" }
 decanter-nix = { path = "crates/nix" }
 decanter-ps = { path = "crates/ps" }
 decanter-report = { path = "crates/report" }

@@ -195,6 +195,24 @@ pub async fn start(
         tracing::error!(game_id = %game.game_id, "no launch executable");
         return None;
     };
+    // A reconcile that fails stops the launch, since starting the game without the mods its
+    // player enabled would look like they work.
+    let play = match crate::mods::prepare(&account_id, &game).await {
+        Ok(play) => play,
+        Err(reason) => {
+            tracing::error!(game_id = %game.game_id, %reason, "launch failed");
+            show_failure(&background, &game.game_id, &reason, cx);
+            return None;
+        }
+    };
+    let executable = match play.as_ref().map(|play| play.rebase(&executable)) {
+        Some(Some(in_play)) => in_play,
+        Some(None) => {
+            tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is outside the install");
+            return None;
+        }
+        None => executable,
+    };
     if !executable.is_file() {
         tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
         return None;
@@ -207,8 +225,16 @@ pub async fn start(
     let Some(mut planned) = Planned::plan(kind, &account_id, &game, executable) else {
         return None;
     };
+    if let Some(play) = &play {
+        planned.facts.extend(play.facts());
+        if kind == Kind::Umu {
+            planned.launch.env.extend(play.share_env());
+        }
+    }
+    let saves_view = play.as_ref().and_then(|play| play.saves_view(&game));
+    let saves_game = saves_view.as_ref().unwrap_or(&game);
 
-    let cloud_save_checkpoint = sync_cloud_saves_before_launch(&account_id, &game).await;
+    let cloud_save_checkpoint = sync_cloud_saves_before_launch(&account_id, saves_game).await;
     let achievement_log = planned.achievement_log.take();
 
     let Some((job, events, log)) = spawn(&account_id, &game, planned, &background, cx).await else {
@@ -238,7 +264,7 @@ pub async fn start(
         "game session ended"
     );
 
-    sync_cloud_saves_after_exit(&account_id, &game, cloud_save_checkpoint).await;
+    sync_cloud_saves_after_exit(&account_id, saves_game, cloud_save_checkpoint).await;
     record_last_played(&account_id, &game, kind);
     apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)

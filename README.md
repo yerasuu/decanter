@@ -300,6 +300,7 @@ turned off in Ajustes > General.
 | `crates/gog` | GOG client: auth, library, installs, cloud saves, achievements, Steam export |
 | `crates/gog/src/api` | The GOG web API client, one module per GOG host or area (provenance in its `VENDOR.md`) |
 | `crates/runtime` | Proton launches through `umu-run` |
+| `crates/mods` | Third-party mods: `mod.toml`, per-account sets, folder import, the play tree a modded game starts from |
 | `crates/nix` | The nix toolchain a build runs in: host tools, the system's nix or nix-portable, pinned nixpkgs, Vulkan validation layer |
 | `crates/ps` | PS dumps, port builds and updates, the ports' nix recipes, runs, run logs, failures |
 | `crates/hook` | `Galaxy64.dll` proxy, a Windows cdylib outside the workspace |

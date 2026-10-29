@@ -1361,6 +1361,7 @@ dependencies = [
  "clap",
  "decanter-core",
  "decanter-gog",
+ "decanter-mods",
  "decanter-nix",
  "decanter-ps",
  "decanter-report",
@@ -1428,6 +1429,19 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "decanter-mods"
+version = "0.3.4"
+dependencies = [
+ "decanter-core",
+ "serde",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "tracing",
  "uuid",
 ]
 

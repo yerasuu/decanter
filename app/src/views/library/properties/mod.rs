@@ -2,8 +2,9 @@
 //! Propiedades for an installed game, in the same tabbed shape — General,
 //! Actualizaciones, Archivos locales, Betas, plus two decanter adds on top:
 //! Versiones (rollback to a specific historical build, not just Steam's
-//! per-branch newest) and Compatibilidad (this game's own Proton pin; not
-//! on Windows, where games run natively).
+//! per-branch newest), Mods (third-party mods over the install) and
+//! Compatibilidad (this game's own Proton pin; not on Windows, where games
+//! run natively).
 //!
 //! A real second OS window rather than an in-app overlay — the same "its
 //! own floating dialog, draggable and resizable independent of the
@@ -22,6 +23,7 @@ mod compatibility;
 mod dlc;
 mod general;
 mod local_files;
+mod mods;
 mod releases;
 mod updates;
 
@@ -50,6 +52,7 @@ enum Tab {
     LocalFiles,
     CloudSaves,
     Dlc,
+    Mods,
     Betas,
     Versions,
     Compatibility,
@@ -63,6 +66,7 @@ impl Tab {
             Self::LocalFiles => t!("library.properties.tabs.local_files"),
             Self::CloudSaves => t!("library.properties.tabs.cloud_saves"),
             Self::Dlc => t!("library.properties.tabs.dlc"),
+            Self::Mods => t!("library.properties.tabs.mods"),
             Self::Betas => t!("library.properties.tabs.betas"),
             Self::Versions => t!("library.properties.tabs.versions"),
             Self::Compatibility => t!("library.properties.tabs.compatibility"),
@@ -76,6 +80,7 @@ const TABS: &[Tab] = &[
     Tab::LocalFiles,
     Tab::CloudSaves,
     Tab::Dlc,
+    Tab::Mods,
     Tab::Betas,
     Tab::Versions,
     Tab::Compatibility,
@@ -203,6 +208,7 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::LocalFiles => cx.new(|_| local_files::LocalFilesTab::new(target)).into(),
         Tab::CloudSaves => cx.new(|cx| cloud_saves::CloudSavesTab::new(target, window, cx)).into(),
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
+        Tab::Mods => cx.new(|cx| mods::ModsTab::new(target, cx)).into(),
         Tab::Betas => cx.new(|cx| releases::BetasTab::new(target, cx)).into(),
         Tab::Versions => cx.new(|cx| releases::VersionsTab::new(target, cx)).into(),
         Tab::Compatibility => cx.new(|cx| compatibility::CompatibilityTab::new(target, cx)).into(),

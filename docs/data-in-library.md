@@ -23,6 +23,9 @@ implemented.
   release: `<root>/decanter/runners/ge-proton/<tag>/` (installed through
   `.<tag>.<pid>.part/` and one rename), and `<root>/decanter/bin/path/umu-run`,
   a link to the pinned `umu-run` that the recording finds on `PATH`.
+- Third-party mods ([mods.md](mods.md)): `<root>/decanter/mods/<store>/<game>/`
+  under the root holding the install, with each mod's files, each account's
+  set and its play tree.
 - Raven, when the player builds it in its section ([raven.md](raven.md)):
   `<root>/decanter/runners/raven/` (the checkout and build at its commit, its
   toolchain, build log and confirmation), with each Windows program's

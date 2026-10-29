@@ -151,6 +151,7 @@ library.properties.tabs.updates: Updates
 library.properties.tabs.local_files: Local files
 library.properties.tabs.cloud_saves: Cloud saves
 library.properties.tabs.dlc: DLC
+library.properties.tabs.mods: Mods
 library.properties.tabs.betas: Betas
 library.properties.tabs.versions: Versions
 library.properties.tabs.compatibility: Compatibility
@@ -198,6 +199,27 @@ library.properties.dlc.none: This game has no additional content.
 library.properties.dlc.applying: applying…
 library.properties.dlc.goodies_note: Artbooks, soundtracks and the like. They're yours, but GOG doesn't deliver them as installable content — they're downloaded separately, and Decanter doesn't do that yet.
 library.properties.dlc.not_installable: not installable
+library.properties.mods.note: 'Mods are copied into the library and applied when the game starts, without changing the game''s files: verifying and updating it keep working. Pick a folder laid out like the game''s own folder.'
+library.properties.mods.add: 'Add mod folder...'
+library.properties.mods.adding: 'Adding...'
+library.properties.mods.applying: 'Applying...'
+library.properties.mods.removing: 'Removing...'
+library.properties.mods.pick_title: 'Choose the mod''s folder'
+library.properties.mods.loading: 'Reading the mods...'
+library.properties.mods.none: 'This game has no mods yet.'
+library.properties.mods.running: 'The game is running: mods can be changed once it closes.'
+library.properties.mods.summary: '%{files} files, %{size}'
+library.properties.mods.remove: 'Remove'
+library.properties.mods.remove_title: 'Remove %{name}?'
+library.properties.mods.remove_body: 'Deletes its files (%{size}) from the library, for every account that has this game. Accounts using it now: %{accounts}.'
+library.properties.mods.overrides_game: 'Replaces %{count} files of the game'
+library.properties.mods.overrides: 'Wins over %{name} in %{count} files'
+library.properties.mods.overridden_by: '%{name} wins over it in %{count} files'
+library.properties.mods.show_files: 'Show files'
+library.properties.mods.hide_files: 'Hide files'
+library.properties.mods.more: '...and %{count} more'
+library.properties.mods.later_wins: 'When two mods have the same file, the one turned on last wins.'
+library.properties.mods.written_by_game: '%{count} files written by the game in the folder it starts from are kept and take priority over the game''s and the mods'' files:'
 library.properties.releases.current: CURRENT
 library.properties.betas.switch: Switch
 library.properties.betas.switching: Switching...

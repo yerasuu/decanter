@@ -117,6 +117,7 @@ mod game_tools;
 mod i18n;
 mod launch;
 mod logs;
+mod mods;
 mod platform;
 mod ps_play;
 mod raven;

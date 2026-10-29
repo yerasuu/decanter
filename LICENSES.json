@@ -14,6 +14,7 @@
         "app",
         "crates/core",
         "crates/gog",
+        "crates/mods",
         "crates/nix",
         "crates/ps",
         "crates/runtime",

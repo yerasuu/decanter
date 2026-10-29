@@ -1,0 +1,20 @@
+[package]
+name = "decanter-mods"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# Pure filesystem on every system: archive readers join in phase 2, here rather than in decanter-core.
+[dependencies]
+decanter-core.workspace = true
+serde = { workspace = true, features = ["derive"] }
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
