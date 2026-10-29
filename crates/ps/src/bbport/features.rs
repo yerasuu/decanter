@@ -27,6 +27,8 @@ const MAX_REASON: usize = 512;
 const ONLINE_AREA: &str = "net";
 /// psport's row for `key.menu` and `pad.menu`, which a game runs without.
 const MENU_BINDING: &str = "port_menu_binding";
+/// psport's row for FSR frame generation, an `upscaler` option row: a game runs without it.
+const FRAME_GEN_FSR: &str = "frame_gen_fsr";
 /// psport's row for `key_stick_opposite` and `key_stick_hold_ms`, which a game runs without.
 const KEY_STICK: &str = "key_stick";
 /// psport's row for its online module, without which online play has nothing to load.
@@ -91,6 +93,12 @@ impl HostFeatures {
             MENU_BINDING,
         );
         self.merge_listed(capabilities, Feature::PsKeyStick, |row| row.id == KEY_STICK, KEY_STICK);
+        self.merge_listed(
+            capabilities,
+            Feature::PsFrameGen,
+            |row| row.id == FRAME_GEN_FSR,
+            FRAME_GEN_FSR,
+        );
         self.merge_listed(
             capabilities,
             Feature::PsOnline,

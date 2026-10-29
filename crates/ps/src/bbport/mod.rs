@@ -9,6 +9,7 @@
 pub mod direct;
 pub mod effects;
 mod features;
+pub mod frame_gen;
 mod groups;
 pub mod icons;
 mod ini;
@@ -155,6 +156,8 @@ pub struct GameLaunch<'launch> {
     pub aspect_ratio: Option<&'launch str>,
     pub online: Option<&'launch online::Online>,
     pub local_player: Option<&'launch local_player::LocalPlayer>,
+    /// `None` when the build doesn't list `frame_gen_fsr`, so it is not told about a setting it ignores.
+    pub frame_gen: Option<frame_gen::FrameGen>,
 }
 
 /// A bbport checkout. The toolchain that builds it must be the one that
@@ -379,6 +382,7 @@ impl Bbport {
             aspect_ratio,
             online,
             local_player: _,
+            frame_gen,
         } = *launch;
         let var = |suffix: &str| names.var(suffix);
         let port_reads = |key: &str| old_memory_model || !MEMORY_MODEL_SETTINGS.contains(&key);
@@ -428,6 +432,13 @@ impl Bbport {
                 .filter(|_| matches!(names, Names::Psport))
                 .map(|ratio| (var("ASPECT_RATIO"), ratio)),
         );
+        // Always passed, `off` too, so a value the menu once wrote to the shared psport.ini
+        // can't carry one game's choice into another.
+        if matches!(names, Names::Psport)
+            && let Some(frame_gen) = frame_gen
+        {
+            command.env(var("FRAME_GEN"), frame_gen.value());
+        }
         if settings.flag("hdr", false) {
             command.env(var("HDR"), "1");
         }

@@ -10,6 +10,7 @@ use decanter_core::{KeyringError, ShadnetSecret};
 use decanter_nix::Toolchain;
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::GameLaunch;
+use decanter_ps::bbport::frame_gen::FrameGen;
 use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::local_player::{LocalPlayer, LocalPlayerError};
 use decanter_ps::bbport::mods::Mods;
@@ -308,6 +309,7 @@ pub(super) struct LaunchInputs {
     user_dir: PathBuf,
     online: Option<Online>,
     local_player: Option<LocalPlayer>,
+    frame_gen: Option<FrameGen>,
     menu_language: String,
 }
 
@@ -329,6 +331,7 @@ impl LaunchInputs {
             aspect_ratio: self.aspect_ratio,
             online: self.online.as_ref(),
             local_player: self.local_player.as_ref(),
+            frame_gen: self.frame_gen,
         }
     }
 }
@@ -406,6 +409,9 @@ pub(super) async fn launch_inputs(
     } else {
         None
     };
+    let frame_gen = cx
+        .update(|cx| Caps::get(cx).is_offered(Feature::PsFrameGen))
+        .then(|| FrameGen::of_title(&settings, &game.title_id));
     Ok(LaunchInputs {
         settings,
         learned,
@@ -415,6 +421,7 @@ pub(super) async fn launch_inputs(
         user_dir,
         online,
         local_player,
+        frame_gen,
         menu_language: rust_i18n::locale().to_string(),
     })
 }

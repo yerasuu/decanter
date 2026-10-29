@@ -203,6 +203,7 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PsPlay
         | Feature::PsMenuBinding
         | Feature::PsKeyStick
+        | Feature::PsFrameGen
         | Feature::PsOnline
         | Feature::MangoHud
         | Feature::GameMode => Support::Available,

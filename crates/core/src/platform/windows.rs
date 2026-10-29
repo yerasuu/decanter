@@ -216,6 +216,7 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::SelfUpdate
         | Feature::PsMenuBinding
         | Feature::PsKeyStick
+        | Feature::PsFrameGen
         | Feature::PsOnline
         | Feature::MangoHud
         | Feature::GameMode

@@ -14,6 +14,7 @@ common.setup.release_key: the key that verifies updates
 common.setup.tray_host: a system tray (StatusNotifier host)
 common.setup.psport_menu_binding: a psport build that lists port_menu_binding
 common.setup.psport_key_stick: a psport build that lists key_stick
+common.setup.psport_frame_gen: a psport build that lists frame_gen_fsr
 common.setup.psport_online: a psport build that lists online_module
 common.reported_by_ps: 'The PS port doesn''t support it: %{why}'
 common.not_ported_yet_ps: 'psport doesn''t support %{system} yet'

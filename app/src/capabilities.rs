@@ -18,6 +18,7 @@ const RELEASE_KEY: &str = "release key";
 const TRAY_HOST: &str = "StatusNotifier host";
 const PSPORT_MENU_BINDING: &str = "psport build listing port_menu_binding";
 const PSPORT_KEY_STICK: &str = "psport build listing key_stick";
+const PSPORT_FRAME_GEN: &str = "psport build listing frame_gen_fsr";
 const PSPORT_ONLINE: &str = "psport build listing online_module";
 
 pub struct Caps {
@@ -150,6 +151,7 @@ impl Caps {
 fn without_psport_report(capabilities: &mut Capabilities) {
     capabilities.restrict(Feature::PsMenuBinding, Reason::NeedsSetup(PSPORT_MENU_BINDING));
     capabilities.restrict(Feature::PsKeyStick, Reason::NeedsSetup(PSPORT_KEY_STICK));
+    capabilities.restrict(Feature::PsFrameGen, Reason::NeedsSetup(PSPORT_FRAME_GEN));
     capabilities.restrict(Feature::PsOnline, Reason::NeedsSetup(PSPORT_ONLINE));
 }
 
@@ -197,6 +199,7 @@ fn setup_text(what: &'static str) -> Cow<'static, str> {
         TRAY_HOST => t!("common.setup.tray_host"),
         PSPORT_MENU_BINDING => t!("common.setup.psport_menu_binding"),
         PSPORT_KEY_STICK => t!("common.setup.psport_key_stick"),
+        PSPORT_FRAME_GEN => t!("common.setup.psport_frame_gen"),
         PSPORT_ONLINE => t!("common.setup.psport_online"),
         _ => Cow::Borrowed(what),
     }

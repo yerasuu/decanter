@@ -9,9 +9,11 @@ use std::io;
 use decanter_core::capabilities::Feature;
 use decanter_nix::validation::{self, Unavailable};
 use decanter_ps::bbport::effects::{self, Section};
+use decanter_ps::bbport::frame_gen::{self, FrameGen};
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{
-    Bbport, Control, GROUPS, Group, MEMORY_MODEL_SETTINGS, Setting, Store, single_memory_model_blocking,
+    Bbport, Control, GROUPS, Group, LauncherSettings, MEMORY_MODEL_SETTINGS, Setting, Store,
+    single_memory_model_blocking,
 };
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Task, Window, div, prelude::*, px, rgb};
@@ -46,6 +48,7 @@ pub struct GraphicsView {
     error: Option<Text>,
     extras: Entity<ExtrasView>,
     title_id: Option<String>,
+    frame_gen: FrameGen,
     /// By `TITLE_ID`, so going back to a game doesn't run the port again until it is rebuilt.
     effects: HashMap<String, PortEffects>,
     /// Asked for and not answered yet: its effects group waits rather than showing Bloodborne's.
@@ -78,6 +81,7 @@ impl GraphicsView {
             error: None,
             extras: cx.new(|cx| ExtrasView::new(ps.clone(), cx)),
             title_id: None,
+            frame_gen: FrameGen::Off,
             effects: HashMap::new(),
             querying: None,
         }
@@ -87,6 +91,7 @@ impl GraphicsView {
     /// binary; until then, and with a port that cannot list them, Bloodborne's table stays.
     pub fn show_title(&mut self, title_id: &str, cx: &mut Context<Self>) {
         self.title_id = Some(title_id.to_owned());
+        self.load_frame_gen(title_id, cx);
         cx.notify();
         let Some(toolchain) = self
             .ps
@@ -120,6 +125,70 @@ impl GraphicsView {
             });
         })
         .detach();
+    }
+
+    fn load_frame_gen(&self, title_id: &str, cx: &mut Context<Self>) {
+        let title_id = title_id.to_owned();
+        cx.spawn(async move |this, cx| {
+            let frame_gen = cx
+                .background_spawn({
+                    let title_id = title_id.clone();
+                    async move { FrameGen::of_title(&LauncherSettings::load(&decanter_ps::paths::active()), &title_id) }
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.title_id.as_deref() == Some(title_id.as_str()) {
+                    this.frame_gen = frame_gen;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Choosing off removes the key, so the file keeps only what was changed.
+    fn set_frame_gen(&mut self, frame_gen: FrameGen, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
+        self.frame_gen = frame_gen;
+        let task = cx.background_spawn(async move {
+            LauncherSettings::edit(&decanter_ps::paths::active(), move |settings| {
+                let value = if frame_gen == FrameGen::Off {
+                    ""
+                } else {
+                    frame_gen.value()
+                };
+                settings.set_title_text(&title_id, frame_gen::KEY, value);
+            })
+        });
+        Self::after_save(task, cx);
+    }
+
+    fn frame_gen_group(&self, cx: &mut Context<Self>) -> AnyElement {
+        let entity = cx.entity();
+        let options = FrameGen::ALL.map(|choice| {
+            (
+                SharedString::from(choice.value()),
+                SharedString::from(t!(format!("ps.graphics.frame_gen.options.{}", choice.value()))),
+            )
+        });
+        let select = Select::new("frame_gen", options, SharedString::from(self.frame_gen.value()))
+            .style(SelectStyle::Compact)
+            .on_change(move |value, _, cx| {
+                if let Some(choice) = FrameGen::parse(value) {
+                    entity.update(cx, |this, cx| this.set_frame_gen(choice, cx));
+                }
+            });
+        group(
+            t!("ps.graphics.frame_gen.title").into_owned(),
+            Vec::new(),
+            vec![(
+                t!("ps.graphics.frame_gen.label").into_owned(),
+                Some(t!("ps.graphics.frame_gen.note").into_owned()),
+                select.into_any_element(),
+            )],
+        )
     }
 
     fn change(&mut self, setting: &'static Setting, value: String, cx: &mut Context<Self>) {
@@ -402,6 +471,9 @@ impl Render for GraphicsView {
             }
             let notes = fallback.note.map(|note| t!(note).into_owned()).into_iter().collect();
             groups.push(group(t!(fallback.title).into_owned(), notes, rows));
+        }
+        if self.title_id.is_some() && Caps::get(cx).is_offered(Feature::PsFrameGen) {
+            groups.push(self.frame_gen_group(cx));
         }
         div()
             .flex()

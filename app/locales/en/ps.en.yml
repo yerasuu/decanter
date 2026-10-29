@@ -412,6 +412,11 @@ ps.gamepad.config.template: '%{name} (template)'
 ps.gamepad.config.duplicate: Duplicate
 ps.gamepad.config.rename: Rename
 ps.graphics.groups.game: Game
+ps.graphics.frame_gen.title: Frame generation
+ps.graphics.frame_gen.label: Frame generation (this game)
+ps.graphics.frame_gen.options.off: Off
+ps.graphics.frame_gen.options.fsr: FSR 3.1
+ps.graphics.frame_gen.note: Interpolates extra frames between the game's own, which adds latency and works best from a base of 40 FPS or more. It applies on the next start and only to this game.
 ps.graphics.language.label: Game language
 ps.graphics.language.options.english: English
 ps.graphics.language.options.spanish: Spanish

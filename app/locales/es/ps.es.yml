@@ -412,6 +412,11 @@ ps.gamepad.config.template: '%{name} (plantilla)'
 ps.gamepad.config.duplicate: Duplicar
 ps.gamepad.config.rename: Renombrar
 ps.graphics.groups.game: Juego
+ps.graphics.frame_gen.title: Generación de fotogramas
+ps.graphics.frame_gen.label: Generación de fotogramas (este juego)
+ps.graphics.frame_gen.options.off: Desactivada
+ps.graphics.frame_gen.options.fsr: FSR 3.1
+ps.graphics.frame_gen.note: Interpola fotogramas extra entre los del juego, lo que añade latencia y funciona mejor desde unos 40 FPS de base. Se aplica en el siguiente arranque y solo a este juego.
 ps.graphics.language.label: Idioma del juego
 ps.graphics.language.options.english: Inglés
 ps.graphics.language.options.spanish: Español

@@ -50,6 +50,8 @@ pub enum Feature {
     /// psport.ini's keyboard stick settings: only psport builds that list
     /// them among their features read them.
     PsKeyStick,
+    /// Per-game frame generation: only builds that list `frame_gen_fsr` among their features have it.
+    PsFrameGen,
     /// Online play through psport's online module: only builds that list
     /// it among their features have one.
     PsOnline,
@@ -61,7 +63,7 @@ pub enum Feature {
 }
 
 impl Feature {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::Play,
         Self::Proton,
         Self::Prefixes,
@@ -80,6 +82,7 @@ impl Feature {
         Self::PsPlay,
         Self::PsMenuBinding,
         Self::PsKeyStick,
+        Self::PsFrameGen,
         Self::PsOnline,
         Self::MangoHud,
         Self::GameMode,
