@@ -8,6 +8,7 @@ use std::process::ExitStatus;
 use std::time::Instant;
 
 use decanter_nix::Toolchain;
+use decanter_ps::bbport::frame_gen::FrameGen;
 use decanter_ps::failures::{self, CallReport, Failure, Scanner};
 use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
@@ -40,6 +41,8 @@ pub struct Finished {
     pub failures: Vec<Failure>,
     /// The port's line turning frame overlap off during the run, when it printed one.
     pub frame_overlap_off: Option<String>,
+    /// The last frame generation the game's menu switched to during the run.
+    pub frame_gen: Option<FrameGen>,
 }
 
 impl Finished {
@@ -210,6 +213,7 @@ pub async fn run_launcher(
                 code: None,
                 failures: Vec::new(),
                 frame_overlap_off: None,
+                frame_gen: None,
             };
         }
     };
@@ -239,6 +243,7 @@ pub async fn run_launcher(
             code: None,
             failures: Vec::new(),
             frame_overlap_off: None,
+            frame_gen: None,
         };
     }
     let mut batch = Vec::with_capacity(BATCH);
@@ -306,10 +311,12 @@ fn finished(
     let frame_overlap_off = scanner
         .as_ref()
         .and_then(|scanner| scanner.frame_overlap_off().map(str::to_owned));
+    let frame_gen = scanner.as_ref().and_then(Scanner::frame_gen);
     Finished {
         code: exit.and_then(|status| status.code()),
         failures: scanner.map_or_else(Vec::new, |scanner| scanner.exit(exit, stopped, log, report)),
         frame_overlap_off,
+        frame_gen,
     }
 }
 

@@ -14,6 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::bbport::frame_gen::FrameGen;
 use crate::run_log::describe_exit;
 
 /// Lines kept before a failure, and lines collected after it (backtraces, module reports).
@@ -412,6 +413,8 @@ pub struct Scanner {
     missing: Vec<(u8, String)>,
     /// The port's line turning frame overlap off for the session ([`crate::learned`]).
     frame_overlap_off: Option<String>,
+    /// The last frame generation the game's menu switched to, which the next run starts with.
+    frame_gen: Option<FrameGen>,
     /// No online play in this run, so the call report's offline answers are set apart
     /// ([`CallReport::set_aside_offline`]).
     is_offline: bool,
@@ -429,6 +432,7 @@ impl Scanner {
             found: Vec::new(),
             missing: Vec::new(),
             frame_overlap_off: None,
+            frame_gen: None,
             is_offline,
         }
     }
@@ -453,7 +457,14 @@ impl Scanner {
         self.frame_overlap_off.as_deref()
     }
 
+    pub const fn frame_gen(&self) -> Option<FrameGen> {
+        self.frame_gen
+    }
+
     pub fn line(&mut self, line: &str) {
+        if let Some(choice) = FrameGen::from_menu_line(line) {
+            self.frame_gen = Some(choice);
+        }
         if self.frame_overlap_off.is_none() && crate::learned::is_frame_overlap_off(line) {
             self.frame_overlap_off = Some(line.trim().to_owned());
         }

@@ -10,7 +10,7 @@ use decanter_core::{KeyringError, ShadnetSecret};
 use decanter_nix::Toolchain;
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::GameLaunch;
-use decanter_ps::bbport::frame_gen::FrameGen;
+use decanter_ps::bbport::frame_gen::{self, FrameGen};
 use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::local_player::{LocalPlayer, LocalPlayerError};
 use decanter_ps::bbport::mods::Mods;
@@ -124,6 +124,9 @@ impl Ps {
             let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
             if let Some(line) = finished.frame_overlap_off {
                 record_frame_overlap_off(&this, &root, &game.title_id, line, cx).await;
+            }
+            if let Some(frame_gen) = finished.frame_gen {
+                record_frame_gen(&root, &game.title_id, frame_gen, cx).await;
             }
             record_failures(&this, game.dir.clone(), failures_path, finished.failures, cx).await;
         })
@@ -610,6 +613,33 @@ async fn record_frame_overlap_off(this: &WeakEntity<Ps>, root: &Root, title_id: 
             tracing::warn!(title_id, %err, "could not record that frame overlap is off for the title");
             notify(this, Text::new("ps.learned.save_error").arg("error", err), true, cx);
         }
+    }
+}
+
+/// The last choice made in the game's menu becomes the title's setting, so the Graphics tab shows it
+/// and the next run starts with it. Off removes the key, like the tab's own row.
+async fn record_frame_gen(root: &Root, title_id: &str, frame_gen: FrameGen, cx: &mut AsyncApp) {
+    let saved = {
+        let (root, title_id) = (root.clone(), title_id.to_owned());
+        cx.background_spawn(async move {
+            LauncherSettings::edit(&root, |settings| {
+                let value = if frame_gen == FrameGen::Off {
+                    ""
+                } else {
+                    frame_gen.value()
+                };
+                settings.set_title_text(&title_id, frame_gen::KEY, value);
+            })
+        })
+        .await
+    };
+    match saved {
+        Ok(()) => tracing::info!(
+            title_id,
+            value = frame_gen.value(),
+            "saved the frame generation chosen in the menu"
+        ),
+        Err(err) => tracing::warn!(title_id, %err, "could not save the frame generation chosen in the menu"),
     }
 }
 
