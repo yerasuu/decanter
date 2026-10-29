@@ -243,7 +243,7 @@ impl Sessionless {
     pub async fn build_meta(&self, access_token: &str, link: &str) -> Result<BuildMeta, Error> {
         let host = gog_host(link).ok_or_else(|| Error::Malformed {
             call: BUILD_MANIFEST.name,
-            reason: "link is not an https URL on a GOG host".to_owned(),
+            reason: format!("link is not an https URL on a GOG host ({})", describe_link(link)),
         })?;
         let compressed = self
             .get_bytes(&BUILD_MANIFEST, link, &host, &[], Some(access_token))
@@ -350,6 +350,20 @@ fn gog_host(link: &str) -> Option<String> {
         && url.username().is_empty()
         && url.password().is_none();
     is_gog.then(|| host.to_owned())
+}
+
+/// The scheme, host and port of `link` for an error message: never the path or query, which carry
+/// ids and signed tokens.
+fn describe_link(link: &str) -> String {
+    match url::Url::parse(link) {
+        Ok(url) => format!(
+            "scheme {}, host {}{}",
+            url.scheme(),
+            url.host_str().unwrap_or("none"),
+            url.port().map_or_else(String::new, |port| format!(", port {port}")),
+        ),
+        Err(_) => "not a URL".to_owned(),
+    }
 }
 
 /// Reads zlib'd `compressed` as `T`, refused once it inflates past `max` bytes.
