@@ -12,22 +12,7 @@
 
 use anyhow::Context as _;
 
-use crate::api;
-
-/// GOG Galaxy's public client ID, used by every third-party GOG client
-/// (Heroic, Minigalaxy, Lutris, ...) since GOG has no per-application
-/// client registration for this flow.
-pub(crate) const GOG_CLIENT_ID: &str = "46899977096215655";
-
-/// GOG Galaxy's public client secret, paired with [`GOG_CLIENT_ID`] and just
-/// as shared: it ships inside every Galaxy install, so it guards nothing, but
-/// it still stays out of logs and errors along with the URLs that carry it.
-pub(crate) const GOG_CLIENT_SECRET: &str = "9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9";
-
-/// Where GOG redirects after a successful login, carrying the
-/// authorization `code` as a query parameter. Not an endpoint anyone
-/// controls — it just renders a page, and the code is read off its URL.
-const GOG_REDIRECT_URI: &str = "https://embed.gog.com/on_login_success?origin=client";
+use crate::api::client::{CLIENT_ID, Client, REDIRECT_URI};
 
 /// Who a stored session belongs to.
 #[derive(Debug, Clone)]
@@ -41,8 +26,8 @@ pub struct Account {
 /// code out of it, is what [`log_in`] wants.
 pub fn auth_url() -> String {
     format!(
-        "https://auth.gog.com/auth?client_id={GOG_CLIENT_ID}&redirect_uri={}&response_type=code&layout=client2",
-        urlencode(GOG_REDIRECT_URI)
+        "https://auth.gog.com/auth?client_id={CLIENT_ID}&redirect_uri={}&response_type=code&layout=client2",
+        urlencode(REDIRECT_URI)
     )
 }
 
@@ -79,33 +64,33 @@ pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
     // single-use bearer credential, only whether one was found matters here.
     tracing::debug!("extracted OAuth authorization code from pasted login input");
 
-    let (token, user) = crate::achv_try!(crate::achv_try!(
-        tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let token = crate::achv_try!(api::token::Token::from_login_code(&code).map_err(|err| anyhow::anyhow!(
-                "GOG rejected the authorization code: {}",
-                crate::without_secrets(err)
-            )));
-            tracing::debug!("exchanged authorization code for a GOG session token");
-            let client = api::Gog::new(token);
-            let user = crate::achv_try!(
-                client
-                    .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session check failed: {}", crate::without_secrets(err)))
-            );
-            // Read the token back out: fetching user data may have refreshed it.
-            Ok((client.token.borrow().clone(), user))
-        })
-        .await
-        .context("GOG worker task panicked")
-    ));
-
-    let credentials = crate::achv_try!(serde_json::to_string(&token).context("serializing the GOG session"));
-    crate::achv_try!(crate::write_session(&user.user_id, credentials).await);
-    tracing::info!(account_id = %user.user_id, "GOG login succeeded");
+    let client = crate::achv_try!(
+        Client::from_login_code(&code)
+            .await
+            .map_err(|err| crate::session::failed("GOG did not accept the authorization code", err))
+    );
+    tracing::debug!("exchanged authorization code for a GOG session token");
+    let user = crate::achv_try!(
+        client
+            .user()
+            .await
+            .map_err(|err| crate::session::failed("GOG session check failed", err))
+    );
+    // Read the token back out: fetching user data may have refreshed it.
+    let credentials =
+        crate::achv_try!(serde_json::to_string(&client.token().await).context("serializing the GOG session"));
+    // Under the account's lock so that a call still running on a previous
+    // session finishes first, instead of storing its token over this one.
+    {
+        let lock = crate::session_lock(&user.id);
+        let _guard = lock.lock().await;
+        crate::achv_try!(crate::write_session(&user.id, credentials).await);
+    }
+    tracing::info!(account_id = %user.id, "GOG login succeeded");
 
     Ok(Account {
-        account_id: user.user_id.clone(),
-        display_name: user.username.clone(),
+        account_id: user.id,
+        display_name: user.username,
     })
 }
 

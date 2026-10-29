@@ -22,10 +22,11 @@ pub(super) enum Host {
     ContentSystem,
     Embed,
     GamesDb,
+    Gameplay,
 }
 
 impl Host {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Api,
         Self::Auth,
         Self::Catalog,
@@ -33,6 +34,7 @@ impl Host {
         Self::ContentSystem,
         Self::Embed,
         Self::GamesDb,
+        Self::Gameplay,
     ];
 
     pub(super) const fn name(self) -> &'static str {
@@ -44,6 +46,7 @@ impl Host {
             Self::ContentSystem => "content-system.gog.com",
             Self::Embed => "embed.gog.com",
             Self::GamesDb => "gamesdb.gog.com",
+            Self::Gameplay => "gameplay.gog.com",
         }
     }
 

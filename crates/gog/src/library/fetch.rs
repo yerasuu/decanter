@@ -3,68 +3,33 @@
 //! on [`super`] for how this fits with [`super::enrich`].
 
 use std::collections::HashSet;
+use std::num::NonZeroU32;
 
-use anyhow::Context;
 use decanter_core::{Game, InstallState, Storefront};
-use serde::Deserialize;
 
 use super::{Batch, GameKind, LibraryEntry};
 use crate::api;
-
-const FILTERED_PRODUCTS_URL: &str = "https://embed.gog.com/account/getFilteredProducts";
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FilteredProductsPage {
-    #[serde(default)]
-    products: Vec<api::gog::ProductDetails>,
-    #[serde(default, rename = "totalPages")]
-    total_pages: i64,
-}
+use crate::api::client::Client;
 
 /// Every owned product (games, extras, movies, gifts, dev grants alike),
 /// in the order GOG itself reports them added — index 0 is the most
-/// recent. A raw request rather than the crate's typed
-/// `get_all_filtered_products`: `sortBy` isn't one of the params
-/// `FilterParam` models, and this is otherwise the exact same endpoint,
-/// same `mediaType=1` filter, same response shape, so it reuses the
-/// crate's own `ProductDetails` for deserializing.
+/// recent.
 ///
 /// Undocumented sort parameter, so a response shape surprise degrades to
 /// an error the caller can shrug off (see `list_games`), not a panic.
 async fn each_product_page(
-    access_token: &str,
+    client: &Client,
     mut on_page: impl AsyncFnMut(Vec<api::gog::ProductDetails>),
 ) -> anyhow::Result<()> {
-    let http = crate::http_client();
-    let mut page = 1;
+    let mut page = NonZeroU32::MIN;
 
     loop {
-        let response = crate::achv_try!(
-            http.get(FILTERED_PRODUCTS_URL)
-                .query(&[
-                    ("mediaType", "1"),
-                    ("sortBy", "date_purchased"),
-                    ("page", &page.to_string()),
-                ])
-                .bearer_auth(access_token)
-                .header("CSRF", "csrf=true")
-                .send()
+        let parsed = crate::achv_try!(
+            client
+                .filtered_products(page)
                 .await
+                .map_err(|err| crate::session::failed("GOG library listing request failed", err))
         );
-        let response = crate::achv_try!(
-            response
-                .error_for_status()
-                .context("GOG library listing request rejected")
-        );
-        let body = crate::achv_try!(response.text().await);
-
-        let parsed: FilteredProductsPage = crate::achv_try!(serde_json::from_str(&body).with_context(|| {
-            format!(
-                "GOG's filtered-products response had an unexpected shape; first bytes: {}",
-                body.chars().take(300).collect::<String>()
-            )
-        }));
         tracing::debug!(
             page,
             total_pages = parsed.total_pages,
@@ -72,12 +37,15 @@ async fn each_product_page(
             "fetched GOG filtered-products page"
         );
 
-        let is_last_page = page >= parsed.total_pages.max(1);
+        let is_last_page = page.get() >= parsed.total_pages.max(1);
         on_page(parsed.products).await;
         if is_last_page {
             return Ok(());
         }
-        page += 1;
+        let Some(next) = page.checked_add(1) else {
+            return Ok(());
+        };
+        page = next;
     }
 }
 
@@ -105,63 +73,64 @@ pub async fn list_games(
     account_id: &str,
     on_batch: &mut impl FnMut(Batch),
 ) -> anyhow::Result<Vec<LibraryEntry>> {
-    let (owned_ids, access_token) = crate::achv_try!(
-        crate::with_session(account_id, |client| {
+    let mut entries: Vec<LibraryEntry> = Vec::new();
+    crate::achv_try!(
+        crate::session::with_client(account_id, async |client| {
             let owned_ids = crate::achv_try!(
                 client
-                    .get_games()
-                    .map_err(|err| anyhow::anyhow!("gog owned-games request failed: {}", crate::without_secrets(err)))
+                    .owned_games()
+                    .await
+                    .map_err(|err| crate::session::failed("GOG owned-games request failed", err))
             );
             tracing::debug!(owned_id_count = owned_ids.len(), "fetched GOG owned-games id list");
-            Ok((owned_ids, client.token.borrow().access_token.clone()))
+
+            let mut seen: HashSet<i64> = HashSet::new();
+
+            // Position across all pages *is* GOG's added-to-library order, so the
+            // rank is the running count rather than an index within a page.
+            let paged = each_product_page(client, async |products| {
+                let start = entries.len();
+                let batch: Batch = products
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, product)| {
+                        seen.insert(product.id);
+                        let mut entry = base_entry(product.id, Some(&product));
+                        entry.library_rank = Some((start + index) as i64);
+                        with_install_state(library, account_id, entry)
+                    })
+                    .collect();
+                entries.extend(batch.iter().cloned());
+                on_batch(batch);
+            })
+            .await;
+
+            // A failure here costs metadata and ordering, not the library — the
+            // owned-id sweep below still covers everything.
+            if let Err(err) = paged {
+                tracing::warn!(account_id, error = %format_args!("{err:#}"), "GOG product listing failed");
+            }
+
+            // Owned but absent from the filtered view: that's what a non-game
+            // grant looks like from here. They still belong in the library, just
+            // without GOG-side metadata.
+            let leftovers: Batch = owned_ids
+                .into_iter()
+                .filter(|id| !seen.contains(id))
+                .map(|id| with_install_state(library, account_id, base_entry(id, None)))
+                .collect();
+            if !leftovers.is_empty() {
+                tracing::debug!(
+                    leftover_count = leftovers.len(),
+                    "found owned products absent from GOG's filtered listing"
+                );
+                entries.extend(leftovers.iter().cloned());
+                on_batch(leftovers);
+            }
+            Ok(())
         })
         .await
     );
-
-    let mut entries: Vec<LibraryEntry> = Vec::new();
-    let mut seen: HashSet<i64> = HashSet::new();
-
-    // Position across all pages *is* GOG's added-to-library order, so the
-    // rank is the running count rather than an index within a page.
-    let paged = each_product_page(&access_token, async |products| {
-        let start = entries.len();
-        let batch: Batch = products
-            .into_iter()
-            .enumerate()
-            .map(|(index, product)| {
-                seen.insert(product.id);
-                let mut entry = base_entry(product.id, Some(&product));
-                entry.library_rank = Some((start + index) as i64);
-                with_install_state(library, account_id, entry)
-            })
-            .collect();
-        entries.extend(batch.iter().cloned());
-        on_batch(batch);
-    })
-    .await;
-
-    // A failure here costs metadata and ordering, not the library — the
-    // owned-id sweep below still covers everything.
-    if let Err(err) = paged {
-        tracing::warn!(account_id, error = %format_args!("{err:#}"), "GOG product listing failed");
-    }
-
-    // Owned but absent from the filtered view: that's what a non-game
-    // grant looks like from here. They still belong in the library, just
-    // without GOG-side metadata.
-    let leftovers: Batch = owned_ids
-        .into_iter()
-        .filter(|id| !seen.contains(id))
-        .map(|id| with_install_state(library, account_id, base_entry(id, None)))
-        .collect();
-    if !leftovers.is_empty() {
-        tracing::debug!(
-            leftover_count = leftovers.len(),
-            "found owned products absent from GOG's filtered listing"
-        );
-        entries.extend(leftovers.iter().cloned());
-        on_batch(leftovers);
-    }
 
     // Already install-state-annotated above, per batch — not redone here:
     // `absorb` (app/src/state/gog_library.rs) wholesale-replaces whatever

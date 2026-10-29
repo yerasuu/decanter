@@ -142,8 +142,9 @@ async fn clear_session(account_id: &str) -> anyhow::Result<()> {
 /// across an `.await`).
 ///
 /// GOG rotates the refresh token on use: whichever of two concurrent
-/// [`with_session`] calls for the *same* account refreshes first leaves the
-/// other holding an already-spent refresh token, which GOG then reports as
+/// [`with_session`] or `session::with_client` calls for the *same* account
+/// refreshes first leaves the other holding an already-spent refresh token,
+/// which GOG then reports as
 /// revoked — not a real logout, just two callers racing to renew the same
 /// session (e.g. the library's own fetch and the settings screen's session
 /// check, both starting right after a fresh login). Serializing access per
@@ -159,8 +160,10 @@ fn session_lock(account_id: &str) -> Arc<AsyncMutex<()>> {
     )
 }
 
-/// Runs `f` against a live, authenticated `api::Gog` client built from the
-/// stored session, then persists whatever `f` leaves in `client.token` —
+/// The blocking counterpart of `session::with_client`, kept for the flows not
+/// yet on the async client (installs, verify, updates, cloud saves, the Steam
+/// export). Runs `f` against a live, authenticated `api::Gog` client built
+/// from the stored session, then persists whatever `f` leaves in `client.token` —
 /// any authenticated call may have refreshed it, and a caller that skipped
 /// this would silently log itself out one token rotation later. That holds
 /// when `f` fails too: the `api` client refreshes before the request that then
@@ -216,24 +219,23 @@ pub async fn poll_achievements(
 ) -> anyhow::Result<Vec<CachedAchievement>> {
     let numeric_id: i64 = product_id.parse().context("GOG product_id must be numeric")?;
 
-    let list = with_session(account_id, move |client| {
-        let uid = client.uid();
-        // api::Error is built on error-chain and isn't Sync, so it can't
-        // cross the `?`-to-anyhow boundary directly.
-        client
-            .achievements(numeric_id, uid)
-            .map_err(|err| anyhow::anyhow!("gog achievements request failed: {}", crate::without_secrets(err)))
-    })
-    .await?;
+    let list = achv_try!(
+        session::with_client(account_id, async |client| {
+            client
+                .achievements(numeric_id)
+                .await
+                .map_err(|err| session::failed("GOG achievements request failed", err))
+        })
+        .await
+    );
     tracing::debug!(
         account_id,
         product_id,
-        achievement_count = list.items.len(),
+        achievement_count = list.len(),
         "fetched GOG achievements"
     );
 
     let items: Vec<CachedAchievement> = list
-        .items
         .into_iter()
         .map(|a| CachedAchievement {
             achievement_key: a.achievement_key,

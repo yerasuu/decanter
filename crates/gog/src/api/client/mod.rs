@@ -48,6 +48,7 @@
     clippy::unimplemented
 )]
 
+mod achievements;
 mod auth;
 mod catalog;
 mod content;
@@ -59,6 +60,7 @@ mod orders;
 mod products;
 mod user;
 
+pub use achievements::Achievement;
 pub use auth::{Token, CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
 pub use catalog::{CatalogMods, CatalogProduct};
 pub use content::{Build, BuildMeta, DepotChunk, DepotFile, DepotMeta, SecureLinkEntry};

@@ -7,7 +7,7 @@ use core::num::NonZeroU32;
 
 use serde::Deserialize;
 
-use super::http::{Call, Host, Sessionless, SESSION_REFUSED};
+use super::http::{Call, Client, Host, SESSION_REFUSED};
 use super::Error;
 
 /// Orders carry the buyer's details, so a parse error must not quote the body.
@@ -18,7 +18,7 @@ const ORDERS: Call = Call {
     has_secrets: true,
 };
 
-/// One page of [`Sessionless::orders_page`].
+/// One page of [`Client::orders_page`].
 #[non_exhaustive]
 pub struct OrdersPage {
     pub orders: Vec<Order>,
@@ -58,20 +58,15 @@ struct RawProduct {
     id: Option<serde_json::Value>,
 }
 
-impl Sessionless {
+impl Client {
     /// One page of the orders that granted something: cancelled ones would otherwise date a
     /// game the account no longer owns.
     ///
     /// # Errors
     ///
-    /// [`Error::Rejected`] when GOG refuses `access_token`, which this client does not renew;
-    /// the others when GOG cannot be asked or answers something unreadable.
+    /// As [`Client::user`].
     #[inline]
-    pub async fn orders_page(
-        &self,
-        access_token: &str,
-        page: NonZeroU32,
-    ) -> Result<OrdersPage, Error> {
+    pub async fn orders_page(&self, page: NonZeroU32) -> Result<OrdersPage, Error> {
         let page_number = page.to_string();
         let query = [
             ("canceled", "0"),
@@ -82,30 +77,30 @@ impl Sessionless {
             ("redeemed", "1"),
             ("page", page_number.as_str()),
         ];
-        let raw: RawPage = self
-            .get(
-                &ORDERS,
-                Host::Embed,
-                "/account/settings/orders/data",
-                &query,
-                Some(access_token),
-            )
-            .await?;
-        Ok(OrdersPage {
-            orders: raw
-                .orders
-                .into_iter()
-                .map(|order| Order {
-                    date: order.date.as_ref().and_then(as_i64),
-                    product_ids: order
-                        .products
-                        .iter()
-                        .filter_map(|product| product.id.as_ref().and_then(as_i64))
+        self.get(
+            &ORDERS,
+            Host::Embed,
+            "/account/settings/orders/data",
+            &query,
+            |raw: RawPage| {
+                Ok(OrdersPage {
+                    orders: raw
+                        .orders
+                        .into_iter()
+                        .map(|order| Order {
+                            date: order.date.as_ref().and_then(as_i64),
+                            product_ids: order
+                                .products
+                                .iter()
+                                .filter_map(|product| product.id.as_ref().and_then(as_i64))
+                                .collect(),
+                        })
                         .collect(),
+                    total_pages: raw.total_pages,
                 })
-                .collect(),
-            total_pages: raw.total_pages,
-        })
+            },
+        )
+        .await
     }
 }
 
