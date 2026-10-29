@@ -244,6 +244,7 @@ ps.detail.tabs.gamepad: Controller
 ps.detail.tabs.graphics: Graphics
 ps.detail.tabs.mods: Mods
 ps.detail.tabs.log: Log
+ps.detail.tabs.performance: Performance
 ps.detail.hero.version: VERSION
 ps.detail.hero.status: STATUS
 ps.detail.stop: STOP

@@ -37,6 +37,7 @@ enum Tab {
     Graphics,
     Mods,
     Online,
+    Performance,
     Log,
 }
 
@@ -49,6 +50,7 @@ impl Tab {
             Self::Graphics => t!("ps.detail.tabs.graphics"),
             Self::Mods => t!("ps.detail.tabs.mods"),
             Self::Online => t!("ps.detail.tabs.online"),
+            Self::Performance => t!("ps.detail.tabs.performance"),
             Self::Log => t!("ps.detail.tabs.log"),
         }
     }
@@ -58,18 +60,26 @@ const TABS: [Tab; 3] = [Tab::Overview, Tab::Keyboard, Tab::Log];
 
 /// bbport has settings and gamepad layouts of its own; AnyPS5 reads the
 /// controller as it is and takes no settings.
-const BBPORT_TABS: [Tab; 7] = [
+const BBPORT_TABS: [Tab; 8] = [
     Tab::Overview,
     Tab::Keyboard,
     Tab::Gamepad,
     Tab::Graphics,
     Tab::Mods,
     Tab::Online,
+    Tab::Performance,
     Tab::Log,
 ];
 
 /// Another PS4 title on bbport: its mods are Bloodborne's.
-const OTHER_PS4_TABS: [Tab; 5] = [Tab::Overview, Tab::Keyboard, Tab::Gamepad, Tab::Graphics, Tab::Log];
+const OTHER_PS4_TABS: [Tab; 6] = [
+    Tab::Overview,
+    Tab::Keyboard,
+    Tab::Gamepad,
+    Tab::Graphics,
+    Tab::Performance,
+    Tab::Log,
+];
 
 /// A game no port runs has nothing to bind.
 const UNSUPPORTED_TABS: [Tab; 1] = [Tab::Overview];
@@ -609,21 +619,19 @@ impl Render for DetailView {
             entity.update(cx, |this, cx| this.select_tab(tab, port, cx));
         });
         // Only psport measures frames; the view is made here since JUGAR opens Registro too.
-        if self.tab == Tab::Log && entry.port == Some(Port::Bbport) && self.runs.is_none() {
+        if matches!(self.tab, Tab::Performance | Tab::Log) && entry.port == Some(Port::Bbport) && self.runs.is_none() {
             let (ps, dir, title_id) = (self.ps.clone(), entry.game.dir.clone(), entry.game.title_id.clone());
             self.runs = Some(cx.new(|cx| RunsView::new(ps, dir, title_id, cx)));
         }
         let body = match self.tab {
-            Tab::Log => div()
-                .flex()
-                .flex_col()
-                .gap_5()
-                .children(self.runs.clone())
-                .child(match &self.log {
-                    Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
-                    None => theme::muted(t!("ps.detail.no_runs")).into_any_element(),
-                })
-                .into_any_element(),
+            Tab::Performance => self
+                .runs
+                .clone()
+                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Log => match &self.log {
+                Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
+                None => theme::muted(t!("ps.detail.no_runs")).into_any_element(),
+            },
             Tab::Gamepad => self
                 .gamepad
                 .clone()
