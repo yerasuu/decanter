@@ -17,7 +17,7 @@ use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SelectStyle {
-    /// Plain `select`: input-like field, muted chevron.
+    /// Plain `select`: input-like field.
     Field,
     /// `#profile-switcher`: the topbar's, 12px, at most 200px wide.
     Compact,
@@ -169,8 +169,12 @@ impl RenderOnce for Select {
             .bottom_0()
             .flex()
             .items_center()
-            .text_size(px(9.))
-            .text_color(rgb(if heading { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
+            .text_size(px(13.))
+            .text_color(rgb(if heading {
+                theme::TEXT_BRIGHT
+            } else {
+                theme::TEXT_PRIMARY
+            }))
             .child("▾");
 
         let state_for_canvas = state.clone();
@@ -223,22 +227,32 @@ impl RenderOnce for Select {
     }
 }
 
+/// The boxed triggers answer the pointer the way the small one does: without it a plain box with a
+/// glyph in the corner does not read as something that opens.
+fn boxed_hover(trigger: Stateful<Div>) -> Stateful<Div> {
+    trigger.hover(|trigger| {
+        trigger
+            .bg(rgb(theme::BG_PANEL_LIGHT))
+            .border_color(rgb(theme::ACCENT_BLUE_DIM))
+    })
+}
+
 fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> Stateful<Div> {
     match style {
-        SelectStyle::Field => trigger
+        SelectStyle::Field => boxed_hover(trigger)
             .pl(px(12.))
-            .pr(px(26.))
+            .pr(px(30.))
             .py(px(9.))
             .bg(rgb(theme::BG_PANEL))
             .border_1()
             .border_color(rgb(theme::LINE))
             .rounded(px(theme::RADIUS))
             .text_color(rgb(theme::TEXT_PRIMARY))
-            .child(chevron.right(px(9.))),
-        SelectStyle::Compact => trigger
+            .child(chevron.right(px(10.))),
+        SelectStyle::Compact => boxed_hover(trigger)
             .max_w(px(200.))
             .pl(px(10.))
-            .pr(px(26.))
+            .pr(px(30.))
             .py(px(5.))
             .text_size(px(12.))
             .bg(rgb(theme::BG_PANEL))
@@ -246,7 +260,7 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .border_color(rgb(theme::LINE))
             .rounded(px(theme::RADIUS_SM))
             .text_color(rgb(theme::TEXT_PRIMARY))
-            .child(chevron.right(px(9.))),
+            .child(chevron.right(px(10.))),
         SelectStyle::Heading => trigger
             .max_w(px(320.))
             .pr(px(17.))
@@ -259,9 +273,9 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .border_color(gpui::transparent_black())
             .hover(|trigger| trigger.border_color(rgb(theme::ACCENT_BLUE)))
             .child(chevron.right(px(1.))),
-        SelectStyle::Kind => trigger
+        SelectStyle::Kind => boxed_hover(trigger)
             .pl(px(8.))
-            .pr(px(24.))
+            .pr(px(28.))
             .py(px(6.))
             .text_size(px(12.))
             .bg(rgb(theme::BG_PANEL))
@@ -269,10 +283,10 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .border_color(rgb(theme::LINE))
             .rounded(px(theme::RADIUS_SM))
             .text_color(rgb(theme::TEXT_PRIMARY))
-            .child(chevron.right(px(9.))),
-        SelectStyle::Group => trigger
+            .child(chevron.right(px(10.))),
+        SelectStyle::Group => boxed_hover(trigger)
             .pl(px(9.))
-            .pr(px(26.))
+            .pr(px(30.))
             .py(px(7.))
             .text_size(px(12.5))
             .bg(rgb(theme::BG_PANEL))
@@ -280,7 +294,7 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .border_color(rgb(theme::LINE))
             .rounded(px(theme::RADIUS))
             .text_color(rgb(theme::TEXT_PRIMARY))
-            .child(chevron.right(px(9.))),
+            .child(chevron.right(px(10.))),
         SelectStyle::Small => trigger
             .pl(px(6.))
             .pr(px(21.))
@@ -296,6 +310,6 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
                     .text_color(rgb(theme::TEXT_PRIMARY))
                     .border_color(rgb(theme::ACCENT_BLUE_DIM))
             })
-            .child(chevron.right(px(6.))),
+            .child(chevron.text_size(px(9.)).right(px(6.))),
     }
 }
