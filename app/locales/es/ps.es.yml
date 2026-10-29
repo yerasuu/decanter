@@ -788,6 +788,14 @@ ps.report.errors.read: 'No se pudo leer %{what}: %{error}'
 ps.report.errors.serialize: 'No se pudo escribir el informe: %{error}'
 ps.report.errors.exists: 'Ya existe %{path}; no se sobrescribe'
 ps.report.errors.write: 'No se pudo guardar %{path}: %{error}'
+ps.run.errors.too_many_env: 'Como mucho %{max} variables --env'
+ps.run.errors.profile: 'No se pudo leer el perfil activo: %{error}'
+ps.run.errors.library: 'No se pudo leer la biblioteca: %{error}'
+ps.run.errors.no_game: 'No hay ningún juego con el ID %{title} en la sección de PS'
+ps.run.errors.not_playable: '%{title} no se puede jugar tal como está; la sección de PS dice por qué'
+ps.run.errors.needs_convert: '%{title} aún no se ha convertido; juégalo una vez desde la ventana de decanter'
+ps.run.errors.port_not_ready: '%{port} aún no está compilado; abre la sección de PS de decanter para que se prepare'
+ps.run.errors.start: 'No se pudo iniciar el juego: %{error}'
 ps.report.save: Guardar informe
 ps.report.close: Cerrar
 ps.report.building: Preparando el informe…

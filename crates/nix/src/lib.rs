@@ -102,6 +102,21 @@ impl Toolchain {
         }
     }
 
+    /// What [`Toolchain::resolve`] and [`Toolchain::nix`] can pick without downloading anything, in
+    /// their order: for a caller that may only run what is already on the machine.
+    pub async fn present(dir: &Path, recipe: &Recipe) -> Vec<Self> {
+        let mut found = Vec::with_capacity(2);
+        if host_covers(recipe).await && !tokio::fs::try_exists(host_refused(dir, recipe)).await.unwrap_or(false) {
+            found.push(Self::Host);
+        }
+        let nix = match system_nix_shell().await {
+            Some(nix_shell) => Some(Self::SystemNix(nix_shell)),
+            None => portable::present(dir).await.map(Self::Portable),
+        };
+        found.extend(nix);
+        found
+    }
+
     /// After the host's tools failed to configure `recipe`: later resolves
     /// skip the host for it until [`Toolchain::allow_host`].
     pub async fn refuse_host(dir: &Path, recipe: &Recipe) -> io::Result<()> {

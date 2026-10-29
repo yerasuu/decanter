@@ -25,6 +25,15 @@ fn path(dir: &Path) -> PathBuf {
     dir.join("nix-portable")
 }
 
+/// [`ensure`]'s file when it is there already; never downloads.
+pub(super) async fn present(dir: &Path) -> Option<PathBuf> {
+    let path = path(dir);
+    tokio::fs::metadata(&path)
+        .await
+        .is_ok_and(|meta| meta.is_file())
+        .then_some(path)
+}
+
 /// Only a download whose checksum matched is ever renamed into place, so
 /// a file at [`path`] is trusted as is.
 pub(super) async fn ensure(dir: &Path, mut on_download: impl FnMut(u64, Option<u64>)) -> Result<PathBuf, Error> {

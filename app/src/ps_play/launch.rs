@@ -85,10 +85,17 @@ pub fn online_error(err: &OnlineError) -> Text {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum OnlinePlay {
+    /// As the settings have it, when this psport build has online play (`online_module`).
+    AsSet { is_offered: bool },
+    /// Never, whatever the settings say: a headless run connects nowhere by itself.
+    Off,
+}
+
 /// What a launch takes from where it starts, decanter's window or a headless command.
 pub struct Surroundings<F> {
-    /// Whether the port's build has online play (`online_module`), which the settings may turn on.
-    pub is_online_offered: bool,
+    pub online: OnlinePlay,
     /// Whether the port's build lists frame generation (`frame_gen_fsr`).
     pub is_frame_gen_offered: bool,
     /// The display's aspect ratio, asked only when the port's setting is automatic.
@@ -203,7 +210,7 @@ pub async fn launch_inputs(
     if let Err(err) = tokio::fs::create_dir_all(&user_dir).await {
         return Err(LaunchError::CreateDir { dir: user_dir, err });
     }
-    let online = match online_play(&settings, surroundings.is_online_offered).await {
+    let online = match online_play(&settings, surroundings.online).await {
         Ok(online) => online,
         Err(err) => return Err(err),
     };
@@ -252,7 +259,11 @@ pub async fn bbport_command(
 }
 
 /// Online play when it is on and the build has it, with the account's secrets from the keyring.
-async fn online_play(settings: &LauncherSettings, is_offered: bool) -> Result<Option<Online>, LaunchError> {
+async fn online_play(settings: &LauncherSettings, online: OnlinePlay) -> Result<Option<Online>, LaunchError> {
+    let is_offered = match online {
+        OnlinePlay::AsSet { is_offered } => is_offered,
+        OnlinePlay::Off => return Ok(None),
+    };
     if !settings.flag(online::ONLINE, false) {
         return Ok(None);
     }

@@ -24,7 +24,7 @@ use super::ports::Prepared;
 use super::vk_layer;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
-use crate::ps_play::launch::{self, LaunchError, Surroundings};
+use crate::ps_play::launch::{self, LaunchError, OnlinePlay, Surroundings};
 use crate::ps_play::run;
 
 impl Ps {
@@ -234,7 +234,9 @@ pub(super) fn surroundings(cx: &mut AsyncApp) -> Surroundings<impl FnOnce() -> O
     });
     let mut cx = cx.clone();
     Surroundings {
-        is_online_offered,
+        online: OnlinePlay::AsSet {
+            is_offered: is_online_offered,
+        },
         is_frame_gen_offered,
         display_ratio: move || display_aspect_ratio(&mut cx),
     }

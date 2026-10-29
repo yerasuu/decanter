@@ -20,6 +20,7 @@ use decanter_core::Db;
 mod install;
 mod launch;
 mod ps;
+mod ps_run;
 
 #[derive(Parser)]
 #[command(name = "decanter")]
@@ -117,30 +118,42 @@ pub enum Cmd {
 /// runs — installing a second one here would panic (`tracing` only ever
 /// accepts one global default).
 pub fn run(cmd: Cmd) -> ! {
+    // `ps run` tells a game that could not start from one that failed while running.
+    let error_code = if matches!(
+        cmd,
+        Cmd::Ps {
+            cmd: ps::PsCmd::Run { .. }
+        }
+    ) {
+        ps_run::NOT_STARTED
+    } else {
+        1
+    };
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(err) => {
             eprintln!("error: could not start the async runtime: {err}");
-            std::process::exit(1);
+            std::process::exit(error_code);
         }
     };
     let outcome = runtime.block_on(dispatch(cmd));
     crate::logs::close();
     match outcome {
-        Ok(()) => std::process::exit(0),
+        Ok(code) => std::process::exit(code),
         Err(err) => {
             eprintln!("error: {err:?}");
-            std::process::exit(1);
+            std::process::exit(error_code);
         }
     }
 }
 
-async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
+/// The process's exit code.
+async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
     let mut db = Db::open_active().context("opening decanter cache db")?;
     tracing::debug!("opened db for cli command");
 
     match cmd {
-        Cmd::Ps { cmd } => ps::run(&db, cmd).await?,
+        Cmd::Ps { cmd } => return ps::run(&db, cmd).await,
         Cmd::Library { account_id } => {
             tracing::debug!(account_id, "listing gog library");
             let library = crate::core::library_for_account(&account_id).map_err(|err| anyhow::anyhow!(err))?;
@@ -184,7 +197,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
+    Ok(0)
 }
 
 pub(crate) fn report_poll(newly_unlocked: Vec<decanter_core::CachedAchievement>) {

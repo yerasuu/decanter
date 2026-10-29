@@ -7,6 +7,8 @@ use std::path::Path;
 use decanter_nix::{Recipe, Toolchain};
 use tokio::process::Command;
 
+use crate::anyps5::AnyPs5;
+use crate::bbport::Bbport;
 use crate::paths::Root;
 use crate::port::Port;
 
@@ -46,6 +48,42 @@ pub async fn command(toolchain: &Toolchain, root: &Root, port: Port, script: &st
     toolchain
         .command(&root.toolchain(), &recipe(port), &port.checkout(root), script)
         .await
+}
+
+/// The toolchain `port` is already built with under `root`, found the way the app's preparation finds
+/// it but without cloning, downloading, fetching or building anything: `None` when only a preparation
+/// would make it runnable. A release bundle is pointed at its own loader again first, as the app does.
+pub async fn ready(root: &Root, port: Port) -> Option<Toolchain> {
+    if port == Port::Bbport {
+        let bbport = Bbport::new(root.clone());
+        if bbport.is_built_with(&Toolchain::Bundle).await
+            && let Some(tag) = bbport.bundle_tag().await
+        {
+            return match super::bundle::relocate(&super::bundle::dir(root, port, &tag)).await {
+                Ok(()) => Some(Toolchain::Bundle),
+                Err(err) => {
+                    tracing::warn!(port = port.name(), tag, %err, "port bundle can't run from here");
+                    None
+                }
+            };
+        }
+    }
+    for toolchain in Toolchain::present(&root.toolchain(), &recipe(port)).await {
+        let built = match port {
+            // A fetched build stands only for a checkout without local changes.
+            Port::Bbport => {
+                let bbport = Bbport::new(root.clone());
+                bbport.is_built_with(&toolchain).await
+                    && (bbport.prebuilt().await.is_none()
+                        || super::updater::upstream_commit(&port.checkout(root)).await.is_some())
+            }
+            Port::AnyPs5 => AnyPs5::new(root.clone()).is_built_with(&toolchain).await,
+        };
+        if built {
+            return Some(toolchain);
+        }
+    }
+    None
 }
 
 /// What a port's build marker holds: this toolchain and the checkout's

@@ -73,6 +73,18 @@ field and the rule that failed, never the value.
   inside the library like the rest of decanter's data. An existing file is never
   replaced. The fingerprint groups the same failure on the same commit.
 
+## Recording a failure without the window
+
+`decanter ps run --title CUSA…` plays a game the way the window's Play does (the same port,
+settings, environment and scan of the output) and appends what the run left to the active
+profile's failures, the record Fallos and `decanter ps report` read. So a test on another machine
+runs, then returns its failure with `decanter ps report --title CUSA… --print`. Error lines and
+missing calls are recorded but leave the status `clean`, as they leave Play's banner a notice; a
+crash, a `STOP:` or a bad exit makes it `failure` and the exit code 1. A run ended by
+`--timeout` is a `timeout`: the stop it asked for is not recorded as a crash, and the run log
+says when the timeout came and whether the game had to be killed. The command never connects to
+online services and never prepares a port or converts a game; see the README's CLI section.
+
 ## Sending
 
 The report that was previewed, byte for byte, goes to `POST /v1/reports` on the report

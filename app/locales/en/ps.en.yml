@@ -788,6 +788,14 @@ ps.report.errors.read: 'Couldn''t read %{what}: %{error}'
 ps.report.errors.serialize: 'Couldn''t write the report: %{error}'
 ps.report.errors.exists: '%{path} already exists; it is not overwritten'
 ps.report.errors.write: 'Couldn''t save %{path}: %{error}'
+ps.run.errors.too_many_env: 'At most %{max} --env variables'
+ps.run.errors.profile: 'Couldn''t read the active profile: %{error}'
+ps.run.errors.library: 'Couldn''t read the library: %{error}'
+ps.run.errors.no_game: 'No game with title id %{title} in the PS section'
+ps.run.errors.not_playable: '%{title} can''t be played as it is; the PS section says why'
+ps.run.errors.needs_convert: '%{title} hasn''t been converted yet; play it once from decanter''s window'
+ps.run.errors.port_not_ready: '%{port} isn''t built yet; open decanter''s PS section so it gets prepared'
+ps.run.errors.start: 'Couldn''t start the game: %{error}'
 ps.report.save: Save report
 ps.report.close: Close
 ps.report.building: Preparing the report…

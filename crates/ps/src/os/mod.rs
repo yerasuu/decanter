@@ -27,6 +27,6 @@ pub(crate) use unported as ports;
 pub(crate) use windows::runner as ports;
 
 pub(crate) use sys::{
-    Confined, DIRECT_LAUNCH, GIT_TLS_OPTIONS, NULL_DEVICE, build_env, confine, own_process_group, signal_of,
-    terminate_group, without_console, zip_tar,
+    Confined, DIRECT_LAUNCH, GIT_TLS_OPTIONS, NULL_DEVICE, build_env, confine, kill_group, own_process_group,
+    signal_of, terminate_group, without_console, zip_tar,
 };

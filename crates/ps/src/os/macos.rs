@@ -40,6 +40,16 @@ pub fn terminate_group(pid: u32, kind: JobKind) {
     }
 }
 
+/// SIGKILL to the whole group, for a job still running past [`terminate_group`]'s grace.
+pub fn kill_group(pid: u32, kind: JobKind) {
+    let Ok(pid) = i32::try_from(pid) else {
+        return;
+    };
+    if let Err(err) = killpg(Pid::from_raw(pid), Signal::SIGKILL) {
+        tracing::warn!(pid, job = kind.name(), %err, "could not kill job");
+    }
+}
+
 /// The signal that ended the process, and whether it dumped core.
 pub fn signal_of(status: ExitStatus) -> Option<(i32, bool)> {
     status.signal().map(|signal| (signal, status.core_dumped()))

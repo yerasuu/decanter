@@ -42,6 +42,15 @@ pub fn terminate_group(pid: u32, kind: JobKind) {
     );
 }
 
+/// As [`terminate_group`]: nothing here runs in a process group.
+pub fn kill_group(pid: u32, kind: JobKind) {
+    tracing::error!(
+        pid,
+        job = kind.name(),
+        "cannot kill a job's process group on this system"
+    );
+}
+
 /// No signals end a process here, only exit codes.
 pub const fn signal_of(_status: ExitStatus) -> Option<(i32, bool)> {
     None

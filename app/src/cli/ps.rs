@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use clap::{Subcommand, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
 use decanter_core::Db;
 use decanter_ps::failures::Log;
 
@@ -17,45 +17,65 @@ pub enum PsCmd {
     /// Builds an error report from a recorded failure and saves it, or prints it: the report holds no
     /// paths, names or accounts, and this shows exactly what it holds. Nothing leaves the machine
     /// unless `--send --yes` is given.
-    Report {
-        #[arg(long, value_enum, default_value = "psport")]
-        product: Product,
-        /// psport: only the failures of this title (`CUSA03173`).
+    Report(Report),
+    /// Plays a game headless, as the window's Play does, and records its failures where Play records
+    /// them, for `decanter ps report`. The game's output goes to its run log in the library; at the end
+    /// a summary is printed. Never connects to online services, whatever the settings say. Exits 0 for a
+    /// clean run, 1 for a crash, STOP or bad exit, or a timeout, and 2 when the game could not start.
+    Run {
+        /// The game's title id (`CUSA03173`), as the PS section lists it.
         #[arg(long, value_parser = title_id)]
-        title: Option<String>,
-        /// Which failure, counting the newest as 1.
-        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
-        failure: u32,
-        /// decanter: the day log to read (`2026-10-25`), the latest by default.
-        #[arg(long, value_parser = day)]
-        day: Option<String>,
-        /// Prints the report as JSON, as it would go out, and saves nothing unless `--out` is given.
-        #[arg(long)]
-        print: bool,
-        /// Where to save it; by default `decanter/reports/<date>-<fingerprint>.json` in the library.
-        /// An existing file is never replaced.
-        #[arg(long)]
-        out: Option<PathBuf>,
-        /// Shows the report and what would be sent; with `--yes` it is sent, publicly, to the report
-        /// server (the address is in the settings).
-        #[arg(long, conflicts_with_all = ["sent", "delete"])]
-        send: bool,
-        /// Confirms `--send` or `--delete`; without it nothing touches the network.
-        #[arg(long)]
-        yes: bool,
-        /// With `--send --yes`: also sends the run's log, privately, for whoever maintains the server.
-        #[arg(long, requires_all = ["send", "yes"])]
-        attach_log: bool,
-        /// Lists the reports sent from this library, without their delete codes.
-        #[arg(long, conflicts_with_all = ["send", "delete"])]
-        sent: bool,
-        /// Deletes a sent report from the server, using the code kept in the library; needs `--yes`.
-        #[arg(long, value_name = "ID", value_parser = report_id, conflicts_with_all = ["send", "sent"])]
-        delete: Option<String>,
-        /// For development: a server other than the settings' one, `https://` or `http://127.0.0.1:PORT`.
-        #[arg(long, hide = true, value_parser = server_address)]
-        server: Option<String>,
+        title: String,
+        /// Asks the game to stop after this many seconds, then kills it if it is still running
+        /// after a grace period; the run is recorded as ended by the timeout, not as a crash.
+        #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..=super::ps_run::MAX_TIMEOUT))]
+        timeout: Option<u64>,
+        /// A test variable for the game, `PS_NAME=value`; repeatable, up to 32. Online variables are
+        /// refused.
+        #[arg(long = "env", value_name = "NAME=VALUE", value_parser = super::ps_run::env_pair)]
+        env: Vec<(String, String)>,
     },
+}
+
+#[derive(Args)]
+pub struct Report {
+    #[arg(long, value_enum, default_value = "psport")]
+    product: Product,
+    /// psport: only the failures of this title (`CUSA03173`).
+    #[arg(long, value_parser = title_id)]
+    title: Option<String>,
+    /// Which failure, counting the newest as 1.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    failure: u32,
+    /// decanter: the day log to read (`2026-10-25`), the latest by default.
+    #[arg(long, value_parser = day)]
+    day: Option<String>,
+    /// Prints the report as JSON, as it would go out, and saves nothing unless `--out` is given.
+    #[arg(long)]
+    print: bool,
+    /// Where to save it; by default `decanter/reports/<date>-<fingerprint>.json` in the library.
+    /// An existing file is never replaced.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    /// Shows the report and what would be sent; with `--yes` it is sent, publicly, to the report
+    /// server (the address is in the settings).
+    #[arg(long, conflicts_with_all = ["sent", "delete"])]
+    send: bool,
+    /// Confirms `--send` or `--delete`; without it nothing touches the network.
+    #[arg(long)]
+    yes: bool,
+    /// With `--send --yes`: also sends the run's log, privately, for whoever maintains the server.
+    #[arg(long, requires_all = ["send", "yes"])]
+    attach_log: bool,
+    /// Lists the reports sent from this library, without their delete codes.
+    #[arg(long, conflicts_with_all = ["send", "delete"])]
+    sent: bool,
+    /// Deletes a sent report from the server, using the code kept in the library; needs `--yes`.
+    #[arg(long, value_name = "ID", value_parser = report_id, conflicts_with_all = ["send", "sent"])]
+    delete: Option<String>,
+    /// For development: a server other than the settings' one, `https://` or `http://127.0.0.1:PORT`.
+    #[arg(long, hide = true, value_parser = server_address)]
+    server: Option<String>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -92,9 +112,17 @@ fn day(value: &str) -> Result<String, String> {
         .map_err(|_| format!("{value} isn't a day as YYYY-MM-DD"))
 }
 
-pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<()> {
+/// The process's exit code.
+pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<i32> {
     crate::i18n::init();
-    let PsCmd::Report {
+    match cmd {
+        PsCmd::Report(args) => report_cmd(db, args).await.map(|()| 0),
+        PsCmd::Run { title, timeout, env } => Ok(super::ps_run::run(db, &title, timeout, env).await.code()),
+    }
+}
+
+async fn report_cmd(db: &Db, args: Report) -> anyhow::Result<()> {
+    let Report {
         product,
         title,
         failure,
@@ -107,7 +135,7 @@ pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<()> {
         sent,
         delete,
         server,
-    } = cmd;
+    } = args;
     let Some(profile) = db.active_profile().context("reading the active profile")? else {
         bail!("{}", Text::new("ps.report.errors.no_profile"));
     };

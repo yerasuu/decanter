@@ -227,6 +227,28 @@ arguments and prints its output in the terminal):
 | `achievements --product-id …` | Polls achievements without launching |
 | `hook-diagnostics --product-id …` | Lists recorded `Galaxy64.dll` hook failures |
 
+The PS section's commands work on the active profile instead:
+
+| Subcommand | Does |
+|---|---|
+| `ps run --title CUSA… [--timeout SECONDS] [--env PS_NAME=VALUE]…` | Plays a game without the window, as Play does, and records its failures for `ps report` |
+| `ps report [--title CUSA…] [--print]` | Builds an error report from a recorded failure ([docs/error-reports.md](docs/error-reports.md)) |
+
+`ps run` starts the game with the same port, settings and environment as
+Play, writes its whole output to its run log under `<root>/psport/logs/`,
+and appends what failed to the profile's failures, where Fallos and
+`ps report` read them. It only runs what is ready: a port that is not built
+yet, or a PS5 game not converted yet, is reported, never prepared, so it
+downloads and builds nothing; online play stays off whatever the settings
+say. `--timeout` asks the game to stop after that many seconds and kills it
+15 seconds later if it is still running; the run is then a timeout, not a
+crash. `--env` passes up to 32 test variables (`PS_` names, printable ASCII
+values of at most 256 characters; online variables are refused). At the end
+it prints one block: `status` (`clean`, `failure`, `timeout` or `could not
+start`), the failures by kind, and the run log's path inside the library.
+It exits 0 for a clean run, 1 for a crash, `STOP:` or bad exit, or a
+timeout, and 2 when the game could not start.
+
 Language: decanter follows `LC_ALL`, `LC_MESSAGES` or `LANG` (Spanish when
 it starts with `es`, English otherwise) unless one is chosen in
 Ajustes > General. The CLI and everything decanter writes to disk stay in

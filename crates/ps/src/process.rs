@@ -111,6 +111,16 @@ impl Job {
         self.stop_requested = true;
         os::terminate_group(pid, self.kind);
     }
+
+    /// SIGKILL to the whole process group, for a job that outlived the grace after [`Job::stop`].
+    pub fn kill(&mut self) {
+        // 0 is a process that never told its pid, and as a group it would be decanter's own.
+        let State::Running(pid @ 1..) = self.state else {
+            return;
+        };
+        self.stop_requested = true;
+        os::kill_group(pid, self.kind);
+    }
 }
 
 /// Lines as they come, invalid UTF-8 replaced rather than ending the
