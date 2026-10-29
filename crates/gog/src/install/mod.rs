@@ -109,19 +109,14 @@ pub async fn install(
     // whatever it just set so this fresh attempt isn't stillborn.
     cancel_requested().lock().await.remove(&key);
 
-    // The depot API needs a live access token; any authenticated call
-    // through `with_session` refreshes and re-persists one for us.
+    // The depot API needs a live access token, renewed and stored first when it has expired.
     let access_token = crate::achv_try!(
-        crate::with_session(account_id, |client| {
-            crate::achv_try!(
-                client
-                    .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
-            );
-            Ok(client.token.borrow().access_token.clone())
-        })
-        .await
-        .inspect_err(|err| tracing::error!(product_id, error = %err, "gog session refresh failed, aborting install"))
+        crate::session::live_token(account_id)
+            .await
+            .map(|token| token.access_token)
+            .inspect_err(
+                |err| tracing::error!(product_id, error = %err, "gog session refresh failed, aborting install")
+            )
     );
 
     // A DLC's content lives in the base game's build, so that is whose
@@ -479,17 +474,10 @@ pub async fn uninstall_dlc(
     let dlc: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
     let parent_numeric: i64 = crate::achv_try!(parent_id.parse().context("GOG parent product id must be numeric"));
 
-    // Any authenticated call refreshes and re-persists a live token.
     let access_token = crate::achv_try!(
-        crate::with_session(account_id, |client| {
-            crate::achv_try!(
-                client
-                    .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
-            );
-            Ok(client.token.borrow().access_token.clone())
-        })
-        .await
+        crate::session::live_token(account_id)
+            .await
+            .map(|token| token.access_token)
         .inspect_err(|err| tracing::error!(product_id, parent_id, error = %err, "gog session refresh failed, aborting dlc uninstall"))
     );
 

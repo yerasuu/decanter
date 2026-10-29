@@ -1,9 +1,8 @@
 //! Whether an account's stored GOG session still works.
 //!
-//! Asked over the async [`Client`] rather than the blocking `api` module's,
-//! which never looks at HTTP status codes: a 503 page and a revoked token
-//! both reach its callers as "expected value at line 1 column 1". Here they
-//! read apart — a session GOG rejected is [`SessionState::Closed`], one that
+//! Asked over the async [`Client`], which reads HTTP status codes apart from
+//! the body: a 503 page and a revoked token no longer both reach the caller
+//! as "expected value at line 1 column 1". Here they read apart — a session GOG rejected is [`SessionState::Closed`], one that
 //! couldn't be asked about is [`SessionState::Unreachable`] — so only the
 //! first ever asks the user to log in again.
 
@@ -98,6 +97,27 @@ pub(crate) async fn with_client<T>(
     crate::achv_try!(answer.context("no GOG session for this account — log in first"))
 }
 
+/// The session as GOG still accepts it, for the requests decanter sends
+/// itself with its access token (content-system, CDN, cloud storage, remote
+/// config): asking for the user renews an expired access token first and
+/// turns a refused session into an error here rather than at those hosts.
+///
+/// # Errors
+///
+/// As [`with_client`], plus GOG refusing the session or not answering.
+pub(crate) async fn live_token(account_id: &str) -> anyhow::Result<Token> {
+    with_client(account_id, async |client| {
+        crate::achv_try!(
+            client
+                .user()
+                .await
+                .map_err(|err| failed("GOG session is not valid", err))
+        );
+        Ok(client.token().await)
+    })
+    .await
+}
+
 /// [`with_client`] for callers that read GOG's answer themselves; `None` when
 /// no session is stored.
 ///
@@ -105,9 +125,8 @@ pub(crate) async fn with_client<T>(
 /// rotates the refresh token on use, and a renewal can succeed before the
 /// request that then fails, so skipping the store would leave only a spent
 /// refresh token in the keyring. Load, call and store all run under the
-/// account's [`crate::session_lock`], the one the blocking
-/// [`crate::with_session`] takes too, so that no two callers of either kind
-/// start from the same stored refresh token; the [`Client`]'s own renewal lock
+/// account's [`crate::session_lock`], so that no two callers start from the
+/// same stored refresh token; the [`Client`]'s own renewal lock
 /// then covers whatever `call` runs concurrently on it.
 async fn locked<T>(account_id: &str, call: impl AsyncFnOnce(&Client) -> T) -> anyhow::Result<Option<T>> {
     let lock = crate::session_lock(account_id);

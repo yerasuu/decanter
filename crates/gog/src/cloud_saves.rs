@@ -392,13 +392,8 @@ fn classify(
 /// keyed by a game's own client id, not decanter's login client.
 async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     let http = crate::http_client();
-    let (access_token, refresh_token) = match crate::with_session(account_id, |client| {
-        let token = client.token.borrow();
-        Ok((token.access_token.clone(), token.refresh_token.clone()))
-    })
-    .await
-    {
-        Ok(tokens) => tokens,
+    let (access_token, refresh_token) = match crate::session::live_token(account_id).await {
+        Ok(token) => (token.access_token, token.refresh_token),
         Err(err) => return Err(err),
     };
 

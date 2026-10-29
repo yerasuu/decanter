@@ -48,8 +48,8 @@ pub use updates::{Branch, check_all_updates, check_update, list_branches, list_b
 
 /// Propagates a `Result`'s error out of the enclosing `anyhow::Result` fn,
 /// same as `?` — kept as a macro so every call site across this crate's mix
-/// of error types (reqwest, `api`'s error-chain-based errors mapped by
-/// hand, serde_json, rusqlite via decanter-core) reads the same way.
+/// of error types (reqwest, `api::client::Error`, serde_json, rusqlite via
+/// decanter-core) reads the same way.
 #[macro_export]
 macro_rules! achv_try {
     ($expr:expr) => {
@@ -60,22 +60,13 @@ macro_rules! achv_try {
     };
 }
 
-/// `api`'s own requests carry the refresh token or the login code in the URL, and reqwest puts
-/// the URL in its errors; every `api` error goes through this before it is worded or logged.
-pub(crate) fn without_secrets(err: api::Error) -> api::Error {
-    match err {
-        api::Error(api::ErrorKind::Network(network), state) => {
-            api::Error(api::ErrorKind::Network(network.without_url()), state)
-        }
-        other => other,
-    }
-}
-
-/// The client every one-shot API call in this crate goes through.
+/// The client for the one-shot requests this crate sends outside
+/// `api::client`: cloud storage and its per-game token, remote config and
+/// the Steam export's artwork.
 ///
-/// reqwest's own default has no timeout at all, so a response GOG's embed
-/// API or GamesDB stalls on — no error, just silence — hangs the caller
-/// forever instead of failing. `install::download` hit the same failure
+/// reqwest's own default has no timeout at all, so a response one of those
+/// hosts stalls on — no error, just silence — hangs the caller forever
+/// instead of failing. `install::download` hit the same failure
 /// mode against CDN chunk transfers and picked idle-read timeouts instead,
 /// since a chunk can legitimately take a while; every call here is a small
 /// JSON round trip, so one flat timeout on the whole request is enough.
@@ -142,7 +133,7 @@ async fn clear_session(account_id: &str) -> anyhow::Result<()> {
 /// across an `.await`).
 ///
 /// GOG rotates the refresh token on use: whichever of two concurrent
-/// [`with_session`] or `session::with_client` calls for the *same* account
+/// `session::with_client` calls for the *same* account
 /// refreshes first leaves the other holding an already-spent refresh token,
 /// which GOG then reports as
 /// revoked — not a real logout, just two callers racing to renew the same
@@ -158,55 +149,6 @@ fn session_lock(account_id: &str) -> Arc<AsyncMutex<()>> {
             .entry(account_id.to_owned())
             .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
     )
-}
-
-/// The blocking counterpart of `session::with_client`, kept for the flows not
-/// yet on the async client (installs, verify, updates, cloud saves, the Steam
-/// export). Runs `f` against a live, authenticated `api::Gog` client built
-/// from the stored session, then persists whatever `f` leaves in `client.token` —
-/// any authenticated call may have refreshed it, and a caller that skipped
-/// this would silently log itself out one token rotation later. That holds
-/// when `f` fails too: the `api` client refreshes before the request that then
-/// fails, and GOG may have spent the old refresh token by then.
-///
-/// `f` runs inside `spawn_blocking`: `api::Gog` holds its token in a
-/// `RefCell`, so it isn't `Send` across an `.await` the way an async
-/// closure would need.
-async fn with_session<T, F>(account_id: &str, f: F) -> anyhow::Result<T>
-where
-    F: FnOnce(&api::Gog) -> anyhow::Result<T> + Send + 'static,
-    T: Send + 'static,
-{
-    let lock = session_lock(account_id);
-    let _guard = lock.lock().await;
-
-    let stored = read_session(account_id).await?;
-    if stored.is_none() {
-        tracing::debug!(account_id, "no GOG session stored for this account");
-    }
-    let stored = stored.context("no GOG session for this account — log in first")?;
-    let started: api::token::Token = achv_try!(serde_json::from_str(&stored).context("stored GOG session is corrupt"));
-    let (result, token) = achv_try!(
-        tokio::task::spawn_blocking(move || {
-            let client = api::Gog::new(started);
-            let result = f(&client);
-            (result, client.token.into_inner())
-        })
-        .await
-        .context("GOG worker task panicked")
-    );
-
-    let ended = achv_try!(serde_json::to_string(&token).context("serializing the refreshed GOG session"));
-    if ended != stored {
-        write_session(account_id, ended).await?;
-        tracing::debug!(
-            account_id,
-            succeeded = result.is_ok(),
-            "persisted refreshed GOG session"
-        );
-    }
-
-    result
 }
 
 /// Polls GOG, updates the local cache, and returns whichever achievements

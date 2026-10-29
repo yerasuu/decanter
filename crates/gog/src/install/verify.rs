@@ -80,15 +80,9 @@ pub async fn verify(
 
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
     let access_token = crate::achv_try!(
-        crate::with_session(account_id, |client| {
-            crate::achv_try!(
-                client
-                    .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
-            );
-            Ok(client.token.borrow().access_token.clone())
-        })
-        .await
+        crate::session::live_token(account_id)
+            .await
+            .map(|token| token.access_token)
     );
     let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
 
@@ -303,15 +297,9 @@ pub async fn repair(
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
 
     let access_token = crate::achv_try!(
-        crate::with_session(account_id, |client| {
-            crate::achv_try!(
-                client
-                    .get_user_data()
-                    .map_err(|err| anyhow::anyhow!("GOG session is not valid: {}", crate::without_secrets(err)))
-            );
-            Ok(client.token.borrow().access_token.clone())
-        })
-        .await
+        crate::session::live_token(account_id)
+            .await
+            .map(|token| token.access_token)
     );
 
     let mut by_owner: HashMap<&str, Vec<&str>> = HashMap::new();

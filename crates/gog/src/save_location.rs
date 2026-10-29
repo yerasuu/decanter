@@ -165,7 +165,9 @@ pub async fn detect(
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
     let http = crate::http_client();
     let access_token = crate::achv_try!(
-        crate::with_session(account_id, |client| Ok(client.token.borrow().access_token.clone())).await
+        crate::session::live_token(account_id)
+            .await
+            .map(|token| token.access_token)
     );
 
     let build_client = crate::achv_try!(
