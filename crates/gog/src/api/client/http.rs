@@ -146,11 +146,20 @@ impl Client {
     }
 
     /// Replaces the session whose access token was `seen`, unless another caller already did
-    /// while this one waited for the lock.
+    /// while this one waited for the lock. Every renewal goes through here, so this is where a
+    /// renewed session is held to the account it replaces: the session store would otherwise
+    /// file another account's tokens under this account's id.
     async fn renew(&self, seen: &str) -> Result<String, Error> {
         let mut token = self.token.write().await;
         if token.access_token == seen {
-            *token = auth::refresh(&self.http, &token.refresh_token).await?;
+            let renewed = auth::refresh(&self.http, &token.refresh_token).await?;
+            if renewed.user_id != token.user_id {
+                return Err(Error::Rejected {
+                    call: "token refresh",
+                    reason: "renewed session belongs to another account".to_owned(),
+                });
+            }
+            *token = renewed;
         }
         Ok(token.access_token.clone())
     }
