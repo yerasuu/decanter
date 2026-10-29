@@ -609,13 +609,14 @@ async fn download_file(http: &reqwest::Client, token: &GameToken, local_root: &P
         Err(err) => return Err(err),
     };
 
+    let byte_count = decompressed.len();
     let absolute = local_root.join(sanitized);
     if let Some(parent) = absolute.parent() {
         if let Err(err) = tokio::fs::create_dir_all(parent).await {
             return Err(err.into());
         }
     }
-    if let Err(err) = tokio::fs::write(&absolute, &decompressed).await {
+    if let Err(err) = write_atomic(&absolute, decompressed).await {
         return Err(anyhow::Error::new(err).context(format!("writing {}", absolute.display())));
     }
 
@@ -627,9 +628,56 @@ async fn download_file(http: &reqwest::Client, token: &GameToken, local_root: &P
 
     tracing::debug!(
         relative_path = file.relative_path,
-        bytes = decompressed.len(),
+        bytes = byte_count,
         "cloud save downloaded"
     );
+    Ok(())
+}
+
+/// Prefix of the scratch files [`write_atomic`] leaves next to a save; [`scan_dir`] sweeps leftovers.
+const TEMP_PREFIX: &str = ".decanter-tmp-";
+
+/// Replaces `path` with `data` so a crash or power loss leaves either the old
+/// save or the new one, never a truncated file.
+async fn write_atomic(path: &Path, data: Vec<u8>) -> std::io::Result<()> {
+    let path = path.to_owned();
+    match tokio::task::spawn_blocking(move || write_atomic_blocking(&path, &data)).await {
+        Ok(result) => result,
+        Err(err) => Err(std::io::Error::other(err)),
+    }
+}
+
+fn write_atomic_blocking(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let Some(dir) = path.parent() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "save path has no parent",
+        ));
+    };
+    let temp = dir.join(format!("{TEMP_PREFIX}{}", uuid::Uuid::new_v4().simple()));
+    let written = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temp)
+        .and_then(|mut file| {
+            file.write_all(data)?;
+            file.sync_all()
+        })
+        .and_then(|()| fs::rename(&temp, path));
+    if let Err(err) = written {
+        if let Err(cleanup) = fs::remove_file(&temp) {
+            if cleanup.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(path = %temp.display(), error = %cleanup, "couldn't remove cloud save temp file");
+            }
+        }
+        return Err(err);
+    }
+    #[cfg(unix)]
+    if let Err(err) = File::open(dir).and_then(|handle| handle.sync_all()) {
+        tracing::debug!(dir = %dir.display(), error = %err, "couldn't sync save directory");
+    }
     Ok(())
 }
 
@@ -781,6 +829,12 @@ fn scan_dir(root: &Path, dir: &Path, out: &mut Vec<LocalFile>) -> Result<()> {
         if path.is_dir() {
             if let Err(err) = scan_dir(root, &path, out) {
                 return Err(err);
+            }
+            continue;
+        }
+        if entry.file_name().to_string_lossy().starts_with(TEMP_PREFIX) {
+            if let Err(err) = fs::remove_file(&path) {
+                tracing::warn!(path = %path.display(), error = %err, "couldn't sweep leftover cloud save temp file");
             }
             continue;
         }
