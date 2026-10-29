@@ -7,7 +7,7 @@
 use serde::Deserialize;
 
 use super::http::{Call, Client, Host, SESSION_REFUSED};
-use super::{auth, Error};
+use super::{Error, auth};
 
 /// The address is personal data, so a parse error must not quote the body.
 const USER_DATA: Call = Call {
@@ -54,29 +54,21 @@ impl Client {
     /// when GOG cannot be asked or answers something unreadable.
     #[inline]
     pub async fn user(&self) -> Result<User, Error> {
-        self.get(
-            &USER_DATA,
-            Host::Embed,
-            "/userData.json",
-            &[],
-            |data: UserData| {
-                if !data.is_logged_in {
-                    return Err(Error::Rejected {
-                        call: USER_DATA.name,
-                        reason: "not logged in".to_owned(),
-                    });
-                }
-                match (data.user_id, data.username) {
-                    (Some(id), Some(username)) if auth::is_account_id(&id) => {
-                        Ok(User { id, username })
-                    }
-                    _ => Err(Error::Malformed {
-                        call: USER_DATA.name,
-                        reason: "no numeric user id or no username".to_owned(),
-                    }),
-                }
-            },
-        )
+        self.get(&USER_DATA, Host::Embed, "/userData.json", &[], |data: UserData| {
+            if !data.is_logged_in {
+                return Err(Error::Rejected {
+                    call: USER_DATA.name,
+                    reason: "not logged in".to_owned(),
+                });
+            }
+            match (data.user_id, data.username) {
+                (Some(id), Some(username)) if auth::is_account_id(&id) => Ok(User { id, username }),
+                _ => Err(Error::Malformed {
+                    call: USER_DATA.name,
+                    reason: "no numeric user id or no username".to_owned(),
+                }),
+            }
+        })
         .await
     }
 

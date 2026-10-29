@@ -8,8 +8,7 @@ use std::num::NonZeroU32;
 use decanter_core::{Game, InstallState, Storefront};
 
 use super::{Batch, GameKind, LibraryEntry};
-use crate::api;
-use crate::api::client::Client;
+use crate::api::client::{Client, ProductDetails};
 
 /// Every owned product (games, extras, movies, gifts, dev grants alike),
 /// in the order GOG itself reports them added — index 0 is the most
@@ -17,10 +16,7 @@ use crate::api::client::Client;
 ///
 /// Undocumented sort parameter, so a response shape surprise degrades to
 /// an error the caller can shrug off (see `list_games`), not a panic.
-async fn each_product_page(
-    client: &Client,
-    mut on_page: impl AsyncFnMut(Vec<api::gog::ProductDetails>),
-) -> anyhow::Result<()> {
+async fn each_product_page(client: &Client, mut on_page: impl AsyncFnMut(Vec<ProductDetails>)) -> anyhow::Result<()> {
     let mut page = NonZeroU32::MIN;
 
     loop {
@@ -148,7 +144,7 @@ pub async fn list_games(
 ///
 /// This is what pass one emits, and it is already enough to render a game
 /// in the library — title, art and category.
-fn base_entry(id: i64, product: Option<&api::gog::ProductDetails>) -> LibraryEntry {
+fn base_entry(id: i64, product: Option<&ProductDetails>) -> LibraryEntry {
     let kind = match product {
         Some(product) if product.is_movie => GameKind::Movie,
         Some(product) if product.is_game => GameKind::Game,

@@ -7,8 +7,8 @@ use core::num::NonZeroU32;
 
 use serde::Deserialize;
 
-use super::http::{Call, Client, Host, SESSION_REFUSED};
 use super::Error;
+use super::http::{Call, Client, Host, SESSION_REFUSED};
 
 /// Orders carry the buyer's details, so a parse error must not quote the body.
 const ORDERS: Call = Call {

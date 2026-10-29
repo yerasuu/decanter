@@ -19,7 +19,7 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "fs", "sync", "
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 anyhow.workspace = true
-reqwest = { workspace = true, features = ["json", "query", "stream", "charset", "system-proxy", "blocking", "cookies", "form"] }
+reqwest = { workspace = true, features = ["json", "query", "stream", "charset", "system-proxy"] }
 thiserror.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 md5.workspace = true
@@ -31,12 +31,3 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 # Where a native game's save folders are (`save_location::UserFolders::native`).
 dirs.workspace = true
-error-chain.workspace = true
-log.workspace = true
-regex.workspace = true
-select.workspace = true
-
-# The `api` module's `curl` builds against the system's libcurl/OpenSSL by
-# default — these features move the whole build onto a vendored,
-# statically-linked copy of both instead.
-curl = { workspace = true, features = ["static-curl", "static-ssl"] }

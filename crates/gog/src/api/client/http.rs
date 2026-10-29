@@ -5,12 +5,12 @@
 
 use core::time::Duration;
 
-use reqwest::{redirect, RequestBuilder, Response, StatusCode};
+use reqwest::{RequestBuilder, Response, StatusCode, redirect};
 use serde::de::DeserializeOwned;
 use tokio::sync::RwLock;
 
-use super::auth::{self, Token};
 use super::Error;
+use super::auth::{self, Token};
 
 /// Every host this client talks to, so the redirect policy and the URLs come from one list.
 #[derive(Clone, Copy)]
@@ -56,8 +56,7 @@ impl Host {
 }
 
 /// What an authorized call answers when GOG turns the access token down.
-pub(super) const SESSION_REFUSED: &[StatusCode] =
-    &[StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN];
+pub(super) const SESSION_REFUSED: &[StatusCode] = &[StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN];
 
 /// One kind of request: its name in errors, the statuses that mean GOG refused the credentials,
 /// the largest body it may answer with, and whether that body holds credentials, which a parse
@@ -190,10 +189,9 @@ impl Client {
 
 /// A client with no session of its own.
 ///
-/// It serves GOG's public endpoints and the calls that bear an access token their caller borrows
-/// from a session it keeps itself, until that session moves onto [`Client`] (phase 3 of
-/// `docs/own-gog-client-plan.md`). The token is sent as it is: a rejection is the caller's to
-/// renew.
+/// It serves GOG's public endpoints and the content-system calls, which bear an access token the
+/// caller took from a [`Client`] beforehand so that a long install or verify does not hold the
+/// account's session. The token is sent as it is: a rejection is the caller's to renew.
 pub struct Sessionless {
     http: reqwest::Client,
 }
@@ -204,9 +202,7 @@ impl Sessionless {
     /// [`Error::Setup`] when the HTTP client cannot be built.
     #[inline]
     pub fn new() -> Result<Self, Error> {
-        Ok(Self {
-            http: http_client()?,
-        })
+        Ok(Self { http: http_client()? })
     }
 
     /// Sends a GET to `host` and reads its 2xx body as `T`.
@@ -292,10 +288,7 @@ where
 
 /// Sends `request` and keeps the answer when its status is a success.
 async fn receive(request: RequestBuilder, call: &Call) -> Result<Response, Error> {
-    let response = request
-        .send()
-        .await
-        .map_err(|err| Error::network(call.name, err))?;
+    let response = request.send().await.map_err(|err| Error::network(call.name, err))?;
     let status = response.status();
     if call.refused.contains(&status) {
         return Err(Error::Rejected {
@@ -325,11 +318,7 @@ async fn read(mut response: Response, call: &Call) -> Result<Vec<u8>, Error> {
         return Err(too_large());
     }
     let mut body = Vec::with_capacity(declared.unwrap_or_default());
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|err| Error::network(call.name, err))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|err| Error::network(call.name, err))? {
         if body.len().saturating_add(chunk.len()) > call.max_body {
             return Err(too_large());
         }
@@ -346,11 +335,7 @@ where
     serde_json::from_slice(body).map_err(|err| Error::Malformed {
         call: call.name,
         reason: if call.has_secrets {
-            format!(
-                "not the expected JSON at line {}, column {}",
-                err.line(),
-                err.column()
-            )
+            format!("not the expected JSON at line {}, column {}", err.line(), err.column())
         } else {
             err.to_string()
         },

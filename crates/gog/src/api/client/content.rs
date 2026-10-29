@@ -13,11 +13,11 @@ use std::io::Read as _;
 
 use decanter_core::GameSystem;
 use flate2::read::ZlibDecoder;
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
-use super::http::{self, Call, Host, Sessionless, SESSION_REFUSED};
 use super::Error;
+use super::http::{self, Call, Host, SESSION_REFUSED, Sessionless};
 
 const BUILDS: Call = Call {
     name: "content-system builds",
@@ -216,12 +216,7 @@ impl Sessionless {
     /// refuses `access_token`, which this client does not renew; the others when GOG cannot be
     /// asked or answers something unreadable.
     #[inline]
-    pub async fn builds(
-        &self,
-        access_token: &str,
-        game_id: i64,
-        system: GameSystem,
-    ) -> Result<Vec<Build>, Error> {
+    pub async fn builds(&self, access_token: &str, game_id: i64, system: GameSystem) -> Result<Vec<Build>, Error> {
         if game_id <= 0 {
             return Err(Error::InvalidInput { what: "product id" });
         }
@@ -267,23 +262,17 @@ impl Sessionless {
     pub async fn depot_files(&self, manifest: &str) -> Result<Vec<DepotFile>, Error> {
         let is_manifest_id = !manifest.is_empty()
             && manifest.len() <= MAX_MANIFEST_ID_LEN
-            && manifest
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() || byte == b'/');
+            && manifest.bytes().all(|byte| byte.is_ascii_hexdigit() || byte == b'/');
         if !is_manifest_id {
             return Err(Error::InvalidInput {
                 what: "depot manifest id",
             });
         }
-        let url = Host::Cdn.url(&format!(
-            "/content-system/v2/meta/{}",
-            galaxy_path(manifest)
-        ));
+        let url = Host::Cdn.url(&format!("/content-system/v2/meta/{}", galaxy_path(manifest)));
         let compressed = self
             .get_bytes(&DEPOT_MANIFEST, &url, Host::Cdn.name(), &[], None)
             .await?;
-        let root: DepotManifestRoot =
-            inflated(&DEPOT_MANIFEST, &compressed, DEPOT_MANIFEST_INFLATED)?;
+        let root: DepotManifestRoot = inflated(&DEPOT_MANIFEST, &compressed, DEPOT_MANIFEST_INFLATED)?;
         Ok(root
             .depot
             .items
@@ -326,13 +315,7 @@ impl Sessionless {
             "/products/{product_id}/secure_link?_version=2&generation=2&path={path}"
         ));
         let body = self
-            .get_bytes(
-                &SECURE_LINK,
-                &url,
-                Host::ContentSystem.name(),
-                &[],
-                Some(access_token),
-            )
+            .get_bytes(&SECURE_LINK, &url, Host::ContentSystem.name(), &[], Some(access_token))
             .await?;
         let answer: SecureLinkAnswer = http::parse(&SECURE_LINK, &body)?;
         Ok(answer.urls)

@@ -6,7 +6,7 @@
 use serde::Deserialize;
 
 use super::http::{Call, Client, Host, SESSION_REFUSED};
-use super::{auth, Error};
+use super::{Error, auth};
 
 const ACHIEVEMENTS: Call = Call {
     name: "achievements",
@@ -52,13 +52,9 @@ impl Client {
             });
         }
         let path = format!("/clients/{product_id}/users/{user_id}/achievements");
-        self.get(
-            &ACHIEVEMENTS,
-            Host::Gameplay,
-            &path,
-            &[],
-            |list: AchievementList| Ok(list.items),
-        )
+        self.get(&ACHIEVEMENTS, Host::Gameplay, &path, &[], |list: AchievementList| {
+            Ok(list.items)
+        })
         .await
     }
 }

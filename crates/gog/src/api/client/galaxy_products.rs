@@ -15,8 +15,8 @@
 
 use serde::{Deserialize, Deserializer};
 
-use super::http::{Call, Host, Sessionless};
 use super::Error;
+use super::http::{Call, Host, Sessionless};
 
 /// How many products one request may ask for. The endpoint takes a list; asking one at a time
 /// turned a few hundred entries into a few hundred round trips.
@@ -125,12 +125,8 @@ impl Sessionless {
             return Ok(Vec::new());
         }
         let joined = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
-        let query = [
-            ("ids", joined.as_str()),
-            ("expand", "description,expanded_dlcs"),
-        ];
-        self.get(&PRODUCTS, Host::Api, "/products", &query, None)
-            .await
+        let query = [("ids", joined.as_str()), ("expand", "description,expanded_dlcs")];
+        self.get(&PRODUCTS, Host::Api, "/products", &query, None).await
     }
 }
 

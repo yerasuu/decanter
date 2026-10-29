@@ -4,8 +4,8 @@
 
 use serde::Deserialize;
 
-use super::http::{Call, Host, Sessionless};
 use super::Error;
+use super::http::{Call, Host, Sessionless};
 
 const MODS: Call = Call {
     name: "mods catalog",
@@ -73,9 +73,7 @@ impl Sessionless {
             ("order", "asc:title"),
             ("limit", limit_text.as_str()),
         ];
-        let page: Page = self
-            .get(&MODS, Host::Catalog, "/v1/catalog", &query, None)
-            .await?;
+        let page: Page = self.get(&MODS, Host::Catalog, "/v1/catalog", &query, None).await?;
         Ok(CatalogMods {
             listed: page.products.len(),
             products: page.products.into_iter().filter_map(product).collect(),

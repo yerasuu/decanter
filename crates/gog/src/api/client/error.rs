@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! What a call to GOG can end in, split the way `decanter-gog`'s session check reads its answers:
-//! only [`Error::Rejected`] means the user has to log in again. The blocking client reports a 503
-//! page and a revoked token alike as a JSON parse error, which is what this type exists to undo.
+//! only [`Error::Rejected`] means the user has to log in again. gog 0.5.0's blocking client, which
+//! this one replaced, reported a 503 page and a revoked token alike as a JSON parse error.
 
 /// A failed call to GOG.
 ///

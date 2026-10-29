@@ -17,9 +17,6 @@ use anyhow::Context;
 use decanter_core::{CachedAchievement, Db, Storefront};
 use tokio::sync::Mutex as AsyncMutex;
 
-// Upstream style, kept as published (see api/VENDOR.md): the workspace's clippy groups are not applied to it.
-#[allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
-#[rustfmt::skip]
 pub mod api;
 mod auth;
 pub mod cloud_saves;

@@ -7,9 +7,8 @@ use core::num::NonZeroU32;
 
 use serde::Deserialize;
 
-use super::http::{Call, Client, Host, SESSION_REFUSED};
 use super::Error;
-use crate::api::gog::ProductDetails;
+use super::http::{Call, Client, Host, SESSION_REFUSED};
 
 const FILTERED_PRODUCTS: Call = Call {
     name: "filtered products",
@@ -17,6 +16,19 @@ const FILTERED_PRODUCTS: Call = Call {
     max_body: 4 << 20,
     has_secrets: false,
 };
+
+/// One product of a [`ProductsPage`], with only the fields decanter reads.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct ProductDetails {
+    pub id: i64,
+    pub title: String,
+    /// GOG's image URL without its size suffix and extension.
+    pub image: String,
+    pub is_game: bool,
+    pub is_movie: bool,
+}
 
 /// One page of [`Client::filtered_products`].
 #[derive(Deserialize)]

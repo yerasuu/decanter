@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! GOG's GamesDB API: public, unauthenticated, and the same catalog data Heroic uses. Not the
-//! blocking client's `get_game_details`: that one hits `embed.gog.com/account/...` and rate limits
+//! GOG's GamesDB API: public, unauthenticated, and the same catalog data Heroic uses. Not gog
+//! 0.5.0's `get_game_details`, which hits `embed.gog.com/account/...` and rate limits
 //! hard under the one-call-per-owned-game pattern a full library listing needs.
 
 use serde::Deserialize;
 
-use super::http::{Call, Host, Sessionless};
 use super::Error;
+use super::http::{Call, Host, Sessionless};
 
 const RELEASE: Call = Call {
     name: "GamesDB release",
@@ -86,10 +86,7 @@ impl Image {
     #[inline]
     #[must_use]
     pub fn resolve(&self) -> String {
-        let resolved = self
-            .url_format
-            .replace("{formatter}", "")
-            .replace("{ext}", "jpg");
+        let resolved = self.url_format.replace("{formatter}", "").replace("{ext}", "jpg");
         match resolved.strip_prefix("//") {
             Some(base) => format!("https://{base}"),
             None => resolved,

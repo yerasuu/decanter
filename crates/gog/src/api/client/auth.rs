@@ -8,8 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use super::http::{self, Call, Host};
 use super::Error;
+use super::http::{self, Call, Host};
 
 /// GOG Galaxy's public client id, used by every third-party GOG client since GOG has no
 /// per-application registration for this flow.
@@ -25,11 +25,7 @@ pub const REDIRECT_URI: &str = "https://embed.gog.com/on_login_success?origin=cl
 const TOKEN_PATH: &str = "/token";
 
 /// GOG answers a spent or revoked refresh token, or a used login code, with a 400.
-const TOKEN_REFUSED: &[StatusCode] = &[
-    StatusCode::BAD_REQUEST,
-    StatusCode::UNAUTHORIZED,
-    StatusCode::FORBIDDEN,
-];
+const TOKEN_REFUSED: &[StatusCode] = &[StatusCode::BAD_REQUEST, StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN];
 
 const EXCHANGE: Call = Call {
     name: "login code exchange",
@@ -51,8 +47,8 @@ const MAX_CODE_LEN: usize = 2048;
 /// A session as `auth.gog.com/token` returns it, plus when it was received.
 ///
 /// Its JSON is what decanter stores in the OS keyring, so field names, order and the
-/// `updated_at` default are those of the blocking client's `token::Token`: a stored session
-/// reads into either type and both write it back byte for byte the same.
+/// `updated_at` default are those of gog 0.5.0's `token::Token`, which wrote the sessions stored
+/// before this client: they read as they are, and nobody is logged out.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Token {
     /// Seconds from `updated_at` until the access token expires.
