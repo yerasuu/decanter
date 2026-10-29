@@ -1,10 +1,10 @@
 raven.experimental: Experimental
-raven.description: 'Raven es un runtime de Windows para Linux en una fase temprana (useraven.org). decanter lo construye en tu biblioteca a partir de un commit fijado y lo usa para los programas de Windows que añadas aquí. Muchos programas aún no arrancan: de momento sirve para probarlo.'
+raven.description: 'Raven es un runtime de Windows para Linux en una fase temprana (useraven.org). decanter lo construye en tu biblioteca a partir de un commit fijado, o del commit más reciente de su rama si se lo pides, y lo usa para los programas de Windows que añadas aquí. Muchos programas aún no arrancan: de momento sirve para probarlo.'
 raven.license: Raven es software libre (GPL-3.0 o posterior). No viene con decanter; su código se descarga de GitHub al construirlo.
 raven.build.title: Construcción
 raven.build.absent: Raven no está construido.
-raven.build.built: 'Construido en el commit %{commit} · %{size}'
-raven.build.built_measuring: 'Construido en el commit %{commit}'
+raven.build.built: 'Se ejecuta en el commit %{commit} · %{size}'
+raven.build.built_measuring: 'Se ejecuta en el commit %{commit}'
 raven.build.build: Construir…
 raven.build.remove: Eliminar
 raven.build.removing: Eliminando Raven…
@@ -26,8 +26,8 @@ raven.confirm.text: 'decanter descargará de GitHub el código de Raven en este 
 raven.confirm.yes: Descargar y construir
 raven.confirm.no: Cancelar
 raven.confirm_remove.title: ¿Eliminar Raven?
-raven.confirm_remove.body_size: 'La compilación de Raven y su toolchain se eliminarán de tu biblioteca y liberarán %{size}. Tus programas de Windows siguen en la lista; compilar Raven de nuevo lo descarga todo otra vez.'
-raven.confirm_remove.body: 'La compilación de Raven y su toolchain se eliminarán de tu biblioteca. Tus programas de Windows siguen en la lista; compilar Raven de nuevo lo descarga todo otra vez.'
+raven.confirm_remove.body_size: 'Las compilaciones de Raven y su toolchain se eliminarán de tu biblioteca y liberarán %{size}. Tus programas de Windows siguen en la lista; compilar Raven de nuevo lo descarga todo otra vez.'
+raven.confirm_remove.body: 'Las compilaciones de Raven y su toolchain se eliminarán de tu biblioteca. Tus programas de Windows siguen en la lista; compilar Raven de nuevo lo descarga todo otra vez.'
 raven.confirm_remove.confirm: Eliminar Raven
 raven.programs.title: Programas de Windows
 raven.programs.add: Añadir…
@@ -50,3 +50,22 @@ raven.errors.remove: 'No se ha podido quitar: %{error}'
 raven.errors.remove_running: Detén antes los programas de Raven.
 raven.errors.remove_build: 'No se ha podido eliminar Raven: %{error}'
 raven.errors.not_pinned: Esta versión de decanter no tiene un commit de Raven fijado.
+raven.build.building: 'Construyendo el commit %{commit}: %{stage}'
+raven.build.build_pinned: Construir el commit fijado…
+raven.build.use_pinned: Volver al commit fijado
+raven.update.check: Buscar actualizaciones
+raven.update.checking: Buscando…
+raven.update.newer: 'Commit más reciente de %{branch}: %{commit} (%{repo})'
+raven.update.up_to_date: 'Raven se ejecuta en el commit más reciente de %{branch} (%{commit}).'
+raven.update.check_error: 'No se ha podido consultar el repositorio de Raven: %{error}'
+raven.update.build: Construir %{commit}…
+raven.confirm.unpinned: 'Este commit no es el que fija decanter y no se ha probado con él: puede que no compile o que funcione peor. Puedes volver al commit fijado cuando quieras.'
+raven.builds.title: Otras compilaciones
+raven.builds.pinned: Fijado por decanter
+raven.builds.unpinned: Más reciente que el fijado, construido desde la rama
+raven.builds.use: Usar
+raven.builds.delete: Eliminar
+raven.confirm_delete.title: ¿Eliminar esta compilación?
+raven.confirm_delete.body: 'La compilación del commit %{commit} se eliminará de tu biblioteca. Construir ese commit de nuevo lo compila desde cero.'
+raven.confirm_delete.confirm: Eliminar la compilación %{commit}
+raven.errors.use: 'No se ha podido cambiar a esa compilación: %{error}'

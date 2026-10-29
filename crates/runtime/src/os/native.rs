@@ -22,11 +22,12 @@ use std::process::{ExitStatus, Stdio};
 use std::time::SystemTime;
 
 use anyhow::{Context as _, bail};
-use decanter_core::runner::{Installed, Pin, Progress, Status};
+use decanter_core::runner::{Commit, Installed, Pin, Progress, Status};
 use tokio::process::Child;
 use tokio::time::sleep;
 
 use super::platform as os;
+use crate::runner::RavenHead;
 use crate::session::{killed_lock, live_lock};
 use crate::{Launch, Prefix, Prepared, Session, is_live};
 pub(crate) use os::Tracked;
@@ -305,6 +306,20 @@ pub(crate) async fn raven_remove(_: &Pin) -> io::Result<()> {
 pub(crate) const fn raven_log_path(_: &Pin) -> Option<PathBuf> {
     None
 }
+
+pub(crate) async fn raven_head() -> anyhow::Result<RavenHead> {
+    bail!("Raven runs only on Linux")
+}
+
+pub(crate) const fn raven_in_use() -> Option<Commit> {
+    None
+}
+
+pub(crate) async fn raven_use(_: &Commit) -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "Raven runs only on Linux"))
+}
+
+pub(crate) async fn raven_prune() {}
 
 pub(crate) async fn raven_launch(_: Launch) -> anyhow::Result<Launch> {
     bail!("Raven runs only on Linux")

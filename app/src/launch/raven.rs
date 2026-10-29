@@ -20,7 +20,11 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
     let facts = vec![
         ("program", game.name.clone()),
         ("program_id", game.game_id.clone()),
-        ("runtime", format!("Raven {}", decanter_runtime::runner::RAVEN_COMMIT)),
+        (
+            "runtime",
+            decanter_runtime::runner::raven_in_use()
+                .map_or_else(|| "Raven".to_owned(), |commit| format!("Raven {commit}")),
+        ),
         ("prefix", prefix.path().display().to_string()),
     ];
     launch.prefix = Some(prefix);

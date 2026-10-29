@@ -44,6 +44,53 @@ pub fn raven_pin() -> Option<Pin> {
     Commit::try_new(RAVEN_COMMIT).map(Pin::Commit)
 }
 
+/// The default branch of Raven's repository and its newest commit, as the remote listed them and
+/// checked to be a branch name and a full commit id.
+#[derive(Clone, Debug)]
+pub struct RavenHead {
+    pub branch: String,
+    pub commit: Commit,
+}
+
+/// Asks Raven's repository for its default branch's newest commit. Network, so only on the
+/// owner's request.
+///
+/// # Errors
+///
+/// Fails if this system has no Raven, git cannot be run, the remote does not answer in time, or
+/// its answer names no usable branch or commit.
+#[inline]
+pub async fn raven_head() -> anyhow::Result<RavenHead> {
+    os::raven_head().await
+}
+
+/// The commit Raven runs at: the one chosen with [`raven_use`] while its build is there, else
+/// [`RAVEN_COMMIT`]. `None` where there is no Raven.
+#[must_use]
+#[inline]
+pub fn raven_in_use() -> Option<Commit> {
+    os::raven_in_use()
+}
+
+/// Makes `commit`'s build the one Raven runs at from the next launch; [`RAVEN_COMMIT`] goes back
+/// to the pin.
+///
+/// # Errors
+///
+/// Fails if this system has no Raven, `commit` is not [`RAVEN_COMMIT`] and is not built, or the
+/// choice cannot be written.
+#[inline]
+pub async fn raven_use(commit: &Commit) -> io::Result<()> {
+    os::raven_use(commit).await
+}
+
+/// Removes the builds of every commit but [`RAVEN_COMMIT`] and the one in use, as a new build
+/// replaces the one before it. Best effort, said in the log.
+#[inline]
+pub async fn raven_prune() {
+    os::raven_prune().await;
+}
+
 #[must_use]
 #[inline]
 pub const fn support(runner: Runner) -> Support {
@@ -73,8 +120,8 @@ pub fn status(runner: Runner) -> Status {
 ///
 /// # Errors
 ///
-/// Fails if this system cannot get the runner, `pin` is not the one decanter
-/// pins, or the confirmation cannot be written.
+/// Fails if this system cannot get the runner, `pin` is not a commit, or the
+/// confirmation cannot be written.
 #[inline]
 pub async fn confirm(runner: Runner, pin: &Pin) -> io::Result<()> {
     match runner {
@@ -119,8 +166,8 @@ pub async fn update(runner: Runner, on_progress: &mut dyn FnMut(Progress)) -> an
     }
 }
 
-/// Removes `pin`; one that is not there is already removed. Raven goes as a
-/// whole: its build, its toolchain, its build log and the confirmation.
+/// Removes `pin`; one that is not there is already removed. With Raven's last
+/// build go its toolchain, its build log, the confirmation and the choice.
 ///
 /// # Errors
 ///

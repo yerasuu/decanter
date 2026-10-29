@@ -24,7 +24,8 @@ use prefix::SESSION_ENV;
 pub(crate) use prefix::{live_prefixes, prefix_processes, processes_by_prefix, stop_prefix};
 pub(crate) use proton::{proton_status, steam_compat_dir};
 pub(crate) use raven::{
-    raven_confirm, raven_launch, raven_log_path, raven_prepare, raven_remove, raven_status, raven_update,
+    raven_confirm, raven_head, raven_in_use, raven_launch, raven_log_path, raven_prepare, raven_prune, raven_remove,
+    raven_status, raven_update, raven_use,
 };
 pub(crate) use umu::{umu_on_path, umu_prepare, umu_remove, umu_status, umu_update};
 

@@ -1,10 +1,10 @@
 raven.experimental: Experimental
-raven.description: 'Raven is an early-stage Windows runtime for Linux (useraven.org). decanter builds it in your library from a pinned commit and uses it for the Windows programs you add here. Many programs do not start yet: for now it is here to try it out.'
+raven.description: 'Raven is an early-stage Windows runtime for Linux (useraven.org). decanter builds it in your library from a pinned commit, or from the newest commit of its branch when you ask for it, and uses it for the Windows programs you add here. Many programs do not start yet: for now it is here to try it out.'
 raven.license: Raven is free software (GPL-3.0 or later). It does not ship with decanter; its code is downloaded from GitHub when it is built.
 raven.build.title: Build
 raven.build.absent: Raven is not built.
-raven.build.built: 'Built at commit %{commit} · %{size}'
-raven.build.built_measuring: 'Built at commit %{commit}'
+raven.build.built: 'Runs at commit %{commit} · %{size}'
+raven.build.built_measuring: 'Runs at commit %{commit}'
 raven.build.build: Build…
 raven.build.remove: Remove
 raven.build.removing: Removing Raven…
@@ -26,8 +26,8 @@ raven.confirm.text: 'decanter will download Raven''s code at this commit from Gi
 raven.confirm.yes: Download and build
 raven.confirm.no: Cancel
 raven.confirm_remove.title: Remove Raven?
-raven.confirm_remove.body_size: 'Raven''s build and its toolchain will be removed from your library, freeing %{size}. Your Windows programs stay in the list; building Raven again downloads everything again.'
-raven.confirm_remove.body: 'Raven''s build and its toolchain will be removed from your library. Your Windows programs stay in the list; building Raven again downloads everything again.'
+raven.confirm_remove.body_size: 'Raven''s builds and its toolchain will be removed from your library, freeing %{size}. Your Windows programs stay in the list; building Raven again downloads everything again.'
+raven.confirm_remove.body: 'Raven''s builds and its toolchain will be removed from your library. Your Windows programs stay in the list; building Raven again downloads everything again.'
 raven.confirm_remove.confirm: Remove Raven
 raven.programs.title: Windows programs
 raven.programs.add: Add…
@@ -50,3 +50,22 @@ raven.errors.remove: 'Could not remove it: %{error}'
 raven.errors.remove_running: Stop Raven's programs first.
 raven.errors.remove_build: 'Could not remove Raven: %{error}'
 raven.errors.not_pinned: This version of decanter has no pinned Raven commit.
+raven.build.building: 'Building commit %{commit}: %{stage}'
+raven.build.build_pinned: Build the pinned commit…
+raven.build.use_pinned: Back to the pinned commit
+raven.update.check: Check for updates
+raven.update.checking: Checking…
+raven.update.newer: 'Newest commit of %{branch}: %{commit} (%{repo})'
+raven.update.up_to_date: 'Raven runs the newest commit of %{branch} (%{commit}).'
+raven.update.check_error: 'Could not ask Raven''s repository: %{error}'
+raven.update.build: Build %{commit}…
+raven.confirm.unpinned: 'This commit is not the one decanter pins and was not tried with it: it may not build or may run worse. You can go back to the pinned commit at any time.'
+raven.builds.title: Other builds
+raven.builds.pinned: Pinned by decanter
+raven.builds.unpinned: Newer than the pin, built from the branch
+raven.builds.use: Use
+raven.builds.delete: Delete
+raven.confirm_delete.title: Delete this build?
+raven.confirm_delete.body: 'The build of commit %{commit} will be removed from your library. Building that commit again compiles it from scratch.'
+raven.confirm_delete.confirm: Delete build %{commit}
+raven.errors.use: 'Could not switch to that build: %{error}'

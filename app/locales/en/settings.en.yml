@@ -18,7 +18,7 @@ settings.general.steam.add: Add every installed game to Steam's own library, wit
 settings.general.steam.restart_hint: Steam has to be restarted to show the changes — it only reads its shortcuts at startup.
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Show the Raven section
-settings.general.raven.hint: 'Raven is an early-stage Windows runtime. With the section on you can build it in your library and try Windows programs with it; nothing is downloaded until you press Build in the section.'
+settings.general.raven.hint: 'Raven is an early-stage Windows runtime. With the section on you can build it in your library and try Windows programs with it; nothing is downloaded and GitHub is not contacted until you press Build or Check for updates in the section.'
 settings.general.steam.pending: Some games exported to Steam are waiting for it to restart — Steam was open when they were added, so they're held back until then to keep its in-memory copy from overwriting them.
 settings.general.steam.restarting: Restarting Steam...
 settings.general.steam.restart_now: Restart Steam now

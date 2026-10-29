@@ -18,7 +18,7 @@ settings.general.steam.add: Añadir cada juego instalado a la biblioteca real de
 settings.general.steam.restart_hint: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Mostrar la sección Raven
-settings.general.raven.hint: 'Raven es un runtime de Windows en fase temprana. Con la sección activada puedes construirlo en tu biblioteca y probar con él programas de Windows; no se descarga nada hasta que pulses Construir en la sección.'
+settings.general.raven.hint: 'Raven es un runtime de Windows en fase temprana. Con la sección activada puedes construirlo en tu biblioteca y probar con él programas de Windows; no se descarga nada ni se consulta GitHub hasta que pulses Construir o Buscar actualizaciones en la sección.'
 settings.general.steam.pending: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se añadieron, así que su propia copia en memoria todavía no los ha sobrescrito.
 settings.general.steam.restarting: Reiniciando Steam...
 settings.general.steam.restart_now: Reiniciar Steam ahora

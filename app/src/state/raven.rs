@@ -1,5 +1,7 @@
-//! The Raven section's state (decision #1069): Raven's build in the active library, built only
-//! when the player confirms it, and the Windows programs of the active profile that run with it.
+//! The Raven section's state (decision #1069): Raven's builds in the active library, each built
+//! only when the player confirms it, at the pinned commit or at the newest commit of Raven's branch
+//! once a check asked for it (#1238), which one runs, and the Windows programs of the active profile
+//! that run with it.
 //!
 //! Created the first time the section opens or a file is dropped on it, and kept after that, so a
 //! build outlives switching to another section. Cancelling a build is dropping its task: the
@@ -10,7 +12,7 @@ use std::path::PathBuf;
 use decanter_core::InstalledGame;
 use decanter_core::runner::{Commit, Pin, Progress, Runner, Stage};
 use decanter_ps::paths;
-use decanter_runtime::runner;
+use decanter_runtime::runner::{self, RavenHead};
 use futures::StreamExt as _;
 use futures::channel::mpsc;
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, Global, Task, WeakEntity};
@@ -31,13 +33,20 @@ pub struct Built {
 pub struct Raven {
     profile_id: Option<String>,
     programs: Vec<InstalledGame>,
-    built: Option<Built>,
-    /// The confirmation the section asks for before a build.
-    confirming: bool,
-    /// The confirmation the section asks for before removing the build.
+    built: Vec<Built>,
+    /// The commit Raven runs at, which may not be built.
+    in_use: Option<Commit>,
+    /// The branch's newest commit, from the last check.
+    head: Option<Result<RavenHead, Text>>,
+    checking: bool,
+    /// The commit whose build the section asks the confirmation for.
+    confirming: Option<Commit>,
+    /// The confirmation the section asks for before removing Raven.
     confirming_remove: bool,
+    /// The build whose delete waits for the confirmation.
+    confirming_delete: Option<Commit>,
     /// The build running, which dropping stops.
-    building: Option<Task<()>>,
+    building: Option<(Commit, Task<()>)>,
     progress: Option<Progress>,
     removing: bool,
     error: Option<Text>,
@@ -63,9 +72,13 @@ impl Raven {
             let mut this = Self {
                 profile_id: None,
                 programs: Vec::new(),
-                built: None,
-                confirming: false,
+                built: Vec::new(),
+                in_use: None,
+                head: None,
+                checking: false,
+                confirming: None,
                 confirming_remove: false,
+                confirming_delete: None,
                 building: None,
                 progress: None,
                 removing: false,
@@ -89,16 +102,47 @@ impl Raven {
         self.profile_id.as_ref()
     }
 
-    pub const fn built(&self) -> Option<&Built> {
-        self.built.as_ref()
+    pub fn built(&self) -> &[Built] {
+        &self.built
     }
 
-    pub const fn is_confirming(&self) -> bool {
-        self.confirming
+    pub const fn in_use(&self) -> Option<&Commit> {
+        self.in_use.as_ref()
+    }
+
+    /// The build Raven runs, when it is there.
+    pub fn in_use_built(&self) -> Option<&Built> {
+        self.built
+            .iter()
+            .find(|built| Some(&built.commit) == self.in_use.as_ref())
+    }
+
+    pub fn is_built(&self, commit: &Commit) -> bool {
+        self.built.iter().any(|built| &built.commit == commit)
+    }
+
+    pub const fn head(&self) -> Option<&Result<RavenHead, Text>> {
+        self.head.as_ref()
+    }
+
+    pub const fn is_checking(&self) -> bool {
+        self.checking
+    }
+
+    pub const fn confirming(&self) -> Option<&Commit> {
+        self.confirming.as_ref()
     }
 
     pub const fn is_confirming_remove(&self) -> bool {
         self.confirming_remove
+    }
+
+    pub const fn confirming_delete(&self) -> Option<&Commit> {
+        self.confirming_delete.as_ref()
+    }
+
+    pub fn building(&self) -> Option<&Commit> {
+        self.building.as_ref().map(|(commit, _)| commit)
     }
 
     pub const fn is_building(&self) -> bool {
@@ -125,7 +169,7 @@ impl Raven {
         self.notice.as_ref()
     }
 
-    /// The build log of the pinned commit, where there is a library to keep it in.
+    /// The build log, one for every commit, where there is a library to keep it in.
     pub fn log_path() -> Option<PathBuf> {
         runner::raven_pin().and_then(|pin| runners::log_path(&paths::active(), Runner::Raven, &pin))
     }
@@ -161,24 +205,53 @@ impl Raven {
         cx.spawn(async move |this, cx| reload(&this, cx).await).detach();
     }
 
-    /// The section's Compilar: the confirmation comes first, every time, since it says what the
-    /// build downloads and takes.
-    pub fn ask_build(&mut self, cx: &mut Context<Self>) {
+    /// Asks Raven's repository for its branch's newest commit; only when the player presses the
+    /// section's check, never on its own.
+    pub fn check(&mut self, cx: &mut Context<Self>) {
+        if self.checking {
+            return;
+        }
+        self.checking = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let head = runner::raven_head().await.map_err(|err| {
+                tracing::warn!(error = %format_args!("{err:#}"), "could not ask Raven's repository for its branch");
+                Text::new("raven.update.check_error").arg("error", format!("{err:#}"))
+            });
+            if let Ok(head) = &head {
+                tracing::info!(branch = %head.branch, commit = %head.commit, "Raven's branch checked");
+            }
+            let _ = this.update(cx, |this, cx| {
+                this.checking = false;
+                this.head = Some(head);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The section's Compilar for `commit`: the confirmation comes first, every time, since it
+    /// says what the build downloads and takes.
+    pub fn ask_build(&mut self, commit: &Commit, cx: &mut Context<Self>) {
         if self.building.is_none() && !self.removing {
-            self.confirming = true;
+            self.confirming = Some(commit.clone());
+            self.confirming_remove = false;
+            self.confirming_delete = None;
             self.error = None;
             cx.notify();
         }
     }
 
     pub fn cancel_confirm(&mut self, cx: &mut Context<Self>) {
-        self.confirming = false;
+        self.confirming = None;
         cx.notify();
     }
 
     pub fn ask_remove(&mut self, cx: &mut Context<Self>) {
         if self.building.is_none() && !self.removing {
             self.confirming_remove = true;
+            self.confirming = None;
+            self.confirming_delete = None;
             self.error = None;
             cx.notify();
         }
@@ -191,24 +264,27 @@ impl Raven {
 
     /// The player's yes, recorded before the build starts.
     pub fn confirm_build(&mut self, cx: &mut Context<Self>) {
-        if !std::mem::take(&mut self.confirming) || self.building.is_some() {
-            return;
-        }
-        let Some(pin) = runner::raven_pin() else {
-            self.error = Some(Text::new("raven.errors.not_pinned"));
-            cx.notify();
+        let Some(commit) = self.confirming.take() else {
             return;
         };
+        if self.building.is_some() || self.removing {
+            cx.notify();
+            return;
+        }
         self.progress = None;
         self.error = None;
         self.log_tail.clear();
-        self.building = Some(cx.spawn(async move |this, cx| build(&this, &pin, cx).await));
+        let task = cx.spawn({
+            let commit = commit.clone();
+            async move |this, cx| build(&this, &commit, cx).await
+        });
+        self.building = Some((commit, task));
         cx.notify();
     }
 
     /// Stops the build: its task goes, and with it the build's tools and its folder.
     pub fn stop_build(&mut self, cx: &mut Context<Self>) {
-        if let Some(task) = self.building.take() {
+        if let Some((_, task)) = self.building.take() {
             tracing::info!("Raven build stopped by the player");
             drop(task);
             self.progress = None;
@@ -218,18 +294,70 @@ impl Raven {
         }
     }
 
-    /// Removes Raven's build and toolchain, never while a program runs or a build runs.
+    /// Removes every build of Raven and, with the last, its toolchain; never while a program runs
+    /// or a build runs.
     pub fn remove_build(&mut self, cx: &mut Context<Self>) {
         self.confirming_remove = false;
+        // The build in use goes last, so a removal cut short leaves Raven runnable.
+        let mut commits: Vec<Commit> = self.built.iter().map(|built| built.commit.clone()).collect();
+        commits.sort_by_key(|commit| Some(commit) == self.in_use.as_ref());
+        self.remove(commits, cx);
+    }
+
+    /// Makes `commit`'s build the one Raven runs from the next launch on.
+    pub fn use_build(&mut self, commit: &Commit, cx: &mut Context<Self>) {
+        if self.building.is_some() || self.removing {
+            return;
+        }
+        let commit = commit.clone();
+        cx.spawn(async move |this, cx| {
+            let chosen = runner::raven_use(&commit).await;
+            if let Err(err) = &chosen {
+                tracing::warn!(%commit, %err, "could not choose the Raven build to run");
+            }
+            let _ = this.update(cx, |this, cx| {
+                this.error = chosen.err().map(|err| Text::new("raven.errors.use").arg("error", err));
+                cx.notify();
+            });
+            reload(&this, cx).await;
+        })
+        .detach();
+    }
+
+    pub fn ask_delete(&mut self, commit: &Commit, cx: &mut Context<Self>) {
+        if self.building.is_none() && !self.removing {
+            self.confirming_delete = Some(commit.clone());
+            self.confirming = None;
+            self.confirming_remove = false;
+            self.error = None;
+            cx.notify();
+        }
+    }
+
+    pub fn cancel_delete(&mut self, cx: &mut Context<Self>) {
+        self.confirming_delete = None;
+        cx.notify();
+    }
+
+    /// Deletes a build that is not the one in use.
+    pub fn delete_build(&mut self, cx: &mut Context<Self>) {
+        let Some(commit) = self.confirming_delete.take() else {
+            return;
+        };
+        if self.in_use.as_ref() == Some(&commit) {
+            cx.notify();
+            return;
+        }
+        self.remove(vec![commit], cx);
+    }
+
+    fn remove(&mut self, commits: Vec<Commit>, cx: &mut Context<Self>) {
         let running = &AppState::get(cx).background.read(cx).running;
         if self.programs.iter().any(|program| running.contains(&program.game_id)) {
             self.error = Some(Text::new("raven.errors.remove_running"));
             cx.notify();
             return;
         }
-        let Some(pin) = runner::raven_pin() else {
-            return;
-        };
         if self.building.is_some() || self.removing {
             return;
         }
@@ -238,14 +366,18 @@ impl Raven {
         cx.notify();
         let root = paths::active();
         cx.spawn(async move |this, cx| {
-            let removed = runners::remove(&root, Runner::Raven, &pin).await;
+            let mut failed = None;
+            for commit in commits {
+                if let Err(err) = runners::remove(&root, Runner::Raven, &Pin::Commit(commit.clone())).await {
+                    tracing::warn!(%commit, %err, "could not remove a Raven build");
+                    failed = Some(err.text());
+                    break;
+                }
+            }
             let _ = this.update(cx, |this, cx| {
                 this.removing = false;
                 this.log_tail.clear();
-                if let Err(err) = removed {
-                    tracing::warn!(%err, "could not remove Raven");
-                    this.error = Some(err.text());
-                }
+                this.error = failed;
                 cx.notify();
             });
             reload(&this, cx).await;
@@ -320,28 +452,35 @@ fn notice(outcome: Vec<(String, Result<InstalledGame, Text>)>) -> Option<(Vec<Te
 
 async fn reload(this: &WeakEntity<Raven>, cx: &mut AsyncApp) {
     let root = paths::active();
-    let built = cx
+    let (built, in_use) = cx
         .background_spawn(async move {
             let status = runners::status(&root, Runner::Raven).await;
-            let installed = status.installed().iter().find_map(|installed| match &installed.pin {
-                Pin::Commit(commit) => Some(commit.clone()),
-                Pin::Release(_) => None,
-            });
-            installed.map(|commit| {
-                // The commit's folder: the checkout and its build tree, which Raven runs from.
-                let size = runner::raven_dir()
-                    .and_then(|folder| decanter_core::directory_size(&folder.join(commit.as_str())).ok());
-                Built { commit, size }
-            })
+            let built = status
+                .installed()
+                .iter()
+                .filter_map(|installed| match &installed.pin {
+                    Pin::Commit(commit) => Some(commit.clone()),
+                    Pin::Release(_) => None,
+                })
+                .map(|commit| {
+                    // The commit's folder: the checkout and its build tree, which Raven runs from.
+                    let size = runner::raven_dir()
+                        .and_then(|folder| decanter_core::directory_size(&folder.join(commit.as_str())).ok());
+                    Built { commit, size }
+                })
+                .collect();
+            (built, runner::raven_in_use())
         })
         .await;
     let _ = this.update(cx, |this, cx| {
         this.built = built;
+        this.in_use = in_use;
         cx.notify();
     });
 }
 
-async fn build(this: &WeakEntity<Raven>, pin: &Pin, cx: &mut AsyncApp) {
+/// What was just built is what runs, and the build it replaces goes ([`runner::raven_prune`]).
+async fn build(this: &WeakEntity<Raven>, commit: &Commit, cx: &mut AsyncApp) {
     let (sender, mut receiver) = mpsc::unbounded::<Progress>();
     let shown = this.clone();
     let _shown = cx.spawn(async move |cx| {
@@ -373,12 +512,13 @@ async fn build(this: &WeakEntity<Raven>, pin: &Pin, cx: &mut AsyncApp) {
         }
     };
     let root = paths::active();
-    let built = match runners::confirm(&root, Runner::Raven, pin).await {
-        Ok(()) => runners::prepare(&root, Runner::Raven, pin, &mut report, &mut |_| {}).await,
+    let pin = Pin::Commit(commit.clone());
+    let built = match runners::confirm(&root, Runner::Raven, &pin).await {
+        Ok(()) => runners::prepare(&root, Runner::Raven, &pin, &mut report, &mut |_| {}).await,
         Err(err) => Err(err),
     };
     let (error, log_tail) = match built {
-        Ok(_) => (None, Vec::new()),
+        Ok(_) => (adopt(commit).await, Vec::new()),
         Err(err) => {
             tracing::warn!(error = %err, "Raven build failed");
             (Some(err.text()), log_tail().await)
@@ -393,6 +533,15 @@ async fn build(this: &WeakEntity<Raven>, pin: &Pin, cx: &mut AsyncApp) {
         this.log_tail = log_tail;
         cx.notify();
     });
+}
+
+async fn adopt(commit: &Commit) -> Option<Text> {
+    if let Err(err) = runner::raven_use(commit).await {
+        tracing::warn!(%commit, %err, "Raven built, but could not be chosen to run");
+        return Some(Text::new("raven.errors.use").arg("error", err));
+    }
+    runner::raven_prune().await;
+    None
 }
 
 async fn log_tail() -> Vec<String> {

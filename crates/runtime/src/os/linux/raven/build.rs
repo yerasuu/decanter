@@ -1,9 +1,11 @@
-//! The steps of a Raven build: a shallow clone at the pinned commit, then CMake and Ninja inside
-//! the toolchain, every line of their output in the build log. Each tool runs in a process group of
-//! its own, killed with it when the build's future is dropped.
+//! The steps of a Raven build: a shallow clone at the commit being built, then CMake and Ninja
+//! inside the toolchain, every line of their output in the build log. Each tool runs in a process
+//! group of its own, killed with it when the build's future is dropped. And the one question asked
+//! of Raven's repository outside a build: its default branch's newest commit.
 
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
 
 use anyhow::{Context as _, bail};
 use decanter_core::runner::{Commit, Progress, Stage};
@@ -14,7 +16,13 @@ use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, Lines};
 use tokio::process::{ChildStderr, ChildStdout, Command};
 
+use crate::runner::RavenHead;
+
 const REPOSITORY: &str = "https://github.com/mirkobrombin/raven.git";
+
+/// How long the remote may take to list its refs before the check gives up, since a stalled
+/// connection would otherwise keep the section's check spinning.
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Only the runtime: Raven's default build also builds its test programs, and nixpkgs' MinGW GCC
 /// 16.2.0 stops on one of them (`native/vulkan-fixtures/client.exe`) with an internal compiler
@@ -101,9 +109,67 @@ pub(super) async fn clone(checkout: &Path, commit: &Commit, log: &mut Log) -> an
     let head = head.trim();
     log.line(&format!("checked out {head}")).await;
     if !output.status.success() || head != commit.as_str() {
-        bail!("the checkout is at {head:?}, not the pinned {commit}");
+        bail!("the checkout is at {head:?}, not {commit}");
     }
     Ok(())
+}
+
+/// What `git ls-remote --symref` lists for `HEAD`: `ref: refs/heads/<branch>\tHEAD` and
+/// `<commit>\tHEAD`.
+pub(super) async fn head() -> anyhow::Result<RavenHead> {
+    let output = tokio::time::timeout(
+        NETWORK_TIMEOUT,
+        git(&["ls-remote", "--symref", "--end-of-options", REPOSITORY, "HEAD"])
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .context("Raven's repository did not answer in time")?
+    .context("starting git ls-remote")?;
+    if !output.status.success() {
+        bail!(
+            "git ls-remote failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    head_of(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The remote's answer goes into the UI and, once built, into a folder name and git's arguments,
+/// so both parts are held to what they must look like here.
+fn head_of(refs: &str) -> anyhow::Result<RavenHead> {
+    let (mut branch, mut listed) = (None, None);
+    for line in refs.lines() {
+        if let Some(rest) = line.strip_prefix("ref: refs/heads/") {
+            branch = rest.strip_suffix("\tHEAD");
+        } else if let Some(commit) = line.strip_suffix("\tHEAD") {
+            listed = Some(commit);
+        }
+    }
+    let shown = |text: &str| text.chars().take(80).collect::<String>();
+    let branch = match branch {
+        Some(branch) if is_branch_name(branch) => branch.to_owned(),
+        Some(branch) => bail!("a branch name decanter doesn't take: {:?}", shown(branch)),
+        None => bail!("Raven's repository names no default branch"),
+    };
+    let Some(listed) = listed else {
+        bail!("Raven's repository lists no commit for {branch}");
+    };
+    match Commit::try_new(listed) {
+        Some(commit) => Ok(RavenHead { branch, commit }),
+        None => bail!("not a full commit for {branch}: {:?}", shown(listed)),
+    }
+}
+
+fn is_branch_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.contains("..")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
 }
 
 fn git(args: &[&str]) -> Command {

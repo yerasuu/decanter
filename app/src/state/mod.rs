@@ -19,7 +19,7 @@ pub use ps::{
     Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
     folder_error as ps_folder_error, job_label, job_target, online_error, vk_layer_unavailable_text,
 };
-pub use raven::Raven;
+pub use raven::{Built as RavenBuilt, Raven};
 
 /// Whether storage came up, and which profile is active.
 pub struct Session {

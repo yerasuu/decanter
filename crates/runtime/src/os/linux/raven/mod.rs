@@ -1,6 +1,10 @@
 //! Raven ([mirkobrombin/raven](https://github.com/mirkobrombin/raven)), built in the library from
-//! [`RAVEN_COMMIT`] once the owner confirmed that commit (#1067), inside a nix environment of its
-//! own ([`RECIPE`]), and run from the toolchain that built it.
+//! [`RAVEN_COMMIT`], or from the newest commit of its default branch when the owner asks for it
+//! (#1238), once the owner confirmed that commit (#1067), inside a nix environment of its own
+//! ([`RECIPE`]), and run from the toolchain that built it.
+//!
+//! The commit Raven runs at is the pinned one unless [`CHOSEN`] names another whose build is there;
+//! choosing the pinned commit removes that file, so a decanter that moves its pin takes the new one.
 //!
 //! The build happens where it stays, `<raven>/<commit>/`, because CMake writes absolute paths into
 //! the build tree and Raven runs from it; it counts as installed only once one rename puts its
@@ -18,7 +22,7 @@ use decanter_core::runner::{Commit, Installed, Origin, Pin, Progress, Stage, Sta
 use decanter_nix::{Recipe, Toolchain};
 
 use crate::Launch;
-use crate::runner::{RAVEN_COMMIT, raven_dir};
+use crate::runner::{RAVEN_COMMIT, RavenHead, raven_dir};
 
 const RECIPE: Recipe = Recipe {
     name: "raven",
@@ -39,17 +43,19 @@ const BINARY: &str = "build/native/raven";
 const BUILT: &str = ".decanter-built";
 
 const CONFIRMED: &str = "confirmed";
+/// The commit chosen to run at instead of [`RAVEN_COMMIT`].
+const CHOSEN: &str = "chosen";
 const LOG: &str = "build.log";
 const LOCK: &str = ".lock";
 const TOOLCHAIN: &str = "toolchain";
 /// Ends the name of a cut-short build set aside to be removed.
 const TRASH: &str = ".trash";
 
-/// The one commit decanter builds, from `pin`.
-fn pinned(pin: &Pin) -> anyhow::Result<Commit> {
+/// Raven is only ever built from a commit; [`Commit`] already holds it to a full id.
+fn commit_of(pin: &Pin) -> anyhow::Result<Commit> {
     match pin {
-        Pin::Commit(commit) if commit.as_str() == RAVEN_COMMIT => Ok(commit.clone()),
-        Pin::Commit(_) | Pin::Release(_) => bail!("Raven {pin} is not the pinned commit {RAVEN_COMMIT}"),
+        Pin::Commit(commit) => Ok(commit.clone()),
+        Pin::Release(_) => bail!("Raven {pin} is no commit; Raven has no releases decanter takes"),
     }
 }
 
@@ -90,7 +96,7 @@ pub(crate) fn raven_status() -> Status {
 }
 
 pub(crate) async fn raven_confirm(pin: &Pin) -> io::Result<()> {
-    let commit = pinned(pin).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{err:#}")))?;
+    let commit = commit_of(pin).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{err:#}")))?;
     let folder = folder()?;
     tokio::fs::create_dir_all(&folder).await?;
     tokio::fs::write(folder.join(CONFIRMED), commit.as_str()).await?;
@@ -105,7 +111,7 @@ async fn is_confirmed(folder: &Path, commit: &Commit) -> bool {
 }
 
 pub(crate) async fn raven_prepare(pin: &Pin, on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
-    let commit = pinned(pin)?;
+    let commit = commit_of(pin)?;
     let folder = folder()?;
     let checkout = folder.join(commit.as_str());
     if is_built(&checkout) {
@@ -170,64 +176,151 @@ async fn mark_built(checkout: &Path, toolchain: &Toolchain) -> anyhow::Result<()
         .context("putting Raven's build marker in place")
 }
 
-/// Builds [`RAVEN_COMMIT`] and, once it is newly in, removes the builds of other commits.
+/// Builds [`RAVEN_COMMIT`] and, once it is newly in, removes the builds [`raven_prune`] removes.
 pub(crate) async fn raven_update(on_progress: &mut dyn FnMut(Progress)) -> anyhow::Result<Installed> {
     let Some(pin) = crate::runner::raven_pin() else {
         bail!("Raven's pinned commit {RAVEN_COMMIT:?} is no commit id");
     };
     let installed = raven_prepare(&pin, on_progress).await?;
-    remove_other_builds(&installed.path).await;
+    raven_prune().await;
     Ok(installed)
 }
 
-async fn remove_other_builds(binary: &Path) {
+/// The commit [`CHOSEN`] names while its build is there, else [`RAVEN_COMMIT`]. Blocking file I/O,
+/// one small file.
+pub(crate) fn raven_in_use() -> Option<Commit> {
+    let pinned = Commit::try_new(RAVEN_COMMIT);
     let Some(folder) = raven_dir() else {
-        return;
+        return pinned;
     };
-    let Ok(mut entries) = tokio::fs::read_dir(&folder).await else {
-        return;
+    let text = match std::fs::read_to_string(folder.join(CHOSEN)) {
+        Ok(text) => text,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return pinned,
+        Err(err) => {
+            tracing::warn!(%err, "cannot read which Raven commit was chosen; running the pinned one");
+            return pinned;
+        }
     };
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let path = entry.path();
-        let is_other_build =
-            entry.file_name().to_str().and_then(Commit::try_new).is_some() && !binary.starts_with(&path);
-        if is_other_build && let Err(err) = tokio::fs::remove_dir_all(&path).await {
-            tracing::warn!(path = %path.display(), %err, "cannot remove an old Raven build");
+    match Commit::try_new(text.trim()) {
+        Some(commit) if is_built(&folder.join(commit.as_str())) => Some(commit),
+        Some(commit) => {
+            tracing::warn!(%commit, "the chosen Raven commit is not built; running the pinned one");
+            pinned
+        }
+        None => {
+            tracing::warn!("the chosen Raven commit is no commit id; running the pinned one");
+            pinned
         }
     }
 }
 
-/// Raven as a whole: the build, the toolchain, the build log and the confirmation, so a next build
-/// asks again. The programs added to the section and their prefixes are the player's and stay.
-pub(crate) async fn raven_remove(pin: &Pin) -> io::Result<()> {
-    let commit = pinned(pin).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{err:#}")))?;
+pub(crate) async fn raven_use(commit: &Commit) -> io::Result<()> {
     let folder = folder()?;
-    for path in [folder.join(commit.as_str()), folder.join(TOOLCHAIN)] {
-        match tokio::fs::remove_dir_all(&path).await {
-            Ok(()) => {}
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(err) => return Err(err),
-        }
+    if commit.as_str() == RAVEN_COMMIT {
+        remove_file(&folder.join(CHOSEN)).await?;
+    } else if is_built(&folder.join(commit.as_str())) {
+        let part = folder.join(format!("{CHOSEN}.part"));
+        tokio::fs::write(&part, commit.as_str()).await?;
+        tokio::fs::rename(&part, folder.join(CHOSEN)).await?;
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Raven {commit} is not built"),
+        ));
     }
-    for path in [folder.join(LOG), folder.join(CONFIRMED)] {
-        match tokio::fs::remove_file(&path).await {
-            Ok(()) => {}
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(err) => return Err(err),
-        }
-    }
-    tracing::info!(%commit, folder = %folder.display(), "Raven removed");
+    tracing::info!(%commit, pinned = commit.as_str() == RAVEN_COMMIT, "Raven commit in use chosen");
     Ok(())
 }
 
+/// Under the build lock, so a build another decanter process runs keeps its folder; skipped,
+/// and said in the log, while that lock is taken.
+pub(crate) async fn raven_prune() {
+    let Some(folder) = raven_dir() else {
+        return;
+    };
+    let lock = match lock(&folder).await {
+        Ok(lock) => lock,
+        Err(err) => {
+            tracing::warn!(error = %format_args!("{err:#}"), "old Raven builds left in place");
+            return;
+        }
+    };
+    remove_builds_but(&folder, &[Commit::try_new(RAVEN_COMMIT), raven_in_use()]).await;
+    drop(lock);
+}
+
+async fn remove_builds_but(folder: &Path, keep: &[Option<Commit>]) {
+    let Ok(mut entries) = tokio::fs::read_dir(folder).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let commit = entry.file_name().to_str().and_then(Commit::try_new);
+        if commit.is_none() || keep.contains(&commit) {
+            continue;
+        }
+        let path = entry.path();
+        match tokio::fs::remove_dir_all(&path).await {
+            Ok(()) => tracing::info!(path = %path.display(), "old Raven build removed"),
+            Err(err) => tracing::warn!(path = %path.display(), %err, "cannot remove an old Raven build"),
+        }
+    }
+}
+
+/// `pin`'s build, and its choice if it was the chosen one. With the last build go the toolchain,
+/// the build log and the confirmation too, so a next build asks again. The programs added to the
+/// section and their prefixes are the player's and stay.
+pub(crate) async fn raven_remove(pin: &Pin) -> io::Result<()> {
+    let commit = commit_of(pin).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{err:#}")))?;
+    let folder = folder()?;
+    remove_dir(&folder.join(commit.as_str())).await?;
+    let chosen = tokio::fs::read_to_string(folder.join(CHOSEN)).await.ok();
+    if chosen.as_deref().map(str::trim) == Some(commit.as_str()) {
+        remove_file(&folder.join(CHOSEN)).await?;
+    }
+    tracing::info!(%commit, folder = %folder.display(), "Raven build removed");
+    if matches!(raven_status(), Status::Absent) {
+        remove_dir(&folder.join(TOOLCHAIN)).await?;
+        for name in [LOG, CONFIRMED, CHOSEN] {
+            remove_file(&folder.join(name)).await?;
+        }
+        tracing::info!(folder = %folder.display(), "Raven removed");
+    }
+    Ok(())
+}
+
+/// One that is not there is already removed.
+async fn remove_dir(path: &Path) -> io::Result<()> {
+    match tokio::fs::remove_dir_all(path).await {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+/// One that is not there is already removed.
+async fn remove_file(path: &Path) -> io::Result<()> {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+pub(crate) async fn raven_head() -> anyhow::Result<RavenHead> {
+    build::head().await
+}
+
 pub(crate) fn raven_log_path(pin: &Pin) -> Option<PathBuf> {
-    pinned(pin).ok()?;
+    commit_of(pin).ok()?;
     raven_dir().map(|folder| folder.join(LOG))
 }
 
 pub(crate) async fn raven_launch(mut launch: Launch) -> anyhow::Result<Launch> {
     let folder = folder()?;
-    let checkout = folder.join(RAVEN_COMMIT);
+    let Some(commit) = raven_in_use() else {
+        bail!("Raven's pinned commit {RAVEN_COMMIT:?} is no commit id");
+    };
+    let checkout = folder.join(commit.as_str());
     if !is_built(&checkout) {
         bail!("Raven is not built; build it in the Raven section first");
     }
