@@ -13,8 +13,6 @@ use crate::api::client::{DepotFile, Sessionless};
 pub(super) struct PlannedFile {
     pub(super) relative_path: String,
     pub(super) chunks: Vec<ChunkSource>,
-    /// Inflated bytes, the sum of its chunks' sizes.
-    pub(super) size: u64,
     /// Needs the executable mode once it lands: only a macOS build's files
     /// say so, since a Windows build runs by extension, under Proton or
     /// natively.
@@ -30,7 +28,6 @@ pub(super) struct Plan {
     pub(super) system: GameSystem,
     pub(super) version: String,
     pub(super) install_directory: String,
-    pub(super) install_size_bytes: Option<u64>,
     pub(super) files: Vec<PlannedFile>,
 }
 
@@ -87,7 +84,6 @@ pub(super) async fn plan(
     );
 
     let mut files = Vec::with_capacity(depot_files.len());
-    let mut install_size_bytes = Some(0u64);
 
     for depot_file in depot_files {
         // Manifest paths come from a remote server and land on our disk —
@@ -100,7 +96,6 @@ pub(super) async fn plan(
         .into_owned();
 
         let mut chunks = Vec::with_capacity(depot_file.chunks.len());
-        let mut size = 0u64;
         for chunk in depot_file.chunks {
             // Skipping a chunk would write a file that's silently short —
             // an install that "succeeded" but produced a corrupt game. Fail
@@ -125,7 +120,6 @@ pub(super) async fn plan(
                     .filter(|&chunk_size| chunk_size <= MAX_CHUNK_SIZE)
                     .with_context(|| format!("implausible chunk size {} for {relative_path}", chunk.size))
             );
-            size += chunk.size;
             chunks.push(ChunkSource {
                 url,
                 compressed_md5,
@@ -134,27 +128,19 @@ pub(super) async fn plan(
             });
         }
 
-        install_size_bytes = install_size_bytes.map(|total| total + size);
         let is_executable = system == GameSystem::MacOs && depot_file.flags.iter().any(|flag| flag == "executable");
         files.push(PlannedFile {
             relative_path,
             chunks,
-            size,
             is_executable,
         });
     }
 
-    tracing::debug!(
-        content,
-        file_count = files.len(),
-        install_size_bytes,
-        "resolved gog install plan"
-    );
+    tracing::debug!(content, file_count = files.len(), "resolved gog install plan");
     Ok(Plan {
         system,
         version,
         install_directory,
-        install_size_bytes,
         files,
     })
 }

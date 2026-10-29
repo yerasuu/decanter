@@ -9,7 +9,8 @@
 //!
 //! Split by concern: [`plan`] resolves what to download, [`download`]
 //! fetches it, [`staging`] is where it lands before the library,
-//! [`tracking`] is the process-wide bookkeeping [`cancel`] needs,
+//! [`journal`] records how far it got so it can stop and carry on,
+//! [`tracking`] is the process-wide bookkeeping [`cancel`] and [`pause`] need,
 //! [`program`] guesses which file launches the game once it's all in
 //! place, and [`rate`] smooths the transfer rate reported back.
 
@@ -19,6 +20,7 @@ use anyhow::Context;
 use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront, platform};
 
 mod download;
+mod journal;
 mod plan;
 mod program;
 mod rate;
@@ -27,14 +29,16 @@ mod tracking;
 mod verify;
 
 pub use download::Cancelled;
-pub use tracking::cancel;
+pub use journal::{PauseReason, Paused};
+pub use tracking::{cancel, pause};
 pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 
-use download::{Cancel, PlannedDownload, ProgressUpdate, download_all};
+use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_all};
+use journal::{Header, Journal, Kind, Opened, Request, Start};
 use plan::Plan;
 use rate::RateTracker;
 use staging::{move_into_library, staging_root};
-use tracking::{InstallKey, active, cancelled_while_queued, claim};
+use tracking::{InstallKey, Stop, active, claim};
 
 /// Progress for the install as a whole, not for one file: several files
 /// transfer at once, so per-file numbers jump around and never add up to
@@ -83,6 +87,15 @@ pub struct Progress {
 /// which build (and branch), and, when it could be identified, what
 /// launches it.
 ///
+/// What a download fetched is journalled in its staging folder, so a later
+/// `install` of the same product carries on from it when GOG still plans
+/// the same build, and finishes a move into the library a crash cut short.
+///
+/// # Errors
+/// [`Cancelled`] after [`cancel`], which deletes what was downloaded;
+/// [`Paused`] after [`pause`], or when the network, the disk or the library
+/// folder gave out, keeping it.
+///
 /// `library` is the caller's to resolve (a profile can pick its own
 /// location — see `decanter_core::Library`'s own callers for how) rather
 /// than assumed here, so this crate has no opinion of its own on where
@@ -98,7 +111,6 @@ pub async fn install(
     mut on_progress: impl FnMut(Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-    let key: InstallKey = (account_id.to_string(), product_id.to_string());
     tracing::info!(product_id, title, parent_id, branch, build_id, "starting gog install");
 
     claim(account_id, product_id).await;
@@ -144,47 +156,37 @@ pub async fn install(
         )
     );
 
-    // The session refresh and plan fetch just above are exactly the
-    // "Queued" window the UI shows a Cancelar button for, before any
-    // download exists for `cancel` to reach through `active()`. Honor a
-    // cancel that landed during it here, instead of installing anyway.
-    if cancelled_while_queued(&key).await {
-        tracing::info!(product_id, "install cancelled before download started");
-        return Err(Cancelled.into());
-    }
-
-    install_into(
-        library,
-        account_id,
-        product_id,
-        parent_id,
-        title,
-        effective_branch.as_deref(),
-        plan,
-        &mut on_progress,
-    )
-    .await
+    let request = Request {
+        kind: Kind::Install,
+        account_id: account_id.to_owned(),
+        product_id: product_id.to_owned(),
+        parent_id: parent_id.map(str::to_owned),
+        title: title.to_owned(),
+        branch: branch.map(str::to_owned),
+        build_id: build_id.map(str::to_owned),
+    };
+    install_into(library, request, effective_branch.as_deref(), plan, &mut on_progress).await
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "same shape as install's own, which this is the guts of"
-)]
+/// Downloads `request`'s plan, or carries on its journal, and lands it in
+/// the library. `branch` is the one resolved for it, which is what the
+/// manifest records.
 async fn install_into(
     library: &Library,
-    account_id: &str,
-    product_id: &str,
-    parent_id: Option<&str>,
-    title: &str,
+    request: Request,
     branch: Option<&str>,
     plan: Plan,
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
 ) -> anyhow::Result<()> {
+    let account_id = request.account_id.clone();
+    let product_id = request.product_id.clone();
+    let (account_id, product_id) = (account_id.as_str(), product_id.as_str());
+    let title = request.title.clone();
     // A DLC has no directory of its own: its files belong in the base
     // game's, so the base game has to be installed first. Refused here,
     // before anything is downloaded, rather than landing files somewhere
     // nothing would ever launch from.
-    let parent = match parent_id {
+    let parent = match request.parent_id.as_deref() {
         Some(parent_id) => Some(crate::achv_try!(
             library
                 .read_manifest(account_id, Storefront::Gog, parent_id)
@@ -207,44 +209,25 @@ async fn install_into(
             .inspect_err(|err| tracing::error!(product_id, install_dir_name, error = %err, "install aborted"))
     );
 
-    let key: InstallKey = (account_id.to_string(), product_id.to_string());
-
-    // Anything left from an earlier attempt would otherwise be treated as
-    // already-downloaded and moved in as if it were complete.
+    let key: InstallKey = (account_id.to_owned(), product_id.to_owned());
     let staging = crate::achv_try!(staging_root(&destination_root, account_id, product_id));
-    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-        if err.kind() != std::io::ErrorKind::NotFound {
-            tracing::warn!(path = %staging.display(), error = %err, "couldn't clear stale staging directory");
-        }
-    }
-
-    let per_file = crate::achv_try!(
-        download_into_staging(
-            plan.downloads(),
-            plan.install_size_bytes,
-            &staging,
-            key,
-            product_id,
-            on_progress
-        )
-        .await
-    );
-
-    let file_count = plan.files.len();
-    let downloaded: u64 = per_file.iter().sum();
-    let relative_paths: Vec<String> = plan.files.iter().map(|file| file.relative_path.clone()).collect();
+    let downloads = plan.downloads();
+    let header = crate::achv_try!(Header::new(
+        request,
+        plan.version.clone(),
+        plan.install_directory.clone(),
+        &downloads
+    ));
+    let (journal, header) =
+        crate::achv_try!(fetch_into_staging(&staging, header, downloads, key, product_id, on_progress).await);
 
     // Everything downloaded: only now does anything appear in the
     // library, so an install is all-or-nothing.
-    crate::achv_try!(
-        move_into_library(&staging, &destination_root)
-            .await
-            .inspect_err(|err| tracing::error!(product_id, error = %err, "moving the download into the library failed"))
-            .context("moving the downloaded game into the library")
-    );
-    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-        tracing::warn!(path = %staging.display(), error = %err, "couldn't remove staging directory after install");
-    }
+    crate::achv_try!(move_staged(&journal, &destination_root, product_id).await);
+
+    let relative_paths: Vec<String> = header.files.iter().map(|file| file.path.clone()).collect();
+    let file_count = relative_paths.len();
+    let downloaded = header.total_bytes;
 
     // Best-effort and after the fact rather than folded into the
     // download/move above: most installs have nothing to hook at all,
@@ -261,16 +244,18 @@ async fn install_into(
     // start is still the base game.
     if let Some(parent) = parent {
         let dlc = InstalledDlc {
-            title: title.to_string(),
-            build_id: plan.version,
+            title,
+            build_id: header.build_id.clone(),
         };
-        return record_dlc(library, parent, product_id, dlc, downloaded, file_count);
+        crate::achv_try!(record_dlc(library, parent, product_id, dlc, downloaded, file_count));
+        finish(journal, product_id).await;
+        return Ok(());
     }
 
     let launch_executable = program::find_launch_executable(
         &destination_root,
         &relative_paths,
-        &plan.install_directory,
+        &header.install_directory,
         product_id,
         plan.system,
     );
@@ -291,10 +276,10 @@ async fn install_into(
                 account_id: account_id.to_string(),
                 storefront: Storefront::Gog,
                 game_id: product_id.to_string(),
-                name: title.to_string(),
+                name: title,
                 install_dir: install_dir_name,
-                build_id: plan.version,
-                size_on_disk: plan.install_size_bytes.or(Some(downloaded)),
+                build_id: header.build_id.clone(),
+                size_on_disk: Some(downloaded),
                 size_fingerprint: None,
                 launch_executable,
                 last_played,
@@ -312,25 +297,59 @@ async fn install_into(
             .context("writing the appmanifest")
     );
 
+    finish(journal, product_id).await;
     tracing::info!(product_id, file_count, bytes = downloaded, "install completed");
     Ok(())
 }
 
-/// Downloads `downloads` into `staging` under `key`'s cancel flag, reporting
-/// the whole set's progress; shared by installs and repairs so both are
-/// cancellable and visible the same way. `staging` is removed on failure.
-async fn download_into_staging(
-    downloads: Vec<PlannedDownload>,
-    total_size: Option<u64>,
+/// Opens `staging`'s journal for `header` and fetches whatever it still
+/// lacks under `key`'s stop flag, reporting the whole set's progress;
+/// shared by installs and repairs so both stop and carry on the same way.
+///
+/// Returns the journal and the header of what is staged: the earlier plan
+/// when a crash hit its move into the library, which is then finished
+/// rather than downloaded again.
+///
+/// # Errors
+/// [`Cancelled`] after a confirmed cancel, which deletes the download;
+/// [`Paused`] when it stopped and kept its data (a pause, the network, a
+/// full disk, a library gone); any other failure keeps the data too.
+async fn fetch_into_staging(
     staging: &Path,
+    header: Header,
+    downloads: Vec<PlannedDownload>,
     key: InstallKey,
     product_id: &str,
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
-) -> anyhow::Result<Vec<u64>> {
+) -> anyhow::Result<(Journal, Header)> {
+    let (journal, header, starts) = match journal::open(staging, header, &downloads).await {
+        Ok(Opened::Move { journal, header }) => return Ok((journal, header)),
+        Ok(Opened::Download {
+            journal,
+            header,
+            starts,
+        }) => (journal, header, starts),
+        Err(err) => {
+            tracing::error!(product_id, error = %err, "opening the download journal failed");
+            return Err(pause_reason(&err, staging)
+                .await
+                .map_or(err, |reason| Paused { reason, bytes_done: 0 }.into()));
+        }
+    };
+
+    // In `active()` before the queued check, so a stop landing between the
+    // two still reaches the download.
     let in_flight = Cancel::default();
     active().lock().await.insert(key.clone(), in_flight.clone());
 
-    let file_count = downloads.len();
+    // The session refresh and plan fetch before this are exactly the
+    // "Queued" window the UI shows Cancelar for, before any download
+    // exists for `cancel` or `pause` to reach through `active()`.
+    match tracking::stop_while_queued(&key).await {
+        Some(Stop::Cancel) => in_flight.cancel(),
+        Some(Stop::Pause) => in_flight.pause(),
+        None => {}
+    }
 
     // Every file reports its own running total; the loop below keeps the
     // latest per file and sums them, so what reaches the caller is the
@@ -338,57 +357,133 @@ async fn download_into_staging(
     // bytes travel through this channel, not each file's own rate -- see
     // `rate::RateTracker` for why that's measured at the install level
     // instead of summed from what each file reports.
-    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<ProgressUpdate>(32);
-    let staging_for_worker = staging.to_path_buf();
-    let worker = tokio::spawn({
-        let in_flight = in_flight.clone();
-        async move { download_all(downloads, &staging_for_worker, in_flight, progress_tx).await }
-    });
+    let mut per_file_bytes: Vec<u64> = starts
+        .iter()
+        .zip(&downloads)
+        .map(|(start, download)| match start {
+            Start::Done => download.size(),
+            Start::At { bytes, .. } => *bytes,
+        })
+        .collect();
+    let outcome = if in_flight.requested().is_some() {
+        tracing::info!(product_id, "download stopped before it started");
+        Err(Cancelled.into())
+    } else {
+        let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<ProgressUpdate>(32);
+        let worker = download_all(downloads, starts, &journal, in_flight.clone(), progress_tx);
+        let mut rate_tracker = RateTracker::new(per_file_bytes.iter().sum());
+        let total_bytes = Some(header.total_bytes);
+        let per_file_bytes = &mut per_file_bytes;
+        let report = async move {
+            while let Some((index, path, bytes)) = progress_rx.recv().await {
+                if let Some(slot) = per_file_bytes.get_mut(index) {
+                    *slot = bytes;
+                }
+                let bytes_downloaded = per_file_bytes.iter().sum();
+                on_progress(Progress {
+                    current_file: path,
+                    bytes_downloaded,
+                    total_bytes,
+                    bytes_per_second: rate_tracker.sample(bytes_downloaded),
+                });
+            }
+        };
+        futures_util::future::join(worker, report).await.0.map(drop)
+    };
 
-    let mut per_file_bytes = vec![0u64; file_count];
-    let mut rate_tracker = RateTracker::new();
-    while let Some((index, path, bytes)) = progress_rx.recv().await {
-        per_file_bytes[index] = bytes;
-        let bytes_downloaded = per_file_bytes.iter().sum();
-        on_progress(Progress {
-            current_file: path,
-            bytes_downloaded,
-            total_bytes: total_size,
-            bytes_per_second: rate_tracker.sample(bytes_downloaded),
-        });
-    }
-
-    // Cleared before any `?` below: leaving a stale entry would make the
-    // next `cancel` for this game try to cancel a finished install.
-    let outcome = worker.await;
+    // Only this run's own flag: a newer run of the same key may have
+    // claimed it meanwhile, and its entry is what a stop must reach.
     {
-        // Only this run's own flag: a newer run of the same key may have
-        // claimed it meanwhile, and its entry is what a cancel must reach.
         let mut active = active().lock().await;
         if active.get(&key).is_some_and(|flag| flag.is_same(&in_flight)) {
             active.remove(&key);
         }
     }
     match outcome {
-        Ok(Ok(per_file)) => Ok(per_file),
-        Ok(Err(err)) => {
-            if err.is::<Cancelled>() {
-                tracing::info!(product_id, "download cancelled, removing its staging");
-            } else {
-                tracing::error!(product_id, error = %err, "install download failed, aborting install");
-            }
-            if let Err(err) = tokio::fs::remove_dir_all(staging).await {
-                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a failed install");
-            }
-            Err(err)
-        }
+        Ok(()) => Ok((journal, header)),
         Err(err) => {
-            tracing::error!(product_id, error = %err, "install worker panicked, aborting install");
-            if let Err(err) = tokio::fs::remove_dir_all(staging).await {
-                tracing::warn!(path = %staging.display(), error = %err, "couldn't clean up staging after a panicked install");
-            }
-            Err(anyhow::Error::new(err).context("install worker panicked"))
+            let bytes_done = per_file_bytes.iter().sum();
+            Err(settle(journal, err, &in_flight, bytes_done, staging, product_id).await)
         }
+    }
+}
+
+/// What a download that stopped short ends as: a confirmed cancel deletes
+/// it, a pause or a cause a resume can outlast keeps it with that reason
+/// recorded, and any other failure fails, keeping it too (#1281).
+async fn settle(
+    journal: Journal,
+    err: anyhow::Error,
+    in_flight: &Cancel,
+    bytes_done: u64,
+    staging: &Path,
+    product_id: &str,
+) -> anyhow::Error {
+    let reason = match in_flight.requested() {
+        Some(Stop::Cancel) => {
+            tracing::info!(product_id, "download cancelled, removing what it downloaded");
+            if let Err(err) = journal.remove().await {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't remove a cancelled download");
+            }
+            return Cancelled.into();
+        }
+        Some(Stop::Pause) => Some(PauseReason::User),
+        None => pause_reason(&err, staging).await,
+    };
+    let Some(reason) = reason else {
+        tracing::error!(product_id, error = %err, "install download failed, keeping what it downloaded");
+        return err;
+    };
+    if let Err(record_err) = journal.paused(reason).await {
+        tracing::warn!(product_id, error = %record_err, "couldn't record the pause; a resume treats it as a crash");
+    }
+    tracing::info!(product_id, ?reason, bytes_done, error = %err, "download paused");
+    Paused { reason, bytes_done }.into()
+}
+
+/// The cause a resume can outlast, if `err` is one.
+async fn pause_reason(err: &anyhow::Error, staging: &Path) -> Option<PauseReason> {
+    if err.downcast_ref::<Unreachable>().is_some() {
+        return Some(PauseReason::Network);
+    }
+    let disk_full = err
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .any(|io| {
+            matches!(
+                io.kind(),
+                std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded
+            )
+        });
+    if disk_full {
+        return Some(PauseReason::DiskFull);
+    }
+    // An unplugged disk fails with whatever error its filesystem gives;
+    // that the library folder is gone is what tells it apart.
+    let Some(library_root) = staging.ancestors().nth(3) else {
+        return None;
+    };
+    let is_there = tokio::fs::metadata(library_root).await.is_ok_and(|meta| meta.is_dir());
+    (!is_there).then_some(PauseReason::LibraryUnavailable)
+}
+
+/// Marks the journal as moving, so a crash from here on finishes the move
+/// instead of downloading again, then moves what is staged into the library.
+async fn move_staged(journal: &Journal, destination_root: &Path, product_id: &str) -> anyhow::Result<()> {
+    crate::achv_try!(journal.moving().await);
+    move_into_library(&journal.files(), destination_root)
+        .await
+        .inspect_err(|err| tracing::error!(product_id, error = %err, "moving the download into the library failed"))
+        .context("moving the downloaded files into the library")
+}
+
+/// The library records the download: its journal is done with.
+async fn finish(journal: Journal, product_id: &str) {
+    if let Err(err) = journal.recorded().await {
+        tracing::warn!(product_id, error = %err, "couldn't record the finished install in its journal");
+    }
+    if let Err(err) = journal.remove().await {
+        tracing::warn!(product_id, error = %err, "couldn't remove the staging folder after install");
     }
 }
 

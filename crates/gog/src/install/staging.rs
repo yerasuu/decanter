@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use decanter_runtime::sanitize_relative_path;
 
+/// Beside `common/` in every library folder.
+pub(super) const DOWNLOADING: &str = "downloading";
+
 /// Where a game's files are downloaded before they're moved into
 /// `destination` (its folder under a library's `common/`): that library
 /// folder's own `downloading/`, the way Steam's `steamapps/downloading`
@@ -14,6 +17,19 @@ use decanter_runtime::sanitize_relative_path;
 /// same disk as it so the finished download moves in with a rename rather
 /// than a second copy of every byte.
 pub(super) fn staging_root(destination: &Path, account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
+    let library_root = crate::achv_try!(
+        destination
+            .parent()
+            .filter(|common| common.file_name().is_some_and(|name| name == "common"))
+            .and_then(Path::parent)
+            .with_context(|| format!("{} is not under a library's common/", destination.display()))
+    );
+    staging_in(library_root, account_id, product_id)
+}
+
+/// The staging folder of `account_id`'s `product_id` in the library folder
+/// `library_root`.
+pub(super) fn staging_in(library_root: &Path, account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
     let profile = crate::achv_try!(
         sanitize_relative_path(account_id)
             .filter(|path| path.components().count() == 1)
@@ -24,14 +40,7 @@ pub(super) fn staging_root(destination: &Path, account_id: &str, product_id: &st
             .filter(|path| path.components().count() == 1)
             .context("suspicious product_id")
     );
-    let library_root = crate::achv_try!(
-        destination
-            .parent()
-            .filter(|common| common.file_name().is_some_and(|name| name == "common"))
-            .and_then(Path::parent)
-            .with_context(|| format!("{} is not under a library's common/", destination.display()))
-    );
-    Ok(library_root.join("downloading").join(profile).join(game))
+    Ok(library_root.join(DOWNLOADING).join(profile).join(game))
 }
 
 /// Moves a finished download from staging into the library, merging into

@@ -16,6 +16,7 @@ use anyhow::Context;
 use decanter_core::{Storefront, platform};
 
 use super::download::PlannedDownload;
+use super::journal::{Header, Kind, Request};
 use super::plan::{manifest_relative_path, resolve_depot_files};
 use crate::api::client::{DepotChunk, Sessionless};
 use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
@@ -313,18 +314,8 @@ pub async fn repair(
         account_id,
         &format!("{product_id}-repair")
     ));
-    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-        if err.kind() != std::io::ErrorKind::NotFound {
-            tracing::warn!(path = %staging.display(), error = %err, "couldn't clear stale repair staging directory");
-        }
-    }
 
-    let (downloads, total_size) = crate::achv_try!(plan_repair(&game, &access_token, game_id, broken).await);
-
-    if super::tracking::cancelled_while_queued(&key).await {
-        tracing::info!(product_id, "repair cancelled before download started");
-        return Err(super::Cancelled.into());
-    }
+    let downloads = crate::achv_try!(plan_repair(&game, &access_token, game_id, broken).await);
     if downloads.is_empty() {
         tracing::warn!(
             product_id,
@@ -332,8 +323,25 @@ pub async fn repair(
         );
         return Ok(());
     }
-    crate::achv_try!(
-        super::download_into_staging(downloads, Some(total_size), &staging, key, product_id, &mut on_progress)
+    // Journalled like an install, so a repair stopped half way carries on
+    // when the next one plans the same files.
+    let request = Request {
+        kind: Kind::Repair,
+        account_id: account_id.to_owned(),
+        product_id: product_id.to_owned(),
+        parent_id: None,
+        title: game.name.clone(),
+        branch: game.branch.clone(),
+        build_id: Some(game.build_id.clone()),
+    };
+    let header = crate::achv_try!(Header::new(
+        request,
+        game.build_id.clone(),
+        game.install_dir.clone(),
+        &downloads
+    ));
+    let (journal, _) = crate::achv_try!(
+        super::fetch_into_staging(&staging, header, downloads, key, product_id, &mut on_progress)
             .await
             .inspect_err(|err| {
                 if !err.is::<super::Cancelled>() {
@@ -341,31 +349,21 @@ pub async fn repair(
                 }
             })
     );
-
-    crate::achv_try!(
-        super::staging::move_into_library(&staging, &install_root)
-            .await
-            .inspect_err(|err| tracing::error!(product_id, error = %err, "moving repaired files into place failed"))
-            .context("moving repaired files into place")
-    );
-    if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
-        if err.kind() != std::io::ErrorKind::NotFound {
-            tracing::warn!(path = %staging.display(), error = %err, "couldn't remove repair staging directory");
-        }
-    }
+    crate::achv_try!(super::move_staged(&journal, &install_root, product_id).await);
+    super::finish(journal, product_id).await;
     tracing::info!(product_id, "repair completed");
     Ok(())
 }
 
 /// Every broken file's download, planned per owner before any byte moves,
 /// so the progress total covers the whole repair and one cancel flag stops
-/// all of it. Also returns the bytes to download.
+/// all of it.
 async fn plan_repair(
     game: &decanter_core::InstalledGame,
     access_token: &str,
     game_id: i64,
     broken: &[BrokenFile],
-) -> anyhow::Result<(Vec<PlannedDownload>, u64)> {
+) -> anyhow::Result<Vec<PlannedDownload>> {
     let mut by_owner: HashMap<&str, Vec<&str>> = HashMap::new();
     for file in broken {
         by_owner
@@ -377,7 +375,6 @@ async fn plan_repair(
     let system = platform::game_system();
     let bundle_program = super::program::bundle_program(game, system);
     let mut downloads = Vec::with_capacity(broken.len());
-    let mut total_size = 0u64;
     for (owner, wanted) in by_owner {
         let owner_id: i64 = crate::achv_try!(owner.parse().context("GOG product id must be numeric"));
         // Same build the game is actually on, not the branch's latest --
@@ -399,7 +396,6 @@ async fn plan_repair(
             .into_iter()
             .filter(|file| wanted.contains(&file.relative_path.as_str()))
         {
-            total_size += file.size;
             let is_executable = file.is_executable || bundle_program == Some(file.relative_path.as_str());
             downloads.push(PlannedDownload {
                 relative_path: file.relative_path,
@@ -408,5 +404,5 @@ async fn plan_repair(
             });
         }
     }
-    Ok((downloads, total_size))
+    Ok(downloads)
 }

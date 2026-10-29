@@ -25,11 +25,13 @@ impl RateTracker {
     const EMA_ALPHA: f64 = 0.2;
     const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(200);
 
-    pub(super) fn new() -> Self {
+    /// `on_disk` is what a resumed download already had, so it doesn't
+    /// read as transferred in the first sample.
+    pub(super) fn new(on_disk: u64) -> Self {
         let now = Instant::now();
         Self {
             last_sample_at: now,
-            last_sample_bytes: 0,
+            last_sample_bytes: on_disk,
             ema_bps: 0.0,
         }
     }

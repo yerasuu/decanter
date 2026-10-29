@@ -1,4 +1,4 @@
-//! Fetching a planned install's files from GOG's CDN.
+//! Fetching a planned install's files from GOG's CDN into its staging folder.
 //!
 //! A GOG file is a list of chunks, each its own signed CDN URL and each
 //! zlib-compressed; the file is those chunks decompressed and concatenated
@@ -6,26 +6,30 @@
 //! inflated size and MD5 before it is written, so corruption on the way in
 //! is a failed try rather than a broken game.
 //!
-//! Nothing here is resumable, and deliberately so — an install that fails
-//! or is cancelled throws its staging directory away ([`super::staging`]),
-//! so a retry always starts from nothing and there is no partial state to
-//! reconcile.
+//! Each file is written to `<path>.part` and renamed once complete. Every
+//! [`COMMIT_BYTES`] or [`COMMIT_INTERVAL`] its bytes are synced and only
+//! then recorded in the [`Journal`], so a record never names bytes a crash
+//! could lose, and a stopped download carries on from the last record.
 //!
 //! Concurrency is per install rather than process-wide: two installs
 //! running at once each get their own budget, which is worse for the disk
 //! and much better for the user watching one of them finish.
 
 use std::io::Read;
-use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use decanter_core::platform;
 use futures_util::StreamExt;
+use reqwest::StatusCode;
+use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::sync::mpsc;
 use url::Url;
+
+use super::journal::{COMMIT_BYTES, Journal, Start, part_path};
+use super::tracking::Stop;
 
 /// How many files transfer at once. GOG's CDN serves a single connection
 /// well below a link's capacity, so this is about saturating the link, not
@@ -33,13 +37,20 @@ use url::Url;
 /// per-file progress jump around.
 pub(super) const CONCURRENT_FILES: usize = 4;
 
-/// Attempts per chunk before the file (and the install) fails. Signed CDN
-/// URLs and long transfers make the occasional dropped connection normal;
-/// losing a whole install to one is not.
-const CHUNK_ATTEMPTS: usize = 3;
+/// How long a chunk keeps failing before the download pauses for the
+/// network (owner's decision, #1281): a dropped connection or a CDN refusing
+/// for a while is normal on a long transfer, losing the download to it is
+/// not.
+const RETRY_WINDOW: Duration = Duration::from_secs(60);
 
-/// Grows with each retry, so a CDN that is briefly refusing isn't hammered.
-const RETRY_BACKOFF: Duration = Duration::from_millis(500);
+/// Doubles with each retry up to [`MAX_BACKOFF`], so a CDN that is briefly
+/// refusing isn't hammered.
+const FIRST_BACKOFF: Duration = Duration::from_secs(1);
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+/// A slow link records progress at least this often, not only every
+/// [`COMMIT_BYTES`].
+const COMMIT_INTERVAL: Duration = Duration::from_secs(5);
 
 /// One chunk of a file: where to get it, and what it must hash to. GOG's
 /// depot chunks are always zlib.
@@ -79,6 +90,14 @@ pub(super) struct CorruptChunk {
     check: Mismatch,
 }
 
+/// The context a chunk's last error carries when the network, not the
+/// chunk, is what failed: nothing for the whole retry window, or a refused
+/// signed URL, which only a new plan signs again. The download pauses
+/// rather than fails.
+#[derive(Debug, thiserror::Error)]
+#[error("GOG's CDN could not be reached")]
+pub(super) struct Unreachable;
+
 /// What a download stopped by [`Cancel`] fails with, so a caller can tell
 /// the user's own cancel from a failure worth reporting.
 #[derive(Debug, thiserror::Error)]
@@ -86,27 +105,56 @@ pub(super) struct CorruptChunk {
 #[non_exhaustive]
 pub struct Cancelled;
 
-/// Set to stop an install. Checked between chunks and between reads, so a
-/// cancel lands within one chunk's transfer rather than at the end of the
-/// file.
+const RUNNING: u8 = 0;
+const CANCEL: u8 = 1;
+const PAUSE: u8 = 2;
+const ABORT: u8 = 3;
+
+/// Set to stop an install, and why. Checked between chunks and between
+/// reads, so a stop lands within one chunk's transfer rather than at the end
+/// of the file.
 #[derive(Clone, Default)]
-pub(super) struct Cancel(Arc<AtomicBool>);
+pub(super) struct Cancel(Arc<AtomicU8>);
 
 impl Cancel {
+    /// The confirmed cancel wins over whatever else stopped the download,
+    /// since it is the one that deletes it.
     pub(super) fn cancel(&self) {
-        self.0.store(true, Ordering::Relaxed);
+        self.0.store(CANCEL, Ordering::Relaxed);
+    }
+
+    pub(super) fn pause(&self) {
+        let _ = self
+            .0
+            .compare_exchange(RUNNING, PAUSE, Ordering::Relaxed, Ordering::Relaxed);
+    }
+
+    /// Another file failed: what the download ends with is that failure.
+    fn abort(&self) {
+        let _ = self
+            .0
+            .compare_exchange(RUNNING, ABORT, Ordering::Relaxed, Ordering::Relaxed);
     }
 
     pub(super) fn is_same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    pub(super) fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
+    fn is_stopped(&self) -> bool {
+        self.0.load(Ordering::Relaxed) != RUNNING
+    }
+
+    /// What the user asked for, if they stopped it.
+    pub(super) fn requested(&self) -> Option<Stop> {
+        match self.0.load(Ordering::Relaxed) {
+            CANCEL => Some(Stop::Cancel),
+            PAUSE => Some(Stop::Pause),
+            _ => None,
+        }
     }
 
     fn check(&self) -> Result<(), Cancelled> {
-        if self.is_cancelled() {
+        if self.is_stopped() {
             return Err(Cancelled);
         }
         Ok(())
@@ -151,57 +199,92 @@ pub(super) struct PlannedDownload {
     pub(super) is_executable: bool,
 }
 
-/// Downloads every file into `staging`, at most [`CONCURRENT_FILES`] at a
-/// time, reporting progress as it goes.
+impl PlannedDownload {
+    pub(super) fn size(&self) -> u64 {
+        self.chunks
+            .iter()
+            .map(|chunk| u64::try_from(chunk.size).unwrap_or(u64::MAX))
+            .sum()
+    }
+}
+
+/// What every file of one run shares.
+struct Run<'run> {
+    client: &'run reqwest::Client,
+    journal: &'run Journal,
+    cancel: &'run Cancel,
+    progress: &'run mpsc::Sender<ProgressUpdate>,
+}
+
+/// Downloads every file into the journal's staging, from where `starts`
+/// says each one is, at most [`CONCURRENT_FILES`] at a time, reporting
+/// progress as it goes.
 ///
-/// Returns the bytes written per file, in the order given. The first
-/// failure fails the whole call: a partial install is not a smaller
+/// Returns the bytes on disk per file, in the order given. The first
+/// failure stops the whole call: a partial install is not a smaller
 /// install, it's a broken one.
 pub(super) async fn download_all(
     files: Vec<PlannedDownload>,
-    staging: &Path,
+    starts: Vec<Start>,
+    journal: &Journal,
     cancel: Cancel,
     progress: mpsc::Sender<ProgressUpdate>,
 ) -> anyhow::Result<Vec<u64>> {
     let client = crate::achv_try!(client());
     let mut written = vec![0u64; files.len()];
+    let run = Run {
+        client,
+        journal,
+        cancel: &cancel,
+        progress: &progress,
+    };
 
-    let mut results = futures_util::stream::iter(files.into_iter().enumerate().map(|(index, file)| {
-        let destination = staging.join(&file.relative_path);
-        let cancel = cancel.clone();
-        let progress = progress.clone();
-        async move {
-            // A corrupt chunk already names its file, and is the message the
-            // user should see rather than a generic one wrapped around it.
-            let bytes = download_file(client, &file, &destination, &cancel, index, &progress)
-                .await
-                .map_err(|err| {
+    let mut results =
+        futures_util::stream::iter(files.into_iter().zip(starts).enumerate().map(|(index, (file, start))| {
+            let run = &run;
+            async move {
+                let (chunk, bytes) = match start {
+                    Start::Done => {
+                        let size = file.size();
+                        let _ = run.progress.send((index, file.relative_path.clone(), size)).await;
+                        return (index, Ok(size));
+                    }
+                    Start::At { chunk, bytes } => (chunk, bytes),
+                };
+                // A corrupt chunk already names its file, and is the message the
+                // user should see rather than a generic one wrapped around it.
+                let bytes = download_file(run, &file, index, chunk, bytes).await.map_err(|err| {
                     if err.is::<CorruptChunk>() {
                         err
                     } else {
                         err.context(format!("{} failed to download", file.relative_path))
                     }
                 });
-            (index, bytes)
-        }
-    }))
-    .buffer_unordered(CONCURRENT_FILES);
+                (index, bytes)
+            }
+        }))
+        .buffer_unordered(CONCURRENT_FILES);
 
     // Collected rather than short-circuited: returning on the first error
-    // would drop the other in-flight futures mid-write, leaving half-
-    // written files in staging that the caller is about to delete anyway
-    // — but also cancelling them properly is what `cancel` is for.
+    // would drop the other in-flight futures mid-write, before each has
+    // recorded what it had synced.
     let mut failure = None;
     while let Some((index, bytes)) = results.next().await {
         match bytes {
-            Ok(bytes) => written[index] = bytes,
+            Ok(bytes) => {
+                if let Some(slot) = written.get_mut(index) {
+                    *slot = bytes;
+                }
+            }
             Err(err) => {
-                tracing::error!(
-                    file_index = index,
-                    error = %err,
-                    "file download failed, cancelling the rest of the install"
-                );
-                cancel.cancel();
+                if !err.is::<Cancelled>() {
+                    tracing::error!(
+                        file_index = index,
+                        error = %err,
+                        "file download failed, stopping the rest of the install"
+                    );
+                }
+                cancel.abort();
                 failure.get_or_insert(err);
             }
         }
@@ -213,15 +296,25 @@ pub(super) async fn download_all(
     }
 }
 
-/// Fetches one file's chunks in order, decompressing and appending each.
+/// Where one file stands while it downloads.
+struct Cursor {
+    chunks: usize,
+    written: u64,
+    committed: u64,
+    committed_at: Instant,
+}
+
+/// Fetches one file's chunks in order from chunk `chunk` (`bytes` into the
+/// file), decompressing and appending each, then renames it complete.
 async fn download_file(
-    client: &reqwest::Client,
+    run: &Run<'_>,
     file: &PlannedDownload,
-    destination: &Path,
-    cancel: &Cancel,
     index: usize,
-    progress: &mpsc::Sender<ProgressUpdate>,
+    chunk: usize,
+    bytes: u64,
 ) -> anyhow::Result<u64> {
+    let destination = run.journal.files().join(&file.relative_path);
+    let part = part_path(&destination);
     if let Some(parent) = destination.parent() {
         crate::achv_try!(
             tokio::fs::create_dir_all(parent)
@@ -230,19 +323,85 @@ async fn download_file(
         );
     }
 
-    // Truncating, not appending: a leftover file from an attempt that died
-    // before staging could be cleared would otherwise be prefixed onto
-    // this one.
+    // Cut to the recorded length rather than appended to: whatever is past
+    // it was never vouched for.
     let mut sink = crate::achv_try!(
-        tokio::fs::File::create(destination)
+        tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&part)
             .await
-            .with_context(|| format!("creating {}", destination.display()))
+            .with_context(|| format!("opening {}", part.display()))
     );
+    crate::achv_try!(
+        sink.set_len(bytes)
+            .await
+            .with_context(|| format!("cutting {} back to {bytes} bytes", part.display()))
+    );
+    crate::achv_try!(sink.seek(std::io::SeekFrom::Start(bytes)).await);
 
-    let mut written = 0u64;
-    for (chunk_index, chunk) in file.chunks.iter().enumerate() {
-        crate::achv_try!(cancel.check());
-        let bytes = crate::achv_try!(fetch_chunk(client, chunk, cancel).await.map_err(|err| {
+    let mut cursor = Cursor {
+        chunks: chunk,
+        written: bytes,
+        committed: bytes,
+        committed_at: Instant::now(),
+    };
+    if let Err(err) = fill(run, file, index, &mut sink, &mut cursor).await {
+        // What landed since the last record is worth one more sync, unless
+        // the user cancelled: then all of it goes.
+        if run.cancel.requested() != Some(Stop::Cancel)
+            && cursor.written > cursor.committed
+            && let Err(commit_err) = commit(run.journal, index, &mut sink, &mut cursor).await
+        {
+            tracing::debug!(file_index = index, error = %commit_err, "couldn't record the last bytes of a stopped file");
+        }
+        return Err(err);
+    }
+
+    crate::achv_try!(commit(run.journal, index, &mut sink, &mut cursor).await);
+    drop(sink);
+    if file.is_executable
+        && let Some(permissions) = platform::executable_permissions()
+    {
+        crate::achv_try!(
+            tokio::fs::set_permissions(&part, permissions)
+                .await
+                .with_context(|| format!("making {} executable", part.display()))
+        );
+    }
+    crate::achv_try!(
+        tokio::fs::rename(&part, &destination)
+            .await
+            .with_context(|| format!("renaming {} into place", part.display()))
+    );
+    if let Some(parent) = destination.parent() {
+        crate::achv_try!(
+            decanter_runtime::journal::sync_dir(parent)
+                .await
+                .with_context(|| format!("syncing {}", parent.display()))
+        );
+    }
+    crate::achv_try!(run.journal.done(index).await);
+    tracing::debug!(
+        relative_path = file.relative_path,
+        bytes = cursor.written,
+        chunk_count = file.chunks.len(),
+        "file downloaded"
+    );
+    Ok(cursor.written)
+}
+
+async fn fill(
+    run: &Run<'_>,
+    file: &PlannedDownload,
+    index: usize,
+    sink: &mut tokio::fs::File,
+    cursor: &mut Cursor,
+) -> anyhow::Result<()> {
+    for (chunk_index, chunk) in file.chunks.iter().enumerate().skip(cursor.chunks) {
+        crate::achv_try!(run.cancel.check());
+        let bytes = crate::achv_try!(fetch_chunk(run.client, chunk, run.cancel).await.map_err(|err| {
             match err.downcast::<Mismatch>() {
                 Ok(check) => anyhow::Error::new(CorruptChunk {
                     file: file.relative_path.clone(),
@@ -253,71 +412,99 @@ async fn download_file(
             }
         }));
         crate::achv_try!(
-            tokio::io::AsyncWriteExt::write_all(&mut sink, &bytes)
+            sink.write_all(&bytes)
                 .await
-                .with_context(|| format!("writing {}", destination.display()))
+                .with_context(|| format!("writing {}", file.relative_path))
         );
-        written += bytes.len() as u64;
+        cursor.chunks = chunk_index + 1;
+        cursor.written += u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        if cursor.written - cursor.committed >= COMMIT_BYTES || cursor.committed_at.elapsed() >= COMMIT_INTERVAL {
+            crate::achv_try!(commit(run.journal, index, sink, cursor).await);
+        }
         // `trace!`, not `debug!`: same reasoning as `fetch_chunk_once` — a
         // file can be thousands of chunks, one line per chunk written.
         tracing::trace!(
             file_index = index,
             chunk_bytes = bytes.len(),
-            file_bytes_written = written,
+            file_bytes_written = cursor.written,
             "wrote chunk"
         );
         // A closed receiver means the caller stopped listening, which is
         // not a reason to stop downloading.
-        let _ = progress.send((index, file.relative_path.clone(), written)).await;
+        let _ = run
+            .progress
+            .send((index, file.relative_path.clone(), cursor.written))
+            .await;
     }
-
-    crate::achv_try!(
-        tokio::io::AsyncWriteExt::flush(&mut sink)
-            .await
-            .with_context(|| format!("flushing {}", destination.display()))
-    );
-    if file.is_executable
-        && let Some(permissions) = platform::executable_permissions()
-    {
-        crate::achv_try!(
-            tokio::fs::set_permissions(destination, permissions)
-                .await
-                .with_context(|| format!("making {} executable", destination.display()))
-        );
-    }
-    tracing::debug!(
-        relative_path = file.relative_path,
-        bytes = written,
-        chunk_count = file.chunks.len(),
-        "file downloaded"
-    );
-    Ok(written)
+    Ok(())
 }
 
-/// One chunk, retried a few times, returned decompressed.
+/// Syncs the file's bytes, then records them: in that order, so no record
+/// ever names bytes a crash could still lose.
+async fn commit(
+    journal: &Journal,
+    index: usize,
+    sink: &mut tokio::fs::File,
+    cursor: &mut Cursor,
+) -> anyhow::Result<()> {
+    crate::achv_try!(sink.flush().await.context("flushing a downloaded file"));
+    crate::achv_try!(sink.sync_data().await.context("syncing a downloaded file"));
+    crate::achv_try!(journal.commit(index, cursor.chunks, cursor.written).await);
+    cursor.committed = cursor.written;
+    cursor.committed_at = Instant::now();
+    Ok(())
+}
+
+/// One chunk, retried for up to [`RETRY_WINDOW`], returned decompressed.
 async fn fetch_chunk(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Cancel) -> anyhow::Result<Vec<u8>> {
-    let mut last_error = None;
-    for attempt in 0..CHUNK_ATTEMPTS {
+    let mut failing_since = None;
+    let mut backoff = FIRST_BACKOFF;
+    loop {
         crate::achv_try!(cancel.check());
-        if attempt > 0 {
-            tokio::time::sleep(RETRY_BACKOFF * attempt as u32).await;
-        }
-        match fetch_chunk_once(client, chunk, cancel).await {
+        let err = match fetch_chunk_once(client, chunk, cancel).await {
             Ok(bytes) => return Ok(bytes),
-            // A cancel isn't a transport failure and must not be retried.
-            Err(err) if cancel.is_cancelled() => return Err(err),
-            Err(err) => {
-                // A retry that goes on to succeed is not a failure of the
-                // install, so this is `warn!`, not `error!` — see the CDN
-                // refusal test this path exists for.
-                tracing::warn!(attempt = attempt + 1, max_attempts = CHUNK_ATTEMPTS, error = %err, "chunk attempt failed, retrying");
-                last_error = Some(err);
-            }
+            // A stop isn't a transport failure and must not be retried.
+            Err(err) if cancel.is_stopped() => return Err(err),
+            Err(err) => err,
+        };
+        let status = err.downcast_ref::<reqwest::Error>().and_then(reqwest::Error::status);
+        if status.is_some_and(|status| status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN) {
+            tracing::warn!(error = %err, "chunk URL refused, pausing until it is signed again");
+            return Err(err.context(Unreachable));
         }
+        // Gone or never there: waiting won't change it.
+        if status.is_some_and(|status| status.is_client_error() && status != StatusCode::TOO_MANY_REQUESTS) {
+            tracing::error!(error = %err, "chunk refused by the CDN");
+            return Err(err);
+        }
+        let failing_for = failing_since.get_or_insert_with(Instant::now).elapsed();
+        if failing_for >= RETRY_WINDOW {
+            tracing::error!(window_secs = RETRY_WINDOW.as_secs(), error = %err, "chunk still failing after the retry window");
+            // Corrupt bytes for a whole minute are not the network.
+            return Err(if err.is::<Mismatch>() {
+                err
+            } else {
+                err.context(Unreachable)
+            });
+        }
+        // A retry that goes on to succeed is not a failure of the install,
+        // so this is `warn!`, not `error!`.
+        tracing::warn!(failing_secs = failing_for.as_secs(), error = %err, "chunk attempt failed, retrying");
+        sleep_unless_stopped(backoff.min(RETRY_WINDOW.saturating_sub(failing_for)), cancel).await;
+        backoff = backoff.saturating_mul(2).min(MAX_BACKOFF);
     }
-    let err = last_error.unwrap_or_else(|| anyhow::anyhow!("chunk download failed"));
-    tracing::error!(attempts = CHUNK_ATTEMPTS, error = %err, "chunk download failed after exhausting retries");
-    Err(err)
+}
+
+/// So a pause or cancel during a backoff lands at once, not after it.
+async fn sleep_unless_stopped(duration: Duration, cancel: &Cancel) {
+    let until = Instant::now() + duration;
+    while !cancel.is_stopped() {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        tokio::time::sleep(left.min(Duration::from_millis(250))).await;
+    }
 }
 
 async fn fetch_chunk_once(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Cancel) -> anyhow::Result<Vec<u8>> {

@@ -65,9 +65,10 @@ use crate::platform;
 use crate::vdf::{self, Value};
 
 /// Steam's `StateFlags` for "fully installed". Written so the files read
-/// as expected to anything else that knows the format; decanter itself has
-/// no partially-installed state — an install either finished or its
-/// staging directory was thrown away.
+/// as expected to anything else that knows the format; nothing under
+/// `common/` is ever partially installed — an unfinished download stays in
+/// its staging folder under `downloading/`, with its journal, until it
+/// finishes or is cancelled.
 const STATE_FULLY_INSTALLED: u64 = 4;
 
 /// Every storefront, checked in turn against a manifest's raw `storefront`
