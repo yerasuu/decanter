@@ -25,7 +25,7 @@ construir» decanter:
 3. enters Raven's own nix environment (`crates/runtime/src/os/linux/raven/raven.nix`, through `decanter-nix`:
    the host's tools when they cover it, else the system's nix, else nix-portable): CMake, Ninja, Python 3,
    the host gcc and g++ (pinned in `CC`/`CXX`, since the MinGW compiler's setup hook would otherwise take
-   them), pkg-config, libffi, Wayland and wayland-protocols, xkbcommon, pixman, FreeType, libpng and
+   them), pkg-config, libffi, Wayland and wayland-protocols, xkbcommon, pixman, FreeType, libpng, OpenSSL and
    `x86_64-w64-mingw32-gcc`;
 4. builds only the runtime, `ninja -k 0 native/raven`, since Raven's full default build stops on a test program
    (`native/vulkan-fixtures/client.exe`, an internal compiler error of nixpkgs' MinGW GCC 16.2.0);

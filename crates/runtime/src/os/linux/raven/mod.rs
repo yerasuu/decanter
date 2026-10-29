@@ -30,7 +30,7 @@ const RECIPE: Recipe = Recipe {
 /// What [`RECIPE`] brings, asked of the host before nix is used.
 const HOST_CHECK: &str = "command -v gcc && command -v g++ && command -v cmake && command -v ninja \
      && command -v python3 && command -v pkg-config && command -v x86_64-w64-mingw32-gcc \
-     && pkg-config --exists libffi wayland-client wayland-protocols xkbcommon pixman-1 freetype2 libpng";
+     && pkg-config --exists libffi wayland-client wayland-protocols xkbcommon pixman-1 freetype2 libpng openssl";
 
 /// The runtime, relative to the checkout: what the build makes and what runs programs.
 const BINARY: &str = "build/native/raven";
