@@ -24,9 +24,12 @@ decanter-reports user list                      # name, role, created, last logi
 decanter-reports user role ana --role admin     # viewer or admin
 decanter-reports user reset ana                 # a new key, printed once; the old one stops working
 decanter-reports user remove ana
+decanter-reports user add ana --role viewer --force-reuse   # within 24 h of removing an ana: see below
 ```
 
-A name is 1 to 32 characters among `a-z`, `0-9` and `-`, and unique. Only `add` and `reset` write to standard output,
+A name is 1 to 32 characters among `a-z`, `0-9` and `-`, and unique. A removed name is held for 24 hours: `user add`
+refuses it in that time, because the audit trail keeps naming the old account by it and records of the two would
+read as one person's. Pass `--force-reuse` when it is the same person coming back, or the mix-up does not matter. Only `add` and `reset` write to standard output,
 and only the key, so `KEY=$(decanter-reports user add ...)` captures it whole; the key is never logged and the
 server keeps only its SHA-256. `remove` and `role` refuse to leave no admin. The server re-reads the accounts every
 15 s: a new account works at once, and after `remove`, `reset` or `role` the old key and the sessions opened with it
@@ -53,8 +56,9 @@ A viewer gets the same page without the buttons. The page says whose session it 
 "(administración)"). "Cerrar sesión" ends the session. A session ends after `admin.session_idle_secs` (30 min) without
 a request, after `admin.session_max_secs` (8 h) in any case, when the same account logs in past
 `admin.max_sessions_per_user` (4) or, past `admin.max_sessions` (16), the account holding the most sessions does, when
-its account is removed or its key reset, and on every restart of the server; then any `/admin` page answers the plain 404: go back to `/admin/login`. Those 404s count
-against the failure budget like a wrong key, so do not reload an expired page in a loop.
+its account is removed or its key reset, and on every restart of the server; then any `/admin` page answers the
+plain 404: go back to `/admin/login`. Those 404s do not count against the failure budget (a wrong key or a wrong
+Bearer does).
 
 The cookie is `Secure`: a browser returns it only over HTTPS, so through the public URL it works behind the tunnel
 and on the host only as `http://127.0.0.1:8787` or `http://localhost:8787` (a browser treats loopback as secure).
@@ -84,8 +88,11 @@ curl -s -H "Authorization: Bearer $KEY" $B/admin/audit/records             # {"r
 curl -s -H "Authorization: Bearer $KEY" "$B/admin/audit/records?after=$NEXT"  # the next 100
 ```
 
-The daily sweep deletes records older than `audit_retention_days` (default 180; 0 keeps them for good) and logs
-`audit retention sweep` with `deleted=N`. `--check-config` prints how many records there are and the day of the
+Logins and logouts are thinned so nobody can flood the trail by repeating them: one `login` record per account
+every 5 minutes, a `logout` only when a session really ended, and at most 6 of the two per account per minute.
+Changes are always recorded. The daily sweep deletes records older than `audit_retention_days` (default 180; 0 keeps
+them for good) and logs `audit retention sweep` with `deleted=N` and `session_records_skipped=N`, the logins and
+logouts left unrecorded since the previous sweep; a large number means someone logs in and out in a loop. `--check-config` prints how many records there are and the day of the
 oldest on the accounts line. A record that could not be written is the warning `audit record not written; the
 change itself stands`: the change happened, only its record is missing.
 
@@ -226,8 +233,8 @@ since its database file is locked while it runs). What it prints is decrypted bu
 attachment names): treat the output as private as the bucket. Attachments are blobs, read them through
 `GET /admin/reports/<id>/attachment` instead.
 
-The accounts store holds `users/<id>.json`, `idx/name/<name>.json`, `meta/roster.json` and `audit/<id>.json` (the
-audit trail), beside its own `.conf/`.
+The accounts store holds `users/<id>.json`, `idx/name/<name>.json` (kept after a removal, as the name's tombstone),
+`meta/roster.json` and `audit/<id>.json` (the audit trail), beside its own `.conf/`.
 
 Layout of each partition: `reports/<id>.json`, `groups/<fingerprint>.json`, `meta/totals.json`,
 `meta/sequence.json`, `meta/sweep.json`, `attachments/` (blobs), `cleanlogs/` (blobs: the public clean logs),
@@ -251,6 +258,8 @@ The log has no addresses, codes, keys or report contents, only counts; storage l
 | `stale transactions recovered` | a transaction was cut off; repeated lines mean the bucket is failing |
 | `no admin account` (hourly) | nobody can change reports; create one with `user add <name> --role admin` |
 | `account refresh failed` | the accounts could not be re-read; the server keeps the previous list until it can |
+| `account object unreadable` (with `account=<id>`, `kept=`) | one account's object does not decrypt; `kept=true` while its name entry vouches for it, `false` drops it (a removal or reset since). Repeats every 15 s until the account is reset or removed; `--check-config` counts them |
+| `client_ip_header ignored` (with `peer=`) | a request carried the client header from an address not in `trusted_proxies`: if `peer` is the proxy, its address changed, every client is counted as it, and `trusted_proxies` needs the new one |
 | `audit record not written; the change itself stands` | a change went unrecorded in the audit trail; repeated lines mean the bucket is failing |
 | `audit retention sweep failed` | old audit records were not deleted this time; the next daily sweep tries again |
 | `admin session ended: account removed, disabled or given a new key` | a `user remove` or `user reset` took effect |

@@ -54,15 +54,32 @@ pub async fn run_once(state: &AppState) {
     sweep_audit(state).await;
 }
 
+/// Also reports the logins and logouts left unrecorded since the last sweep, so a flood of them shows in the log.
 async fn sweep_audit(state: &AppState) {
+    let session_records_skipped = state.session_records.take_skipped();
     let days = u64::from(state.config.audit_retention_days);
     if days == 0 {
+        tracing::info!(
+            store = "accounts",
+            session_records_skipped,
+            "audit retention sweep: retention off"
+        );
         return;
     }
     let cutoff = crate::store::current_minute().saturating_sub(days * 24 * 60);
     match state.accounts.store().sweep_audit(cutoff).await {
-        Ok(deleted) => tracing::info!(store = "accounts", deleted, "audit retention sweep"),
-        Err(error) => tracing::error!(store = "accounts", %error, "audit retention sweep failed"),
+        Ok(deleted) => tracing::info!(
+            store = "accounts",
+            deleted,
+            session_records_skipped,
+            "audit retention sweep"
+        ),
+        Err(error) => tracing::error!(
+            store = "accounts",
+            %error,
+            session_records_skipped,
+            "audit retention sweep failed"
+        ),
     }
 }
 

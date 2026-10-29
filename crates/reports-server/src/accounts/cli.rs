@@ -8,18 +8,30 @@ use std::fmt::Write as _;
 use std::io::Write;
 
 use crate::audit::{self, Action, CLI};
-use crate::store::{AccountChange, AccountStore, NAME_RULE, Role, is_name};
+use crate::store::{AccountChange, AccountStore, Added, NAME_RULE, Role, is_name};
 
-pub const USAGE: &str = "usage: decanter-reports user add <name> --role viewer|admin | list | remove <name> | \
-                         reset <name> | role <name> --role viewer|admin (the config path comes from \
+pub const USAGE: &str = "usage: decanter-reports user add <name> --role viewer|admin [--force-reuse] | list | \
+                         remove <name> | reset <name> | role <name> --role viewer|admin (the config path comes from \
                          DECANTER_REPORTS_CONFIG)";
+const FORCE_REUSE: &str = "--force-reuse";
 
 pub enum Command {
-    Add { name: String, role: Role },
+    Add {
+        name: String,
+        role: Role,
+        force_reuse: bool,
+    },
     List,
-    Remove { name: String },
-    Reset { name: String },
-    Role { name: String, role: Role },
+    Remove {
+        name: String,
+    },
+    Reset {
+        name: String,
+    },
+    Role {
+        name: String,
+        role: Role,
+    },
 }
 
 fn name(text: &str) -> Result<String, String> {
@@ -43,9 +55,10 @@ fn role(flag: &str, value: &str) -> Result<Role, String> {
 pub fn parse(args: &[String]) -> Result<Command, String> {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
-        ["add", who, flag, value] => Ok(Command::Add {
+        ["add", who, flag, value, rest @ ..] if rest.is_empty() || rest == [FORCE_REUSE] => Ok(Command::Add {
             name: name(who)?,
             role: role(flag, value)?,
+            force_reuse: !rest.is_empty(),
         }),
         ["list"] => Ok(Command::List),
         ["remove", who] => Ok(Command::Remove { name: name(who)? }),
@@ -110,8 +123,8 @@ fn table(users: &[crate::store::User]) -> String {
 ///
 /// # Errors
 ///
-/// The store fails, the account does not exist, the change would leave no admin, the name is taken, or an output
-/// is closed.
+/// The store fails, the account does not exist, the change would leave no admin, the name is taken or was removed
+/// less than a day ago, or an output is closed.
 pub async fn run(
     store: &AccountStore,
     command: &Command,
@@ -120,10 +133,22 @@ pub async fn run(
 ) -> Result<(), String> {
     let failed = |error: anyhow::Error| format!("the accounts store failed: {error:#}");
     match command {
-        Command::Add { name, role } => {
+        Command::Add {
+            name,
+            role,
+            force_reuse,
+        } => {
             let today = crate::app::today();
-            let Some(key) = store.add(name, *role, &today).await.map_err(failed)? else {
-                return Err(format!("a user named {name} already exists"));
+            let key = match store.add(name, *role, &today, *force_reuse).await.map_err(failed)? {
+                Added::Key(key) => key,
+                Added::Taken => return Err(format!("a user named {name} already exists")),
+                Added::RecentlyRemoved => {
+                    return Err(format!(
+                        "a user named {name} was removed less than 24 hours ago, and the audit trail still names \
+                         that account {name}: records of the two would read as one person's. Pick another name, \
+                         or pass {FORCE_REUSE} if it is the same person or the mix-up does not matter"
+                    ));
+                }
             };
             show_key(out, notes, &key, &format!("user {name} added as {}", role.name()))?;
             audited(store, notes, Action::UserAdd(*role), name).await
@@ -190,6 +215,7 @@ mod tests {
         for good in [
             "add owner --role admin",
             "add ana-2 --role viewer",
+            "add ana --role viewer --force-reuse",
             "list",
             "remove owner",
             "reset owner",
@@ -203,6 +229,8 @@ mod tests {
             "add owner --role root",
             "add Owner --role admin",
             "add owner --admin admin",
+            "add owner --role admin --force",
+            "add owner --role admin --force-reuse --force-reuse",
             "list all",
             "remove",
             "reset a b",
@@ -283,7 +311,14 @@ mod tests {
         let roster = store.roster().await?;
         assert_eq!((roster.admins, roster.viewers), (1, 0));
         let (result, ..) = run_text(&store, "add owner --role viewer").await;
-        assert!(result.is_ok(), "a removed name is free again: {result:?}");
+        assert!(
+            result.is_err_and(
+                |message| message.contains("removed less than 24 hours ago") && message.contains("--force-reuse")
+            ),
+            "a removed name is held for a day"
+        );
+        let (result, ..) = run_text(&store, "add owner --role viewer --force-reuse").await;
+        assert!(result.is_ok(), "unless the reuse is forced: {result:?}");
         let (_, list, notes) = run_text(&store, "list").await;
         assert!(list.contains("owner\tviewer") && notes.is_empty(), "{list}");
         std::fs::remove_dir_all(&dir)?;
@@ -297,11 +332,11 @@ mod tests {
         let mut set = tokio::task::JoinSet::new();
         for role in [Role::Admin, Role::Viewer, Role::Admin, Role::Viewer] {
             let store = store.clone();
-            set.spawn(async move { store.add("same", role, "2026-10-28").await });
+            set.spawn(async move { store.add("same", role, "2026-10-28", false).await });
         }
         let mut won = 0;
         while let Some(joined) = set.join_next().await {
-            won += usize::from(joined??.is_some());
+            won += usize::from(matches!(joined??, Added::Key(_)));
         }
         assert_eq!(won, 1);
         assert_eq!(store.users().await?.len(), 1);

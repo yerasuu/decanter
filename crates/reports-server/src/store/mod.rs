@@ -24,7 +24,7 @@ use serde::Serialize;
 #[cfg(test)]
 pub use accounts::test_accounts;
 pub use accounts::{
-    AccountStore, Changed as AccountChange, ID_HEX, KEY_PREFIX, NAME_RULE, Role, Roster, User, is_name,
+    AccountStore, Added, Changed as AccountChange, ID_HEX, KEY_PREFIX, NAME_RULE, Peeked, Role, User, is_name,
 };
 pub use audit::{AuditRecord, AuditSummary, current_minute, is_audit_id};
 pub use logs::{LogFilter, LogRow};

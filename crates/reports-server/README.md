@@ -98,7 +98,7 @@ actions (none for a viewer); its "Logs adjuntos" link opens the log viewer (`doc
 
 | Command | Does |
 |---|---|
-| `decanter-reports user add <name> --role viewer\|admin` | creates the account and prints its key once on standard output (nothing else goes there) |
+| `decanter-reports user add <name> --role viewer\|admin [--force-reuse]` | creates the account and prints its key once on standard output (nothing else goes there); a name removed less than 24 hours ago needs `--force-reuse` |
 | `decanter-reports user list` | name, role, created and last login day, state; never a key or a hash |
 | `decanter-reports user reset <name>` | a new key, printed once; the old key and its sessions stop within 15 s |
 | `decanter-reports user role <name> --role viewer\|admin` | changes the role; open sessions follow within 15 s |
@@ -206,21 +206,26 @@ and hold no report contents and no addresses.
   limits matter and why the maintainer resolves what must be kept.
 - **Trusted proxy.** The client address is the socket's, unless the socket's address is in `trusted_proxies` and
   `client_ip_header` is set: then it is the rightmost entry of that header that is not itself a trusted proxy. From
-  any other peer the header is ignored, since anyone can write it.
+  any other peer the header is ignored, since anyone can write it, and the log says `client_ip_header ignored` (at
+  most every 10 minutes, naming only the peer): the sign that the proxy's address no longer matches. Addresses are
+  compared in canonical form, so a dual-stack listener's `::ffff:a.b.c.d` is the IPv4 client `a.b.c.d`.
 - **Retention.** Unresolved reports received more than `retention_days` ago, and resolved reports resolved more
   than `resolved_retention_days` ago (unless 0), are deleted with their attachments by a sweep of each partition at
   startup and every 24 hours. The same sweep removes blobs no report names and repairs index entries left by failed writes.
 - **Audit trail.** Every change a maintainer makes (and every login, logout and `user` command that changed an
   account) leaves one record in the encrypted accounts store: name, role (`cli` for the command line), action,
   target, count and the minute in UTC; never an address, key, hash or attachment content. Written after the change,
-  a failed record is a logged warning and never undoes it. The daily sweep deletes records older than
-  `audit_retention_days` (180, 0 keeps them); admins read them at `/admin/audit`.
+  a failed record is a logged warning and never undoes it. Logins and logouts, which any account can repeat, are
+  thinned: one `login` record per account per 5 minutes, a `logout` only when a session ended, and at most 6 of the
+  two per account per minute; the rest are counted in the sweep's log line. Changes are always recorded. The daily
+  sweep deletes records older than `audit_retention_days` (180, 0 keeps them); admins read them at `/admin/audit`.
 - **Connections.** The process serves with hyper directly: at most `max_connections` at once (the next is closed
   at once), a request head must arrive within `header_timeout_secs` (slow headers and idle keep-alive connections
   are closed), and on SIGTERM open connections get `shutdown_grace_secs` before they are dropped.
 - **Failures.** Wrong admin keys and wrong delete codes share one per-address bucket (`failures_per_ip` in
-  `failure_window_secs`, IPv6 by /48), and so does any `/admin` request without a valid key or session (an
-  expired session cookie included) and a failed login; past it every `/admin` path and every delete answers 429 with
+  `failure_window_secs`, IPv6 by /48), and so does any `/admin` request without a valid key or session and a
+  failed login. An expired or unknown session cookie alone answers the same 404 without counting (a session id
+  cannot be guessed, and counting it would lock out a maintainer who left a page open); past it every `/admin` path and every delete answers 429 with
   `Retry-After` for that address, known route or not, so the 429 names no route. Successes do not count. A
   maintainer locked out this way waits out the window or comes from another address.
 - **Storage.** Every object in the bucket is encrypted by s3db under a key derived from the passphrase (each store,

@@ -58,8 +58,10 @@ impl FromRequestParts<AppState> for Admin {
 }
 
 /// Proof that the account may change reports: the gate inserts it for the `admin` role only, and every handler that
-/// hides, restores, resolves or deletes takes it, so one that forgot the check would not compile. Built nowhere
-/// else, hence the private field.
+/// hides, restores, resolves or deletes takes it. It is a request extension checked at run time, so a new route whose
+/// handler does not take it compiles and lets a viewer through: every mutating route must take it by hand, and
+/// `admin_tests` sends a viewer to every mutating `/admin` route of the router to catch one that does not. Built
+/// nowhere else, hence the private field.
 #[derive(Clone)]
 pub struct CanChange(());
 
@@ -436,7 +438,9 @@ async fn admitted(request: Request, next: Next, identity: &Identity, csrf: Optio
 /// Lets an `/admin` request through with a valid Bearer key (unchanged, no CSRF) or a valid session cookie; with a
 /// session every method but GET and HEAD also needs a same-origin `Origin` and the session's CSRF token, from the
 /// `X-CSRF-Token` header or the `csrf` form field. With neither credential, every path under `/admin` except the
-/// login form answers the one uniform 404 and counts as an authentication failure.
+/// login form answers the one uniform 404 and counts as an authentication failure, unless what failed is only a
+/// well-formed session cookie: that is a browser left open past its session, and a session id cannot be guessed, so
+/// counting it would only lock the maintainer out.
 pub async fn gate(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
     let path = request.uri().path();
     let is_login = path == LOGIN_PATH && matches!(*request.method(), Method::GET | Method::POST);
@@ -449,10 +453,13 @@ pub async fn gate(State(state): State<AppState>, mut request: Request, next: Nex
     {
         return admitted(request, next, &identity, None).await;
     }
-    let live = session_cookie(request.headers()).and_then(|id| state.sessions.touch(id, now));
+    let cookie = session_cookie(request.headers());
+    let live = cookie.and_then(|id| state.sessions.touch(id, now));
     let Some(live) = live else {
-        let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
-        record_failure(&state, request.headers(), peer, now);
+        if cookie.is_none() || bearer_key(request.headers()).is_some() {
+            let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
+            record_failure(&state, request.headers(), peer, now);
+        }
         return not_found();
     };
     let mut return_to = None;
@@ -553,7 +560,7 @@ pub async fn login(
     no_store(&mut response);
     state.accounts.record_login(&identity.id).await;
     tracing::info!(user = %identity.name, role = %identity.role.name(), "admin session opened");
-    audit::record(&state, (&identity.name, identity.role), Action::Login, "", 1).await;
+    audit::record_session(&state, (&identity.name, identity.role), Action::Login).await;
     response
 }
 
@@ -562,7 +569,7 @@ pub async fn login(
 pub async fn logout(admin: Admin, State(state): State<AppState>, headers: HeaderMap) -> Response {
     if session_cookie(&headers).is_some_and(|id| state.sessions.close(id)) {
         tracing::info!("admin session closed");
-        audit::record(&state, (&admin.user, admin.role), Action::Logout, "", 1).await;
+        audit::record_session(&state, (&admin.user, admin.role), Action::Logout).await;
     }
     let mut response = (
         StatusCode::SEE_OTHER,

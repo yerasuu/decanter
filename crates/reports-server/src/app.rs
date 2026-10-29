@@ -34,6 +34,7 @@ pub struct Inner {
     pub accounts: Accounts,
     pub sessions: Sessions,
     pub log_searches: admin_logs::Searches,
+    pub session_records: audit::SessionRecords,
 }
 
 #[derive(Clone)]
@@ -62,6 +63,7 @@ impl AppState {
             accounts,
             sessions,
             log_searches: admin_logs::Searches::default(),
+            session_records: audit::SessionRecords::default(),
         }))
     }
 }

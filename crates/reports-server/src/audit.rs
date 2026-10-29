@@ -2,7 +2,11 @@
 //! admins' page of it (JSON at `/admin/audit/records` for scripts). Records live in the accounts store
 //! (`store::audit`); the log lines of each change stay as they were.
 
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as _;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -105,6 +109,76 @@ pub async fn append(
         at: String::new(),
     };
     store.append_audit(&record, current_minute()).await
+}
+
+/// One `login` record per account in this time, however often it logs in.
+const LOGIN_RECORD_EVERY: Duration = Duration::from_mins(5);
+/// Login and logout records per account per minute; past it they are counted, not written.
+const SESSION_RECORDS_PER_MINUTE: usize = 6;
+const MINUTE: Duration = Duration::from_mins(1);
+
+#[derive(Default)]
+struct Recent {
+    last_login: Option<Instant>,
+    written: VecDeque<Instant>,
+}
+
+/// Keeps logins and logouts, which any account (a viewer too) can repeat at will, from flooding the trail that
+/// holds the changes for `audit_retention_days`. Only these two actions pass through it: a change is always written.
+#[derive(Default)]
+pub struct SessionRecords {
+    by_user: Mutex<HashMap<String, Recent>>,
+    skipped: AtomicU64,
+}
+
+impl SessionRecords {
+    /// Whether this login or logout gets a record, counting it as skipped when not.
+    fn admit(&self, user: &str, action: Action, now: Instant) -> bool {
+        let is_login = matches!(action, Action::Login);
+        let mut by_user = self.by_user.lock().unwrap_or_else(PoisonError::into_inner);
+        by_user.retain(|_, recent| {
+            while recent
+                .written
+                .front()
+                .is_some_and(|at| now.saturating_duration_since(*at) >= MINUTE)
+            {
+                recent.written.pop_front();
+            }
+            !recent.written.is_empty()
+                || recent
+                    .last_login
+                    .is_some_and(|at| now.saturating_duration_since(at) < LOGIN_RECORD_EVERY)
+        });
+        let recent = by_user.entry(user.to_owned()).or_default();
+        let repeated_login = is_login
+            && recent
+                .last_login
+                .is_some_and(|at| now.saturating_duration_since(at) < LOGIN_RECORD_EVERY);
+        let admitted = !repeated_login && recent.written.len() < SESSION_RECORDS_PER_MINUTE;
+        if admitted {
+            recent.written.push_back(now);
+            if is_login {
+                recent.last_login = Some(now);
+            }
+        }
+        drop(by_user);
+        if !admitted {
+            self.skipped.fetch_add(1, Ordering::Relaxed);
+        }
+        admitted
+    }
+
+    /// The logins and logouts left unrecorded since the last call, for the daily sweep's log line.
+    pub fn take_skipped(&self) -> u64 {
+        self.skipped.swap(0, Ordering::Relaxed)
+    }
+}
+
+/// [`record`] for a login or logout, which [`SessionRecords`] may leave unrecorded.
+pub async fn record_session(state: &AppState, (user, role): (&str, Role), action: Action) {
+    if state.session_records.admit(user, action, Instant::now()) {
+        record(state, (user, role), action, "", 1).await;
+    }
 }
 
 /// [`append`] for the server: a failure is logged and the change it records stands.
@@ -222,5 +296,37 @@ pub async fn records(_: CanChange, State(state): State<AppState>, Query(params):
     match page_of(&state, after.as_deref()).await {
         Ok((records, next)) => axum::Json(json!({ "records": records, "next": next })).into_response(),
         Err(error) => internal("audit_records", &error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn logins_are_recorded_once_per_five_minutes_and_session_records_are_capped() {
+        let records = SessionRecords::default();
+        let t0 = Instant::now();
+        let at = |secs| t0 + Duration::from_secs(secs);
+        assert!(records.admit("ana", Action::Login, at(0)));
+        assert!(
+            !records.admit("ana", Action::Login, at(1)),
+            "a second login within 5 minutes"
+        );
+        assert!(records.admit("owner", Action::Login, at(1)), "another account is apart");
+        let logouts = (0..10).filter(|_| records.admit("ana", Action::Logout, at(2))).count();
+        assert_eq!(
+            logouts,
+            SESSION_RECORDS_PER_MINUTE - 1,
+            "the login took one of the minute's six"
+        );
+        assert_eq!(records.take_skipped(), 1 + 10 - 5);
+        assert_eq!(records.take_skipped(), 0);
+        assert!(
+            records.admit("ana", Action::Logout, at(62)),
+            "the next minute has room again"
+        );
+        assert!(!records.admit("ana", Action::Login, at(299)));
+        assert!(records.admit("ana", Action::Login, at(300)));
     }
 }

@@ -39,9 +39,11 @@ const UPLOAD_PREFIX: usize = 6;
 /// Page reads are keyed by /64 so that one household behind a /48 does not share a browsing budget.
 const READ_PREFIX: usize = 8;
 
-/// An IPv6 client owns a whole prefix, so the prefix is the key; otherwise rotating inside it would be free.
+/// An IPv6 client owns a whole prefix, so the prefix is the key; otherwise rotating inside it would be free. An
+/// IPv4-mapped address (`::ffff:a.b.c.d`, what a dual-stack listener reports for IPv4 clients) is the IPv4 client,
+/// since its /48 would hold every IPv4 address.
 fn key(ip: IpAddr, prefix_octets: usize) -> IpAddr {
-    match ip {
+    match ip.to_canonical() {
         IpAddr::V6(v6) => {
             let mut octets = v6.octets();
             octets[prefix_octets..].fill(0);
@@ -187,15 +189,36 @@ impl Limiter {
     }
 }
 
+/// How often the server may say that `client_ip_header` came from an untrusted peer, so a drift is visible in the
+/// log without one line per request.
+const IGNORED_HEADER_EVERY: Duration = Duration::from_mins(10);
+static IGNORED_HEADER_SAID: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Whether the drift warning is due now, and if so marks it said.
+fn due(last: &Mutex<Option<Instant>>, now: Instant, every: Duration) -> bool {
+    let mut last = last.lock().unwrap_or_else(PoisonError::into_inner);
+    let due = last.is_none_or(|at| now.saturating_duration_since(at) >= every);
+    if due {
+        *last = Some(now);
+    }
+    drop(last);
+    due
+}
+
+fn is_trusted(config: &Config, ip: IpAddr) -> bool {
+    config.trusted_proxies.iter().any(|proxy| proxy.to_canonical() == ip)
+}
+
 /// The address a limit applies to.
 ///
 /// The socket's address, unless it is a trusted proxy and the configured header names the client:
 /// anyone else can write that header, so it counts for nothing from them. For a list (`X-Forwarded-For`)
 /// the client is the rightmost entry that is not itself a trusted proxy, since each proxy appends the
 /// address it saw and only the entries after the last trusted hop are not forgeable by the client.
+/// Addresses are compared in their canonical form, so a dual-stack listener's `::ffff:a.b.c.d` is `a.b.c.d`.
 #[must_use]
 pub fn client_ip(peer: SocketAddr, headers: &HeaderMap, config: &Config) -> IpAddr {
-    let peer_ip = peer.ip();
+    let peer_ip = peer.ip().to_canonical();
     let Some(name) = config
         .client_ip_header
         .as_deref()
@@ -203,7 +226,18 @@ pub fn client_ip(peer: SocketAddr, headers: &HeaderMap, config: &Config) -> IpAd
     else {
         return peer_ip;
     };
-    if !config.trusted_proxies.contains(&peer_ip) {
+    if !is_trusted(config, peer_ip) {
+        // When the proxy's address drifts away from `trusted_proxies`, every client is counted as the proxy and
+        // one client's failures lock everyone out of /admin; this line is the only sign of it.
+        if headers.contains_key(&name) && due(&IGNORED_HEADER_SAID, Instant::now(), IGNORED_HEADER_EVERY) {
+            tracing::warn!(
+                target: "decanter_reports::limits",
+                peer = %peer_ip,
+                header = %name,
+                "client_ip_header ignored: the peer is not in trusted_proxies, so the limits count the peer's \
+                 address; if the peer is the proxy, its address changed"
+            );
+        }
         return peer_ip;
     }
     headers
@@ -213,8 +247,8 @@ pub fn client_ip(peer: SocketAddr, headers: &HeaderMap, config: &Config) -> IpAd
         .flat_map(|value| value.split(','))
         .rev()
         .map(str::trim)
-        .map(str::parse::<IpAddr>)
-        .find(|parsed| parsed.as_ref().map_or(true, |ip| !config.trusted_proxies.contains(ip)))
+        .map(|text| text.parse::<IpAddr>().map(|ip| ip.to_canonical()))
+        .find(|parsed| parsed.as_ref().map_or(true, |ip| !is_trusted(config, *ip)))
         .and_then(Result::ok)
         .unwrap_or(peer_ip)
 }
@@ -368,6 +402,44 @@ mod tests {
         let ip = client_ip(proxy, &headers("6.6.6.6, 1.2.3.4, 10.0.0.2"), &config);
         assert_eq!(ip.to_string(), "1.2.3.4");
         assert_eq!(client_ip(proxy, &headers("garbage"), &config).to_string(), "10.0.0.1");
+    }
+
+    #[test]
+    fn mapped_ipv4_peers_are_their_ipv4_client() {
+        let limiter = limiter(1, 5, 100);
+        let t0 = Instant::now();
+        let mapped = |last: u8| IpAddr::V6(std::net::Ipv4Addr::new(198, 51, 100, last).to_ipv6_mapped());
+        assert!(allowed(&limiter.check(mapped(1), t0)));
+        assert!(
+            allowed(&limiter.check(mapped(2), t0)),
+            "two IPv4 clients behind a dual-stack listener do not share one bucket"
+        );
+        assert!(!allowed(&limiter.check(IpAddr::from([198, 51, 100, 1]), t0)));
+        let failures = Limiter::new(Limits {
+            failures_per_ip: 1,
+            ..Limits::default()
+        });
+        failures.record_failure(mapped(3), t0);
+        assert!(!allowed(&failures.check_failures(IpAddr::from([198, 51, 100, 3]), t0)));
+        assert!(allowed(&failures.check_failures(mapped(4), t0)));
+
+        let config = config_with(&["10.0.0.1"]);
+        let proxy = SocketAddr::new(IpAddr::V6(std::net::Ipv4Addr::new(10, 0, 0, 1).to_ipv6_mapped()), 1);
+        assert_eq!(client_ip(proxy, &headers("1.2.3.4"), &config).to_string(), "1.2.3.4");
+        let stranger = SocketAddr::new(mapped(9), 1);
+        assert_eq!(
+            client_ip(stranger, &headers("1.2.3.4"), &config).to_string(),
+            "198.51.100.9"
+        );
+    }
+
+    #[test]
+    fn the_ignored_header_warning_is_said_once_per_period() {
+        let last = Mutex::new(None);
+        let t0 = Instant::now();
+        assert!(due(&last, t0, IGNORED_HEADER_EVERY));
+        assert!(!due(&last, t0 + Duration::from_mins(9), IGNORED_HEADER_EVERY));
+        assert!(due(&last, t0 + IGNORED_HEADER_EVERY, IGNORED_HEADER_EVERY));
     }
 
     #[test]

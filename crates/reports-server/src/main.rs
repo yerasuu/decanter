@@ -229,6 +229,9 @@ async fn check_config(config: &Config, credentials: &StorageCredentials) -> Resu
     if let Some(warning) = check::env_secrets_warning(config, check::in_container()) {
         eprintln!("warning: {warning}");
     }
+    if let Some(note) = check::proxy_note(config) {
+        eprintln!("note: {note}");
+    }
     let (lines, passed) = check::partitions(config, credentials).await;
     for line in lines {
         eprintln!("{line}");

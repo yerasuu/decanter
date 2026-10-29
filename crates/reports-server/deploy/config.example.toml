@@ -17,7 +17,9 @@ public_url = "https://reports.example.org"
 
 # The tunnel's address as the server sees it (single addresses, no ranges), and the header it fills with the real
 # client address. Use a single-valued header the tunnel overwrites (cf-connecting-ip); x-forwarded-for works only if
-# the tunnel replaces what the client sent. --check-config warns about the risky combinations.
+# the tunnel replaces what the client sent. --check-config warns about the risky combinations. When a request carries
+# the header from an address not listed here, the header is ignored and the log says `client_ip_header ignored` (at
+# most every 10 minutes): if that peer is the tunnel, its address changed and every client now shares its limits.
 trusted_proxies = ["127.0.0.1"]
 client_ip_header = "cf-connecting-ip"
 

@@ -641,9 +641,21 @@ async fn remove_and_reset_end_sessions_and_keys_at_the_refresh() -> Test {
         |_| {},
     )?;
     let store = h.state.accounts.store();
-    let owner = store.add("owner", Role::Admin, "2026-10-28").await?.ok_or("owner")?;
-    let ana = store.add("ana", Role::Admin, "2026-10-28").await?.ok_or("ana")?;
-    let bo = store.add("bo", Role::Viewer, "2026-10-28").await?.ok_or("bo")?;
+    let owner = store
+        .add("owner", Role::Admin, "2026-10-28", false)
+        .await?
+        .key()
+        .ok_or("owner")?;
+    let ana = store
+        .add("ana", Role::Admin, "2026-10-28", false)
+        .await?
+        .key()
+        .ok_or("ana")?;
+    let bo = store
+        .add("bo", Role::Viewer, "2026-10-28", false)
+        .await?
+        .key()
+        .ok_or("bo")?;
     refresh_now(&h.state).await?;
     let (owner_session, ana_session, bo_session) = (
         h.login_with(&owner).await?,
@@ -709,8 +721,9 @@ async fn an_account_added_after_the_refresh_works_at_once() -> Test {
         .state
         .accounts
         .store()
-        .add("late", Role::Viewer, "2026-10-28")
+        .add("late", Role::Viewer, "2026-10-28", false)
         .await?
+        .key()
         .ok_or("late")?;
     let auth = format!("Bearer {key}");
     let (status, ..) = h
@@ -870,5 +883,134 @@ async fn admin_log_lines_name_the_account_and_hold_no_secret() -> Test {
     ] {
         assert!(!secret.is_empty() && !text.contains(secret), "{secret} in {text}");
     }
+    Ok(())
+}
+
+/// Every `(method, path)` of `app::routes` under `/admin` that is not a GET, read from the router's source, since an
+/// axum router cannot list its routes. Login and logout are the two any account may post.
+fn mutating_admin_routes() -> Vec<(Method, String)> {
+    let source = include_str!("app.rs");
+    let body = source
+        .split_once("fn routes(")
+        .and_then(|(_, rest)| rest.split_once(".fallback(fallback)"))
+        .map_or("", |(body, _)| body);
+    let mut routes = Vec::new();
+    for line in body.lines().map(str::trim) {
+        let Some(rest) = line.strip_prefix(".route(\"") else {
+            continue;
+        };
+        let Some((path, handlers)) = rest.split_once('"') else {
+            continue;
+        };
+        if !path.starts_with("/admin") || path == "/admin/logout" {
+            continue;
+        }
+        for (call, method) in [
+            ("post(", Method::POST),
+            ("delete(", Method::DELETE),
+            ("put(", Method::PUT),
+            ("patch(", Method::PATCH),
+        ] {
+            if handlers.contains(call) {
+                routes.push((method, path.to_owned()));
+            }
+        }
+    }
+    routes
+}
+
+#[tokio::test]
+async fn a_viewer_gets_403_on_every_mutating_admin_route_of_the_router() -> Test {
+    let h = Harness::new(|_| {})?;
+    let fp = "9".repeat(16);
+    let id = h.insert(Product::Decanter, &fp, "t", None).await?;
+    let routes = mutating_admin_routes();
+    assert!(routes.len() >= 10, "the route table was read: {routes:?}");
+    let session = h.login_with(VIEWER_KEY).await?;
+    let bearer = format!("Bearer {VIEWER_KEY}");
+    for (method, template) in &routes {
+        let path = template
+            .split('/')
+            .map(
+                |segment| match segment.strip_prefix('{').and_then(|name| name.strip_suffix('}')) {
+                    Some("fingerprint") => fp.as_str(),
+                    Some(_) => id.as_str(),
+                    None => segment,
+                },
+            )
+            .collect::<Vec<_>>()
+            .join("/");
+        for credentials in [
+            vec![
+                ("cookie", session.cookie.as_str()),
+                ("origin", ORIGIN),
+                ("x-csrf-token", session.csrf.as_str()),
+            ],
+            vec![("authorization", bearer.as_str())],
+        ] {
+            let (status, _, body) = h.send(method.clone(), &path, &credentials, "").await?;
+            assert_eq!(
+                (status, error_of(&body)),
+                (StatusCode::FORBIDDEN, "role".to_owned()),
+                "{method} {template} takes CanChange"
+            );
+        }
+    }
+    assert!(!h.is_hidden(&id).await?);
+    assert_eq!(h.state.stores.count().await?, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_expired_session_cookie_is_the_uniform_404_and_no_failure() -> Test {
+    let h = Harness::new(|config| config.limits.failures_per_ip = 2)?;
+    let uniform = h
+        .send_from([198, 51, 100, 3], Method::GET, "/admin/nothing", &[], "")
+        .await?;
+    let stale = format!("__Host-session={}", "a".repeat(64));
+    for _ in 0..5 {
+        let answer = h.send(Method::GET, "/admin/reports", &[("cookie", &stale)], "").await?;
+        assert_eq!(answer, uniform);
+    }
+    let (status, ..) = h.send(Method::GET, "/admin/login", &[], "").await?;
+    assert_eq!(status, StatusCode::OK, "a stale cookie spends no failure");
+    for _ in 0..2 {
+        let answer = h
+            .send(
+                Method::GET,
+                "/admin/reports",
+                &[("cookie", &stale), ("authorization", "Bearer nope")],
+                "",
+            )
+            .await?;
+        assert_eq!(answer, uniform);
+    }
+    let (status, ..) = h.send(Method::GET, "/admin/login", &[], "").await?;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "a bad Bearer beside it still counts"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn repeated_logins_leave_one_login_record() -> Test {
+    let h = Harness::new(|_| {})?;
+    let sessions = [h.login().await?, h.login().await?, h.login().await?];
+    for session in &sessions {
+        let form = format!("csrf={}", session.csrf);
+        h.send(
+            Method::POST,
+            "/admin/logout",
+            &[("cookie", &session.cookie), ("origin", ORIGIN), FORM],
+            &form,
+        )
+        .await?;
+    }
+    let (records, _) = h.state.accounts.store().audit_page(None, 100).await?;
+    let count = |action: &str| records.iter().filter(|record| record.action == action).count();
+    assert_eq!((count("login"), count("logout")), (1, 3));
+    assert_eq!(h.state.session_records.take_skipped(), 2);
     Ok(())
 }

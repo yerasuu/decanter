@@ -2,7 +2,7 @@
 //! no secret in any line.
 
 use crate::config::{Config, Driver, Storage, StorageCredentials};
-use crate::store::{self, AccountStore, AuditSummary, Section};
+use crate::store::{self, AccountStore, AuditSummary, Peeked, Section};
 
 const NO_ADMIN: &str = "warning: no admin account, so /admin refuses everyone until `decanter-reports user add \
                         <name> --role admin`";
@@ -25,12 +25,12 @@ pub fn describe(storage: &Storage, section: impl Into<Section>) -> String {
     }
 }
 
-/// What one read-only look at a section found; the accounts store also says how many admins and viewers it holds
-/// and how large its audit trail is.
+/// What one read-only look at a section found; the accounts store also says how many admins and viewers it holds,
+/// how large its audit trail is and how many account objects it cannot read.
 enum Status {
     NotCreated,
     NotInitialised,
-    Opens(Option<(store::Roster, AuditSummary)>),
+    Opens(Option<Peeked>),
 }
 
 async fn status(storage: &Storage, credentials: &StorageCredentials, section: Section) -> Result<Status, String> {
@@ -62,6 +62,18 @@ fn audit_text(audit: &AuditSummary) -> String {
     match &audit.oldest_day {
         Some(day) => format!("{count}, the oldest from {day}"),
         None => count,
+    }
+}
+
+/// The server keeps such an account only while its name entry vouches for it (`accounts::Accounts::refresh`).
+fn unreadable_text(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        count => format!(
+            "; warning: {} cannot be read (corrupt, or sealed with another passphrase), see `account object \
+             unreadable` in the log",
+            plural(u32::try_from(count).unwrap_or(u32::MAX), "account object")
+        ),
     }
 }
 
@@ -97,16 +109,17 @@ pub async fn partitions(config: &Config, credentials: &StorageCredentials) -> (V
                 Ok(Status::NotCreated) => first_start("not created yet"),
                 Ok(Status::NotInitialised) => first_start("reachable, not initialized yet"),
                 Ok(Status::Opens(None)) => "reachable, the passphrase opens it".to_owned(),
-                Ok(Status::Opens(Some((roster, audit)))) => format!(
-                    "reachable, the passphrase opens it; {}, {}; {}",
-                    plural(roster.admins, "admin"),
-                    plural(roster.viewers, "viewer"),
-                    audit_text(audit)
+                Ok(Status::Opens(Some(peeked))) => format!(
+                    "reachable, the passphrase opens it; {}, {}; {}{}",
+                    plural(peeked.roster.admins, "admin"),
+                    plural(peeked.roster.viewers, "viewer"),
+                    audit_text(&peeked.audit),
+                    unreadable_text(peeked.unreadable)
                 ),
                 Err(error) => format!("check failed: {error}"),
             };
             let no_admin = matches!(status, Ok(Status::NotCreated | Status::NotInitialised))
-                || matches!(status, Ok(Status::Opens(Some((roster, _)))) if roster.admins == 0);
+                || matches!(status, Ok(Status::Opens(Some(peeked))) if peeked.roster.admins == 0);
             if *section == Section::Accounts && no_admin {
                 text = format!("{text}; {NO_ADMIN}");
             }
@@ -132,6 +145,18 @@ pub fn env_secrets_warning(config: &Config, in_container: bool) -> Option<String
             names.join(", ")
         )
     })
+}
+
+/// What the server does when the proxy's address stops matching `trusted_proxies`, which the check cannot see
+/// (it has no peer to compare), so the maintainer knows which log line reveals it.
+pub fn proxy_note(config: &Config) -> Option<String> {
+    let header = config.client_ip_header.as_deref()?;
+    let proxies: Vec<String> = config.trusted_proxies.iter().map(ToString::to_string).collect();
+    Some(format!(
+        "{header} is read only from {}; if the proxy's address changes, every client is counted as the proxy and \
+         the log says `client_ip_header ignored` (at most every 10 minutes)",
+        proxies.join(", ")
+    ))
 }
 
 /// Docker leaves `/.dockerenv` and Podman `/run/.containerenv` in every container they start.
@@ -200,8 +225,12 @@ mod tests {
         );
         let backend = store::connect(&config.storage, &credentials(right), Section::Accounts)?;
         let accounts = AccountStore::open(backend, right).await?;
-        accounts.add("owner", store::Role::Admin, "2026-10-28").await?;
-        accounts.add("ana", store::Role::Viewer, "2026-10-28").await?;
+        accounts.add("owner", store::Role::Admin, "2026-10-28", false).await?;
+        let ana = accounts
+            .add("ana", store::Role::Viewer, "2026-10-28", false)
+            .await?
+            .key()
+            .ok_or("ana")?;
         let record = store::AuditRecord {
             user: "owner".to_owned(),
             role: "admin".to_owned(),
@@ -236,8 +265,34 @@ mod tests {
             "{lines:?}"
         );
         assert!(lines.iter().all(|line| !line.contains(right) && !line.contains(wrong)));
+
+        let backend = store::connect(&config.storage, &credentials(right), Section::Accounts)?;
+        let key = store::User::COLLECTION.key(ana.get(4..12).unwrap_or_default())?;
+        let (_, etag) = backend.get(&key).await?;
+        backend.put_cas(&key, b"garbage".to_vec(), etag.as_deref()).await?;
+        drop(backend);
+        let (lines, _) = partitions(&config, &credentials(right)).await;
+        assert!(
+            lines[2].contains("audit records, the oldest from 2025-02-19; warning: 1 account object cannot be read"),
+            "{lines:?}"
+        );
+        assert!(!lines[2].contains(&ana), "{lines:?}");
         std::fs::remove_dir_all(&dir)?;
         Ok(())
+    }
+
+    #[test]
+    fn the_proxy_note_names_the_trusted_addresses_and_the_drift_line() {
+        let mut config = Config::default();
+        assert!(proxy_note(&config).is_none());
+        config.client_ip_header = Some("cf-connecting-ip".to_owned());
+        config.trusted_proxies = vec![std::net::IpAddr::from([10, 0, 0, 2])];
+        let note = proxy_note(&config).unwrap_or_default();
+        assert!(
+            note.starts_with("cf-connecting-ip is read only from 10.0.0.2;"),
+            "{note}"
+        );
+        assert!(note.contains("client_ip_header ignored"), "{note}");
     }
 
     #[test]

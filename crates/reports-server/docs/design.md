@@ -219,10 +219,14 @@ two partitions and opened by the same passphrase, is not a report `Product` and 
 
 - **`User`** (`users/<id>`): `name` (`[a-z0-9-]{1,32}`), `role` (`viewer` or `admin`), `key_hash` (SHA-256 of the
   whole key, hex), `generation` (raised by each reset), `created_day`, `last_login_day`, `disabled`, and `removed`
-  (set in the removing transaction, since a transaction cannot delete; the object goes right after). The id is 32
-  random bits as 8 hex characters, unique through the create-only write.
-- **`idx/name/<name>`** names the account's id; it is created in the same transaction as the account, so of two
-  `user add` with one name exactly one lands. An entry left by a crash after a removal is reclaimed by the next add.
+  (set in the removing transaction, since a transaction cannot delete; the object goes right after, and only while
+  it is still marked removed). The id is 32 random bits as 8 hex characters, unique through the create-only write.
+- **`idx/name/<name>`** names the account's id and mirrors its `generation` and, once removed, the minute of the
+  removal (`removed_minute`); it is written in the same transaction as the account's add, reset, role change and
+  removal, so of two `user add` with one name exactly one lands. A removal never deletes it: it stays as the name's
+  tombstone, which keeps a cleanup that runs late from deleting the entry of a newer account of that name, and which
+  holds the name for 24 hours: `user add` refuses it in that time unless given `--force-reuse`, since the audit
+  trail keeps naming the old account by it. The next add of the name reclaims the entry.
 - **`meta/roster.json`** counts admins and viewers, updated in the transaction of every add, remove and role
   change, so `remove` and `role` can refuse to leave no admin even when two run at once.
 - **`audit/<inverted minute>-<8 hex>`** (#1154, decision 5 of #1150): one record per change a maintainer makes
@@ -235,7 +239,8 @@ two partitions and opened by the same passphrase, is not a report `Product` and 
   `warn` (a warning on stderr for the CLI) and the change stands. The daily sweep deletes records older than
   `audit_retention_days` (180; 0 keeps them).
 
-Account records keep only days and audit records only minutes. Nothing else of a maintainer is stored, and no
+Account records keep only days, a removed name's entry the minute of its removal, and audit records only
+minutes. Nothing else of a maintainer is stored, and no
 record holds an address, a key, a hash or an attachment's content; log lines name the account (below).
 
 Days are UTC `YYYY-MM-DD`; nothing finer is stored, and no address or user agent. Ids (behind their product letter)
@@ -332,18 +337,28 @@ Everything a client sends is hostile, including what looks like decanter's own o
   `drk_<8 hex id>_<64 hex>` (256 random bits), printed once by `decanter-reports user add` or `user reset` and
   stored only as its SHA-256; random keys need no password hashing. The server keeps the accounts in memory
   (`accounts::Accounts`), re-read every 15 s, so a change made with the CLI applies within that time without a
-  restart. A key is looked up by its id and the whole key compared in constant time against the stored hash; an
-  id the map does not know costs at most one read of that one account (so a new account works at once), and a key
-  with no account is compared against a dummy hash, so an unknown id, a wrong secret, a disabled or a removed
-  account and a malformed key take the same work, answer the same 404 and count the same failure. There is no
+  restart. A refresh that cannot read one account object applies the others and keeps that account's previous
+  entry only while its name entry still names it with the same generation and not removed, so a corrupt object
+  never holds back a removal or a reset; each such object is an `account object unreadable` warning per refresh and
+  a count in `--check-config`. A key is looked up by its id and the whole key compared in constant time against the
+  stored hash. An id the map does not know costs one read of that one account (so a new account works at once);
+  an id the bucket does not hold is then remembered for 30 s (at most 1024 ids, the oldest dropped first, all
+  forgotten at each refresh), so repeating it costs no read. A key with no account is compared against a dummy
+  hash, so an unknown id, a wrong secret, a disabled or a removed account and a malformed key answer the same 404
+  and count the same failure; the first miss of an id is slower than a known id by that one read, which tells only
+  that the id was not in memory. There is no
   per-account lockout, which would let anyone lock a maintainer out; the per-address failure budget stays. Without
   an admin account the log says so hourly, naming `decanter-reports user add <name> --role admin`. Without a valid
   key, or a session, every `/admin` route but the login form, any wrong method and any unknown path answer the
-  same 404 in the same bytes, and count as an authentication failure. Players hold only their delete code.
+  same 404 in the same bytes, and count as an authentication failure, except a request whose only credential is a
+  well-formed session cookie that is expired or unknown: a session id cannot be guessed, so counting it would only
+  lock out a maintainer who left a page open. Players hold only their delete code.
 - **Roles.** `viewer` reads everything under `/admin`: the lists, the rows, the attachments, the log viewer, search
   and diff. `admin` also hides, restores, resolves and deletes. The gate hands handlers an `Admin { user, role,
-  csrf }` proof and, for `admin` only, a `CanChange` proof that every mutating handler takes, so one that forgot the
-  check would not compile. A viewer's change answers 403 `{"error":"role"}` (a page for a form) and changes
+  csrf }` proof and, for `admin` only, a `CanChange` proof that every mutating handler takes. Both are request
+  extensions checked at run time: a new route whose handler does not take `CanChange` compiles and lets a viewer
+  through, so every mutating route must take it by hand, and a test sends a viewer to every non-GET `/admin` route
+  read from the router's source and expects 403. A viewer's change answers 403 `{"error":"role"}` (a page for a form) and changes
   nothing; the admin page shows a viewer no action forms. Every log line of an admin request carries `user` and
   `role` (the request runs in a span with both), never an address.
 - **Audit trail** (#1154). Besides the log lines, every change and every session login and logout leaves a record
@@ -351,7 +366,11 @@ Everything a client sends is hostile, including what looks like decanter's own o
   for admins only) shows them newest first, 100 per page with an `after=<record id>` cursor, and
   `GET /admin/audit/records` gives the same page as JSON (`{"records": [...], "next": <id or null>}`) for Bearer
   scripts. Both take `CanChange`, so a viewer gets the 403 `{"error":"role"}` and no credential the uniform 404; a
-  cursor of any other shape is a 400. Every field is escaped like any other dynamic text.
+  cursor of any other shape is a 400. Every field is escaped like any other dynamic text. Logins and logouts,
+  which any account (a viewer too) can repeat at will, must not flood the trail for its 180 days: an account gets
+  one `login` record per 5 minutes, a `logout` record only when a session really ended, and at most 6 of the two per
+  minute (`audit::SessionRecords`, in memory). What is left out is counted and logged by the daily sweep as
+  `session_records_skipped`. Changes made by admins are never thinned.
 - **Admin sessions** (#1060, #1062). A browser cannot send the Bearer header, so `POST /admin/login` trades a key
   (form field, same constant-time check, same-site `Origin` required) for a session: a 256-bit random id held in
   memory only as its SHA-256 together with its account, role and key generation, with an idle timeout and an
@@ -376,7 +395,12 @@ Everything a client sends is hostile, including what looks like decanter's own o
 - **No oracle.** An unknown id, a malformed id, an id of the other partition, a wrong code and a missing code answer
   the same 404 in the same bytes.
 - **Client address.** Read from `client_ip_header` only when the connection comes from a `trusted_proxies`
-  address, else from the socket. It is used for the in-memory limits and never written or logged.
+  address, else from the socket, every address in canonical form (an IPv4-mapped `::ffff:a.b.c.d` from a
+  dual-stack listener is `a.b.c.d`, else every IPv4 client would share one /48 key). It is used for the in-memory
+  limits and never written or logged. A request that carries the header from a peer not in `trusted_proxies` logs
+  `client_ip_header ignored` with the peer's address, at most every 10 minutes: if the proxy's address drifts,
+  every client is counted as the proxy and one client's failures lock everyone out of `/admin`, and this line is
+  the only sign of it. `--check-config` says so beside the trusted addresses.
 - **Storage.** The bucket holds only encrypted objects (s3db), the bucket credentials and the passphrase are
   credentials (files owner-only or from `LoadCredential=`, never logged; `--check-config` warns about ones read from
   the environment outside a container), and attachment keys are
