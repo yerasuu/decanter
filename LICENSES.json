@@ -26,16 +26,7 @@
       ],
       "license": "GPL-3.0-or-later",
       "review": "reviewed",
-      "provenance": "LICENSE. crates/gog (decanter-gog) is a mixed crate with a per-file rule: four files of its async GOG client in crates/gog/src/api/client derive from gogapi and are GPL-3.0-only, as their SPDX headers say, and its Cargo.toml declares GPL-3.0-or-later AND GPL-3.0-only. The binaries combine decanter's code with those files, so they cannot be offered under \"or later\" (kb #1073)"
-    },
-    {
-      "name": "gog client library (gogapi)",
-      "paths": [
-        "crates/gog/src/api"
-      ],
-      "license": "GPL-3.0-only",
-      "review": "reviewed",
-      "provenance": "Based on gog 0.5.0 (gogapi-rs) by nicohman <nicohman@demenses.net>, GPL-3.0; upstream https://git.sr.ht/~nicohman/gogapi-rs. Incorporated from the crates.io package on 2026-10-29, see crates/gog/src/api/VENDOR.md. Copyright nicohman. The published Cargo.toml declares GPL-3.0 and its LICENSE (kept as crates/gog/src/api/LICENSE) is the GPL version 3 text with no or-later grant, so it is GPL-3.0-only. Upstream's own files have since been removed from the api module of decanter-gog; what remains derived from it is four files of the async client (crates/gog/src/api/client/auth.rs, user.rs, products.rs and achievements.rs: the token format and login requests, user data, owned games, filtered products and achievements), each headed SPDX-License-Identifier: GPL-3.0-only. The other files under crates/gog/src/api are decanter's own and headed GPL-3.0-or-later. While any GPL-3.0-only file remains, the combined decanter binaries are distributed under GPL-3.0-only terms (kb #1073) although decanter's own files keep their GPL-3.0-or-later notices."
+      "provenance": "LICENSE. The GOG web API client in crates/gog/src/api began as gog 0.5.0 (gogapi-rs) by nicohman (GPL-3.0-only); none of its code remains: its files were removed and the last four derived ones rewritten clean-room from docs/gog-api-behaviour-spec.md (kb #1228, decision #1225), see crates/gog/src/api/VENDOR.md. Until then the binaries were distributed under GPL-3.0-only terms (kb #1073); they can now be offered under GPL-3.0-or-later"
     },
     {
       "name": "decanter documentation and screenshots",

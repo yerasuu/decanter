@@ -1,6 +1,8 @@
 # Provenance
 
-Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
+This module began as gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0, and no longer holds any of its code.
+
+## The original crate
 
 - Name and version: `gog` 0.5.0
 - Author and copyright holder: nicohman <nicohman@demenses.net>, as `authors` in `Cargo.toml`
@@ -8,27 +10,26 @@ Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
   grants no "or later" option, so it is treated as GPL-3.0-only.
 - Upstream: https://git.sr.ht/~nicohman/gogapi-rs
 - Taken from the crates.io 0.5.0 package on 2026-10-29. `Cargo.toml` was the normalised one that cargo
-  publishes, `src/`, `tests/`, `LICENSE` and `README.md` were byte for byte. They now live in
+  publishes, `src/`, `tests/`, `LICENSE` and `README.md` were byte for byte. They then moved into
   `crates/gog`: `src/` is this directory, `tests/lib.rs` is `crates/gog/tests/api.rs`, `README.md` is
   `README.upstream.md`, and the dependencies of `Cargo.toml` are in `crates/gog/Cargo.toml`.
 - Upstream shows no release since 2023-02-23 and no commits since 2020-09-10.
-- This directory is now maintained here, as the `api` module of `decanter-gog`.
+- This directory is maintained here, as the `api` module of `decanter-gog`.
 - Since phase 3 of `docs/own-gog-client-plan.md` none of upstream's source files remain: the blocking `Gog` client,
-  `token.rs`, `gog.rs`, `containers.rs`, `extract.rs`, `error.rs` and the upstream tests were removed. What still
-  derives from upstream is four files of the async client, ported from its calls and types, which keep
-  `SPDX-License-Identifier: GPL-3.0-only` and a based-on line:
-  - `client/auth.rs`: the `Token` fields and stored JSON format, the login code exchange and the refresh (from
-    `token.rs`);
-  - `client/user.rs`: user data and owned games (from `Gog::get_user_data` and `Gog::get_games`);
-  - `client/products.rs`: the filtered products endpoint and `ProductDetails` (from `Gog::get_filtered_products`
-    and `gog.rs`);
-  - `client/achievements.rs`: the achievements endpoint and type (from `Gog::achievements`, `AchievementList` and
-    `Achievement`).
-
-  `LICENSE` (upstream's GPL version 3 text) and `README.upstream.md` stay as the record of where they come from.
-- Every other file here is decanter's own code and carries `SPDX-License-Identifier: GPL-3.0-or-later` without a
-  based-on line: `mod.rs` (rewritten as the module root) and the `client/` files moved in from `decanter-gog`'s
-  other modules (phase 2 of `docs/own-gog-client-plan.md`); they owe nothing to upstream.
+  `token.rs`, `gog.rs`, `containers.rs`, `extract.rs` and `error.rs`, the upstream tests, `LICENSE` and
+  `README.upstream.md` were removed.
+- Four files of the async client had been ported from upstream's calls and types (`client/auth.rs`, `client/user.rs`,
+  `client/products.rs` and `client/achievements.rs`, then `GPL-3.0-only`). They were written again clean-room (kb
+  #1227, #1228, decision #1225): one agent described their behaviour in `docs/gog-api-behaviour-spec.md`, and a
+  different agent removed them and wrote the replacements from that specification, decanter's own neighbouring
+  files and the community documentation it cites, without reading the removed files or their history (commit
+  `refactor(gog): rewrite the derived client files from a specification`, daabb16 on its branch).
+- Nothing of the original remains: every file here is decanter's own code and carries
+  `SPDX-License-Identifier: GPL-3.0-or-later` without a based-on line, and `decanter-gog` is GPL-3.0-or-later as a
+  whole. What carried over is GOG's own interface (endpoints, parameter and JSON field names) and the stored session's
+  JSON format, which the specification documents from public sources and from decanter's callers.
+- Upstream's `LICENSE` and `README.md` are in this repository's history up to the commit that removed them; this
+  file, `README.md` and `LICENSES.md` keep the credit.
 
 ## Changes made in this repository
 
@@ -64,3 +65,5 @@ Based on gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0.
 | The upstream tests (`crates/gog/tests/api.rs`, from `tests/lib.rs`) and the two `rustfmt.toml` (here and in `crates/gog/tests`) removed | The tests exercised only the blocking client; the remaining files follow the workspace's formatting | refactor(gog): remove the blocking gogapi client |
 | `error-chain`, `select`, `curl`, `regex` and `log` dropped from `crates/gog/Cargo.toml` and `[workspace.dependencies]`, and `reqwest`'s `blocking`, `cookies` and `form` features from `decanter-gog` | Used only by the removed files | refactor(gog): remove the blocking gogapi client |
 | `#[rustfmt::skip]` and the clippy `allow` on `mod api` in `crates/gog/src/lib.rs` removed, and with them the lints `client/mod.rs` restated; the files are formatted by `cargo fmt` at the workspace's 120 columns | Nothing upstream-style is left, so the module is held to the workspace's lints and formatting like the rest of the crate | refactor(gog): remove the blocking gogapi client |
+| `client/auth.rs`, `client/user.rs`, `client/products.rs` and `client/achievements.rs` removed and written again from `docs/gog-api-behaviour-spec.md`, `GPL-3.0-or-later`; the public items, endpoints, error mapping and stored `Token` JSON unchanged | Clean-room rewrite (kb #1228, decision #1225): the last files derived from upstream go, so the crate and the binaries can be offered under "or later" | refactor(gog): rewrite the derived client files from a specification |
+| `LICENSE` and `README.upstream.md` removed; `license` of `crates/gog/Cargo.toml` back to `GPL-3.0-or-later`; the gogapi component and `LICENSES/GPL-3.0-only.txt` dropped from `LICENSES.json`, `LICENSES.md` and `LICENSES/` | They described code that is no longer here; the credit stays in this file and in `README.md` | docs(gog): the client no longer derives from gogapi |

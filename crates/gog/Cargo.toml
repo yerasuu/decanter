@@ -1,10 +1,9 @@
 [package]
 name = "decanter-gog"
 version.workspace = true
-# Mixed crate: four files of src/api/client derive from gog 0.5.0 by nicohman and are GPL-3.0-only (see
-# src/api/VENDOR.md); the rest is decanter's GPL-3.0-or-later, so each file's SPDX header decides and the
-# crate carries both.
-license = "GPL-3.0-or-later AND GPL-3.0-only"
+# src/api began as gog 0.5.0 by nicohman (GPL-3.0-only); its last derived files were rewritten clean-room,
+# so the whole crate is decanter's own (see src/api/VENDOR.md).
+license = "GPL-3.0-or-later"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
