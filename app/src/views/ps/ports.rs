@@ -5,6 +5,7 @@
 //! decided by what the machine has.
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 
 use decanter_core::capabilities::Feature;
 use decanter_core::runner::Origin;
@@ -15,7 +16,7 @@ use decanter_ps::os::linux::updater::{Check, Plan};
 use decanter_ps::paths;
 use decanter_ps::port::Port;
 use decanter_ps::remote::RemoteError;
-use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, ElementId, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::log::LogView;
@@ -262,19 +263,11 @@ fn fallback_notice(port: Port, fallback: Fallback, busy: bool, cx: &mut Context<
                 .flex()
                 .items_center()
                 .gap_3()
-                .children(fallback.log.map(|path| {
-                    div()
-                        .id(("ps-port-fallback-log", port as usize))
-                        .cursor_pointer()
-                        .text_color(rgb(theme::ACCENT_BLUE))
-                        .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
-                        .on_click(move |_, _, _| {
-                            if let Err(err) = crate::desktop::open(&path) {
-                                tracing::warn!(path = %path.display(), %err, "could not open the failed build's log");
-                            }
-                        })
-                        .child(t!("ps.ports.fallback.log"))
-                }))
+                .children(
+                    fallback
+                        .log
+                        .map(|path| failed_log_link(("ps-port-fallback-log", port as usize), path)),
+                )
                 .child(
                     button(
                         ("ps-port-retry", port as usize),
@@ -289,6 +282,22 @@ fn fallback_notice(port: Port, fallback: Fallback, busy: bool, cx: &mut Context<
                     }),
                 ),
         )
+        .into_any_element()
+}
+
+/// Opens the failed build's whole log, on Linux and where the branch is built on Windows alike.
+pub(super) fn failed_log_link(id: impl Into<ElementId>, path: PathBuf) -> AnyElement {
+    div()
+        .id(id)
+        .cursor_pointer()
+        .text_color(rgb(theme::ACCENT_BLUE))
+        .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
+        .on_click(move |_, _, _| {
+            if let Err(err) = crate::desktop::open(&path) {
+                tracing::warn!(path = %path.display(), %err, "could not open the failed build's log");
+            }
+        })
+        .child(t!("ps.ports.fallback.log"))
         .into_any_element()
 }
 

@@ -274,24 +274,5 @@ pub async fn relocate(dir: &Path) -> Result<(), Error> {
 /// The bundles of tags other than `keep`, and what an interrupted install left: a bundle is only
 /// run for the checkout's own tag. Best effort, said in the log.
 pub async fn remove_others(root: &Root, port: Port, keep: &str) {
-    let Ok(mut entries) = tokio::fs::read_dir(bundles(root, port)).await else {
-        return;
-    };
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        if entry.file_name() == keep {
-            continue;
-        }
-        let path = entry.path();
-        let removed = match entry.file_type().await {
-            Ok(kind) if kind.is_dir() => tokio::fs::remove_dir_all(&path).await,
-            Ok(_) => tokio::fs::remove_file(&path).await,
-            Err(err) => Err(err),
-        };
-        match removed {
-            Ok(()) => tracing::info!(port = port.name(), path = %path.display(), "old port bundle removed"),
-            Err(err) => {
-                tracing::warn!(port = port.name(), path = %path.display(), %err, "could not remove an old port bundle")
-            }
-        }
-    }
+    crate::files::remove_entries(&bundles(root, port), "old port bundle", |name| name != keep).await;
 }
