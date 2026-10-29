@@ -23,15 +23,18 @@ fn path(root: &Root) -> PathBuf {
 pub struct LauncherSettings(serde_json::Map<String, serde_json::Value>);
 
 impl LauncherSettings {
-    /// A missing or unreadable file gives the defaults. File I/O: off the UI thread.
+    /// A missing or unreadable file gives the defaults, an unreadable one said in the log. File
+    /// I/O: off the UI thread.
     /// A plaintext shadNet password imported from psport's launcher is dropped and the file
     /// written again at once, so it doesn't wait on disk for the next save.
     pub fn load(root: &Root) -> LauncherSettings {
-        let mut settings: Self = fs::read(path(root))
-            .ok()
-            .and_then(|data| serde_json::from_slice(&data).ok())
-            .map(LauncherSettings)
-            .unwrap_or_default();
+        let mut settings = match Self::read(root) {
+            Ok(settings) => settings,
+            Err(err) => {
+                tracing::warn!(path = %path(root).display(), %err, "cannot read the port settings, using the defaults");
+                return Self::default();
+            }
+        };
         if settings.0.remove(LAUNCHER_PASSWORD).is_some() {
             match settings.clone().save(root) {
                 Ok(()) => tracing::info!("dropped the launcher's plaintext shadNet password from the port settings"),
@@ -47,16 +50,23 @@ impl LauncherSettings {
     /// the settings table (folders, extra environment). Fails rather than
     /// overwrite a file it can't read or parse.
     pub fn edit(root: &Root, change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
-        let mut settings = match fs::read(path(root)) {
-            Ok(data) => match serde_json::from_slice(&data) {
-                Ok(map) => Self(map),
-                Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidData, err)),
-            },
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Self::default(),
+        let mut settings = match Self::read(root) {
+            Ok(settings) => settings,
             Err(err) => return Err(err),
         };
         change(&mut settings);
         settings.save(root)
+    }
+
+    /// The defaults when there is no file yet.
+    fn read(root: &Root) -> io::Result<Self> {
+        match fs::read(path(root)) {
+            Ok(data) => serde_json::from_slice(&data)
+                .map(Self)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(err) => Err(err),
+        }
     }
 
     pub fn save(mut self, root: &Root) -> std::io::Result<()> {

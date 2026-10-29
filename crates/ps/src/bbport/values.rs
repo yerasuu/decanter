@@ -121,27 +121,33 @@ impl Values {
 }
 
 fn apply(ini: &mut Ini, launch: &mut LauncherSettings, setting: &Setting, value: &str) {
-    match (setting.store, &setting.control) {
-        (Store::Ini, _) => ini.set(setting.key, value),
-        (Store::Launcher, Control::Toggle { .. }) => launch.set_flag(setting.key, value == "1"),
-        (Store::Launcher, Control::Number { .. }) => launch.set_number(setting.key, value.parse().unwrap_or_default()),
-        (Store::Launcher, Control::Choice { .. } | Control::Gamepad) => launch.set_text(setting.key, value),
+    match setting.store {
+        Store::Ini => ini.set(setting.key, value),
+        Store::Launcher => apply_launch(launch, setting, value),
+    }
+}
+
+fn apply_launch(launch: &mut LauncherSettings, setting: &Setting, value: &str) {
+    match setting.control {
+        Control::Toggle { .. } => launch.set_flag(setting.key, value == "1"),
+        Control::Number { .. } => launch.set_number(setting.key, value.parse().unwrap_or_default()),
+        Control::Choice { .. } | Control::Gamepad => launch.set_text(setting.key, value),
     }
 }
 
 /// Writes one setting into the files as they are now. A controller's name
 /// is kept beside its GUID, to show it while it is unplugged.
 pub fn save(root: &Root, setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
-    let path = Bbport::ini_path(root);
-    let mut ini = Ini::load(&path);
-    let mut launch = LauncherSettings::load(root);
-    apply(&mut ini, &mut launch, setting, value);
-    if let Some(name) = gamepad_name {
-        launch.set_text("gamepad_name", name);
-    }
     match setting.store {
-        Store::Ini => ini.save(&path),
-        Store::Launcher => launch.save(root),
+        Store::Ini => save_ini(root, setting.key, value),
+        // Through `edit`, so a settings file that can't be read or parsed fails the save instead
+        // of being replaced by the defaults with this one change.
+        Store::Launcher => LauncherSettings::edit(root, |launch| {
+            apply_launch(launch, setting, value);
+            if let Some(name) = gamepad_name {
+                launch.set_text("gamepad_name", name);
+            }
+        }),
     }
 }
 
