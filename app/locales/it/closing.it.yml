@@ -1,0 +1,6 @@
+closing.shortcut_name: Chiudi il gioco in esecuzione
+closing.notice.title: "%{name} sta per chiudersi"
+closing.notice.body: "Si chiuderà tra %{seconds} secondi. Per annullare, tieni premuti di nuovo Select + Start o premi di nuovo la scorciatoia da tastiera."
+closing.notice.body_pad: "Si chiuderà tra %{seconds} secondi. Per annullare, tieni premuti di nuovo Select + Start."
+closing.notice.body_keyboard: "Si chiuderà tra %{seconds} secondi. Per annullare, premi di nuovo la scorciatoia da tastiera."
+closing.notice.cancelled: "Chiusura annullata: %{name} resta aperto"

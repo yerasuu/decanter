@@ -1,0 +1,36 @@
+downloads.title: Download
+downloads.empty: Nessun download in corso.
+downloads.eta: "%{left} rimanenti"
+downloads.dismiss: Ignora
+downloads.cancelling: Annullamento in corso ed eliminazione di quanto scaricato…
+downloads.cancel_confirm: "Annullare il download di %{title}? I %{size} già scaricati verranno eliminati."
+downloads.cancel_confirm_empty: "Annullare il download di %{title}?"
+downloads.cancel_delete: Annulla ed elimina
+downloads.keep: Continua il download
+downloads.pause: Pausa
+downloads.resume: Riprendi
+downloads.pause_all: Metti tutto in pausa
+downloads.resume_all: Riprendi tutto
+downloads.delete: Elimina
+downloads.stale: "Download in pausa da %{days} giorni · %{size}"
+downloads.elsewhere: "In esecuzione in un altro processo di Decanter · %{done} di %{total}"
+downloads.kind.dlc: DLC
+downloads.kind.update: Aggiornamento
+downloads.kind.branch_switch: Cambio di ramo
+downloads.kind.rollback: Cambio di versione
+downloads.kind.repair: Riparazione
+downloads.paused: "In pausa · %{done} di %{total}"
+downloads.paused_unsized: "In pausa · %{done}"
+downloads.paused_reason.user: Lo hai messo in pausa tu
+downloads.paused_reason.network: "Nessuna connessione; riprende da solo al ritorno della rete"
+downloads.paused_reason.app_closed: Decanter è stato chiuso
+downloads.paused_reason.closed_unexpectedly: Decanter si è chiuso in modo imprevisto
+downloads.paused_reason.disk_full: Disco pieno
+downloads.paused_reason.disk_full_at: "Disco pieno in %{path}"
+downloads.paused_reason.disk_full_short: "Disco pieno: servono altri %{short} di spazio libero in %{path}"
+downloads.paused_reason.disk_full_update: "Disco pieno: durante il download l'aggiornamento richiede %{needed} liberi in %{path}; ne mancano %{short}"
+downloads.paused_reason.library_unavailable: La cartella della libreria non è disponibile
+downloads.paused_reason.library_unavailable_at: "La libreria %{path} non è disponibile"
+downloads.reused: "GOG ha pubblicato un'altra build mentre era fermo: %{kept} dei %{had} già scaricati sono stati riutilizzati"
+downloads.verify_offer: "%{title} è stato ripreso dopo una chiusura imprevista di Decanter. Verificare i suoi file?"
+downloads.verify_now: Verifica ora

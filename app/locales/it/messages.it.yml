@@ -1,0 +1,12 @@
+messages.errors.not_installed: il gioco non risulta più installato
+messages.errors.create_dir: "creazione di %{path}: %{error}"
+messages.errors.prefix: impossibile determinare il prefisso del gioco
+messages.errors.user_folders: impossibile trovare le cartelle utente di Windows
+messages.errors.no_prefix: questo gioco non ha un prefisso
+messages.errors.delete_prefix: "eliminazione del prefisso: %{error}"
+messages.errors.db_open: "apertura del database: %{error}"
+messages.errors.no_library: non c'è ancora nessuna libreria
+messages.errors.library_unavailable: "la libreria in %{path} non è disponibile"
+messages.errors.save_libraries: "salvataggio dell'elenco delle librerie: %{error}"
+messages.errors.save_manifest: "salvataggio del manifest: %{error}"
+messages.errors.install_dir: cartella di installazione non valida

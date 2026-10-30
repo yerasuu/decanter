@@ -1,0 +1,52 @@
+storage.title: Archiviazione
+storage.add: Aggiungi cartella della libreria
+storage.add_title: Scegli dove conservare i giochi
+storage.stats.used.one: usata da 1 gioco
+storage.stats.used.other: usata da %{count} giochi
+storage.stats.folders.one: cartella della libreria
+storage.stats.folders.other: cartelle della libreria
+storage.folder.primary: Principale
+storage.folder.extra: Extra
+storage.folder.offline: Unità non collegata
+storage.folder.used.one: "%{used} usati da 1 gioco"
+storage.folder.used.other: "%{used} usati da %{count} giochi"
+storage.folder.free: "%{free} liberi su %{total}"
+storage.folder.remove: Rimuovi
+storage.folder.remove_hint: "Smette di usare questa cartella; quanto c'è sull'unità resta dov'è"
+storage.folder.remove_blocked: "Contiene dei giochi: disinstallali o spostali prima"
+storage.move_to: Sposta in…
+storage.moving.started: Spostamento...
+storage.moving.progress: "Spostamento di %{done} su %{total}"
+storage.errors.nested: "%{path} fa già parte della libreria (%{folder})"
+storage.errors.add: "salvataggio della cartella: %{error}"
+storage.errors.remove: "rimozione della cartella: %{error}"
+storage.errors.hosted: "Questo gioco risiede nel prefisso del suo launcher: sposta il launcher e il gioco lo seguirà."
+storage.errors.running: "Il gioco è in esecuzione: chiudilo prima di spostarlo."
+storage.errors.shared: "Un altro account condivide questi file: non possono essere spostati da soli."
+storage.errors.exists: "%{path} esiste già nella cartella di destinazione."
+storage.errors.manifest: "spostamento del record di %{game}: %{error}"
+storage.legacy.title: Vecchi dati di Decanter
+storage.legacy.body: "Decanter ora conserva i suoi dati nella libreria; %{path} è rimasto solo come copia di com'erano le cose."
+storage.legacy.remove: Rimuovi i vecchi dati
+storage.legacy.confirm: "Rimuovere? L'operazione non può essere annullata"
+storage.errors.legacy_busy: "È in esecuzione un altro Decanter o un gioco che potrebbe usarli: chiudili prima."
+storage.errors.legacy: "rimozione dei vecchi dati: %{error}"
+storage.cache.title: Cache
+storage.unfinished.title: Download incompleti
+storage.cache.pick_title: Scegli dove questa cartella conserva la sua cache
+storage.cache.empty: vuota
+storage.cache.default: "Dentro la cartella · %{size}"
+storage.cache.custom: "Scelta da te · %{size}"
+storage.cache.reset: Ripristina
+storage.cache.reset_hint: Conserva di nuovo la cache dentro questa cartella.
+storage.cache.change: Cambia…
+storage.cache.change_hint: "Qui vanno le cache degli shader dei giochi di questa cartella, PC e PS. Su un disco veloce i giochi si caricano prima."
+storage.cache.errors.save: "Impossibile salvare la posizione della cache: %{error}"
+storage.cache.errors.not_dir: "%{path} non è una cartella."
+storage.cache.errors.inside_games: "%{path} si trova dentro i file dei giochi: scegli un'altra cartella."
+storage.cache.errors.not_writable: "Impossibile scrivere in %{path}: %{error}"
+storage.stray.note: "Nessun giornale del download, quindi non può essere ripreso · %{size}"
+storage.stray.delete: Elimina
+storage.stray.keep: Conserva
+storage.stray.confirm: "Eliminare il download incompleto %{name} (%{size})? Non ha un giornale, quindi non può essere ripreso."
+storage.errors.stray: "eliminazione del download incompleto: %{error}"

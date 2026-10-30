@@ -1,0 +1,178 @@
+settings.title: Impostazioni
+settings.tabs.general: Generale
+settings.tabs.account: Account
+settings.tabs.compatibility: Compatibilità
+settings.storage_error: "Errore nell'apertura dell'archiviazione: %{error}"
+settings.general.language.title: Lingua
+settings.general.language.system: Predefinita del sistema
+settings.general.close.title: Alla chiusura della finestra
+settings.general.close.to_tray: Mantieni Decanter in esecuzione nell'area di notifica invece di uscire
+settings.general.close.restart_hint: Per applicare la modifica Decanter deve essere riavviato.
+settings.general.close_game.title: Chiusura di un gioco
+settings.general.close_game.enabled: Chiudi il gioco in esecuzione dal controller o dalla tastiera
+settings.general.close_game.hint: "Tieni premuti Select + Start per %{hold} secondi su qualsiasi controller, oppure premi Ctrl+Maiusc+F4 su Plasma (modificalo in Impostazioni di sistema > Scorciatoie > Decanter). Decanter avvisa prima di chiuderlo; ripetere la combinazione entro i %{grace} secondi successivi annulla la chiusura. Nei giochi PS4, anche il tasto Guide apre la richiesta di chiusura del gioco stesso."
+settings.general.close_game.enabled_keyboard: Chiudi il gioco in esecuzione con una scorciatoia da tastiera
+settings.general.close_game.hint_keyboard: "Premi Ctrl+Maiusc+F4 mentre giochi. Decanter chiude il gioco %{grace} secondi dopo; premerlo di nuovo prima di allora annulla la chiusura."
+settings.general.steam.title: Esporta su Steam
+settings.general.steam.add: Aggiungi ogni gioco installato alla libreria di Steam, con la sua copertina e il suo banner
+settings.general.steam.restart_hint: "Steam deve essere riavviato per mostrare le modifiche: legge le sue scorciatoie solo all'avvio."
+settings.general.downloads.title: Download
+settings.general.downloads.resume_on_start: Riprendi i download all'apertura di Decanter
+settings.general.downloads.resume_hint: "Quelli interrotti dalla chiusura di Decanter o da un'uscita imprevista. Quelli messi in pausa da te aspettano che li riprenda tu, mentre quelli fermati dalla rete o da un disco scollegato riprendono da soli al ritorno di questi."
+settings.general.raven.title: Raven (sperimentale)
+settings.general.raven.enable: Mostra la sezione Raven
+settings.general.raven.hint: "Raven è un runtime Windows in fase iniziale. Con la sezione attiva puoi compilarlo nella tua libreria e provare con esso i programmi Windows; non viene scaricato nulla e GitHub non viene contattato finché non premi Compila o Cerca aggiornamenti nella sezione."
+settings.general.steam.pending: "Alcuni giochi esportati su Steam aspettano che venga riavviato: Steam era aperto quando sono stati aggiunti, quindi restano in sospeso fino ad allora per evitare che la sua copia in memoria li sovrascriva."
+settings.general.steam.restarting: Riavvio di Steam...
+settings.general.steam.restart_now: Riavvia Steam ora
+settings.general.steam.close_first: "decanter non può sapere da qui se Steam è aperto. Chiudi Steam e confermalo per applicare le modifiche; decanter lo riavvierà poi."
+settings.general.steam.apply_closed: Steam è chiuso, applica
+settings.general.steam.no_install: nessuna installazione di Steam trovata
+settings.general.steam.no_user: impossibile determinare l'utente locale di Steam
+settings.account.intro: "Gli account di questo profilo. Alimentano tutti insieme la Libreria: non serve sceglierne uno attivo."
+settings.account.empty: Questo profilo non ha ancora account.
+settings.account.no_store: Nessun negozio
+settings.account.log_out: Esci
+settings.account.session.checking: Verifica della sessione…
+settings.account.session.revoked: La sessione è stata chiusa su GOG
+settings.account.session.unreachable: "GOG non risponde; non è stato possibile verificare la sessione"
+settings.account.renew: Rinnova la sessione
+settings.account.session.invalid: "sessione non valida: %{error}"
+settings.account.add.button: + Aggiungi account GOG
+settings.account.add.hint: "Apri GOG, accedi e incolla qui l'indirizzo della pagina in cui arrivi."
+settings.account.add.open: Apri GOG
+settings.account.add.connect: Connetti
+settings.account.library.title: Posizione della libreria
+settings.account.library.unknown: sconosciuta
+settings.account.library.pick_title: Scegli la nuova posizione della libreria
+settings.account.library.change: Cambia posizione
+settings.account.library.moving: Spostamento...
+settings.account.library.moving_progress: "Spostamento... %{done} su %{total}"
+settings.account.library.active_title: Libreria attiva
+settings.account.library.active_hint: "Decanter lavora con una libreria alla volta. Cambiarla la apre con la persona che l'ha usata per ultima."
+settings.account.library.busy: chiudi i giochi e le installazioni in corso prima di cambiare libreria
+settings.account.library.no_profiles: quella libreria non ha ancora persone
+settings.account.errors.browser: "impossibile aprire il browser: %{error}"
+settings.account.errors.db: impossibile aprire il database
+settings.account.errors.accounts: impossibile leggere gli account del profilo
+settings.account.errors.library: impossibile determinare la libreria corrente
+settings.account.errors.locked: "un'altra finestra di Decanter è aperta: chiudila prima di spostare la libreria"
+settings.account.errors.busy: "un gioco di questo profilo è in esecuzione o in installazione: chiudilo prima di spostare la libreria"
+settings.account.errors.save_path: "è stata spostata, ma non è stato possibile salvare il nuovo percorso: %{error}"
+settings.account.people.title: Persone
+settings.account.people.hint: "Ogni persona ha i propri account, collezioni, salvataggi e trofei. Quando ce n'è più di una, cambi persona dalla barra superiore."
+settings.account.people.add: + Aggiungi persona
+settings.compatibility.intro: "Ogni gioco gira nel proprio prefisso, creato la prima volta che lo apri. Per fissare un altro Proton o reimpostare il prefisso di un gioco in particolare, apri le sue Proprietà dalla libreria."
+settings.compatibility.default: Proton predefinito
+settings.compatibility.automatic: Automatico (scelto da umu)
+settings.compatibility.none_installed: "Nessun Proton è installato in Steam (compatibilitytools.d). umu ne scaricherà uno la prima volta."
+settings.compatibility.game_tools.title: Strumenti di gioco
+settings.compatibility.game_tools.intro: "Si applicano ai giochi PC e PS che non hanno una scelta propria; ogni gioco può cambiarla nelle sue Proprietà (PC) o nella sua Panoramica (PS)."
+settings.compatibility.game_tools.mangohud: Mostra MangoHud (FPS, tempi dei frame, uso di CPU e GPU)
+settings.compatibility.game_tools.mangohud_log: Registra le prestazioni dall'inizio di ogni esecuzione di MangoHud
+settings.compatibility.game_tools.mangohud_log_hint: "I log vengono salvati in decanter/logs/mangohud dentro la libreria. Senza questa opzione, iniziano e si fermano con la scorciatoia di MangoHud (Maiusc sinistro + F2)."
+settings.compatibility.game_tools.gamemode: Attiva GameMode mentre giochi
+settings.compatibility.game_tools.gamemode_hint: "GameMode porta la CPU in modalità prestazioni e applica il resto del tuo gamemode.ini finché il gioco non si chiude."
+settings.general.updates.title: Aggiornamenti
+settings.general.updates.installed: "Versione installata: %{version}"
+settings.general.updates.check: Cerca aggiornamenti
+settings.general.updates.checking: Controllo…
+settings.general.updates.up_to_date: "Hai l'ultima versione pubblicata (%{tag})."
+settings.general.updates.ahead: "Questa build è più recente dell'ultima versione pubblicata (%{tag})."
+settings.general.updates.available: "È disponibile una nuova versione: %{tag}."
+settings.general.updates.install: Scarica e installa
+settings.general.updates.no_key: "Questa build non include una chiave di firma, quindi non può verificare né installare da sola nuove versioni."
+settings.general.updates.managed: "Decanter non può scrivere in %{dir}, dove si trova questo AppImage, quindi installa gli aggiornamenti nella propria cartella; questa copia apre da lì la più recente."
+settings.general.updates.downloading: "Download… %{done}"
+settings.general.updates.downloading_of: "Download… %{done} di %{total}"
+settings.general.updates.installed_update: "%{tag} è installata e la sua firma è stata verificata. Verrà usata alla prossima apertura di Decanter."
+settings.general.updates.installed_managed: "%{tag} è installata nella cartella di Decanter e la sua firma è stata verificata. Verrà usata alla prossima apertura di Decanter, anche da questa copia."
+settings.general.updates.restart_now: Riavvia ora
+settings.general.updates.none: Su GitHub non è ancora stata pubblicata nessuna versione.
+settings.general.updates.notes: Note di rilascio
+settings.general.updates.download_page: Apri la pagina di download
+settings.updates.errors.offline: Nessuna connessione a GitHub.
+settings.updates.errors.rate_limited: "GitHub sta limitando le richieste da questa rete; riprova tra un po'."
+settings.updates.errors.invalid: "GitHub ha risposto con qualcosa che non è un rilascio valido: %{error}"
+settings.updates.errors.failed: "La richiesta a GitHub non è riuscita: %{error}"
+settings.compatibility.ge_proton.title: GE-Proton
+settings.compatibility.ge_proton.intro: "Decanter conserva questa build di Proton nella libreria per ciò che richiede Proton senza Steam; viene scaricata di nuovo quando serve."
+settings.compatibility.ge_proton.installed: "GE-Proton %{tag} · %{size}"
+settings.compatibility.ge_proton.measuring: "GE-Proton %{tag} · misurazione…"
+settings.compatibility.ge_proton.remove: "Rimuovi"
+settings.compatibility.ge_proton.confirm_remove.title: Rimuovere GE-Proton?
+settings.compatibility.ge_proton.confirm_remove.body_size: "GE-Proton %{tag} verrà rimosso dalla tua libreria, liberando %{size}. Viene scaricato di nuovo alla prossima volta che qualcosa ne ha bisogno."
+settings.compatibility.ge_proton.confirm_remove.body: "GE-Proton %{tag} verrà rimosso dalla tua libreria. Viene scaricato di nuovo alla prossima volta che qualcosa ne ha bisogno."
+settings.compatibility.ge_proton.confirm_remove.confirm: Rimuovi GE-Proton
+settings.compatibility.ge_proton.error: "rimozione di GE-Proton: %{error}"
+settings.compatibility.tools.title: Strumenti
+settings.compatibility.tools.intro: "Decanter scarica la propria copia di umu-run e nix-portable, a versioni fisse che cambia solo dopo averle provate; umu scarica UMU-Proton da solo quando Proton è automatico."
+settings.compatibility.tools.check: Cerca aggiornamenti
+settings.compatibility.tools.checking: Controllo…
+settings.compatibility.tools.pinned: "%{tool} %{version}"
+settings.compatibility.tools.current: "%{tool} %{version} · l'ultima pubblicata"
+settings.compatibility.tools.newer: "%{tool} %{version} · è uscita la %{latest}; Decanter la adotterà una volta provata"
+settings.compatibility.tools.unpublished: "%{tool} %{version} · il progetto non ha rilasci pubblicati"
+settings.compatibility.tools.error: "%{tool} %{version} · %{error}"
+settings.compatibility.tools.proton.unchecked: "UMU-Proton · umu scarica l'ultima quando un gioco si avvia con Proton automatico"
+settings.compatibility.tools.proton.installed: "UMU-Proton · %{tag} è l'ultima ed è già scaricata"
+settings.compatibility.tools.proton.pending: "UMU-Proton · l'ultima è %{tag}; umu la scaricherà quando un gioco si avvia con Proton automatico"
+settings.compatibility.tools.proton.unpublished: "UMU-Proton · il progetto non ha rilasci pubblicati"
+settings.compatibility.tools.proton.error: "UMU-Proton · %{error}"
+settings.updates.install_errors.missing_appimage: "La versione %{tag} non ha ancora un AppImage su GitHub; riprova tra un po'."
+settings.updates.install_errors.unsigned: "La versione %{tag} non è ancora firmata; riprova tra un po'."
+settings.updates.install_errors.download: "Il download non è riuscito: %{error}"
+settings.updates.install_errors.too_large: "Il download supera %{size}, più di quanto Decanter possa gestire; non è stato installato."
+settings.updates.install_errors.bad_signature: "La firma non corrisponde al download. Non è stato installato nulla e la tua versione è invariata."
+settings.updates.install_errors.wrong_key: "La versione è firmata con una chiave diversa da quella di questa build. Non è stato installato nulla."
+settings.updates.install_errors.wrong_release: "La firma appartiene a un'altra versione (“%{found}”). Non è stato installato nulla."
+settings.updates.install_errors.no_permission: "Nessun permesso di scrittura in %{dir}; non è stato installato nulla e la tua versione è invariata."
+settings.updates.install_errors.disk_full: "Spazio esaurito in %{dir}. Libera dello spazio e riprova; la tua versione è invariata."
+settings.updates.install_errors.io: "Impossibile scrivere %{path}: %{error}"
+settings.updates.install_errors.broken_key: "La chiave di firma di questa build non è valida: %{error}"
+settings.general.debug.title: Debug
+settings.general.debug.enabled: Modalità debug
+settings.general.debug.hint: "Decanter e psport conservano i loro log completi nella cartella qui sotto, dentro una sottocartella con il nome di questo computer, così puoi sincronizzarla con i tuoi altri computer. Ogni file compare una volta completo. I giochi non cambiano: cambia solo dove e quanto viene registrato."
+settings.general.debug.app_log_next_start: "Le esecuzioni e i processi vengono conservati lì da ora; il log dell'app inizia alla prossima apertura di Decanter."
+settings.general.debug.app_log_until_exit: "Il log dell'app di questa sessione continua lì finché non chiudi Decanter."
+settings.general.debug.folder: Cartella dei log di debug
+settings.general.debug.folder_default: Dentro la libreria
+settings.general.debug.folder_chosen: Scelta da te
+settings.general.debug.folder_scrubbed: "Le copie di Decanter qui non contengono password, token né la parte di query degli indirizzi web; restano nomi dei giochi, percorsi e ID. La libreria conserva i log completi. Ciò che psport scrive qui direttamente (gpu.log, faults.txt, config.txt) non viene ripulito."
+settings.general.debug.change: Cambia…
+settings.general.debug.reset: Ripristina
+settings.general.debug.open: Apri cartella
+settings.general.debug.pick_title: Scegli dove conservare i log di debug
+settings.general.debug.errors.save: "Impossibile salvare l'impostazione di debug: %{error}"
+settings.general.debug.errors.not_dir: "%{path} non è una cartella."
+settings.general.debug.errors.not_writable: "Impossibile scrivere in %{path}: %{error}"
+settings.general.debug.errors.not_utf8: "Il percorso %{path} contiene caratteri che non possono essere salvati: scegli un'altra cartella."
+settings.general.debug.errors.open: "Impossibile aprire la cartella: %{error}"
+settings.credentials.title: Credenziali salvate
+settings.credentials.hint: "Decanter conserva accessi e chiavi nel portachiavi del tuo sistema, mai nella libreria. Qui vengono mostrati solo cosa sono e a chi appartengono, mai il segreto stesso."
+settings.credentials.status.ready: "Portachiavi: pronto."
+settings.credentials.status.locked: "Portachiavi: bloccato (%{reason}). Sbloccalo nel tuo sistema e riprova; non è stato eliminato nulla."
+settings.credentials.status.missing: "Portachiavi: non disponibile (%{reason}). Avvia o installa un servizio di portachiavi e riprova; Decanter continua a funzionare e non è stato eliminato nulla."
+settings.credentials.status.unknown: "Portachiavi: non ancora verificato."
+settings.credentials.retry: Riprova
+settings.credentials.loading: Lettura del portachiavi…
+settings.credentials.unavailable: "Al momento non è possibile leggere il portachiavi, quindi l'elenco non viene mostrato. Le tue credenziali salvate non sono state toccate."
+settings.credentials.empty: Nessuna credenziale salvata.
+settings.credentials.orphan: Nessun account usa più questa sessione.
+settings.credentials.kind.gog_session: Sessione GOG
+settings.credentials.kind.shadnet_password: Password shadNet
+settings.credentials.kind.shadnet_token: Token shadNet
+settings.credentials.kind.steamgriddb_key: Chiave SteamGridDB
+settings.credentials.subject.app: Decanter
+settings.credentials.forget: Dimentica
+settings.credentials.forget_all: Dimentica tutto
+settings.credentials.confirm.title: Dimenticare le credenziali salvate?
+settings.credentials.confirm.gog_session: "La sessione GOG di %{subject} verrà rimossa dal portachiavi. Questo disconnette l'account: dovrai accedere di nuovo a GOG per usarlo."
+settings.credentials.confirm.shadnet_password: "La password shadNet di %{subject} verrà rimossa dal portachiavi. Dovrai digitarla di nuovo per giocare online."
+settings.credentials.confirm.shadnet_token: "Il token shadNet di %{subject} verrà rimosso dal portachiavi."
+settings.credentials.confirm.steamgriddb_key: "La chiave SteamGridDB verrà rimossa dal portachiavi. La ricerca delle immagini userà solo Steam finché non salvi di nuovo una chiave."
+settings.credentials.confirm.all: "Tutte le %{count} credenziali salvate verranno rimosse dal portachiavi, comprese le sessioni GOG (questo disconnette quegli account) e le password shadNet."
+settings.credentials.forgotten: Credenziale dimenticata.
+settings.credentials.forgotten_all: "Credenziali dimenticate: %{count}."
+settings.credentials.forgotten_some: "Credenziali dimenticate: %{count}. Non è stato possibile rimuoverne %{failed}, che sono ancora nel portachiavi."
+settings.credentials.errors.forget: "Impossibile dimenticarla: %{error}"
