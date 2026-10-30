@@ -22,6 +22,7 @@ pub mod runner;
 mod scope;
 pub mod secrets;
 pub mod steam;
+pub mod temp;
 mod vdf;
 
 pub use accounts::Account;

@@ -46,11 +46,13 @@ pub async fn sync_steam_shortcut(
         return Ok(());
     };
 
-    let temp_dir = std::env::temp_dir().join(format!("decanter-steam-artwork-{account_id}-{}", game.game_id));
-    if let Err(err) = tokio::fs::create_dir_all(&temp_dir).await {
-        tracing::warn!(%err, "could not create a temp dir for artwork downloads, skipping Steam export");
-        return Ok(());
-    }
+    let temp_dir = match decanter_core::temp::private_temp_dir("steam-artwork") {
+        Ok(dir) => dir,
+        Err(err) => {
+            tracing::warn!(%err, "could not create a temp dir for artwork downloads, skipping Steam export");
+            return Ok(());
+        }
+    };
 
     let client = crate::http_client();
     let icon = download_artwork(&client, icon_url, &temp_dir, "icon").await;

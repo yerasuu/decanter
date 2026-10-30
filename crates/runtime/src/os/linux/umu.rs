@@ -13,7 +13,6 @@
 //! known class of issue upstream (e.g. `ValveSoftware/steam-runtime#684`),
 //! not anything an env var fixes.
 
-use std::env;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -189,10 +188,8 @@ async fn install(path: &Path, on_progress: &mut dyn FnMut(Progress)) -> anyhow::
     // processes racing to download at once (unlikely, but a headless CLI
     // command and the GUI both can) must not corrupt each other's
     // in-progress extraction.
-    let temp_dir = env::temp_dir().join(format!("decanter-umu-run-{}", std::process::id()));
-    tokio::fs::create_dir_all(&temp_dir)
-        .await
-        .context("creating temp dir for umu-run extraction")?;
+    let temp_dir =
+        decanter_core::temp::private_temp_dir("umu-run").context("creating temp dir for umu-run extraction")?;
     let archive_path = temp_dir.join("umu-launcher.tar");
     let expected = Expected {
         digest: UMU_LAUNCHER_SHA256,
