@@ -34,7 +34,8 @@ pub use download::Cancelled;
 pub use journal::{PauseReason, Paused, Room};
 pub use tracking::{cancel, pause, pause_for_quit};
 pub use unfinished::{
-    NothingToResume, UnfinishedDownload, discard, downloading_dir, resume, resume_repair, unfinished_downloads,
+    NothingToResume, StrayStaging, UnfinishedDownload, discard, discard_stray, downloading_dir, resume, resume_repair,
+    stray_staging, unfinished_downloads,
 };
 pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 

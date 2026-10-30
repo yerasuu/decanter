@@ -47,6 +47,72 @@ pub fn downloading_dir(root: &Path) -> PathBuf {
     root.join(DOWNLOADING)
 }
 
+/// A staging folder with no journal, which nothing can resume and nothing else lists.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct StrayStaging {
+    pub account_id: String,
+    /// The folder's name: the product id, or `<id>-repair`.
+    pub name: String,
+    pub size: u64,
+}
+
+/// The staging folders of `root`'s `downloading/` that have no `download.json` and that no process
+/// holds, left by versions from before journals or by cuts before the first journal write.
+#[must_use]
+pub fn stray_staging(root: &Path) -> Vec<StrayStaging> {
+    let mut found = Vec::new();
+    for account in std_subfolders(&downloading_dir(root)) {
+        let Some(account_id) = account.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
+            continue;
+        };
+        for staging in std_subfolders(&account) {
+            let Some(name) = staging.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
+                continue;
+            };
+            if journal::has_journal(&staging) || staging_in(root, &account_id, &name).ok().as_deref() != Some(&staging)
+            {
+                continue;
+            }
+            // Held: a download is starting or running there, and its journal is about to be written.
+            if decanter_runtime::journal::lock(&staging).is_err() {
+                continue;
+            }
+            let size = decanter_core::directory_size(&staging)
+                .inspect_err(|err| tracing::warn!(dir = %staging.display(), %err, "couldn't measure a staging folder"))
+                .unwrap_or(0);
+            found.push(StrayStaging {
+                account_id: account_id.clone(),
+                name,
+                size,
+            });
+        }
+    }
+    found.sort_by(|left, right| (&left.account_id, &left.name).cmp(&(&right.account_id, &right.name)));
+    found
+}
+
+fn std_subfolders(dir: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.path())
+        .collect()
+}
+
+/// Deletes one folder [`stray_staging`] listed (#1133: the caller has asked first).
+///
+/// # Errors
+/// When a process holds it, it has a journal by now, or it can't be removed.
+pub async fn discard_stray(root: &Path, account_id: &str, name: &str) -> anyhow::Result<()> {
+    let staging = crate::achv_try!(staging_in(root, account_id, name));
+    crate::achv_try!(journal::discard_stray(&staging).await);
+    tracing::info!(account_id, name, staging = %staging.display(), "deleted a staging folder with no journal");
+    Ok(())
+}
+
 /// Every unfinished download in `library`'s folders, for the app to list as
 /// paused when it starts. A staging folder without a journal (from before
 /// journals) isn't one: nothing says what it holds.

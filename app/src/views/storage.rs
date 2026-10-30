@@ -38,6 +38,8 @@ struct Folder {
     /// What its `downloading/` holds: downloads left unfinished, and
     /// whatever is downloading right now.
     unfinished_size: u64,
+    /// Folders in it with no journal, which nothing else lists.
+    strays: Vec<decanter_gog::StrayStaging>,
 }
 
 struct Dump {
@@ -118,6 +120,11 @@ impl Folder {
         } else {
             0
         };
+        let strays = if present {
+            decanter_gog::stray_staging(&root)
+        } else {
+            Vec::new()
+        };
         Self {
             root,
             primary,
@@ -130,6 +137,7 @@ impl Folder {
             cache_custom,
             cache_size,
             unfinished_size,
+            strays,
         }
     }
 }
@@ -190,6 +198,9 @@ pub struct StorageView {
     /// library, while it's still there.
     legacy: Option<PathBuf>,
     confirm_legacy: bool,
+    /// The journal-less staging folder whose Eliminar waits for its
+    /// confirmation: library folder, account and folder name.
+    confirm_stray: Option<(PathBuf, String, String)>,
 }
 
 impl StorageView {
@@ -206,6 +217,7 @@ impl StorageView {
             _ticker: None,
             legacy: None,
             confirm_legacy: false,
+            confirm_stray: None,
         };
         this.rescan(cx);
         this
@@ -371,14 +383,14 @@ impl StorageView {
     /// Descargas sin terminar: what the folder's `downloading/` holds, and
     /// the downloads in it with what can be done with each — the same
     /// buttons as in Descargas, the deleting one behind the same question.
-    fn unfinished_rows(index: usize, folder: &Folder, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+    fn unfinished_rows(&self, index: usize, folder: &Folder, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
         let background = AppState::get(cx).background.read(cx);
         let mut rows: Vec<(&DownloadKey, &Download)> = background
             .installing
             .iter()
             .filter(|(_, row)| row.root.as_deref() == Some(folder.root.as_path()))
             .collect();
-        if rows.is_empty() && folder.unfinished_size == 0 {
+        if rows.is_empty() && folder.strays.is_empty() && folder.unfinished_size == 0 {
             return None;
         }
         rows.sort_by(|left, right| (&left.1.title, left.0).cmp(&(&right.1.title, right.0)));
@@ -407,6 +419,11 @@ impl StorageView {
                         .children(downloads::download_actions(id, key, download, confirming)),
                 )
         });
+        let strays = folder
+            .strays
+            .iter()
+            .enumerate()
+            .map(|(row, stray)| self.stray_row(index * 1_000 + row, &folder.root, stray, cx));
         Some(
             div()
                 .flex()
@@ -431,8 +448,109 @@ impl StorageView {
                                 .child(crate::format::bytes(folder.unfinished_size)),
                         ),
                 )
-                .children(listed),
+                .children(listed)
+                .children(strays),
         )
+    }
+
+    /// A staging folder with no journal: what it is and its size, and Eliminar
+    /// behind a question that names it (#1133).
+    fn stray_row(
+        &self,
+        id: usize,
+        root: &Path,
+        stray: &decanter_gog::StrayStaging,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let size = crate::format::bytes(stray.size);
+        let pending = (root.to_path_buf(), stray.account_id.clone(), stray.name.clone());
+        let confirming = self.confirm_stray.as_ref() == Some(&pending);
+        let name = format!("{}/{}", stray.account_id, stray.name);
+        let (root, account_id, folder) = pending.clone();
+        let actions = if confirming {
+            div()
+                .flex()
+                .flex_col()
+                .items_end()
+                .gap(px(6.))
+                .max_w(px(320.))
+                .child(div().text_size(px(12.)).child(t!(
+                    "storage.stray.confirm",
+                    name = name.as_str(),
+                    size = size.as_str()
+                )))
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(
+                            button(
+                                ("stray-keep", id),
+                                ButtonKind::Secondary,
+                                t!("storage.stray.keep"),
+                                false,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.confirm_stray = None;
+                                cx.notify();
+                            })),
+                        )
+                        .child(
+                            button(
+                                ("stray-delete", id),
+                                ButtonKind::Icon,
+                                t!("storage.stray.delete"),
+                                false,
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.remove_stray(root.clone(), account_id.clone(), folder.clone(), cx);
+                            })),
+                        ),
+                )
+        } else {
+            div().flex().gap_2().child(
+                button(("stray-ask", id), ButtonKind::Icon, t!("storage.stray.delete"), false).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.confirm_stray = Some(pending.clone());
+                        cx.notify();
+                    },
+                )),
+            )
+        };
+        div()
+            .flex()
+            .items_start()
+            .gap_4()
+            .pt_2()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .child(div().truncate().child(name))
+                    .child(theme::muted(t!("storage.stray.note", size = size.as_str())).text_size(px(11.))),
+            )
+            .child(actions)
+    }
+
+    fn remove_stray(&mut self, root: PathBuf, account_id: String, name: String, cx: &mut Context<Self>) {
+        self.confirm_stray = None;
+        cx.spawn(async move |this, cx| {
+            let result = decanter_gog::discard_stray(&root, &account_id, &name)
+                .await
+                .inspect_err(|err| {
+                    tracing::error!(root = %root.display(), account_id, name, %err, "deleting a staging folder failed");
+                });
+            let _ = this.update(cx, |this, cx| {
+                this.error = result
+                    .err()
+                    .map(|err| Text::new("storage.errors.stray").arg("error", err));
+                this.rescan(cx);
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     fn remove_folder(&mut self, root: &Path, cx: &mut Context<Self>) {
@@ -754,7 +872,7 @@ impl StorageView {
                     }),
             )
             .child(Self::cache_row(index, folder, cx))
-            .children(Self::unfinished_rows(index, folder, cx))
+            .children(self.unfinished_rows(index, folder, cx))
             .children(folder.games.iter().enumerate().map(|(row, game)| {
                 let id = index * 10_000 + row;
                 theme::list_row(("storage-row", id), row + 1 == count)

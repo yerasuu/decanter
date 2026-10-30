@@ -45,3 +45,8 @@ storage.cache.errors.save: 'Couldn''t save the cache location: %{error}'
 storage.cache.errors.not_dir: '%{path} is not a folder.'
 storage.cache.errors.inside_games: '%{path} is inside the games'' files: choose another folder.'
 storage.cache.errors.not_writable: 'Can''t write to %{path}: %{error}'
+storage.stray.note: 'No download journal, so it can''t be resumed · %{size}'
+storage.stray.delete: Delete
+storage.stray.keep: Keep
+storage.stray.confirm: 'Delete the unfinished download %{name} (%{size})? It has no journal, so it can''t be resumed.'
+storage.errors.stray: 'deleting the unfinished download: %{error}'

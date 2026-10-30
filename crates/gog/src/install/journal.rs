@@ -800,6 +800,31 @@ pub(super) async fn discard(staging: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deletes a staging folder that has no journal, for the user to free what an older version or an
+/// early cut left. The lock is taken first and the journal looked for under it, so a download that
+/// started meanwhile is never touched.
+///
+/// # Errors
+/// [`LockError::Busy`] when a process runs it, an error when it has a journal, or what stopped the removal.
+pub(super) async fn discard_stray(staging: &Path) -> anyhow::Result<()> {
+    let lock = crate::achv_try!(decanter_runtime::journal::lock(staging));
+    if has_journal(staging) {
+        anyhow::bail!("{} has a download journal", staging.display());
+    }
+    crate::achv_try!(clear(staging).await);
+    drop(lock);
+    crate::achv_try!(
+        remove_dir(staging)
+            .await
+            .with_context(|| format!("removing {}", staging.display()))
+    );
+    Ok(())
+}
+
+pub(super) fn has_journal(staging: &Path) -> bool {
+    staging.join(HEADER).exists()
+}
+
 async fn lock_waiting(staging: &Path) -> Result<StagingLock, LockError> {
     let deadline = Instant::now() + LOCK_WAIT;
     loop {

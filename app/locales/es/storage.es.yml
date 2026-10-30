@@ -45,3 +45,8 @@ storage.cache.errors.save: 'No se pudo guardar la ubicación de la caché: %{err
 storage.cache.errors.not_dir: '%{path} no es una carpeta.'
 storage.cache.errors.inside_games: '%{path} está dentro de los archivos de los juegos: elige otra carpeta.'
 storage.cache.errors.not_writable: 'No se puede escribir en %{path}: %{error}'
+storage.stray.note: 'Sin diario de descarga, no se puede reanudar · %{size}'
+storage.stray.delete: Eliminar
+storage.stray.keep: Conservar
+storage.stray.confirm: '¿Eliminar la descarga sin terminar %{name} (%{size})? No tiene diario, así que no se puede reanudar.'
+storage.errors.stray: 'eliminando la descarga sin terminar: %{error}'
