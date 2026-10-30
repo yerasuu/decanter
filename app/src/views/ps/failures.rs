@@ -10,9 +10,16 @@ use rust_i18n::t;
 
 use super::report::{Closed, ReportView};
 use crate::i18n::Text;
+use crate::report::scrub::Scrubber;
 use crate::state::{Ps, failure_message};
 use crate::theme;
-use crate::widgets::{ButtonKind, button};
+use crate::widgets::{ButtonKind, button, tooltip};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Copied {
+    All,
+    One(usize),
+}
 
 pub struct FailuresView {
     ps: Entity<Ps>,
@@ -22,8 +29,8 @@ pub struct FailuresView {
     /// The failure whose output is unfolded, by its time and message.
     expanded: Option<(u64, String)>,
     confirm_clear: bool,
-    /// Shows "Copiado" until the record changes.
-    copied: bool,
+    /// Shows "Copiado" on what was copied until the record changes.
+    copied: Option<Copied>,
     error: Option<Text>,
     report: Option<Entity<ReportView>>,
 }
@@ -37,7 +44,7 @@ impl FailuresView {
             read_at: None,
             expanded: None,
             confirm_clear: false,
-            copied: false,
+            copied: None,
             error: None,
             report: None,
         };
@@ -65,7 +72,7 @@ impl FailuresView {
             let _ = this.update(cx, |this, cx| {
                 this.records = records;
                 this.records.reverse();
-                this.copied = false;
+                this.copied = None;
                 cx.notify();
             });
         })
@@ -81,9 +88,22 @@ impl FailuresView {
             }
             text.push_str(&report);
         }
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.copied = true;
-        cx.notify();
+        Self::copy(text, Copied::All, cx);
+    }
+
+    /// Scrubbed off the UI thread, since collecting the machine's names reads the database and
+    /// settings: a report is made to be pasted into an issue or a chat.
+    fn copy(text: String, what: Copied, cx: &Context<Self>) {
+        let task = cx.background_spawn(async move { Scrubber::collect().log(&text).0 });
+        cx.spawn(async move |this, cx| {
+            let text = task.await;
+            let _ = this.update(cx, |this, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                this.copied = Some(what);
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn open_report(&mut self, failure: Failure, cx: &mut Context<Self>) {
@@ -124,6 +144,18 @@ impl FailuresView {
             Kind::Missing => theme::ACCENT_BLUE,
         };
         let report = failure.report();
+        let copy_button = button(
+            ("ps-failure-copy", index),
+            ButtonKind::Secondary,
+            if self.copied == Some(Copied::One(index)) {
+                t!("ps.failures.copied")
+            } else {
+                t!("ps.failures.copy_report")
+            },
+            false,
+        )
+        .tooltip(tooltip(t!("ps.copy_scrubbed")))
+        .on_click(cx.listener(move |_, _, _, cx| Self::copy(report.clone(), Copied::One(index), cx)));
         let calls = failure.calls.as_ref().map(calls_lists);
         let log = failure.log.clone();
         let for_report = failure.clone();
@@ -179,7 +211,7 @@ impl FailuresView {
                     })),
             )
             .when(open, |row| {
-                row.child(failure_details(index, calls, output, report, log, report_button))
+                row.child(failure_details(index, calls, output, copy_button, log, report_button))
             })
     }
 }
@@ -217,13 +249,14 @@ impl Render for FailuresView {
                                     button(
                                         "ps-failures-copy",
                                         ButtonKind::Secondary,
-                                        if self.copied {
+                                        if self.copied == Some(Copied::All) {
                                             t!("ps.failures.copied")
                                         } else {
                                             t!("ps.failures.copy_all")
                                         },
                                         false,
                                     )
+                                    .tooltip(tooltip(t!("ps.copy_scrubbed")))
                                     .on_click(cx.listener(|this, _, _, cx| this.copy_all(cx))),
                                 )
                                 .child(
@@ -272,7 +305,7 @@ fn failure_details(
     index: usize,
     calls: Option<Div>,
     output: Vec<SharedString>,
-    report: String,
+    copy_button: Stateful<Div>,
     log: Option<PathBuf>,
     report_button: Stateful<Div>,
 ) -> Div {
@@ -297,17 +330,7 @@ fn failure_details(
             div()
                 .flex()
                 .gap_2()
-                .child(
-                    button(
-                        ("ps-failure-copy", index),
-                        ButtonKind::Secondary,
-                        t!("ps.failures.copy_report"),
-                        false,
-                    )
-                    .on_click(move |_, _, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
-                    }),
-                )
+                .child(copy_button)
                 .child(report_button)
                 .children(log.map(|path| {
                     button(

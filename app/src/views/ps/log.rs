@@ -12,8 +12,10 @@ use gpui::{
 
 use rust_i18n::t;
 
+use crate::report::scrub::Scrubber;
 use crate::state::job_label;
 use crate::theme;
+use crate::widgets::tooltip;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -110,7 +112,8 @@ impl LogView {
     }
 
     /// The status line and every kept line, built only when asked for:
-    /// a game's log can hold 5000 lines.
+    /// a game's log can hold 5000 lines. Scrubbed off the UI thread, since
+    /// collecting the machine's names reads the database and settings.
     fn copy(&mut self, status: &str, cx: &mut Context<Self>) {
         let job = self.job.read(cx);
         let mut text =
@@ -121,9 +124,16 @@ impl LogView {
             text.push_str(line);
             text.push('\n');
         }
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.copied = true;
-        cx.notify();
+        let task = cx.background_spawn(async move { Scrubber::collect().log(&text).0 });
+        cx.spawn(async move |this, cx| {
+            let text = task.await;
+            let _ = this.update(cx, |this, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                this.copied = true;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn job(&self) -> &Entity<Job> {
@@ -178,6 +188,7 @@ impl Render for LogView {
                             .cursor_pointer()
                             .text_color(rgb(theme::ACCENT_BLUE))
                             .hover(|link| link.text_color(rgb(theme::TEXT_BRIGHT)))
+                            .tooltip(tooltip(t!("ps.copy_scrubbed")))
                             .on_click(cx.listener(move |this, _, _, cx| this.copy(&status, cx)))
                             .child(if self.copied {
                                 t!("ps.log.copied")

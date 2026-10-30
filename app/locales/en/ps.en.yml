@@ -10,6 +10,7 @@ ps.log.stopped: '%{label}: stopped'
 ps.log.interrupted: '%{label}: interrupted'
 ps.log.copy: Copy full log
 ps.log.copied: Copied
+ps.copy_scrubbed: Names, accounts, secrets and IP or MAC addresses are left out of what is copied
 ps.log.full: Full log
 ps.log.tab_log: 'Log (%{count})'
 ps.log.tab_metrics: 'Performance (%{count})'
