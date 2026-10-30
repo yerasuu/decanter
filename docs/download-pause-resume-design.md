@@ -97,6 +97,26 @@ against GOG yet.
   game is on. Owners are planned in order (`BTreeMap`), so the same broken files give the same
   plan and the repair carries on as it was. Repairs still never resume on their own.
 
+**Chunk recovery** (#1314: after any failure only the chunk in flight is lost).
+
+- Process alive (network drop, retry window over, refused URL, pause, quit, full disk, a corrupt
+  chunk, another of the 4 files failing): a chunk is fetched, inflated and checked whole in memory
+  before it is written, and a stopped file makes a best-effort `commit` of every chunk written.
+  Each chunk's write is now flushed before the file's cursor counts it, since tokio's `write_all`
+  returns with its last piece still being written and an `ENOSPC` there would otherwise surface
+  only later, after that commit had recorded a chunk that never landed.
+- Unclean exit (`kill -9`, power cut) or a failed last commit: the `.part` can hold up to
+  `COMMIT_BYTES` (64 MiB) or `COMMIT_INTERVAL` (5 s) of whole chunks past its last record. On
+  resume `reconcile_file` first does the phase 2 checks (cut to the record, re-hash the last window
+  after an unclean exit); only when the record held and its window re-hashed clean does
+  `recover_tail` read the plan's next chunks from the `.part`, in order, hashing each (inflated
+  size and MD5 from the header) through a 1 MiB buffer, and keep them up to the first one short of
+  its size or with another MD5. It reads at most what is on disk past the record and never past the
+  plan. The `.part` is cut there and synced, then one `Commit` per recovered file is appended before
+  `Resumed`: no per-chunk sync while downloading, and still no record names unsynced bytes. On a
+  build switch the recovered chunks go into the new log's `Commit`s instead. Each scan logs the
+  recovered chunks and bytes, the discarded bytes, and the first rejected chunk and why.
+
 **Left for later** (deliberately): journalling the DLC ticked to install after a game, so a resumed
 game install doesn't install them afterwards; discarding a paused DLC download when its game is
 uninstalled (the confirmation would have to name it); listing staging folders without a journal in

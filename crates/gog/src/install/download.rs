@@ -9,7 +9,8 @@
 //! Each file is written to `<path>.part` and renamed once complete. Every
 //! [`COMMIT_BYTES`] or [`COMMIT_INTERVAL`] its bytes are synced and only
 //! then recorded in the [`Journal`], so a record never names bytes a crash
-//! could lose, and a stopped download carries on from the last record.
+//! could lose, and a stopped download carries on from the last record plus
+//! the whole chunks after it that still match the plan.
 //!
 //! Concurrency is per install rather than process-wide: two installs
 //! running at once each get their own budget, which is worse for the disk
@@ -334,8 +335,8 @@ async fn download_file(
         );
     }
 
-    // Cut to the recorded length rather than appended to: whatever is past
-    // it was never vouched for.
+    // Cut to where the journal resumes rather than appended to: whatever is
+    // past it was never vouched for, or failed the resume's chunk check.
     let mut sink = crate::achv_try!(
         tokio::fs::OpenOptions::new()
             .create(true)
@@ -365,7 +366,12 @@ async fn download_file(
             && cursor.written > cursor.committed
             && let Err(commit_err) = commit(run.journal, index, &mut sink, &mut cursor).await
         {
-            tracing::debug!(file_index = index, error = %commit_err, "couldn't record the last bytes of a stopped file");
+            tracing::warn!(
+                file_index = index,
+                unrecorded_bytes = cursor.written - cursor.committed,
+                error = %commit_err,
+                "couldn't record the last bytes of a stopped file; the resume checks them chunk by chunk"
+            );
         }
         return Err(err);
     }
@@ -422,10 +428,16 @@ async fn fill(
                 Err(err) => err,
             }
         }));
+        // Flushed before the cursor names the chunk because tokio returns from `write_all` with the
+        // last piece still being written: an `ENOSPC` there would only surface at the next write,
+        // and the stopped file's best-effort commit would then record a chunk that never landed.
         crate::achv_try!(
-            sink.write_all(&bytes)
-                .await
-                .with_context(|| format!("writing {}", file.relative_path))
+            async {
+                crate::achv_try!(sink.write_all(&bytes).await);
+                sink.flush().await
+            }
+            .await
+            .with_context(|| format!("writing {}", file.relative_path))
         );
         cursor.chunks = chunk_index + 1;
         cursor.written += u64::try_from(bytes.len()).unwrap_or(u64::MAX);

@@ -36,9 +36,9 @@ const LOG_ASIDE: &str = "progress.log.new";
 const FILES: &str = "files";
 const FORMAT: u32 = 1;
 
-/// Bytes a file in flight writes between two records, and so the most a crash can cost it. It is
-/// also what is hashed again after a crash: past it, the bytes were synced before a record named
-/// them.
+/// Bytes a file in flight writes between two records, and so the most a resume has to check chunk
+/// by chunk after a crash before it keeps them. It is also what is hashed again after a crash: past
+/// it, the bytes were synced before a record named them.
 pub(super) const COMMIT_BYTES: u64 = 64 * 1024 * 1024;
 
 /// A run this one takes over from lets go within one chunk; past this, another process owns it.
@@ -489,15 +489,30 @@ async fn carry_on(staging: &Path, previous: Header, header: &Header) -> anyhow::
             Ok(CarryOn::Download { log: swapped, starts })
         }
         Phase::Downloading => {
-            let starts = crate::achv_try!(reconcile(staging.join(FILES), &header.files, &folded).await);
+            let reconciled = crate::achv_try!(reconcile(staging.join(FILES), &header.files, &folded).await);
+            // Each recovered tail is synced by `reconcile` before its record names it.
+            for &file in &reconciled.recovered {
+                if let Some(&Start::At { chunk, bytes }) = reconciled.starts.get(file) {
+                    let commit = crate::achv_try!(encode(&Record::Commit {
+                        file,
+                        chunks: chunk,
+                        bytes
+                    }));
+                    crate::achv_try!(log.append(&commit).await.context("writing the download log"));
+                }
+            }
             let resumed = crate::achv_try!(encode(&Record::Resumed));
             crate::achv_try!(log.append(&resumed).await.context("writing the download log"));
             tracing::info!(
                 bytes_done = folded.bytes_done(&previous),
+                recovered_files = reconciled.recovered.len(),
                 clean = folded.paused.is_some(),
                 "resuming a download from its journal"
             );
-            Ok(CarryOn::Download { log, starts })
+            Ok(CarryOn::Download {
+                log,
+                starts: reconciled.starts,
+            })
         }
     }
 }
@@ -558,11 +573,12 @@ async fn carry_over(
     header: &Header,
 ) -> anyhow::Result<(LineLog, Vec<Start>)> {
     let files = staging.join(FILES);
+    // A recovered tail needs no record in the old log: the new one names every kept chunk.
     let before = crate::achv_try!(reconcile(files.clone(), &previous.files, folded).await);
     let mut earlier: HashMap<&str, (&HeaderFile, Start)> = previous
         .files
         .iter()
-        .zip(before)
+        .zip(before.starts)
         .map(|(file, start)| (file.path.as_str(), (file, start)))
         .collect();
     let mut cuts = Vec::with_capacity(previous.files.len());
@@ -865,8 +881,16 @@ fn len64(size: usize) -> u64 {
     u64::try_from(size).unwrap_or(u64::MAX)
 }
 
-/// Brings every file of `plan` (the plan `folded` was read against) back to what its log vouches for.
-async fn reconcile(files: PathBuf, plan: &[HeaderFile], folded: &Folded) -> anyhow::Result<Vec<Start>> {
+struct Reconciled {
+    starts: Vec<Start>,
+    /// Files whose start went past their last record, with the bytes it now names already synced:
+    /// each needs a `Commit` before the download goes on.
+    recovered: Vec<usize>,
+}
+
+/// Brings every file of `plan` (the plan `folded` was read against) back to what its log vouches for,
+/// plus the whole chunks past the last record that still match the plan.
+async fn reconcile(files: PathBuf, plan: &[HeaderFile], folded: &Folded) -> anyhow::Result<Reconciled> {
     let shapes: Vec<Shape> = plan
         .iter()
         .map(|file| Shape {
@@ -883,11 +907,18 @@ async fn reconcile(files: PathBuf, plan: &[HeaderFile], folded: &Folded) -> anyh
     let progress = folded.files.clone();
     let clean = folded.paused.is_some();
     let checked = tokio::task::spawn_blocking(move || {
-        shapes
-            .iter()
-            .zip(progress)
-            .map(|(shape, progress)| reconcile_file(&files, shape, progress, clean))
-            .collect::<io::Result<Vec<Start>>>()
+        let mut reconciled = Reconciled {
+            starts: Vec::with_capacity(shapes.len()),
+            recovered: Vec::new(),
+        };
+        for (index, (shape, progress)) in shapes.iter().zip(progress).enumerate() {
+            let (start, is_recovered) = crate::achv_try!(reconcile_file(&files, shape, progress, clean));
+            if is_recovered {
+                reconciled.recovered.push(index);
+            }
+            reconciled.starts.push(start);
+        }
+        io::Result::Ok(reconciled)
     })
     .await;
     match checked {
@@ -898,15 +929,16 @@ async fn reconcile(files: PathBuf, plan: &[HeaderFile], folded: &Folded) -> anyh
 
 /// Brings one file back to what its log vouches for. Bytes are only ever cut, never assumed: a
 /// file shorter than its record lost data a sync promised (a disk that lies, an unsafe unplug) and
-/// starts over, and after an unclean exit the last window is hashed again.
-fn reconcile_file(files: &Path, shape: &Shape, progress: FileProgress, clean: bool) -> io::Result<Start> {
+/// starts over, and after an unclean exit the last window is hashed again. Past the record, the
+/// whole chunks that match the plan are kept and synced; `true` when there were any.
+fn reconcile_file(files: &Path, shape: &Shape, progress: FileProgress, clean: bool) -> io::Result<(Start, bool)> {
     let complete = files.join(&shape.path);
     let part = part_path(&complete);
     let (chunks, bytes) = match progress {
         FileProgress::Done => {
             let size: u64 = shape.chunks.iter().map(|&(size, _)| size).sum();
             if std::fs::metadata(&complete).is_ok_and(|meta| meta.len() == size) {
-                return Ok(Start::Done);
+                return Ok((Start::Done, false));
             }
             tracing::warn!(path = %shape.path.display(), "a finished file is missing or the wrong size, fetching it again");
             match std::fs::remove_file(&complete) {
@@ -929,7 +961,8 @@ fn reconcile_file(files: &Path, shape: &Shape, progress: FileProgress, clean: bo
         .chunks
         .get(..chunks)
         .map(|named| named.iter().map(|&(size, _)| size).sum::<u64>());
-    let (chunks, bytes) = if named == Some(bytes) && on_disk >= bytes {
+    let is_consistent = named == Some(bytes) && on_disk >= bytes;
+    let (chunks, bytes) = if is_consistent {
         (chunks, bytes)
     } else {
         tracing::warn!(
@@ -940,16 +973,94 @@ fn reconcile_file(files: &Path, shape: &Shape, progress: FileProgress, clean: bo
         );
         (0, 0)
     };
-    let (chunks, bytes) = if clean || chunks == 0 {
+    let (vouched_chunks, vouched_bytes) = if clean || chunks == 0 {
         (chunks, bytes)
     } else {
         crate::achv_try!(rehash_window(&part, &shape.chunks, chunks, bytes))
     };
+    // Only past a record whose own bytes all held: a file that lost what a sync promised, or whose
+    // last window failed its re-hash, says nothing good about what follows.
+    let (chunks, bytes) = if is_consistent && vouched_chunks == chunks && on_disk > bytes {
+        crate::achv_try!(recover_tail(&part, &shape.chunks, chunks, bytes, on_disk))
+    } else {
+        (vouched_chunks, vouched_bytes)
+    };
+    let is_recovered = chunks > vouched_chunks;
     if on_disk > 0 {
         let file = crate::achv_try!(std::fs::OpenOptions::new().write(true).open(&part));
         crate::achv_try!(file.set_len(bytes));
+        // After a kill the recovered bytes may still be only in the page cache: synced before the
+        // caller's record names them, the phase 2 ordering.
+        if is_recovered {
+            crate::achv_try!(file.sync_data());
+        }
     }
-    Ok(Start::At { chunk: chunks, bytes })
+    Ok((Start::At { chunk: chunks, bytes }, is_recovered))
+}
+
+/// What [`recover_tail`] reads at a time, so a chunk of up to `MAX_CHUNK_SIZE` is hashed without
+/// holding it whole.
+const SCAN_BUFFER: usize = 1024 * 1024;
+
+/// Chunks written after the last record (up to [`COMMIT_BYTES`] or a commit interval of them per
+/// file, more when the commit of a stopped file failed) whose record an unclean exit cut off:
+/// the plan's next chunks are read from `part` past `bytes` in order, and each holding its whole
+/// inflated size with the right MD5 is kept, so only the chunk in flight is lost. Stops at the first
+/// that is short or doesn't match; reads at most `on_disk - bytes` and never past the plan.
+fn recover_tail(
+    part: &Path,
+    chunks: &[(u64, [u8; 16])],
+    count: usize,
+    bytes: u64,
+    on_disk: u64,
+) -> io::Result<(usize, u64)> {
+    let mut file = crate::achv_try!(std::fs::File::open(part));
+    crate::achv_try!(std::io::Seek::seek(&mut file, io::SeekFrom::Start(bytes)));
+    let mut buffer = vec![0; SCAN_BUFFER];
+    let (mut kept, mut offset) = (count, bytes);
+    let mut rejected = None;
+    for (index, &(size, md5)) in chunks.iter().enumerate().skip(count) {
+        if on_disk.saturating_sub(offset) < size {
+            rejected = Some((index, "partial"));
+            break;
+        }
+        let mut hash = md5::Context::new();
+        let mut left = size;
+        while left > 0 {
+            let take = usize::try_from(left).map_or(SCAN_BUFFER, |remaining| remaining.min(SCAN_BUFFER));
+            let Some(piece) = buffer.get_mut(..take) else {
+                break;
+            };
+            match file.read_exact(piece) {
+                Ok(()) => hash.consume(&*piece),
+                // Shorter than its metadata said a moment ago: something else cut it.
+                Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(err) => return Err(err),
+            }
+            left -= len64(take);
+        }
+        if left > 0 {
+            rejected = Some((index, "partial"));
+            break;
+        }
+        if hash.finalize().0 != md5 {
+            rejected = Some((index, "md5 mismatch"));
+            break;
+        }
+        kept = index + 1;
+        offset += size;
+    }
+    let (rejected_chunk, rejected_why) = rejected.map_or((None, "end of plan"), |(index, why)| (Some(index), why));
+    tracing::info!(
+        part = %part.display(),
+        recovered_chunks = kept - count,
+        recovered_bytes = offset - bytes,
+        discarded_bytes = on_disk.saturating_sub(offset),
+        rejected_chunk,
+        rejected_why,
+        "checked the chunks past the last record"
+    );
+    Ok((kept, offset))
 }
 
 /// Hashes the last committed chunks of `part` (at most [`COMMIT_BYTES`], at least one) and cuts
