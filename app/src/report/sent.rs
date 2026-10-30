@@ -56,6 +56,46 @@ fn private_options() -> OpenOptions {
     options
 }
 
+/// Windows has no modes, so the file's access list is cut to this user, SYSTEM and Administrators
+/// with `icacls` (no `unsafe` and no crate for the Win32 security API). The well-known SIDs are
+/// used for the last two because the group names are localised. `icacls` has no `--`, so the path
+/// is checked instead, and the user name is held to a strict set of characters.
+#[cfg(windows)]
+fn restrict_to_owner(path: &Path) {
+    use std::os::windows::process::CommandExt as _;
+    use std::process::Command;
+    use std::sync::Once;
+
+    /// `CREATE_NO_WINDOW`, so `icacls` doesn't flash a console over decanter.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    static WARNED: Once = Once::new();
+
+    let user = std::env::var("USERNAME").unwrap_or_default();
+    let is_user_valid = !user.is_empty()
+        && user.len() <= 64
+        && user
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-'))
+        && !user.starts_with([' ', '-']);
+    let is_path_valid = path.is_absolute()
+        && path
+            .to_str()
+            .is_some_and(|text| !text.starts_with('-') && !text.contains('"'));
+    let restricted = is_user_valid
+        && is_path_valid
+        && Command::new("icacls")
+            .arg(path)
+            .args(["/inheritance:r", "/grant:r"])
+            .arg(format!("{user}:(F)"))
+            .args(["*S-1-5-18:(F)", "*S-1-5-32-544:(F)"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .is_ok_and(|output| output.status.success());
+    if !restricted {
+        WARNED.call_once(|| tracing::warn!("could not restrict sent.jsonl to its owner; its access list is unchanged"));
+    }
+}
+
 pub fn load() -> Result<Vec<Entry>, Error> {
     let path = path();
     let text = match fs::read_to_string(&path) {
@@ -96,11 +136,18 @@ pub fn record(entry: &Entry) -> Result<(), Error> {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
+        #[cfg(windows)]
+        let is_new = !path.exists();
         private_options()
             .append(true)
             .create(true)
             .open(&path)?
-            .write_all(line.as_bytes())
+            .write_all(line.as_bytes())?;
+        #[cfg(windows)]
+        if is_new {
+            restrict_to_owner(&path);
+        }
+        Ok(())
     };
     append().map_err(|err| failed(&path, err))
 }
@@ -127,6 +174,8 @@ pub fn forget(id: &str) -> Result<(), Error> {
             .truncate(true)
             .open(&temp)?
             .write_all(kept.as_bytes())?;
+        #[cfg(windows)]
+        restrict_to_owner(&temp);
         fs::rename(&temp, &path)
     };
     rewrite().map_err(|err| failed(&path, err))
