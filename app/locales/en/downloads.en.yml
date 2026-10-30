@@ -31,3 +31,6 @@ downloads.paused_reason.disk_full_short: 'Disk full: %{short} more free space ne
 downloads.paused_reason.disk_full_update: 'Disk full: the update needs %{needed} free at %{path} while it downloads; %{short} short'
 downloads.paused_reason.library_unavailable: The library folder is unavailable
 downloads.paused_reason.library_unavailable_at: 'The library %{path} is unavailable'
+downloads.reused: 'GOG published another build while it was stopped: %{kept} of the %{had} already downloaded were reused'
+downloads.verify_offer: '%{title} was resumed after Decanter closed unexpectedly. Verify its files?'
+downloads.verify_now: Verify now

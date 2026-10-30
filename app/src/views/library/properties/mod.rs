@@ -98,6 +98,15 @@ const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 /// Nothing stops a second click from opening a second window on the same
 /// game; Steam's own dialog doesn't either.
 pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
+    open_window(game, account_id, Tab::General, cx);
+}
+
+/// Opens Propiedades on Archivos locales, where files are verified.
+pub fn open_local_files_window(game: Game, account_id: String, cx: &mut App) {
+    open_window(game, account_id, Tab::LocalFiles, cx);
+}
+
+fn open_window(game: Game, account_id: String, tab: Tab, cx: &mut App) {
     let title = t!("library.properties.window_title", title = game.title).into_owned();
     let target = Rc::new(Target {
         account_id,
@@ -107,7 +116,7 @@ pub fn open_properties_window(game: Game, account_id: String, cx: &mut App) {
     });
     let options = chrome::window_options(&title, 640., 560., 480., 360., cx);
     if let Err(err) = cx.open_window(options, |window, cx| {
-        cx.new(|cx| PropertiesWindow::new(target, title, window, cx))
+        cx.new(|cx| PropertiesWindow::new(target, title, tab, window, cx))
     }) {
         tracing::error!(%err, "cannot open the properties window");
     }
@@ -122,12 +131,12 @@ struct PropertiesWindow {
 }
 
 impl PropertiesWindow {
-    fn new(target: Rc<Target>, title: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let pane = build_pane(Tab::General, &target, window, cx);
+    fn new(target: Rc<Target>, title: String, tab: Tab, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let pane = build_pane(tab, &target, window, cx);
         Self {
             target,
             title,
-            tab: Tab::General,
+            tab,
             pane,
         }
     }

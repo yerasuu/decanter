@@ -13,7 +13,7 @@ use gpui::{App, AppContext as _, Entity, Global};
 use crate::i18n::Text;
 use crate::views::settings::Tab as SettingsTab;
 
-pub use background::{Background, Download, DownloadKey, DownloadKind, InstallStatus};
+pub use background::{Background, Download, DownloadKey, DownloadKind, InstallStatus, VerifyOffer};
 pub use gog_library::{GogLibrary, LibraryState, ModsState};
 pub use ps::{
     Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,

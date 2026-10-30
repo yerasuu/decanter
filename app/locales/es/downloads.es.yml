@@ -31,3 +31,6 @@ downloads.paused_reason.disk_full_short: 'Disco lleno: faltan %{short} libres en
 downloads.paused_reason.disk_full_update: 'Disco lleno: la actualización necesita %{needed} libres en %{path} mientras se descarga; faltan %{short}'
 downloads.paused_reason.library_unavailable: La carpeta de la biblioteca no está disponible
 downloads.paused_reason.library_unavailable_at: 'La biblioteca %{path} no está disponible'
+downloads.reused: 'GOG publicó otro build mientras estaba parada: se reutilizaron %{kept} de los %{had} ya descargados'
+downloads.verify_offer: '%{title} se reanudó tras un cierre inesperado de Decanter. ¿Quieres verificar sus archivos?'
+downloads.verify_now: Verificar ahora

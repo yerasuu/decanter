@@ -219,7 +219,17 @@ pub fn resume_download(key: DownloadKey, cx: &mut App) {
             cx.notify();
             return false;
         }
+        let was_unclean = matches!(
+            row.status,
+            InstallStatus::Paused {
+                reason: decanter_gog::PauseReason::ClosedUnexpectedly,
+                ..
+            }
+        );
         row.status = InstallStatus::Queued;
+        if was_unclean {
+            background.unclean_resumes.insert(key.clone());
+        }
         cx.notify();
         true
     });
@@ -258,6 +268,37 @@ pub fn resume_all(cx: &mut App) {
     for key in paused {
         resume_download(key, cx);
     }
+}
+
+/// Opens the finished download's game on Archivos locales to verify it, and drops the offer.
+pub fn verify_now(key: &DownloadKey, cx: &mut App) {
+    let state = AppState::get(cx).clone();
+    let game = state
+        .library
+        .read(cx)
+        .games
+        .iter()
+        .find(|entry| entry.game.id == key.product_id && entry.game.account_id == key.account_id)
+        .map(|entry| entry.game.clone());
+    if let Some(game) = game {
+        let account_id = game.account_id.clone();
+        super::properties::open_local_files_window(game, account_id, cx);
+    } else {
+        tracing::warn!(
+            account_id = key.account_id,
+            product_id = key.product_id,
+            "the game to verify is not in the library list"
+        );
+    }
+    dismiss_verify_offer(key, cx);
+}
+
+pub fn dismiss_verify_offer(key: &DownloadKey, cx: &mut App) {
+    let background = AppState::get(cx).background.clone();
+    background.update(cx, |background, cx| {
+        background.verify_offers.retain(|offer| &offer.key != key);
+        cx.notify();
+    });
 }
 
 /// Drops a failed download's notice.

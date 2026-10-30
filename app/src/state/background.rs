@@ -60,6 +60,17 @@ pub struct Download {
     /// The library folder it downloads into, once known: Almacenamiento
     /// lists it there, and an unplugged one coming back resumes it.
     pub root: Option<PathBuf>,
+    /// What GOG's new build kept of this download, when it published one while the download was
+    /// stopped.
+    pub reused: Option<decanter_gog::BuildSwitch>,
+}
+
+/// A finished download that had been resumed after an unclean stop, for Descargas to offer verifying
+/// the files.
+#[derive(Clone, PartialEq)]
+pub struct VerifyOffer {
+    pub key: DownloadKey,
+    pub title: String,
 }
 
 #[derive(Clone, PartialEq)]
@@ -164,6 +175,10 @@ pub struct Background {
     /// to confirm deleting what it downloaded (#1133). One at a time, and
     /// shared, so Descargas and the game's own page ask the same question.
     pub cancel_confirm: Option<DownloadKey>,
+    /// Downloads resumed from a journal that ended without a pause, until they finish or are
+    /// cancelled: their bytes passed through a crash, so verifying them is offered at the end.
+    pub unclean_resumes: HashSet<DownloadKey>,
+    pub verify_offers: Vec<VerifyOffer>,
     /// Bumped after a play session's duration is written to the playtime
     /// table, so the detail pane's stat re-reads it.
     pub playtime_generation: u32,

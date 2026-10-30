@@ -17,7 +17,7 @@ use gpui::AsyncApp;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::i18n::Text;
-use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
+use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus, VerifyOffer};
 
 const UI_UPDATE_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -70,6 +70,7 @@ pub fn queued(title: String, kind: DownloadKind) -> Download {
         run: next_run(),
         status: InstallStatus::Queued,
         root: None,
+        reused: None,
     }
 }
 
@@ -107,8 +108,10 @@ pub async fn track<T>(
 ) -> Ended<T> {
     let DownloadJob { key, title, kind } = job;
     let run = next_run();
+    let offer_title = title.clone();
     state.background.update(cx, |background, cx| {
         let root = background.installing.get(&key).and_then(|row| row.root.clone());
+        let reused = background.installing.get(&key).and_then(|row| row.reused);
         background.installing.insert(
             key.clone(),
             Download {
@@ -117,6 +120,7 @@ pub async fn track<T>(
                 run,
                 status: InstallStatus::Queued,
                 root,
+                reused,
             },
         );
         cx.notify();
@@ -184,6 +188,19 @@ pub async fn track<T>(
             }
             Ended::Done(_) | Ended::Cancelled => {
                 background.installing.remove(&key);
+                let was_unclean = background.unclean_resumes.remove(&key);
+                if was_unclean && matches!(ended, Ended::Done(_)) && kind != DownloadKind::Repair {
+                    tracing::info!(
+                        account_id = key.account_id,
+                        product_id = key.product_id,
+                        "a download resumed after an unclean stop finished, offering to verify it"
+                    );
+                    background.verify_offers.retain(|offer| offer.key != key);
+                    background.verify_offers.push(VerifyOffer {
+                        key: key.clone(),
+                        title: offer_title,
+                    });
+                }
             }
         }
         if background.cancel_confirm.as_ref() == Some(&key) {
@@ -240,6 +257,7 @@ fn report(state: &AppState, key: &DownloadKey, run: u64, progress: decanter_gog:
             && row.run == run
             && !matches!(row.status, InstallStatus::Cancelling { .. })
         {
+            row.reused = progress.build_switch;
             row.status = InstallStatus::Installing {
                 current_file: progress.current_file,
                 bytes_downloaded: progress.bytes_downloaded,

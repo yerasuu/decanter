@@ -31,7 +31,7 @@ mod unfinished;
 mod verify;
 
 pub use download::Cancelled;
-pub use journal::{PauseReason, Paused, Room};
+pub use journal::{BuildSwitch, PauseReason, Paused, Room};
 pub use tracking::{cancel, pause, pause_for_quit};
 pub use unfinished::{
     NothingToResume, StrayStaging, UnfinishedDownload, discard, discard_stray, downloading_dir, resume, resume_repair,
@@ -63,6 +63,9 @@ pub struct Progress {
     /// The install's full size, known upfront from the depot manifest.
     pub total_bytes: Option<u64>,
     pub bytes_per_second: f64,
+    /// Set when GOG published another build while the download was stopped, on every report of
+    /// the resumed run.
+    pub build_switch: Option<BuildSwitch>,
 }
 
 /// Downloads and installs `product_id` for `account_id`, reporting
@@ -368,13 +371,14 @@ async fn fetch_into_staging(
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
 ) -> anyhow::Result<(Journal, Header)> {
     let planned_bytes = header.total_bytes;
-    let (journal, header, starts) = match journal::open(staging, header).await {
+    let (journal, header, starts, build_switch) = match journal::open(staging, header).await {
         Ok(Opened::Move { journal, header }) => return Ok((journal, header)),
         Ok(Opened::Download {
             journal,
             header,
             starts,
-        }) => (journal, header, starts),
+            switch,
+        }) => (journal, header, starts, switch),
         Err(err) => {
             tracing::error!(product_id, error = %err, "opening the download journal failed");
             return Err(pause_reason(&err, staging).await.map_or(err, |reason| {
@@ -456,6 +460,7 @@ async fn fetch_into_staging(
                     bytes_downloaded,
                     total_bytes,
                     bytes_per_second: rate_tracker.sample(bytes_downloaded),
+                    build_switch,
                 });
             }
         };

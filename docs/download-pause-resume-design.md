@@ -97,6 +97,21 @@ against GOG yet.
   game is on. Owners are planned in order (`BTreeMap`), so the same broken files give the same
   plan and the repair carries on as it was. Repairs still never resume on their own.
 
+**Phase 4 follow-ups** (#1317, #1318).
+
+- Staging folders without a journal (`decanter_gog::stray_staging`): a folder under
+  `downloading/<account>/<id>` with no `download.json` and a free `lock` is listed in Storage's
+  *Descargas sin terminar* with its size. *Eliminar* asks first, naming the folder, and
+  `discard_stray` takes the lock and looks for the journal again under it, so a download that
+  started meanwhile, or any folder with a journal, is never removed.
+- Build drift is shown: `Progress.build_switch` (`BuildSwitch{kept_bytes, had_bytes}`, the numbers
+  `carry_over` logs) rides every report of the resumed run, and the row reads *GOG publicó otro build
+  mientras estaba parada: se reutilizaron X de los Y ya descargados*, also while it is paused again.
+- Verify after an unclean resume: `resume_download` flags a row whose reason was *closed
+  unexpectedly*; when that download finishes, Descargas shows a notice with *Verificar ahora*, which
+  opens the game's Propiedades on Archivos locales. A chunk recovery after a clean pause is not
+  flagged (the app has no signal for it), and repairs are not offered.
+
 **Chunk recovery** (#1314: after any failure only the chunk in flight is lost).
 
 - Process alive (network drop, retry window over, refused URL, pause, quit, full disk, a corrupt

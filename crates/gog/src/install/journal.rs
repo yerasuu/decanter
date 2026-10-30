@@ -305,12 +305,22 @@ pub(super) enum Start {
     At { chunk: usize, bytes: u64 },
 }
 
+/// What a build switch kept of the download: GOG published another build while it was stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildSwitch {
+    /// Bytes the new build shares with the earlier one, and so still has.
+    pub kept_bytes: u64,
+    /// Bytes the earlier build had downloaded.
+    pub had_bytes: u64,
+}
+
 pub(super) enum Opened {
     /// Fetch what `starts` says is missing, then move.
     Download {
         journal: Journal,
         header: Header,
         starts: Vec<Start>,
+        switch: Option<BuildSwitch>,
     },
     /// A crash hit the move into the library: it is finished with the plan it was moving, whatever
     /// GOG offers now, so an update is never left half applied.
@@ -425,11 +435,12 @@ pub(super) async fn open(staging: &Path, header: Header) -> anyhow::Result<Opene
         Ok(None) => None,
         Err(discarded) => Some(discarded),
         Ok(Some(previous)) => match crate::achv_try!(carry_on(staging, previous, &header).await) {
-            CarryOn::Download { log, starts } => {
+            CarryOn::Download { log, starts, switch } => {
                 return Ok(Opened::Download {
                     journal: Journal::new(staging, log, lock),
                     header,
                     starts,
+                    switch,
                 });
             }
             CarryOn::Move { log, previous } => {
@@ -455,8 +466,15 @@ impl Journal {
 }
 
 enum CarryOn {
-    Download { log: LineLog, starts: Vec<Start> },
-    Move { log: LineLog, previous: Box<Header> },
+    Download {
+        log: LineLog,
+        starts: Vec<Start>,
+        switch: Option<BuildSwitch>,
+    },
+    Move {
+        log: LineLog,
+        previous: Box<Header>,
+    },
     Over(Discarded),
 }
 
@@ -485,8 +503,12 @@ async fn carry_on(staging: &Path, previous: Header, header: &Header) -> anyhow::
         Phase::Recorded => Ok(CarryOn::Over(Discarded::Finished)),
         Phase::Downloading if previous.plan != header.plan => {
             drop(log);
-            let (swapped, starts) = crate::achv_try!(carry_over(staging, &previous, &folded, header).await);
-            Ok(CarryOn::Download { log: swapped, starts })
+            let (swapped, starts, switch) = crate::achv_try!(carry_over(staging, &previous, &folded, header).await);
+            Ok(CarryOn::Download {
+                log: swapped,
+                starts,
+                switch: Some(switch),
+            })
         }
         Phase::Downloading => {
             let reconciled = crate::achv_try!(reconcile(staging.join(FILES), &header.files, &folded).await);
@@ -512,6 +534,7 @@ async fn carry_on(staging: &Path, previous: Header, header: &Header) -> anyhow::
             Ok(CarryOn::Download {
                 log,
                 starts: reconciled.starts,
+                switch: None,
             })
         }
     }
@@ -571,7 +594,7 @@ async fn carry_over(
     previous: &Header,
     folded: &Folded,
     header: &Header,
-) -> anyhow::Result<(LineLog, Vec<Start>)> {
+) -> anyhow::Result<(LineLog, Vec<Start>, BuildSwitch)> {
     let files = staging.join(FILES);
     // A recovered tail needs no record in the old log: the new one names every kept chunk.
     let before = crate::achv_try!(reconcile(files.clone(), &previous.files, folded).await);
@@ -646,15 +669,23 @@ async fn carry_over(
             Start::At { bytes, .. } => *bytes,
         })
         .sum();
+    let had = folded.bytes_done(previous);
     tracing::info!(
         from_build = previous.build_id,
         to_build = header.build_id,
         kept_bytes = kept,
-        had_bytes = folded.bytes_done(previous),
+        had_bytes = had,
         total_bytes = header.total_bytes,
         "GOG published another build while the download was stopped; keeping what both share"
     );
-    Ok((log, starts))
+    Ok((
+        log,
+        starts,
+        BuildSwitch {
+            kept_bytes: kept,
+            had_bytes: had,
+        },
+    ))
 }
 
 /// How file `was`, where `start` says it stood, carries into `now`, the same path in the new build.
@@ -752,6 +783,7 @@ async fn start_over(
         journal: Journal::new(staging, log, lock),
         header,
         starts,
+        switch: None,
     })
 }
 

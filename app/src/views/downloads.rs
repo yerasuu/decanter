@@ -80,10 +80,12 @@ pub fn progress_lines(key: &DownloadKey, download: &Download) -> Vec<gpui::AnyEl
             if let Some(left) = format::eta(remaining, *bytes_per_second) {
                 text.push_str(&format!(" · {}", t!("downloads.eta", left = left)));
             }
-            vec![
+            let mut lines = vec![
                 progress_bar(bar_id, status.fraction(), 4.).into_any_element(),
                 label(text),
-            ]
+            ];
+            lines.extend(reused_line(download, &label));
+            lines
         }
         InstallStatus::Cancelling { .. } => vec![
             progress_bar(bar_id, None, 4.).into_any_element(),
@@ -110,6 +112,7 @@ pub fn progress_lines(key: &DownloadKey, download: &Download) -> Vec<gpui::AnyEl
                     t!("downloads.stale", days = days, size = done.as_str()).into_owned(),
                 ));
             }
+            lines.extend(reused_line(download, &label));
             lines
         }
         InstallStatus::Elsewhere {
@@ -128,6 +131,20 @@ pub fn progress_lines(key: &DownloadKey, download: &Download) -> Vec<gpui::AnyEl
         ],
         InstallStatus::Failed(err) => vec![theme::error(err.clone()).into_any_element()],
     }
+}
+
+/// "Se reutilizaron X de Y" once GOG's new build kept part of what was downloaded.
+fn reused_line(download: &Download, label: &impl Fn(String) -> gpui::AnyElement) -> Option<gpui::AnyElement> {
+    download.reused.map(|switch| {
+        label(
+            t!(
+                "downloads.reused",
+                kept = format::bytes(switch.kept_bytes),
+                had = format::bytes(switch.had_bytes)
+            )
+            .into_owned(),
+        )
+    })
 }
 
 /// Why `download` is paused, naming its library folder and, for a full
@@ -323,7 +340,49 @@ impl Render for DownloadsView {
             .gap_4()
             .child(theme::h1(t!("downloads.title")))
             .children(bulk_actions(&entries));
-        let column = div().flex().flex_col().child(header);
+        let offers = background.verify_offers.iter().enumerate().map(|(index, offer)| {
+            let verify_key = offer.key.clone();
+            let dismiss_key = offer.key.clone();
+            div()
+                .flex()
+                .items_center()
+                .gap_4()
+                .px(px(18.))
+                .py(px(10.))
+                .border_b_1()
+                .border_color(rgb(theme::LINE))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(t!("downloads.verify_offer", title = offer.title.as_str())),
+                )
+                .child(
+                    button(
+                        ("verify-now", index),
+                        ButtonKind::Secondary,
+                        t!("downloads.verify_now"),
+                        false,
+                    )
+                    .on_click(move |_, _, cx| actions::verify_now(&verify_key, cx)),
+                )
+                .child(
+                    button(
+                        ("verify-dismiss", index),
+                        ButtonKind::Icon,
+                        t!("downloads.dismiss"),
+                        false,
+                    )
+                    .on_click(move |_, _, cx| actions::dismiss_verify_offer(&dismiss_key, cx)),
+                )
+        });
+        let column = div()
+            .flex()
+            .flex_col()
+            .child(header)
+            .when(!background.verify_offers.is_empty(), |column| {
+                column.child(theme::card().mb_4().children(offers))
+            });
         if entries.is_empty() {
             return theme::page("downloads", column.child(theme::empty(t!("downloads.empty"))));
         }
