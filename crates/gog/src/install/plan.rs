@@ -299,10 +299,21 @@ pub(super) async fn resolve_depot_files(
                 .context("GOG depot manifest fetch failed")
         ));
     }
+    // Two depots can ship the same path (each language depot of a DLC carries its own
+    // goggame-<id>.info and .hashdb). The files of a run are written under their path, so the
+    // copies would race on one staging file; the later depot overrides the earlier, as in
+    // an install of every depot in order.
+    let mut seen = std::collections::HashSet::new();
+    let mut unique: Vec<_> = depot_files
+        .into_iter()
+        .rev()
+        .filter(|file| seen.insert(file.path.clone()))
+        .collect();
+    unique.reverse();
     Ok(DepotFiles {
         install_directory: meta.install_directory,
         build_id: build.build_id.clone(),
-        files: depot_files,
+        files: unique,
         language,
     })
 }
