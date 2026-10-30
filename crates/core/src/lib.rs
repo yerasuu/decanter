@@ -16,6 +16,7 @@ mod launcher_env;
 mod library;
 pub mod migrate;
 pub mod platform;
+pub mod private;
 mod profiles;
 pub mod redact;
 pub mod runner;

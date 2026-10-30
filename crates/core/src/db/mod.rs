@@ -227,6 +227,8 @@ impl Db {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         tracing::debug!(path = %path.display(), "opening db");
+        // SQLite gives its journals the database's mode, so the file is made owner-only first.
+        crate::private::create_file(path);
         let conn = Connection::open(path)?;
         // The app opens the database for nearly every read; the migration below takes the write
         // lock and ran on every one of them, which is what surfaced as "database is locked".

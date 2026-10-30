@@ -13,7 +13,7 @@ pub mod scrub;
 pub mod send;
 pub mod sent;
 
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::{self, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 
@@ -226,10 +226,16 @@ pub fn save(built: &Built, out: Option<&Path>) -> Result<PathBuf, Error> {
         Path::to_path_buf,
     );
     let write = |path: &Path| -> io::Result<()> {
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
+        // A folder the user chose keeps its mode; the library's reports folder is owner-only.
+        match (path.parent(), out) {
+            (Some(dir), None) => decanter_core::private::create_dir(dir)?,
+            (Some(dir), Some(_)) => fs::create_dir_all(dir)?,
+            (None, _) => {}
         }
-        let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+        let mut file = decanter_core::private::file_options()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
         file.write_all(built.json.as_bytes())?;
         file.write_all(b"\n")
     };

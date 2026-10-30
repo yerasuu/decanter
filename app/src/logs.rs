@@ -8,13 +8,14 @@
 //! debug mode on at that point, the same lines also go to the session's log in
 //! the debug log folder (see [`crate::debug_logs`]).
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
 use std::time::Duration;
 
 use chrono::{NaiveDate, Utc};
+use decanter_core::private;
 
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -134,6 +135,39 @@ pub fn open() {
     }
 }
 
+/// What older versions made with the default modes, made owner-only once per start on a thread of
+/// its own, since a library on a slow or network disk may hold hundreds of logs.
+pub fn protect() {
+    let decanter_core::bootstrap::Location::Library(root) = decanter_core::bootstrap::location() else {
+        return;
+    };
+    let spawned = std::thread::Builder::new()
+        .name("private-files".to_owned())
+        .spawn(move || {
+            let data = decanter_core::bootstrap::library_data_dir(&root);
+            let db = decanter_core::bootstrap::db_path(&root);
+            let journals = ["-wal", "-shm", "-journal"].map(|suffix| {
+                let mut name = db.clone().into_os_string();
+                name.push(suffix);
+                PathBuf::from(name)
+            });
+            for path in [db, data.join("logs"), data.join("reports")]
+                .into_iter()
+                .chain(journals)
+            {
+                private::narrow(&path);
+            }
+            private::narrow(&decanter_ps::run_log::dir(&decanter_ps::paths::active()));
+            // A folder the user picked may hold more than decanter's; only this host's part is its.
+            if let Some((folder, true)) = crate::debug_logs::folder() {
+                private::narrow(&crate::debug_logs::host_dir(&folder));
+            }
+        });
+    if let Err(err) = spawned {
+        tracing::warn!(%err, "could not start making the library's logs owner-only");
+    }
+}
+
 /// Read once, here: the subscriber is already running, so turning the mode on later only
 /// reaches the next session.
 fn open_debug() -> Option<DebugLog> {
@@ -188,9 +222,9 @@ fn path_for(dir: &Path, day: NaiveDate) -> PathBuf {
 
 fn open_file(path: &Path) -> io::Result<File> {
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
+        private::create_dir(dir)?;
     }
-    OpenOptions::new().create(true).append(true).open(path)
+    private::file_options().create(true).append(true).open(path)
 }
 
 /// decanter can stay open for days in the tray; each day still gets its own file, and the

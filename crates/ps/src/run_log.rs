@@ -72,7 +72,10 @@ impl RunLog {
         command: &mut Command,
         call_report: bool,
     ) -> io::Result<Self> {
-        tokio::fs::create_dir_all(dir).await?;
+        let owned = dir.to_owned();
+        tokio::task::spawn_blocking(move || decanter_core::private::create_dir(&owned))
+            .await
+            .map_err(io::Error::other)??;
         let prefix = format!("{}-{}-", slug(target), kind.name());
         prune(dir, &prefix).await?;
         let started_at = now();
@@ -80,7 +83,7 @@ impl RunLog {
         let mut path = dir.join(format!("{stem}.log"));
         let mut attempt: u32 = 1;
         let mut file = loop {
-            match tokio::fs::OpenOptions::new()
+            match tokio::fs::OpenOptions::from(decanter_core::private::file_options())
                 .write(true)
                 .create_new(true)
                 .open(&path)

@@ -134,7 +134,7 @@ pub fn record(entry: &Entry) -> Result<(), Error> {
     line.push('\n');
     let append = || -> io::Result<()> {
         if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
+            decanter_core::private::create_dir(dir)?;
         }
         #[cfg(windows)]
         let is_new = !path.exists();

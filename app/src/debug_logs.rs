@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 
 use chrono::Utc;
 use decanter_core::bootstrap::{self, Location};
+use decanter_core::private;
 
 use crate::i18n::Text;
 
@@ -130,7 +131,7 @@ pub fn set_folder(picked: Option<&Path>) -> Result<(), Text> {
 /// The folder's host subfolder, made when missing so there is something to open.
 pub fn open_folder(folder: &Path) -> io::Result<()> {
     let dir = host_dir(folder);
-    fs::create_dir_all(&dir)?;
+    private::create_dir(&dir)?;
     crate::desktop::open(&dir)
 }
 
@@ -139,7 +140,7 @@ pub fn open_folder(folder: &Path) -> io::Result<()> {
 /// renamed first so it syncs as it is.
 pub fn open_session(folder: &Path) -> io::Result<(fs::File, PathBuf)> {
     let dir = host_dir(folder);
-    fs::create_dir_all(&dir)?;
+    private::create_dir(&dir)?;
     complete_stale(&dir);
     prune(&dir, SESSIONS_KEPT.saturating_sub(1), session_stamp);
     let stem = format!("{SESSION_PREFIX}{}", Utc::now().format("%Y%m%d-%H%M%S"));
@@ -152,7 +153,7 @@ pub fn open_session(folder: &Path) -> io::Result<(fs::File, PathBuf)> {
         };
         let partial = partial_of(&dir.join(&name));
         if !dir.join(&name).exists() {
-            match fs::OpenOptions::new().append(true).create_new(true).open(&partial) {
+            match private::file_options().append(true).create_new(true).open(&partial) {
                 Ok(file) => return Ok((file, partial)),
                 Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(err) => return Err(err),
@@ -212,7 +213,7 @@ pub async fn keep_job(log: PathBuf, calls: Option<PathBuf>) {
 }
 
 fn copy_job(jobs: &Path, log: &Path, calls: Option<&Path>) -> io::Result<()> {
-    fs::create_dir_all(jobs)?;
+    private::create_dir(jobs)?;
     if let Some(calls) = calls.filter(|calls| calls.is_file()) {
         publish_copy(calls, jobs)?;
     }
@@ -227,7 +228,12 @@ fn publish_copy(source: &Path, dir: &Path) -> io::Result<PathBuf> {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     };
     let partial = partial_of(&dir.join(name));
-    fs::copy(source, &partial)?;
+    let mut copy = private::file_options()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&partial)?;
+    io::copy(&mut fs::File::open(source)?, &mut copy)?;
     complete(&partial)
 }
 

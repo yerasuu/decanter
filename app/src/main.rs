@@ -142,6 +142,7 @@ fn main() {
     let cli = cli::Cli::parse();
     open_library(cli.library);
     logs::open();
+    logs::protect();
 
     // A recognized subcommand runs headless and exits before any of the
     // GUI setup below ever runs — see `cli`. No subcommand (the ordinary
