@@ -3,15 +3,16 @@
 //! write the same file. Every file is written as `.partial` and renamed once whole, so a sync
 //! tool never copies half a log.
 
+use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
+use std::io::{self, BufRead as _, BufReader, BufWriter, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use chrono::Utc;
 use decanter_core::bootstrap::{self, Location};
-use decanter_core::private;
+use decanter_core::{private, redact};
 
 use crate::i18n::Text;
 
@@ -198,7 +199,8 @@ fn complete_stale(dir: &Path) {
 
 /// Copies a finished job's log, and its call report when there is one, into the host's `jobs/`
 /// with the mode on. Copied rather than written there, so the library keeps its own logs, which
-/// Registro and the run statistics read, whatever the mode.
+/// Registro and the run statistics read, whatever the mode; the copies, meant to be synced, lose
+/// what [`redact::text`] finds.
 pub async fn keep_job(log: PathBuf, calls: Option<PathBuf>) {
     let Some(folder) = active_folder() else {
         return;
@@ -228,12 +230,27 @@ fn publish_copy(source: &Path, dir: &Path) -> io::Result<PathBuf> {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     };
     let partial = partial_of(&dir.join(name));
-    let mut copy = private::file_options()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&partial)?;
-    io::copy(&mut fs::File::open(source)?, &mut copy)?;
+    let lines = BufReader::new(fs::File::open(source)?).split(b'\n');
+    let mut copy = BufWriter::new(
+        private::file_options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&partial)?,
+    );
+    let mut redacted = 0_usize;
+    for line in lines {
+        let line = line?;
+        let line = String::from_utf8_lossy(&line);
+        let clean = redact::text(&line);
+        if matches!(clean, Cow::Owned(_)) {
+            redacted = redacted.saturating_add(1);
+        }
+        copy.write_all(clean.as_bytes())?;
+        copy.write_all(b"\n")?;
+    }
+    copy.flush()?;
+    tracing::debug!(source = %source.display(), redacted_lines = redacted, "debug copy scrubbed");
     complete(&partial)
 }
 

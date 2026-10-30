@@ -15,7 +15,7 @@ use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
 use std::time::Duration;
 
 use chrono::{NaiveDate, Utc};
-use decanter_core::private;
+use decanter_core::{private, redact};
 
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -63,7 +63,7 @@ impl Write for LibraryLog {
             && let Some(taken) = buf.get(..*count)
         {
             // A line the debug copy misses is no reason to fail the library's log.
-            let _: io::Result<()> = (&debug.file).write_all(taken);
+            let _: io::Result<()> = (&debug.file).write_all(scrubbed(taken).as_bytes());
         }
         written
     }
@@ -200,7 +200,9 @@ fn settle(file: Option<File>, debug: Option<DebugLog>) {
     let (written, debug_written) = {
         let mut early = EARLY.lock().unwrap_or_else(PoisonError::into_inner);
         let written = file.as_ref().map_or(Ok(()), |mut file| file.write_all(&early));
-        let debug_written = debug.as_ref().map_or(Ok(()), |debug| (&debug.file).write_all(&early));
+        let debug_written = debug
+            .as_ref()
+            .map_or(Ok(()), |debug| (&debug.file).write_all(scrubbed(&early).as_bytes()));
         DEBUG.get_or_init(|| debug);
         FILE.get_or_init(|| file.map(RwLock::new));
         *early = Vec::new();
@@ -214,6 +216,12 @@ fn settle(file: Option<File>, debug: Option<DebugLog>) {
     if let Err(err) = debug_written {
         tracing::warn!(%err, "could not write the early lines to the session's debug log");
     }
+}
+
+/// The debug log folder is meant to be synced, so its copy loses what [`redact::text`] finds; the
+/// library's file keeps every line as it was.
+fn scrubbed(bytes: &[u8]) -> String {
+    redact::text(&String::from_utf8_lossy(bytes)).into_owned()
 }
 
 fn path_for(dir: &Path, day: NaiveDate) -> PathBuf {

@@ -122,6 +122,7 @@ impl Render for DebugSection {
                 } else {
                     t!("settings.general.debug.folder_default")
                 }))
+                .child(theme::muted(t!("settings.general.debug.folder_scrubbed")))
                 .child(
                     field_row()
                         .mt_2()

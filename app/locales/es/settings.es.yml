@@ -138,6 +138,7 @@ settings.general.debug.app_log_until_exit: El registro de esta sesión de la apl
 settings.general.debug.folder: Carpeta de logs de depuración
 settings.general.debug.folder_default: Dentro de la biblioteca
 settings.general.debug.folder_chosen: Elegida por ti
+settings.general.debug.folder_scrubbed: 'Las copias de Decanter que van aquí no llevan contraseñas, tokens ni la parte de consulta de las direcciones web; los nombres de juegos, las rutas y los identificadores sí. La biblioteca conserva los registros completos. Lo que psport escribe aquí por su cuenta (gpu.log, faults.txt, config.txt) no pasa por esta limpieza.'
 settings.general.debug.change: Cambiar…
 settings.general.debug.reset: Restablecer
 settings.general.debug.open: Abrir carpeta

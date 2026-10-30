@@ -138,6 +138,7 @@ settings.general.debug.app_log_until_exit: This session's app log keeps going th
 settings.general.debug.folder: Debug log folder
 settings.general.debug.folder_default: Inside the library
 settings.general.debug.folder_chosen: Chosen by you
+settings.general.debug.folder_scrubbed: 'Decanter''s copies here leave out passwords, tokens and the query part of web addresses; game names, paths and ids stay. The library keeps the full logs. What psport writes here itself (gpu.log, faults.txt, config.txt) isn''t cleaned.'
 settings.general.debug.change: Change…
 settings.general.debug.reset: Reset
 settings.general.debug.open: Open folder
