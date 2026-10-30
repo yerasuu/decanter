@@ -434,7 +434,7 @@ pub async fn check(addresses: &Addresses) -> [Probe; 3] {
     let game = format!("{}:20443/bb-eu/ss.info", addresses.community);
     let status = format!("{}/status", addresses.webapi.trim_end_matches('/'));
     let (game, shadnet, webapi) = tokio::join!(
-        get(&game, Duration::from_secs(6)),
+        answers(&game, Duration::from_secs(6)),
         connect(&addresses.server),
         get(&status, Duration::from_secs(4)),
     );
@@ -450,7 +450,7 @@ pub async fn check(addresses: &Addresses) -> [Probe; 3] {
         Probe {
             target: Target::Game,
             address: addresses.community.clone(),
-            outcome: game.map(drop),
+            outcome: game,
         },
         Probe {
             target: Target::Shadnet,
@@ -473,6 +473,22 @@ fn log_probe(probe: &Probe) {
         Err(err) => {
             tracing::warn!(target = ?probe.target, address = %probe.address, %err, "online server doesn't answer");
         }
+    }
+}
+
+/// Whether a server answers at `url`. A status below 500 counts, as in the script: a proxy in
+/// front of the game server answers 403 and the server itself 404 for the path, while 5xx is the
+/// proxy saying the server behind it is down.
+async fn answers(url: &str, timeout: Duration) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|err| err.to_string())?;
+    let status = client.get(url).send().await.map_err(|err| err.to_string())?.status();
+    if status.is_server_error() {
+        Err(format!("HTTP {}", status.as_u16()))
+    } else {
+        Ok(())
     }
 }
 
