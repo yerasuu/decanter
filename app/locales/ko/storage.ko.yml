@@ -1,0 +1,52 @@
+storage.title: 저장 공간
+storage.add: 라이브러리 폴더 추가
+storage.add_title: 게임을 보관할 위치 선택
+storage.stats.used.one: 게임 1개에서 사용 중
+storage.stats.used.other: '게임 %{count}개에서 사용 중'
+storage.stats.folders.one: 라이브러리 폴더
+storage.stats.folders.other: 라이브러리 폴더
+storage.folder.primary: 기본
+storage.folder.extra: 추가
+storage.folder.offline: 드라이브가 연결되지 않음
+storage.folder.used.one: '게임 1개에서 %{used} 사용 중'
+storage.folder.used.other: '게임 %{count}개에서 %{used} 사용 중'
+storage.folder.free: '%{total} 중 %{free} 남음'
+storage.folder.remove: 제거
+storage.folder.remove_hint: 이 폴더를 더 이상 사용하지 않습니다. 드라이브에 있는 파일은 그대로 남습니다
+storage.folder.remove_blocked: '게임이 있습니다. 먼저 삭제하거나 이동하세요'
+storage.move_to: 이동…
+storage.moving.started: 이동 중...
+storage.moving.progress: '이동 중 %{done} / %{total}'
+storage.errors.nested: '이미 라이브러리에 포함된 경로입니다: %{path} (%{folder})'
+storage.errors.add: '폴더 저장 중: %{error}'
+storage.errors.remove: '폴더 제거 중: %{error}'
+storage.errors.hosted: '이 게임은 런처의 프리픽스 안에 있습니다. 런처를 이동하면 함께 이동됩니다.'
+storage.errors.running: '게임이 실행 중입니다. 이동하기 전에 종료하세요.'
+storage.errors.shared: '다른 계정이 이 파일을 공유하고 있어 단독으로 이동할 수 없습니다.'
+storage.errors.exists: '대상 폴더에 이미 있습니다: %{path}'
+storage.errors.manifest: '%{game}의 기록 이동 중: %{error}'
+storage.legacy.title: 이전 Decanter 데이터
+storage.legacy.body: 'Decanter는 이제 데이터를 라이브러리에 보관합니다. %{path}에는 이전 상태의 사본만 남아 있습니다.'
+storage.legacy.remove: 이전 데이터 삭제
+storage.legacy.confirm: 삭제하시겠습니까? 되돌릴 수 없습니다
+storage.errors.legacy_busy: '이 데이터를 사용 중일 수 있는 다른 Decanter 또는 게임이 실행 중입니다. 먼저 종료하세요.'
+storage.errors.legacy: '이전 데이터 삭제 중: %{error}'
+storage.cache.title: 캐시
+storage.unfinished.title: 완료되지 않은 다운로드
+storage.cache.pick_title: 이 폴더의 캐시를 보관할 위치 선택
+storage.cache.empty: 비어 있음
+storage.cache.default: '폴더 내부 · %{size}'
+storage.cache.custom: '사용자 지정 · %{size}'
+storage.cache.reset: 초기화
+storage.cache.reset_hint: 캐시를 다시 이 폴더 안에 보관합니다.
+storage.cache.change: 변경…
+storage.cache.change_hint: 이 폴더에 있는 PC 및 PS 게임의 셰이더 캐시가 여기에 저장됩니다. 빠른 디스크를 사용하면 게임이 더 빨리 로드됩니다.
+storage.cache.errors.save: '캐시 위치를 저장할 수 없습니다: %{error}'
+storage.cache.errors.not_dir: '폴더가 아닙니다: %{path}'
+storage.cache.errors.inside_games: '게임 파일 내부 경로입니다: %{path}. 다른 폴더를 선택하세요.'
+storage.cache.errors.not_writable: '쓸 수 없습니다: %{path}: %{error}'
+storage.stray.note: '다운로드 기록이 없어 재개할 수 없음 · %{size}'
+storage.stray.delete: 삭제
+storage.stray.keep: 유지
+storage.stray.confirm: '완료되지 않은 다운로드 %{name}(%{size})을(를) 삭제하시겠습니까? 기록이 없어 재개할 수 없습니다.'
+storage.errors.stray: '완료되지 않은 다운로드 삭제 중: %{error}'

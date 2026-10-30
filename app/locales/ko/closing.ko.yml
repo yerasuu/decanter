@@ -1,0 +1,6 @@
+closing.shortcut_name: 실행 중인 게임 닫기
+closing.notice.title: '%{name} 종료 예정'
+closing.notice.body: '%{seconds}초 후에 종료됩니다. 취소하려면 Select + Start를 다시 길게 누르거나 키보드 단축키를 다시 누르세요.'
+closing.notice.body_pad: '%{seconds}초 후에 종료됩니다. 취소하려면 Select + Start를 다시 길게 누르세요.'
+closing.notice.body_keyboard: '%{seconds}초 후에 종료됩니다. 취소하려면 키보드 단축키를 다시 누르세요.'
+closing.notice.cancelled: '종료 취소됨: %{name} 계속 실행 중'

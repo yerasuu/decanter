@@ -1,0 +1,41 @@
+chrome.window.minimize: 최소화
+chrome.window.maximize: 최대화
+chrome.window.close: 닫기
+chrome.nav.library: 라이브러리
+chrome.nav.storage: 저장 공간
+chrome.nav.downloads: 다운로드
+chrome.downbar.downloading: '다운로드 중: %{title}'
+chrome.profiles.create: 프로필 만들기
+chrome.profiles.elsewhere: '%{name} — %{path}'
+chrome.profiles.busy: '%{name} — %{path} (먼저 실행 중인 게임과 설치를 종료하세요)'
+chrome.profiles.unavailable: '%{path} (사용할 수 없음)'
+chrome.profile_form.title: 새 사용자
+chrome.profile_form.name: 프로필 이름
+chrome.profile_form.library: '이 프로필의 라이브러리 위치:'
+chrome.profile_form.pick: 폴더 선택
+chrome.profile_form.pick_title: 이 프로필의 라이브러리 위치 선택
+chrome.profile_form.create: 만들기
+chrome.onboarding.title: Decanter에 오신 것을 환영합니다
+chrome.onboarding.intro: 시작하려면 프로필을 만드세요. GOG 계정(이후에는 다른 스토어도)은 나중에 설정에서 추가할 수 있습니다.
+chrome.onboarding.library: '이 프로필의 라이브러리 위치(설치 파일, Proton 프리픽스):'
+chrome.onboarding.library_native: '이 프로필의 라이브러리 위치(설치 파일):'
+chrome.tray.show: Decanter 표시
+chrome.tray.quit: 종료
+chrome.unavailable.title: 라이브러리를 사용할 수 없음
+chrome.unavailable.body: '라이브러리를 찾을 수 없습니다. 위치: %{path}. 외장 드라이브에 있다면 연결한 뒤 Decanter를 다시 열거나 다른 라이브러리를 선택하세요.'
+chrome.unavailable.use: '사용: %{path}'
+chrome.unavailable.pick: 다른 폴더 선택
+chrome.unavailable.pick_title: 라이브러리 폴더 선택
+chrome.passphrase.unlock_title: 저장된 자격 증명 잠금 해제
+chrome.passphrase.unlock_body: 사용할 수 있는 시스템 키링이 없어서 GOG 세션과 기타 자격 증명이 암호 문구로 암호화되어 이 컴퓨터의 파일에 저장되어 있습니다. 이번 세션에서 사용하려면 암호 문구를 입력하세요.
+chrome.passphrase.unlock: 잠금 해제
+chrome.passphrase.create_title: 자격 증명 보호
+chrome.passphrase.create_body: 사용할 수 있는 시스템 키링이 없습니다. GOG 세션과 기타 자격 증명을 이 컴퓨터의 암호화된 파일에 보관하려면 암호 문구를 정하세요. Decanter는 세션마다 한 번 암호 문구를 요청합니다. 건너뛰면 자격 증명이 저장되지 않으며 다음에 다시 로그인해야 합니다.
+chrome.passphrase.create: 만들기
+chrome.passphrase.placeholder: 암호 문구
+chrome.passphrase.repeat: 암호 문구 다시 입력
+chrome.passphrase.no_recovery: 암호 문구를 잊어버리면 저장된 자격 증명을 복구할 수 없으며 다시 로그인해야 합니다.
+chrome.passphrase.later: 나중에
+chrome.passphrase.mismatch: 두 암호 문구가 일치하지 않습니다.
+chrome.passphrase.wrong: 암호 문구가 올바르지 않습니다.
+chrome.passphrase.failed: '자격 증명 파일을 열 수 없습니다: %{error}'

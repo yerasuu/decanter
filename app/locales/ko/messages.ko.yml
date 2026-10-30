@@ -1,0 +1,12 @@
+messages.errors.not_installed: 이 게임은 더 이상 설치된 게임으로 표시되지 않습니다
+messages.errors.create_dir: '%{path} 생성 중: %{error}'
+messages.errors.prefix: 게임의 프리픽스를 확인할 수 없습니다
+messages.errors.user_folders: Windows 사용자 폴더를 찾을 수 없습니다
+messages.errors.no_prefix: 이 게임에는 프리픽스가 없습니다
+messages.errors.delete_prefix: '프리픽스 삭제 중: %{error}'
+messages.errors.db_open: '데이터베이스 여는 중: %{error}'
+messages.errors.no_library: 아직 라이브러리가 없습니다
+messages.errors.library_unavailable: '라이브러리를 사용할 수 없습니다: %{path}'
+messages.errors.save_libraries: '라이브러리 목록 저장 중: %{error}'
+messages.errors.save_manifest: '매니페스트 저장 중: %{error}'
+messages.errors.install_dir: 잘못된 설치 디렉터리

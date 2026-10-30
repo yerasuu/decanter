@@ -1,0 +1,36 @@
+downloads.title: 다운로드
+downloads.empty: 진행 중인 다운로드가 없습니다.
+downloads.eta: '%{left} 남음'
+downloads.dismiss: 닫기
+downloads.cancelling: 취소하고 다운로드한 파일을 삭제하는 중…
+downloads.cancel_confirm: '%{title} 다운로드를 취소하시겠습니까? 이미 다운로드한 데이터(%{size})가 삭제됩니다.'
+downloads.cancel_confirm_empty: '%{title} 다운로드를 취소하시겠습니까?'
+downloads.cancel_delete: 취소하고 삭제
+downloads.keep: 계속 다운로드
+downloads.pause: 일시 중지
+downloads.resume: 재개
+downloads.pause_all: 모두 일시 중지
+downloads.resume_all: 모두 재개
+downloads.delete: 삭제
+downloads.stale: '다운로드가 %{days}일 동안 일시 중지됨 · %{size}'
+downloads.elsewhere: '다른 Decanter 프로세스에서 실행 중 · %{done} / %{total}'
+downloads.kind.dlc: DLC
+downloads.kind.update: 업데이트
+downloads.kind.branch_switch: 브랜치 전환
+downloads.kind.rollback: 버전 변경
+downloads.kind.repair: 복구
+downloads.paused: '일시 중지됨 · %{done} / %{total}'
+downloads.paused_unsized: '일시 중지됨 · %{done}'
+downloads.paused_reason.user: 사용자가 일시 중지했습니다
+downloads.paused_reason.network: 연결이 끊겼습니다. 네트워크가 복구되면 자동으로 재개됩니다
+downloads.paused_reason.app_closed: Decanter가 종료되었습니다
+downloads.paused_reason.closed_unexpectedly: Decanter가 예기치 않게 종료되었습니다
+downloads.paused_reason.disk_full: 디스크 공간 부족
+downloads.paused_reason.disk_full_at: '디스크 공간 부족: %{path}'
+downloads.paused_reason.disk_full_short: '디스크 공간 부족: %{path}에 여유 공간이 %{short} 더 필요합니다'
+downloads.paused_reason.disk_full_update: '디스크 공간 부족: 업데이트를 다운로드하는 동안 %{path}에 필요한 여유 공간: %{needed}, 부족한 용량: %{short}'
+downloads.paused_reason.library_unavailable: 라이브러리 폴더를 사용할 수 없습니다
+downloads.paused_reason.library_unavailable_at: '라이브러리를 사용할 수 없습니다: %{path}'
+downloads.reused: '중지된 동안 GOG에서 다른 빌드를 게시했습니다. 이미 다운로드한 분량 %{had} 중 재사용한 분량: %{kept}'
+downloads.verify_offer: 'Decanter가 예기치 않게 종료된 후 %{title} 다운로드를 재개했습니다. 파일을 확인하시겠습니까?'
+downloads.verify_now: 지금 확인

@@ -1,0 +1,71 @@
+raven.experimental: 실험적 기능
+raven.description: 'Raven은 Linux용 초기 단계의 Windows 런타임입니다(useraven.org). decanter는 고정된 커밋에서, 또는 요청하면 해당 브랜치의 최신 커밋에서 라이브러리 안에 Raven을 빌드하여 여기에 추가한 Windows 프로그램에 사용합니다. 아직 시작되지 않는 프로그램이 많으며, 지금은 시험해 보는 용도입니다.'
+raven.license: Raven은 자유 소프트웨어입니다(GPL-3.0 이상). decanter에 포함되어 있지 않으며, 빌드할 때 GitHub에서 코드를 다운로드합니다.
+raven.build.title: 빌드
+raven.build.absent: Raven이 빌드되지 않았습니다.
+raven.build.built: '커밋 %{commit}에서 실행 중 · %{size}'
+raven.build.built_measuring: '커밋 %{commit}에서 실행 중'
+raven.build.build: 빌드…
+raven.build.remove: 제거
+raven.build.removing: Raven을 제거하는 중…
+raven.build.cancel: 취소
+raven.build.stopped: 빌드가 취소되었습니다.
+raven.build.failed: '빌드에 실패했습니다: %{error}'
+raven.build.open_log: 빌드 로그 열기
+raven.build.stage.starting: 시작하는 중…
+raven.build.stage.sources: Raven 코드를 다운로드하는 중…
+raven.build.stage.downloading: '빌드 도구를 다운로드하는 중: %{received}'
+raven.build.stage.downloading_total: '빌드 도구를 다운로드하는 중: %{received} / %{total}'
+raven.build.stage.unpacking: 압축을 푸는 중…
+raven.build.stage.configuring: 빌드를 준비하는 중…
+raven.build.stage.compiling: '컴파일 중: %{done} / %{total} 단계'
+raven.confirm.title: Raven을 빌드하시겠습니까?
+raven.confirm.repo: '저장소: %{repo}'
+raven.confirm.commit: '커밋: %{commit}'
+raven.confirm.text: 'decanter는 이 커밋의 Raven 코드를 GitHub에서(약 18 MB), 빌드에 필요한 라이브러리를(시스템에 없으면 Nix에서), 빌드 과정에서 받는 데이터를 다운로드한 뒤 라이브러리 안에서 컴파일합니다. 몇 분이 걸립니다. 빌드 폴더는 최대 약 5 GB, 런타임은 약 140 MB를 차지합니다. decanter가 검토하지 않은 서드파티 코드입니다.'
+raven.confirm.yes: 다운로드 및 빌드
+raven.confirm.no: 취소
+raven.confirm_remove.title: Raven을 제거하시겠습니까?
+raven.confirm_remove.body_size: 'Raven의 빌드와 툴체인이 라이브러리에서 제거되어 %{size}의 공간이 확보됩니다. Windows 프로그램은 목록에 그대로 남으며, Raven을 다시 빌드하면 모든 것을 다시 다운로드합니다.'
+raven.confirm_remove.body: 'Raven의 빌드와 툴체인이 라이브러리에서 제거됩니다. Windows 프로그램은 목록에 그대로 남으며, Raven을 다시 빌드하면 모든 것을 다시 다운로드합니다.'
+raven.confirm_remove.confirm: Raven 제거
+raven.programs.title: Windows 프로그램
+raven.programs.add: 추가…
+raven.programs.pick_title: Windows 프로그램 선택
+raven.programs.filter: Windows 프로그램
+raven.programs.drop_hint: .exe 파일을 이 섹션에 끌어다 놓아도 됩니다.
+raven.programs.drop_hover: 놓으면 Raven에 프로그램이 추가됩니다
+raven.programs.empty: 아직 추가한 프로그램이 없습니다.
+raven.programs.added: '추가됨: %{name}'
+raven.programs.run: 실행
+raven.programs.stop: 중지
+raven.programs.remove: 제거
+raven.programs.open_log: 로그
+raven.programs.needs_build: 실행하려면 Raven을 빌드하세요.
+raven.programs.failed: '마지막 실행이 정상적으로 끝나지 않았습니다. 로그의 마지막 부분:'
+raven.errors.not_windows: Windows 프로그램이 아닙니다
+raven.errors.no_library: 활성 라이브러리를 사용할 수 없습니다.
+raven.errors.save: '추가할 수 없습니다: %{error}'
+raven.errors.remove: '제거할 수 없습니다: %{error}'
+raven.errors.remove_running: 먼저 Raven의 프로그램을 중지하세요.
+raven.errors.remove_build: 'Raven을 제거할 수 없습니다: %{error}'
+raven.errors.not_pinned: 이 버전의 decanter에는 고정된 Raven 커밋이 없습니다.
+raven.build.building: '커밋 %{commit} 빌드 중: %{stage}'
+raven.build.build_pinned: 고정된 커밋 빌드…
+raven.build.use_pinned: 고정된 커밋으로 되돌리기
+raven.update.check: 업데이트 확인
+raven.update.checking: 확인 중…
+raven.update.newer: '%{branch}의 최신 커밋: %{commit} (%{repo})'
+raven.update.up_to_date: 'Raven이 %{branch}의 최신 커밋(%{commit})에서 실행 중입니다.'
+raven.update.check_error: 'Raven 저장소를 조회할 수 없습니다: %{error}'
+raven.update.build: '%{commit} 빌드…'
+raven.confirm.unpinned: '이 커밋은 decanter가 고정한 커밋이 아니며 decanter와 함께 테스트되지 않았습니다. 빌드에 실패하거나 성능이 더 나쁠 수 있습니다. 언제든 고정된 커밋으로 되돌릴 수 있습니다.'
+raven.builds.title: 다른 빌드
+raven.builds.pinned: decanter가 고정함
+raven.builds.unpinned: 고정된 커밋보다 최신이며 브랜치에서 빌드됨
+raven.builds.use: 사용
+raven.builds.delete: 삭제
+raven.confirm_delete.title: 이 빌드를 삭제하시겠습니까?
+raven.confirm_delete.body: '커밋 %{commit}의 빌드가 라이브러리에서 제거됩니다. 해당 커밋을 다시 빌드하면 처음부터 컴파일합니다.'
+raven.confirm_delete.confirm: '빌드 %{commit} 삭제'
+raven.errors.use: '해당 빌드로 전환할 수 없습니다: %{error}'

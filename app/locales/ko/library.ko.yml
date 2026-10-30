@@ -1,0 +1,258 @@
+library.offline_folders: '연결되지 않음: %{folders}. 드라이브를 연결하기 전까지 해당 폴더의 게임은 설치되지 않은 것으로 표시됩니다.'
+library.loading.title: 라이브러리 불러오는 중
+library.loading.searching: GOG에서 게임을 찾는 중...
+library.loading.enriching: '세부 정보 채우는 중: %{done} / %{total} (%{count}개 발견)'
+library.loading.found.one: 게임 1개 발견, 세부 정보 채우는 중...
+library.loading.found.other: '게임 %{count}개 발견, 세부 정보 채우는 중...'
+library.never_played: 플레이한 적 없음
+library.played.minutes: '%{minutes}분'
+library.played.hours: '%{hours}시간'
+library.shelves.favorites: 즐겨찾기
+library.shelves.installed: 설치됨
+library.shelves.gog_library: GOG 라이브러리
+library.shelves.uncategorized: 미분류
+library.shelves.auto: 자동
+library.sidebar.search: 검색...
+library.sidebar.kind.games: 게임
+library.sidebar.kind.games_extras: 게임 및 부가 콘텐츠
+library.sidebar.kind.extras: 부가 콘텐츠
+library.sidebar.kind.movies: 영화
+library.sidebar.kind.all: 전체
+library.sidebar.sort_recent: 최근 활동순 정렬
+library.sidebar.installed_only: 설치된 항목만 표시
+library.sidebar.clear_search: 검색 지우기
+library.sidebar.filters: 필터
+library.sidebar.no_results: 결과가 없습니다.
+library.sidebar.empty_shelf: 비어 있음
+library.sidebar.installed: 설치됨
+library.sidebar.add_game: 게임 추가
+library.menu.games: '게임 %{count}개'
+library.collections.new: 새 컬렉션
+library.collections.name_placeholder: 컬렉션 이름
+library.collections.create: 만들기
+library.collections.rename: 이름 바꾸기
+library.collections.move_up: 위로 이동
+library.collections.move_down: 아래로 이동
+library.collections.delete: 컬렉션 삭제
+library.filters.heading: 라이브러리 필터
+library.filters.clear: 필터 지우기
+library.filters.save_dynamic: 동적 컬렉션으로 저장
+library.filters.alternatives_note: '대안 조건: 둘을 선택하면 결과가 넓어집니다.'
+library.filters.products.one: 제품 1개
+library.filters.products.other: '제품 %{count}개'
+library.filters.matched.one: '%{total}개 중 %{matched}개 일치 · 필터 1개'
+library.filters.matched.other: '%{total}개 중 %{matched}개 일치 · 필터 %{active}개'
+library.filters.state.title: 상태
+library.filters.state.note: '같은 게임의 속성: 둘을 선택하면 결과가 좁아집니다.'
+library.filters.state.installed: 설치됨
+library.filters.state.played: 플레이함
+library.filters.state.unplayed: 플레이하지 않음
+library.filters.state.favorite: 즐겨찾기
+library.filters.state.mod: GOG 모드
+library.filters.achievements.title: 업적
+library.filters.achievements.note: Decanter가 캐시한 정보를 기준으로 합니다.
+library.filters.achievements.complete: 완료
+library.filters.achievements.in_progress: 진행 중
+library.filters.achievements.not_started: 시작하지 않음
+library.filters.achievements.unmeasured: 업적 없음
+library.filters.sort.heading: 목록 순서
+library.filters.sort.note: 커버 선반마다 따로 적용됩니다.
+library.filters.sort.title: 이름
+library.filters.sort.played: 플레이 시간순
+library.filters.sort.recent: 최근 플레이순
+library.filters.sort.completion: 업적
+library.filters.sort.release: 출시일
+library.filters.sort.size: 디스크 사용량
+library.filters.sort.rating: 평점
+library.filters.sort.added: 추가한 날짜
+library.filters.collection.title: 컬렉션
+library.filters.collection.any: 모든 컬렉션
+library.filters.account.title: 계정
+library.filters.account.note: 이 프로필에는 계정이 둘 이상 있습니다. 둘을 선택하면 결과가 넓어집니다.
+library.filters.store.title: 스토어
+library.filters.store.external: 외부
+library.filters.genre.title: 장르
+library.filters.genre.none: 아직 장르가 없습니다.
+library.browser.whole_library: 전체 라이브러리
+library.browser.drag_to_reorder: 드래그하여 순서 변경
+library.browser.installed_count: '%{installed}/%{total} 설치됨'
+library.browser.remove_shelf: 선반 제거
+library.browser.empty_shelf: 이 선반에는 아무것도 없습니다.
+library.browser.previous: 이전
+library.browser.next: 다음
+library.browser.nothing_yet: 아직 표시할 항목이 없습니다.
+library.browser.add_shelf: + 선반 추가
+library.browser.favorite: 즐겨찾기
+library.properties.title: 속성
+library.detail.tabs.summary: 개요
+library.detail.tabs.achievements: 업적
+library.detail.tabs.log: 로그
+library.detail.no_runs: 이 게임은 아직 decanter에서 실행된 적이 없습니다.
+library.detail.favorite.add: 즐겨찾기에 추가
+library.detail.favorite.remove: 즐겨찾기에서 제거
+library.detail.hero.achievements: 업적
+library.detail.hero.played: 플레이 시간
+library.detail.external: 외부
+library.detail.play: 플레이
+library.detail.stop: 중지
+library.detail.play_unavailable: 이 시스템에서는 아직 플레이할 수 없습니다
+library.detail.no_build: '이 게임에는 %{system} 버전이 없습니다'
+library.detail.no_executable: 설치되었지만 실행 파일을 찾을 수 없습니다
+library.detail.uninstall.busy: 삭제 중...
+library.detail.uninstall.uninstall: 삭제
+library.detail.uninstall.confirm_uninstall: 삭제 확인
+library.detail.uninstall.remove: 제거
+library.detail.uninstall.confirm_remove: 제거 확인
+library.detail.uninstall.paused_download: '일시 중지된 다운로드(%{title}, %{size})도 함께 삭제됩니다'
+library.detail.install.button: 설치
+library.detail.install.unavailable: GOG에서 이 에디션의 다운로드를 제공하지 않습니다
+library.detail.install.failed: '설치 실패: %{error}'
+library.detail.install.dismiss: 닫기
+library.detail.install.dialog_title: '설치 — %{title}'
+library.detail.install.folder: 폴더
+library.detail.install.branch: 브랜치
+library.detail.install.location: 위치
+library.detail.install.dlc: 추가 콘텐츠
+library.detail.install.dlcs.one: 1개 선택됨, 게임과 함께 설치됩니다
+library.detail.install.dlcs.other: '%{count}개 선택됨, 게임과 함께 설치됩니다'
+library.detail.install.offline: '연결되지 않음: %{folders}. 게임이 이미 그곳에 있다면 다시 설치하지 말고 드라이브를 연결하세요.'
+library.detail.install.folder_free: '%{folder} — %{free} 남음'
+library.detail.install.mainline: 메인라인 (기본)
+library.detail.achievements.cache_error: '업적 캐시를 읽는 중 오류: %{error}'
+library.detail.achievements.polling: 업적을 가져오는 중...
+library.detail.achievements.none: 이 게임에는 GOG 업적이 없습니다.
+library.detail.achievements.poll_failed: '업적을 가져올 수 없습니다: %{error}'
+library.detail.summary.playtime: 플레이 시간
+library.detail.summary.last_session: 마지막 세션
+library.detail.summary.rating: 평점
+library.detail.summary.release: 출시일
+library.detail.summary.developer: '개발사: %{developer}'
+library.detail.summary.publisher: '배급사: %{publisher}'
+library.detail.summary.developer_publisher: '개발사: %{developer} 배급사: %{publisher}'
+library.detail.summary.genres: '장르: %{genres}'
+library.menu.name_placeholder: 이름
+library.menu.hide: 라이브러리에서 숨기기
+library.menu.unhide: 라이브러리에 표시
+library.menu.collections: 컬렉션
+library.menu.no_collections: 아직 만든 컬렉션이 없습니다.
+library.menu.dynamic_collection: '동적 컬렉션: 저장된 필터가 포함 항목을 결정합니다'
+library.menu.new_collection: 새 컬렉션…
+library.menu.cancel_install: 설치 취소
+library.menu.install: 설치
+library.menu.play: 플레이
+library.menu.stop: 중지
+library.menu.open_folder: 게임 폴더 열기
+library.menu.edit_external: 외부 게임 편집…
+library.install.no_library: 라이브러리를 확인할 수 없습니다
+library.install.library_error: '라이브러리 확인 중: %{error}'
+library.properties.window_title: '속성 — %{title}'
+library.properties.not_installed: 게임이 설치되어 있지 않습니다.
+library.properties.tabs.general: 일반
+library.properties.tabs.updates: 업데이트
+library.properties.tabs.local_files: 로컬 파일
+library.properties.tabs.cloud_saves: 클라우드 저장
+library.properties.tabs.dlc: DLC
+library.properties.tabs.mods: 모드
+library.properties.tabs.betas: 베타
+library.properties.tabs.versions: 버전
+library.properties.tabs.compatibility: 호환성
+library.properties.general.title: 제목
+library.properties.general.product_id: 제품 ID
+library.properties.general.build: 빌드
+library.properties.general.size: 크기
+library.properties.general.played: 플레이 시간
+library.properties.general.open_folder: 폴더 열기
+library.properties.updates.check: 업데이트 확인
+library.properties.updates.checking: 확인 중...
+library.properties.updates.update: 지금 업데이트
+library.properties.updates.updating: 업데이트 중...
+library.properties.updates.available: '새 빌드를 사용할 수 있습니다: %{build}'
+library.properties.updates.up_to_date: 최신 상태입니다.
+library.properties.updates.installed_build: 설치된 빌드
+library.properties.local_files.verify: 파일 확인
+library.properties.local_files.verifying: 확인 중...
+library.properties.local_files.repair: 복구
+library.properties.local_files.repairing: 복구 중...
+library.properties.local_files.clean.one: 파일 1개, 이상 없음.
+library.properties.local_files.clean.other: '파일 %{count}개, 이상 없음.'
+library.properties.local_files.broken: '파일 %{total}개 중 %{broken}개가 일치하지 않습니다.'
+library.properties.local_files.note: 설치된 모든 파일을 GOG 매니페스트와 대조하여 일치하지 않는 파일을 다시 다운로드합니다.
+library.properties.saves.folder_placeholder: 저장 폴더
+library.properties.saves.note: Decanter는 GOG의 원격 설정에서 저장 폴더를 찾으려고 합니다. 아무것도 찾지 못하면 “폴더 선택...”으로 직접 지정하세요.
+library.properties.saves.detect: 자동 감지
+library.properties.saves.detecting: 감지 중...
+library.properties.saves.none_reported: GOG에서 이 게임의 저장 폴더를 알려주지 않았습니다.
+library.properties.saves.pick_title: 저장 폴더 선택
+library.properties.saves.pick: 폴더 선택...
+library.properties.saves.save: 저장 폴더
+library.properties.saves.last_sync: 마지막 동기화
+library.properties.saves.never: 없음
+library.properties.saves.sync: 지금 동기화
+library.properties.saves.syncing: 동기화 중...
+library.properties.saves.conflict: 마지막 동기화 이후 양쪽 모두 변경되었습니다.
+library.properties.saves.force_upload: 그래도 업로드
+library.properties.saves.force_download: 그래도 다운로드
+library.properties.saves.uploaded: 업로드했습니다.
+library.properties.saves.downloaded: 다운로드했습니다.
+library.properties.saves.already_synced: 이미 최신 상태입니다.
+library.properties.saves.unresolved: 해결되지 않은 충돌입니다.
+library.properties.dlc.none: 이 게임에는 추가 콘텐츠가 없습니다.
+library.properties.dlc.applying: 적용 중…
+library.properties.dlc.goodies_note: 아트북, 사운드트랙 등입니다. 사용자의 소유이지만 GOG에서 설치 가능한 콘텐츠로 제공하지 않으므로 별도로 다운로드해야 하며, Decanter는 아직 이를 지원하지 않습니다.
+library.properties.dlc.not_installable: 설치할 수 없음
+library.properties.mods.note: '모드는 라이브러리에 복사되어 게임을 시작할 때 적용되며 게임 파일은 변경되지 않으므로 파일 확인과 업데이트가 계속 작동합니다. 게임 자체 폴더와 같은 구조로 된 폴더를 선택하세요.'
+library.properties.mods.add: '모드 폴더 추가...'
+library.properties.mods.adding: '추가 중...'
+library.properties.mods.applying: '적용 중...'
+library.properties.mods.removing: '제거 중...'
+library.properties.mods.pick_title: '모드 폴더 선택'
+library.properties.mods.loading: '모드를 읽는 중...'
+library.properties.mods.none: '이 게임에는 아직 모드가 없습니다.'
+library.properties.mods.running: '게임이 실행 중입니다. 게임을 종료한 뒤에 모드를 변경할 수 있습니다.'
+library.properties.mods.summary: '파일 %{files}개, %{size}'
+library.properties.mods.remove: '제거'
+library.properties.mods.remove_title: '모드를 제거하시겠습니까: %{name}'
+library.properties.mods.remove_body: '이 게임을 가진 모든 계정에 대해 라이브러리에서 모드 파일(%{size})을 삭제합니다. 현재 사용 중인 계정: %{accounts}.'
+library.properties.mods.overrides_game: '게임 파일 %{count}개를 대체합니다'
+library.properties.mods.overrides: '파일 %{count}개에서 %{name}보다 우선합니다'
+library.properties.mods.overridden_by: '파일 %{count}개에서 %{name}이(가) 우선합니다'
+library.properties.mods.show_files: '파일 표시'
+library.properties.mods.hide_files: '파일 숨기기'
+library.properties.mods.more: '...외 %{count}개'
+library.properties.mods.later_wins: '두 모드에 같은 파일이 있으면 나중에 켠 모드가 우선합니다.'
+library.properties.mods.written_by_game: '게임이 시작되는 폴더에 게임이 쓴 파일 %{count}개는 유지되며 게임 및 모드 파일보다 우선합니다:'
+library.properties.releases.current: 현재
+library.properties.betas.switch: 전환
+library.properties.betas.switching: 전환 중...
+library.properties.betas.note: 브랜치를 전환하면 해당 빌드에서 게임 전체를 다시 다운로드합니다. 이미 설치된 추가 콘텐츠는 그대로 유지됩니다.
+library.properties.versions.install: 이 버전 설치
+library.properties.versions.installing: 설치 중...
+library.properties.versions.note: 이전 버전을 설치하면 해당 빌드에서 게임 전체를 다시 다운로드합니다. 파일 확인은 이 버전을 오래된 버전이 아니라 설치된 버전으로 취급합니다.
+library.properties.compatibility.default_proton: 기본값 사용
+library.properties.compatibility.reset: 프리픽스 초기화
+library.properties.compatibility.resetting: 초기화 중...
+library.properties.compatibility.reset_tooltip: 프리픽스를 삭제합니다. 게임을 시작하면 다시 만들어집니다. 프리픽스 안에 보관된 저장 데이터는 사라집니다.
+library.properties.compatibility.native: Proton과 프리픽스 없이 그대로 실행되는 Linux 프로그램입니다.
+library.properties.compatibility.prefix: 프리픽스
+library.properties.compatibility.prefix_created: 생성됨
+library.properties.compatibility.prefix_missing: 프리픽스 없음 (처음 실행할 때 생성됨)
+library.run.dx7_hint: 이 게임은 DirectX 7(DirectDraw)을 사용하며 오류와 함께 종료되었습니다. 실행 파일 옆에 DirectDraw 래퍼(cnc-ddraw, dgVoodoo2 등)가 필요할 수 있습니다.
+library.session_renewal.window_title: GOG 세션 갱신
+library.session_renewal.closed: '%{name}의 세션이 GOG에서 종료되었습니다. 게임은 그대로 있으며 플레이할 수 있습니다. 다운로드, 저장 데이터 동기화, 업적 추적을 하려면 세션을 갱신하세요.'
+library.session_renewal.renew: 세션 갱신
+library.session_renewal.renewing: 갱신 중…
+library.session_renewal.later: 나중에
+library.session_renewal.unreachable: 지금은 GOG가 응답하지 않습니다. 나중에 다시 시도하세요.
+library.session_renewal.login: 'GOG에서 이 세션을 더 이상 허용하지 않습니다. 다음 계정으로 다시 로그인하세요: %{name}'
+library.session_renewal.other_account: '%{name}의 계정이 아닌 %{other}(으)로 로그인했습니다. %{name}의 계정으로 로그인하세요.'
+library.mods.badge: 모드
+library.mods.badge_tooltip: GOG 모드
+library.mods.open_list: GOG 모드
+library.mods.heading: GOG 모드
+library.mods.close: 라이브러리로 돌아가기
+library.mods.note: 'GOG는 이 모드를 별도의 무료 제품으로 제공하며, 추가하려면 기본 게임이 필요합니다. gog.com에서 추가하면 다른 게임처럼 라이브러리에 표시됩니다.'
+library.mods.loading: GOG 모드를 조회하는 중…
+library.mods.unavailable: 지금은 GOG 모드 목록을 사용할 수 없습니다. 라이브러리는 그대로이며 나중에 다시 시도합니다.
+library.mods.none: 현재 GOG에서 제공하는 모드가 없습니다.
+library.mods.owned: 라이브러리에 있음
+library.mods.view: GOG에서 보기
