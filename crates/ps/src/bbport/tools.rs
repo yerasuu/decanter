@@ -222,7 +222,7 @@ impl ModProfile {
     pub fn load(path: &Path) -> ModProfile {
         std::fs::read(path)
             .ok()
-            .and_then(|data| serde_json::from_slice(&data).ok())
+            .and_then(|data| serde_json::from_slice(decanter_core::bom::strip(&data, path)).ok())
             .unwrap_or_default()
     }
 
@@ -257,7 +257,7 @@ impl PatchProfile {
     pub fn load(path: &Path) -> PatchProfile {
         std::fs::read(path)
             .ok()
-            .and_then(|data| serde_json::from_slice(&data).ok())
+            .and_then(|data| serde_json::from_slice(decanter_core::bom::strip(&data, path)).ok())
             .unwrap_or_default()
     }
 

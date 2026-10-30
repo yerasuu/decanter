@@ -43,7 +43,7 @@ fn path(root: &Root) -> PathBuf {
 /// them) nor the secret variables of `extra_env`, since a backup is kept indefinitely and travels
 /// with the library. A file that doesn't parse is not copied, as what it holds can't be told apart.
 pub(super) fn copy_without_secrets(from: &Path, to: &Path) -> io::Result<()> {
-    let mut values: serde_json::Value = serde_json::from_slice(&fs::read(from)?)
+    let mut values: serde_json::Value = serde_json::from_slice(decanter_core::bom::strip(&fs::read(from)?, from))
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", from.display())))?;
     let mut dropped = Dropped::default();
     dropped.take(&mut values);
@@ -214,7 +214,7 @@ impl LauncherSettings {
     /// error, since the user may have to find it.
     fn read_at(path: &Path, is_title: bool) -> io::Result<Self> {
         match fs::read(path) {
-            Ok(data) => serde_json::from_slice(&data)
+            Ok(data) => serde_json::from_slice(decanter_core::bom::strip(&data, path))
                 .map(|values| Self { values, is_title })
                 .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", path.display()))),
             Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self {

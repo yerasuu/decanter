@@ -138,7 +138,7 @@ fn read(path: &Path) -> io::Result<Vec<u8>> {
     fs::File::open(path)?
         .take(MAX_BYTES.saturating_add(1))
         .read_to_end(&mut data)?;
-    Ok(data)
+    Ok(decanter_core::bom::strip(&data, path).to_vec())
 }
 
 /// Replaces `target`'s settings with those of an exported file, after a backup; returns the

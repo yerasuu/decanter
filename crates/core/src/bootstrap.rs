@@ -247,7 +247,7 @@ fn read_config() -> io::Result<Option<Libraries>> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err),
     };
-    toml::from_str(&text)
+    toml::from_str(crate::bom::strip_str(&text, &path))
         .map(Some)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }

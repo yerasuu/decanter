@@ -3,6 +3,7 @@
 //! Accounts group under a profile — see [`profiles`] and [`accounts`].
 
 mod accounts;
+pub mod bom;
 pub mod bootstrap;
 mod cache;
 pub mod capabilities;

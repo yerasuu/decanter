@@ -29,7 +29,7 @@ where
         Ok(count) if u64::try_from(count).unwrap_or(u64::MAX) > MAX_TOML_BYTES => {
             Err(Error::malformed(path, &"larger than decanter writes"))
         }
-        Ok(_) => toml::from_str(&text)
+        Ok(_) => toml::from_str(decanter_core::bom::strip_str(&text, path))
             .map(Some)
             .map_err(|err| Error::malformed(path, &err)),
         Err(err) if err.kind() == io::ErrorKind::InvalidData => Err(Error::malformed(path, &"not UTF-8")),

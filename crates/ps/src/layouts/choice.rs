@@ -43,7 +43,7 @@ fn anyps5_file(root: &Root, id: &TitleId) -> PathBuf {
 
 fn read_anyps5(path: &Path) -> io::Result<Option<String>> {
     match fs::read(path) {
-        Ok(data) => serde_json::from_slice::<AnyPs5Choice>(&data)
+        Ok(data) => serde_json::from_slice::<AnyPs5Choice>(decanter_core::bom::strip(&data, path))
             .map(|choice| choice.keys)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", path.display()))),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),

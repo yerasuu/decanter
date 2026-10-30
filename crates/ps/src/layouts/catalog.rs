@@ -99,12 +99,14 @@ fn read_into(store: &mut Store, kind: Kind, path: &Path, id: String) -> io::Resu
     let data = fs::read(path)?;
     match kind {
         Kind::Pad => {
-            let mut layout: PadLayout = serde_json::from_slice(&data).map_err(io::Error::other)?;
+            let mut layout: PadLayout =
+                serde_json::from_slice(decanter_core::bom::strip(&data, path)).map_err(io::Error::other)?;
             layout.id = id;
             store.pad.push(layout);
         }
         Kind::Keys(target) => {
-            let mut layout: KeyLayout = serde_json::from_slice(&data).map_err(io::Error::other)?;
+            let mut layout: KeyLayout =
+                serde_json::from_slice(decanter_core::bom::strip(&data, path)).map_err(io::Error::other)?;
             layout.id = id;
             store.keys_mut(target).push(layout);
         }
@@ -121,7 +123,7 @@ fn migrate(root: &Root, dir: &Path) -> io::Result<()> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(err) => return Err(err),
     };
-    let old: Legacy = serde_json::from_slice(&data)
+    let old: Legacy = serde_json::from_slice(decanter_core::bom::strip(&data, &legacy))
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", legacy.display())))?;
     let backup = crate::bbport::fresh_backup_dir(root, "layouts")?.join(LEGACY);
     fs::write(&backup, &data)?;

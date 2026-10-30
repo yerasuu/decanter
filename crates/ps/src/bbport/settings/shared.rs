@@ -41,7 +41,7 @@ impl LauncherSettings {
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(err) => return Err(err),
         };
-        let shared: Map<String, Value> = serde_json::from_slice(&data)
+        let shared: Map<String, Value> = serde_json::from_slice(decanter_core::bom::strip(&data, &path))
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", path.display())))?;
         let leftovers: Vec<&str> = title::UNREAD
             .into_iter()
