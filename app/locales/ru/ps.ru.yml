@@ -277,7 +277,6 @@ ps.detail.explain.needs_merge: 'Рядом с этим дампом есть о�
 ps.detail.explain.has_playable: 'Копия 1.09 уже есть в %{dir}; играйте в неё.'
 ps.detail.explain.other_edition: 'bbport запускает только издание CUSA03173 игры Bloodborne версии 1.09.'
 ps.detail.explain.needs_update: 'bbport нужна версия 1.09: добавьте её обновление в одну из ваших папок.'
-ps.detail.explain.experimental: 'bbport создан только для Bloodborne. Эта игра запускается с заглушками вместо всего, чего порту не хватает, без патчей и модов: посмотрите, как далеко она зайдёт, в «Журнале».'
 ps.detail.explain.needs_vr: 'Эта игра запускается только с гарнитурой PS VR, а у порта её нет.'
 ps.detail.explain.encrypted: 'eboot.bin всё ещё зашифрован; его нужно расшифровать на консоли.'
 ps.detail.explain.no_eboot: 'В этом дампе нет eboot.bin.'

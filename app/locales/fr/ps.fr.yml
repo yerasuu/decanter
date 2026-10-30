@@ -277,7 +277,6 @@ ps.detail.explain.needs_merge: 'Une mise à jour 1.09 se trouve à côté de ce 
 ps.detail.explain.has_playable: Vous avez déjà la copie 1.09 dans %{dir} ; jouez avec celle-ci.
 ps.detail.explain.other_edition: bbport ne fait fonctionner que l’édition CUSA03173 de Bloodborne en version 1.09.
 ps.detail.explain.needs_update: 'bbport nécessite la version 1.09 : ajoutez sa mise à jour à l’un de vos dossiers.'
-ps.detail.explain.experimental: 'bbport n’est conçu que pour Bloodborne. Ce jeu démarre avec tout ce qui manque au port simulé, sans correctifs ni mods : voyez jusqu’où il va dans Journal.'
 ps.detail.explain.needs_vr: Ce jeu ne démarre qu’avec un casque PS VR, et le port n’en a pas.
 ps.detail.explain.encrypted: Le eboot.bin est encore chiffré ; il doit être déchiffré sur la console.
 ps.detail.explain.no_eboot: Ce dump n’a pas de eboot.bin.

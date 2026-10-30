@@ -277,7 +277,6 @@ ps.detail.explain.needs_merge: "此转储旁有一个 1.09 更新。合并会在
 ps.detail.explain.has_playable: "您在 %{dir} 已有 1.09 副本；请玩那一份。"
 ps.detail.explain.other_edition: "bbport 只能运行 1.09 版本的 Bloodborne CUSA03173 版。"
 ps.detail.explain.needs_update: "bbport 需要 1.09 版本：请把它的更新添加到您的某个文件夹中。"
-ps.detail.explain.experimental: "bbport 只为 Bloodborne 而制作。此游戏会在移植版缺少的部分被桩实现的情况下启动，没有补丁和模组：请在“日志”中查看它能运行到哪一步。"
 ps.detail.explain.needs_vr: "此游戏只能搭配 PS VR 头显启动，而移植版不支持头显。"
 ps.detail.explain.encrypted: "eboot.bin 仍处于加密状态；必须在主机上解密。"
 ps.detail.explain.no_eboot: "此转储没有 eboot.bin。"

@@ -277,7 +277,6 @@ ps.detail.explain.needs_merge: "このダンプの隣に 1.09 アップデート
 ps.detail.explain.has_playable: "%{dir} に 1.09 のコピーがすでにあります。そちらをプレイしてください。"
 ps.detail.explain.other_edition: "bbport は、Bloodborne の CUSA03173 エディションのバージョン 1.09 でのみ動作します。"
 ps.detail.explain.needs_update: "bbport にはバージョン 1.09 が必要です。そのアップデートをいずれかのフォルダーに追加してください。"
-ps.detail.explain.experimental: "bbport は Bloodborne 専用です。このゲームは、ポートに不足しているものをスタブ化した状態で、パッチも Mod もなしで起動します。どこまで進むかはログで確認してください。"
 ps.detail.explain.needs_vr: "このゲームは PS VR ヘッドセットがないと起動しませんが、ポートには対応していません。"
 ps.detail.explain.encrypted: "eboot.bin はまだ暗号化されています。本体で復号する必要があります。"
 ps.detail.explain.no_eboot: "このダンプには eboot.bin がありません。"

@@ -22,7 +22,7 @@ external.sources.hint: With a SteamGridDB key the search brings its covers, back
 external.sources.key_placeholder: SteamGridDB API key
 external.sources.save: Save
 external.sources.saving: Saving...
-external.sources.key_saved: A key is saved. Type a new one to replace it; Ajustes › General can forget it.
+external.sources.key_saved: A key is saved. Type a new one to replace it; Settings › General can forget it.
 external.sources.empty: Type a key first.
 external.sources.saved: Saved.
 external.sources.get_key: Get a key

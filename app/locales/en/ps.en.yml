@@ -80,12 +80,12 @@ ps.ports.errors.record_build: 'Couldn''t record the build: %{error}'
 ps.ports.errors.download: 'Couldn''t download nix-portable: %{error}'
 ps.ports.errors.checksum: The nix-portable download doesn't match its pinned checksum
 ps.package.title: psport for Windows
-ps.package.description: 'Each tagged psport release carries its Windows package: decanter downloads it, checks it against the release''s checksum and size, and keeps it in the library. Jugar runs the version in use, which follows the newest release unless you choose another. Only the version or build in use stays: once another is in use, decanter removes the rest.'
+ps.package.description: 'Each tagged psport release carries its Windows package: decanter downloads it, checks it against the release''s checksum and size, and keeps it in the library. Play runs the version in use, which follows the newest release unless you choose another. Only the version or build in use stays: once another is in use, decanter removes the rest.'
 ps.package.in_use: 'In use: %{tag}'
 ps.package.in_use_pinned: 'In use: %{tag}, chosen by you: updates leave it'
 ps.package.in_use_folder: 'In use: the psport.exe folder chosen in Settings, %{dir}'
 ps.package.in_use_build: 'In use: the build of commit %{commit} made on this PC (Testing)'
-ps.package.none_in_use: None in the library yet; Jugar downloads the newest release first
+ps.package.none_in_use: None in the library yet; Play downloads the newest release first
 ps.package.downloading: 'Downloading %{tag}: %{size}'
 ps.package.list_error: 'Couldn''t list the releases: %{error}'
 ps.package.no_releases: No psport release carries a Windows package yet
@@ -149,7 +149,7 @@ ps.settings.sys_modules.description: 'Optional: no game needs it today. A folder
 ps.settings.psport_folder.title: psport.exe folder
 ps.settings.psport_folder.none: No folder
 ps.settings.psport_folder.pick_title: Folder holding psport.exe
-ps.settings.psport_folder.description: 'Optional: a folder where you unpacked a psport build for Windows yourself, holding psport.exe and libpsport-gpu.dll. While one is chosen, Jugar starts its psport.exe directly instead of the version downloaded in Ports; forget it to go back to that one.'
+ps.settings.psport_folder.description: 'Optional: a folder where you unpacked a psport build for Windows yourself, holding psport.exe and libpsport-gpu.dll. While one is chosen, Play starts its psport.exe directly instead of the version downloaded in Ports; forget it to go back to that one.'
 ps.settings.psport_folder.errors.relative: '%{dir} isn''t a full path without ..'
 ps.settings.psport_folder.errors.not_local: '%{dir} isn''t on a drive of this computer'
 ps.settings.psport_folder.errors.not_a_folder: '%{dir} isn''t a folder: %{error}'
@@ -164,7 +164,7 @@ ps.settings.channel.release.description: psport's latest published release, down
 ps.settings.channel.testing.title: Testing
 ps.settings.channel.testing.description: 'Every new psport change as soon as it lands: downloaded once CI has built it, otherwise built on this machine.'
 ps.settings.channel.save_error: 'Couldn''t save the channel: %{error}'
-ps.settings.channel.direct: 'On this system the version Jugar runs is chosen in Ports: a release''s package or a build of the branch.'
+ps.settings.channel.direct: 'On this system the version Play runs is chosen in Ports: a release''s package or a build of the branch.'
 ps.settings.open: Open
 ps.settings.pick: Choose
 ps.settings.forget: Remove
