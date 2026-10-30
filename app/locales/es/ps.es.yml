@@ -655,6 +655,7 @@ ps.extras.fsr.progress.runner_unpacking: decanter está descomprimiendo %{runner
 ps.extras.fsr.progress.runner_building: decanter está compilando %{runner}…
 ps.mods.description: Se aplican en el próximo arranque; "Cargar mods" está en Gráficos.
 ps.mods.loading: Preparando bbport y buscando mods…
+ps.mods.no_port: Todavía no hay un psport.exe con el que buscarlos; Jugar o PS › Ports descargan uno
 ps.mods.refresh: Actualizar
 ps.mods.open: Abrir
 ps.mods.change: Cambiar

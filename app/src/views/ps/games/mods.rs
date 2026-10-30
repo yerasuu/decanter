@@ -1,13 +1,16 @@
 //! Mods: bbport's mods in load order and its external patches, each
 //! switchable, from folders that can be moved, all of them the title's own
 //! ([`ModFiles`]). Read with bbport's own discovery rules, so bbport is made
-//! ready first if it isn't.
+//! ready first if it isn't; where `psport.exe` runs directly, the one Play
+//! would start answers instead.
 
 use std::path::PathBuf;
 
-use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::mods::{FOLDER_KEYS, ModFiles};
-use decanter_ps::bbport::tools::{self, ExternalPatch, ModProfile, PatchProfile};
+use decanter_ps::bbport::tools::{self, ExternalPatch, Lister, ModProfile, PatchProfile};
+use decanter_ps::bbport::{LauncherSettings, direct};
+#[cfg(windows)]
+use decanter_ps::paths::Root;
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
@@ -60,19 +63,22 @@ impl ModsView {
             return;
         };
         let root = decanter_ps::paths::active();
-        let prepared = self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, &root, cx));
+        let prepared = (!direct::IN_USE).then(|| self.ps.update(cx, |ps, cx| ps.prepare(Port::Bbport, &root, cx)));
         cx.spawn(async move |this, cx| {
-            let toolchain = match prepared.await {
-                Ok(toolchain) => toolchain,
-                Err(err) => {
-                    let _ = this.update(cx, |this, cx| {
-                        if this.title_id.as_deref() == Some(title_id.as_str()) {
-                            this.found = Some(Err(Text::new("ps.errors.bbport_not_ready").text("error", err)));
-                            cx.notify();
-                        }
-                    });
-                    return;
-                }
+            let toolchain = match prepared {
+                Some(prepared) => match prepared.await {
+                    Ok(toolchain) => Some(toolchain),
+                    Err(err) => {
+                        let _ = this.update(cx, |this, cx| {
+                            if this.title_id.as_deref() == Some(title_id.as_str()) {
+                                this.found = Some(Err(Text::new("ps.errors.bbport_not_ready").text("error", err)));
+                                cx.notify();
+                            }
+                        });
+                        return;
+                    }
+                },
+                None => None,
             };
             let read = cx.background_spawn({
                 let root = root.clone();
@@ -84,10 +90,17 @@ impl ModsView {
                         ModProfile::load(&files.mods_config),
                         PatchProfile::load(&files.patches_config),
                     );
-                    std::io::Result::Ok((files, profiles))
+                    std::io::Result::Ok((settings, files, profiles))
                 }
             });
-            let (files, (mod_profile, patch_profile)) = match read.await {
+            #[cfg_attr(
+                not(windows),
+                expect(
+                    unused_variables,
+                    reason = "only a direct launch picks its psport.exe by the settings"
+                )
+            )]
+            let (settings, files, (mod_profile, patch_profile)) = match read.await {
                 Ok(read) => read,
                 Err(err) => {
                     let _ = this.update(cx, |this, cx| {
@@ -99,8 +112,27 @@ impl ModsView {
                     return;
                 }
             };
-            let mods = tools::discover_mods(&root, &toolchain, &files.mods_dir).await;
-            let patches = tools::discover_patches(&root, &toolchain, &files.patches_dir).await;
+            let lister = match toolchain {
+                Some(toolchain) => Ok(Lister::Toolchain(toolchain)),
+                #[cfg(windows)]
+                None => direct_lister(&root, &settings).await,
+                #[cfg(not(windows))]
+                None => Err(Text::new("ps.errors.builds_unavailable")),
+            };
+            let lister = match lister {
+                Ok(lister) => lister,
+                Err(err) => {
+                    let _ = this.update(cx, |this, cx| {
+                        if this.title_id.as_deref() == Some(title_id.as_str()) {
+                            this.found = Some(Err(err));
+                            cx.notify();
+                        }
+                    });
+                    return;
+                }
+            };
+            let mods = tools::discover_mods(&root, &lister, &files.mods_dir).await;
+            let patches = tools::discover_patches(&root, &lister, &files.patches_dir).await;
             let _ = this.update(cx, |this, cx| {
                 if this.title_id.as_deref() != Some(title_id.as_str()) {
                     return;
@@ -345,6 +377,23 @@ impl ModsView {
                     .collect()
             }
         }
+    }
+}
+
+/// The folder whose `psport.exe` Play would start, checked again as Play checks it; none yet when
+/// neither a folder, a build nor a package is chosen, which only Jugar or Ports fetch.
+#[cfg(windows)]
+async fn direct_lister(root: &Root, settings: &LauncherSettings) -> Result<Lister, Text> {
+    let Some(dir) = crate::ps_play::direct::chosen_dir(root, settings).await else {
+        return Err(Text::new("ps.mods.no_port"));
+    };
+    match tokio::task::spawn_blocking(move || direct::Folder::try_new(dir)).await {
+        Ok(Ok(folder)) => Ok(Lister::Direct(folder)),
+        Ok(Err(err)) => {
+            tracing::warn!(error = %err, "the psport.exe folder can't list mods");
+            Err(Text::new("ps.play.direct.bad_folder").text("error", crate::state::ps_folder_error(&err)))
+        }
+        Err(err) => Err(Text::new("ps.errors.environment").arg("error", err)),
     }
 }
 

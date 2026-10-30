@@ -167,7 +167,7 @@ pub fn arguments(command: &Command, data: &Path, out: &Path, local_player: Optio
 
 /// `path` as given, unless it starts with `-`, which psport could read as one of its options:
 /// then the same relative path from `.`.
-fn not_an_option(path: OsString) -> OsString {
+pub(super) fn not_an_option(path: OsString) -> OsString {
     if path.as_encoded_bytes().starts_with(b"-") {
         Path::new(".").join(path).into_os_string()
     } else {

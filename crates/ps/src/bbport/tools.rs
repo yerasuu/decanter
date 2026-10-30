@@ -3,20 +3,24 @@
 //! and patches itself (`out/psport --list-mods`, `--list-patches`), older
 //! releases through their Python helpers, imported read-only
 //! (`scripts/mods.py`, `scripts/patches.py`; `tools/fsr4cap/dll_info.py` for
-//! every release), all run inside the toolchain like the rest of the port; the
-//! selections go to the files `run.sh` reads (`mods.json`, `patches.json` in
-//! the data directory).
+//! every release), all run inside the toolchain like the rest of the port, or
+//! `psport.exe` asked directly where there is no toolchain ([`direct::IN_USE`]);
+//! the selections go to the files `run.sh` reads (`mods.json`, `patches.json`
+//! in the data directory).
 
 use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use decanter_nix::Toolchain;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use super::direct::{self, Folder};
 use super::{Bbport, Names, SUPPORTED_TITLE, SUPPORTED_VERSION};
 use crate::os::linux::toolchain;
+use crate::os::without_console;
 use crate::paths::Root;
 use crate::port::Port;
 
@@ -120,6 +124,26 @@ async fn psport_list(
         .env("DECANTER_ARG0", dir)
         .env("DECANTER_TITLE", SUPPORTED_TITLE)
         .env("DECANTER_VERSION", SUPPORTED_VERSION);
+    psport_answer(command).await
+}
+
+/// `psport.exe <request> <dir> --title …` from `folder`, as [`psport_list`] asks the port's own
+/// binary, with no shell to pass anything through.
+async fn direct_list(folder: &Folder, request: &str, dir: &Path) -> Result<serde_json::Value, String> {
+    let mut command = Command::new(folder.executable());
+    command
+        .arg(request)
+        .arg(direct::not_an_option(dir.as_os_str().to_owned()))
+        .args(["--title", SUPPORTED_TITLE, "--version", SUPPORTED_VERSION])
+        .current_dir(folder.path())
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    without_console(&mut command);
+    psport_answer(command).await
+}
+
+/// The JSON a listing printed, or the last line of what it said on failing.
+async fn psport_answer(mut command: Command) -> Result<serde_json::Value, String> {
     let output = match command.output().await {
         Ok(output) => output,
         Err(err) => return Err(format!("psport: {err}")),
@@ -134,12 +158,20 @@ async fn psport_list(
     serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
 }
 
+/// What answers for the port's mods and patches.
+pub enum Lister {
+    /// The toolchain around the checkout, once the port is ready.
+    Toolchain(Toolchain),
+    /// The `psport.exe` Play starts directly, where there is no toolchain.
+    Direct(Folder),
+}
+
 /// Mods the port would load from `dir` (folders with a layout it accepts).
-pub async fn discover_mods(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<String>, String> {
-    let answer = if has_python_helpers(root).await {
-        helper(root, toolchain, "mods", &[dir]).await
-    } else {
-        psport_list(root, toolchain, "--list-mods", dir).await
+pub async fn discover_mods(root: &Root, lister: &Lister, dir: &Path) -> Result<Vec<String>, String> {
+    let answer = match lister {
+        Lister::Direct(folder) => direct_list(folder, "--list-mods", dir).await,
+        Lister::Toolchain(toolchain) if has_python_helpers(root).await => helper(root, toolchain, "mods", &[dir]).await,
+        Lister::Toolchain(toolchain) => psport_list(root, toolchain, "--list-mods", dir).await,
     };
     match answer {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),
@@ -159,11 +191,13 @@ pub struct ExternalPatch {
 }
 
 /// shadPS4-format patches for 1.09 in `dir`, as the port finds them.
-pub async fn discover_patches(root: &Root, toolchain: &Toolchain, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
-    let answer = if has_python_helpers(root).await {
-        helper(root, toolchain, "patches", &[dir]).await
-    } else {
-        psport_list(root, toolchain, "--list-patches", dir).await
+pub async fn discover_patches(root: &Root, lister: &Lister, dir: &Path) -> Result<Vec<ExternalPatch>, String> {
+    let answer = match lister {
+        Lister::Direct(folder) => direct_list(folder, "--list-patches", dir).await,
+        Lister::Toolchain(toolchain) if has_python_helpers(root).await => {
+            helper(root, toolchain, "patches", &[dir]).await
+        }
+        Lister::Toolchain(toolchain) => psport_list(root, toolchain, "--list-patches", dir).await,
     };
     match answer {
         Ok(value) => serde_json::from_value(value).map_err(|err| err.to_string()),

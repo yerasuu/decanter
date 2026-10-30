@@ -176,8 +176,10 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 
 Done on `feat/902-ps-windows-slice` (design note #901, decision #898).
 decanter doesn't run the Linux build pipeline here (no checkouts or nix:
-mods and patches discovery and FSR 4.1.1's recording stop at `prepare`
-with `ps.errors.builds_unavailable`); since #927 it builds psport's branch
+FSR 4.1.1's recording stops at `prepare` with `ps.errors.builds_unavailable`;
+the Mods tab skips `prepare` and asks the `psport.exe` Play would start,
+`psport.exe --list-mods`/`--list-patches <dir> --title … --version …`,
+`tools::Lister::Direct`, #1294); since #927 it builds psport's branch
 its own way (`PsBuilds`, see below). Since #917 it downloads
 the release's Windows package (next section); a psport build the user
 unpacked still works as the manual alternative:
