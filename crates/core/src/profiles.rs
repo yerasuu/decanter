@@ -29,7 +29,9 @@
 
 use rusqlite::{OptionalExtension as _, params};
 
+use crate::catalog::Storefront;
 use crate::db::{Db, Error, Result};
+use crate::secrets::{self, SecretKey};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -96,12 +98,27 @@ impl Db {
     /// cached library, achievements and installs are left in place, same
     /// as [`Db::forget_account`] alone: re-adding the profile and its
     /// accounts brings them all back rather than starting the user over.
+    /// Their stored sessions go, since nothing would name them any more;
+    /// one the keyring can't delete now is said in the log and left there.
+    /// Blocking: keyring round trips.
     #[inline]
     pub fn delete_profile(&self, profile_id: &str) -> Result<()> {
         let accounts = match self.accounts_in_profile(profile_id) {
             Ok(accounts) => accounts,
             Err(err) => return Err(err),
         };
+        let kept = accounts
+            .iter()
+            .filter(|account| account.storefront == Storefront::Gog)
+            .filter(|account| {
+                SecretKey::gog_session(&account.id)
+                    .and_then(|key| secrets::store().delete(&key))
+                    .is_err()
+            })
+            .count();
+        if kept > 0 {
+            tracing::warn!(profile_id, kept, "sessions of the deleted profile left in the keyring");
+        }
         for account in accounts {
             if let Err(err) = self.forget_account(&account.id, account.storefront) {
                 return Err(err);

@@ -354,3 +354,31 @@ Phases 5 and 6 replace phase 8 of `docs/windows-online-plan.md`.
   value. The stored session's parse error keeps only its category, line and column.
 - `bbport::online::Online` holds the shadNet password and token as `Secret`s until `env()`
   exposes them for the launch (#716, phases 5 and 6).
+
+### Phase 4
+
+- SteamGridDB key: `SecretKey::STEAMGRIDDB` is `steamgriddb/api_key`. A read that finds nothing
+  there reads `steamgriddb/STOREFRONT_UNSPECIFIED`, writes it under the new name, and deletes the
+  old entry only once the new one reads back the same; any failure keeps the old entry, returns
+  its value and is retried on the next read. A put or delete also removes the old entry.
+- psport launcher's `online_password`: `LauncherSettings::load` tries once per run to put it
+  under the file's `online_npid` and read it back (a password the keyring already holds for that
+  NPID wins), then removes it from the file. With the store missing, locked or failing, the file
+  keeps it (`write_at` no longer drops it) until a later start; with no usable NPID or an empty
+  value it is dropped, as before, with a warning.
+- Windows: every write goes through an entry built with `persistence=Local`; a read that finds
+  an entry with `Enterprise` persistence writes it again as `Local` and checks it reads back,
+  else leaves it and tries on a later read.
+- `Db::delete_profile` deletes its GOG accounts' sessions; one the keyring cannot delete is
+  counted in a warning and left, and the profile is deleted anyway.
+
+### Not in the keyring, left for later phases
+
+- shadNet password and token in the launch environment of the whole launch tree (#716): phases
+  5 and 6.
+- Report delete codes in `<library>/decanter/reports/sent.jsonl` (no ACL on Windows): phase 8.
+- The GOG OAuth login code through the clipboard and an unmasked field; the SteamGridDB field
+  shown in clear: phase 2.
+- The reports server's own secrets (`reports.toml`, `*_file`, systemd credentials), the Galaxy
+  client id/secret (public constants) and GOG signed CDN links (memory only, stripped from
+  errors): outside this store by design.

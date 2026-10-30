@@ -23,7 +23,7 @@ const SHADNET_PORT: u16 = 31313;
 const WEBAPI_PORT: u16 = 31315;
 
 /// Launch settings keys, as psport's launcher names them so its file imports as is. Its
-/// `online_password` is never read nor kept ([`LauncherSettings::save`] drops it).
+/// `online_password` is never read for a launch: [`LauncherSettings::load`] moves it to the keyring.
 pub const ONLINE: &str = "online";
 pub const SERVER: &str = "online_server";
 pub const WEBAPI: &str = "online_webapi";

@@ -71,10 +71,10 @@ pub(super) enum Failure {
 }
 
 impl Failure {
-    pub(super) fn into_reason(self) -> String {
+    pub(super) fn reason(&self) -> &str {
         match self {
             Self::Unavailable(reason) | Self::Locked(reason) | Self::TooLarge(reason) | Self::Refused(reason) => reason,
-            Self::Corrupt(reason) => reason.to_owned(),
+            Self::Corrupt(reason) => reason,
         }
     }
 
@@ -138,7 +138,14 @@ impl Store {
     /// The store could not be reached or read; nothing is inferred from that about the entry.
     #[inline]
     pub fn get(&self, key: &SecretKey) -> Result<Option<Secret>, StoreError> {
-        let result = self.call(key, |backend| backend.get(&key.entry()));
+        let result = self.call(key, |backend| {
+            let found = backend.get(&key.entry())?;
+            if found.is_some() {
+                return Ok(found);
+            }
+            key.legacy_entry()
+                .map_or(Ok(None), |legacy| move_legacy(backend, key, &legacy))
+        });
         match &result {
             Ok(found) => tracing::debug!(
                 kind = ?key.kind(),
@@ -162,9 +169,18 @@ impl Store {
     /// was not saved and stays the caller's.
     #[inline]
     pub fn put(&self, key: &SecretKey, secret: &Secret) -> Result<(), StoreError> {
-        let result = key
-            .check(secret)
-            .and_then(|()| self.call(key, |backend| backend.put(&key.entry(), secret)));
+        let result = key.check(secret).and_then(|()| {
+            self.call(key, |backend| {
+                backend.put(&key.entry(), secret)?;
+                // The new value is in; an old-named copy would only linger in the keyring.
+                if let Some(legacy) = key.legacy_entry()
+                    && let Err(failure) = backend.delete(&legacy)
+                {
+                    tracing::warn!(kind = ?key.kind(), reason = failure.reason(), "old keyring entry not removed");
+                }
+                Ok(())
+            })
+        });
         match &result {
             Ok(()) => tracing::info!(kind = ?key.kind(), subject = key.subject(), "saved secret to keyring"),
             Err(err) => tracing::error!(
@@ -184,7 +200,11 @@ impl Store {
     /// The store could not be reached or the entry removed.
     #[inline]
     pub fn delete(&self, key: &SecretKey) -> Result<(), StoreError> {
-        let result = self.call(key, |backend| backend.delete(&key.entry()));
+        // The old name too, or the next read would bring a forgotten value back from it.
+        let result = self.call(key, |backend| {
+            backend.delete(&key.entry())?;
+            key.legacy_entry().map_or(Ok(()), |legacy| backend.delete(&legacy))
+        });
         match &result {
             Ok(()) => tracing::info!(kind = ?key.kind(), subject = key.subject(), "deleted secret from keyring"),
             Err(err) => tracing::error!(
@@ -256,4 +276,43 @@ impl Store {
             }
         }
     }
+}
+
+/// Copies the secret filed under its old name to its own, and removes the old entry only once the
+/// new one reads back the same. Whatever fails leaves the old entry in place for the next read to
+/// try again, and the value read is the caller's either way.
+fn move_legacy(backend: &dyn Backend, key: &SecretKey, legacy: &str) -> Result<Option<Secret>, Failure> {
+    let Some(old) = backend.get(legacy)? else {
+        return Ok(None);
+    };
+    let entry = key.entry();
+    let moved = backend
+        .put(&entry, &old)
+        .and_then(|()| backend.get(&entry))
+        .map(|back| back.is_some_and(|back| back.expose() == old.expose()));
+    match moved {
+        Ok(true) => match backend.delete(legacy) {
+            Ok(()) => tracing::info!(kind = ?key.kind(), "moved secret to its own keyring entry"),
+            Err(failure) => tracing::warn!(
+                kind = ?key.kind(),
+                reason = failure.reason(),
+                "moved secret to its own keyring entry, the old entry is removed on a later read"
+            ),
+        },
+        Ok(false) => {
+            // A copy that reads back otherwise would shadow the good old one from now on.
+            let removed = backend.delete(&entry).is_ok();
+            tracing::warn!(
+                kind = ?key.kind(),
+                removed,
+                "secret read back otherwise under its own keyring entry, kept the old entry"
+            );
+        }
+        Err(failure) => tracing::warn!(
+            kind = ?key.kind(),
+            reason = failure.reason(),
+            "could not move secret to its own keyring entry, kept the old entry"
+        ),
+    }
+    Ok(Some(old))
 }

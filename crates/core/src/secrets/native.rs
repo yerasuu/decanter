@@ -1,6 +1,8 @@
 //! The OS keyring through `keyring-core` and the store crate of each platform
 //! ([keyring-core](https://docs.rs/keyring-core/1.0.0/keyring_core/)).
 
+#[cfg(windows)]
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use keyring_core::{CredentialStore, Entry, Error};
@@ -30,13 +32,65 @@ pub(super) fn connect() -> Result<Native, String> {
     ));
     match store {
         Ok(store) => Ok(Native { store }),
-        Err(err) => Err(failure(err).into_reason()),
+        Err(err) => Err(failure(err).reason().to_owned()),
     }
 }
 
 impl Native {
     fn entry(&self, name: &str) -> Result<Entry, Failure> {
         self.store.build(SERVICE, name, None).map_err(failure)
+    }
+
+    /// An entry to write through. On Windows it carries `Local` persistence, which the store
+    /// applies when the secret is written: its default, `Enterprise`, roams with a domain
+    /// profile, and decanter's secrets stay on this machine (decision #1299).
+    fn writer(&self, name: &str) -> Result<Entry, Failure> {
+        #[cfg(windows)]
+        {
+            let modifiers = HashMap::from([("persistence", "Local")]);
+            self.store.build(SERVICE, name, Some(&modifiers)).map_err(failure)
+        }
+        #[cfg(not(windows))]
+        self.entry(name)
+    }
+
+    /// Writes an entry saved with `Enterprise` persistence again as `Local`, and counts it done
+    /// only once it reads back the same; until then it stays as it was, and the next read tries
+    /// again.
+    #[cfg(windows)]
+    fn keep_local(&self, name: &str, secret: &Secret) {
+        let persistence = self
+            .entry(name)
+            .and_then(|entry| entry.get_attributes().map_err(failure));
+        match persistence {
+            Ok(attributes) if attributes.get("persistence").is_some_and(|value| value == "Enterprise") => {}
+            Ok(_) => return,
+            Err(failure) => {
+                tracing::warn!(
+                    entry = name,
+                    reason = failure.reason(),
+                    "keyring entry persistence unreadable"
+                );
+                return;
+            }
+        }
+        let rewritten = self
+            .put(name, secret)
+            .and_then(|()| self.entry(name)?.get_password().map(Secret::from).map_err(failure));
+        match rewritten {
+            Ok(back) if back.expose() == secret.expose() => {
+                tracing::info!(entry = name, "keyring entry moved to local persistence");
+            }
+            Ok(_) => tracing::warn!(
+                entry = name,
+                "keyring entry read back otherwise after the move to local persistence"
+            ),
+            Err(failure) => tracing::warn!(
+                entry = name,
+                reason = failure.reason(),
+                "keyring entry not moved to local persistence, retried on a later read"
+            ),
+        }
     }
 }
 
@@ -46,15 +100,18 @@ impl Backend for Native {
     }
 
     fn get(&self, entry: &str) -> Result<Option<Secret>, Failure> {
-        match self.entry(entry)?.get_password() {
-            Ok(value) => Ok(Some(Secret::from(value))),
-            Err(Error::NoEntry) => Ok(None),
-            Err(err) => Err(failure(err)),
-        }
+        let found = match self.entry(entry)?.get_password() {
+            Ok(value) => Secret::from(value),
+            Err(Error::NoEntry) => return Ok(None),
+            Err(err) => return Err(failure(err)),
+        };
+        #[cfg(windows)]
+        self.keep_local(entry, &found);
+        Ok(Some(found))
     }
 
     fn put(&self, entry: &str, secret: &Secret) -> Result<(), Failure> {
-        self.entry(entry)?.set_password(secret.expose()).map_err(failure)
+        self.writer(entry)?.set_password(secret.expose()).map_err(failure)
     }
 
     fn delete(&self, entry: &str) -> Result<(), Failure> {

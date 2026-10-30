@@ -6,14 +6,22 @@ mod title;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::is_bloodborne_title;
+use decanter_core::secrets::{self, Secret, SecretKey, ShadnetSecret};
+
 use super::names::{MEMORY_MODEL_SETTINGS, single_memory_model_blocking};
+use super::{is_bloodborne_title, online};
 use crate::paths::Root;
 use crate::port::Port;
 
 const TITLES: &str = "titles";
+/// psport's launcher keeps the shadNet password here in the clear; decanter keeps it in the
+/// keyring, and [`LauncherSettings::load`] moves it there.
 const LAUNCHER_PASSWORD: &str = "online_password";
+/// The move is tried once per run, so that a missing keyring is not asked again, and warned
+/// about, on every load.
+static LAUNCHER_PASSWORD_TRIED: AtomicBool = AtomicBool::new(false);
 /// A title's switch for the user's system modules dump; the folder is `sys_modules_dir`, shared.
 pub const SYS_MODULES: &str = "sys_modules";
 
@@ -35,9 +43,11 @@ pub struct LauncherSettings {
 
 impl LauncherSettings {
     /// A missing or unreadable file gives the defaults, an unreadable one said in the log. File
-    /// I/O: off the UI thread.
-    /// A plaintext shadNet password imported from psport's launcher is dropped and the file
-    /// written again at once, so it doesn't wait on disk for the next save.
+    /// I/O and, once per run, the keyring: off the UI thread.
+    ///
+    /// A plaintext shadNet password psport's launcher left in the file is moved to the keyring
+    /// under the file's NPID ([`Self::keep_launcher_password`]), then dropped from the file, which
+    /// is written again at once so the password doesn't wait on disk for the next save.
     pub fn load(root: &Root) -> LauncherSettings {
         let mut settings = match Self::read(root) {
             Ok(settings) => settings,
@@ -46,7 +56,11 @@ impl LauncherSettings {
                 return Self::default();
             }
         };
-        if settings.values.remove(LAUNCHER_PASSWORD).is_some() {
+        if settings.values.contains_key(LAUNCHER_PASSWORD)
+            && !LAUNCHER_PASSWORD_TRIED.swap(true, Ordering::Relaxed)
+            && settings.keep_launcher_password()
+        {
+            settings.values.remove(LAUNCHER_PASSWORD);
             match settings.clone().save(root) {
                 Ok(()) => tracing::info!("dropped the launcher's plaintext shadNet password from the port settings"),
                 Err(err) => {
@@ -55,6 +69,59 @@ impl LauncherSettings {
             }
         }
         settings
+    }
+
+    /// Whether the file's copy of the launcher's password may go: the keyring holds a password
+    /// for the file's NPID now, this one or one saved in decanter before, which wins since it is
+    /// the newer. Without a store to put it in, the file keeps it until a later start; with no
+    /// usable NPID or no usable value it could never be filed, so it goes as it always did.
+    fn keep_launcher_password(&self) -> bool {
+        let Some(password) = self.text(LAUNCHER_PASSWORD).map(|value| Secret::from(value.to_owned())) else {
+            tracing::warn!("the launcher's saved shadNet password is empty or not text, dropping it");
+            return true;
+        };
+        let npid = self
+            .text(online::NPID)
+            .and_then(|npid| online::check_npid(npid).ok().flatten());
+        let Some(key) = npid.and_then(|npid| SecretKey::shadnet(npid, ShadnetSecret::Password).ok()) else {
+            tracing::warn!("the launcher's saved shadNet password has no usable NPID to be filed under, dropping it");
+            return true;
+        };
+        let store = secrets::store();
+        let kept = match store.get(&key) {
+            Ok(Some(_)) => {
+                tracing::info!(
+                    npid = key.subject(),
+                    "keyring already holds a shadNet password, the launcher's copy goes"
+                );
+                Ok(true)
+            }
+            Ok(None) => store
+                .put(&key, &password)
+                .and_then(|()| store.get(&key))
+                .map(|back| back.is_some_and(|back| back.expose() == password.expose())),
+            Err(err) => Err(err),
+        };
+        match kept {
+            Ok(true) => {
+                tracing::info!(
+                    npid = key.subject(),
+                    "the launcher's shadNet password is in the keyring"
+                );
+                true
+            }
+            Ok(false) => {
+                tracing::warn!(
+                    npid = key.subject(),
+                    "the launcher's shadNet password did not read back from the keyring, kept in the port settings"
+                );
+                false
+            }
+            Err(err) => {
+                tracing::warn!(npid = key.subject(), %err, "the launcher's shadNet password stays in the port settings until a later start");
+                false
+            }
+        }
     }
 
     /// One change against the shared file as it is now, for the keys every title shares
@@ -99,9 +166,6 @@ impl LauncherSettings {
             self.values
                 .retain(|key, _| !MEMORY_MODEL_SETTINGS.contains(&key.as_str()));
         }
-        // psport's launcher keeps the shadNet password here in the clear; decanter keeps it in the
-        // keyring only, so an imported file loses it on the first save.
-        self.values.remove(LAUNCHER_PASSWORD);
         let text = serde_json::to_string_pretty(&self.values).map_err(std::io::Error::other)?;
         crate::files::write_atomic(path, text.as_bytes())
     }

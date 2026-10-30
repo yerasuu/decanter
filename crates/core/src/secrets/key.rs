@@ -136,7 +136,16 @@ impl SecretKey {
         match &self.0 {
             Name::GogSession(id) => format!("{id}/{}", Storefront::Gog.as_str_name()),
             Name::Shadnet(npid, secret) => format!("shadnet/{npid}/{}", secret.name()),
-            Name::SteamGridDb => format!("steamgriddb/{}", Storefront::Unspecified.as_str_name()),
+            Name::SteamGridDb => "steamgriddb/api_key".to_owned(),
+        }
+    }
+
+    /// The name this secret was filed under before it had its own: the `SteamGridDB` key went
+    /// through the storefront-session API as if it were a session of an unknown storefront.
+    pub(super) fn legacy_entry(&self) -> Option<String> {
+        match &self.0 {
+            Name::SteamGridDb => Some(format!("steamgriddb/{}", Storefront::Unspecified.as_str_name())),
+            Name::GogSession(_) | Name::Shadnet(..) => None,
         }
     }
 
