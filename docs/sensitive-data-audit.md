@@ -60,6 +60,17 @@ receives a copied or attached log), **vendor** (Valve, through SteamOS crash col
 - Readers: root, vendor (when submission is on), user through `coredumpctl` (unverified for
   this ACL). Severity **sev-high** (password to a third party with no user action), cwe-214,
   cwe-528 (core dump exposure), cwe-312.
+- Checked on the owner's machine (2026-10-30, read only): `steamos-log-submitter status` says
+  "Log submission is currently enabled", `helpers.minidump` is `enable = on`, and
+  `uploaded/minidump` holds minidumps already sent for other processes. `core_handler` carries
+  the strings `cmdline` and `environ`.
+- Mitigated on Linux (psport #1362, owner decision #1360): a psport run handed shadNet secrets
+  sets itself non-dumpable (`PR_SET_DUMPABLE=0`) before reading them and stays so until it ends,
+  so neither the kernel nor SteamOS's `core_pattern` pipe gets a core, and other processes of the
+  user cannot ptrace it or read its memory
+  ([prctl(2)](https://man7.org/linux/man-pages/man2/prctl.2.html),
+  [core(5)](https://man7.org/linux/man-pages/man5/core.5.html)). Runs without secrets keep their
+  dumps. Windows has no such switch: a WER minidump may still carry them (open).
 - Fix: the hand-off of design 3.4 (phases 5-6) removes the variables. Until then, and also after
   it, psport overwrites the bytes of each secret in the initial environment block after reading
   it (`unsetenv` only drops the pointer: `/proc/<pid>/environ` and the core still show the
@@ -316,8 +327,8 @@ and #716; the psport task above is the part that also helps once the variables a
 
 ## 6. Not verified
 
-- Breakpad's `MD_LINUX_ENVIRON` stream in SteamOS's `core_handler` build, and whether this
-  machine has crash submission on (F2).
+- Breakpad's `MD_LINUX_ENVIRON` stream in SteamOS's `core_handler` build (F2); crash submission
+  is on here (checked 2026-10-30).
 - Whether `coredumpctl` gives `deck` its own psport cores on this system (F2).
 - Content of Proton's `+debugstr` channel for the games in use.
 - Whether any supported launcher passes auth in arguments (F11).
