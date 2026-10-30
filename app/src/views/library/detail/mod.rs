@@ -212,6 +212,17 @@ impl Render for DetailView {
         let profile_id = state.session.read(cx).active_profile.clone();
         let background = state.background.read(cx);
         self.sync(&game, profile_id.as_deref(), background);
+        let requested = self.model.update(cx, |model, _| {
+            let is_for_game = model
+                .install_request
+                .as_ref()
+                .is_some_and(|request| request.product_id == game.id);
+            is_for_game.then(|| model.install_request.take()).flatten()
+        });
+        if let Some(request) = requested {
+            self.open_install_dialog(request, cx);
+        }
+        let background = state.background.read(cx);
         let running = background.running.contains(&game.id);
         let download = background
             .installing

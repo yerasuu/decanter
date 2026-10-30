@@ -67,6 +67,9 @@ struct LibraryModel {
     pub(crate) mods_open: bool,
     /// The selected game's cached achievements, re-read after each poll.
     pub(crate) achievements: Option<Result<Vec<data::Achievement>, String>>,
+    /// An install asked for from outside the detail pane (the context menu), handed to the
+    /// detail so it opens the install dialog for it.
+    pub(crate) install_request: Option<install::InstallRequest>,
     poll: Option<Task<()>>,
 }
 
@@ -98,6 +101,7 @@ impl LibraryModel {
             poll_status: PollStatus::Idle,
             mods_open: false,
             achievements: None,
+            install_request: None,
             poll: None,
         }
     }
@@ -110,6 +114,14 @@ impl LibraryModel {
     pub fn close_popup(&mut self, cx: &mut Context<Self>) {
         self.popup = None;
         cx.notify();
+    }
+
+    /// Opens the game's detail with its install dialog, so an install asked for from a menu
+    /// offers the same library folder, branch and language as the detail's own button.
+    pub fn request_install(&mut self, request: install::InstallRequest, cx: &mut Context<Self>) {
+        let product_id = request.product_id.clone();
+        self.install_request = Some(request);
+        self.select(Some(product_id), cx);
     }
 
     pub fn show_mods(&mut self, open: bool, cx: &mut Context<Self>) {

@@ -14,8 +14,7 @@ use gpui::{
 use rust_i18n::t;
 
 use super::actions::{
-    bump_organisation, game_install_path, launch_game, open_in_file_manager, resolve_launch_target, start_install,
-    stop_game,
+    bump_organisation, game_install_path, launch_game, open_in_file_manager, resolve_launch_target, stop_game,
 };
 use super::data;
 use super::install::InstallRequest;
@@ -218,10 +217,11 @@ fn game_menu(
         return div().into_any_element();
     };
 
+    let model = cx.entity().read(cx).model.clone();
     let mut panel = menu::panel().child(menu::title(target.title.clone()));
     if let Some(entry) = single_entry.filter(|entry| entry.kind == GameKind::Game) {
         panel = panel
-            .child(game_action_item(&entry, launch_target, close, cx))
+            .child(game_action_item(&entry, launch_target, close, &model, cx))
             .children(open_folder_item(install_path, close))
             .children(edit_external_item(&entry, close))
             .child(properties_item(&entry, close))
@@ -452,6 +452,7 @@ fn game_action_item(
     entry: &LibraryEntry,
     launch_target: Option<decanter_core::InstalledGame>,
     close: &menu::Dismiss,
+    model: &Entity<LibraryModel>,
     cx: &App,
 ) -> AnyElement {
     let account_id = entry.game.account_id.clone();
@@ -491,21 +492,20 @@ fn game_action_item(
         // Failed sits here too: whatever partial state it left behaves the
         // same as never having started — retrying is just installing again.
         let title = entry.game.title.clone();
+        let model = model.clone();
         return menu::item("menu-action", false)
             .on_click(move |_, window, cx| {
-                start_install(
-                    InstallRequest {
-                        account_id: account_id.clone(),
-                        product_id: product_id.clone(),
-                        parent_id: None,
-                        title: title.clone(),
-                        branch: None,
-                        dlcs: Vec::new(),
-                        library_root: None,
-                        language: None,
-                    },
-                    cx,
-                );
+                let request = InstallRequest {
+                    account_id: account_id.clone(),
+                    product_id: product_id.clone(),
+                    parent_id: None,
+                    title: title.clone(),
+                    branch: None,
+                    dlcs: Vec::new(),
+                    library_root: None,
+                    language: None,
+                };
+                model.update(cx, |model, cx| model.request_install(request, cx));
                 close(window, cx);
             })
             .child(t!("library.menu.install"))
