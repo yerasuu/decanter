@@ -1,16 +1,18 @@
 //! Ajustes' defaults for new games: what a game seen for the first time copies, once, into its own
 //! settings, so a change here reaches no game that already has them (`docs/ps-per-game-settings.md`).
-//! The Graphics rows and the online switches are edited here; everything else a game has (keyboard,
-//! pad layout, extras) comes in by taking a game's settings as the defaults.
+//! The Graphics rows, the online switches, the keyboard and the controller are edited here, with the
+//! same views as a game's page pointed at the defaults' files; the extras come in by taking a game's
+//! settings as the defaults.
 
 use decanter_core::capabilities::Feature;
-use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::online;
 use decanter_ps::bbport::per_game::{self, Category, Target};
+use decanter_ps::bbport::{Bbport, IniScope, LauncherSettings};
+use decanter_ps::mapping;
 use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
-use super::games::{GraphicsView, display_title};
+use super::games::{GamepadView, GraphicsView, KeyboardView, display_title};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{Ps, per_game_error};
@@ -29,6 +31,11 @@ const SWITCHES: [(&str, &str, bool); 4] = [
 pub struct DefaultsView {
     ps: Entity<Ps>,
     graphics: Entity<GraphicsView>,
+    gamepad: Entity<GamepadView>,
+    /// The defaults' bindings, read again whenever the defaults are.
+    keyboard: Option<Result<Entity<KeyboardView>, Text>>,
+    /// The checkout's port predates per-game settings: its games follow none of this page.
+    is_port_shared: bool,
     /// One per [`SWITCHES`].
     switches: [bool; 4],
     /// Titles with settings of their own, to take the defaults from.
@@ -42,9 +49,14 @@ impl DefaultsView {
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
         let graphics = cx.new(|cx| GraphicsView::new(&ps, cx));
         graphics.update(cx, GraphicsView::show_defaults);
+        let gamepad = cx.new(|cx| GamepadView::new(&ps, cx));
+        gamepad.update(cx, GamepadView::show_defaults);
         let this = Self {
             ps,
             graphics,
+            gamepad,
+            keyboard: None,
+            is_port_shared: false,
             switches: SWITCHES.map(|(_, _, absent)| absent),
             sources: Vec::new(),
             source: None,
@@ -57,13 +69,25 @@ impl DefaultsView {
 
     fn reload(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let (defaults, titles) = cx
+            let (defaults, titles, is_port_shared, bindings) = cx
                 .background_spawn(async {
                     let root = decanter_ps::paths::active();
-                    (LauncherSettings::defaults(&root), per_game::titles(&root))
+                    (
+                        LauncherSettings::defaults(&root),
+                        per_game::titles(&root),
+                        per_game::port_reads_shared(&root),
+                        defaults_bindings(&root),
+                    )
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
+                this.is_port_shared = is_port_shared;
+                this.keyboard = Some(bindings.map(|(path, mapping, store)| {
+                    cx.new(|cx| {
+                        KeyboardView::new(mapping::Target::Bbport, path, IniScope::Title, mapping, store, cx)
+                            .for_defaults()
+                    })
+                }));
                 match defaults {
                     Ok(defaults) => this.switches = SWITCHES.map(|(key, _, absent)| defaults.flag(key, absent)),
                     Err(err) => this.message = Some((Text::new("ps.defaults.read_error").arg("error", err), true)),
@@ -132,6 +156,7 @@ impl DefaultsView {
                     }
                 });
                 this.graphics.update(cx, GraphicsView::show_defaults);
+                this.gamepad.update(cx, GamepadView::show_defaults);
                 this.reload(cx);
             });
         })
@@ -212,6 +237,17 @@ impl DefaultsView {
     }
 }
 
+/// The defaults' port ini with the bindings in it and the named layouts, for the keyboard editor.
+fn defaults_bindings(
+    root: &decanter_ps::paths::Root,
+) -> Result<(std::path::PathBuf, mapping::Mapping, decanter_ps::layouts::Store), Text> {
+    let path = Bbport::defaults_ini(root).map_err(|err| Text::new("ps.defaults.read_error").arg("error", err))?;
+    let mapping = decanter_ps::binds::read(mapping::Target::Bbport, &path).map_err(Text::verbatim)?;
+    let store =
+        decanter_ps::layouts::Store::load().map_err(|err| Text::new("ps.layouts.read_error").arg("error", err))?;
+    Ok((path, mapping, store))
+}
+
 impl Render for DefaultsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let confirm = self.is_confirming.then(|| {
@@ -240,6 +276,9 @@ impl Render for DefaultsView {
             .flex_col()
             .gap_4()
             .child(theme::h2(t!("ps.defaults.title")))
+            .when(self.is_port_shared, |page| {
+                page.child(theme::error(t!("ps.defaults.older_port")))
+            })
             .child(theme::muted(t!("ps.defaults.description")))
             .child(self.take_row(cx))
             .child(theme::muted(t!("ps.defaults.take_note")))
@@ -257,5 +296,13 @@ impl Render for DefaultsView {
             })
             .child(theme::h3(t!("ps.defaults.graphics_title")))
             .child(self.graphics.clone())
+            .child(theme::h3(t!("ps.defaults.keyboard_title")))
+            .child(match &self.keyboard {
+                Some(Ok(keyboard)) => keyboard.clone().into_any_element(),
+                Some(Err(err)) => theme::error(err).into_any_element(),
+                None => theme::muted(t!("ps.detail.reading_keyboard")).into_any_element(),
+            })
+            .child(theme::h3(t!("ps.defaults.gamepad_title")))
+            .child(self.gamepad.clone())
     }
 }

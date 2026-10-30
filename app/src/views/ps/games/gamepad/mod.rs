@@ -10,6 +10,7 @@ mod visual;
 
 use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::pad::{self, BUTTONS, INPUTS, MENU, MENU_CHORDS, PadLayout};
+use decanter_ps::bbport::per_game::DEFAULTS;
 use decanter_ps::bbport::values::{self, Values};
 use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
 use decanter_ps::layouts::Store;
@@ -150,6 +151,12 @@ impl GamepadView {
         }
     }
 
+    /// The defaults new games copy instead of a title's settings, for the defaults page; shown under
+    /// [`DEFAULTS`] where a title id goes.
+    pub fn show_defaults(&mut self, cx: &mut Context<Self>) {
+        self.show_title(DEFAULTS, cx);
+    }
+
     /// Reads `title_id`'s settings again, since its in-game menu writes the same file. Another
     /// title's go at once, with the drawing's unapplied edits, so none is shown or written for the
     /// wrong one.
@@ -168,7 +175,13 @@ impl GamepadView {
                     Ok(store) => store,
                     Err(err) => return Err(Text::new("ps.layouts.read_error").arg("error", err)),
                 };
-                let values = match Values::load(&decanter_ps::paths::active(), &title_id) {
+                let root = decanter_ps::paths::active();
+                let values = if title_id == DEFAULTS {
+                    Values::load_defaults(&root)
+                } else {
+                    Values::load(&root, &title_id)
+                };
+                let values = match values {
                     Ok(values) => values,
                     Err(err) => return Err(Text::new("ps.scope.read_error").arg("error", err)),
                 };
@@ -358,10 +371,16 @@ impl GamepadView {
         };
         loaded.values.set_launch_text("button_icons", &style);
         let title_id = loaded.values.title_id().to_owned();
+        let is_defaults = loaded.values.is_defaults();
         let task = cx.background_spawn(async move {
-            decanter_ps::bbport::LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| {
-                settings.set_text("button_icons", &style);
-            })
+            let root = decanter_ps::paths::active();
+            let change =
+                |settings: &mut decanter_ps::bbport::LauncherSettings| settings.set_text("button_icons", &style);
+            if is_defaults {
+                decanter_ps::bbport::LauncherSettings::edit_defaults(&root, change)
+            } else {
+                decanter_ps::bbport::LauncherSettings::edit_title(&root, &title_id, change)
+            }
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -386,20 +405,19 @@ impl GamepadView {
         loaded.values.set(setting, &guid);
         let ini = loaded.values.ini_path().to_owned();
         let title_id = loaded.values.title_id().to_owned();
+        let is_defaults = loaded.values.is_defaults();
         let name = self
             .gamepads
             .iter()
             .find(|(known, _)| *known == guid)
             .map_or_else(String::new, |(_, name)| name.clone());
         let task = cx.background_spawn(async move {
-            values::save(
-                &decanter_ps::paths::active(),
-                &title_id,
-                &ini,
-                setting,
-                &guid,
-                Some(&name),
-            )
+            let root = decanter_ps::paths::active();
+            if is_defaults {
+                values::save_default(&root, setting, &guid, Some(&name))
+            } else {
+                values::save(&root, &title_id, &ini, setting, &guid, Some(&name))
+            }
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -573,7 +591,11 @@ impl Render for GamepadView {
                             .flex_1()
                             .min_w_0()
                             .child(theme::muted(t!("ps.gamepad.description")))
-                            .child(theme::muted(scope_note(values.scope()))),
+                            .child(theme::muted(if values.is_defaults() {
+                                t!("ps.defaults.graphics_note")
+                            } else {
+                                scope_note(values.scope())
+                            })),
                     )
                     .child(self.mode_switch(cx)),
             )

@@ -6,7 +6,8 @@ under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phases 1 (per-
 `crates/ps/src/bbport/settings/title.rs`), 3 (online and system modules switches per game), 4
 (mods and patches per game, `crates/ps/src/bbport/mods.rs`, `ModFiles`) and 5 (defaults for new
 games, copy, export and import, reset, `decanter ps settings`; `crates/ps/src/bbport/settings/`) are
-implemented; phase 6 is not yet.
+implemented, and phase 6a (below); phase 6b (layouts catalog, migration step 4, GTK leftovers) is not
+yet.
 
 Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
 `mods_dir`/`patches_dir` (until phase 4, which made them each title's). A title's file is made from the shared one the first time
@@ -91,14 +92,44 @@ Phase 5 as built (kb #1311):
   `export` never replaces a file. Exits 0 when done or shown, 1 when a file could not be read or
   written, 2 when the request was refused.
 
-Left for phase 6, besides the layouts catalog and the GTK leftovers: "Apply to all games" (D9) on
-the defaults page; keyboard and pad layout editors for the defaults (today taken from a game); a
-"forget settings" action for a title folder; the per-tab "Copy settings from another game" entry on
-each tab (today one place, on the Resumen, with a category list); a note on the defaults page when
-the checkout's port predates per-game settings (its games read the shared files, not the defaults);
-reading the in-game menu's ini keys against the port's own list of keys rather than by shape;
-migration step 4 (rewriting the shared file with the E1-E3 keys only), still waiting since an older
-port's launches read the shared file.
+Phase 6a as built (kb #1343):
+
+- **Apply to all games** (D9), on a game's Resumen and as `decanter ps settings copy --from <TITLE>
+  --to all [--category ...]`: one category of the game's settings, or all, copied over every other
+  game of the port the library lists (`per_game::plan_to_all`, `per_game::copy_to_all`; several
+  folders of one title are one game). The question first says how many games and which categories;
+  each game is backed up as a copy is (`<TITLE_ID>-<HHMMSS>/`), a game that fails is reported and the
+  rest still get theirs. Never a `SHARED` key and never the destination's `mods_dir`/`patches_dir`
+  (each folder holds its own game's mods); the online category goes only to games whose eboot names
+  an NP online library (`online_support`, #1340), and the rest are listed as left without it. Its
+  mod and patch choices go with the mods category, as a copy carries them.
+- **Forget this game's settings** (`per_game::forget`, CLI `ps settings forget --title <TITLE>
+  --yes`): asks, backs the title's files up, removes `titles/<TITLE_ID>/settings.json` and
+  `psport.ini` (and the folder once empty), so the next open or launch makes them again from the
+  defaults. Its `mods.json`/`patches.json` stay, as a reset keeps them; the shared file's
+  `titles.<TITLE_ID>` entries go on top again, as for any title seen for the first time.
+- **Copy settings from another game** on each tab: Graphics (with a second entry for Extras, which
+  sit in that tab), Keyboard, Gamepad, Mods and Online open the Resumen's copy row inside the tab,
+  with that tab's category picked; the tab reads its files again after a copy.
+- **Older port note** on the defaults page (`per_game::port_reads_shared`): a checkout whose
+  `run.sh` doesn't name `psport.ini` says that its games still read the shared files, neither their
+  own nor these defaults.
+- **Ini keys against the port's list**: psport lists no settings of its own (`--list-settings`
+  doesn't exist; its ini keys are spread over `psport_settings.cpp` and `runtime_config.c`); what it
+  lists is each title's own switches (`--list-effects --title`, the `effect_*` keys and
+  `skip_intro`, `debug_camera`, `debug_menu`). `ps settings set` of a switch for a title is refused
+  when the port is built here and doesn't list it (`Refusal::NotListed`); `import` names such keys
+  but still imports them, since every title's ini began as the shared one, which carries
+  Bloodborne's switches for every game, and a game's own export would otherwise be refused. Any
+  other ini key keeps the shape checks and the settings table's typing, and the command says when
+  only the shape was checked (`per_game::ini_check`, `IniCheck`).
+- **Keyboard and controller for new games**: the defaults page shows the Keyboard view on
+  `defaults/psport.ini` and the Gamepad view on the defaults (`GamepadView::show_defaults`; button
+  icons and the controller go to `defaults/settings.json`); the layouts catalog stays shared (D4).
+  Extras are still taken from a game.
+
+Left for phase 6b: the layouts catalog, the GTK leftovers, and migration step 4 (rewriting the shared
+file with the E1-E3 keys only), still waiting since an older port's launches read the shared file.
 
 ## The owner's rule
 

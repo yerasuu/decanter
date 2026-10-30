@@ -888,6 +888,9 @@ ps.defaults.graphics_title: Gráficos de los juegos nuevos
 ps.defaults.graphics_note: Estos son los valores por defecto de los juegos nuevos; los juegos que ya tienen sus ajustes no los siguen.
 ps.defaults.read_error: 'No se pudieron preparar los valores por defecto de los juegos nuevos: %{error}'
 ps.defaults.save_error: 'No se pudieron guardar los valores por defecto de los juegos nuevos: %{error}'
+ps.defaults.older_port: 'Este port todavía lee los ajustes compartidos: es anterior a los ajustes por juego, así que sus juegos leen los archivos compartidos, ni los suyos ni estos valores por defecto. Actualiza el port para que se apliquen.'
+ps.defaults.keyboard_title: Teclado de los juegos nuevos
+ps.defaults.gamepad_title: Mando de los juegos nuevos
 ps.per_game.title: Ajustes de este juego
 ps.per_game.description: 'Copiar, importar o restablecer sustituye los ajustes de este juego después de preguntarte, y guarda una copia de seguridad de los anteriores en la carpeta de copias de seguridad de la biblioteca. Lo que comparten todos los juegos (la cuenta de shadNet, las carpetas de volcados, el port en uso) nunca cambia aquí.'
 ps.per_game.copy_from: Copiar de otro juego
@@ -921,6 +924,25 @@ ps.per_game.reset_done: Restablecidos los valores por defecto
 ps.per_game.imported: Importados
 ps.per_game.exported: 'Exportados a %{path}'
 ps.per_game.done_with_backup: '%{done}. Los ajustes anteriores están en %{path}'
+ps.per_game.apply_all_label: Aplicar los ajustes de este juego a todos los demás
+ps.per_game.apply_all: Aplicar a todos…
+ps.per_game.no_destinations: No hay otros juegos de este port en la biblioteca.
+ps.per_game.planning: Comprobando qué juegos tienen online…
+ps.per_game.confirm_all.title: ¿Aplicar a todos los demás juegos?
+ps.per_game.confirm_all.body: '%{part} de otros %{count} juegos pasan a ser una copia de los de este juego. Antes se guarda una copia de seguridad de los actuales de cada uno; sus carpetas de mods y parches siguen siendo suyas.'
+ps.per_game.confirm_all.without_online: '%{count} de ellos no tienen online, así que no reciben los ajustes online.'
+ps.per_game.confirm_all.yes: 'Aplicar a %{count} juegos'
+ps.per_game.applied_all: 'Aplicado a %{count} juegos. Los ajustes anteriores están en %{path}'
+ps.per_game.applied_some: 'Aplicado a %{count} juegos; %{failed} no se pudieron cambiar (%{title}: %{error})'
+ps.per_game.nothing_to_apply: 'Ninguno de los demás juegos tiene online, así que no hay nada que aplicar'
+ps.per_game.forget: Olvidar los ajustes de este juego…
+ps.per_game.confirm_forget.title: ¿Olvidar los ajustes de este juego?
+ps.per_game.confirm_forget.body: 'Se borran sus ajustes y su ini del port, tras una copia de seguridad, y la próxima vez que lo abras o lo juegues empezará de nuevo con los valores por defecto de los juegos nuevos. Sus mods y parches se quedan.'
+ps.per_game.confirm_forget.yes: Olvidar
+ps.per_game.forgotten: 'Ajustes olvidados: tomará los valores por defecto la próxima vez que se use'
+ps.per_game.copy_entry: Copiar ajustes de otro juego…
+ps.per_game.copy_entry_extras: Copiar extras de otro juego…
+ps.per_game.close: Cerrar
 ps.per_game.errors.older_port: 'El port en uso es anterior a los ajustes por juego: todos los juegos comparten los mismos. Actualiza el port para que cada juego tenga los suyos.'
 ps.per_game.errors.no_settings: '%{title} todavía no tiene ajustes propios: se crean la primera vez que se abre su página o se juega'
 ps.per_game.errors.same: El origen y el destino son el mismo
@@ -936,6 +958,7 @@ ps.per_game.refused.value: '%{key} no admite ese valor'
 ps.per_game.refused.outside: '%{key} indica una carpeta fuera de la biblioteca'
 ps.per_game.refused.too_many: El archivo tiene más entradas que los ajustes de cualquier juego
 ps.per_game.refused.name: Un nombre de mod o parche del archivo no es válido para una carpeta
+ps.per_game.refused.not_listed: '%{key} no es uno de los interruptores que el port ofrece para este juego'
 ps.settings_cli.no_titles: Ningún juego tiene todavía ajustes propios
 ps.settings_cli.empty: '%{title} no cambia nada: todos los ajustes tienen su valor por defecto'
 ps.settings_cli.unset: '%{key} no está definido: se usa el valor por defecto'
@@ -948,3 +971,14 @@ ps.settings_cli.exported: '%{title} exportado a %{path}'
 ps.settings_cli.import_dry_run: 'El archivo ha pasado todas las comprobaciones; vuelve a ejecutarlo con --yes para sustituir con él los ajustes de %{title}, tras una copia de seguridad'
 ps.settings_cli.imported: 'Ajustes importados en %{title}'
 ps.settings_cli.backup: 'Copia de seguridad de los ajustes anteriores en %{path}'
+ps.settings_cli.forget_dry_run: 'Se olvidarían los ajustes de %{title} (sus ajustes y su ini del port, tras una copia de seguridad; sus mods y parches se quedan), así que tomaría los valores por defecto de los juegos nuevos la próxima vez que se use; vuelve a ejecutarlo con --yes para hacerlo'
+ps.settings_cli.forgotten: 'Ajustes de %{title} olvidados: tomará los valores por defecto de los juegos nuevos la próxima vez que se use'
+ps.settings_cli.copy_all_dry_run: 'Se copiaría %{categories} de %{from} sobre otros %{count} juegos, cada uno tras una copia de seguridad y nunca sus carpetas de mods y parches; vuelve a ejecutarlo con --yes para hacerlo. Los juegos:'
+ps.settings_cli.copy_all: 'Copiando %{categories} de %{from} sobre otros %{count} juegos'
+ps.settings_cli.copy_all_without_online: 'Sin online, así que no reciben los ajustes online: %{titles}'
+ps.settings_cli.copy_all_done: '%{title}: hecho; copia de seguridad de los ajustes anteriores en %{path}'
+ps.settings_cli.copy_all_failed: '%{title}: sin cambios: %{error}'
+ps.settings_cli.shape_only: 'De %{key} solo se ha comprobado la forma: el port ofrece la lista de los interruptores propios de cada juego, no la de sus demás ajustes'
+ps.settings_cli.shape_only_unlisted: 'De %{key} solo se ha comprobado la forma: el port no ha dado la lista de los interruptores de este juego (no está compilado aquí o es demasiado antiguo para darla)'
+ps.settings_cli.import_unlisted: 'El port no ofrece estos interruptores para este juego; se importan, pero el port no los lee: %{keys}'
+ps.settings_cli.import_shape_only: 'El port no ha dado la lista de los interruptores de este juego, así que de los del archivo solo se ha comprobado la forma'

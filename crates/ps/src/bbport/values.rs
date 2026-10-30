@@ -222,10 +222,15 @@ pub fn save(
 ///
 /// # Errors
 /// Making the defaults, or a file that can't be read, parsed or written.
-pub fn save_default(root: &Root, setting: &Setting, value: &str) -> io::Result<()> {
+pub fn save_default(root: &Root, setting: &Setting, value: &str, gamepad_name: Option<&str>) -> io::Result<()> {
     match setting.store {
         Store::Ini => save_ini(&Bbport::defaults_ini(root)?, setting.key, value),
-        Store::Launcher => LauncherSettings::edit_defaults(root, |launch| apply_launch(launch, setting, value)),
+        Store::Launcher => LauncherSettings::edit_defaults(root, |launch| {
+            apply_launch(launch, setting, value);
+            if let Some(name) = gamepad_name {
+                launch.set_text("gamepad_name", name);
+            }
+        }),
     }
 }
 

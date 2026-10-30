@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use decanter_core::capabilities::Feature;
 use decanter_ps::anyps5::AnyPs5;
+use decanter_ps::bbport::per_game::Category;
 use decanter_ps::bbport::{self, Bbport, IniScope};
 use decanter_ps::failures::Log;
 use decanter_ps::learned::{self, FrameOverlap};
@@ -184,10 +185,12 @@ impl DetailView {
         self.title_settings = bbport_title.map(|title_id| {
             let ps = self.ps.clone();
             let view = cx.new(|cx| TitleSettingsView::new(ps, title_id, cx));
-            // The bindings are read once per selection; a replacement must show in them.
+            // The bindings are read once per selection, and the tab in sight before it is shown
+            // again; a replacement must show in both.
             cx.subscribe(&view, |this, _, _: &Changed, cx| {
                 this.controls = None;
-                cx.notify();
+                let entry = this.selected_port(cx);
+                this.show_tab(this.tab, entry, cx);
             })
             .detach();
             view
@@ -278,7 +281,54 @@ impl DetailView {
         .detach();
     }
 
+    fn selected_port(&self, cx: &Context<Self>) -> Option<(Port, String)> {
+        let selected = self.selected.as_ref()?;
+        self.ps
+            .read(cx)
+            .entries()
+            .iter()
+            .find(|entry| &entry.game.dir == selected)
+            .and_then(|entry| entry.port.map(|port| (port, entry.game.title_id.clone())))
+    }
+
     fn select_tab(&mut self, tab: Tab, entry: Option<(Port, String)>, cx: &mut Context<Self>) {
+        if let Some(settings) = &self.title_settings {
+            settings.update(cx, TitleSettingsView::close_copy);
+        }
+        self.show_tab(tab, entry, cx);
+    }
+
+    /// A tab's entry to copy its settings from another game, or the copy row it opened.
+    fn copy_entry(&self, tab: Tab, cx: &Context<Self>) -> Option<AnyElement> {
+        let settings = self.title_settings.clone()?;
+        let entries: &[(Category, &str)] = match tab {
+            Tab::Graphics => &[
+                (Category::Graphics, "ps.per_game.copy_entry"),
+                (Category::Extras, "ps.per_game.copy_entry_extras"),
+            ],
+            Tab::Keyboard => &[(Category::Keyboard, "ps.per_game.copy_entry")],
+            Tab::Gamepad => &[(Category::Gamepad, "ps.per_game.copy_entry")],
+            Tab::Mods => &[(Category::Mods, "ps.per_game.copy_entry")],
+            Tab::Online => &[(Category::Online, "ps.per_game.copy_entry")],
+            Tab::Overview | Tab::Performance | Tab::Log => return None,
+        };
+        if settings.read(cx).is_copy_only() {
+            return Some(div().mb_4().child(settings).into_any_element());
+        }
+        let buttons = entries.iter().map(|&(category, label)| {
+            let settings = settings.clone();
+            button(
+                SharedString::from(format!("ps-copy-entry-{}", category.id())),
+                ButtonKind::Secondary,
+                t!(label),
+                false,
+            )
+            .on_click(move |_, _, cx| settings.update(cx, |settings, cx| settings.open_copy(category, cx)))
+        });
+        Some(div().flex().gap_2().mb_4().children(buttons).into_any_element())
+    }
+
+    fn show_tab(&mut self, tab: Tab, entry: Option<(Port, String)>, cx: &mut Context<Self>) {
         self.tab = tab;
         if tab == Tab::Gamepad && self.gamepad.is_none() {
             let ps = self.ps.clone();
@@ -705,6 +755,7 @@ impl Render for DetailView {
             let (ps, dir, title_id) = (self.ps.clone(), entry.game.dir.clone(), entry.game.title_id.clone());
             self.runs = Some(cx.new(|cx| RunsView::new(ps, dir, title_id, cx)));
         }
+        let copy_entry = self.copy_entry(self.tab, cx);
         let body = match self.tab {
             Tab::Performance => self
                 .runs
@@ -776,7 +827,7 @@ impl Render for DetailView {
                     .map(|panel| div().mx(px(32.)).mt(px(12.)).child(panel)),
             )
             .child(div().mx(px(32.)).mt(px(24.)).child(tabs))
-            .child(div().px(px(32.)).pt(px(20.)).child(body))
+            .child(div().px(px(32.)).pt(px(20.)).children(copy_entry).child(body))
             .into_any_element()
     }
 }

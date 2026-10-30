@@ -93,6 +93,8 @@ pub enum Refusal {
     TooMany,
     #[error("a mod or patch name isn't one a folder may have")]
     Name,
+    #[error("{0} isn't one of the switches the port lists for this game")]
+    NotListed(String),
 }
 
 /// What a launch key may hold.
@@ -148,6 +150,55 @@ fn launch_kind(key: &str) -> Option<Kind> {
         _ if mods::FOLDER_KEYS.contains(&key) => Kind::Folder,
         _ => return None,
     })
+}
+
+/// The title's own patch switches the built-in Bloodborne table names without the `effect_` prefix
+/// psport gives the rest.
+const TITLE_SWITCHES: [&str; 3] = ["skip_intro", "debug_camera", "debug_menu"];
+
+/// Whether `key` is one of a title's own patch switches, which the port lists for each title
+/// (`--list-effects`); the port lists no other ini key, so those are checked by shape alone.
+#[must_use]
+pub fn is_effect_key(key: &str) -> bool {
+    key.starts_with("effect_") || TITLE_SWITCHES.contains(&key)
+}
+
+/// What decided a port ini key could be one of a game's settings ([`ini_check`]).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum IniCheck {
+    /// A switch the port lists for the title.
+    Port,
+    /// A key of decanter's settings table, whose values it knows.
+    Table,
+    /// Its shape alone: the port lists no other keys, or gave no list of the title's switches.
+    Shape,
+}
+
+/// `key` against `listed`, the switches the port lists for the title (`None` without a list), and
+/// decanter's settings table.
+///
+/// # Errors
+/// A switch the port's list for the title lacks.
+pub fn ini_check(key: &str, listed: Option<&[String]>) -> Result<IniCheck, Refusal> {
+    match listed {
+        Some(switches) if is_effect_key(key) => {
+            if switches.iter().any(|known| known == key) {
+                Ok(IniCheck::Port)
+            } else {
+                Err(Refusal::NotListed(key.escape_default().to_string()))
+            }
+        }
+        Some(_) | None if rows().any(|setting| setting.store == Store::Ini && setting.key == key) => {
+            Ok(IniCheck::Table)
+        }
+        Some(_) | None => Ok(IniCheck::Shape),
+    }
+}
+
+/// Whether `key` lives in the port ini rather than the launch settings.
+#[must_use]
+pub fn is_ini_key(key: &str) -> bool {
+    !is_launch_key(key)
 }
 
 /// Whether `key` is read from the launch settings rather than the port ini.

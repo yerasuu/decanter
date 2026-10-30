@@ -436,5 +436,6 @@ fn refusal_text(refusal: &Refusal) -> Text {
         Refusal::Outside(key) => Text::new("ps.per_game.refused.outside").arg("key", key),
         Refusal::TooMany => Text::new("ps.per_game.refused.too_many"),
         Refusal::Name => Text::new("ps.per_game.refused.name"),
+        Refusal::NotListed(key) => Text::new("ps.per_game.refused.not_listed").arg("key", key),
     }
 }

@@ -170,6 +170,8 @@ pub struct KeyboardView {
     capturing: Option<Action>,
     status: Option<(Text, bool)>,
     focus: FocusHandle,
+    /// Editing the defaults new games copy rather than one game's bindings.
+    is_defaults: bool,
 }
 
 impl KeyboardView {
@@ -203,9 +205,16 @@ impl KeyboardView {
             capturing: None,
             status: None,
             focus: cx.focus_handle(),
+            is_defaults: false,
         };
         this.sync_name(cx);
         this
+    }
+
+    /// For the defaults page: `path` is the defaults' port ini, which no game reads.
+    pub const fn for_defaults(mut self) -> Self {
+        self.is_defaults = true;
+        self
     }
 
     fn layout(&self) -> Option<KeyLayout> {
@@ -573,7 +582,11 @@ impl KeyboardView {
                         Target::Bbport => t!("ps.keyboard.description.bbport"),
                         Target::AnyPs5 => t!("ps.keyboard.description.anyps5"),
                     }))
-                    .child(div().text_color(rgb(theme::TEXT_MUTED)).child(scope_note(self.scope)))
+                    .child(div().text_color(rgb(theme::TEXT_MUTED)).child(if self.is_defaults {
+                        t!("ps.defaults.graphics_note")
+                    } else {
+                        scope_note(self.scope)
+                    }))
                     .child(
                         div()
                             .font_family(theme::MONO)

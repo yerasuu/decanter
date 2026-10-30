@@ -888,6 +888,9 @@ ps.defaults.graphics_title: Graphics for new games
 ps.defaults.graphics_note: These are the defaults for new games; games that already have their settings don't follow them.
 ps.defaults.read_error: 'Couldn''t prepare the defaults for new games: %{error}'
 ps.defaults.save_error: 'Couldn''t save the defaults for new games: %{error}'
+ps.defaults.older_port: 'This port still reads the shared settings: it predates per-game settings, so its games read the shared files, neither their own nor these defaults. Update the port for these to apply.'
+ps.defaults.keyboard_title: Keyboard for new games
+ps.defaults.gamepad_title: Controller for new games
 ps.per_game.title: This game's settings
 ps.per_game.description: 'Copying, importing or resetting replaces this game''s settings after asking, and keeps a backup of the earlier ones in the library''s backups folder. Settings every game shares (the shadNet account, the dump folders, the port in use) never change here.'
 ps.per_game.copy_from: Copy from another game
@@ -921,6 +924,25 @@ ps.per_game.reset_done: Reset to the defaults
 ps.per_game.imported: Imported
 ps.per_game.exported: 'Exported to %{path}'
 ps.per_game.done_with_backup: '%{done}. The earlier settings are in %{path}'
+ps.per_game.apply_all_label: Apply this game's settings to every other game
+ps.per_game.apply_all: Apply to all…
+ps.per_game.no_destinations: No other game of this port in the library.
+ps.per_game.planning: Checking which games play online…
+ps.per_game.confirm_all.title: Apply to every other game?
+ps.per_game.confirm_all.body: '%{part} of %{count} other games become a copy of this game''s. Each one''s current settings are backed up first; their mods and patches folders stay their own.'
+ps.per_game.confirm_all.without_online: '%{count} of them don''t play online, so they get no online settings.'
+ps.per_game.confirm_all.yes: 'Apply to %{count} games'
+ps.per_game.applied_all: 'Applied to %{count} games. The earlier settings are in %{path}'
+ps.per_game.applied_some: 'Applied to %{count} games; %{failed} couldn''t be changed (%{title}: %{error})'
+ps.per_game.nothing_to_apply: 'None of the other games plays online, so there''s nothing to apply'
+ps.per_game.forget: Forget this game's settings…
+ps.per_game.confirm_forget.title: Forget this game's settings?
+ps.per_game.confirm_forget.body: 'Its settings and port ini are removed after a backup, and the next time you open or play it, it starts again from the defaults for new games. Its mods and patches stay.'
+ps.per_game.confirm_forget.yes: Forget
+ps.per_game.forgotten: 'Settings forgotten: it takes the defaults the next time it''s used'
+ps.per_game.copy_entry: Copy settings from another game…
+ps.per_game.copy_entry_extras: Copy extras from another game…
+ps.per_game.close: Close
 ps.per_game.errors.older_port: 'The port in use predates per-game settings: every game shares one set. Update the port to give each game its own.'
 ps.per_game.errors.no_settings: '%{title} has no settings of its own yet: they''re made the first time its page opens or it''s played'
 ps.per_game.errors.same: The source and the destination are the same
@@ -936,6 +958,7 @@ ps.per_game.refused.value: '%{key} can''t take that value'
 ps.per_game.refused.outside: '%{key} names a folder outside the library'
 ps.per_game.refused.too_many: The file has more entries than any game's settings
 ps.per_game.refused.name: A mod or patch name in the file isn't one a folder can have
+ps.per_game.refused.not_listed: '%{key} isn''t one of the switches the port lists for this game'
 ps.settings_cli.no_titles: No game has settings of its own yet
 ps.settings_cli.empty: '%{title} sets nothing: every setting has its default'
 ps.settings_cli.unset: '%{key} is unset: the default applies'
@@ -948,3 +971,14 @@ ps.settings_cli.exported: '%{title} exported to %{path}'
 ps.settings_cli.import_dry_run: 'The file passed every check; run again with --yes to replace the settings of %{title} with it, after a backup'
 ps.settings_cli.imported: 'Settings imported into %{title}'
 ps.settings_cli.backup: 'Earlier settings backed up in %{path}'
+ps.settings_cli.forget_dry_run: 'Would forget the settings of %{title} (its settings and port ini, after a backup; its mods and patches stay), so it takes the defaults for new games the next time it''s used; run again with --yes to do it'
+ps.settings_cli.forgotten: 'Settings of %{title} forgotten: it takes the defaults for new games the next time it''s used'
+ps.settings_cli.copy_all_dry_run: 'Would copy %{categories} from %{from} over %{count} other games, each after a backup and never their mods and patches folders; run again with --yes to do it. The games:'
+ps.settings_cli.copy_all: 'Copying %{categories} from %{from} over %{count} other games'
+ps.settings_cli.copy_all_without_online: 'Without online, so they get no online settings: %{titles}'
+ps.settings_cli.copy_all_done: '%{title}: done; earlier settings backed up in %{path}'
+ps.settings_cli.copy_all_failed: '%{title}: not changed: %{error}'
+ps.settings_cli.shape_only: '%{key} was checked by its shape only: the port lists a game''s own switches, not its other settings'
+ps.settings_cli.shape_only_unlisted: '%{key} was checked by its shape only: the port gave no list of this game''s switches (not built here, or too old to list them)'
+ps.settings_cli.import_unlisted: 'The port doesn''t list these switches for this game; they are imported, but the port ignores them: %{keys}'
+ps.settings_cli.import_shape_only: 'The port gave no list of this game''s switches, so those in the file were checked by their shape only'

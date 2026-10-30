@@ -305,7 +305,7 @@ fn without_online(command: &mut Command) {
 }
 
 /// The PS section's games as its scan lists them, from the folders that are there; none is made.
-async fn scan(root: &Root, library_roots: &[PathBuf]) -> Vec<Entry> {
+pub(super) async fn scan(root: &Root, library_roots: &[PathBuf]) -> Vec<Entry> {
     let root = root.clone();
     let folders = std::iter::once(root.games())
         .chain(

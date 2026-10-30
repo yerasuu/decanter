@@ -248,7 +248,7 @@ impl GraphicsView {
         let task = cx.background_spawn(async move {
             let root = decanter_ps::paths::active();
             if is_defaults {
-                values::save_default(&root, setting, &value)
+                values::save_default(&root, setting, &value, None)
             } else {
                 values::save(&root, &title_id, &ini, setting, &value, None)
             }

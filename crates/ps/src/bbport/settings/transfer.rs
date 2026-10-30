@@ -123,6 +123,16 @@ pub fn check_file(root: &Root, target: &Target, path: &Path, is_any_title: bool)
     parse(root, target, &read(path)?, is_any_title).map(drop)
 }
 
+/// The port ini keys of an exported file, for what checks them against the port's own list before
+/// an import; the file's other checks are [`check_file`]'s.
+///
+/// # Errors
+/// A file that can't be read or isn't an export.
+pub fn ini_keys(path: &Path) -> Result<Vec<String>, PerGameError> {
+    let export: Export = serde_json::from_slice(&read(path)?).map_err(|_| keys::Refusal::NotExport)?;
+    Ok(export.ini.into_keys().collect())
+}
+
 fn read(path: &Path) -> io::Result<Vec<u8>> {
     let mut data = Vec::new();
     fs::File::open(path)?

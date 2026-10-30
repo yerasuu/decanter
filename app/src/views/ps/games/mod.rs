@@ -33,7 +33,9 @@ use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, si
 use browser::BrowserView;
 use context_menu::GameMenu;
 use detail::DetailView;
+pub(super) use gamepad::GamepadView;
 pub(super) use graphics::GraphicsView;
+pub(super) use keyboard::KeyboardView;
 
 const SIDEBAR_WIDTH: f32 = 292.;
 const ICON: f32 = 26.;

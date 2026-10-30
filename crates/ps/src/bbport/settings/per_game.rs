@@ -1,12 +1,13 @@
-//! A game's own settings taken as a whole, or by [`Category`]: copied from another game or into the
-//! defaults, reset to the defaults, exported and imported ([`super::transfer`]), and read or changed
-//! one key at a time from the command line. What every title shares (the account, the dump folders,
+//! A game's own settings taken as a whole, or by [`Category`]: copied from another game, into the
+//! defaults or into every other game, reset to the defaults, forgotten, exported and imported
+//! ([`super::transfer`]), and read or changed one key at a time from the command line. What every title shares (the account, the dump folders,
 //! the port in use) is never touched. Each replacement backs the files it overwrites up into
 //! `backups/per-game-settings-<date>/` first, since it removes what the user chose (#1133).
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -14,11 +15,12 @@ use super::keys::{self, ini_category, launch_category};
 use super::{LauncherSettings, defaults, title};
 use crate::bbport::tools::{MODS_FILE, ModProfile, PATCHES_FILE, PatchProfile};
 use crate::bbport::{Bbport, Ini, Names, Store, mods, port_ini};
+use crate::online_support;
 use crate::paths::Root;
 use crate::port::Port;
 use crate::title_id::TitleId;
 
-pub use super::keys::{Category, Refusal};
+pub use super::keys::{Category, IniCheck, Refusal, ini_check, is_effect_key, is_ini_key};
 
 /// What names the defaults where a title id is expected.
 pub const DEFAULTS: &str = "defaults";
@@ -183,14 +185,27 @@ pub(super) fn replace(
     categories: &[Category],
     origin: Option<String>,
 ) -> Result<PathBuf, PerGameError> {
+    replace_with(root, target, content, categories, origin, false)
+}
+
+/// [`replace`], leaving the target's mods and patches folders alone when `is_spread`.
+fn replace_with(
+    root: &Root,
+    target: &Target,
+    content: Content,
+    categories: &[Category],
+    origin: Option<String>,
+    is_spread: bool,
+) -> Result<PathBuf, PerGameError> {
     let files = files(root, target, true)?;
     let backup = back_up(root, target, &files)?;
     let is_defaults = matches!(target, Target::Defaults);
     // A new title's mods and patches folders are its own, never those of a game the defaults came
-    // from.
+    // from; nor are they another game's after "apply to all", since each folder holds its game's mods.
+    let keeps_folders = is_spread || is_defaults;
     let carries = |key: &str| {
         launch_category(key).is_some_and(|category| categories.contains(&category))
-            && !(is_defaults && mods::FOLDER_KEYS.contains(&key))
+            && !(keeps_folders && mods::FOLDER_KEYS.contains(&key))
     };
     let mut own = LauncherSettings::read_at(&files.settings, true)?;
     own.values.retain(|key, _| !carries(key));
@@ -241,6 +256,148 @@ pub fn copy(root: &Root, from: &Target, to: &Target, categories: &[Category]) ->
     let content = Content::read(&files(root, from, false)?)?;
     let origin = (categories.len() == Category::ALL.len()).then(|| format!("copy:{}", from.name()));
     replace(root, to, content, categories, origin)
+}
+
+/// A game "apply to all" reaches, with what it gets of the source's settings.
+pub struct Destination {
+    pub title_id: String,
+    /// Empty when nothing asked for applies to it.
+    pub categories: Vec<Category>,
+    /// Online was asked for and left out, since the game names no NP online library.
+    pub is_without_online: bool,
+}
+
+/// One destination of [`copy_to_all`] and how it went: the backup's folder, or why not.
+pub struct Applied {
+    pub title_id: String,
+    pub result: Result<PathBuf, PerGameError>,
+}
+
+/// What [`copy_to_all`] would do with `categories` of `from`'s settings over every game of `games`
+/// (`(title id, game folder)`, the port's games as the library lists them; several folders of one
+/// title are one game). The online category goes only to a game whose eboot names an NP online
+/// library ([`online_support`]), read from each folder until one does. File I/O, and a read of each
+/// eboot not cached yet: off the UI thread.
+///
+/// # Errors
+/// A source with no settings yet, or one a file of which can't be read.
+pub fn plan_to_all(
+    root: &Root,
+    from: &Target,
+    games: &[(String, PathBuf)],
+    categories: &[Category],
+) -> Result<Vec<Destination>, PerGameError> {
+    Content::read(&files(root, from, false)?)?;
+    let wants_online = categories.contains(&Category::Online);
+    let mut online: BTreeMap<&str, bool> = BTreeMap::new();
+    for (title_id, dir) in games {
+        if title_id == from.name() || title_id.parse::<TitleId>().is_err() {
+            continue;
+        }
+        let is_known_online = online.get(title_id.as_str()).copied().unwrap_or(false);
+        let is_online = is_known_online || (wants_online && is_online(root, dir, title_id));
+        online.insert(title_id, is_online);
+    }
+    Ok(online
+        .into_iter()
+        .map(|(title_id, is_online)| Destination {
+            title_id: title_id.to_owned(),
+            categories: categories
+                .iter()
+                .copied()
+                .filter(|&category| is_online || category != Category::Online)
+                .collect(),
+            is_without_online: wants_online && !is_online,
+        })
+        .collect())
+}
+
+fn is_online(root: &Root, dir: &Path, title_id: &str) -> bool {
+    online_support::is_online(root, dir, title_id).unwrap_or_else(|err| {
+        tracing::warn!(path = %dir.join("eboot.bin").display(), %err, "online support unknown, online settings not applied");
+        false
+    })
+}
+
+/// Copies `from`'s settings over each game of `plan` ([`plan_to_all`]), the categories it lists,
+/// after a backup of each; never a game's mods and patches folders, which hold that game's mods. A
+/// game that fails is reported and the rest still get theirs. File I/O: off the UI thread.
+///
+/// # Errors
+/// A source with no settings yet, or one a file of which can't be read.
+pub fn copy_to_all(root: &Root, from: &Target, plan: &[Destination]) -> Result<Vec<Applied>, PerGameError> {
+    let source = files(root, from, false)?;
+    let mut applied = Vec::with_capacity(plan.len());
+    for destination in plan.iter().filter(|destination| !destination.categories.is_empty()) {
+        let result = destination
+            .title_id
+            .parse::<TitleId>()
+            .map_err(|_| PerGameError::from(Refusal::TitleId(destination.title_id.clone())))
+            .and_then(|id| {
+                let content = Content::read(&source)?;
+                let origin =
+                    (destination.categories.len() == Category::ALL.len()).then(|| format!("copy:{}", from.name()));
+                replace_with(root, &Target::Title(id), content, &destination.categories, origin, true)
+            });
+        if let Err(err) = &result {
+            tracing::warn!(from = from.name(), to = destination.title_id, error = %err, "game settings not applied");
+        }
+        applied.push(Applied {
+            title_id: destination.title_id.clone(),
+            result,
+        });
+    }
+    let failed = applied.iter().filter(|done| done.result.is_err()).count();
+    tracing::info!(
+        from = from.name(),
+        games = applied.len(),
+        failed,
+        "game settings applied to every game"
+    );
+    Ok(applied)
+}
+
+/// Drops `title`'s launch settings and port ini after a backup of its files, so the next time the
+/// game is opened or played it takes a fresh copy of the defaults. Its mods and patches choices
+/// stay, as a reset keeps them; the folder goes once nothing else is in it. Returns the backup's
+/// folder. File I/O: off the UI thread.
+///
+/// # Errors
+/// The defaults given as `title`, a title with no settings yet, or a file that can't be copied or
+/// removed.
+pub fn forget(root: &Root, title: &Target) -> Result<PathBuf, PerGameError> {
+    let Target::Title(id) = title else {
+        return Err(Refusal::TitleId(DEFAULTS.to_owned()).into());
+    };
+    let dir = root.title(id);
+    if !dir.is_dir() {
+        return Err(PerGameError::NoSettings(id.as_str().to_owned()));
+    }
+    let files = Files {
+        settings: dir.join(title::FILE),
+        ini: dir.join(Names::Psport.ini()),
+        choices: Some((dir.join(MODS_FILE), dir.join(PATCHES_FILE))),
+    };
+    let backup = back_up(root, title, &files)?;
+    for path in [&files.settings, &files.ini] {
+        match fs::remove_file(path) {
+            Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err.into()),
+            Ok(()) | Err(_) => {}
+        }
+    }
+    if let Err(err) = fs::remove_dir(&dir) {
+        tracing::debug!(dir = %dir.display(), %err, "title folder kept, since it holds more than its settings");
+    }
+    tracing::info!(title_id = id.as_str(), backup = %backup.display(), "game settings forgotten");
+    Ok(backup)
+}
+
+/// Whether the checkout's port predates per-game settings (it doesn't read `PS_CONFIG`), so its
+/// games read the shared files rather than their own or the defaults. File I/O: off the UI thread.
+#[must_use]
+pub fn port_reads_shared(root: &Root) -> bool {
+    let checkout = Port::Bbport.checkout(root);
+    checkout.join("run.sh").is_file() && !matches!(Names::of_blocking(&checkout), Names::Psport)
 }
 
 /// `title`'s settings as a title seen for the first time gets them, after a backup; its mods and

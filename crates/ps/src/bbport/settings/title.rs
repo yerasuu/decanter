@@ -19,7 +19,7 @@ use crate::paths::Root;
 use crate::port::Port;
 use crate::title_id::TitleId;
 
-const FILE: &str = "settings.json";
+pub(super) const FILE: &str = "settings.json";
 
 /// The exceptions of `docs/ps-per-game-settings.md` (E1-E3).
 const SHARED: [&str; 9] = [
