@@ -241,13 +241,12 @@ impl Sessionless {
     /// that is not zlib'd JSON within its size caps; the others as [`Sessionless::builds`].
     #[inline]
     pub async fn build_meta(&self, access_token: &str, link: &str) -> Result<BuildMeta, Error> {
-        let host = gog_host(link).ok_or_else(|| Error::Malformed {
+        let (host, is_gog_com) = manifest_host(link).ok_or_else(|| Error::Malformed {
             call: BUILD_MANIFEST.name,
             reason: format!("link is not an https URL on a GOG host ({})", describe_link(link)),
         })?;
-        let compressed = self
-            .get_bytes(&BUILD_MANIFEST, link, &host, &[], Some(access_token))
-            .await?;
+        let bearer = is_gog_com.then_some(access_token);
+        let compressed = self.get_bytes(&BUILD_MANIFEST, link, &host, &[], bearer).await?;
         inflated(&BUILD_MANIFEST, &compressed, BUILD_MANIFEST_INFLATED)
     }
 
@@ -339,17 +338,20 @@ fn galaxy_path(hash: &str) -> String {
     }
 }
 
-/// The host of `link` when it is an `https` URL on `gog.com` or under it, with no port or
-/// credentials: the access token rides along to it.
-fn gog_host(link: &str) -> Option<String> {
+/// The host of `link` and whether it is on `gog.com`, when it is an `https` URL with no port or
+/// credentials on `gog.com` or under it, or on one of GOG's `gog-cdn-*` hosts at `gcdn.co`
+/// (Cyberpunk 2077's build links point there). Only `gog.com` hosts may be sent the access
+/// token; the CDN's manifests are public.
+fn manifest_host(link: &str) -> Option<(String, bool)> {
     let url = url::Url::parse(link).ok()?;
     let host = url.host_str()?;
-    let is_gog = url.scheme() == "https"
-        && (host == "gog.com" || host.ends_with(".gog.com"))
+    let is_plain = url.scheme() == "https"
         && url.port().is_none()
         && url.username().is_empty()
         && url.password().is_none();
-    is_gog.then(|| host.to_owned())
+    let is_gog_com = host == "gog.com" || host.ends_with(".gog.com");
+    let is_gog_cdn = host.starts_with("gog-cdn-") && host.ends_with(".gcdn.co");
+    (is_plain && (is_gog_com || is_gog_cdn)).then(|| (host.to_owned(), is_gog_com))
 }
 
 /// The scheme, host and port of `link` for an error message: never the path or query, which carry
