@@ -1,9 +1,9 @@
 //! A title's own launch settings, `titles/<TITLE_ID>/settings.json` beside its port ini. Every key
 //! is the title's except [`SHARED`], read from the shared file whatever the title's says: an
 //! allow-list, so that a key added later belongs to each game unless it is named there. A title's
-//! file starts as what that title ran with before, so nothing changes for the player that day; the
-//! shared file is left as it was, what an older port's launches read and what a title seen for the
-//! first time starts from.
+//! file starts as the user's defaults ([`LauncherSettings::defaults`]), made from the shared file,
+//! with that title's own entries of the shared file on top, so nothing changes for the player that
+//! day; the shared file is left as it was, what an older port's launches read.
 
 use core::iter;
 use std::fs;
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::{LauncherSettings, TITLES, path};
+use super::{LAUNCHER_PASSWORD, LauncherSettings, TITLES, path};
 use crate::bbport::{Names, direct, frame_gen, local_player, mods, online, port_ini};
 use crate::os::windows::package::{PINNED_KEY, SELECTED_KEY};
 use crate::paths::Root;
@@ -41,6 +41,11 @@ const SHARED: [&str; 9] = [
 /// What a title's file of an earlier format lacks: 1 (no field) is from before [`MOVED`].
 const FORMAT: u64 = 3;
 const FORMAT_KEY: &str = "format";
+const CREATED_FROM: &str = "created_from";
+const CREATED_ON: &str = "created_on";
+
+/// What a title's file records about itself rather than how the game runs.
+const RECORD: [&str; 3] = [FORMAT_KEY, CREATED_FROM, CREATED_ON];
 
 /// The keys every title shared until each format: a title's file of an earlier one takes the shared
 /// values once, so the game keeps playing as it did.
@@ -59,6 +64,29 @@ const UNREAD: [&str; 4] = ["ui_language", "game_dir", "user_dir", "mangohud"];
 /// Keys that only ever meant one title, under `titles.<TITLE_ID>`: a top-level one in the shared
 /// file is not that title's value, so it is not copied.
 const TITLE_ONLY: [&str; 3] = [frame_gen::KEY, local_player::KEY, "debug"];
+
+/// Whether `key` is a setting a title owns: not shared, not the file's own record, not a key nothing
+/// reads, and never the plaintext password.
+pub(super) fn is_titles_own(key: &str) -> bool {
+    !LauncherSettings::is_shared(key)
+        && !RECORD.contains(&key)
+        && !UNREAD.contains(&key)
+        && key != TITLES
+        && key != LAUNCHER_PASSWORD
+}
+
+/// Whether a top-level `key` of the shared file is one a title inherits: a title's own key that was
+/// not only ever meant one title.
+pub(super) fn is_inherited(key: &str) -> bool {
+    is_titles_own(key) && !TITLE_ONLY.contains(&key)
+}
+
+/// Writes where a title's file came from and when, as `docs/ps-per-game-settings.md` asks for
+/// traceability.
+pub(super) fn record_origin(values: &mut serde_json::Map<String, Value>, origin: String) {
+    values.insert(CREATED_FROM.into(), origin.into());
+    values.insert(CREATED_ON.into(), port_ini::today().into());
+}
 
 impl LauncherSettings {
     /// Whether every title reads `key` from the shared file, which [`Self::edit`] writes, rather
@@ -133,7 +161,7 @@ impl LauncherSettings {
 
 /// `title_id`'s own file, made the first time it is asked for; `None` where every title reads the
 /// shared one.
-fn title_file(root: &Root, title_id: &str) -> io::Result<Option<PathBuf>> {
+pub(super) fn title_file(root: &Root, title_id: &str) -> io::Result<Option<PathBuf>> {
     let names = Names::of_blocking(&Port::Bbport.checkout(root));
     let Ok(id) = port_ini::own_title(names, title_id) else {
         return Ok(None);
@@ -180,28 +208,22 @@ fn catch_up(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// What `id` ran with before it had a file: the shared file's keys but those every title still
-/// shares and those nothing reads, its own `titles.<TITLE_ID>` entries on top (so a switch on for
-/// every title stays on), and the shared data folder's mods and patches folders where it read
-/// those. The shared file is backed up first, before the first title takes a copy, and fails the
+/// The user's defaults with `id`'s own `titles.<TITLE_ID>` entries of the shared file on top (so a
+/// switch on for that title stays on), and the shared data folder's mods and patches folders where it
+/// read those. The shared file is backed up first, before the first title takes a copy, and fails the
 /// copy when it doesn't parse rather than give the title the port's defaults.
 fn create(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
     if !port_ini::any_title_has(root, FILE) {
         port_ini::back_up_shared(root, &[FILE])?;
     }
+    let defaults = LauncherSettings::defaults(root)?;
     let mut shared = LauncherSettings::read(root)?;
     let own = match shared.values.remove(TITLES) {
         Some(Value::Object(mut titles)) => titles.remove(id.as_str()),
         _ => None,
     };
-    let mut values: serde_json::Map<String, Value> = shared
-        .values
-        .into_iter()
-        .filter(|(key, _)| {
-            let name = key.as_str();
-            !LauncherSettings::is_shared(name) && !UNREAD.contains(&name) && !TITLE_ONLY.contains(&name)
-        })
-        .collect();
+    let mut values = defaults.values;
+    values.retain(|key, _| is_titles_own(key));
     if let Some(Value::Object(entries)) = own {
         values.extend(entries);
     }
@@ -213,8 +235,7 @@ fn create(root: &Root, id: &TitleId, path: &Path) -> io::Result<()> {
         }
     }
     let copied = values.len();
-    values.insert("created_from".into(), "migration".into());
-    values.insert("created_on".into(), port_ini::today().into());
+    record_origin(&mut values, "defaults".to_owned());
     values.insert(FORMAT_KEY.into(), FORMAT.into());
     let settings = LauncherSettings { values, is_title: true };
     match settings.write_at(root, path) {

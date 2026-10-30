@@ -1,7 +1,11 @@
-//! What bbport is launched with: each title's own file ([`title`]) and the shared one in the
-//! port's data directory.
+//! What bbport is launched with: each title's own file ([`title`]), made from the user's defaults
+//! ([`defaults`]), and the shared one in the port's data directory.
 
+mod defaults;
+mod keys;
+pub mod per_game;
 mod title;
+pub mod transfer;
 
 use std::fs;
 use std::io;

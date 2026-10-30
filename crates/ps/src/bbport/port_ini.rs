@@ -1,8 +1,8 @@
 //! Which port ini a title's settings live in: `titles/<TITLE_ID>/psport.ini`, its own, for a
 //! port that reads `PS_CONFIG`. The in-game menu writes into whatever file that names, so one
-//! game's choices never reach another. A title's file starts as a copy of the shared one the first
-//! time it is asked for, so nothing changes for the player that day; the shared file stays what an
-//! older port reads, and what a title seen for the first time starts from.
+//! game's choices never reach another. A title's file starts as a copy of the user's defaults the
+//! first time it is asked for, themselves made from the shared one, so nothing changes for the player
+//! that day; the shared file stays what an older port reads.
 
 use std::fs;
 use std::io;
@@ -12,6 +12,9 @@ use super::{Bbport, Ini, Names};
 use crate::paths::Root;
 use crate::port::Port;
 use crate::title_id::TitleId;
+
+/// Written by the in-game menu on every save; dropped when the UI language changes.
+pub(super) const MENU_LANGUAGE: &str = "menu_language";
 
 /// Whose settings a [`PortIni`] holds, and the launch settings with it
 /// ([`super::LauncherSettings::of_title`]): a title keeps both files or neither.
@@ -39,11 +42,12 @@ impl PortIni {
 }
 
 impl Bbport {
-    /// `title_id`'s port ini, made from the shared one when the title has none yet. File I/O:
-    /// off the UI thread.
+    /// `title_id`'s port ini, made from the defaults ([`Self::defaults_ini`]) when the title has
+    /// none yet. File I/O: off the UI thread.
     ///
     /// # Errors
-    /// Backing up the shared ini before the first title gets its own, or writing the title's copy.
+    /// Backing up the shared ini before the first title gets its own, making the defaults, or
+    /// writing the title's copy.
     pub fn title_ini(root: &Root, title_id: &str) -> io::Result<PortIni> {
         let names = Names::of_blocking(&Port::Bbport.checkout(root));
         let shared = shared_ini(root, names);
@@ -53,12 +57,38 @@ impl Bbport {
         };
         let path = root.title(&id).join(names.ini());
         if !path.exists() {
-            create_from_shared(root, &shared, &path)?;
+            create_from_defaults(root, &path)?;
         }
         Ok(PortIni {
             path,
             scope: IniScope::Title,
         })
+    }
+
+    /// The port ini a title seen for the first time starts from, `defaults/psport.ini`. Made the
+    /// first time it is asked for from the shared ini but its in-game menu language, which follows
+    /// `PS_MENU_LANGUAGE` unless a menu save pins it: the same file new titles copied before, so
+    /// nothing changes that day. File I/O: off the UI thread.
+    ///
+    /// # Errors
+    /// Writing the defaults.
+    pub fn defaults_ini(root: &Root) -> io::Result<PathBuf> {
+        let path = root.defaults().join(Names::Psport.ini());
+        if path.exists() {
+            return Ok(path);
+        }
+        let shared = shared_ini(root, Names::Psport);
+        let mut ini = Ini::load(&shared);
+        ini.remove(MENU_LANGUAGE);
+        match ini.save(&path) {
+            Ok(()) => {
+                tracing::info!(from = %shared.display(), to = %path.display(), "port settings defaults for new titles made");
+                Ok(path)
+            }
+            // Another thread made the same file at the same moment and renamed it first.
+            Err(_) if path.is_file() => Ok(path),
+            Err(err) => Err(err),
+        }
     }
 
     /// Drops the in-game menu's language from the shared ini and every title's, so the next run
@@ -123,27 +153,24 @@ fn shared_ini(root: &Root, names: Names) -> PathBuf {
 
 fn forget_in(path: &Path) -> io::Result<()> {
     let mut ini = Ini::load(path);
-    if ini.get("menu_language").is_none() {
+    if ini.get(MENU_LANGUAGE).is_none() {
         return Ok(());
     }
-    ini.remove("menu_language");
+    ini.remove(MENU_LANGUAGE);
     ini.save(path)
 }
 
-/// The shared ini is backed up once, before the first title takes a copy of it, since from then on
-/// decanter no longer writes it for a port that reads `PS_CONFIG`.
-fn create_from_shared(root: &Root, shared: &Path, path: &Path) -> io::Result<()> {
+/// The shared ini is backed up once, before the first title takes a copy of the defaults made from
+/// it, since from then on decanter no longer writes it for a port that reads `PS_CONFIG`.
+fn create_from_defaults(root: &Root, path: &Path) -> io::Result<()> {
     if !root.titles().exists() {
         back_up_shared(root, &[Names::Psport.ini(), Names::Bbport.ini()])?;
     }
-    let contents = match fs::read(shared) {
-        Ok(contents) => contents,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
-        Err(err) => return Err(err),
-    };
+    let defaults = Bbport::defaults_ini(root)?;
+    let contents = fs::read(&defaults)?;
     match crate::files::write_atomic(path, &contents) {
         Ok(()) => {
-            tracing::info!(from = %shared.display(), to = %path.display(), "title port settings created");
+            tracing::info!(from = %defaults.display(), to = %path.display(), "title port settings created");
             Ok(())
         }
         // Another thread made the same copy at the same moment and renamed it first.
@@ -206,6 +233,12 @@ pub(super) fn back_up_shared(root: &Root, names: &[&str]) -> io::Result<()> {
     }
     tracing::info!(dir = %dir.display(), copied, "shared settings backed up before per-title settings");
     Ok(())
+}
+
+/// `HHMMSS`, in UTC, telling apart two backups of one day.
+pub(super) fn now_hms() -> String {
+    let secs = crate::failures::unix_secs(std::time::SystemTime::now()) % 86_400;
+    format!("{:02}{:02}{:02}", secs / 3600, secs % 3600 / 60, secs % 60)
 }
 
 /// `YYYY-MM-DD`, in UTC.

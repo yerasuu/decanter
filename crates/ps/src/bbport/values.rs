@@ -21,6 +21,7 @@ pub struct Values {
     scope: IniScope,
     ini: Ini,
     launch: LauncherSettings,
+    is_defaults: bool,
 }
 
 impl Values {
@@ -35,7 +36,30 @@ impl Values {
             ini_path: port_ini.path,
             scope: port_ini.scope,
             launch: LauncherSettings::of_title(root, title_id)?,
+            is_defaults: false,
         })
+    }
+
+    /// The defaults new titles copy ([`LauncherSettings::defaults`], [`Bbport::defaults_ini`]),
+    /// for the defaults page; saved with [`save_default`].
+    ///
+    /// # Errors
+    /// Making the defaults from the shared files, or reading them.
+    pub fn load_defaults(root: &Root) -> io::Result<Self> {
+        let ini_path = Bbport::defaults_ini(root)?;
+        Ok(Self {
+            title_id: String::new(),
+            ini: Ini::load(&ini_path),
+            ini_path,
+            scope: IniScope::Title,
+            launch: LauncherSettings::defaults(root)?,
+            is_defaults: true,
+        })
+    }
+
+    /// Read by [`Self::load_defaults`]: a save goes to the defaults, not to a title.
+    pub const fn is_defaults(&self) -> bool {
+        self.is_defaults
     }
 
     /// The title these values were read for, whose files a save writes to.
@@ -191,6 +215,17 @@ pub fn save(
         Store::Ini => save_ini(ini, setting.key, value),
         Store::Launcher if LauncherSettings::is_shared(setting.key) => LauncherSettings::edit(root, change),
         Store::Launcher => LauncherSettings::edit_title(root, title_id, change),
+    }
+}
+
+/// [`save`] for the defaults ([`Values::load_defaults`]).
+///
+/// # Errors
+/// Making the defaults, or a file that can't be read, parsed or written.
+pub fn save_default(root: &Root, setting: &Setting, value: &str) -> io::Result<()> {
+    match setting.store {
+        Store::Ini => save_ini(&Bbport::defaults_ini(root)?, setting.key, value),
+        Store::Launcher => LauncherSettings::edit_defaults(root, |launch| apply_launch(launch, setting, value)),
     }
 }
 

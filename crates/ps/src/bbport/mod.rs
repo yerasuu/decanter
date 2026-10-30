@@ -40,7 +40,7 @@ pub use groups::{Control, GROUPS, Group, OPTION_FEATURES, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};
 pub use names::{MEMORY_MODEL_SETTINGS, Names, single_memory_model_blocking};
 pub use port_ini::{IniScope, PortIni};
-pub use settings::{LauncherSettings, SYS_MODULES};
+pub use settings::{LauncherSettings, SYS_MODULES, per_game, transfer};
 
 use crate::learned;
 use crate::library::{Game, Platform};

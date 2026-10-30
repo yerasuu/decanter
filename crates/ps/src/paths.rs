@@ -92,6 +92,11 @@ impl Root {
         self.join("titles")
     }
 
+    /// The user's defaults for titles seen for the first time, copied once into each title's own.
+    pub(crate) fn defaults(&self) -> PathBuf {
+        self.join("defaults")
+    }
+
     /// AnyPS5 conversions, one directory per title, shared by every profile.
     pub fn anyps5(&self) -> PathBuf {
         self.join("anyps5")
