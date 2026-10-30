@@ -83,6 +83,9 @@ pub struct Ps {
     /// Games whose port is prepared or command built but whose job doesn't
     /// exist yet, so a second JUGAR doesn't start them twice.
     launching: HashSet<PathBuf>,
+    /// The task behind each launch, kept so that DETENER can end it while it is still preparing
+    /// the port or building the command, before any process of the game exists.
+    launch_tasks: HashMap<PathBuf, gpui::Task<()>>,
     /// Games being moved to another library folder, which can't start
     /// until they land.
     moving: HashSet<PathBuf>,
@@ -173,6 +176,7 @@ impl Ps {
                 learned_revision: 0,
                 jobs: HashMap::new(),
                 launching: HashSet::new(),
+                launch_tasks: HashMap::new(),
                 moving: HashSet::new(),
                 adding: None,
                 add_notice: None,

@@ -568,7 +568,7 @@ impl DetailView {
         let game = &entry.game;
         let key = JobKey::Game(game.dir.clone());
         let ps = self.ps.read(cx);
-        let running = ps.is_running(&key, cx);
+        let running = ps.is_running(&key, cx) || ps.is_launching(&game.dir);
         let preparing = entry
             .port
             .and_then(|port| ps.port(port))

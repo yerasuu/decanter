@@ -64,7 +64,8 @@ impl Ps {
         self.notice = None;
         self.run_notices.remove(dir);
         cx.notify();
-        cx.spawn(async move |this, cx| {
+        let dir = game.dir.clone();
+        let task = cx.spawn(async move |this, cx| {
             let cache_dir = launch::game_cache_dir(folder, &game.title_id).await;
             let started = match prepared {
                 Some(prepared) => {
@@ -126,8 +127,34 @@ impl Ps {
                 run::save_frame_gen(&root, &game.title_id, frame_gen).await;
             }
             record_failures(&this, game.dir.clone(), failures_path, finished.failures, cx).await;
-        })
-        .detach();
+        });
+        self.launch_tasks.insert(dir, task);
+    }
+
+    /// Whether a launch is under way: preparing the port, building the command or starting the
+    /// process, which DETENER can end from the first of those on.
+    pub fn is_launching(&self, dir: &Path) -> bool {
+        // Where psport.exe runs directly, DETENER goes through the session's stop file instead.
+        cfg!(not(windows)) && self.launching.contains(dir)
+    }
+
+    /// DETENER before the game's process exists: ends the launch's own task and stops the port
+    /// job (a clone, a build) it may be waiting on, so nothing is left running behind it.
+    #[cfg(not(windows))]
+    fn cancel_launch(&mut self, dir: &Path, cx: &mut Context<Self>) {
+        self.launch_tasks.remove(dir);
+        self.launching.remove(dir);
+        let port = self
+            .entries
+            .iter()
+            .find(|entry| entry.game.dir == dir)
+            .and_then(|entry| entry.port);
+        if let Some(port) = port {
+            self.stop(&JobKey::Port(port), cx);
+        }
+        crate::closing::ended(&crate::closing::Target::Ps(dir.to_owned()), cx);
+        tracing::info!(dir = %dir.display(), "launch stopped before the game started");
+        cx.notify();
     }
 
     pub fn is_stopping(&self, dir: &Path) -> bool {
@@ -152,6 +179,14 @@ impl Ps {
     /// DETENER: where `psport.exe` runs in a session of its own, it is asked through its stop file instead
     /// of its window, and the session ended if it hasn't after the grace; elsewhere the same as [`Ps::stop`].
     pub fn end(&mut self, key: &JobKey, cx: &mut Context<Self>) {
+        #[cfg(not(windows))]
+        if let JobKey::Game(dir) = key
+            && self.launching.contains(dir)
+            && !self.is_running(key, cx)
+        {
+            self.cancel_launch(dir, cx);
+            return;
+        }
         #[cfg(windows)]
         if let JobKey::Game(dir) = key {
             super::direct::stop(self, dir, super::direct::Ending::Now, cx);
