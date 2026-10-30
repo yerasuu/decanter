@@ -280,7 +280,10 @@ pub(super) async fn resolve_depot_files(
             "planning only the depots of one language"
         );
     }
-    if depots.is_empty() {
+    // A DLC can be an entitlement only (a vehicle or cosmetic the game's own files already
+    // carry): its build lists no depot of its own, and installing it records it with no files.
+    let is_entitlement = build_owner != content && crate::depot::product_depots(&meta, content, system).is_empty();
+    if depots.is_empty() && !is_entitlement {
         tracing::error!(
             content,
             %system,
@@ -288,6 +291,13 @@ pub(super) async fn resolve_depot_files(
             "no compatible depot, aborting plan"
         );
         anyhow::bail!("no {system}-compatible depot for GOG product {content}");
+    }
+    if is_entitlement {
+        tracing::info!(
+            content,
+            build_id = build.build_id,
+            "the dlc has no depot of its own, planning no files"
+        );
     }
 
     let mut depot_files = Vec::new();
