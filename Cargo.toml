@@ -66,11 +66,11 @@ flate2 = "1.1.10"
 # --- Data, files and the command line ---
 serde = "1.0.229"
 serde_json = "1.0.154"
-toml = "1.1.8"
+toml = "1.1.8+spec-1.1.0"
 # A macOS build's Info.plist, which names the app bundle's executable; XML or
 # binary, both of which bundles ship (decision #892).
 plist = { version = "1.10.3", default-features = false }
-rusqlite = "0.41.0"
+rusqlite = "0.41.1"
 chrono = "0.4.45"
 uuid = "1.29.0"
 dirs = "7.0.0"
@@ -90,7 +90,7 @@ chacha20poly1305 = { version = "0.11.0", default-features = false }
 getrandom = "0.4.3"
 # Secrets zeroed when dropped (decanter_core::secrets::Secret); already locked through the
 # keyring and TLS stacks.
-zeroize = "1.9.0"
+zeroize = "1.9.1"
 # Already in the graph through the TLS stack; listed for the nix-portable
 # checksum in crates/ps.
 sha2 = "0.11.1"
@@ -100,18 +100,18 @@ md5 = "0.8.1"
 minisign-verify = "=0.3.0"
 # The OS keyring as decanter_core::secrets uses it: keyring-core with the store crate of each
 # platform, which `keyring`'s own docs advise for applications that choose their stores.
-keyring-core = "1.0.0"
+keyring-core = "1.0.1"
 
 # --- Build scripts ---
 # Embeds the application icon and version info into decanter.exe (app/build.rs, Windows targets only).
-embed-resource = "3.0.11"
+embed-resource = "3.0.12"
 
 # --- Linux only ---
 ksni = "0.3.7"
 nix = { version = "0.31.3", default-features = false }
 # Already in the graph through ksni, GPUI and the keyring; decanter talks to
 # KGlobalAccel and the notification server with it, on the tokio runtime.
-zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }
+zbus = { version = "6.2.0", default-features = false, features = ["tokio", "proxy"] }
 zbus-secret-service-keyring-store = "1.0.1"
 
 # --- Windows only ---
