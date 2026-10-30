@@ -1,0 +1,6 @@
+closing.shortcut_name: "关闭正在运行的游戏"
+closing.notice.title: "%{name} 即将关闭"
+closing.notice.body: "将在 %{seconds} 秒后关闭。如需取消，请再次按住 Select + Start 或再次按下键盘快捷键。"
+closing.notice.body_pad: "将在 %{seconds} 秒后关闭。如需取消，请再次按住 Select + Start。"
+closing.notice.body_keyboard: "将在 %{seconds} 秒后关闭。如需取消，请再次按下键盘快捷键。"
+closing.notice.cancelled: "已取消关闭：%{name} 保持运行"
