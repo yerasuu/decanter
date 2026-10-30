@@ -932,3 +932,15 @@ ps.per_game.refused.value: '%{key} can''t take that value'
 ps.per_game.refused.outside: '%{key} names a folder outside the library'
 ps.per_game.refused.too_many: The file has more entries than any game's settings
 ps.per_game.refused.name: A mod or patch name in the file isn't one a folder can have
+ps.settings_cli.no_titles: No game has settings of its own yet
+ps.settings_cli.empty: '%{title} sets nothing: every setting has its default'
+ps.settings_cli.unset: '%{key} is unset: the default applies'
+ps.settings_cli.set: '%{key} saved for %{title}'
+ps.settings_cli.copy_dry_run: 'Would copy %{categories} from %{from} over %{title}, after a backup; run again with --yes to do it'
+ps.settings_cli.copied: 'Copied %{categories} from %{from} over %{title}'
+ps.settings_cli.reset_dry_run: 'Would reset %{title} to the defaults for new games, keeping its mods and patches, after a backup; run again with --yes to do it'
+ps.settings_cli.reset: '%{title} reset to the defaults for new games'
+ps.settings_cli.exported: '%{title} exported to %{path}'
+ps.settings_cli.import_dry_run: 'The file passed every check; run again with --yes to replace the settings of %{title} with it, after a backup'
+ps.settings_cli.imported: 'Settings imported into %{title}'
+ps.settings_cli.backup: 'Earlier settings backed up in %{path}'

@@ -22,6 +22,7 @@ mod launch;
 mod ps;
 mod ps_prepare;
 mod ps_run;
+mod ps_settings;
 
 #[derive(Parser)]
 #[command(name = "decanter")]

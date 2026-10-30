@@ -932,3 +932,15 @@ ps.per_game.refused.value: '%{key} no admite ese valor'
 ps.per_game.refused.outside: '%{key} indica una carpeta fuera de la biblioteca'
 ps.per_game.refused.too_many: El archivo tiene más entradas que los ajustes de cualquier juego
 ps.per_game.refused.name: Un nombre de mod o parche del archivo no es válido para una carpeta
+ps.settings_cli.no_titles: Ningún juego tiene todavía ajustes propios
+ps.settings_cli.empty: '%{title} no cambia nada: todos los ajustes tienen su valor por defecto'
+ps.settings_cli.unset: '%{key} no está definido: se usa el valor por defecto'
+ps.settings_cli.set: '%{key} guardado para %{title}'
+ps.settings_cli.copy_dry_run: 'Se copiaría %{categories} de %{from} sobre %{title}, tras una copia de seguridad; vuelve a ejecutarlo con --yes para hacerlo'
+ps.settings_cli.copied: 'Copiado %{categories} de %{from} sobre %{title}'
+ps.settings_cli.reset_dry_run: 'Se restablecería %{title} a los valores por defecto de los juegos nuevos, manteniendo sus mods y parches, tras una copia de seguridad; vuelve a ejecutarlo con --yes para hacerlo'
+ps.settings_cli.reset: '%{title} restablecido a los valores por defecto de los juegos nuevos'
+ps.settings_cli.exported: '%{title} exportado a %{path}'
+ps.settings_cli.import_dry_run: 'El archivo ha pasado todas las comprobaciones; vuelve a ejecutarlo con --yes para sustituir con él los ajustes de %{title}, tras una copia de seguridad'
+ps.settings_cli.imported: 'Ajustes importados en %{title}'
+ps.settings_cli.backup: 'Copia de seguridad de los ajustes anteriores en %{path}'

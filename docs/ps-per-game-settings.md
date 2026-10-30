@@ -3,9 +3,10 @@
 Status: accepted (kb #1275, D1-D9). Analysis of `develop` at `123e5ab` and of the bbport checkout
 under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phases 1 (per-title ini,
 `crates/ps/src/bbport/port_ini.rs`), 2 (per-title launch settings,
-`crates/ps/src/bbport/settings/title.rs`), 3 (online and system modules switches per game) and 4
-(mods and patches per game, `crates/ps/src/bbport/mods.rs`, `ModFiles`) are implemented; the rest is
-not yet.
+`crates/ps/src/bbport/settings/title.rs`), 3 (online and system modules switches per game), 4
+(mods and patches per game, `crates/ps/src/bbport/mods.rs`, `ModFiles`) and 5 (defaults for new
+games, copy, export and import, reset, `decanter ps settings`; `crates/ps/src/bbport/settings/`) are
+implemented; phase 6 is not yet.
 
 Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
 `mods_dir`/`patches_dir` (until phase 4, which made them each title's). A title's file is made from the shared one the first time
@@ -38,6 +39,66 @@ folder and keep separate order and switches. `mods-effective/` and `mods-effecti
 the title's folder at each launch, and `PS_PATCHES_DIR`/`PS_PATCHES_CONFIG` come from the title. The
 Mods tab shows the selected title's and says whose they are; an older port or an unusual title id
 keeps the shared files, as before.
+
+Phase 5 as built (kb #1311):
+
+- **Defaults for new games** are an explicit template, `defaults/settings.json` and
+  `defaults/psport.ini` (`settings/defaults.rs`, `Bbport::defaults_ini`). They are made the first
+  time they are needed from what a new title copied until then: the shared file's keys a title
+  inherits (not `SHARED`, not the GTK leftovers, not the keys that only ever meant one title, no
+  `titles` map) and the shared ini without `menu_language`, so nothing changes that day. A title
+  seen for the first time now copies them, with its own `titles.<TITLE_ID>` entries of the shared
+  file on top and the former mods and patches folders as phase 4 gave them, and records
+  `created_from: defaults`. Absent keys keep meaning the default: absent `online_allow_plaintext` is
+  on (#1303), so the template made from a shared file without it allows the plain-text login. The
+  shared files are still never rewritten.
+- **Defaults page** in PS › Ajustes (`app/src/views/ps/defaults.rs`): the Graphics rows (the
+  Graphics view in a defaults mode, without the title's effects list, frame generation or extras),
+  the online switches (play online, UPnP, TLS, plain-text login), and "take the defaults from a game"
+  for everything else (keyboard, pad layout, extras), which asks first and backs the defaults up.
+  The defaults' mods and patches folders are never taken from a game, so a new game keeps its own.
+- **Categories** (`settings/keys.rs`, `Category`), one per tab: graphics (every launch key and ini
+  line not below, mouse and keyboard-as-stick included), keyboard (`key.*`), gamepad (`pad.*`,
+  `gamepad`, `gamepad_name`, `button_icons`), mods (`mods_enabled`, `mods_dir`, `patches_dir`,
+  `mods.json`, `patches.json`), online (`online`, `online_upnp`, `online_bbsc`,
+  `online_bbsc_local_server`, `online_tls`, `online_allow_plaintext`, `local_player`), extras
+  (`extra_env`, `sys_modules`). Never any: the `SHARED` keys (E1-E3), a file's own record
+  (`format`, `created_from`, `created_on`), the GTK leftovers, `menu_language`.
+- **Copy from another game** (`per_game::copy`), all of it or one category, on the game's Resumen
+  (`app/src/views/ps/games/title_settings.rs`): the category's keys of the destination are replaced
+  by the source's, so it ends as the source is; asks first. Copied, never linked.
+- **Reset to the defaults** (`per_game::reset`): every category but mods becomes a copy of the
+  defaults (the defaults hold no mod choices, so the game's mods and patches stay); asks first;
+  records `created_from: defaults`.
+- **Export and import** (`settings/transfer.rs`): one JSON file (`kind: decanter-ps-settings`,
+  `version: 1`, `title_id`, `settings`, `ini`, `mods`, `patches`), never a `SHARED` key and never a
+  shadNet secret (`extra_env` items named like one are dropped). An import is checked whole before
+  anything is written: at most 256 KiB, no unknown field, `title_id` as `^[A-Z]{4}[0-9]{5}$` (or
+  `defaults`), launch keys against an allow-list with typed values (the settings table's switches,
+  numbers in range and choices among its options, frame generation, local server, local player,
+  pad GUID, icon style, `extra_env` as `NAME=value` items with no shadNet secret), `mods_dir` and
+  `patches_dir` only as a full path inside the library, ini keys of the port's shape
+  (`[A-Za-z0-9_.]`, at most 64) with one-line values and the settings table's keys typed, mod and
+  patch names that can't leave their folder. Another title's file asks "apply to this game" first
+  (CLI: `--any-title`).
+- **Backups**: every copy, reset or import backs the destination's `settings.json`, `psport.ini`,
+  `mods.json` and `patches.json` up first into
+  `backups/per-game-settings-<date>/<TITLE_ID or defaults>-<HHMMSS>/` (#1133), a new folder each
+  time.
+- **CLI** `decanter ps settings list|get|set|copy|reset|export|import` (`app/src/cli/ps_settings.rs`),
+  `--title <TITLE_ID>` or `--title defaults`; `set` checks as an import does and an empty value
+  removes the key; `copy`, `reset` and `import` need `--yes` and say what they would do without it;
+  `export` never replaces a file. Exits 0 when done or shown, 1 when a file could not be read or
+  written, 2 when the request was refused.
+
+Left for phase 6, besides the layouts catalog and the GTK leftovers: "Apply to all games" (D9) on
+the defaults page; keyboard and pad layout editors for the defaults (today taken from a game); a
+"forget settings" action for a title folder; the per-tab "Copy settings from another game" entry on
+each tab (today one place, on the Resumen, with a category list); a note on the defaults page when
+the checkout's port predates per-game settings (its games read the shared files, not the defaults);
+reading the in-game menu's ini keys against the port's own list of keys rather than by shape;
+migration step 4 (rewriting the shared file with the E1-E3 keys only), still waiting since an older
+port's launches read the shared file.
 
 ## The owner's rule
 
@@ -303,8 +364,8 @@ line (`run.rs:263`) keeps working, writing to the title's settings.json.
 `decanter ps run <TITLE>` uses that title's settings exactly as Play does, including `PS_CONFIG`, and
 creates the title's folder from the defaults if it has none (so a night test never edits the
 shared defaults). `--env` stays a per-run override that is never saved. New, small:
-`decanter ps settings <TITLE> show|copy-from <OTHER>|export <FILE>|import <FILE>|reset`, the same
-operations as the UI, for night scripts and Windows tests.
+`decanter ps settings list|get|set|copy|reset|export|import --title <TITLE>` (as built in phase 5,
+above), the same operations as the UI, for night scripts and Windows tests.
 
 ### Edge cases
 
@@ -381,7 +442,7 @@ no online services.
 **Per-game isolation (night, Linux, and wbc3, Windows direct path)**, two titles A and B (Bloodborne
 `CUSA03173` and one other PS4 title, e.g. Ryza):
 
-1. With `decanter ps settings A`, set `present_mode=Fifo`, `language=1`, `fps_limit=30`, an ini
+1. With `decanter ps settings set --title A`, set `present_mode=Fifo`, `language=1`, `fps_limit=30`, an ini
    key (`upscaler=fsr3`, `skip_intro=1`), one `key.*` binding and `extra_env=PS_TEST_A=1`; on B set
    `present_mode=Immediate`, `language=3`, no limit, `upscaler=off`, `extra_env=PS_TEST_B=1`.
 2. `decanter ps run A --timeout 60`, then `decanter ps run B --timeout 60`.

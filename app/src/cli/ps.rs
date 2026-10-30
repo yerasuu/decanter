@@ -51,6 +51,17 @@ pub enum PsCmd {
         #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..=super::ps_run::MAX_TIMEOUT))]
         timeout: Option<u64>,
     },
+    /// A game's own settings, or the defaults new games copy once (`--title defaults`): list them, read
+    /// or change one, copy them from another game, put a game back to the defaults, export them to one
+    /// file and import it. What every game shares (the shadNet account, the dump folders, the port in
+    /// use) is never touched, and no file holds a shadNet secret. A copy, reset or import needs --yes and
+    /// backs the files it replaces up into the library's backups/per-game-settings-<date>/ first. Exits 0
+    /// when done (or shown without --yes), 1 when a file could not be read or written, and 2 when the
+    /// request was refused.
+    Settings {
+        #[command(subcommand)]
+        cmd: super::ps_settings::SettingsCmd,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -150,6 +161,7 @@ pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<i32> {
         PsCmd::Report(args) => report_cmd(db, args).await.map(|()| 0),
         PsCmd::Run { title, timeout, env } => Ok(super::ps_run::run(db, &title, timeout, env).await.code()),
         PsCmd::Prepare { port, timeout } => Ok(super::ps_prepare::run(db, port.port(), timeout).await.code()),
+        PsCmd::Settings { cmd } => Ok(super::ps_settings::run(db, cmd).await),
     }
 }
 
