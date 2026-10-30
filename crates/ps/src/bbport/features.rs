@@ -33,6 +33,9 @@ const FRAME_GEN_FSR: &str = "frame_gen_fsr";
 const KEY_STICK: &str = "key_stick";
 /// psport's row for its online module, without which online play has nothing to load.
 const ONLINE_MODULE: &str = "online_module";
+/// psport's row for taking the shadNet secrets from a one-use file or stdin; builds without it
+/// read them only from the environment.
+const SECRETS_HANDOFF: &str = "secrets_handoff";
 /// Areas whose rows say whether one setting or option suits this machine (an upscaler, a CPU's
 /// fix): a game runs without any of them, so they only decide what the settings view offers.
 const OPTION_AREAS: [&str; 2] = ["upscaler", "cpu"];
@@ -83,7 +86,8 @@ impl HostFeatures {
     /// psport's own reason for the first one, and is marked as being tested
     /// when one is only experimental. The `net` rows decide online play
     /// alone, which a game runs without. The menu binding, the keyboard stick
-    /// settings and online play are offered only when the build lists them, since older ones ignore them.
+    /// settings, online play and the secrets hand-off are offered only when the build lists them,
+    /// since older ones ignore them.
     #[inline]
     pub fn merge_into(&self, capabilities: &mut Capabilities) {
         self.merge_listed(
@@ -104,6 +108,12 @@ impl HostFeatures {
             Feature::PsOnline,
             |row| row.area == ONLINE_AREA,
             ONLINE_MODULE,
+        );
+        self.merge_listed(
+            capabilities,
+            Feature::PsSecretsHandoff,
+            |row| row.id == SECRETS_HANDOFF,
+            SECRETS_HANDOFF,
         );
         let needed = self.rows.iter().filter(|row| {
             row.area != ONLINE_AREA

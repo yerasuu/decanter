@@ -62,7 +62,17 @@ pub async fn run(
     scanner: Option<Scanner>,
     cx: &mut AsyncApp,
 ) -> Finished {
-    run_launcher(ps, root, key, kind, facts, Launcher::Command(command), scanner, cx).await
+    run_launcher(
+        ps,
+        root,
+        key,
+        kind,
+        facts,
+        Launcher::Command(command, None),
+        scanner,
+        cx,
+    )
+    .await
 }
 
 /// Replaces whatever job `key` held before; its log goes with it. `facts` go in the log's

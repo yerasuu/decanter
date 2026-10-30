@@ -13,6 +13,7 @@ use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
+use crate::bbport::online::Handoff;
 use crate::os;
 
 /// Lines kept per job; older ones are dropped so a chatty game can't grow
@@ -183,11 +184,21 @@ fn wrapped(mut wrapper: std::process::Command, original: &Command) -> Command {
 
 /// Starts `command` in its own process group with stdout and stderr
 /// merged into events; the last event is always [`Event::Exited`].
+/// `secrets` go to the child as their form says, and what is left of them
+/// (a file) is dropped once it has exited, or at once when it never starts.
 /// Must be called inside the tokio runtime.
-pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedReceiver<Event>)> {
+///
+/// # Errors
+/// The spawn's, when the program cannot be started.
+pub fn spawn(
+    kind: JobKind,
+    mut command: Command,
+    secrets: Option<Handoff>,
+) -> io::Result<(Job, UnboundedReceiver<Event>)> {
     os::own_process_group(&mut command);
+    let stdin = secrets.as_ref().map_or_else(Stdio::null, Handoff::stdin);
     let mut child = match command
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(false)
@@ -196,16 +207,15 @@ pub fn spawn(kind: JobKind, mut command: Command) -> io::Result<(Job, UnboundedR
         Ok(child) => child,
         Err(err) => return Err(err),
     };
+    let kept = secrets.and_then(|secrets| secrets.started(child.stdin.take()));
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let pid = child.id();
-    Ok(follow(
-        kind,
-        pid,
-        stdout,
-        stderr,
-        async move { child.wait().await.ok() },
-    ))
+    Ok(follow(kind, pid, stdout, stderr, async move {
+        let status = child.wait().await.ok();
+        drop(kept);
+        status
+    }))
 }
 
 /// A process started elsewhere, followed the way [`spawn`]'s are.

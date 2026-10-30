@@ -42,7 +42,7 @@ pub(super) async fn launch(
         return Err(err);
     }
     let surroundings = super::play::surroundings(cx);
-    let inputs = match launch_inputs(root, None, game, profile_id, surroundings).await {
+    let mut inputs = match launch_inputs(root, None, game, profile_id, surroundings).await {
         Ok(inputs) => inputs,
         Err(err) => {
             tracing::warn!(title_id = %game.title_id, error = %err, "could not start game");
@@ -57,7 +57,7 @@ pub(super) async fn launch(
         },
     };
     match direct::session(root, game, &inputs, cache_dir, dir, &[]).await {
-        Ok((prepared, facts)) => Ok((Launcher::Session(prepared), facts)),
+        Ok((prepared, facts)) => Ok((Launcher::Session(prepared, inputs.take_secrets()), facts)),
         Err(err) => Err(err),
     }
 }

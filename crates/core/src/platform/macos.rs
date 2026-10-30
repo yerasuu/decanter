@@ -149,6 +149,7 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PsKeyStick
         | Feature::PsFrameGen
         | Feature::PsOnline
+        | Feature::PsSecretsHandoff
         | Feature::MangoHud
         | Feature::GameMode
         | Feature::Raven => Support::Unavailable(Reason::NotOnThisSystem),

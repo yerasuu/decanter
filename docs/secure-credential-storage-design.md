@@ -413,11 +413,43 @@ Phases 5 and 6 replace phase 8 of `docs/windows-online-plan.md`.
 - UI: `app/src/views/passphrase.rs`, a modal from the shell once per run, masked fields, the new
   passphrase asked twice, "Ahora no" leaving secrets unsaved as before; an unlock refreshes the
   GOG library. The Ajustes status line is phase 2's.
+### Phase 6
+
+- Detection: `Feature::PsSecretsHandoff`, from the `secrets_handoff` row of `--list-features`
+  (`bbport::features::merge_into`, like `frame_gen_fsr`); off without a report. Linux and Windows
+  tables offer it, macOS does not. Read at each launch from the report of the port in use
+  (`OnlinePlay::AsSet::is_handoff_listed`, `state/ps/play.rs::surroundings`).
+- `Online::hand_off` (`crates/ps/src/bbport/online.rs`), run off the async threads once the
+  secrets are read from the store: the text is psport's `password=`/`token=` lines (a value with a
+  line break is refused, the launch stops with `LaunchError::Environment`), built in a `Secret`
+  sized up front; then `password` and `token` leave `Online`. `env()` no longer has them, and
+  `handoff_env()` adds only `PS_SHADNET_SECRETS_FILE=<path>` (Linux) or `PS_SHADNET_SECRETS=stdin`
+  (Windows); `PS_SHADNET_NPID` stays.
+- Linux: `secrets::handoff::SecretsFile::write` (`crates/core/src/secrets/handoff.rs`) creates
+  `$XDG_RUNTIME_DIR/decanter/secrets/<uuid v4>`, else `<config>/decanter/secrets/` (never the
+  library, never `/tmp`): folder `0700` (made so if it was open, refused if it is not a folder),
+  file `create_new` (`O_EXCL`, so no link is followed) with mode `0600`, refused when its owner is
+  not the folder's. Files older than 10 minutes there are swept once per process. psport takes
+  the file through every wrapper (scope, `gamemoderun`, nix, `run.sh`), as the path is all their
+  environment carries.
+- Cleanup: the `SecretsFile` travels in `Handoff`, from `LaunchInputs::take_secrets` to
+  `Launcher::Command(command, secrets)`, and `process::spawn` keeps it inside the exit future,
+  dropping it once the job's process has exited; dropping it removes the file (logged at info when
+  psport had not, debug when it had). A launch that fails before or at the spawn drops it there.
+- Windows: `Handoff::Stdin`; `Launcher::Session` gives `psport.exe` a piped stdin
+  (`Prepared::command_mut().stdin`), takes it with the new `decanter_runtime::Session::take_stdin`
+  and writes the text in a task of its own, then drops the pipe, which closes it. The
+  `PsOnline` table entry still keeps online play off on Windows (phase 5 of
+  `windows-online-plan.md`), so this path waits for it.
+- Older psport (no `secrets_handoff` row): `PS_SHADNET_PASSWORD`/`PS_SHADNET_TOKEN` as before,
+  logged once per run at info.
+- `decanter ps run` never plays online; it now also removes `PS_SHADNET_SECRETS_FILE` and
+  `PS_SHADNET_SECRETS` from the game's environment and refuses them in `--env`.
 
 ### Not in the keyring, left for later phases
 
-- shadNet password and token in the launch environment of the whole launch tree (#716): phases
-  5 and 6.
+- shadNet password and token in the launch environment of the whole launch tree (#716): only with
+  a psport build older than `secrets_handoff` now (phase 6).
 - Report delete codes in `<library>/decanter/reports/sent.jsonl` (no ACL on Windows): phase 8.
 - The GOG OAuth login code still passes through the clipboard (the field is masked now).
 - The reports server's own secrets (`reports.toml`, `*_file`, systemd credentials), the Galaxy

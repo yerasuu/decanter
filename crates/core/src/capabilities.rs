@@ -55,6 +55,9 @@ pub enum Feature {
     /// Online play through psport's online module: only builds that list
     /// it among their features have one.
     PsOnline,
+    /// The shadNet secrets handed to psport by a one-use file or its stdin rather than its
+    /// environment: only builds that list `secrets_handoff` among their features read them so.
+    PsSecretsHandoff,
     MangoHud,
     GameMode,
     /// Raven's own section: building Raven here and running Windows
@@ -63,7 +66,7 @@ pub enum Feature {
 }
 
 impl Feature {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::Play,
         Self::Proton,
         Self::Prefixes,
@@ -84,6 +87,7 @@ impl Feature {
         Self::PsKeyStick,
         Self::PsFrameGen,
         Self::PsOnline,
+        Self::PsSecretsHandoff,
         Self::MangoHud,
         Self::GameMode,
         Self::Raven,

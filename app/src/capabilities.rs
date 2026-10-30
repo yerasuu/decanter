@@ -20,6 +20,7 @@ const PSPORT_MENU_BINDING: &str = "psport build listing port_menu_binding";
 const PSPORT_KEY_STICK: &str = "psport build listing key_stick";
 const PSPORT_FRAME_GEN: &str = "psport build listing frame_gen_fsr";
 const PSPORT_ONLINE: &str = "psport build listing online_module";
+const PSPORT_SECRETS_HANDOFF: &str = "psport build listing secrets_handoff";
 
 pub struct Caps {
     /// decanter's table and its own checks, which a new report from psport
@@ -165,6 +166,7 @@ fn without_psport_report(capabilities: &mut Capabilities) {
     capabilities.restrict(Feature::PsKeyStick, Reason::NeedsSetup(PSPORT_KEY_STICK));
     capabilities.restrict(Feature::PsFrameGen, Reason::NeedsSetup(PSPORT_FRAME_GEN));
     capabilities.restrict(Feature::PsOnline, Reason::NeedsSetup(PSPORT_ONLINE));
+    capabilities.restrict(Feature::PsSecretsHandoff, Reason::NeedsSetup(PSPORT_SECRETS_HANDOFF));
 }
 
 /// For a row that has room for it beside its own label, such as a menu item.

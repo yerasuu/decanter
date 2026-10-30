@@ -4,14 +4,21 @@
 //! decanter launches through `run.sh`, which does the rest for `PS_ONLINE=1` as psport's own
 //! launcher relies on: CA certificates, `--online-overrides`, `scripts/online.py`'s host overrides
 //! and the title's local game server. The shadNet password and token never reach the settings
-//! file: the caller takes them from the keyring and hands them over for one launch.
+//! file: the caller takes them from the keyring and hands them over for one launch, by a one-use
+//! file or psport's stdin ([`Handoff`]) where the build reads them so, else in its environment.
 
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::io;
+use std::process::Stdio;
 use std::time::Duration;
 
 use decanter_core::redact;
 use decanter_core::secrets::Secret;
+#[cfg(unix)]
+use decanter_core::secrets::handoff::SecretsFile;
 use decanter_nix::Toolchain;
+use tokio::process::ChildStdin;
 
 use super::{Bbport, LauncherSettings, Names};
 use crate::os::linux::toolchain;
@@ -272,6 +279,94 @@ fn check_secret(secret: Option<Secret>) -> Result<Option<Secret>, OnlineError> {
     }
 }
 
+/// psport's format for both forms of [`Handoff`]: `password=` and `token=` lines, each value up to
+/// the end of its line, so a value holding a line break would be cut there and is refused.
+fn secrets_text(password: Option<&Secret>, token: Option<&Secret>) -> io::Result<Secret> {
+    let pairs = [("password", password), ("token", token)];
+    let values = pairs.iter().filter_map(|&(_, value)| value.map(Secret::expose));
+    if values.clone().any(|value| value.contains(['\n', '\r'])) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "a shadNet password or token holds a line break",
+        ));
+    }
+    // Sized up front so that no growth leaves a copy of a value behind in freed memory.
+    let capacity = values
+        .map(|value| value.len().saturating_add("password=\n".len()))
+        .sum();
+    let mut text = String::with_capacity(capacity);
+    for (key, secret) in pairs {
+        if let Some(secret) = secret {
+            text.push_str(key);
+            text.push('=');
+            text.push_str(secret.expose());
+            text.push('\n');
+        }
+    }
+    Ok(Secret::from(text))
+}
+
+/// How one launch's shadNet secrets reach a psport build that lists `secrets_handoff`, so that
+/// none of the processes of the launch has them in its environment. No `Debug`: nothing needs one.
+pub enum Handoff {
+    /// `PS_SHADNET_SECRETS_FILE`, through every wrapper (`gamemoderun`, the scope, nix, `run.sh`):
+    /// psport removes the file once read; it is removed when this is dropped otherwise.
+    #[cfg(unix)]
+    File(SecretsFile),
+    /// `PS_SHADNET_SECRETS=stdin`, the one form psport takes on Windows: written to `psport.exe`'s
+    /// stdin, which is then closed.
+    #[cfg(windows)]
+    Stdin(Secret),
+}
+
+impl Handoff {
+    /// What the child's stdin must be for this form.
+    #[must_use]
+    pub fn stdin(&self) -> Stdio {
+        match self {
+            #[cfg(unix)]
+            Self::File(_) => Stdio::null(),
+            #[cfg(windows)]
+            Self::Stdin(_) => Stdio::piped(),
+        }
+    }
+
+    /// Hands the secrets to the child just started with [`Self::stdin`]. What comes back must be
+    /// kept until the child exits, and dropped then: the file, which goes with it.
+    #[must_use]
+    pub fn started(self, pipe: Option<ChildStdin>) -> Option<Self> {
+        match self {
+            #[cfg(unix)]
+            Self::File(file) => {
+                drop(pipe);
+                Some(Self::File(file))
+            }
+            #[cfg(windows)]
+            Self::Stdin(text) => {
+                if let Some(stdin) = pipe {
+                    drop(tokio::spawn(write_stdin(stdin, text)));
+                } else {
+                    tracing::warn!("psport started without a stdin to take the shadNet secrets");
+                }
+                None
+            }
+        }
+    }
+}
+
+/// psport reads its stdin until it closes: the pipe is closed here once written, whatever happened.
+#[cfg(windows)]
+async fn write_stdin(mut stdin: ChildStdin, text: Secret) {
+    use tokio::io::AsyncWriteExt as _;
+    let written = stdin.write_all(text.expose().as_bytes()).await;
+    drop(text);
+    drop(stdin);
+    match written {
+        Ok(()) => tracing::info!("shadNet secrets written to psport's stdin, which is closed"),
+        Err(err) => tracing::warn!(%err, "could not write the shadNet secrets to psport's stdin"),
+    }
+}
+
 /// One launch's online play, checked. No `Debug`, though the secrets are [`Secret`]s: nothing
 /// needs one.
 pub struct Online {
@@ -279,6 +374,8 @@ pub struct Online {
     npid: Option<String>,
     password: Option<Secret>,
     token: Option<Secret>,
+    /// The secrets once handed off: `password` and `token` are gone then.
+    handoff: Option<Handoff>,
     upnp: bool,
     bbsc: bool,
     local_server: LocalServer,
@@ -299,6 +396,7 @@ impl Online {
             npid,
             password: None,
             token: None,
+            handoff: None,
             upnp: settings.flag(UPNP, true),
             bbsc: settings.flag(BBSC, false),
             local_server: LocalServer::of(settings),
@@ -316,6 +414,49 @@ impl Online {
         self.password = check_secret(password)?;
         self.token = check_secret(token)?;
         Ok(())
+    }
+
+    /// Whether there is a password or token to pass at all.
+    #[must_use]
+    pub const fn has_secrets(&self) -> bool {
+        self.password.is_some() || self.token.is_some()
+    }
+
+    /// The secrets out of the environment, for a build that lists `secrets_handoff`: into a
+    /// one-use file of their own on Linux, into what `psport.exe`'s stdin gets on Windows.
+    ///
+    /// # Errors
+    /// A secret holding a line break, or the file could not be written: the launch must not fall
+    /// back to the environment then.
+    pub fn hand_off(&mut self) -> io::Result<()> {
+        if !self.has_secrets() {
+            return Ok(());
+        }
+        let text = secrets_text(self.password.as_ref(), self.token.as_ref())?;
+        #[cfg(unix)]
+        let handoff = Handoff::File(SecretsFile::write(&text)?);
+        #[cfg(windows)]
+        let handoff = Handoff::Stdin(text);
+        self.password = None;
+        self.token = None;
+        self.handoff = Some(handoff);
+        Ok(())
+    }
+
+    /// The secrets handed off, which the launch keeps until its process is gone.
+    pub const fn take_handoff(&mut self) -> Option<Handoff> {
+        self.handoff.take()
+    }
+
+    /// Where psport finds the secrets once handed off: the file's path, or that they come on
+    /// stdin. Not one of the secrets.
+    pub(super) fn handoff_env(&self, names: Names) -> Option<(String, &OsStr)> {
+        match self.handoff.as_ref()? {
+            #[cfg(unix)]
+            Handoff::File(file) => Some((names.var("SHADNET_SECRETS_FILE"), file.path().as_os_str())),
+            #[cfg(windows)]
+            Handoff::Stdin(_) => Some((names.var("SHADNET_SECRETS"), OsStr::new("stdin"))),
+        }
     }
 
     /// What `run.sh` reads for online play, spelled for the port at hand.

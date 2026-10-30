@@ -453,6 +453,7 @@ impl Bbport {
             command.env(var("SUBMIT_AHEAD"), "0");
         }
         command.envs(online.into_iter().flat_map(|online| online.env(names)));
+        command.envs(online.and_then(|online| online.handoff_env(names)));
         for item in settings.text("extra_env").unwrap_or_default().split_whitespace() {
             if let Some((key, value)) = item.split_once('=') {
                 command.env(key, value);

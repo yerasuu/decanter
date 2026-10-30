@@ -26,6 +26,8 @@
 )]
 
 mod file;
+#[cfg(unix)]
+pub mod handoff;
 mod key;
 mod native;
 mod secret;

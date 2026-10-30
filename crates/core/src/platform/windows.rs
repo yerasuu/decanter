@@ -206,7 +206,8 @@ pub const fn support(feature: Feature) -> Support {
         | Feature::PsSection
         | Feature::PsBuilds
         | Feature::PsDownloads
-        | Feature::PsPlay => Support::Available,
+        | Feature::PsPlay
+        | Feature::PsSecretsHandoff => Support::Available,
         Feature::Tray | Feature::CloseToTray | Feature::PadClose | Feature::SteamExport => Support::Testing,
         Feature::Proton
         | Feature::Prefixes

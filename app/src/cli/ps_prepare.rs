@@ -242,7 +242,7 @@ impl PortHost for Printer {
         command: Command,
     ) -> Finished {
         let target = job_target(&JobKey::Port(port));
-        let mut launcher = Launcher::Command(command);
+        let mut launcher = Launcher::Command(command, None);
         let started_log = RunLog::start(
             &run_log::dir(root),
             &target,

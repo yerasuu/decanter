@@ -10,6 +10,7 @@ use std::time::Instant;
 use decanter_nix::Toolchain;
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::frame_gen::{self, FrameGen};
+use decanter_ps::bbport::online::Handoff;
 use decanter_ps::failures::{self, CallReport, Failure, Log, Scanner};
 use decanter_ps::learned;
 use decanter_ps::paths::Root;
@@ -46,21 +47,22 @@ impl Finished {
     }
 }
 
-/// How a job's process starts.
+/// How a job's process starts, with the shadNet secrets it hands to psport when it has them: kept
+/// until the process exits, and dropped with the launcher if it never starts.
 pub enum Launcher {
     /// In a process group of its own, which [`Job::stop`] ends.
-    Command(Command),
+    Command(Command, Option<Handoff>),
     /// A game in a native session of its own (a Job Object), which only the session's stop reaches.
     #[cfg(windows)]
-    Session(decanter_runtime::Prepared),
+    Session(decanter_runtime::Prepared, Option<Handoff>),
 }
 
 impl Launcher {
     pub const fn command_mut(&mut self) -> &mut Command {
         match self {
-            Self::Command(command) => command,
+            Self::Command(command, _) => command,
             #[cfg(windows)]
-            Self::Session(prepared) => prepared.command_mut(),
+            Self::Session(prepared, _) => prepared.command_mut(),
         }
     }
 
@@ -71,31 +73,37 @@ impl Launcher {
     #[cfg(windows)]
     pub fn session_key(&self) -> Option<String> {
         match self {
-            Self::Command(_) => None,
-            Self::Session(prepared) => Some(prepared.key().to_owned()),
+            Self::Command(..) => None,
+            Self::Session(prepared, _) => Some(prepared.key().to_owned()),
         }
     }
 
     /// Must be called inside the tokio runtime, as [`process::spawn`].
     pub fn spawn(self, kind: JobKind) -> io::Result<(Job, UnboundedReceiver<Event>)> {
         match self {
-            Self::Command(command) => process::spawn(kind, command),
+            Self::Command(command, secrets) => process::spawn(kind, command, secrets),
             #[cfg(windows)]
-            Self::Session(prepared) => {
+            Self::Session(mut prepared, secrets) => {
+                if let Some(secrets) = &secrets {
+                    prepared.command_mut().stdin(secrets.stdin());
+                }
                 let mut session = match prepared.spawn() {
                     Ok(session) => session,
                     Err(err) => return Err(io::Error::other(format!("{err:#}"))),
                 };
+                let kept = secrets.and_then(|secrets| secrets.started(session.take_stdin()));
                 let (stdout, stderr) = session.take_output();
                 let pid = session.launcher_pid();
                 Ok(process::follow(kind, pid, stdout, stderr, async move {
-                    session
+                    let status = session
                         .wait_status()
                         .await
                         .inspect_err(|err| {
                             tracing::warn!(job = kind.name(), error = %format_args!("{err:#}"), "could not wait for the session");
                         })
-                        .ok()
+                        .ok();
+                    drop(kept);
+                    status
                 }))
             }
         }

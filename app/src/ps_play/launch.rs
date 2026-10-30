@@ -3,6 +3,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use decanter_core::secrets::{self, SecretKey, ShadnetSecret, StoreError};
 use decanter_nix::Toolchain;
@@ -12,7 +13,7 @@ use decanter_ps::bbport::frame_gen::FrameGen;
 use decanter_ps::bbport::icons::IconStyle;
 use decanter_ps::bbport::local_player::{LocalPlayer, LocalPlayerError};
 use decanter_ps::bbport::mods::{ModFiles, Mods};
-use decanter_ps::bbport::online::{self, Online, OnlineError};
+use decanter_ps::bbport::online::{self, Handoff, Online, OnlineError};
 use decanter_ps::bbport::{self, Bbport, Ini, LauncherSettings};
 use decanter_ps::learned;
 use decanter_ps::library::Game;
@@ -100,8 +101,9 @@ pub fn online_error(err: &OnlineError) -> Text {
 
 #[derive(Clone, Copy)]
 pub enum OnlinePlay {
-    /// As the settings have it, when this psport build has online play (`online_module`).
-    AsSet { is_offered: bool },
+    /// As the settings have it, when this psport build has online play (`online_module`); the
+    /// secrets by file or stdin when it lists `secrets_handoff`, else in its environment.
+    AsSet { is_offered: bool, is_handoff_listed: bool },
     /// Never, whatever the settings say: a headless run connects nowhere by itself.
     Off,
 }
@@ -133,6 +135,15 @@ pub struct LaunchInputs {
 }
 
 impl LaunchInputs {
+    /// The shadNet secrets handed off for this launch, for its launcher to keep until the game
+    /// exits; taken once its command is built, which names where psport finds them.
+    pub const fn take_secrets(&mut self) -> Option<Handoff> {
+        match self.online.as_mut() {
+            Some(online) => online.take_handoff(),
+            None => None,
+        }
+    }
+
     pub fn game_launch<'inputs>(
         &'inputs self,
         game: &'inputs Game,
@@ -263,7 +274,8 @@ pub async fn launch_inputs(
     })
 }
 
-/// `run.sh` in `toolchain` with the game's launch.
+/// `run.sh` in `toolchain` with the game's launch, and the shadNet secrets it hands to psport
+/// ([`LaunchInputs::take_secrets`]).
 pub async fn bbport_command(
     root: &Root,
     toolchain: &Toolchain,
@@ -271,21 +283,28 @@ pub async fn bbport_command(
     profile_id: &str,
     cache_dir: Option<&Path>,
     surroundings: Surroundings<impl FnOnce() -> Option<&'static str>>,
-) -> Result<Command, LaunchError> {
-    let inputs = match launch_inputs(root, Some(toolchain), game, profile_id, surroundings).await {
+) -> Result<(Command, Option<Handoff>), LaunchError> {
+    let mut inputs = match launch_inputs(root, Some(toolchain), game, profile_id, surroundings).await {
         Ok(inputs) => inputs,
         Err(err) => return Err(err),
     };
-    Bbport::new(root.clone())
+    let command = Bbport::new(root.clone())
         .launch_command(toolchain, &inputs.game_launch(game, cache_dir))
-        .await
-        .map_err(LaunchError::Environment)
+        .await;
+    match command {
+        Ok(command) => Ok((command, inputs.take_secrets())),
+        Err(err) => Err(LaunchError::Environment(err)),
+    }
 }
 
-/// Online play when it is on and the build has it, with the account's secrets from the keyring.
+/// Online play when it is on and the build has it, with the account's secrets from the keyring,
+/// handed off when the build lists that.
 async fn online_play(settings: &LauncherSettings, online: OnlinePlay) -> Result<Option<Online>, LaunchError> {
-    let is_offered = match online {
-        OnlinePlay::AsSet { is_offered } => is_offered,
+    let (is_offered, is_handoff_listed) = match online {
+        OnlinePlay::AsSet {
+            is_offered,
+            is_handoff_listed,
+        } => (is_offered, is_handoff_listed),
         OnlinePlay::Off => return Ok(None),
     };
     if !settings.flag(online::ONLINE, false) {
@@ -319,9 +338,26 @@ async fn online_play(settings: &LauncherSettings, online: OnlinePlay) -> Result<
         tracing::warn!("online play with a shadNet NPID but no password in the keyring, not starting");
         return Err(LaunchError::NoPassword(online.npid().unwrap_or_default().to_owned()));
     }
-    match online.set_secrets(password, token) {
-        Ok(()) => Ok(Some(online)),
-        Err(err) => Err(LaunchError::Online(err)),
+    if let Err(err) = online.set_secrets(password, token) {
+        return Err(LaunchError::Online(err));
+    }
+    if !is_handoff_listed {
+        static IS_LEGACY_LOGGED: AtomicBool = AtomicBool::new(false);
+        if online.has_secrets() && !IS_LEGACY_LOGGED.swap(true, Ordering::Relaxed) {
+            tracing::info!(
+                "this psport build does not list secrets_handoff: the shadNet secrets go in its environment"
+            );
+        }
+        return Ok(Some(online));
+    }
+    let handed = off_thread(move || online.hand_off().map(|()| online)).await;
+    match handed {
+        Ok(Ok(online)) => Ok(Some(online)),
+        Ok(Err(err)) => {
+            tracing::warn!(%err, "could not hand the shadNet secrets off to psport, not starting");
+            Err(LaunchError::Environment(err))
+        }
+        Err(err) => Err(err),
     }
 }
 

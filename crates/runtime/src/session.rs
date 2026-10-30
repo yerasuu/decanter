@@ -11,7 +11,7 @@ use std::time::{Instant, SystemTime};
 
 use anyhow::{Context as _, bail};
 use futures_util::future::join_all;
-use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 
 use crate::os::{self, Tracked};
 use crate::{Launch, Prefix};
@@ -119,6 +119,13 @@ impl Session {
     #[inline]
     pub const fn take_output(&mut self) -> (Option<ChildStdout>, Option<ChildStderr>) {
         (self.child.stdout.take(), self.child.stderr.take())
+    }
+
+    /// The launcher's stdin, once, when its command was given a piped one before
+    /// [`Prepared::spawn`]; `None` otherwise. The game reads it until it is dropped.
+    #[inline]
+    pub const fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
     }
 
     /// Waits for the whole session: the process decanter started first,

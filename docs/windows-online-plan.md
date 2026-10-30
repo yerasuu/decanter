@@ -283,10 +283,11 @@ useless while the firewall blocks the port (2.2).
   bytes in UTF-16, so it fits.
 - Persistence: the crate's default is `Enterprise` (`store.rs:121`), which
   roams with a domain roaming profile; `Local` keeps it on this machine.
-- Hand-over: psport reads the secrets only from the environment
-  (`user_manager.h:41-43`). On Windows a process of the same user can read
-  another's environment, the exposure #716 notes for Linux. A handle
-  (an inherited pipe the module reads once) removes it on both systems.
+- Hand-over: psport took the secrets only from the environment, which on
+  Windows a process of the same user can read, the exposure #716 notes for
+  Linux. Phases 5 and 6 of `secure-credential-storage-design.md` replace it:
+  psport's `secrets_handoff` (kb #1336) reads them from stdin on Windows and a
+  one-use file on Linux, and decanter passes them so (kb #1337).
 
 ### 2.8 Title data and features on Windows
 
@@ -312,7 +313,7 @@ Each phase lands on its own and leaves Windows offline-safe.
 | 5 | decanter | Direct launch online | `crates/core/src/platform/windows.rs:219` (`Testing`), `features.rs` and `online.rs` direct queries, `direct.rs` (`SSL_CERT_FILE` removed), `LocalServer` held `Off` on Windows, `winbuild/assemble.rs` (copies the DLL when present), `pins.rs`, `docs/windows-support.md` | sonnet (Rust wiring under clippy); opus if it fails | `cargo clippy` native and `x86_64-pc-windows-gnu`, `cargo fmt --check`; Windows agent: Online tab shown with the testing badge only with a build listing `online_module`, a launch with every server at `127.0.0.1` logs `Online: module ...libpsport-net.dll`, `SSL_CERT_FILE` absent, secrets not in the run log |
 | 6 | psport | Local game server in C++ | `gpu/games/bloodborne/net/` (server), `title.cpp:136-138`, `run.sh:309-326`, `scripts/bbsc_gameserver/` retired | opus (protocol fidelity) | Linux: the Python and C++ servers on `127.0.0.1` answer a recorded request set byte for byte; listens on loopback only (`ss -ltn`, `netstat -an` on Windows) |
 | 7 | decanter | Local server on Windows | `online.rs` (`LocalServer` unlocked), the Bloodborne tab | sonnet | clippy; Windows agent sees the selector; loopback launch logs the server's start |
-| 8 | both | Secrets through a handle (#716) | `user_manager.h`, `online.rs:286-308`, `direct.rs`, `run.sh` | opus (security) | the secrets are absent from the process environment (`/proc/<pid>/environ` on Linux; a dump of the environment block on Windows) while a loopback login reaches a stub on `127.0.0.1` |
+| 8 | both | Secrets through a handle (#716): replaced by phases 5 and 6 of `secure-credential-storage-design.md` (stdin on Windows, a one-use file on Linux; kb #1336, #1337) | | | |
 | 9 | psport | Ship the module in the Windows package | `tools/win32-bundle.sh:185-187`, `tools/check_bundle_licences.sh`, CI | sonnet | licence check green; the owner plays online and reports |
 
 ## 4. Risks and open decisions

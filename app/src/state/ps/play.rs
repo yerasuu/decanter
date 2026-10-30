@@ -208,12 +208,18 @@ async fn through_toolchain(
                 .text("error", err));
         }
     };
-    let command = match port {
+    let (command, secrets) = match port {
         Port::Bbport => {
             let surroundings = surroundings(cx);
-            launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings).await
+            match launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings).await {
+                Ok((command, secrets)) => (Ok(command), secrets),
+                Err(err) => (Err(err), None),
+            }
         }
-        Port::AnyPs5 => anyps5_command(this, root, &toolchain, game, profile_id, cache_dir, cx).await,
+        Port::AnyPs5 => (
+            anyps5_command(this, root, &toolchain, game, profile_id, cache_dir, cx).await,
+            None,
+        ),
     };
     let command = command.map_err(|err| {
         tracing::warn!(port = port.name(), title_id = %game.title_id, error = %err, "could not start game");
@@ -225,20 +231,28 @@ async fn through_toolchain(
         Ok(command) => command,
         Err(err) => return Err(err),
     };
-    Ok((Launcher::Command(launch::around_port(root, game, command).await), facts))
+    Ok((
+        Launcher::Command(launch::around_port(root, game, command).await, secrets),
+        facts,
+    ))
 }
 
 /// What a launch from the window takes from it: what the port's last report offers, and the ratio
 /// of the display the game opens on.
 pub(super) fn surroundings(cx: &mut AsyncApp) -> Surroundings<impl FnOnce() -> Option<&'static str>> {
-    let (is_online_offered, is_frame_gen_offered) = cx.update(|cx| {
+    let (is_online_offered, is_handoff_listed, is_frame_gen_offered) = cx.update(|cx| {
         let caps = Caps::get(cx);
-        (caps.is_offered(Feature::PsOnline), caps.is_offered(Feature::PsFrameGen))
+        (
+            caps.is_offered(Feature::PsOnline),
+            caps.is_offered(Feature::PsSecretsHandoff),
+            caps.is_offered(Feature::PsFrameGen),
+        )
     });
     let mut cx = cx.clone();
     Surroundings {
         online: OnlinePlay::AsSet {
             is_offered: is_online_offered,
+            is_handoff_listed,
         },
         is_frame_gen_offered,
         display_ratio: move || display_aspect_ratio(&mut cx),

@@ -45,13 +45,15 @@ const MAX_ENV_VALUE: usize = 256;
 const BATCH: usize = 256;
 /// What would turn online play on or point it at a server (`Online::env`), refused in `--env` and
 /// removed from the game's environment, since a headless run connects nowhere by itself.
-const ONLINE_VARS: [&str; 10] = [
+const ONLINE_VARS: [&str; 12] = [
     "ONLINE",
     "SHADNET_SERVER",
     "SHADNET_WEBAPI",
     "SHADNET_NPID",
     "SHADNET_PASSWORD",
     "SHADNET_TOKEN",
+    "SHADNET_SECRETS_FILE",
+    "SHADNET_SECRETS",
     "COMMUNITY_SERVER",
     "UPNP",
     "BBSC",
@@ -217,7 +219,9 @@ async fn through_toolchain(
                 is_frame_gen_offered: is_frame_gen_offered(root, &toolchain).await,
                 display_ratio: no_display_ratio,
             };
-            launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings).await
+            launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings)
+                .await
+                .map(|(command, _)| command)
         }
         Port::AnyPs5 => {
             if !AnyPs5::new(root.clone()).is_converted(&game.title_id).await {
@@ -239,7 +243,10 @@ async fn through_toolchain(
     if let Some(fact) = validation_layer(root, &toolchain, &mut command).await {
         facts.push(("vk_validation_layer", fact));
     }
-    Ok((Launcher::Command(launch::around_port(root, game, command).await), facts))
+    Ok((
+        Launcher::Command(launch::around_port(root, game, command).await, None),
+        facts,
+    ))
 }
 
 /// `psport.exe` as Play starts it here, from the folder picked in Ajustes or the build or package in
@@ -279,7 +286,7 @@ async fn directly(
         Err(err) => return Err(err),
     };
     without_online(prepared.command_mut());
-    Ok((Launcher::Session(prepared), facts))
+    Ok((Launcher::Session(prepared, None), facts))
 }
 
 fn no_display_ratio() -> Option<&'static str> {
