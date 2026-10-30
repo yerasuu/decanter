@@ -134,7 +134,7 @@ pub fn render_popup(
     let (position, content) = match popup {
         LibraryPopup::GameMenu(target) => {
             let position = target.position;
-            (position, game_menu(target, &profile_id, &state, &close, cx))
+            (position, game_menu(target, &profile_id, &state, &close, model, cx))
         }
         LibraryPopup::ShelfMenu(target) => {
             let position = target.position;
@@ -162,6 +162,7 @@ fn game_menu(
     profile_id: &str,
     state: &Entity<PopupState>,
     close: &menu::Dismiss,
+    model: &Entity<LibraryModel>,
     cx: &mut Context<LibraryView>,
 ) -> AnyElement {
     // Each product id in the target carries its own account (two accounts
@@ -217,11 +218,10 @@ fn game_menu(
         return div().into_any_element();
     };
 
-    let model = cx.entity().read(cx).model.clone();
     let mut panel = menu::panel().child(menu::title(target.title.clone()));
     if let Some(entry) = single_entry.filter(|entry| entry.kind == GameKind::Game) {
         panel = panel
-            .child(game_action_item(&entry, launch_target, close, &model, cx))
+            .child(game_action_item(&entry, launch_target, close, model, cx))
             .children(open_folder_item(install_path, close))
             .children(edit_external_item(&entry, close))
             .child(properties_item(&entry, close))
