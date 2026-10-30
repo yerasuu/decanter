@@ -180,6 +180,11 @@ DROP TABLE IF EXISTS ps_scan_dirs;
 DROP TABLE IF EXISTS game_links;
 ";
 
+/// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
+/// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
+/// otherwise existing databases never run the new step.
+const SCHEMA_VERSION: i64 = 1;
+
 pub struct Db {
     pub(crate) conn: Connection,
 }
@@ -223,6 +228,12 @@ impl Db {
         let path = path.as_ref();
         tracing::debug!(path = %path.display(), "opening db");
         let conn = Connection::open(path)?;
+        // The app opens the database for nearly every read; the migration below takes the write
+        // lock and ran on every one of them, which is what surfaced as "database is locked".
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version == SCHEMA_VERSION {
+            return Ok(Self { conn });
+        }
         // `achievement_cache` used to be keyed by program_id, and
         // `games_cache` had no catalog metadata columns; `CREATE TABLE IF
         // NOT EXISTS` leaves an old-shaped table alone, so a real
@@ -292,6 +303,7 @@ impl Db {
 
         let db = Self { conn };
         db.reset_unbacked_first_seen()?;
+        db.conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tracing::debug!(path = %path.display(), "db opened");
         Ok(db)
     }
