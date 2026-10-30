@@ -42,7 +42,7 @@ pub const RADIUS_SM: f32 = 4.;
 /// leaves `RADIUS_SM`, so the items inside them sit concentric.
 pub const RADIUS_LG: f32 = 10.;
 
-pub const SANS: &str = "Inter Variable";
+pub const SANS: &str = "Inter";
 pub const DISPLAY: &str = "Oswald";
 pub const MONO: &str = "JetBrains Mono";
 
@@ -50,7 +50,9 @@ pub const MONO: &str = "JetBrains Mono";
 /// the webview build pulled these from Google Fonts on every launch.
 pub fn load_fonts(cx: &App) -> anyhow::Result<()> {
     cx.text_system().add_fonts(vec![
-        Cow::Borrowed(include_bytes!("../assets/fonts/Inter.ttf").as_slice()),
+        Cow::Borrowed(include_bytes!("../assets/fonts/Inter-Regular.ttf").as_slice()),
+        Cow::Borrowed(include_bytes!("../assets/fonts/Inter-Medium.ttf").as_slice()),
+        Cow::Borrowed(include_bytes!("../assets/fonts/Inter-SemiBold.ttf").as_slice()),
         Cow::Borrowed(include_bytes!("../assets/fonts/Oswald.ttf").as_slice()),
         Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf").as_slice()),
         Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-SemiBold.ttf").as_slice()),

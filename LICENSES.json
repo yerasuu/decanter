@@ -62,11 +62,13 @@
     {
       "name": "Inter font",
       "paths": [
-        "app/assets/fonts/Inter.ttf"
+        "app/assets/fonts/Inter-Regular.ttf",
+        "app/assets/fonts/Inter-Medium.ttf",
+        "app/assets/fonts/Inter-SemiBold.ttf"
       ],
       "license": "OFL-1.1",
       "review": "reviewed",
-      "provenance": "Copyright 2016 The Inter Project Authors; InterVariable 4.1 from nixpkgs (app/assets/fonts/README). Bundled in the binary; keep the copyright and license notices."
+      "provenance": "Copyright 2016 The Inter Project Authors; static TTFs of Inter 4.1 from the upstream release (rsms/inter, extras/ttf; app/assets/fonts/README). Bundled in the binary; keep the copyright and license notices."
     },
     {
       "name": "JetBrains Mono fonts",
