@@ -513,16 +513,33 @@ pub fn is_running(account_id: &str, game_id: &str) -> bool {
     }
 }
 
-/// Stops every game decanter started.
+/// Stops every game decanter started, and the psport jobs (a game, a port's build or update),
+/// which a quit leaves running otherwise.
 ///
 /// Games outlive the app that launched them — umu execs into a container
 /// and Proton detaches, and a native game is its own process — so closing
 /// decanter without this leaves them running with no way left to reach
 /// them from the UI.
-pub async fn stop_everything() {
+pub async fn stop_everything(cx: &mut AsyncApp) {
     tracing::info!("stopping all running games");
+    let jobs = cx.update(crate::state::Ps::stop_running);
     decanter_runtime::stop_all().await;
+    if jobs == 0 {
+        return;
+    }
+    // A port's build or a game given the chance to finish, then the groups that did not.
+    for _ in 0..PS_JOBS_GRACE_STEPS {
+        if cx.update(crate::state::Ps::count_running) == 0 {
+            return;
+        }
+        tokio::time::sleep(PS_JOBS_GRACE_STEP).await;
+    }
+    tracing::warn!("psport jobs outlived the grace on quit, killing their groups");
+    cx.update(crate::state::Ps::kill_running);
 }
+
+const PS_JOBS_GRACE_STEPS: u32 = 30;
+const PS_JOBS_GRACE_STEP: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// Stops everything and exits, for the signals a desktop actually sends —
 /// a session logging out, `pkill`, Ctrl+C from a terminal.
@@ -533,7 +550,7 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
     if !crate::platform::exit_signal().await {
         return;
     }
-    stop_everything().await;
+    stop_everything(cx).await;
     decanter_gog::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT).await;
 
     // Not `std::process::exit` -- that tears the process down while other

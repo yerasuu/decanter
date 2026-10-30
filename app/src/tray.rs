@@ -18,11 +18,9 @@ pub fn spawn(cx: &App) {
         while let Some(command) = commands.recv().await {
             match command {
                 TrayCommand::Show => async_cx.update(crate::views::show_main_window),
-                // Games outlive decanter by design (see
-                // `launch::stop_everything`'s doc) — quitting from the tray
-                // is the same "just exit" a window close was before this
-                // setting existed. Downloads pause first, to carry on at the
-                // next start.
+                // Games and port jobs are stopped first, as the window's own close does, so no
+                // process of decanter's is left behind. Downloads pause, to carry on at the next
+                // start.
                 TrayCommand::Quit => async_cx.update(crate::views::library::unfinished::quit),
             }
         }

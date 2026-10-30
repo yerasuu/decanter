@@ -103,6 +103,52 @@ struct PsGlobal(Entity<Ps>);
 impl Global for PsGlobal {}
 
 impl Ps {
+    /// Asks every job still running to stop (a game, a port's build or update) and reports how
+    /// many were running, for quitting: they run in groups of their own and nothing else ends
+    /// them once decanter is gone. Nothing is created where the PS section was never opened.
+    pub fn stop_running(cx: &mut App) -> usize {
+        let Some(global) = cx.try_global::<PsGlobal>() else {
+            return 0;
+        };
+        let ps = global.0.clone();
+        ps.update(cx, |ps, cx| {
+            let running: Vec<JobKey> = ps
+                .jobs
+                .iter()
+                .filter(|(_, job)| job.read(cx).is_running())
+                .map(|(key, _)| key.clone())
+                .collect();
+            for key in &running {
+                ps.stop(key, cx);
+            }
+            running.len()
+        })
+    }
+
+    /// How many jobs are still running, after the grace [`Ps::stop_running`] gave them.
+    pub fn count_running(cx: &mut App) -> usize {
+        let Some(global) = cx.try_global::<PsGlobal>() else {
+            return 0;
+        };
+        let ps = global.0.clone();
+        ps.read(cx)
+            .jobs
+            .values()
+            .filter(|job| job.read(cx).is_running())
+            .count()
+    }
+
+    /// SIGKILL to the groups of the jobs that outlived the grace.
+    pub fn kill_running(cx: &mut App) {
+        let Some(global) = cx.try_global::<PsGlobal>() else {
+            return;
+        };
+        let ps = global.0.clone();
+        for job in ps.read(cx).jobs.values().cloned().collect::<Vec<_>>() {
+            job.update(cx, |job, _| job.kill());
+        }
+    }
+
     pub fn get(cx: &mut App) -> Entity<Self> {
         if let Some(global) = cx.try_global::<PsGlobal>() {
             return global.0.clone();

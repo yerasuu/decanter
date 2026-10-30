@@ -271,6 +271,7 @@ fn kind_of(library: &Library, download: &UnfinishedDownload) -> DownloadKind {
 /// the setting on, carries them on.
 pub fn quit(cx: &mut App) {
     cx.spawn(async move |cx| {
+        crate::launch::stop_everything(cx).await;
         decanter_gog::pause_for_quit(QUIT_WAIT).await;
         cx.update(|cx| cx.quit());
     })

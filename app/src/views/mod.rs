@@ -188,7 +188,7 @@ fn close_main_window(window: &mut Window, cx: &mut App) {
     // unresponsive meanwhile reads as a hang.
     window.remove_window();
     cx.spawn(async move |cx| {
-        crate::launch::stop_everything().await;
+        crate::launch::stop_everything(cx).await;
         stopping.set(false);
         if !close_to_tray {
             cx.update(library::unfinished::quit);
