@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use decanter_core::redact;
 use decanter_core::secrets::{self, Secret, SecretKey, ShadnetSecret};
 
 use super::names::{MEMORY_MODEL_SETTINGS, single_memory_model_blocking};
@@ -29,8 +30,72 @@ static LAUNCHER_PASSWORD_TRIED: AtomicBool = AtomicBool::new(false);
 /// A title's switch for the user's system modules dump; the folder is `sys_modules_dir`, shared.
 pub const SYS_MODULES: &str = "sys_modules";
 
+/// The launch settings' file name, the shared one's and each title's.
+pub(super) const FILE: &str = "settings.json";
+
 fn path(root: &Root) -> PathBuf {
-    root.bbport_data().join("settings.json")
+    root.bbport_data().join(FILE)
+}
+
+/// A launch settings file copied for a backup, without any key that names a secret
+/// ([`redact::is_secret_name`], at any depth: the launcher's plaintext [`LAUNCHER_PASSWORD`] among
+/// them) nor the secret variables of `extra_env`, since a backup is kept indefinitely and travels
+/// with the library. A file that doesn't parse is not copied, as what it holds can't be told apart.
+pub(super) fn copy_without_secrets(from: &Path, to: &Path) -> io::Result<()> {
+    let mut values: serde_json::Value = serde_json::from_slice(&fs::read(from)?)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", from.display())))?;
+    let mut dropped = Dropped::default();
+    dropped.take(&mut values);
+    if dropped.has_launcher_password {
+        tracing::warn!(
+            from = %from.display(),
+            "the launcher's plaintext shadNet password was left out of the backup; the port settings keep it until it moves to the keyring"
+        );
+    }
+    if dropped.count > 0 {
+        tracing::info!(from = %from.display(), dropped = dropped.count, "secret settings left out of the backup");
+    }
+    let text = serde_json::to_string_pretty(&values).map_err(io::Error::other)?;
+    crate::files::write_atomic(to, text.as_bytes())
+}
+
+#[derive(Default)]
+struct Dropped {
+    count: usize,
+    has_launcher_password: bool,
+}
+
+impl Dropped {
+    fn take(&mut self, value: &mut serde_json::Value) {
+        use serde_json::Value;
+        match value {
+            Value::Object(map) => {
+                map.retain(|key, _| {
+                    let is_secret = redact::is_secret_name(key);
+                    if is_secret {
+                        self.count = self.count.saturating_add(1);
+                        self.has_launcher_password |= key == LAUNCHER_PASSWORD;
+                    }
+                    !is_secret
+                });
+                for (key, child) in map.iter_mut() {
+                    if key == "extra_env"
+                        && let Value::String(env) = child
+                    {
+                        let kept = keys::without_secrets(env);
+                        if kept != *env {
+                            self.count = self.count.saturating_add(1);
+                            *env = kept;
+                        }
+                    } else {
+                        self.take(child);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(|child| self.take(child)),
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
 }
 
 /// The launch settings, turned into environment variables by [`super::Bbport::launch_command`].

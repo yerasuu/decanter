@@ -228,7 +228,11 @@ pub(super) fn back_up_shared(root: &Root, names: &[&str]) -> io::Result<()> {
         if !from.is_file() || to.exists() {
             continue;
         }
-        fs::copy(&from, &to)?;
+        if name == super::settings::FILE {
+            super::settings::copy_without_secrets(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
         copied = copied.saturating_add(1);
     }
     tracing::info!(dir = %dir.display(), copied, "shared settings backed up before per-title settings");

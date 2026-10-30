@@ -160,7 +160,11 @@ pub(super) fn back_up(root: &Root, target: &Target, files: &Files) -> io::Result
     let choices = files.choices.iter().flat_map(|(mods, patches)| [mods, patches]);
     for path in [&files.settings, &files.ini].into_iter().chain(choices) {
         if let Some(file) = path.file_name().filter(|_| path.is_file()) {
-            fs::copy(path, dir.join(file))?;
+            if path == &files.settings {
+                super::copy_without_secrets(path, &dir.join(file))?;
+            } else {
+                fs::copy(path, dir.join(file))?;
+            }
             copied = copied.saturating_add(1);
         }
     }
