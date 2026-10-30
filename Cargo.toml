@@ -45,12 +45,17 @@ decanter-runtime = { path = "crates/runtime" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
 anyhow = "1.0.104"
+# decanter_core::secrets' passphrase file when there is no OS keyring (decision #1307).
+argon2 = { version = "0.6.0", default-features = false }
+chacha20poly1305 = { version = "0.11.0", default-features = false }
 chrono = "0.4.45"
 clap = "4.6.7"
 dirs = "7.0.0"
 flate2 = "1.1.10"
 futures = "0.3.34"
 futures-util = "0.3.34"
+# Salts and nonces of the secrets file; already locked through the TLS and cipher stacks.
+getrandom = "0.4.3"
 # Free disk space where nix's statvfs isn't used (Windows, macOS).
 fs4 = { version = "1.1.0", default-features = false }
 # The close-game shortcut on Windows and macOS; Linux registers it with

@@ -7,6 +7,7 @@ pub mod external;
 mod game_tools;
 mod gog_login;
 pub mod library;
+mod passphrase;
 mod profile_form;
 mod ps;
 mod raven;

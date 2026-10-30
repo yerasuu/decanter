@@ -35,6 +35,7 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.core.secrets.keyring_entry_persistence_unreadable", "keyring entry persistence unreadable"),
     t("decanter.core.secrets.keyring_entry_read_back_otherwise", "keyring entry read back otherwise after the move to local persistence"),
     t("decanter.core.secrets.keyring_entry_not_moved_to", "keyring entry not moved to local persistence, retried on a later read"),
+    t("decanter.core.secrets.loose_permissions_narrowed", "loose permissions narrowed"),
     t("decanter.core.profiles.sessions_of_the_deleted_profile", "sessions of the deleted profile left in the keyring"),
     t("decanter.core.achievements.decanter_hook_failed_to_install", "decanter-hook failed to install for this game"),
     t("decanter.core.games.refusing_to_retain_against_an", "refusing to retain against an empty keep list, treating it as a failed fetch"),

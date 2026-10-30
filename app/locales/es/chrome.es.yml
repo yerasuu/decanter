@@ -26,3 +26,16 @@ chrome.unavailable.body: No se encuentra la biblioteca de %{path}. Si está en u
 chrome.unavailable.use: Usar %{path}
 chrome.unavailable.pick: Elegir otra carpeta
 chrome.unavailable.pick_title: Elige la carpeta de la biblioteca
+chrome.passphrase.unlock_title: Desbloquear credenciales guardadas
+chrome.passphrase.unlock_body: No hay llavero del sistema que usar, así que tus sesiones de GOG y otras credenciales están en un fichero de este ordenador, cifrado con tu frase de paso. Escríbela para usarlas durante esta sesión.
+chrome.passphrase.unlock: Desbloquear
+chrome.passphrase.create_title: Protege tus credenciales
+chrome.passphrase.create_body: No hay llavero del sistema que usar. Elige una frase de paso para guardar tus sesiones de GOG y otras credenciales en un fichero cifrado de este ordenador; Decanter te la pedirá una vez por sesión. Si te lo saltas, no se guardarán y tendrás que volver a iniciar sesión la próxima vez.
+chrome.passphrase.create: Crear
+chrome.passphrase.placeholder: Frase de paso
+chrome.passphrase.repeat: Repite la frase de paso
+chrome.passphrase.no_recovery: Si la olvidas, las credenciales guardadas no se pueden recuperar; tendrías que volver a iniciar sesión.
+chrome.passphrase.later: Ahora no
+chrome.passphrase.mismatch: Las dos frases de paso no coinciden.
+chrome.passphrase.wrong: La frase de paso no es correcta.
+chrome.passphrase.failed: 'No se ha podido abrir el fichero de credenciales: %{error}'

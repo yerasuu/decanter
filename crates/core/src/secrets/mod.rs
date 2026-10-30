@@ -25,11 +25,13 @@
     reason = "a keyring_core::Error or a StoreError already costs more than the 512-byte threshold"
 )]
 
+mod file;
 mod key;
 mod native;
 mod secret;
 mod store;
 
+pub use file::{FileError, FileOffer, file_path};
 pub use key::{SecretKey, SecretKind, ShadnetSecret};
 pub use secret::Secret;
 pub use store::{BackendKind, Forgotten, Listing, Status, Store, StoreError};

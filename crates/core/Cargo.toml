@@ -18,6 +18,9 @@ toml.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 zeroize.workspace = true
 keyring-core.workspace = true
+argon2 = { workspace = true, features = ["alloc", "zeroize"] }
+chacha20poly1305 = { workspace = true, features = ["zeroize"] }
+getrandom.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

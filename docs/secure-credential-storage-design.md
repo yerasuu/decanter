@@ -389,6 +389,31 @@ Phases 5 and 6 replace phase 8 of `docs/windows-online-plan.md`.
 - The `SteamGridDB` field and the GOG login field are masked; the saved key is never put back in
   the field, which says a key is saved. Saving an empty field no longer deletes it.
 
+### Phase 7
+
+- `secrets/file.rs`, `BackendKind::File`: `<config>/decanter/secrets.bin` (`platform::config_dir`,
+  never the library), `0600` from creation in a `0700` folder on Unix, looser modes narrowed on
+  unlock and write; on Windows no ACL of its own (one needs Win32 calls through `unsafe`, which
+  the workspace forbids), so it rests on `%APPDATA%`'s user, SYSTEM and Administrators.
+- Format: `DCNTSEC\0`, version 1, KDF 1 (Argon2id v0x13), `m_cost` KiB, `t_cost`, `p_cost` (u32
+  LE), salt 16, nonce 24, XChaCha20-Poly1305 ciphertext and tag 16; the header before the nonce
+  is the associated data. Plaintext: records `name len u32 | name | value len u32 | value`.
+  New files: m = 256 MiB, t = 6, p = 1, 0.52 s measured on a Steam Deck; a header outside
+  m 19 MiB..1 GiB, t 2..32, p 1..8 is refused as not decanter's.
+- Every write reads, decrypts, changes and seals the whole file under a fresh random nonce,
+  written to `secrets.bin.part` with `create_new`, synced, renamed and the folder synced. A file
+  that no longer opens with the session's key (replaced or altered) fails the call as `Corrupt`
+  and is never overwritten.
+- `Store::file_offer` (probing the store when nothing has yet) gives `Unlock` or `Create` when
+  the status is `Missing` or `Locked`; `unlock_file` and `create_file` derive the key, check it
+  against the file and install the backend for the rest of the run (`Status::Ready(File)`), even
+  if a keyring turns up later. Only the derived key is kept, inside the cipher, zeroed on drop.
+  Wrong passphrase: `FileError::WrongPassphrase`, file untouched. Nothing is copied from the
+  keyring; secrets saved meanwhile stay in the file (moving them back is 3.5 step 5).
+- UI: `app/src/views/passphrase.rs`, a modal from the shell once per run, masked fields, the new
+  passphrase asked twice, "Ahora no" leaving secrets unsaved as before; an unlock refreshes the
+  GOG library. The Ajustes status line is phase 2's.
+
 ### Not in the keyring, left for later phases
 
 - shadNet password and token in the launch environment of the whole launch tree (#716): phases

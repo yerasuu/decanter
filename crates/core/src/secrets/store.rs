@@ -15,6 +15,9 @@ pub enum BackendKind {
     /// The OS keyring: Secret Service on Linux, Credential Manager on Windows, the Keychain on
     /// macOS.
     Native,
+    /// `<config>/decanter/secrets.bin`, encrypted with a key derived from a passphrase asked once
+    /// per session, where there is no keyring to use (decision #1307).
+    File,
 }
 
 /// The store as the last call found it.
@@ -30,9 +33,9 @@ pub enum Status {
         reason: String,
     },
     /// No keyring to ask: no session bus, no Secret Service provider, no backend for this
-    /// platform. Asked again on a call after [`RETRY_AFTER`]. This is where a fallback backend
-    /// (decision #1307: a passphrase-encrypted file outside the library) takes over once it
-    /// exists, reported as [`Status::Ready`] with its own [`BackendKind`].
+    /// platform. Asked again on a call after [`RETRY_AFTER`]. Here and when locked,
+    /// [`Store::file_offer`] says whether the passphrase file can take over; once unlocked it
+    /// is [`Status::Ready`] with [`BackendKind::File`] for the rest of the run.
     Missing {
         reason: String,
     },
@@ -155,6 +158,16 @@ impl Store {
                 failed_at: None,
             }),
         }
+    }
+
+    /// Makes `backend` the store for the rest of the run, over the keyring and its retries: what
+    /// is written from here on stays where the user chose to keep it, rather than going back to a
+    /// keyring that turns up later in the session.
+    pub(super) fn install(&self, backend: Arc<dyn Backend>) {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        state.status = Status::Ready(backend.kind());
+        state.failed_at = None;
+        state.backend = Some(backend);
     }
 
     #[inline]

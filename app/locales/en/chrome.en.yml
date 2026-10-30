@@ -26,3 +26,16 @@ chrome.unavailable.body: The library at %{path} can't be found. If it's on an ex
 chrome.unavailable.use: Use %{path}
 chrome.unavailable.pick: Choose another folder
 chrome.unavailable.pick_title: Choose the library folder
+chrome.passphrase.unlock_title: Unlock saved credentials
+chrome.passphrase.unlock_body: There is no system keyring to use, so your GOG sessions and other credentials are in a file on this computer, encrypted with your passphrase. Type it to use them during this session.
+chrome.passphrase.unlock: Unlock
+chrome.passphrase.create_title: Protect your credentials
+chrome.passphrase.create_body: There is no system keyring to use. Choose a passphrase to keep your GOG sessions and other credentials in an encrypted file on this computer; Decanter will ask for it once per session. If you skip this, they won't be saved and you'll have to log in again next time.
+chrome.passphrase.create: Create
+chrome.passphrase.placeholder: Passphrase
+chrome.passphrase.repeat: Repeat the passphrase
+chrome.passphrase.no_recovery: If you forget it, the saved credentials can't be recovered; you would log in again.
+chrome.passphrase.later: Not now
+chrome.passphrase.mismatch: The two passphrases don't match.
+chrome.passphrase.wrong: Wrong passphrase.
+chrome.passphrase.failed: 'Could not open the credentials file: %{error}'

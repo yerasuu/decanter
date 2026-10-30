@@ -106,6 +106,7 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.views.ports.could_not_open_the_failed", "could not open the failed build's log"),
     t("decanter.views.settings.picked_folder_can_t_run", "picked folder can't run psport"),
     t("decanter.views.settings.could_not_save_the_psport", "could not save the psport channel"),
+    t("decanter.views.passphrase.secrets_file_not_opened", "secrets file not opened"),
     t("decanter.views.session_renewal.cannot_open_the_session_renewal", "cannot open the session renewal window"),
     t("decanter.views.session_renewal.failed_to_save_gog_account", "failed to save gog account"),
     t("decanter.views.session_renewal.gog_session_renewal_failed_locally", "gog session renewal failed locally"),

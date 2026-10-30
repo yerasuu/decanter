@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use decanter_core::Profile;
 use decanter_core::capabilities::Feature;
+use decanter_core::secrets::{self, FileOffer};
 use gpui::{
     AnyElement, App, Context, Entity, ExternalPaths, FontWeight, SharedString, StyleRefinement, Window, div,
     prelude::*, px, rgb,
@@ -20,15 +21,16 @@ use super::downloads::DownloadsView;
 use super::dropped::{self, DropNotice};
 use super::external::ExternalView;
 use super::library::LibraryView;
+use super::passphrase::{Closed, PassphrasePrompt};
 use super::ps::PsView;
 use super::raven::RavenView;
 use super::settings::SettingsView;
 use super::storage::StorageView;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
-use crate::state::{AppState, InstallStatus, Ps, Raven};
+use crate::state::{AppState, GogLibrary, InstallStatus, Ps, Raven};
 use crate::theme;
-use crate::widgets::{Select, progress_bar, select::SelectStyle};
+use crate::widgets::{Select, menu, progress_bar, select::SelectStyle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -61,6 +63,8 @@ pub struct Shell {
     /// Files are being dragged over the window.
     drop_hover: bool,
     drop_notice: Option<DropNotice>,
+    /// Asked once per run, when the keyring cannot keep secrets and the passphrase file can.
+    passphrase: Option<Entity<PassphrasePrompt>>,
 }
 
 impl Shell {
@@ -113,9 +117,32 @@ impl Shell {
             on_close,
             drop_hover: false,
             drop_notice: None,
+            passphrase: None,
         };
         this.reload_profiles();
+        cx.spawn(async move |this, cx| {
+            let Some(offer) = cx.background_spawn(async { secrets::store().file_offer() }).await else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| this.offer_passphrase(offer, cx));
+        })
+        .detach();
         this
+    }
+
+    fn offer_passphrase(&mut self, offer: FileOffer, cx: &mut Context<Self>) {
+        let prompt = cx.new(|cx| PassphrasePrompt::new(offer, cx));
+        cx.subscribe(&prompt, |this, _, closed: &Closed, cx| {
+            this.passphrase = None;
+            if closed.is_unlocked {
+                // Sessions that failed to read while there was no store are read again.
+                AppState::get(cx).library.clone().update(cx, GogLibrary::refresh);
+            }
+            cx.notify();
+        })
+        .detach();
+        self.passphrase = Some(prompt);
+        cx.notify();
     }
 
     fn reload_profiles(&mut self) {
@@ -546,7 +573,7 @@ impl Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // With a single profile there is nothing to switch to, so the bar
         // carries no profile at all until a second one is added in Ajustes.
         let several_profiles = self
@@ -655,6 +682,12 @@ impl Render for Shell {
             .child(div().flex_1().min_h_0().overflow_hidden().child(body))
             .children(Self::download_bar(cx))
             .children(notice)
+            // Not dismissed by a click beside it, so a stray tap does not lose what was typed.
+            .children(
+                self.passphrase
+                    .clone()
+                    .map(|prompt| menu::modal(prompt, window, Rc::new(|_, _| {}))),
+            )
             // Also gated on the drag itself: one dropped where the shell's
             // handler doesn't see it (on a popup) ends without resetting the
             // flag.
