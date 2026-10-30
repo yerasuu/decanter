@@ -106,8 +106,9 @@ pub struct Report {
     /// Confirms `--send` or `--delete`; without it nothing touches the network.
     #[arg(long)]
     yes: bool,
-    /// With `--send --yes`: also sends the run's log, privately, for whoever maintains the server.
-    #[arg(long, requires_all = ["send", "yes"])]
+    /// With `--send`: also sends the run's log, privately, for whoever maintains the server. Without
+    /// `--yes` the log is prepared and cleaned as for sending and only its counts are shown.
+    #[arg(long, requires = "send")]
     attach_log: bool,
     /// Lists the reports sent from this library, without their delete codes.
     #[arg(long, conflicts_with_all = ["send", "delete"])]
@@ -282,6 +283,9 @@ async fn send_report(
         None => None,
     };
     if !yes {
+        if let Some(bytes) = &attachment {
+            println!("{}", Text::new("ps.report.log_size").arg("bytes", bytes.len()));
+        }
         let key = if log.is_some() {
             "ps.report.send.dry_run_log"
         } else {

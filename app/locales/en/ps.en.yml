@@ -838,6 +838,7 @@ ps.report.note: This is exactly what the report contains. Nothing leaves your co
 ps.report.attach_log: Attach the full log for the maintainer (not published)
 ps.report.cleaning: Cleaning the log…
 ps.report.cleaned: 'Left out of the log before sending: names or accounts %{names}, secret values %{values}, IP or MAC addresses %{addresses}.'
+ps.report.log_size: 'Log that would be sent, after cutting it to the last 5 MiB: %{bytes} bytes.'
 ps.report.privacy: The report is public and is kept until it is resolved. It holds no paths, names or accounts. You can delete it with the code you will get. There is no account, and your IP is kept only as long as the rate limit needs it.
 ps.report.send.button: Send report
 ps.report.send.confirm: 'Send this report now? It will be public.'
