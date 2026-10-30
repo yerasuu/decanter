@@ -394,6 +394,38 @@ pub fn installed(account_id: &str) -> std::collections::BTreeMap<String, Install
         })
 }
 
+/// The GOG language tags a new install of `product_id` asks for, best first: the one chosen for
+/// the game before, else those of the app's own language (#1355).
+pub fn gog_languages(account_id: &str, product_id: &str) -> Vec<String> {
+    let chosen = db().ok().and_then(|db| {
+        db.game_language(account_id, Storefront::Gog, product_id)
+            .inspect_err(|err| tracing::warn!(account_id, product_id, %err, "failed to read the game's language"))
+            .ok()
+            .flatten()
+    });
+    chosen.map_or_else(app_gog_languages, |tag| vec![tag])
+}
+
+/// The GOG language tags that fit the app's language, best first.
+pub fn app_gog_languages() -> Vec<String> {
+    let ui = crate::i18n::saved().unwrap_or_else(crate::i18n::Language::system);
+    decanter_gog::language::preferred_for_ui(ui.code())
+        .iter()
+        .map(|tag| (*tag).to_owned())
+        .collect()
+}
+
+/// Remembers `tag` as the language `product_id` installs in from now on.
+pub fn set_gog_language(account_id: &str, product_id: &str, tag: &str) {
+    let saved = db().and_then(|db| {
+        db.set_game_language(account_id, Storefront::Gog, product_id, Some(tag))
+            .map_err(StoreError::Query)
+    });
+    if let Err(err) = saved {
+        tracing::warn!(account_id, product_id, %err, "failed to save the game's language");
+    }
+}
+
 pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> {
     let Some(library) = library_for_account(account_id).ok() else {
         tracing::debug!(

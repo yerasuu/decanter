@@ -112,6 +112,13 @@ pub(super) struct Request {
     pub(super) branch: Option<String>,
     /// A pinned build (a rollback) stays pinned on resume.
     pub(super) build_id: Option<String>,
+    /// The languages asked for, best first, so a resume picks the same depots; `None` takes every
+    /// language, as every download journalled before languages were chosen did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) languages: Option<Vec<String>>,
+    /// Only the depots of that language, added to a game already installed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) is_only_language: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,8 +131,8 @@ pub(super) enum Kind {
 #[derive(Serialize, Deserialize)]
 pub(super) struct Header {
     format: u32,
-    /// MD5 of `build_id` and `files`. The log's first record repeats it, so a log left by an
-    /// earlier plan is never read against this one.
+    /// MD5 of `build_id`, `files` and, when one was picked, `language`. The log's first record
+    /// repeats it, so a log left by an earlier plan is never read against this one.
     plan: String,
     pub(super) request: Request,
     pub(super) build_id: String,
@@ -133,6 +140,9 @@ pub(super) struct Header {
     pub(super) install_directory: String,
     pub(super) total_bytes: u64,
     pub(super) files: Vec<HeaderFile>,
+    /// The language tag whose depots the plan took; `None` when it took every depot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) language: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,6 +169,7 @@ impl Header {
         request: Request,
         build_id: String,
         install_directory: String,
+        language: Option<String>,
         downloads: &[PlannedDownload],
     ) -> anyhow::Result<Self> {
         let files: Vec<HeaderFile> = downloads
@@ -179,7 +190,15 @@ impl Header {
                 owner: download.owner.clone(),
             })
             .collect();
-        let plan = crate::achv_try!(serde_json::to_vec(&(&build_id, &files)).context("encoding the download plan"));
+        // Without a language the hash is the one plans had before languages, so a journal of then
+        // still carries on as it was.
+        let plan = crate::achv_try!(
+            match &language {
+                None => serde_json::to_vec(&(&build_id, &files)),
+                Some(tag) => serde_json::to_vec(&(&build_id, &files, tag)),
+            }
+            .context("encoding the download plan")
+        );
         Ok(Self {
             format: FORMAT,
             plan: hex_digest(&md5::compute(plan).0),
@@ -188,6 +207,7 @@ impl Header {
             install_directory,
             total_bytes: files.iter().map(|file| file.size).sum(),
             files,
+            language,
         })
     }
 }

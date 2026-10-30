@@ -9,6 +9,7 @@
 mod achievements;
 mod dump_sizes;
 mod favorites;
+mod game_language;
 mod game_options;
 mod games;
 mod library_caches;
@@ -176,6 +177,14 @@ CREATE TABLE IF NOT EXISTS library_caches (
     cache_path  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS game_language (
+    account_id  TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    product_id  TEXT NOT NULL,
+    language    TEXT NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
 DROP TABLE IF EXISTS ps_scan_dirs;
 DROP TABLE IF EXISTS game_links;
 ";
@@ -183,7 +192,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub struct Db {
     pub(crate) conn: Connection,

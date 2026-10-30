@@ -96,6 +96,7 @@ impl BetasTab {
                 &target.title,
                 branch_name.as_deref(),
                 None,
+                None,
                 on_progress,
             );
             let job = DownloadJob {
@@ -254,6 +255,7 @@ impl VersionsTab {
                 &target.title,
                 branch.as_deref(),
                 Some(&target_build_id),
+                None,
                 on_progress,
             );
             let job = DownloadJob {

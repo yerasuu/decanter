@@ -119,6 +119,10 @@ pub struct InstalledGame {
     /// Directory name under `common/`, from the storefront's own manifest
     /// — a single path component, never a nested path.
     pub install_dir: String,
+    /// The storefront's tag of the one language whose files were installed
+    /// (`es-ES`). `None` is every language the build has, which is also what
+    /// an install from before languages were chosen reads as.
+    pub language: Option<String>,
     /// Unix seconds, or `None` if it never has been.
     pub last_played: Option<i64>,
     /// The executable to launch, relative to the install directory and
@@ -240,6 +244,7 @@ impl InstalledGame {
             last_played: root.get("LastPlayed").and_then(|value| value.parse().ok()),
             proton: root.get("Proton").map(str::to_owned),
             branch: root.get("Branch").map(str::to_owned),
+            language: root.get("Language").map(str::to_owned),
             dlcs: root
                 .get_block("InstalledDLC")
                 .and_then(Value::as_block)
@@ -326,6 +331,9 @@ impl InstalledGame {
         }
         if let Some(branch) = self.branch.as_ref() {
             root.insert("Branch", branch.clone());
+        }
+        if let Some(language) = self.language.as_ref() {
+            root.insert("Language", language.clone());
         }
         if !self.dlcs.is_empty() {
             let mut dlcs = Value::block();

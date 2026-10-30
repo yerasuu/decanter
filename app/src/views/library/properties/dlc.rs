@@ -109,6 +109,7 @@ impl DlcTab {
                     &title,
                     None,
                     None,
+                    None,
                     on_progress,
                 );
                 let job = DownloadJob {

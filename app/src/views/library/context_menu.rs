@@ -502,6 +502,7 @@ fn game_action_item(
                         branch: None,
                         dlcs: Vec::new(),
                         library_root: None,
+                        language: None,
                     },
                     cx,
                 );

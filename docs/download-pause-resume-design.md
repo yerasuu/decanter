@@ -218,6 +218,43 @@ integrated. Phase 4 is built as described below (#1310), and phase 4b on top of 
   principio* and *Bajar al final*. Storage and the game's page show the same *N.º n en la cola*.
   *Descargar ahora* (stop the running one to start this one) is not built.
 
+**Language selection as built** (#1354, decision #1355; not run against GOG yet).
+
+- Depots. `DepotMeta.languages` (`crates/gog/src/api/client/content.rs`) reads each depot's
+  `languages`; `*`, an empty list or none is a depot every language needs. `select_depots`
+  (`crates/gog/src/depot.rs`) keeps those and, of the language-specific ones, only those of the one
+  tag `language::resolve` picks from the build's own tags for the wanted list: the same tag, else
+  the same language (and script, so `zh-Hans` never becomes `zh-Hant`), else `en-US`, another
+  English, or the first language offered, marked `is_wanted: false`.
+- What is asked for. A new install asks for the game's saved choice (`game_language` table, by
+  account, storefront and product), else the tags of the app's language
+  (`language::preferred_for_ui`: `en` → `en-US`, `en-GB`; `es` → `es-ES`, `es-MX`; `pt-BR` →
+  `pt-BR`, `pt-PT`; `zh-CN` → `zh-Hans`; `it`, `de`, `fr`, `ru`, `ja`, `ko` → `it-IT`, `de-DE`,
+  `fr-FR`, `ru-RU`, `ja-JP`, `ko-KR`). An update, a branch or build switch, a DLC, a verify or a
+  repair asks for the tag in the game's manifest (`Language`); a game installed before this has
+  none and keeps every language, so nothing on disk changes under it.
+- Journal. `Request.languages` (the wanted list, best first) and `Request.is_only_language` are in
+  `download.json` and `pending.json`, so a resume plans the same depots whatever the game says
+  meanwhile. `Header.language` is the tag the plan took and goes into the plan hash; without one
+  the hash is computed as before, so a journal from before carries on unchanged. A build drift
+  across a language change is an ordinary drift: files are matched by path and chunk MD5.
+- Change of language (Propiedades → Idioma). `add_language` plans only the language-specific
+  depots of the new tag for the game and each installed DLC that offers it, at the build the game
+  is on (`Request.build_id`), files owned per product as a repair's are, and goes through the same
+  queue, journal and move; a resume takes `add_language_request`. Done, the manifest records the
+  tag and the size grows by what didn't replace a file.
+- Removing languages. `unused_language_files` reads the installed build's depot manifests (game and
+  installed DLC) and lists the files only depots of other languages name, minus anything a kept
+  depot names (compared case-insensitively), `goggame-*.info`, `Galaxy64.dll` and its hook backup,
+  and anything not a regular file on disk. It counts the kept language's own files that are missing;
+  `remove_unused_languages` refuses then, as it does for another build than the one listed or a
+  download of the game in this process. The app shows the list and its size and deletes only on
+  confirmation (#1133); it re-checks each path (inside the game, regular file, not a link). Saves,
+  settings and mods are never candidates: no depot of the build lists them.
+- `goggame-<id>.info`. After an install, a language change or a removal, its `language` becomes
+  the tag's English name and `languages` the tag, the rest of the file kept, written to a sibling
+  and renamed. Verify checks only that it exists, since it no longer hashes as shipped.
+
 **Left for later** (deliberately): the slot is per library location, so two profiles with different
 library folders can still download at once; cross-process turns are not in asking order (the lock is
 polled); the DLC queued behind a game that failed are listed only after the next start.

@@ -80,6 +80,7 @@ pub fn add(profile_id: &str, path: &Path) -> Result<InstalledGame, Text> {
         last_played: None,
         proton: None,
         branch: None,
+        language: None,
         dlcs: Default::default(),
         cloud_save_path: None,
         cloud_save_last_sync: None,

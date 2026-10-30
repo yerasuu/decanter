@@ -191,6 +191,7 @@ impl DetailView {
                                     branch: None,
                                     dlcs: dlcs.clone(),
                                     library_root: None,
+                                    language: None,
                                 },
                                 cx,
                             );

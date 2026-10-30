@@ -375,6 +375,29 @@ and `page_token` are ignored; the endpoint answers the whole list in one page (t
 - **Status codes read apart.** Only the refused statuses become `Rejected`; never map a 5xx, 404, 429, a timeout
   or an unreadable body to `Rejected`, since that would log the user out.
 
+## 8a. Content system: depot languages
+
+Not one of the four modules above, but the same rule applies: `crates/gog/src/api/client/content.rs`
+reads the build manifest a build's `link` points at (zlib'd JSON). Each entry of its `depots`
+array carries, besides `manifest`, `productId` and `osBitness`, a `languages` field *(from the
+answers decanter reads; GOG documents no field of `content-system.gog.com`, and the community's
+[gogdb.org build pages](https://www.gogdb.org/product/1456460669/build/55240461974486816) show the
+same values in a Languages column)*:
+
+| Value | Means |
+| --- | --- |
+| `["*"]`, `[]`, absent, `null` | files every language needs |
+| `["en-US"]` | files of that language only |
+| several tags | files those languages share |
+
+Tags are BCP 47-like (`en-US`, `es-MX`, `pt-BR`, `zh-Hans`, `zh-Hant`, `ar`); a value spelled as an
+English name (`English`) is read as the matching tag, and any tag decanter doesn't know is kept
+verbatim. A bare string is read as a list of one and a non-string entry is ignored, so a depot is
+never misread as language-specific. A game's `goggame-<id>.info` names a language as `language`
+(an English name) and `languages` (tags): the copy Cyberpunk 2077's language depots ship read
+`Polish` and `["pl-PL"]` on an install that took every depot (kb #1353). That GOG Galaxy rewrites
+both to the language chosen is *(unverified, from that file's shape)*.
+
 ## 9. Sources
 
 - [gogapidocs: Authentication](https://gogapidocs.readthedocs.io/en/latest/auth.html): login page, token

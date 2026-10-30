@@ -127,6 +127,7 @@ pub fn save(profile_id: &str, id: &str, draft: Draft) -> Result<(), Text> {
         last_played: previous.as_ref().and_then(|game| game.last_played),
         proton: previous.and_then(|game| game.proton),
         branch: None,
+        language: None,
         dlcs: Default::default(),
         cloud_save_path: None,
         cloud_save_last_sync: None,

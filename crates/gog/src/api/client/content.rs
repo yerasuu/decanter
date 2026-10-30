@@ -106,6 +106,31 @@ pub struct DepotMeta {
     /// signed for a different one is refused.
     #[serde(rename = "productId", default)]
     pub product_id: Option<String>,
+    /// The languages whose files this depot holds, as GOG tags (`en-US`, `zh-Hans`); `*`, an
+    /// empty list or none at all is a depot every language needs. Read leniently, a bare string
+    /// as a list of one and anything else as none, since a depot misread as language-specific
+    /// would leave its files out of every install.
+    #[serde(default, deserialize_with = "lenient_languages")]
+    pub languages: Option<Vec<String>>,
+}
+
+fn lenient_languages<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::String(tag) => Some(vec![tag]),
+        serde_json::Value::Array(tags) => Some(
+            tags.into_iter()
+                .filter_map(|tag| match tag {
+                    serde_json::Value::String(tag) => Some(tag),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        _ => None,
+    })
 }
 
 #[derive(Deserialize)]
@@ -345,10 +370,8 @@ fn galaxy_path(hash: &str) -> String {
 fn manifest_host(link: &str) -> Option<(String, bool)> {
     let url = url::Url::parse(link).ok()?;
     let host = url.host_str()?;
-    let is_plain = url.scheme() == "https"
-        && url.port().is_none()
-        && url.username().is_empty()
-        && url.password().is_none();
+    let is_plain =
+        url.scheme() == "https" && url.port().is_none() && url.username().is_empty() && url.password().is_none();
     let is_gog_com = host == "gog.com" || host.ends_with(".gog.com");
     let is_gog_cdn = host.starts_with("gog-cdn-") && host.ends_with(".gcdn.co");
     (is_plain && (is_gog_com || is_gog_cdn)).then(|| (host.to_owned(), is_gog_com))

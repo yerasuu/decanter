@@ -18,7 +18,7 @@ use decanter_core::{Storefront, platform};
 use super::download::PlannedDownload;
 use super::journal::{Header, Kind, Request};
 use super::pending::{Pending, PendingFile};
-use super::plan::{manifest_relative_path, resolve_depot_files};
+use super::plan::{Languages, manifest_relative_path, resolve_depot_files};
 use crate::api::client::{DepotChunk, Sessionless};
 use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
 
@@ -97,6 +97,12 @@ pub async fn verify(
     // `repair` would "fix" it by silently upgrading it out from under the
     // pin.
     let build_id = Some(game.build_id.as_str());
+    // Only the language the game is installed in: the files of the others were never put there.
+    let wanted = game.language.clone().map(|tag| vec![tag]);
+    let languages = Languages {
+        wanted: wanted.as_deref(),
+        is_only_language: false,
+    };
     let mut report = VerifyReport::default();
     crate::achv_try!(
         verify_content(
@@ -106,6 +112,7 @@ pub async fn verify(
             game_id,
             branch,
             build_id,
+            languages,
             &install_root,
             &mut report,
         )
@@ -122,6 +129,7 @@ pub async fn verify(
                 dlc_id,
                 branch,
                 build_id,
+                languages,
                 &install_root,
                 &mut report,
             )
@@ -138,6 +146,10 @@ pub async fn verify(
     Ok(report)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each names a different part of which build and depots to check"
+)]
 async fn verify_content(
     http: &Sessionless,
     access_token: &str,
@@ -145,10 +157,11 @@ async fn verify_content(
     content: i64,
     branch: Option<&str>,
     build_id: Option<&str>,
+    languages: Languages<'_>,
     install_root: &Path,
     report: &mut VerifyReport,
 ) -> anyhow::Result<()> {
-    let (_, _, files) = crate::achv_try!(
+    let files = crate::achv_try!(
         resolve_depot_files(
             http,
             access_token,
@@ -156,12 +169,14 @@ async fn verify_content(
             content,
             branch,
             build_id,
-            platform::game_system()
+            platform::game_system(),
+            languages
         )
         .await
         .inspect_err(|err| tracing::error!(content, error = %err, "depot manifest fetch failed, aborting verify"))
         .with_context(|| format!("fetching the depot manifest for {content}"))
-    );
+    )
+    .files;
 
     // Hashing every installed file is real disk I/O over potentially
     // gigabytes — run it on the blocking pool rather than inline in this
@@ -179,6 +194,11 @@ async fn verify_content(
                 let path = install_root.join(&relative_path);
                 checked += 1;
 
+                // decanter writes the chosen language into it, as Galaxy does, so it no longer
+                // hashes as the depot shipped it; only its absence is a fault.
+                if is_info_file(&relative_path) && path.is_file() {
+                    continue;
+                }
                 let reason = match verify_file(&verification_target(&path), &file.chunks) {
                     Ok(true) => {
                         tracing::debug!(relative_path = %relative_path.display(), "file verified ok");
@@ -205,6 +225,14 @@ async fn verify_content(
     report.files_checked += checked;
     report.broken.extend(broken);
     Ok(())
+}
+
+fn is_info_file(relative_path: &Path) -> bool {
+    relative_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|name| name.starts_with("goggame-") && name.ends_with(".info"))
 }
 
 /// Where to actually read `path`'s bytes from for verification.
@@ -335,6 +363,8 @@ async fn repair_run(
         title: game.name.clone(),
         branch: game.branch.clone(),
         build_id: Some(game.build_id.clone()),
+        languages: game.language.clone().map(|tag| vec![tag]),
+        is_only_language: false,
     };
     let files = broken
         .iter()
@@ -377,6 +407,7 @@ async fn repair_run(
         request,
         game.build_id.clone(),
         game.install_dir.clone(),
+        None,
         &downloads
     ));
     let (journal, _) = crate::achv_try!(
@@ -414,6 +445,12 @@ async fn plan_repair(
 
     let system = platform::game_system();
     let bundle_program = super::program::bundle_program(game, system);
+    // The language the game is in, so a path two languages both ship is repaired from its own.
+    let wanted = game.language.clone().map(|tag| vec![tag]);
+    let languages = Languages {
+        wanted: wanted.as_deref(),
+        is_only_language: false,
+    };
     let mut downloads = Vec::with_capacity(broken.len());
     for (owner, wanted) in by_owner {
         let owner_id: i64 = crate::achv_try!(owner.parse().context("GOG product id must be numeric"));
@@ -428,6 +465,7 @@ async fn plan_repair(
                 game.branch.as_deref(),
                 Some(game.build_id.as_str()),
                 system,
+                languages,
             )
             .await
         );

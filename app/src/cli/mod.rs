@@ -85,6 +85,11 @@ pub enum Cmd {
         branch: Option<String>,
         #[arg(long)]
         build_id: Option<String>,
+        /// GOG language tag to install (`es-ES`, `en-US`). Without it a new
+        /// install takes the game's saved language, else the app's, and an
+        /// installed game keeps the one it has.
+        #[arg(long)]
+        language: Option<String>,
         /// Exit at once when another decanter process (the app, say) is
         /// downloading, instead of waiting for its turn.
         #[arg(long)]
@@ -182,6 +187,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
             title,
             branch,
             build_id,
+            language,
             no_wait,
         } => {
             let target = install::Target {
@@ -190,6 +196,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
                 title: &title,
                 branch: branch.as_deref(),
                 build_id: build_id.as_deref(),
+                language: language.as_deref(),
             };
             install::install(target, no_wait).await?;
         }

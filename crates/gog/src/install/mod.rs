@@ -23,6 +23,7 @@ use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront, p
 
 mod download;
 mod journal;
+mod language;
 mod pending;
 mod plan;
 mod program;
@@ -35,6 +36,9 @@ mod verify;
 
 pub use download::Cancelled;
 pub use journal::{BuildSwitch, PauseReason, Paused, Room};
+pub use language::{
+    LanguageCleanup, UnusedFile, add_language, offered_languages, remove_unused_languages, unused_language_files,
+};
 pub use queue::{DownloadQueue, QueueMove, download_queue, move_queued, queue_changed, restore_queue};
 pub use tracking::{cancel, download_slot_busy, pause, pause_for_quit};
 pub use unfinished::{
@@ -46,7 +50,7 @@ pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_all};
 use journal::{Header, Journal, Kind, Opened, Request, Start};
 use pending::{Entered, Pending};
-use plan::Plan;
+use plan::{Languages, Plan};
 use rate::RateTracker;
 use staging::{move_into_library, staging_in, staging_root};
 use tracking::{InstallKey, Settling, Stop, active, claim};
@@ -101,6 +105,13 @@ pub struct Progress {
 /// a DLC install, for the same reason `branch` is: there is no "this DLC
 /// on an older build" to ask for, only the base game's.
 ///
+/// `languages` (GOG tags, best first) picks the one language whose depots
+/// are installed, beside those every language needs; a game that offers
+/// none of them gets English (see [`crate::language::resolve`]). `None`
+/// keeps the language the game is installed in, its game's for a DLC, and
+/// takes every language for a game installed before languages were chosen,
+/// so an update never changes what is on disk.
+///
 /// On success an appmanifest records the install — where the files are,
 /// which build (and branch), and, when it could be identified, what
 /// launches it.
@@ -133,35 +144,64 @@ pub async fn install(
     title: &str,
     branch: Option<&str>,
     build_id: Option<&str>,
+    languages: Option<&[String]>,
     on_progress: impl FnMut(Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
-    let outcome = install_run(
-        library,
-        account_id,
-        product_id,
-        parent_id,
-        title,
-        branch,
-        build_id,
-        on_progress,
-    )
-    .await;
-    queue::settle(&(account_id.to_owned(), product_id.to_owned()), &outcome).await;
+    let languages = match languages {
+        Some(wanted) => Some(wanted.to_vec()),
+        None => library
+            .read_manifest(account_id, Storefront::Gog, parent_id.unwrap_or(product_id))
+            .and_then(|game| game.language)
+            .map(|tag| vec![tag]),
+    };
+    let request = Request {
+        kind: Kind::Install,
+        account_id: account_id.to_owned(),
+        product_id: product_id.to_owned(),
+        parent_id: parent_id.map(str::to_owned),
+        title: title.to_owned(),
+        branch: branch.map(str::to_owned),
+        build_id: build_id.map(str::to_owned),
+        languages,
+        is_only_language: false,
+    };
+    install_request(library, request, on_progress).await
+}
+
+/// [`install`] of a request as it was journalled, so a resume plans the same
+/// depots: the languages it resolved to, not what the game has meanwhile.
+/// Its place in the queue is given up or kept by how it ended, as every
+/// download's is.
+async fn install_request(
+    library: &Library,
+    request: Request,
+    on_progress: impl FnMut(Progress) + Send + 'static,
+) -> anyhow::Result<()> {
+    let key: InstallKey = (request.account_id.clone(), request.product_id.clone());
+    let outcome = install_run(library, request, on_progress).await;
+    queue::settle(&key, &outcome).await;
     outcome
 }
 
 async fn install_run(
     library: &Library,
-    account_id: &str,
-    product_id: &str,
-    parent_id: Option<&str>,
-    title: &str,
-    branch: Option<&str>,
-    build_id: Option<&str>,
+    request: Request,
     mut on_progress: impl FnMut(Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
+    let account_id = request.account_id.clone();
+    let product_id = request.product_id.clone();
+    let parent_id = request.parent_id.clone();
+    let (account_id, product_id, parent_id) = (account_id.as_str(), product_id.as_str(), parent_id.as_deref());
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-    tracing::info!(product_id, title, parent_id, branch, build_id, "starting gog install");
+    tracing::info!(
+        product_id,
+        title = request.title,
+        parent_id,
+        branch = request.branch,
+        build_id = request.build_id,
+        languages = ?request.languages,
+        "starting gog install"
+    );
 
     claim(account_id, product_id).await;
     let key: InstallKey = (account_id.to_owned(), product_id.to_owned());
@@ -172,15 +212,6 @@ async fn install_run(
     {
         return Err(refused);
     }
-    let request = Request {
-        kind: Kind::Install,
-        account_id: account_id.to_owned(),
-        product_id: product_id.to_owned(),
-        parent_id: parent_id.map(str::to_owned),
-        title: title.to_owned(),
-        branch: branch.map(str::to_owned),
-        build_id: build_id.map(str::to_owned),
-    };
     let staging = crate::achv_try!(queued_staging(library, account_id, product_id, parent_id));
     let pending = Pending::new(request.clone(), Vec::new());
     let entered = pending::enter(&staging, &pending).await;
@@ -188,7 +219,19 @@ async fn install_run(
         return Err(stopped_queued(entered, pending, &key).await);
     };
 
-    let planning = plan_install(library, account_id, game_id, parent_id, branch, build_id);
+    let languages = Languages {
+        wanted: request.languages.as_deref(),
+        is_only_language: false,
+    };
+    let planning = plan_install(
+        library,
+        account_id,
+        game_id,
+        parent_id,
+        request.branch.as_deref(),
+        request.build_id.as_deref(),
+        languages,
+    );
     let Some(planned) = tracking::until_stopped(&key, planning).await else {
         drop(turn);
         return Err(stopped_queued(entered, pending, &key).await);
@@ -273,6 +316,11 @@ pub async fn queue_dlcs(library: &Library, account_id: &str, parent_id: &str, dl
             title: title.clone(),
             branch: None,
             build_id: None,
+            languages: library
+                .read_manifest(account_id, Storefront::Gog, parent_id)
+                .and_then(|game| game.language)
+                .map(|tag| vec![tag]),
+            is_only_language: false,
         };
         match queued_staging(library, account_id, dlc_id, Some(parent_id)) {
             Ok(staging) => drop(pending::enter(&staging, &Pending::new(request, Vec::new())).await),
@@ -291,6 +339,7 @@ async fn plan_install(
     parent_id: Option<&str>,
     branch: Option<&str>,
     build_id: Option<&str>,
+    languages: Languages<'_>,
 ) -> anyhow::Result<(Plan, Option<String>)> {
     let product = game_id.to_string();
     let product_id = product.as_str();
@@ -324,6 +373,7 @@ async fn plan_install(
             effective_branch.as_deref(),
             effective_build_id,
             platform::game_system(),
+            languages,
         )
         .await
         .inspect_err(
@@ -462,8 +512,16 @@ async fn install_into(
         request,
         plan.version.clone(),
         plan.install_directory.clone(),
+        plan.language.as_ref().map(|picked| picked.tag.clone()),
         &downloads
     ));
+    if let Some(picked) = plan.language.as_ref().filter(|picked| !picked.is_wanted) {
+        tracing::warn!(
+            product_id,
+            language = picked.tag,
+            "the game doesn't offer the language asked for, installing the fallback"
+        );
+    }
     let (journal, header) =
         crate::achv_try!(fetch_into_staging(&staging, header, downloads, key, lock, on_progress).await);
 
@@ -483,6 +541,9 @@ async fn install_into(
         Ok(true) => tracing::info!(product_id, "achievement hook deployed"),
         Ok(false) => {}
         Err(err) => tracing::warn!(product_id, error = %err, "failed to deploy the achievement hook"),
+    }
+    if let Some(tag) = &header.language {
+        language::write_info(&destination_root, product_id, tag, &relative_paths).await;
     }
 
     // A DLC is recorded on the game it went into. Its own launch
@@ -532,6 +593,7 @@ async fn install_into(
                 proton,
                 dlcs,
                 branch: branch.map(str::to_string),
+                language: header.language.clone(),
                 cloud_save_path,
                 cloud_save_last_sync,
                 art: GameArt::default(),
@@ -911,6 +973,8 @@ pub async fn uninstall_dlc(
         // by what actually went.
         match tokio::fs::metadata(&path).await {
             Ok(meta) => removed += meta.len(),
+            // A language the game isn't installed in never put its files there.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
             Err(err) => {
                 tracing::warn!(path = %path.display(), error = %err, "couldn't read dlc file size before removing it")
             }

@@ -37,6 +37,9 @@ pub struct InstallRequest {
     /// The library folder a new install goes in; `None` is the profile's
     /// main one. An update or DLC goes wherever the game already is.
     pub library_root: Option<std::path::PathBuf>,
+    /// The GOG language tag picked in the install dialog, saved as the
+    /// game's; `None` asks for the one chosen for it before, else the app's.
+    pub language: Option<String>,
 }
 
 /// The row a tracked download shows in Descargas.
@@ -318,6 +321,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         branch,
         dlcs,
         library_root,
+        language,
     } = request;
     tracing::info!(
         account_id,
@@ -348,6 +352,15 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         return;
     };
 
+    if let Some(tag) = &language {
+        crate::core::set_gog_language(&account_id, &product_id, tag);
+    }
+    // A DLC follows its game's language, which `decanter_gog::install` reads itself.
+    let languages = match (&language, &parent_id) {
+        (Some(tag), _) => Some(vec![tag.clone()]),
+        (None, None) => Some(crate::core::gog_languages(&account_id, &product_id)),
+        (None, Some(_)) => None,
+    };
     decanter_gog::queue_dlcs(&core_library, &account_id, &product_id, &dlcs).await;
     let (on_progress, progress) = progress_channel();
     let install = decanter_gog::install(
@@ -358,6 +371,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         &title,
         branch.as_deref(),
         None,
+        languages.as_deref(),
         on_progress,
     );
     let job = DownloadJob {
@@ -548,6 +562,7 @@ async fn install_dlcs(
             &dlc_id,
             Some(product_id),
             &dlc_title,
+            None,
             None,
             None,
             on_progress,

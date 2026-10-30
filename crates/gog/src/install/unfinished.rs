@@ -22,6 +22,8 @@ pub struct UnfinishedDownload {
     pub title: String,
     /// Carried on through [`resume_repair`] rather than [`resume`].
     pub is_repair: bool,
+    /// Another language's files added to a game already installed.
+    pub is_language: bool,
     /// A pinned build (a rollback), which a resume keeps.
     pub build_id: Option<String>,
     /// The journal's last pause, or [`PauseReason::ClosedUnexpectedly`] when
@@ -199,6 +201,7 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         parent_id: request.parent_id.clone(),
         title: request.title.clone(),
         is_repair: request.kind == Kind::Repair,
+        is_language: request.is_only_language,
         build_id: request.build_id.clone(),
         reason,
         room,
@@ -286,17 +289,12 @@ pub async fn resume(
         let bytes_done = found.bytes_done();
         let request = found.request;
         tracing::info!(account_id, product_id, root = %root.display(), "resuming an unfinished download");
-        let outcome = super::install(
-            &library.clone().targeting(&root),
-            account_id,
-            product_id,
-            request.parent_id.as_deref(),
-            &request.title,
-            request.branch.as_deref(),
-            request.build_id.as_deref(),
-            on_progress,
-        )
-        .await;
+        let library = library.clone().targeting(&root);
+        let outcome = if request.is_only_language {
+            super::language::add_language_request(&library, request, on_progress).await
+        } else {
+            super::install_request(&library, request, on_progress).await
+        };
         return still_paused(outcome, bytes_done, root);
     }
     Err(NothingToResume.into())

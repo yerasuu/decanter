@@ -24,6 +24,7 @@ pub mod cloud_saves;
 mod depot;
 pub mod hook;
 mod install;
+pub mod language;
 mod library;
 mod mods;
 mod orders;
@@ -35,11 +36,12 @@ mod updates;
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
 pub use install::{
-    BrokenFile, BrokenReason, BuildSwitch, Cancelled, DownloadQueue, NothingToResume, PauseReason, Paused, Progress,
-    QueueMove, Room, StrayStaging, UnfinishedDownload, VerifyReport, cancel, discard, discard_stray, download_queue,
-    download_slot_busy, downloading_dir, install, move_queued, pause, pause_for_quit, queue_changed, queue_dlcs,
-    repair, restore_queue, resume, resume_repair, stray_staging, unfinished_downloads, uninstall, uninstall_dlc,
-    verify,
+    BrokenFile, BrokenReason, BuildSwitch, Cancelled, DownloadQueue, LanguageCleanup, NothingToResume, PauseReason,
+    Paused, Progress, QueueMove, Room, StrayStaging, UnfinishedDownload, UnusedFile, VerifyReport, add_language,
+    cancel, discard, discard_stray, download_queue, download_slot_busy, downloading_dir, install, move_queued,
+    offered_languages, pause, pause_for_quit, queue_changed, queue_dlcs, remove_unused_languages, repair,
+    restore_queue, resume, resume_repair, stray_staging, unfinished_downloads, uninstall, uninstall_dlc,
+    unused_language_files, verify,
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
 pub use mods::{GogMod, gog_mods};

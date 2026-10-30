@@ -102,6 +102,7 @@ impl UpdatesTab {
                 &target.title,
                 None,
                 None,
+                None,
                 on_progress,
             );
             let job = DownloadJob {

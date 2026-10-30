@@ -17,6 +17,7 @@ pub struct Target<'args> {
     pub title: &'args str,
     pub branch: Option<&'args str>,
     pub build_id: Option<&'args str>,
+    pub language: Option<&'args str>,
 }
 
 /// One download runs at a time across decanter processes (#1320): with the
@@ -29,11 +30,28 @@ pub async fn install(target: Target<'_>, no_wait: bool) -> anyhow::Result<()> {
         title,
         branch,
         build_id,
+        language,
     } = target;
-    tracing::info!(account_id, product_id, title, branch, build_id, "install started");
+    tracing::info!(
+        account_id,
+        product_id,
+        title,
+        branch,
+        build_id,
+        language,
+        "install started"
+    );
     let library = crate::achv_try!(
         crate::core::library_for_account(account_id).map_err(|err| anyhow::anyhow!("resolving library: {err}"))
     );
+    let is_installed = library
+        .read_manifest(account_id, decanter_core::Storefront::Gog, product_id)
+        .is_some();
+    let languages = match language {
+        Some(tag) => Some(vec![decanter_gog::language::canonical(tag)]),
+        None if is_installed => None,
+        None => Some(crate::core::gog_languages(account_id, product_id)),
+    };
     if decanter_gog::download_slot_busy(&library) {
         if no_wait {
             anyhow::bail!(
@@ -57,6 +75,7 @@ pub async fn install(target: Target<'_>, no_wait: bool) -> anyhow::Result<()> {
         title,
         branch,
         build_id,
+        languages.as_deref(),
         move |progress| {
             let seen = counted.fetch_add(1, Ordering::Relaxed) + 1;
             if seen % 200 == 1 {

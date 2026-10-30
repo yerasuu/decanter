@@ -8,6 +8,7 @@ use decanter_runtime::sanitize_relative_path;
 
 use super::download::{ChunkSource, PlannedDownload};
 use crate::api::client::{DepotFile, Sessionless};
+use crate::language::Resolved;
 
 /// A file to fetch and where it goes, resolved from the depot manifest.
 pub(super) struct PlannedFile {
@@ -29,6 +30,39 @@ pub(super) struct Plan {
     pub(super) version: String,
     pub(super) install_directory: String,
     pub(super) files: Vec<PlannedFile>,
+    /// The language whose depots were taken; `None` when every depot was.
+    pub(super) language: Option<Resolved>,
+}
+
+/// Which of a product's depots a plan takes, by language.
+#[derive(Clone, Copy)]
+pub(super) struct Languages<'wanted> {
+    /// Best first; `None` takes every language the build has.
+    pub(super) wanted: Option<&'wanted [String]>,
+    /// Only the depots of the language picked, for a language added to a game already installed:
+    /// what every language needs is on disk already.
+    pub(super) is_only_language: bool,
+}
+
+impl Languages<'_> {
+    pub(super) const ALL: Self = Self {
+        wanted: None,
+        is_only_language: false,
+    };
+}
+
+/// What planning only one language's depots fails with when the build has no depot of it for
+/// that product.
+#[derive(Debug, thiserror::Error)]
+#[error("this build doesn't offer the language asked for")]
+pub(super) struct LanguageNotOffered;
+
+/// What [`resolve_depot_files`] read of one product in one build.
+pub(super) struct DepotFiles {
+    pub(super) install_directory: String,
+    pub(super) build_id: String,
+    pub(super) files: Vec<DepotFile>,
+    pub(super) language: Option<Resolved>,
 }
 
 impl Plan {
@@ -70,10 +104,26 @@ pub(super) async fn plan(
     branch: Option<&str>,
     build_id: Option<&str>,
     system: GameSystem,
+    languages: Languages<'_>,
 ) -> anyhow::Result<Plan> {
     let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
-    let (install_directory, version, depot_files) = crate::achv_try!(
-        resolve_depot_files(&http, access_token, build_owner, content, branch, build_id, system).await
+    let DepotFiles {
+        install_directory,
+        build_id: version,
+        files: depot_files,
+        language,
+    } = crate::achv_try!(
+        resolve_depot_files(
+            &http,
+            access_token,
+            build_owner,
+            content,
+            branch,
+            build_id,
+            system,
+            languages
+        )
+        .await
     );
     // Signed for the content's own product: its chunks live under that
     // product's path, and a link signed for the build's owner is refused.
@@ -137,12 +187,13 @@ pub(super) async fn plan(
         });
     }
 
-    tracing::debug!(content, file_count = files.len(), "resolved gog install plan");
+    tracing::debug!(content, file_count = files.len(), language = ?language, "resolved gog install plan");
     Ok(Plan {
         system,
         version,
         install_directory,
         files,
+        language,
     })
 }
 
@@ -165,7 +216,8 @@ pub(super) fn parse_md5(hex: &str) -> Option<[u8; 16]> {
     Some(digest)
 }
 
-/// The install directory, build id and every file of `content`'s depots.
+/// The install directory, build id and every file of `content`'s depots, of the language
+/// `languages` picks.
 ///
 /// Split out because removing a DLC needs the file list and nothing else:
 /// no secure link, no chunk URLs, no download.
@@ -181,7 +233,8 @@ pub(super) async fn resolve_depot_files(
     branch: Option<&str>,
     build_id: Option<&str>,
     system: GameSystem,
-) -> anyhow::Result<(String, String, Vec<DepotFile>)> {
+    languages: Languages<'_>,
+) -> anyhow::Result<DepotFiles> {
     let builds = crate::achv_try!(
         crate::depot::get_builds(http, access_token, build_owner, system)
             .await
@@ -212,7 +265,21 @@ pub(super) async fn resolve_depot_files(
             .inspect_err(|err| tracing::error!(build_id = build.build_id, error = %err, "gog build manifest fetch failed, aborting plan"))
             .context("GOG build manifest fetch failed")
     );
-    let depots = crate::depot::select_depots(&meta, content, system);
+    let crate::depot::DepotSelection { mut depots, language } =
+        crate::depot::select_depots(&meta, content, system, languages.wanted);
+    if languages.is_only_language {
+        let Some(picked) = language.as_ref().filter(|picked| picked.is_wanted) else {
+            tracing::error!(content, build_id = build.build_id, wanted = ?languages.wanted, "the build doesn't offer the language asked for");
+            return Err(LanguageNotOffered.into());
+        };
+        depots.retain(|depot| crate::depot::specific(depot).is_some());
+        tracing::info!(
+            content,
+            language = picked.tag,
+            depot_count = depots.len(),
+            "planning only the depots of one language"
+        );
+    }
     if depots.is_empty() {
         tracing::error!(
             content,
@@ -232,7 +299,12 @@ pub(super) async fn resolve_depot_files(
                 .context("GOG depot manifest fetch failed")
         ));
     }
-    Ok((meta.install_directory, build.build_id.clone(), depot_files))
+    Ok(DepotFiles {
+        install_directory: meta.install_directory,
+        build_id: build.build_id.clone(),
+        files: depot_files,
+        language,
+    })
 }
 
 /// The files a DLC installed that the base game does not also ship,
@@ -250,13 +322,26 @@ pub(super) async fn dlc_only_files(
     system: GameSystem,
 ) -> anyhow::Result<Vec<std::path::PathBuf>> {
     let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
-    let (_, _, dlc_files) =
-        crate::achv_try!(resolve_depot_files(&http, access_token, parent, dlc, branch, None, system).await);
-    let (_, _, base_files) =
-        crate::achv_try!(resolve_depot_files(&http, access_token, parent, parent, branch, None, system).await);
+    let dlc_files = crate::achv_try!(
+        resolve_depot_files(&http, access_token, parent, dlc, branch, None, system, Languages::ALL).await
+    );
+    let base_files = crate::achv_try!(
+        resolve_depot_files(
+            &http,
+            access_token,
+            parent,
+            parent,
+            branch,
+            None,
+            system,
+            Languages::ALL
+        )
+        .await
+    );
 
-    let shared: std::collections::HashSet<String> = base_files.into_iter().map(|file| file.path).collect();
+    let shared: std::collections::HashSet<String> = base_files.files.into_iter().map(|file| file.path).collect();
     Ok(dlc_files
+        .files
         .into_iter()
         .filter(|file| !shared.contains(&file.path))
         .filter_map(|file| manifest_relative_path(&file.path))
