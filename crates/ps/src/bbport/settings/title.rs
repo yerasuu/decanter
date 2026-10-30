@@ -3,7 +3,8 @@
 //! allow-list, so that a key added later belongs to each game unless it is named there. A title's
 //! file starts as the user's defaults ([`LauncherSettings::defaults`]), made from the shared file,
 //! with that title's own entries of the shared file on top, so nothing changes for the player that
-//! day; the shared file is left as it was, what an older port's launches read.
+//! day; the shared file is left as it was, what an older port's launches read, until every title
+//! has its own ([`super::shared`]).
 
 use core::iter;
 use std::fs;
@@ -57,13 +58,20 @@ const MOVED: [(u64, &[&str]); 2] = [
     (3, &mods::FOLDER_KEYS),
 ];
 
-/// Keys of bbport's former GTK launcher that nothing reads: left in the shared file, never copied
-/// into a title's.
-const UNREAD: [&str; 4] = ["ui_language", "game_dir", "user_dir", "mangohud"];
+/// Keys of bbport's former GTK launcher that nothing reads, never copied into a title's; dropped
+/// from the shared file after a backup ([`super::shared`]).
+pub(super) const UNREAD: [&str; 4] = ["ui_language", "game_dir", "user_dir", "mangohud"];
 
 /// Keys that only ever meant one title, under `titles.<TITLE_ID>`: a top-level one in the shared
 /// file is not that title's value, so it is not copied.
 const TITLE_ONLY: [&str; 3] = [frame_gen::KEY, local_player::KEY, "debug"];
+
+/// Whether the title's file at `path` is of the current format, so it no longer takes any key from
+/// the shared file. A file that can't be read or doesn't parse is an error.
+pub(super) fn is_current(path: &Path) -> io::Result<bool> {
+    let own = LauncherSettings::read_at(path, true)?;
+    Ok(own.values.get(FORMAT_KEY).and_then(Value::as_u64).unwrap_or(1) >= FORMAT)
+}
 
 /// Whether `key` is a setting a title owns: not shared, not the file's own record, not a key nothing
 /// reads, and never the plaintext password.

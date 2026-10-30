@@ -4,6 +4,7 @@
 mod defaults;
 mod keys;
 pub mod per_game;
+mod shared;
 mod title;
 pub mod transfer;
 

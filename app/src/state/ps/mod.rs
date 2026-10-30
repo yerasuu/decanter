@@ -341,6 +341,11 @@ impl Ps {
                     Err(err) => Some((err, true)),
                 })
                 .collect();
+            // Step 4 of the per-game settings migration waits on every title having its own file,
+            // so it is tried again on each scan; a failure leaves the shared file as it was.
+            if let Err(err) = decanter_ps::bbport::LauncherSettings::trim_shared(&root) {
+                tracing::warn!(%err, "shared launch settings not trimmed");
+            }
             Ok((status::classify(&root, &library::scan(&folders)), library_roots, wrapped))
         });
         cx.spawn(async move |this, cx| {

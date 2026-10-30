@@ -6,8 +6,8 @@ under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phases 1 (per-
 `crates/ps/src/bbport/settings/title.rs`), 3 (online and system modules switches per game), 4
 (mods and patches per game, `crates/ps/src/bbport/mods.rs`, `ModFiles`) and 5 (defaults for new
 games, copy, export and import, reset, `decanter ps settings`; `crates/ps/src/bbport/settings/`) are
-implemented, and phase 6a (below); of phase 6b, the layouts catalog is (`crates/ps/src/layouts/`,
-below).
+implemented, and so is phase 6: part a and part b (the layouts catalog, `crates/ps/src/layouts/`,
+migration step 4 and the GTK leftovers, `settings/shared.rs`), both below.
 
 Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
 `mods_dir`/`patches_dir` (until phase 4, which made them each title's). A title's file is made from the shared one the first time
@@ -128,9 +128,6 @@ Phase 6a as built (kb #1343):
   icons and the controller go to `defaults/settings.json`); the layouts catalog stays shared (D4).
   Extras are still taken from a game.
 
-Left for phase 6b: the GTK leftovers and migration step 4 (rewriting the shared
-file with the E1-E3 keys only), still waiting since an older port's launches read the shared file.
-
 Phase 6b as built (kb #1344):
 
 - **Layouts catalog** (D4, `crates/ps/src/layouts/`): the user's keyboard and gamepad layouts are a
@@ -165,6 +162,32 @@ Phase 6b as built (kb #1344):
   game uses asks first and names the games (#1133): they keep their lines and only stop following it
   (their record is dropped, the defaults' too), and the layout's file is copied into
   `backups/per-game-settings-<date>/layouts-<HHMMSS>/` first.
+- **Migration step 4** (`LauncherSettings::trim_shared`, `settings/shared.rs`), tried on every scan
+  of the games (`Ps::rescan`). The cut-over rule: the shared `bbport/settings.json` drops the keys
+  titles copied only when all of these hold, else it is left whole and the log says why once per run:
+  the checkout's port reads `PS_CONFIG` (`Names::Psport`; an older port's launches read the shared
+  file whole); `defaults/settings.json` exists (made from the shared file the first time); every
+  title of the shared `titles` map has its own `settings.json` (an id that is not a `TITLE_ID` reads
+  the shared file, so it blocks); every title's file is `format: 3` or later and parses (an earlier
+  one still takes keys from the shared file once). Then the `titles` map goes, and every other key a
+  title owns goes only when the defaults or some title's file holds the same value, so no value's
+  last copy is lost; the rest stays, counted. Never touched: the `SHARED` keys (E1-E3) and a
+  plaintext `online_password` still waiting for the keyring. Titles seen later start from the defaults
+  as before, and the `titles` map held nothing for a title without an entry, so nothing they read is
+  lost. A game whose settings are forgotten after the cut-over starts from the defaults alone, since
+  its `titles.<TITLE_ID>` entries are in the backup only.
+- **GTK leftovers** (`ui_language`, `game_dir`, `user_dir`, `mangohud`): read by nothing in decanter
+  (audited by grep: `mangohud` is the database's game tool, `game_dir` only a local name); psport's
+  own launcher reads them from its own `~/.config/psport-launcher/settings.json`, not from this file.
+  They leave the shared file whenever they are there, cut-over or not.
+- **Both, backup first**: the file as read goes into
+  `backups/per-game-settings-<date>/shared-settings-<HHMMSS>/settings.json` (a folder of its own each
+  time), then the shared file is read again and only those keys are removed from it in one write, so
+  a shared key changed meanwhile (a port selection) stays. It keeps its JSON shape, so an older port
+  still reads it (an absent key is its default; going back to an older tag after the cut-over starts
+  its launches from the port's defaults for the moved keys, which the backup holds). Logged with
+  counts and key names, never values: `gtk_leftovers`, `moved`, `kept_only_copy`, `backup`. A file
+  that can't be read or doesn't parse, or a failed backup, leaves the shared file as it was.
 
 ## The owner's rule
 
@@ -234,7 +257,7 @@ port at start and most are rewritten by its menu.
 | `menu_language` | psport.ini | G | T | written by the menu; dropped on UI language change (`app/src/i18n.rs:186`) |
 | `menu_pos` | psport.ini | G | T | overlay position, menu-written |
 | `mangohud`, gamemode | decanter DB per game key (`launch.rs:342`) | T | T | already right; the `mangohud` key in settings.json is a leftover of the GTK launcher, read by nothing |
-| `ui_language`, `game_dir`, `user_dir` | settings.json | — | drop | GTK-launcher leftovers, read by nothing (`game_dir`, `user_dir` are never read; `PS_USER_DIR` comes from the profile) |
+| `ui_language`, `game_dir`, `user_dir` | settings.json | — | drop | GTK-launcher leftovers, read by nothing (`game_dir`, `user_dir` are never read; `PS_USER_DIR` comes from the profile); dropped in phase 6b |
 
 ### Keyboard, Gamepad, Mods, Online tabs
 
@@ -396,7 +419,7 @@ line (`run.rs:263`) keeps working, writing to the title's settings.json.
    exactly as it ran yesterday: nothing changes for the player on day one, the difference is that
    from then on edits stay in their game.
 4. Shared `settings.json` is rewritten with E1-E3 keys only; the `titles` map is removed once every
-   entry has been moved. The shared ini is left in place untouched (an older port tag still reads
+   entry has been moved (as built in phase 6b: the cut-over rule above). The shared ini is left in place untouched (an older port tag still reads
    it), and marked in the log as no longer written by decanter.
 5. Logged with counts (`titles migrated`, `keys per title`, `backup path`), visible in the PS log.
    A failure stops before step 4, leaving the old files as the source of truth.
