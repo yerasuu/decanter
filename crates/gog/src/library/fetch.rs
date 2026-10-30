@@ -7,8 +7,15 @@ use std::num::NonZeroU32;
 
 use decanter_core::{Game, InstallState, Storefront};
 
+use futures_util::StreamExt;
+
 use super::{Batch, GameKind, LibraryEntry};
 use crate::api::client::{Client, ProductDetails};
+
+/// Pages in flight at once. The client has no backoff of its own, so this stays small enough
+/// that a 429 or 5xx is as unlikely as it was with one page at a time; the first page goes
+/// alone, which also settles the session token before the rest share it.
+const PAGE_CONCURRENCY: usize = 3;
 
 /// Every owned product (games, extras, movies, gifts, dev grants alike),
 /// in the order GOG itself reports them added — index 0 is the most
@@ -17,9 +24,7 @@ use crate::api::client::{Client, ProductDetails};
 /// Undocumented sort parameter, so a response shape surprise degrades to
 /// an error the caller can shrug off (see `list_games`), not a panic.
 async fn each_product_page(client: &Client, mut on_page: impl AsyncFnMut(Vec<ProductDetails>)) -> anyhow::Result<()> {
-    let mut page = NonZeroU32::MIN;
-
-    loop {
+    let fetch = async |page: NonZeroU32| {
         let parsed = crate::achv_try!(
             client
                 .filtered_products(page)
@@ -32,17 +37,24 @@ async fn each_product_page(client: &Client, mut on_page: impl AsyncFnMut(Vec<Pro
             product_count = parsed.products.len(),
             "fetched GOG filtered-products page"
         );
+        anyhow::Ok(parsed)
+    };
 
-        let is_last_page = page.get() >= parsed.total_pages.max(1);
-        on_page(parsed.products).await;
-        if is_last_page {
-            return Ok(());
-        }
-        let Some(next) = page.checked_add(1) else {
-            return Ok(());
-        };
-        page = next;
+    let first = crate::achv_try!(fetch(NonZeroU32::MIN).await);
+    let total_pages = first.total_pages;
+    on_page(first.products).await;
+
+    // The page count is only known from the first answer, so the rest go out
+    // together. `buffered` keeps them in page order, which is the rank order,
+    // and a failed page ends the listing exactly where the serial loop did:
+    // the pages before it were already handed over.
+    let mut rest = futures_util::stream::iter((2..=total_pages).filter_map(NonZeroU32::new))
+        .map(fetch)
+        .buffered(PAGE_CONCURRENCY);
+    while let Some(parsed) = rest.next().await {
+        on_page(crate::achv_try!(parsed).products).await;
     }
+    Ok(())
 }
 
 /// GOG returns image paths without a scheme or extension, sized by
