@@ -137,14 +137,23 @@ async fn locked<T>(account_id: &str, call: impl AsyncFnOnce(&Client) -> T) -> an
         tracing::debug!(account_id, "no GOG session stored for this account");
         return Ok(None);
     };
-    let token: Token = crate::achv_try!(serde_json::from_str(stored.expose()).context("stored GOG session is corrupt"));
+    // serde_json quotes the offending value in its message, and here that value is part of a
+    // stored session: only where it failed is kept.
+    let token: Token = crate::achv_try!(serde_json::from_str(stored.expose()).map_err(|err| anyhow::anyhow!(
+        "stored GOG session is corrupt: {:?} error at line {} column {}",
+        err.classify(),
+        err.line(),
+        err.column()
+    )));
     let client = crate::achv_try!(Client::new(token).context("building the GOG HTTP client"));
 
     let answer = call(&client).await;
 
-    let ended = crate::achv_try!(serde_json::to_string(&client.token().await).context("serializing the GOG session"));
-    if ended != stored.expose() {
-        crate::achv_try!(crate::write_session(account_id, Secret::from(ended)).await);
+    let ended = Secret::from(crate::achv_try!(
+        serde_json::to_string(&client.token().await).context("serializing the GOG session")
+    ));
+    if ended.expose() != stored.expose() {
+        crate::achv_try!(crate::write_session(account_id, ended).await);
         tracing::info!(account_id, "stored the renewed GOG session");
     }
     Ok(Some(answer))

@@ -10,7 +10,9 @@ use serde::de::DeserializeOwned;
 use tokio::sync::RwLock;
 
 use super::Error;
-use super::auth::{self, Token};
+use decanter_core::secrets::Secret;
+
+use super::auth::{self, Token, duplicate};
 
 /// Every host this client talks to, so the redirect policy and the URLs come from one list.
 #[derive(Clone, Copy)]
@@ -127,20 +129,20 @@ impl Client {
     /// asked or answers something unreadable.
     #[inline]
     pub async fn refresh(&self) -> Result<Token, Error> {
-        let seen = self.token.read().await.access_token.clone();
+        let seen = duplicate(&self.token.read().await.access_token);
         self.renew(&seen).await?;
         Ok(self.token().await)
     }
 
     /// An access token that has not expired, renewed first when it has; `true` when it was
     /// renewed during this call, by this caller or another.
-    async fn access_token(&self) -> Result<(String, bool), Error> {
+    async fn access_token(&self) -> Result<(Secret, bool), Error> {
         let seen = {
             let token = self.token.read().await;
             if !token.is_expired() {
-                return Ok((token.access_token.clone(), false));
+                return Ok((duplicate(&token.access_token), false));
             }
-            token.access_token.clone()
+            duplicate(&token.access_token)
         };
         Ok((self.renew(&seen).await?, true))
     }
@@ -149,9 +151,9 @@ impl Client {
     /// while this one waited for the lock. Every renewal goes through here, so this is where a
     /// renewed session is held to the account it replaces: the session store would otherwise
     /// file another account's tokens under this account's id.
-    async fn renew(&self, seen: &str) -> Result<String, Error> {
+    async fn renew(&self, seen: &Secret) -> Result<Secret, Error> {
         let mut token = self.token.write().await;
-        if token.access_token == seen {
+        if token.access_token.expose() == seen.expose() {
             let renewed = auth::refresh(&self.http, &token.refresh_token).await?;
             if renewed.user_id != token.user_id {
                 return Err(Error::Rejected {
@@ -161,7 +163,7 @@ impl Client {
             }
             *token = renewed;
         }
-        Ok(token.access_token.clone())
+        Ok(duplicate(&token.access_token))
     }
 
     /// Sends an authorized GET and hands the body to `accept`. A rejection with an access token
@@ -186,10 +188,10 @@ impl Client {
                 .bearer_auth(bearer)
                 .header("CSRF", "csrf=true")
         };
-        match send(request(&access_token), call).await.and_then(&accept) {
+        match send(request(access_token.expose()), call).await.and_then(&accept) {
             Err(Error::Rejected { .. }) if !renewed => {
                 let fresh = self.renew(&access_token).await?;
-                send(request(&fresh), call).await.and_then(accept)
+                send(request(fresh.expose()), call).await.and_then(accept)
             }
             answer => answer,
         }

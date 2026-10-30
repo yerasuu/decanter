@@ -311,8 +311,7 @@ async fn online_play(settings: &LauncherSettings, online: OnlinePlay) -> Result<
         tracing::warn!("online play with a shadNet NPID but no password in the keyring, not starting");
         return Err(LaunchError::NoPassword(online.npid().unwrap_or_default().to_owned()));
     }
-    let exposed = |secret: Option<secrets::Secret>| secret.map(|secret| secret.expose().to_owned());
-    match online.set_secrets(exposed(password), exposed(token)) {
+    match online.set_secrets(password, token) {
         Ok(()) => Ok(Some(online)),
         Err(err) => Err(LaunchError::Online(err)),
     }

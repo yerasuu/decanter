@@ -100,7 +100,7 @@ pub async fn verify(
     crate::achv_try!(
         verify_content(
             &http,
-            &access_token,
+            access_token.expose(),
             game_id,
             game_id,
             branch,
@@ -116,7 +116,7 @@ pub async fn verify(
         crate::achv_try!(
             verify_content(
                 &http,
-                &access_token,
+                access_token.expose(),
                 game_id,
                 dlc_id,
                 branch,
@@ -318,7 +318,7 @@ pub async fn repair(
         &format!("{product_id}-repair")
     ));
 
-    let downloads = crate::achv_try!(plan_repair(&game, &access_token, game_id, broken).await);
+    let downloads = crate::achv_try!(plan_repair(&game, access_token.expose(), game_id, broken).await);
     if downloads.is_empty() {
         tracing::warn!(
             product_id,

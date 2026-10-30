@@ -340,3 +340,17 @@ Phases 5 and 6 replace phase 8 of `docs/windows-online-plan.md`.
   `app/src/external/art.rs` (`api_key`, `set_api_key`), `app/src/views/ps/online.rs`
   (`stored_secrets`, `copy_secrets`, `forget`), `app/src/ps_play/launch.rs` (`online_play`).
   The reports server (`crates/reports-server`) and the hook never used the keyring.
+
+### Phase 3
+
+- `decanter_gog::api::client::Token`: `access_token` and `refresh_token` are `Secret`s,
+  (de)serialized as the same strings (`serialize_with`/`deserialize_with`), so the stored JSON is
+  byte-identical: a dummy token parsed and written back before and after the change gives the
+  same text. `Token` has a hand-written `Clone` and still no `Debug`.
+- `Client` keeps and hands out the access token as `Secret`; the content-system callers
+  (`install`, `verify`, `updates`, `save_location`, `cloud_saves`) borrow it with `expose()`.
+- `cloud_saves`: `GameToken::access_token` and `BuildClient::client_secret` are `Secret`s; a
+  token answer that does not parse is reported without serde_json's message, which quotes the
+  value. The stored session's parse error keeps only its category, line and column.
+- `bbport::online::Online` holds the shadNet password and token as `Secret`s until `env()`
+  exposes them for the launch (#716, phases 5 and 6).

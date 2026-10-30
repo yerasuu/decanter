@@ -29,6 +29,7 @@ use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use decanter_core::platform;
+use decanter_core::secrets::Secret;
 
 use crate::api::client::Sessionless;
 use crate::depot;
@@ -88,7 +89,7 @@ pub struct SyncOutcome {
 /// from decanter's own login session — see [`game_token`].
 struct GameToken {
     /// Bearer token for this game's cloud-saves session.
-    access_token: String,
+    access_token: Secret,
     /// GOG account id the session belongs to.
     user_id: String,
     /// The game build's own Galaxy client id — buckets are keyed by it.
@@ -100,7 +101,7 @@ pub(crate) struct BuildClient {
     /// The build's Galaxy client id.
     pub client_id: String,
     /// The build's Galaxy client secret.
-    pub client_secret: String,
+    pub client_secret: Secret,
 }
 
 /// This build's Galaxy client id/secret, resolved off the currently
@@ -141,7 +142,7 @@ pub(crate) async fn resolve_build_client(access_token: &str, game_id: i64) -> Re
     tracing::debug!(game_id, client_id, "resolved gog cloud saves client");
     Ok(BuildClient {
         client_id,
-        client_secret,
+        client_secret: Secret::from(client_secret),
     })
 }
 
@@ -400,7 +401,7 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     let BuildClient {
         client_id,
         client_secret,
-    } = match resolve_build_client(&access_token, game_id).await {
+    } = match resolve_build_client(access_token.expose(), game_id).await {
         Ok(client) => client,
         Err(err) => return Err(err),
     };
@@ -413,9 +414,9 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
 
     let request = http.get(format!("{AUTH}/token")).query(&[
         ("client_id", client_id.as_str()),
-        ("client_secret", client_secret.as_str()),
+        ("client_secret", client_secret.expose()),
         ("grant_type", "refresh_token"),
-        ("refresh_token", refresh_token.as_str()),
+        ("refresh_token", refresh_token.expose()),
         ("without_new_session", "1"),
     ]);
     // The URL carries the client secret and the refresh token, and reqwest puts it in its errors.
@@ -437,12 +438,15 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
     };
     let response: TokenResponse = match response.json().await {
         Ok(response) => response,
+        // A decode error's source is serde_json's, which quotes the value it choked on: part of
+        // a body that carries a token.
+        Err(err) if err.is_decode() => return Err(anyhow::anyhow!("GOG's cloud-saves session answer does not parse")),
         Err(err) => return Err(err.without_url().into()),
     };
 
     tracing::debug!(game_id, "exchanged gog cloud-saves session");
     Ok(GameToken {
-        access_token: response.access_token,
+        access_token: Secret::from(response.access_token),
         user_id: response.user_id,
         client_id,
     })
@@ -461,7 +465,7 @@ async fn list_files(http: &reqwest::Client, token: &GameToken) -> Result<Vec<Clo
     let url = format!("{CLOUDSTORAGE}/v1/{}/{}", token.user_id, token.client_id);
     let response = match http
         .get(&url)
-        .bearer_auth(&token.access_token)
+        .bearer_auth(token.access_token.expose())
         .header("Accept", "application/json")
         .send()
         .await
@@ -544,7 +548,7 @@ async fn upload_file(http: &reqwest::Client, token: &GameToken, local_root: &Pat
 
     let request = http
         .put(&url)
-        .bearer_auth(&token.access_token)
+        .bearer_auth(token.access_token.expose())
         .header("Content-Encoding", "gzip")
         .header("Etag", etag)
         .header(
@@ -578,7 +582,7 @@ async fn download_file(http: &reqwest::Client, token: &GameToken, local_root: &P
         anyhow::bail!("cloud save entry has an unusable path: {}", file.relative_path);
     };
     let url = file_url(token, &file.relative_path);
-    let response = match http.get(&url).bearer_auth(&token.access_token).send().await {
+    let response = match http.get(&url).bearer_auth(token.access_token.expose()).send().await {
         Ok(response) => response,
         Err(err) => {
             tracing::error!(relative_path = file.relative_path, error = %err, "downloading cloud save failed, aborting sync");
@@ -685,7 +689,7 @@ fn write_atomic_blocking(path: &Path, data: &[u8]) -> std::io::Result<()> {
 /// deletion when uploading).
 async fn delete_file(http: &reqwest::Client, token: &GameToken, relative_path: &str) -> Result<()> {
     let url = file_url(token, relative_path);
-    let response = match http.delete(&url).bearer_auth(&token.access_token).send().await {
+    let response = match http.delete(&url).bearer_auth(token.access_token.expose()).send().await {
         Ok(response) => response,
         Err(err) => {
             tracing::error!(relative_path, error = %err, "deleting cloud save failed, aborting sync");
@@ -705,7 +709,7 @@ async fn delete_file(http: &reqwest::Client, token: &GameToken, relative_path: &
 /// since the files themselves are already where they should be.
 async fn commit(http: &reqwest::Client, token: &GameToken) -> Result<()> {
     let url = format!("{CLOUDSTORAGE}/v1/{}/{}", token.user_id, token.client_id);
-    let request = http.post(&url).bearer_auth(&token.access_token);
+    let request = http.post(&url).bearer_auth(token.access_token.expose());
     let response = match request.send().await {
         Ok(response) => response,
         Err(err) => {

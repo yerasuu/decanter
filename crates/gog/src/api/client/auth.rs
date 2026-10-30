@@ -4,8 +4,9 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use decanter_core::secrets::Secret;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::Error;
 use super::http::{self, Call, Host};
@@ -47,19 +48,22 @@ const ACCOUNT_ID_MAX_LEN: usize = 20;
 /// The keyring holds this struct serialized with `serde_json`, and the session store compares
 /// that text to decide whether to write again: the field order, the names and the absence of any
 /// skipping are therefore a storage format, and changing them would rewrite or drop every stored
-/// session. No `Debug` either, so that formatting never puts a token in a log.
-#[derive(Clone, Serialize, Deserialize)]
+/// session. The two tokens are [`Secret`]s, written as the plain strings they always were; no
+/// `Debug` either, since `session_id` is not one.
+#[derive(Serialize, Deserialize)]
 pub struct Token {
     /// Seconds from `updated_at` until the access token expires.
     pub expires_in: u64,
     pub scope: String,
     pub token_type: String,
-    pub access_token: String,
+    #[serde(serialize_with = "expose", deserialize_with = "secret")]
+    pub access_token: Secret,
     /// The account id; checked to be decimal digits before a token is handed out, since it names
     /// keyring entries, database rows and URL path segments.
     pub user_id: String,
     /// Single use: GOG rotates it on every refresh.
-    pub refresh_token: String,
+    #[serde(serialize_with = "expose", deserialize_with = "secret")]
+    pub refresh_token: Secret,
     pub session_id: String,
     /// Unix seconds of receipt. GOG's answer has no such field, so the default stamps a token as
     /// it is parsed.
@@ -75,6 +79,42 @@ impl Token {
     pub fn is_expired(&self) -> bool {
         self.updated_at.saturating_add(self.expires_in) <= unix_now()
     }
+}
+
+impl Clone for Token {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            expires_in: self.expires_in,
+            scope: self.scope.clone(),
+            token_type: self.token_type.clone(),
+            access_token: duplicate(&self.access_token),
+            user_id: self.user_id.clone(),
+            refresh_token: duplicate(&self.refresh_token),
+            session_id: self.session_id.clone(),
+            updated_at: self.updated_at,
+        }
+    }
+}
+
+/// A second copy, zeroed on its own drop. `Secret` has no `Clone` so that every copy is
+/// spelled out.
+pub(super) fn duplicate(secret: &Secret) -> Secret {
+    Secret::from(secret.expose().to_owned())
+}
+
+fn expose<S>(secret: &Secret, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(secret.expose())
+}
+
+fn secret<'de, D>(deserializer: D) -> Result<Secret, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Secret::from)
 }
 
 /// A clock set before 1970 reads as 1970, which only makes a token look expired and costs one
@@ -109,12 +149,12 @@ pub(super) async fn exchange_code(http: &reqwest::Client, code: &str) -> Result<
 
 /// Spends `refresh_token` on a new session, which replaces the old one whole: the refresh token
 /// it carries is the only one GOG will accept next time.
-pub(super) async fn refresh(http: &reqwest::Client, refresh_token: &str) -> Result<Token, Error> {
+pub(super) async fn refresh(http: &reqwest::Client, refresh_token: &Secret) -> Result<Token, Error> {
     let query = [
         ("client_id", CLIENT_ID),
         ("client_secret", CLIENT_SECRET),
         ("grant_type", "refresh_token"),
-        ("refresh_token", refresh_token),
+        ("refresh_token", refresh_token.expose()),
     ];
     request_token(http, &TOKEN_REFRESH, &query).await
 }

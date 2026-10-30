@@ -156,7 +156,7 @@ pub async fn install(
     let effective_build_id = parent_id.is_none().then_some(build_id).flatten();
     let plan = crate::achv_try!(
         plan::plan(
-            &access_token,
+            access_token.expose(),
             build_owner,
             game_id,
             effective_branch.as_deref(),
@@ -671,7 +671,7 @@ pub async fn uninstall_dlc(
 
     let files = crate::achv_try!(
         plan::dlc_only_files(
-            &access_token,
+            access_token.expose(),
             parent_numeric,
             dlc,
             parent.branch.as_deref(),

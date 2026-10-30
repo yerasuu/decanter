@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use decanter_core::secrets::Secret;
 use decanter_nix::Toolchain;
 
 use super::{Bbport, LauncherSettings, Names};
@@ -240,9 +241,11 @@ pub fn check_npid(npid: &str) -> Result<Option<&str>, OnlineError> {
     }
 }
 
-fn check_secret(secret: Option<String>) -> Result<Option<String>, OnlineError> {
+fn check_secret(secret: Option<Secret>) -> Result<Option<Secret>, OnlineError> {
     match secret {
-        Some(secret) if secret.len() > MAX_SECRET || secret.contains('\0') => Err(OnlineError::Secret),
+        Some(secret) if secret.expose().len() > MAX_SECRET || secret.expose().contains('\0') => {
+            Err(OnlineError::Secret)
+        }
         secret => Ok(secret.filter(|secret| !secret.is_empty())),
     }
 }
@@ -252,12 +255,13 @@ pub fn is_secret_var(name: &str) -> bool {
     name.ends_with("SHADNET_PASSWORD") || name.ends_with("SHADNET_TOKEN")
 }
 
-/// One launch's online play, checked. No `Debug`: it holds the shadNet secrets.
+/// One launch's online play, checked. No `Debug`, though the secrets are [`Secret`]s: nothing
+/// needs one.
 pub struct Online {
     addresses: Addresses,
     npid: Option<String>,
-    password: Option<String>,
-    token: Option<String>,
+    password: Option<Secret>,
+    token: Option<Secret>,
     upnp: bool,
     bbsc: bool,
     local_server: LocalServer,
@@ -291,7 +295,7 @@ impl Online {
         self.npid.as_deref()
     }
 
-    pub fn set_secrets(&mut self, password: Option<String>, token: Option<String>) -> Result<(), OnlineError> {
+    pub fn set_secrets(&mut self, password: Option<Secret>, token: Option<Secret>) -> Result<(), OnlineError> {
         self.password = check_secret(password)?;
         self.token = check_secret(token)?;
         Ok(())
@@ -320,8 +324,8 @@ impl Online {
         );
         let account = [
             ("SHADNET_NPID", self.npid.as_deref()),
-            ("SHADNET_PASSWORD", self.password.as_deref()),
-            ("SHADNET_TOKEN", self.token.as_deref()),
+            ("SHADNET_PASSWORD", self.password.as_ref().map(Secret::expose)),
+            ("SHADNET_TOKEN", self.token.as_ref().map(Secret::expose)),
         ];
         env.extend(
             account

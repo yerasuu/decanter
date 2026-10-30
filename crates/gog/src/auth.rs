@@ -78,14 +78,15 @@ pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
             .map_err(|err| crate::session::failed("GOG session check failed", err))
     );
     // Read the token back out: fetching user data may have refreshed it.
-    let credentials =
-        crate::achv_try!(serde_json::to_string(&client.token().await).context("serializing the GOG session"));
+    let credentials = Secret::from(crate::achv_try!(
+        serde_json::to_string(&client.token().await).context("serializing the GOG session")
+    ));
     // Under the account's lock so that a call still running on a previous
     // session finishes first, instead of storing its token over this one.
     {
         let lock = crate::session_lock(&user.id);
         let _guard = lock.lock().await;
-        crate::achv_try!(crate::write_session(&user.id, Secret::from(credentials)).await);
+        crate::achv_try!(crate::write_session(&user.id, credentials).await);
     }
     tracing::info!(account_id = %user.id, "GOG login succeeded");
 

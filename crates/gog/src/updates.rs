@@ -76,7 +76,7 @@ async fn fetch_builds(account_id: &str, game_id: i64) -> anyhow::Result<Vec<Buil
             .map(|token| token.access_token)
     );
     let http = crate::achv_try!(Sessionless::new().context("building the GOG HTTP client"));
-    let builds = get_builds(&http, &access_token, game_id, platform::game_system())
+    let builds = get_builds(&http, access_token.expose(), game_id, platform::game_system())
         .await
         .context("GOG builds lookup failed")?;
     tracing::debug!(game_id, build_count = builds.len(), "fetched GOG build list");
