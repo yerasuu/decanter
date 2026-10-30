@@ -37,8 +37,24 @@ use super::cache::{has_synced_before, load_cached_games, save_entries};
 static SHUTDOWN: std::sync::LazyLock<tokio::sync::watch::Sender<bool>> =
     std::sync::LazyLock::new(|| tokio::sync::watch::Sender::new(false));
 
-pub fn shut_down_fetch_loops() {
+/// The blocking-pool threads the fetch loops drive themselves on, so quitting can wait for them.
+static LOOPS: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>> = std::sync::Mutex::new(Vec::new());
+
+/// Longest a quit waits for the loops to notice the shutdown and return.
+const LOOPS_STOP_WAIT: Duration = Duration::from_secs(5);
+
+/// Stops the fetch loops and waits for them to return. Dropping `runtime` first would shut its
+/// time driver down under a loop still being polled on a blocking thread, which panics.
+pub fn shut_down_fetch_loops(runtime: &tokio::runtime::Runtime) {
     SHUTDOWN.send_replace(true);
+    let loops = std::mem::take(&mut *LOOPS.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    runtime.block_on(async {
+        for handle in loops {
+            if tokio::time::timeout(LOOPS_STOP_WAIT, handle).await.is_err() {
+                tracing::warn!("a fetch loop did not stop in time on quit");
+            }
+        }
+    });
 }
 
 /// Long enough that a full re-resolve never overlaps itself in practice.
@@ -519,7 +535,11 @@ async fn watch_games(account_id: String, this: WeakEntity<GogLibrary>, cx: &mut 
     // cancelled — is what tells it to stop.
     let runtime = tokio::runtime::Handle::current();
     let worker_account = account_id.clone();
-    tokio::task::spawn_blocking(move || runtime.block_on(fetch_loop(worker_account, seed, updates)));
+    let worker = tokio::task::spawn_blocking(move || runtime.block_on(fetch_loop(worker_account, seed, updates)));
+    LOOPS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(worker);
     // A burst of batches costs one re-render, not one per batch: only the
     // newest list in each burst is applied.
     while let Some(first) = receiver.recv().await {
