@@ -838,6 +838,7 @@ ps.report.note: "Questo è esattamente ciò che contiene il report. Nulla lascia
 ps.report.attach_log: Allega il log completo per il manutentore (non pubblicato)
 ps.report.cleaning: Pulizia del log…
 ps.report.cleaned: "Esclusi dal log prima dell'invio: nomi o account %{names}, valori segreti %{values}, indirizzi IP o MAC %{addresses}."
+ps.report.log_size: 'Registro che verrebbe inviato, dopo averlo ridotto agli ultimi 5 MiB: %{bytes} byte.'
 ps.report.privacy: "Il report è pubblico e viene conservato finché non è risolto. Non contiene percorsi, nomi né account. Puoi eliminarlo con il codice che riceverai. Non esiste nessun account, e il tuo IP viene conservato solo per il tempo che serve al limite di frequenza."
 ps.report.send.button: Invia il report
 ps.report.send.confirm: "Inviare ora questo report? Sarà pubblico."

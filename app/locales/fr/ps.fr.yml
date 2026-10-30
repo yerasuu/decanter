@@ -838,6 +838,7 @@ ps.report.note: Voici exactement ce que contient le rapport. Rien ne quitte votr
 ps.report.attach_log: Joindre le journal complet pour le mainteneur (non publié)
 ps.report.cleaning: Nettoyage du journal…
 ps.report.cleaned: 'Retiré du journal avant l’envoi : noms ou comptes %{names}, valeurs secrètes %{values}, adresses IP ou MAC %{addresses}.'
+ps.report.log_size: 'Journal qui serait envoyé, après réduction aux 5 dernières Mio : %{bytes} octets.'
 ps.report.privacy: Le rapport est public et conservé jusqu’à sa résolution. Il ne contient ni chemins, ni noms, ni comptes. Vous pouvez le supprimer avec le code que vous recevrez. Il n’y a pas de compte, et votre IP n’est conservée que le temps nécessaire à la limitation de débit.
 ps.report.send.button: Envoyer le rapport
 ps.report.send.confirm: Envoyer ce rapport maintenant ? Il sera public.

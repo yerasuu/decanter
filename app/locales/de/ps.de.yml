@@ -838,6 +838,7 @@ ps.report.note: Genau das enthält der Bericht. Nichts verlässt deinen Computer
 ps.report.attach_log: Das vollständige Protokoll für den Maintainer anhängen (nicht veröffentlicht)
 ps.report.cleaning: Protokoll wird bereinigt…
 ps.report.cleaned: 'Vor dem Senden aus dem Protokoll entfernt: Namen oder Konten %{names}, geheime Werte %{values}, IP- oder MAC-Adressen %{addresses}.'
+ps.report.log_size: 'Protokoll, das gesendet würde, nach dem Kürzen auf die letzten 5 MiB: %{bytes} Bytes.'
 ps.report.privacy: Der Bericht ist öffentlich und bleibt bis zur Lösung gespeichert. Er enthält keine Pfade, Namen oder Konten. Du kannst ihn mit dem Code löschen, den du erhältst. Es gibt kein Konto, und deine IP wird nur so lange gespeichert, wie das Ratenlimit sie braucht.
 ps.report.send.button: Bericht senden
 ps.report.send.confirm: 'Diesen Bericht jetzt senden? Er wird öffentlich sein.'

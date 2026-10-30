@@ -838,6 +838,7 @@ ps.report.note: "以下就是报告包含的全部内容。在您确认之前，
 ps.report.attach_log: "附上完整日志供维护者查看（不公开）"
 ps.report.cleaning: "正在清理日志…"
 ps.report.cleaned: "发送前已从日志中去除：名称或账户 %{names} 处，密钥值 %{values} 处，IP 或 MAC 地址 %{addresses} 处。"
+ps.report.log_size: '将发送的日志(裁剪为最后 5 MiB 之后):%{bytes} 字节。'
 ps.report.privacy: "报告是公开的，会保留到问题解决为止。它不含路径、名称或账户。您可以使用将获得的代码删除它。无需账户，且您的 IP 仅在限流所需的时间内保留。"
 ps.report.send.button: "发送报告"
 ps.report.send.confirm: "现在发送此报告吗？它将被公开。"

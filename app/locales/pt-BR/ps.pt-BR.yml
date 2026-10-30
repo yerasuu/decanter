@@ -838,6 +838,7 @@ ps.report.note: Isto é exatamente o que o relatório contém. Nada sai do seu c
 ps.report.attach_log: Anexar o registro completo para o mantenedor (não é publicado)
 ps.report.cleaning: Limpando o registro…
 ps.report.cleaned: 'Omitido do registro antes do envio: nomes ou contas %{names}, valores secretos %{values}, endereços IP ou MAC %{addresses}.'
+ps.report.log_size: 'Registro que seria enviado, após cortá-lo nos últimos 5 MiB: %{bytes} bytes.'
 ps.report.privacy: O relatório é público e é mantido até ser resolvido. Ele não contém caminhos, nomes nem contas. Você pode excluí-lo com o código que vai receber. Não há conta, e o seu IP é mantido só pelo tempo que o limite de requisições exigir.
 ps.report.send.button: Enviar relatório
 ps.report.send.confirm: 'Enviar este relatório agora? Ele será público.'

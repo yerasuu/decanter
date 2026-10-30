@@ -838,6 +838,7 @@ ps.report.note: "これがレポートの内容そのものです。確認する
 ps.report.attach_log: "メンテナー向けにログ全体を添付(非公開)"
 ps.report.cleaning: "ログを整理中…"
 ps.report.cleaned: "送信前にログから除外したもの: 名前またはアカウント %{names} 件、シークレットの値 %{values} 件、IP アドレスまたは MAC アドレス %{addresses} 件。"
+ps.report.log_size: '送信されるログ(直近 5 MiB に切り詰めた後):%{bytes} バイト。'
 ps.report.privacy: "レポートは公開され、解決されるまで保持されます。パス、名前、アカウントは含まれません。受け取るコードで削除できます。アカウントは不要で、IP アドレスはレート制限に必要な間だけ保持されます。"
 ps.report.send.button: "レポートを送信"
 ps.report.send.confirm: "このレポートを今すぐ送信しますか?公開されます。"

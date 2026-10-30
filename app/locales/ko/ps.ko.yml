@@ -838,6 +838,7 @@ ps.report.note: 보고서에 포함되는 내용은 아래와 정확히 같습�
 ps.report.attach_log: 관리자용 전체 로그 첨부 (공개되지 않음)
 ps.report.cleaning: 로그를 정리하는 중…
 ps.report.cleaned: '전송 전에 로그에서 제외한 항목: 이름 또는 계정 %{names}, 비밀 값 %{values}, IP 또는 MAC 주소 %{addresses}.'
+ps.report.log_size: '전송될 로그(마지막 5 MiB로 자른 후): %{bytes}바이트.'
 ps.report.privacy: 보고서는 공개되며 해결될 때까지 보관됩니다. 경로, 이름, 계정은 포함되지 않습니다. 받게 되는 코드로 삭제할 수 있습니다. 계정은 필요 없으며, IP는 요청 제한에 필요한 기간 동안만 보관됩니다.
 ps.report.send.button: 보고서 보내기
 ps.report.send.confirm: '지금 이 보고서를 보내시겠습니까? 보고서는 공개됩니다.'
