@@ -870,3 +870,65 @@ ps.report.send.errors.not_found: El servidor no tiene ese informe o el código n
 ps.report.send.errors.conflict: Ese informe ya tiene un registro adjunto o ya está resuelto
 ps.report.send.errors.unknown_report: 'No hay ningún informe %{id} en la lista de enviados'
 ps.report.send.errors.registry: 'No se pudo leer o escribir la lista de enviados %{path}: %{error}'
+ps.defaults.title: Valores por defecto de los juegos nuevos
+ps.defaults.description: 'Con lo que empieza un juego la primera vez que se ve: recibe una copia de estos valores, una sola vez, y desde entonces sus ajustes son suyos. Cambiarlos aquí no cambia ningún juego que ya tenga sus ajustes; para cambiar uno de esos, usa su página o cópiale los ajustes de otro juego.'
+ps.defaults.take_label: Tomar los valores por defecto de un juego
+ps.defaults.take: Usar sus ajustes
+ps.defaults.take_note: 'Copia todo lo que tiene ese juego (gráficos, teclado, distribución del mando, opciones online, extras) en los valores por defecto; sus carpetas de mods y parches siguen siendo suyas.'
+ps.defaults.confirm.title: ¿Sustituir los valores por defecto?
+ps.defaults.confirm.body: 'Los valores por defecto de los juegos nuevos pasan a ser una copia de los ajustes de %{game}. Antes se guarda una copia de seguridad de los actuales.'
+ps.defaults.confirm.yes: Sustituir los valores por defecto
+ps.defaults.taken: 'Los valores por defecto son ahora una copia de los ajustes de %{game}'
+ps.defaults.online_title: Online de los juegos nuevos
+ps.defaults.graphics_title: Gráficos de los juegos nuevos
+ps.defaults.graphics_note: Estos son los valores por defecto de los juegos nuevos; los juegos que ya tienen sus ajustes no los siguen.
+ps.defaults.read_error: 'No se pudieron preparar los valores por defecto de los juegos nuevos: %{error}'
+ps.defaults.save_error: 'No se pudieron guardar los valores por defecto de los juegos nuevos: %{error}'
+ps.per_game.title: Ajustes de este juego
+ps.per_game.description: 'Copiar, importar o restablecer sustituye los ajustes de este juego después de preguntarte, y guarda una copia de seguridad de los anteriores en la carpeta de copias de seguridad de la biblioteca. Lo que comparten todos los juegos (la cuenta de shadNet, las carpetas de volcados, el port en uso) nunca cambia aquí.'
+ps.per_game.copy_from: Copiar de otro juego
+ps.per_game.copy: Copiar…
+ps.per_game.no_sources: Ningún otro juego tiene todavía ajustes propios.
+ps.per_game.export: Exportar…
+ps.per_game.import: Importar…
+ps.per_game.reset: Restablecer los valores por defecto…
+ps.per_game.export_title: Exportar los ajustes de este juego
+ps.per_game.import_title: Importar los ajustes de un juego
+ps.per_game.categories.all: Todos los ajustes
+ps.per_game.categories.graphics: Gráficos
+ps.per_game.categories.keyboard: Teclado
+ps.per_game.categories.gamepad: Mando
+ps.per_game.categories.mods: Mods y parches
+ps.per_game.categories.online: Online
+ps.per_game.categories.extras: Extras
+ps.per_game.confirm_copy.title: ¿Sustituir los ajustes de este juego?
+ps.per_game.confirm_copy.body: '%{part} de este juego pasan a ser una copia de los de %{game}. Antes se guarda una copia de seguridad de los actuales.'
+ps.per_game.confirm_copy.yes: Copiar
+ps.per_game.confirm_reset.title: ¿Restablecer este juego a los valores por defecto?
+ps.per_game.confirm_reset.body: 'Sus ajustes pasan a ser una copia de los valores por defecto de los juegos nuevos; sus mods y parches se quedan como están. Antes se guarda una copia de seguridad de los ajustes actuales.'
+ps.per_game.confirm_reset.yes: Restablecer
+ps.per_game.confirm_import.title: ¿Importar estos ajustes?
+ps.per_game.confirm_import.body: 'Los ajustes de este juego pasan a ser los del archivo. Antes se guarda una copia de seguridad de los actuales.'
+ps.per_game.confirm_import.yes: Importar
+ps.per_game.confirm_import.other_body: 'El archivo tiene los ajustes de %{game}, no de este juego. ¿Aplicarlos a este juego de todos modos? Antes se guarda una copia de seguridad de los actuales.'
+ps.per_game.confirm_import.other_yes: Aplicar a este juego
+ps.per_game.copied: 'Copiados de %{game}'
+ps.per_game.reset_done: Restablecidos los valores por defecto
+ps.per_game.imported: Importados
+ps.per_game.exported: 'Exportados a %{path}'
+ps.per_game.done_with_backup: '%{done}. Los ajustes anteriores están en %{path}'
+ps.per_game.errors.older_port: 'El port en uso es anterior a los ajustes por juego: todos los juegos comparten los mismos. Actualiza el port para que cada juego tenga los suyos.'
+ps.per_game.errors.no_settings: '%{title} todavía no tiene ajustes propios: se crean la primera vez que se abre su página o se juega'
+ps.per_game.errors.same: El origen y el destino son el mismo
+ps.per_game.errors.other_title: 'El archivo tiene los ajustes de %{file}, no de %{title}'
+ps.per_game.errors.io: 'No se pudieron leer o escribir los ajustes: %{error}'
+ps.per_game.refused.not_export: El archivo no son los ajustes de un juego exportados por decanter
+ps.per_game.refused.version: 'El archivo lo escribió un decanter más reciente (formato %{version})'
+ps.per_game.refused.too_large: 'El archivo ocupa más de %{bytes} bytes, más que los ajustes de cualquier juego'
+ps.per_game.refused.title_id: '%{title} no es un Title ID'
+ps.per_game.refused.unknown_key: '%{key} no es un ajuste de los juegos'
+ps.per_game.refused.shared_key: '%{key} lo comparten todos los juegos: cámbialo en PS › Ajustes'
+ps.per_game.refused.value: '%{key} no admite ese valor'
+ps.per_game.refused.outside: '%{key} indica una carpeta fuera de la biblioteca'
+ps.per_game.refused.too_many: El archivo tiene más entradas que los ajustes de cualquier juego
+ps.per_game.refused.name: Un nombre de mod o parche del archivo no es válido para una carpeta

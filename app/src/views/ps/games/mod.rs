@@ -11,6 +11,7 @@ mod keyboard;
 mod mods;
 mod online;
 mod runs;
+mod title_settings;
 
 use decanter_ps::bbport::IniScope;
 use decanter_ps::library::{Game, Platform};
@@ -32,6 +33,7 @@ use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, si
 use browser::BrowserView;
 use context_menu::GameMenu;
 use detail::DetailView;
+pub(super) use graphics::GraphicsView;
 
 const SIDEBAR_WIDTH: f32 = 292.;
 const ICON: f32 = 26.;

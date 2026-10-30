@@ -1,7 +1,7 @@
 //! Ajustes of the PS section: where this profile's dumps are read from, the
-//! folders of the user's own system module and font dumps, and which psport
+//! folders of the user's own system module and font dumps, which psport
 //! builds the library runs, or where its `psport.exe` is where decanter
-//! doesn't build ports.
+//! doesn't build ports, and the defaults new games copy.
 
 use std::path::PathBuf;
 
@@ -13,6 +13,7 @@ use decanter_ps::port::Port;
 use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
+use super::defaults::DefaultsView;
 use super::online::OnlineView;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
@@ -54,6 +55,7 @@ pub struct SettingsView {
     psport_folder: Option<String>,
     channel: Option<Channel>,
     online: Entity<OnlineView>,
+    defaults: Entity<DefaultsView>,
     /// Why the last folder picked for psport.exe was refused, shown in its own section since the
     /// page's `error` sits below the whole page.
     psport_folder_error: Option<Text>,
@@ -65,8 +67,10 @@ impl SettingsView {
     /// library.
     pub fn new(ps: Entity<Ps>, cx: &mut Context<Self>) -> Self {
         cx.observe(&ps, |this, _, cx| this.refresh(cx)).detach();
+        let defaults = cx.new(|cx| DefaultsView::new(ps.clone(), cx));
         let this = Self {
             ps,
+            defaults,
             dump_folders: [None, None],
             psport_folder: None,
             channel: None,
@@ -394,7 +398,8 @@ impl Render for SettingsView {
                 .when(!Caps::get(cx).is_never_here(Feature::PsOnline), |page| {
                     page.child(self.online.clone())
                 })
-                .children(self.error.as_ref().map(theme::error)),
+                .children(self.error.as_ref().map(theme::error))
+                .child(self.defaults.clone()),
         )
     }
 }

@@ -1,7 +1,8 @@
 //! Gráficos: bbport's settings, grouped as its own launcher grouped them.
 //! Every row is the selected title's own: its port ini ([`Bbport::title_ini`]) and launch
 //! settings ([`LauncherSettings::of_title`]). They apply on the next start. The game effects are
-//! the selected title's, as the port lists them when it can.
+//! the selected title's, as the port lists them when it can. The same rows edit the defaults new
+//! titles copy ([`GraphicsView::show_defaults`]), on the PS section's Ajustes.
 
 use std::collections::HashMap;
 use std::io;
@@ -130,10 +131,39 @@ impl GraphicsView {
         .detach();
     }
 
+    /// The defaults new titles copy instead of a title's settings: the same rows, without the
+    /// title's own effects list, frame generation or extras, which have no defaults here.
+    pub fn show_defaults(&mut self, cx: &mut Context<Self>) {
+        self.title_id = None;
+        cx.spawn(async move |this, cx| {
+            let loaded = cx
+                .background_spawn(async { Values::load_defaults(&decanter_ps::paths::active()) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.title_id.is_some() {
+                    return;
+                }
+                match loaded {
+                    Ok(values) => {
+                        this.values = Some(values);
+                        this.error = None;
+                    }
+                    Err(err) => this.error = Some(Text::new("ps.defaults.read_error").arg("error", err)),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// Another title's values go at once, so nothing is shown or written for the wrong one while
     /// this title's are read.
     fn load_values(&mut self, title_id: &str, cx: &mut Context<Self>) {
-        if self.values.as_ref().is_some_and(|values| values.title_id() != title_id) {
+        if self
+            .values
+            .as_ref()
+            .is_some_and(|values| values.is_defaults() || values.title_id() != title_id)
+        {
             self.values = None;
         }
         let title_id = title_id.to_owned();
@@ -214,8 +244,14 @@ impl GraphicsView {
         values.set(setting, &value);
         let ini = values.ini_path().to_owned();
         let title_id = values.title_id().to_owned();
+        let is_defaults = values.is_defaults();
         let task = cx.background_spawn(async move {
-            values::save(&decanter_ps::paths::active(), &title_id, &ini, setting, &value, None)
+            let root = decanter_ps::paths::active();
+            if is_defaults {
+                values::save_default(&root, setting, &value)
+            } else {
+                values::save(&root, &title_id, &ini, setting, &value, None)
+            }
         });
         Self::after_save(task, cx);
     }
@@ -498,15 +534,23 @@ impl Render for GraphicsView {
         if self.title_id.is_some() && Caps::get(cx).is_offered(Feature::PsFrameGen) {
             groups.push(self.frame_gen_group(cx));
         }
+        let is_defaults = values.is_defaults();
+        let scope = if is_defaults {
+            t!("ps.defaults.graphics_note")
+        } else {
+            scope_note(values.scope())
+        };
         div()
             .flex()
             .flex_col()
             .gap_5()
-            .child(theme::muted(t!("ps.graphics.description")))
-            .child(theme::muted(scope_note(values.scope())))
+            .when(!is_defaults, |page| {
+                page.child(theme::muted(t!("ps.graphics.description")))
+            })
+            .child(theme::muted(scope))
             .children(self.error.as_ref().map(theme::error))
             .children(groups)
-            .child(self.extras.clone())
+            .when(!is_defaults, |page| page.child(self.extras.clone()))
             .into_any_element()
     }
 }

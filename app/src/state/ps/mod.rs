@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 use decanter_core::capabilities::Feature;
 use decanter_core::runner::{Progress, Runner};
 use decanter_ps::bbport::direct::FolderError;
+use decanter_ps::bbport::per_game::{PerGameError, Refusal};
 use decanter_ps::library;
 use decanter_ps::port::Port;
 use decanter_ps::process::Job;
@@ -405,5 +406,35 @@ pub fn folder_error(err: &FolderError) -> Text {
         FolderError::Linked { file, .. } | FolderError::Missing { file, .. } => text.arg("file", file),
         FolderError::NotAFolder { err: cause, .. } => text.arg("error", cause),
         FolderError::NotLocal(_) | FolderError::Relative(_) => text,
+    }
+}
+
+/// Why a game's settings could not be copied, reset, exported, imported or changed, in the UI's
+/// language.
+pub fn per_game_error(err: &PerGameError) -> Text {
+    match err {
+        PerGameError::OlderPort => Text::new("ps.per_game.errors.older_port"),
+        PerGameError::NoSettings(title) => Text::new("ps.per_game.errors.no_settings").arg("title", title),
+        PerGameError::SameTarget => Text::new("ps.per_game.errors.same"),
+        PerGameError::OtherTitle { file, target } => Text::new("ps.per_game.errors.other_title")
+            .arg("file", file)
+            .arg("title", target),
+        PerGameError::Refused(refusal) => refusal_text(refusal),
+        PerGameError::Io(cause) => Text::new("ps.per_game.errors.io").arg("error", cause),
+    }
+}
+
+fn refusal_text(refusal: &Refusal) -> Text {
+    match refusal {
+        Refusal::NotExport => Text::new("ps.per_game.refused.not_export"),
+        Refusal::Version(version) => Text::new("ps.per_game.refused.version").arg("version", version),
+        Refusal::TooLarge(bytes) => Text::new("ps.per_game.refused.too_large").arg("bytes", bytes),
+        Refusal::TitleId(title) => Text::new("ps.per_game.refused.title_id").arg("title", title),
+        Refusal::UnknownKey(key) => Text::new("ps.per_game.refused.unknown_key").arg("key", key),
+        Refusal::SharedKey(key) => Text::new("ps.per_game.refused.shared_key").arg("key", key),
+        Refusal::Value(key) => Text::new("ps.per_game.refused.value").arg("key", key),
+        Refusal::Outside(key) => Text::new("ps.per_game.refused.outside").arg("key", key),
+        Refusal::TooMany => Text::new("ps.per_game.refused.too_many"),
+        Refusal::Name => Text::new("ps.per_game.refused.name"),
     }
 }

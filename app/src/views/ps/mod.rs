@@ -4,6 +4,7 @@
 
 mod adding;
 mod branch;
+mod defaults;
 mod failures;
 mod games;
 pub mod log;

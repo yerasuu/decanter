@@ -21,6 +21,7 @@ use super::keyboard::KeyboardView;
 use super::mods::ModsView;
 use super::online::OnlineTitleView;
 use super::runs::RunsView;
+use super::title_settings::{Changed, TitleSettingsView};
 use super::{art_url, display_title, platform_label, status_text};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
@@ -111,6 +112,8 @@ pub struct DetailView {
     learned_error: Option<Text>,
     /// `selected`'s own tool choices, made again for each game picked.
     tools: Option<Entity<GameToolsPanel>>,
+    /// Copy, export, import and reset of `selected`'s settings, for a bbport title.
+    title_settings: Option<Entity<TitleSettingsView>>,
     /// The report of `selected`'s last failed run, opened from the banner.
     report: Option<Entity<ReportView>>,
     report_error: Option<Text>,
@@ -139,6 +142,7 @@ impl DetailView {
             learned_read_at: None,
             learned_error: None,
             tools: None,
+            title_settings: None,
             report: None,
             report_error: None,
         }
@@ -160,14 +164,29 @@ impl DetailView {
     }
 
     pub fn select(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
-        let key = self
+        let (key, bbport_title) = self
             .ps
             .read(cx)
             .entries()
             .iter()
             .find(|entry| entry.game.dir == dir)
-            .map(|entry| entry.game.key());
+            .map(|entry| {
+                let title = (entry.port == Some(Port::Bbport)).then(|| entry.game.title_id.clone());
+                (Some(entry.game.key()), title)
+            })
+            .unwrap_or_default();
         self.tools = key.map(|key| cx.new(|_| GameToolsPanel::new(key)));
+        self.title_settings = bbport_title.map(|title_id| {
+            let ps = self.ps.clone();
+            let view = cx.new(|cx| TitleSettingsView::new(ps, title_id, cx));
+            // The bindings are read once per selection; a replacement must show in them.
+            cx.subscribe(&view, |this, _, _: &Changed, cx| {
+                this.controls = None;
+                cx.notify();
+            })
+            .detach();
+            view
+        });
         self.selected = Some(dir);
         self.report = None;
         self.report_error = None;
@@ -584,6 +603,7 @@ impl DetailView {
                     .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string())),
             )
             .children(entry.port.and(self.tools.clone()))
+            .children(self.title_settings.clone())
             .into_any_element()
     }
 }

@@ -870,3 +870,65 @@ ps.report.send.errors.not_found: The server has no such report, or the code does
 ps.report.send.errors.conflict: That report already has a log attached or is already resolved
 ps.report.send.errors.unknown_report: 'There is no report %{id} in the list of sent reports'
 ps.report.send.errors.registry: 'Couldn''t read or write the list of sent reports %{path}: %{error}'
+ps.defaults.title: Defaults for new games
+ps.defaults.description: 'What a game seen for the first time starts with: it gets a copy of these, once, and from then on its settings are its own. Changing them here changes no game that already has its settings; to change one of those, use its page or copy settings into it from another game.'
+ps.defaults.take_label: Take the defaults from a game
+ps.defaults.take: Use its settings
+ps.defaults.take_note: 'Copies everything that game has (graphics, keyboard, pad layout, online switches, extras) into the defaults; its mods and patches folders stay its own.'
+ps.defaults.confirm.title: Replace the defaults?
+ps.defaults.confirm.body: 'The defaults for new games become a copy of %{game}''s settings. The current defaults are backed up first.'
+ps.defaults.confirm.yes: Replace the defaults
+ps.defaults.taken: 'The defaults are now a copy of %{game}''s settings'
+ps.defaults.online_title: Online for new games
+ps.defaults.graphics_title: Graphics for new games
+ps.defaults.graphics_note: These are the defaults for new games; games that already have their settings don't follow them.
+ps.defaults.read_error: 'Couldn''t prepare the defaults for new games: %{error}'
+ps.defaults.save_error: 'Couldn''t save the defaults for new games: %{error}'
+ps.per_game.title: This game's settings
+ps.per_game.description: 'Copying, importing or resetting replaces this game''s settings after asking, and keeps a backup of the earlier ones in the library''s backups folder. Settings every game shares (the shadNet account, the dump folders, the port in use) never change here.'
+ps.per_game.copy_from: Copy from another game
+ps.per_game.copy: Copy…
+ps.per_game.no_sources: No other game has settings of its own yet.
+ps.per_game.export: Export…
+ps.per_game.import: Import…
+ps.per_game.reset: Reset to the defaults…
+ps.per_game.export_title: Export this game's settings
+ps.per_game.import_title: Import a game's settings
+ps.per_game.categories.all: All settings
+ps.per_game.categories.graphics: Graphics
+ps.per_game.categories.keyboard: Keyboard
+ps.per_game.categories.gamepad: Controller
+ps.per_game.categories.mods: Mods and patches
+ps.per_game.categories.online: Online
+ps.per_game.categories.extras: Extras
+ps.per_game.confirm_copy.title: Replace this game's settings?
+ps.per_game.confirm_copy.body: '%{part} of this game become a copy of %{game}''s. The current ones are backed up first.'
+ps.per_game.confirm_copy.yes: Copy
+ps.per_game.confirm_reset.title: Reset this game to the defaults?
+ps.per_game.confirm_reset.body: 'Its settings become a copy of the defaults for new games; its mods and patches stay as they are. The current settings are backed up first.'
+ps.per_game.confirm_reset.yes: Reset
+ps.per_game.confirm_import.title: Import these settings?
+ps.per_game.confirm_import.body: 'This game''s settings become those of the file. The current ones are backed up first.'
+ps.per_game.confirm_import.yes: Import
+ps.per_game.confirm_import.other_body: 'The file holds the settings of %{game}, not of this game. Apply them to this game anyway? The current ones are backed up first.'
+ps.per_game.confirm_import.other_yes: Apply to this game
+ps.per_game.copied: 'Copied from %{game}'
+ps.per_game.reset_done: Reset to the defaults
+ps.per_game.imported: Imported
+ps.per_game.exported: 'Exported to %{path}'
+ps.per_game.done_with_backup: '%{done}. The earlier settings are in %{path}'
+ps.per_game.errors.older_port: 'The port in use predates per-game settings: every game shares one set. Update the port to give each game its own.'
+ps.per_game.errors.no_settings: '%{title} has no settings of its own yet: they''re made the first time its page opens or it''s played'
+ps.per_game.errors.same: The source and the destination are the same
+ps.per_game.errors.other_title: 'The file holds the settings of %{file}, not of %{title}'
+ps.per_game.errors.io: 'Couldn''t read or write the settings: %{error}'
+ps.per_game.refused.not_export: The file isn't a game's settings exported by decanter
+ps.per_game.refused.version: 'The file was written by a newer decanter (format %{version})'
+ps.per_game.refused.too_large: 'The file is larger than %{bytes} bytes, more than any game''s settings'
+ps.per_game.refused.title_id: '%{title} isn''t a title id'
+ps.per_game.refused.unknown_key: '%{key} isn''t a setting a game has'
+ps.per_game.refused.shared_key: '%{key} is shared by every game: change it in PS › Settings'
+ps.per_game.refused.value: '%{key} can''t take that value'
+ps.per_game.refused.outside: '%{key} names a folder outside the library'
+ps.per_game.refused.too_many: The file has more entries than any game's settings
+ps.per_game.refused.name: A mod or patch name in the file isn't one a folder can have
