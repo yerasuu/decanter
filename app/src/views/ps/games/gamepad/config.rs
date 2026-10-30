@@ -11,7 +11,6 @@ use gpui::{AnyElement, Context, Div, SharedString, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::{CUSTOM, GamepadView, game_names, layout_name, same_lines};
-use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, Select, button, confirm_panel, select::SelectStyle};
 
