@@ -277,7 +277,6 @@ ps.detail.explain.needs_merge: 'There''s a 1.09 update next to this dump. Mergin
 ps.detail.explain.has_playable: You already have the 1.09 copy at %{dir}; play that one.
 ps.detail.explain.other_edition: bbport only runs the CUSA03173 edition of Bloodborne at version 1.09.
 ps.detail.explain.needs_update: 'bbport needs version 1.09: add its update to one of your folders.'
-ps.detail.explain.experimental: 'bbport is only made for Bloodborne. This game starts with whatever the port lacks stubbed out, without patches or mods: see how far it gets in Log.'
 ps.detail.explain.needs_vr: This game only starts with a PS VR headset, and the port has none.
 ps.detail.explain.encrypted: The eboot.bin is still encrypted; it has to be decrypted on the console.
 ps.detail.explain.no_eboot: This dump has no eboot.bin.

@@ -636,13 +636,12 @@ impl DetailView {
                 .child(theme::mono().min_w_0().truncate().child(value))
         };
         let explanation = match &entry.status {
-            Status::Ready => None,
+            Status::Ready | Status::Experimental => None,
             Status::NeedsConvert => Some(t!("ps.detail.explain.needs_convert")),
             Status::NeedsMerge(_) => Some(t!("ps.detail.explain.needs_merge")),
             Status::HasPlayable(dir) => Some(t!("ps.detail.explain.has_playable", dir = dir.display())),
             Status::OtherEdition => Some(t!("ps.detail.explain.other_edition")),
             Status::NeedsUpdate => Some(t!("ps.detail.explain.needs_update")),
-            Status::Experimental => Some(t!("ps.detail.explain.experimental")),
             Status::NeedsVr => Some(t!("ps.detail.explain.needs_vr")),
             Status::Encrypted => Some(t!("ps.detail.explain.encrypted")),
             Status::NoEboot => Some(t!("ps.detail.explain.no_eboot")),
