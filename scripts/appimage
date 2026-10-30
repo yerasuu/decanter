@@ -135,6 +135,8 @@ StartupWMClass=decanter
 Categories=Game;
 DESKTOP
 cp app/assets/decanter.png "$app_dir/decanter.png"
+mkdir -p "$app_dir/usr/share/icons/hicolor/scalable/apps"
+cp app/assets/decanter.svg "$app_dir/usr/share/icons/hicolor/scalable/apps/decanter.svg"
 ln -sf decanter.png "$app_dir/.DirIcon"
 
 if [[ ! -f "$runtime_cache" ]] || ! echo "$runtime_sha256  $runtime_cache" | sha256sum --check --status; then

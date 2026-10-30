@@ -3,10 +3,11 @@
 //! surfaces. Shared by the main window and the properties window.
 
 use std::rc::Rc;
+use std::sync::{Arc, LazyLock};
 
 use gpui::{
-    App, CursorStyle, Div, MouseButton, ResizeEdge, SharedString, Stateful, Window, WindowBounds, WindowControlArea,
-    WindowDecorations, WindowOptions, div, prelude::*, px, rgb, size,
+    App, CursorStyle, Div, Image, ImageFormat, MouseButton, ObjectFit, ResizeEdge, SharedString, Stateful, Window,
+    WindowBounds, WindowControlArea, WindowDecorations, WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rust_i18n::t;
 
@@ -139,7 +140,18 @@ pub fn window_controls(on_close: Rc<dyn Fn(&mut Window, &mut App)>) -> Div {
         )
 }
 
-/// `.logo`: the blue dot and the window's name, which doubles as a drag
+const LOGO_SIZE: f32 = 28.;
+
+/// GPUI rasterises an SVG at its own `width`/`height` times two and the GPU
+/// then samples that down with no mipmaps, so the 512 px artwork would shimmer
+/// at 28 px. Declaring the displayed size makes the raster 2:1 at 1x and 1:1 at 2x.
+static LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
+    let side = format!("width=\"{LOGO_SIZE}\" height=\"{LOGO_SIZE}\"");
+    let svg = include_str!("../../assets/decanter.svg").replacen("width=\"512\" height=\"512\"", &side, 1);
+    Arc::new(Image::from_bytes(ImageFormat::Svg, svg.into_bytes()))
+});
+
+/// `.logo`: the app's artwork and the window's name, which doubles as a drag
 /// handle the way a native title bar's text does.
 pub fn logo(text: &str) -> Div {
     drag_handle(
@@ -147,12 +159,17 @@ pub fn logo(text: &str) -> Div {
             .flex()
             .flex_none()
             .items_center()
-            .gap(px(7.))
+            .gap(px(9.))
             .font_family(theme::DISPLAY)
             .font_weight(gpui::FontWeight::BOLD)
             .text_size(px(16.))
             .text_color(rgb(theme::TEXT_BRIGHT))
-            .child(div().size(px(8.)).rounded_full().bg(rgb(theme::ACCENT_BLUE)))
+            .child(
+                img(LOGO.clone())
+                    .size(px(LOGO_SIZE))
+                    .flex_none()
+                    .object_fit(ObjectFit::Contain),
+            )
             .child(text.to_owned()),
     )
 }

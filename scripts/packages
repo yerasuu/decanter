@@ -60,6 +60,8 @@ contents:
     dst: /usr/share/applications/decanter.desktop
   - src: $work/decanter.png
     dst: /usr/share/icons/hicolor/256x256/apps/decanter.png
+  - src: $app_dir/usr/share/icons/hicolor/scalable/apps/decanter.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/decanter.svg
 NFPM
 
 mkdir -p "$out_dir"
