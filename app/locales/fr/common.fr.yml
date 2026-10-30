@@ -1,0 +1,34 @@
+common.errors.internal_task: 'la tâche interne a échoué : %{error}'
+common.errors.verbatim: '%{error}'
+common.cancel: Annuler
+common.loading: Chargement…
+common.queued: En file d’attente…
+common.running: En cours
+common.duration.hours_minutes: '%{hours} h %{minutes} min'
+common.duration.minutes: '%{minutes} min'
+common.duration.minutes_seconds: '%{minutes} min %{seconds} s'
+common.duration.seconds: '%{seconds} s'
+common.unavailable_here: Indisponible sur ce système
+common.needs_setup: 'Manquant sur ce système : %{what}'
+common.setup.release_key: la clé qui vérifie les mises à jour
+common.setup.tray_host: une zone de notification système (hôte StatusNotifier)
+common.setup.psport_menu_binding: une version de psport qui indique port_menu_binding
+common.setup.psport_key_stick: une version de psport qui indique key_stick
+common.setup.psport_frame_gen: une version de psport qui indique frame_gen_fsr
+common.setup.psport_online: une version de psport qui indique online_module
+common.reported_by_ps: 'Le port PS ne le prend pas en charge : %{why}'
+common.not_ported_yet_ps: psport ne prend pas encore en charge %{system}
+common.downloads_instead_ps: 'psport n’est pas encore compilé sur %{system} : le canal de versions stables télécharge à la place son paquet prêt à l’emploi'
+common.testing: En test
+game_tools.title: Outils de jeu
+game_tools.intro: Ils s’appliquent au prochain lancement du jeu.
+game_tools.default_on: Comme dans les Paramètres (activé)
+game_tools.default_off: Comme dans les Paramètres (désactivé)
+game_tools.on: Activé
+game_tools.off: Désactivé
+game_tools.mangohud_missing: MangoHud n’est pas installé (sa couche Vulkan est introuvable).
+game_tools.gamemode_missing: GameMode n’est pas installé (gamemoded ou son service D-Bus est absent).
+common.pick_profile: Choisissez un profil ci-dessus.
+common.date.months: janv. févr. mars avr. mai juin juil. août sept. oct. nov. déc.
+common.date.format: '%{day} %{month} %{year}'
+common.date.time: '%{hour12}:%{minute} %{meridiem}'

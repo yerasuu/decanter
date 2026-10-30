@@ -1,0 +1,36 @@
+downloads.title: Téléchargements
+downloads.empty: Aucun téléchargement en cours.
+downloads.eta: '%{left} restant'
+downloads.dismiss: Ignorer
+downloads.cancelling: Annulation et suppression de ce qui a été téléchargé…
+downloads.cancel_confirm: Annuler le téléchargement de %{title} ? Les %{size} déjà téléchargés seront supprimés.
+downloads.cancel_confirm_empty: Annuler le téléchargement de %{title} ?
+downloads.cancel_delete: Annuler et supprimer
+downloads.keep: Continuer le téléchargement
+downloads.pause: Pause
+downloads.resume: Reprendre
+downloads.pause_all: Tout mettre en pause
+downloads.resume_all: Tout reprendre
+downloads.delete: Supprimer
+downloads.stale: Téléchargement en pause depuis %{days} jours · %{size}
+downloads.elsewhere: Exécution dans un autre processus Decanter · %{done} sur %{total}
+downloads.kind.dlc: DLC
+downloads.kind.update: Mise à jour
+downloads.kind.branch_switch: Changement de branche
+downloads.kind.rollback: Changement de version
+downloads.kind.repair: Réparation
+downloads.paused: En pause · %{done} sur %{total}
+downloads.paused_unsized: En pause · %{done}
+downloads.paused_reason.user: Vous l’avez mis en pause
+downloads.paused_reason.network: Pas de connexion ; il reprendra tout seul au retour du réseau
+downloads.paused_reason.app_closed: Decanter a été fermé
+downloads.paused_reason.closed_unexpectedly: Decanter s’est fermé de façon inattendue
+downloads.paused_reason.disk_full: Disque plein
+downloads.paused_reason.disk_full_at: Disque plein sur %{path}
+downloads.paused_reason.disk_full_short: 'Disque plein : il faut %{short} d’espace libre en plus sur %{path}'
+downloads.paused_reason.disk_full_update: 'Disque plein : la mise à jour nécessite %{needed} libres sur %{path} pendant le téléchargement ; il en manque %{short}'
+downloads.paused_reason.library_unavailable: Le dossier de la bibliothèque est indisponible
+downloads.paused_reason.library_unavailable_at: La bibliothèque %{path} est indisponible
+downloads.reused: 'GOG a publié une autre version pendant l’interruption : %{kept} des %{had} déjà téléchargés ont été réutilisés'
+downloads.verify_offer: '%{title} a été repris après une fermeture inattendue de Decanter. Vérifier ses fichiers ?'
+downloads.verify_now: Vérifier maintenant

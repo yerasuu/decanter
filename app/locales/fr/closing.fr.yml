@@ -1,0 +1,6 @@
+closing.shortcut_name: Fermer le jeu en cours
+closing.notice.title: '%{name} va se fermer'
+closing.notice.body: Fermeture dans %{seconds} secondes. Pour annuler, maintenez de nouveau Select + Start ou appuyez de nouveau sur le raccourci clavier.
+closing.notice.body_pad: Fermeture dans %{seconds} secondes. Pour annuler, maintenez de nouveau Select + Start.
+closing.notice.body_keyboard: Fermeture dans %{seconds} secondes. Pour annuler, appuyez de nouveau sur le raccourci clavier.
+closing.notice.cancelled: 'Fermeture annulée : %{name} reste ouvert'

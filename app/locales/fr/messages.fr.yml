@@ -1,0 +1,12 @@
+messages.errors.not_installed: le jeu n’est plus indiqué comme installé
+messages.errors.create_dir: 'création de %{path} : %{error}'
+messages.errors.prefix: impossible de déterminer le préfixe du jeu
+messages.errors.user_folders: impossible de trouver vos dossiers utilisateur Windows
+messages.errors.no_prefix: ce jeu n’a pas de préfixe
+messages.errors.delete_prefix: 'suppression du préfixe : %{error}'
+messages.errors.db_open: 'ouverture de la base de données : %{error}'
+messages.errors.no_library: il n’y a pas encore de bibliothèque
+messages.errors.library_unavailable: la bibliothèque située dans %{path} n’est pas disponible
+messages.errors.save_libraries: 'enregistrement de la liste des bibliothèques : %{error}'
+messages.errors.save_manifest: 'enregistrement du manifeste : %{error}'
+messages.errors.install_dir: dossier d’installation invalide

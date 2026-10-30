@@ -1,0 +1,41 @@
+chrome.window.minimize: Réduire
+chrome.window.maximize: Agrandir
+chrome.window.close: Fermer
+chrome.nav.library: Bibliothèque
+chrome.nav.storage: Stockage
+chrome.nav.downloads: Téléchargements
+chrome.downbar.downloading: 'Téléchargement : %{title}'
+chrome.profiles.create: Créer un profil
+chrome.profiles.elsewhere: '%{name} — %{path}'
+chrome.profiles.busy: '%{name} — %{path} (fermez d’abord les jeux et les installations en cours)'
+chrome.profiles.unavailable: '%{path} (indisponible)'
+chrome.profile_form.title: NOUVELLE PERSONNE
+chrome.profile_form.name: Nom du profil
+chrome.profile_form.library: 'Emplacement de la bibliothèque de ce profil :'
+chrome.profile_form.pick: Choisir un dossier
+chrome.profile_form.pick_title: Choisissez l’emplacement de la bibliothèque de ce profil
+chrome.profile_form.create: Créer
+chrome.onboarding.title: Bienvenue dans Decanter
+chrome.onboarding.intro: 'Créez un profil pour commencer : vous pourrez y ajouter des comptes GOG plus tard (et d’autres boutiques par la suite) depuis les Paramètres.'
+chrome.onboarding.library: 'Emplacement de la bibliothèque de ce profil (installations, préfixes Proton) :'
+chrome.onboarding.library_native: 'Emplacement de la bibliothèque de ce profil (installations) :'
+chrome.tray.show: Afficher Decanter
+chrome.tray.quit: Quitter
+chrome.unavailable.title: Bibliothèque indisponible
+chrome.unavailable.body: La bibliothèque située dans %{path} est introuvable. Si elle se trouve sur un disque externe, branchez-le et rouvrez Decanter, ou choisissez-en une autre.
+chrome.unavailable.use: Utiliser %{path}
+chrome.unavailable.pick: Choisir un autre dossier
+chrome.unavailable.pick_title: Choisissez le dossier de la bibliothèque
+chrome.passphrase.unlock_title: Déverrouiller les identifiants enregistrés
+chrome.passphrase.unlock_body: 'Aucun trousseau système n’est disponible : vos sessions GOG et vos autres identifiants sont donc stockés dans un fichier sur cet ordinateur, chiffré avec votre phrase secrète. Saisissez-la pour les utiliser pendant cette session.'
+chrome.passphrase.unlock: Déverrouiller
+chrome.passphrase.create_title: Protéger vos identifiants
+chrome.passphrase.create_body: Aucun trousseau système n’est disponible. Choisissez une phrase secrète pour conserver vos sessions GOG et vos autres identifiants dans un fichier chiffré sur cet ordinateur ; Decanter vous la demandera une fois par session. Si vous passez cette étape, ils ne seront pas enregistrés et vous devrez vous reconnecter la prochaine fois.
+chrome.passphrase.create: Créer
+chrome.passphrase.placeholder: Phrase secrète
+chrome.passphrase.repeat: Répétez la phrase secrète
+chrome.passphrase.no_recovery: Si vous l’oubliez, les identifiants enregistrés ne pourront pas être récupérés ; vous devrez vous reconnecter.
+chrome.passphrase.later: Pas maintenant
+chrome.passphrase.mismatch: Les deux phrases secrètes ne correspondent pas.
+chrome.passphrase.wrong: Phrase secrète incorrecte.
+chrome.passphrase.failed: 'Impossible d’ouvrir le fichier d’identifiants : %{error}'

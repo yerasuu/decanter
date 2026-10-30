@@ -1,0 +1,52 @@
+storage.title: Stockage
+storage.add: Ajouter un dossier de bibliothèque
+storage.add_title: Choisissez où conserver les jeux
+storage.stats.used.one: utilisé par 1 jeu
+storage.stats.used.other: utilisé par %{count} jeux
+storage.stats.folders.one: dossier de bibliothèque
+storage.stats.folders.other: dossiers de bibliothèque
+storage.folder.primary: Principal
+storage.folder.extra: Supplémentaire
+storage.folder.offline: Disque non connecté
+storage.folder.used.one: '%{used} utilisés par 1 jeu'
+storage.folder.used.other: '%{used} utilisés par %{count} jeux'
+storage.folder.free: '%{free} libres sur %{total}'
+storage.folder.remove: Retirer
+storage.folder.remove_hint: Arrête d’utiliser ce dossier ; ce qui se trouve sur le disque y reste
+storage.folder.remove_blocked: 'Il contient des jeux : désinstallez-les ou déplacez-les d’abord'
+storage.move_to: Déplacer vers…
+storage.moving.started: Déplacement…
+storage.moving.progress: Déplacement de %{done} sur %{total}
+storage.errors.nested: '%{path} fait déjà partie de la bibliothèque (%{folder})'
+storage.errors.add: 'enregistrement du dossier : %{error}'
+storage.errors.remove: 'retrait du dossier : %{error}'
+storage.errors.hosted: 'Ce jeu se trouve dans le préfixe de son lanceur : déplacez le lanceur et le jeu suivra.'
+storage.errors.running: 'Le jeu est en cours d’exécution : fermez-le avant de le déplacer.'
+storage.errors.shared: 'Un autre compte partage ces fichiers : ils ne peuvent pas être déplacés seuls.'
+storage.errors.exists: '%{path} existe déjà dans le dossier de destination.'
+storage.errors.manifest: 'déplacement de l’enregistrement de %{game} : %{error}'
+storage.legacy.title: Anciennes données de Decanter
+storage.legacy.body: Decanter conserve désormais ses données dans la bibliothèque ; %{path} n’est plus qu’une copie de l’ancien état.
+storage.legacy.remove: Supprimer les anciennes données
+storage.legacy.confirm: Supprimer ? Cette action est irréversible
+storage.errors.legacy_busy: 'Un autre Decanter ou un jeu qui les utilise peut-être est en cours d’exécution : fermez-les d’abord.'
+storage.errors.legacy: 'suppression des anciennes données : %{error}'
+storage.cache.title: Cache
+storage.unfinished.title: Téléchargements inachevés
+storage.cache.pick_title: Choisissez où ce dossier conserve son cache
+storage.cache.empty: vide
+storage.cache.default: Dans le dossier · %{size}
+storage.cache.custom: Choisi par vous · %{size}
+storage.cache.reset: Réinitialiser
+storage.cache.reset_hint: Conserver de nouveau le cache dans ce dossier.
+storage.cache.change: Modifier…
+storage.cache.change_hint: Les caches de shaders des jeux de ce dossier, PC et PS, sont placés ici. Sur un disque rapide, les jeux se chargent plus vite.
+storage.cache.errors.save: 'Impossible d’enregistrer l’emplacement du cache : %{error}'
+storage.cache.errors.not_dir: '%{path} n’est pas un dossier.'
+storage.cache.errors.inside_games: '%{path} se trouve dans les fichiers des jeux : choisissez un autre dossier.'
+storage.cache.errors.not_writable: 'Impossible d’écrire dans %{path} : %{error}'
+storage.stray.note: Pas de journal de téléchargement, il ne peut donc pas être repris · %{size}
+storage.stray.delete: Supprimer
+storage.stray.keep: Conserver
+storage.stray.confirm: Supprimer le téléchargement inachevé %{name} (%{size}) ? Il n’a pas de journal, il ne peut donc pas être repris.
+storage.errors.stray: 'suppression du téléchargement inachevé : %{error}'
