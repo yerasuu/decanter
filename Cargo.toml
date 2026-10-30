@@ -33,6 +33,7 @@ license = "GPL-3.0-or-later"
 # One version of each dependency for the whole workspace; members pick the
 # features they need on top.
 [workspace.dependencies]
+# --- Workspace crates ---
 decanter-core = { path = "crates/core" }
 decanter-gog = { path = "crates/gog" }
 decanter-mods = { path = "crates/mods" }
@@ -40,80 +41,100 @@ decanter-nix = { path = "crates/nix" }
 decanter-ps = { path = "crates/ps" }
 decanter-report = { path = "crates/report" }
 decanter-runtime = { path = "crates/runtime" }
+
+# --- User interface ---
 # Zed's repository at a pinned commit: the crates.io release of gpui no
 # longer builds.
 gpui = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
+rfd = "0.17.2"
+image = "0.25.10"
+unicode-segmentation = "1.13.3"
+open = "5.4.5"
+rust-i18n = "4.2.4"
+
+# --- Async and network ---
+tokio = "1.54.1"
+futures = "0.3.34"
+futures-util = "0.3.34"
+# `default-tls` pulls in native-tls, which links the system's OpenSSL —
+# rustls is pure Rust, no system TLS library to find at build or link time.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
+url = "2.5.8"
+flate2 = "1.1.10"
+
+# --- Data, files and the command line ---
+serde = "1.0.229"
+serde_json = "1.0.154"
+toml = "1.1.8"
+# A macOS build's Info.plist, which names the app bundle's executable; XML or
+# binary, both of which bundles ship (decision #892).
+plist = { version = "1.10.3", default-features = false }
+rusqlite = "0.41.0"
+chrono = "0.4.45"
+uuid = "1.29.0"
+dirs = "7.0.0"
+clap = "4.6.7"
+
+# --- Errors and logging ---
 anyhow = "1.0.104"
+thiserror = "2.0.21"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+
+# --- Hashes, secrets and signatures ---
 # decanter_core::secrets' passphrase file when there is no OS keyring (decision #1307).
 argon2 = { version = "0.6.0", default-features = false }
 chacha20poly1305 = { version = "0.11.0", default-features = false }
-chrono = "0.4.45"
-clap = "4.6.7"
-dirs = "7.0.0"
-# Embeds the application icon and version info into decanter.exe (app/build.rs, Windows targets only).
-embed-resource = "3.0.11"
-flate2 = "1.1.10"
-futures = "0.3.34"
-futures-util = "0.3.34"
 # Salts and nonces of the secrets file; already locked through the TLS and cipher stacks.
 getrandom = "0.4.3"
+# Secrets zeroed when dropped (decanter_core::secrets::Secret); already locked through the
+# keyring and TLS stacks.
+zeroize = "1.9.0"
+# Already in the graph through the TLS stack; listed for the nix-portable
+# checksum in crates/ps.
+sha2 = "0.11.1"
+md5 = "0.8.1"
+# Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
+# exactly so a new release of what decides which binary runs gets read first.
+minisign-verify = "=0.3.0"
+# The OS keyring as decanter_core::secrets uses it: keyring-core with the store crate of each
+# platform, which `keyring`'s own docs advise for applications that choose their stores.
+keyring-core = "1.0.0"
+
+# --- Build scripts ---
+# Embeds the application icon and version info into decanter.exe (app/build.rs, Windows targets only).
+embed-resource = "3.0.11"
+
+# --- Linux only ---
+ksni = "0.3.7"
+nix = { version = "0.31.3", default-features = false }
+# Already in the graph through ksni, GPUI and the keyring; decanter talks to
+# KGlobalAccel and the notification server with it, on the tokio runtime.
+zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }
+zbus-secret-service-keyring-store = "1.0.1"
+
+# --- Windows only ---
+# Job Objects for native Windows game sessions, through a safe API since the
+# workspace forbids `unsafe`.
+win32job = "2.0.3"
+windows-native-keyring-store = "1.1.0"
+
+# --- macOS only ---
+apple-native-keyring-store = "1.0.2"
+
+# --- Windows and macOS, not Linux ---
 # Free disk space where nix's statvfs isn't used (Windows, macOS).
 fs4 = { version = "1.1.0", default-features = false }
 # The close-game shortcut on Windows and macOS; Linux registers it with
 # KGlobalAccel over D-Bus.
 global-hotkey = "0.9.0"
-image = "0.25.10"
-# The OS keyring as decanter_core::secrets uses it: keyring-core with the store crate of each
-# platform, which `keyring`'s own docs advise for applications that choose their stores.
-keyring-core = "1.0.0"
-apple-native-keyring-store = "1.0.2"
-windows-native-keyring-store = "1.1.0"
-zbus-secret-service-keyring-store = "1.0.1"
-ksni = "0.3.7"
-md5 = "0.8.1"
-# Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
-# exactly so a new release of what decides which binary runs gets read first.
-minisign-verify = "=0.3.0"
-nix = { version = "0.31.3", default-features = false }
-open = "5.4.5"
-# A macOS build's Info.plist, which names the app bundle's executable; XML or
-# binary, both of which bundles ship (decision #892).
-plist = { version = "1.10.3", default-features = false }
-# `default-tls` pulls in native-tls, which links the system's OpenSSL —
-# rustls is pure Rust, no system TLS library to find at build or link time.
-reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
-rfd = "0.17.2"
-rusqlite = "0.41.0"
-rust-i18n = "4.2.4"
-serde = "1.0.229"
-serde_json = "1.0.154"
-# Already in the graph through the TLS stack; listed for the nix-portable
-# checksum in crates/ps.
-sha2 = "0.11.1"
+# The tray on Windows and macOS; Linux keeps ksni (see app/src/platform/linux/tray.rs).
+tray-icon = { version = "0.26.1", default-features = false }
 # The system language where no POSIX locale variable carries it (Windows'
 # user default locale, macOS's preferred languages); already locked through
 # cosmic-text.
 sys-locale = "0.3.2"
-thiserror = "2.0.21"
-tokio = "1.54.1"
-toml = "1.1.8"
-tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
-# The tray on Windows and macOS; Linux keeps ksni (see app/src/platform/linux/tray.rs).
-tray-icon = { version = "0.26.1", default-features = false }
-unicode-segmentation = "1.13.3"
-url = "2.5.8"
-uuid = "1.29.0"
-# Job Objects for native Windows game sessions, through a safe API since the
-# workspace forbids `unsafe`.
-win32job = "2.0.3"
-# Secrets zeroed when dropped (decanter_core::secrets::Secret); already locked through the
-# keyring and TLS stacks.
-zeroize = "1.9.0"
-# Already in the graph through ksni, GPUI and the keyring; decanter talks to
-# KGlobalAccel and the notification server with it, on the tokio runtime.
-zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }
 
 # GPUI unoptimized is slow enough to misjudge the app's own performance by,
 # so dependencies are always built optimized; the workspace's own crates
