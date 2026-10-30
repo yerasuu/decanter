@@ -277,7 +277,6 @@ ps.detail.explain.needs_merge: '이 덤프 옆에 1.09 업데이트가 있습니
 ps.detail.explain.has_playable: '1.09 사본이 이미 %{dir}에 있습니다. 해당 사본으로 플레이하세요.'
 ps.detail.explain.other_edition: bbport는 Bloodborne의 CUSA03173 에디션 버전 1.09만 실행합니다.
 ps.detail.explain.needs_update: 'bbport에는 버전 1.09가 필요합니다. 폴더 중 하나에 해당 업데이트를 추가하세요.'
-ps.detail.explain.experimental: 'bbport는 Bloodborne 전용으로 만들어졌습니다. 이 게임은 포트에 없는 부분을 스텁으로 처리하고 패치나 모드 없이 시작됩니다. 어디까지 진행되는지 로그에서 확인하세요.'
 ps.detail.explain.needs_vr: 이 게임은 PS VR 헤드셋이 있어야만 시작되는데, 포트에는 이를 지원하지 않습니다.
 ps.detail.explain.encrypted: eboot.bin이 아직 암호화되어 있습니다. 콘솔에서 복호화해야 합니다.
 ps.detail.explain.no_eboot: 이 덤프에는 eboot.bin이 없습니다.
