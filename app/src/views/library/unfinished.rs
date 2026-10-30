@@ -246,6 +246,8 @@ const fn status_of(download: &UnfinishedDownload) -> InstallStatus {
 fn kind_of(library: &Library, download: &UnfinishedDownload) -> DownloadKind {
     if download.is_repair {
         DownloadKind::Repair
+    } else if download.is_language {
+        DownloadKind::Language
     } else if download.parent_id.is_some() {
         DownloadKind::Dlc
     } else if library

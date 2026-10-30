@@ -47,6 +47,8 @@ pub enum DownloadKind {
     BranchSwitch,
     Rollback,
     Repair,
+    /// Another language's files for a game already installed.
+    Language,
 }
 
 #[derive(Clone, PartialEq)]

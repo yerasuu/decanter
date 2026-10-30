@@ -1,8 +1,9 @@
 //! The properties panel: everything Steam tucks behind right-click →
 //! Propiedades for an installed game, in the same tabbed shape — General,
-//! Actualizaciones, Archivos locales, Betas, plus two decanter adds on top:
+//! Actualizaciones, Archivos locales, Betas, plus decanter's own on top:
 //! Versiones (rollback to a specific historical build, not just Steam's
-//! per-branch newest), Mods (third-party mods over the install) and
+//! per-branch newest), Idioma (which language's files are installed), Mods
+//! (third-party mods over the install) and
 //! Compatibilidad (this game's own Proton pin; not on Windows, where games
 //! run natively).
 //!
@@ -22,6 +23,7 @@ mod cloud_saves;
 mod compatibility;
 mod dlc;
 mod general;
+mod language;
 mod local_files;
 mod mods;
 mod releases;
@@ -50,6 +52,7 @@ enum Tab {
     General,
     Updates,
     LocalFiles,
+    Language,
     CloudSaves,
     Dlc,
     Mods,
@@ -64,6 +67,7 @@ impl Tab {
             Self::General => t!("library.properties.tabs.general"),
             Self::Updates => t!("library.properties.tabs.updates"),
             Self::LocalFiles => t!("library.properties.tabs.local_files"),
+            Self::Language => t!("library.properties.tabs.language"),
             Self::CloudSaves => t!("library.properties.tabs.cloud_saves"),
             Self::Dlc => t!("library.properties.tabs.dlc"),
             Self::Mods => t!("library.properties.tabs.mods"),
@@ -78,6 +82,7 @@ const TABS: &[Tab] = &[
     Tab::General,
     Tab::Updates,
     Tab::LocalFiles,
+    Tab::Language,
     Tab::CloudSaves,
     Tab::Dlc,
     Tab::Mods,
@@ -215,6 +220,7 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::General => cx.new(|_| general::GeneralTab::new(target)).into(),
         Tab::Updates => cx.new(|_| updates::UpdatesTab::new(target)).into(),
         Tab::LocalFiles => cx.new(|_| local_files::LocalFilesTab::new(target)).into(),
+        Tab::Language => cx.new(|cx| language::LanguageTab::new(target, cx)).into(),
         Tab::CloudSaves => cx.new(|cx| cloud_saves::CloudSavesTab::new(target, window, cx)).into(),
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
         Tab::Mods => cx.new(|cx| mods::ModsTab::new(target, cx)).into(),

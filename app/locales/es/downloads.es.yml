@@ -19,6 +19,7 @@ downloads.kind.update: Actualización
 downloads.kind.branch_switch: Cambio de rama
 downloads.kind.rollback: Cambio de versión
 downloads.kind.repair: Reparación
+downloads.kind.language: Idioma
 downloads.paused: En pausa · %{done} de %{total}
 downloads.paused_unsized: En pausa · %{done}
 downloads.paused_reason.user: La pausaste tú

@@ -335,6 +335,7 @@ fn kind_label(kind: DownloadKind) -> Option<std::borrow::Cow<'static, str>> {
         DownloadKind::BranchSwitch => Some(t!("downloads.kind.branch_switch")),
         DownloadKind::Rollback => Some(t!("downloads.kind.rollback")),
         DownloadKind::Repair => Some(t!("downloads.kind.repair")),
+        DownloadKind::Language => Some(t!("downloads.kind.language")),
     }
 }
 

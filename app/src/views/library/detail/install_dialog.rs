@@ -29,18 +29,75 @@ pub(super) struct InstallDialog {
     offline: Vec<PathBuf>,
     branches: Option<Result<Vec<Branch>, String>>,
     chosen: Option<String>,
-    /// Dropping the dialog drops this, so a branch list still in flight
-    /// for a closed dialog is abandoned rather than written back.
+    /// The languages the chosen branch's build splits its files by; empty
+    /// when it doesn't, and also when they couldn't be read, which leaves the
+    /// install to pick (#1355).
+    languages: Option<Vec<String>>,
+    /// The language picked, preselected to the game's saved one or the app's.
+    language: Option<decanter_gog::language::Resolved>,
+    /// Dropping the dialog drops these, so a list still in flight for a
+    /// closed dialog is abandoned rather than written back.
     _fetch: Task<()>,
+    _languages_fetch: Task<()>,
 }
 
 impl InstallDialog {
-    /// A dialog with neither another library folder nor another branch to
-    /// pick (nor a disk to warn about) would only ask to confirm what the
-    /// install button already said, so it is never shown.
+    /// A dialog with neither another library folder nor another branch or
+    /// language to pick (nor a disk or a missing language to warn about)
+    /// would only ask to confirm what the install button already said, so it
+    /// is never shown.
     fn has_choice(&self) -> bool {
         let named_branch = matches!(&self.branches, Some(Ok(list)) if list.iter().any(|branch| branch.name.is_some()));
-        self.folders.len() > 1 || !self.offline.is_empty() || named_branch
+        let languages = self.languages.as_ref().map_or(0, Vec::len);
+        let lacks_language = self.language.as_ref().is_some_and(|picked| !picked.is_wanted);
+        self.folders.len() > 1 || !self.offline.is_empty() || named_branch || languages > 1 || lacks_language
+    }
+
+    fn is_loaded(&self) -> bool {
+        self.branches.is_some() && self.languages.is_some()
+    }
+}
+
+/// Reads the languages `branch`'s build offers into the open dialog, then
+/// starts the install at once if there turns out to be nothing to choose.
+fn fetch_languages(
+    account_id: String,
+    product_id: String,
+    branch: Option<String>,
+    cx: &mut Context<DetailView>,
+) -> Task<()> {
+    cx.spawn(async move |this, cx| {
+        let offered = decanter_gog::offered_languages(&account_id, &product_id, branch.as_deref(), None)
+            .await
+            .inspect_err(|err| tracing::warn!(account_id, product_id, error = %err, "failed to read the languages a build offers"))
+            .unwrap_or_default();
+        let wanted = crate::core::gog_languages(&account_id, &product_id);
+        let _ = this.update(cx, |this, cx| {
+            let Some(dialog) = &mut this.local.dialog else {
+                return;
+            };
+            dialog.language = decanter_gog::language::resolve(&wanted, &offered);
+            dialog.languages = Some(offered);
+            settle(this, cx);
+            cx.notify();
+        });
+    })
+}
+
+/// Once everything the dialog asks about has loaded, an install with
+/// nothing to choose starts without showing it.
+fn settle(this: &mut DetailView, cx: &mut Context<DetailView>) {
+    let Some(dialog) = &this.local.dialog else {
+        return;
+    };
+    if !dialog.is_loaded() || dialog.has_choice() {
+        return;
+    }
+    if let Some(mut dialog) = this.local.dialog.take()
+        && let Some(mut request) = dialog.request.take()
+    {
+        request.language = dialog.language.map(|picked| picked.tag);
+        actions::start_install(request, cx);
     }
 }
 
@@ -70,15 +127,11 @@ impl DetailView {
                     return;
                 };
                 dialog.branches = Some(result);
-                if !dialog.has_choice() {
-                    let request = this.local.dialog.take().and_then(|mut dialog| dialog.request.take());
-                    if let Some(request) = request {
-                        actions::start_install(request, cx);
-                    }
-                }
+                settle(this, cx);
                 cx.notify();
             });
         });
+        let languages_fetch = fetch_languages(request.account_id.clone(), request.product_id.clone(), None, cx);
         let offline = AppState::get(cx).library.read(cx).offline_folders.clone();
         self.local.dialog = Some(InstallDialog {
             request: Some(request),
@@ -87,7 +140,10 @@ impl DetailView {
             offline,
             branches: None,
             chosen: None,
+            languages: None,
+            language: None,
             _fetch: fetch,
+            _languages_fetch: languages_fetch,
         });
         cx.notify();
     }
@@ -98,7 +154,7 @@ impl DetailView {
 /// as Steam defaults to no beta opt-in). `None` while there is nothing to
 /// choose, which is when the install starts without asking.
 pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Context<DetailView>) -> Option<AnyElement> {
-    if !dialog.has_choice() {
+    if !dialog.is_loaded() || !dialog.has_choice() {
         return None;
     }
     let this = cx.entity().downgrade();
@@ -117,6 +173,7 @@ pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Conte
 
     let rows = install_rows(dialog, dlc_count);
     let folders = folder_picker(dialog, this.clone());
+    let language = language_picker(dialog, this.clone());
     let branch = branch_picker(dialog, this);
     let field_row = || div().flex().gap(px(10.)).mb_3().max_w(px(520.));
 
@@ -127,17 +184,21 @@ pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Conte
             request: Some(mut request),
             chosen,
             folder,
+            language,
             ..
         }) = dialog
         {
             request.branch = chosen;
             request.library_root = folder;
+            request.language = language.map(|picked| picked.tag);
             actions::start_install(request, cx);
         }
     });
     let cancel = Rc::clone(&close);
     let dismiss = Rc::clone(&close);
     let (folder_label, branch_label) = (t!("library.detail.install.folder"), t!("library.detail.install.branch"));
+    let language_label = t!("library.detail.install.language");
+    let language_note = language_note(dialog);
     let (install_label, cancel_label) = (t!("library.detail.install.button"), t!("common.cancel"));
 
     let panel = dialog_frame(window).child(dialog_header(&title, close)).child(
@@ -152,6 +213,8 @@ pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Conte
             .child(rows)
             .children(folders.map(|folders| field_row().child(div().child(folder_label)).child(folders)))
             .child(field_row().child(div().child(branch_label)).child(branch))
+            .children(language.map(|language| field_row().child(div().child(language_label)).child(language)))
+            .children(language_note.map(|note| div().mb_3().max_w(px(520.)).child(theme::muted(note))))
             .child(
                 field_row()
                     .child(button("install-confirm", ButtonKind::Play, install_label, false).on_click(confirm))
@@ -296,6 +359,52 @@ fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option
     )
 }
 
+/// Which language the game installs in, by its own name, among those the
+/// build splits its files by; only when it offers more than one.
+fn language_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option<AnyElement> {
+    let offered = dialog.languages.as_ref().filter(|offered| offered.len() > 1)?;
+    let options = offered.iter().map(|tag| {
+        (
+            SharedString::from(tag.clone()),
+            SharedString::from(decanter_gog::language::native_name(tag)),
+        )
+    });
+    let current = dialog
+        .language
+        .as_ref()
+        .map(|picked| SharedString::from(picked.tag.clone()))
+        .unwrap_or_default();
+    Some(
+        Select::new("install-language", options, current)
+            .on_change(move |value, _, cx| {
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(dialog) = &mut this.local.dialog {
+                        dialog.language = Some(decanter_gog::language::Resolved::picked(value.to_string()));
+                        cx.notify();
+                    }
+                });
+            })
+            .into_any_element(),
+    )
+}
+
+/// Says the game isn't offered in the app's language, and which one it
+/// installs in instead, while that fallback is still the one picked.
+fn language_note(dialog: &InstallDialog) -> Option<String> {
+    let picked = dialog.language.as_ref().filter(|picked| !picked.is_wanted)?;
+    let app = crate::i18n::Language::from_code(&rust_i18n::locale())
+        .map(|language| language.native_name().into_owned())
+        .unwrap_or_default();
+    Some(
+        t!(
+            "library.detail.install.language_missing",
+            language = app,
+            fallback = decanter_gog::language::native_name(&picked.tag)
+        )
+        .into_owned(),
+    )
+}
+
 fn branch_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> AnyElement {
     match &dialog.branches {
         None => theme::muted(t!("common.loading")).into_any_element(),
@@ -313,10 +422,22 @@ fn branch_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> AnyEle
             Select::new("install-branch", options, dialog.chosen.clone().unwrap_or_default())
                 .on_change(move |value, _, cx| {
                     let _ = this.update(cx, |this, cx| {
-                        if let Some(dialog) = &mut this.local.dialog {
-                            dialog.chosen = (!value.is_empty()).then(|| value.to_string());
-                            cx.notify();
+                        let Some(dialog) = &mut this.local.dialog else {
+                            return;
+                        };
+                        dialog.chosen = (!value.is_empty()).then(|| value.to_string());
+                        let ids = dialog
+                            .request
+                            .as_ref()
+                            .map(|request| (request.account_id.clone(), request.product_id.clone()));
+                        let branch = dialog.chosen.clone();
+                        if let Some((account_id, product_id)) = ids {
+                            let fetch = fetch_languages(account_id, product_id, branch, cx);
+                            if let Some(dialog) = &mut this.local.dialog {
+                                dialog._languages_fetch = fetch;
+                            }
                         }
+                        cx.notify();
                     });
                 })
                 .into_any_element()

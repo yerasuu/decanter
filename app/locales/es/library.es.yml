@@ -118,6 +118,8 @@ library.detail.install.dlcs.other: '%{count} marcados, se instalan junto con el 
 library.detail.install.offline: 'Sin conectar: %{folders}. Si el juego ya está ahí, conecta el disco en vez de instalarlo otra vez.'
 library.detail.install.folder_free: '%{folder} — %{free} libres'
 library.detail.install.mainline: Mainline (por defecto)
+library.detail.install.language: Idioma
+library.detail.install.language_missing: 'Este juego no está disponible en %{language}; se instalará en %{fallback}.'
 library.detail.achievements.cache_error: 'Error al leer la caché de logros: %{error}'
 library.detail.achievements.polling: Buscando logros...
 library.detail.achievements.none: Este juego no tiene logros en GOG.
@@ -150,6 +152,7 @@ library.properties.not_installed: El juego no está instalado.
 library.properties.tabs.general: General
 library.properties.tabs.updates: Actualizaciones
 library.properties.tabs.local_files: Archivos locales
+library.properties.tabs.language: Idioma
 library.properties.tabs.cloud_saves: Guardado en la nube
 library.properties.tabs.dlc: DLC
 library.properties.tabs.mods: Mods
@@ -177,6 +180,24 @@ library.properties.local_files.clean.one: 1 archivo, todo en orden.
 library.properties.local_files.clean.other: '%{count} archivos, todo en orden.'
 library.properties.local_files.broken: '%{broken} de %{total} archivos no coinciden.'
 library.properties.local_files.note: Compara cada archivo instalado con el manifiesto de GOG y vuelve a descargar lo que no coincida.
+library.properties.language.installed: Idioma instalado
+library.properties.language.all: Todos los idiomas de la build (instalado antes de poder elegir idioma)
+library.properties.language.not_split: 'Esta build no separa sus archivos por idioma: no hay nada que elegir.'
+library.properties.language.note: Cambiar el idioma descarga solo los archivos de ese idioma. Después Decanter te ofrece quitar los de los idiomas que ya no usas y te pregunta antes de quitar nada.
+library.properties.language.switch: Cambiar idioma
+library.properties.language.switching: Cambiando...
+library.properties.language.remove_unused: Quitar idiomas no usados
+library.properties.language.listing: Buscando archivos...
+library.properties.language.removing: Quitando...
+library.properties.language.missing: 'Faltan %{count} archivos de %{language}: cambia antes a ese idioma o verifica el juego. No se ha quitado nada.'
+library.properties.language.nothing: No hay archivos de otros idiomas instalados.
+library.properties.language.confirm: '¿Quitar %{count} archivos de otros idiomas (%{size})? Se conserva %{language}.'
+library.properties.language.more: 'y %{count} más'
+library.properties.language.safe: Solo se quitan archivos que GOG asigna a los otros idiomas; las partidas guardadas, la configuración y los mods se quedan.
+library.properties.language.remove_confirm: 'Quitar (%{size})'
+library.properties.language.fallback: 'El juego no está disponible en ese idioma; se conserva %{language}.'
+library.properties.language.freed: 'Se han liberado %{size}.'
+library.properties.language.downloading: El juego tiene una descarga en Descargas; cambia su idioma o quita idiomas cuando termine o la canceles.
 library.properties.saves.folder_placeholder: Carpeta de guardado
 library.properties.saves.note: Decanter intenta detectar la carpeta de guardado con la configuración remota de GOG. Si no encuentra nada, elígela con «Elegir carpeta...».
 library.properties.saves.detect: Detectar automáticamente
