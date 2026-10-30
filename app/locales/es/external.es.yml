@@ -22,6 +22,8 @@ external.sources.hint: Con una clave de SteamGridDB la búsqueda trae sus portad
 external.sources.key_placeholder: Clave de API de SteamGridDB
 external.sources.save: Guardar
 external.sources.saving: Guardando...
+external.sources.key_saved: Hay una clave guardada. Escribe otra para sustituirla; en Ajustes › General puedes olvidarla.
+external.sources.empty: Escribe primero una clave.
 external.sources.saved: Guardada.
 external.sources.get_key: Conseguir una clave
 external.sources.errors.keyring: 'guardando la clave en el llavero: %{error}'

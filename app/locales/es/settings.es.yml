@@ -147,3 +147,31 @@ settings.general.debug.errors.not_dir: '%{path} no es una carpeta.'
 settings.general.debug.errors.not_writable: 'No se puede escribir en %{path}: %{error}'
 settings.general.debug.errors.not_utf8: 'La ruta %{path} tiene caracteres que no se pueden guardar: elige otra carpeta.'
 settings.general.debug.errors.open: 'No se pudo abrir la carpeta: %{error}'
+settings.credentials.title: Credenciales guardadas
+settings.credentials.hint: 'Decanter guarda los inicios de sesión y las claves en el llavero de tu sistema, nunca en la biblioteca. Aquí solo se ve qué son y a quién pertenecen, nunca el secreto en sí.'
+settings.credentials.status.ready: 'Llavero: listo.'
+settings.credentials.status.locked: 'Llavero: bloqueado (%{reason}). Desbloquéalo en tu sistema y reintenta; no se ha borrado nada.'
+settings.credentials.status.missing: 'Llavero: no disponible (%{reason}). Inicia o instala un servicio de llavero y reintenta; Decanter sigue funcionando y no se ha borrado nada.'
+settings.credentials.status.unknown: 'Llavero: aún sin comprobar.'
+settings.credentials.retry: Reintentar
+settings.credentials.loading: Leyendo el llavero…
+settings.credentials.unavailable: Ahora mismo no se puede leer el llavero, así que no se muestra la lista. Tus credenciales guardadas siguen intactas.
+settings.credentials.empty: No hay credenciales guardadas.
+settings.credentials.orphan: Ninguna cuenta usa ya esta sesión.
+settings.credentials.kind.gog_session: Sesión de GOG
+settings.credentials.kind.shadnet_password: Contraseña de shadNet
+settings.credentials.kind.shadnet_token: Token de shadNet
+settings.credentials.kind.steamgriddb_key: Clave de SteamGridDB
+settings.credentials.subject.app: Decanter
+settings.credentials.forget: Olvidar
+settings.credentials.forget_all: Olvidar todo
+settings.credentials.confirm.title: '¿Olvidar las credenciales guardadas?'
+settings.credentials.confirm.gog_session: 'La sesión de GOG de %{subject} se quitará del llavero. Eso cierra la sesión de la cuenta: tendrás que volver a iniciarla en GOG para usarla.'
+settings.credentials.confirm.shadnet_password: 'La contraseña de shadNet de %{subject} se quitará del llavero. Tendrás que escribirla de nuevo para jugar en línea.'
+settings.credentials.confirm.shadnet_token: 'El token de shadNet de %{subject} se quitará del llavero.'
+settings.credentials.confirm.steamgriddb_key: La clave de SteamGridDB se quitará del llavero. La búsqueda de imágenes usará solo Steam hasta que guardes una clave de nuevo.
+settings.credentials.confirm.all: 'Se quitarán del llavero las %{count} credenciales guardadas, incluidas las sesiones de GOG (cierra la sesión de esas cuentas) y las contraseñas de shadNet.'
+settings.credentials.forgotten: Credencial olvidada.
+settings.credentials.forgotten_all: 'Credenciales olvidadas: %{count}.'
+settings.credentials.forgotten_some: 'Credenciales olvidadas: %{count}. %{failed} no se han podido quitar y siguen en el llavero.'
+settings.credentials.errors.forget: 'No se ha podido olvidar: %{error}'

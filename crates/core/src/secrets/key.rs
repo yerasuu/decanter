@@ -140,6 +140,20 @@ impl SecretKey {
         }
     }
 
+    /// The key an entry name stands for, the inverse of [`SecretKey::entry`]; the old
+    /// `SteamGridDB` name too. `None` for a name nothing here writes.
+    pub(super) fn from_entry(entry: &str) -> Option<Self> {
+        let parts: Vec<&str> = entry.split('/').collect();
+        match parts.as_slice() {
+            ["steamgriddb", "api_key"] => Some(Self::STEAMGRIDDB),
+            ["steamgriddb", legacy] if *legacy == Storefront::Unspecified.as_str_name() => Some(Self::STEAMGRIDDB),
+            ["shadnet", npid, "password"] => Self::shadnet(npid, ShadnetSecret::Password).ok(),
+            ["shadnet", npid, "token"] => Self::shadnet(npid, ShadnetSecret::Token).ok(),
+            [id, storefront] if *storefront == Storefront::Gog.as_str_name() => Self::gog_session(id).ok(),
+            _ => None,
+        }
+    }
+
     /// The name this secret was filed under before it had its own: the `SteamGridDB` key went
     /// through the storefront-session API as if it were a session of an unknown storefront.
     pub(super) fn legacy_entry(&self) -> Option<String> {

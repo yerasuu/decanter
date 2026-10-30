@@ -35,7 +35,7 @@ impl EventEmitter<LoggedIn> for GogLogin {}
 
 impl GogLogin {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let pasted = cx.new(|cx| TextInput::new("https://embed.gog.com/on_login_success?…&code=…", cx));
+        let pasted = cx.new(|cx| TextInput::new("https://embed.gog.com/on_login_success?…&code=…", cx).masked());
         cx.subscribe(&pasted, |_, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 cx.notify();

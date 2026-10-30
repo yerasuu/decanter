@@ -8,6 +8,7 @@
 
 mod account;
 mod compatibility;
+mod credentials;
 mod debug;
 mod game_tools;
 mod general;

@@ -147,3 +147,31 @@ settings.general.debug.errors.not_dir: '%{path} is not a folder.'
 settings.general.debug.errors.not_writable: 'Can''t write to %{path}: %{error}'
 settings.general.debug.errors.not_utf8: 'The path %{path} has characters that can''t be saved: choose another folder.'
 settings.general.debug.errors.open: 'Couldn''t open the folder: %{error}'
+settings.credentials.title: Saved credentials
+settings.credentials.hint: 'Decanter keeps logins and keys in your system''s keyring, never in the library. Only what they are and whom they belong to is shown here, never the secret itself.'
+settings.credentials.status.ready: 'Keyring: ready.'
+settings.credentials.status.locked: 'Keyring: locked (%{reason}). Unlock it in your system and retry; nothing has been deleted.'
+settings.credentials.status.missing: 'Keyring: not available (%{reason}). Start or install a keyring service and retry; Decanter keeps working and nothing has been deleted.'
+settings.credentials.status.unknown: 'Keyring: not checked yet.'
+settings.credentials.retry: Retry
+settings.credentials.loading: Reading the keyring…
+settings.credentials.unavailable: Can't read the keyring right now, so the list isn't shown. Your saved credentials are untouched.
+settings.credentials.empty: No credentials saved.
+settings.credentials.orphan: No account uses this session any more.
+settings.credentials.kind.gog_session: GOG session
+settings.credentials.kind.shadnet_password: shadNet password
+settings.credentials.kind.shadnet_token: shadNet token
+settings.credentials.kind.steamgriddb_key: SteamGridDB key
+settings.credentials.subject.app: Decanter
+settings.credentials.forget: Forget
+settings.credentials.forget_all: Forget all
+settings.credentials.confirm.title: Forget saved credentials?
+settings.credentials.confirm.gog_session: 'The GOG session of %{subject} will be removed from the keyring. That logs the account out: you will have to log in to GOG again to use it.'
+settings.credentials.confirm.shadnet_password: 'The shadNet password of %{subject} will be removed from the keyring. You will have to type it again to play online.'
+settings.credentials.confirm.shadnet_token: 'The shadNet token of %{subject} will be removed from the keyring.'
+settings.credentials.confirm.steamgriddb_key: The SteamGridDB key will be removed from the keyring. Image search will use only Steam until you save a key again.
+settings.credentials.confirm.all: 'All %{count} saved credentials will be removed from the keyring, including GOG sessions (that logs those accounts out) and shadNet passwords.'
+settings.credentials.forgotten: Credential forgotten.
+settings.credentials.forgotten_all: 'Credentials forgotten: %{count}.'
+settings.credentials.forgotten_some: 'Credentials forgotten: %{count}. %{failed} could not be removed and are still in the keyring.'
+settings.credentials.errors.forget: 'Couldn''t forget it: %{error}'

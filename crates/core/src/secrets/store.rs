@@ -58,6 +58,28 @@ pub enum StoreError {
     /// whatever was typed.
     #[error("unusable name for a secret ({kind})")]
     InvalidKey { kind: SecretKind },
+    /// Listing or forgetting everything failed before any one secret was reached, so there is no
+    /// [`SecretKind`] to name.
+    #[error("secret store {state}: {reason}")]
+    Everything { state: &'static str, reason: String },
+}
+
+/// What the store holds, by name only: no value is read to build it.
+#[derive(Debug, Default)]
+#[non_exhaustive]
+pub struct Listing {
+    pub keys: Vec<SecretKey>,
+    /// Entries under decanter's service whose name no [`SecretKey`] parses, left alone.
+    pub unrecognized: usize,
+}
+
+/// What [`Store::forget_all`] did.
+#[derive(Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Forgotten {
+    pub removed: usize,
+    /// Still in the store: the delete failed, the reason is in the log.
+    pub failed: usize,
 }
 
 /// A backend's failure, before it is tied to the key it was about.
@@ -75,6 +97,17 @@ impl Failure {
         match self {
             Self::Unavailable(reason) | Self::Locked(reason) | Self::TooLarge(reason) | Self::Refused(reason) => reason,
             Self::Corrupt(reason) => reason,
+        }
+    }
+
+    fn for_everything(self) -> StoreError {
+        let state = match self {
+            Self::Locked(_) => "locked",
+            Self::Unavailable(_) | Self::TooLarge(_) | Self::Corrupt(_) | Self::Refused(_) => "unavailable",
+        };
+        StoreError::Everything {
+            state,
+            reason: self.reason().to_owned(),
         }
     }
 
@@ -217,8 +250,82 @@ impl Store {
         result
     }
 
+    /// What the store holds, as typed keys, never values.
+    ///
+    /// Uses the store's own search; a store that cannot search is asked for each of `known`
+    /// instead, so a secret decanter has a name for is still listed.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Everything`] when the store is missing or locked; read the reason from the
+    /// error and the state from [`Store::status`].
+    #[inline]
+    pub fn list(&self, known: &[SecretKey]) -> Result<Listing, StoreError> {
+        let result = self
+            .run(|backend| {
+                let names = match native::search_names() {
+                    Ok(names) => names,
+                    Err(failure @ (Failure::Unavailable(_) | Failure::Locked(_))) => return Err(failure),
+                    Err(failure) => {
+                        tracing::warn!(
+                            reason = failure.reason(),
+                            "keyring cannot search, listing known entries"
+                        );
+                        let mut present = Vec::new();
+                        for key in known {
+                            if backend.get(&key.entry())?.is_some() {
+                                present.push(key.entry());
+                            }
+                        }
+                        present
+                    }
+                };
+                Ok(parse_listing(names))
+            })
+            .map_err(Failure::for_everything);
+        match &result {
+            Ok(listing) => tracing::debug!(
+                count = listing.keys.len(),
+                unrecognized = listing.unrecognized,
+                "listed secrets in keyring"
+            ),
+            Err(err) => tracing::warn!(error = %err, "failed to list secrets in keyring"),
+        }
+        result
+    }
+
+    /// Deletes every secret [`Store::list`] finds, one by one, so a failure on one leaves the
+    /// rest forgotten; what stayed is counted.
+    ///
+    /// # Errors
+    ///
+    /// The store could not be listed; nothing was deleted.
+    #[inline]
+    pub fn forget_all(&self, known: &[SecretKey]) -> Result<Forgotten, StoreError> {
+        let listing = self.list(known)?;
+        let mut forgotten = Forgotten::default();
+        for key in &listing.keys {
+            if self.delete(key).is_ok() {
+                forgotten.removed += 1;
+            } else {
+                forgotten.failed += 1;
+            }
+        }
+        tracing::info!(
+            removed = forgotten.removed,
+            failed = forgotten.failed,
+            "forgot all secrets in keyring"
+        );
+        Ok(forgotten)
+    }
+
     fn call<T>(&self, key: &SecretKey, op: impl FnOnce(&dyn Backend) -> Result<T, Failure>) -> Result<T, StoreError> {
-        let backend = self.backend().map_err(|failure| failure.for_key(key.kind()))?;
+        self.run(op).map_err(|failure| failure.for_key(key.kind()))
+    }
+
+    /// Runs `op` on the backend and keeps [`Store::status`] as the outcome shows it.
+    fn run<T>(&self, op: impl FnOnce(&dyn Backend) -> Result<T, Failure>) -> Result<T, Failure> {
+        let backend = self.backend()?;
         let result = op(backend.as_ref());
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         match &result {
@@ -239,7 +346,7 @@ impl Store {
             Err(Failure::TooLarge(_) | Failure::Corrupt(_) | Failure::Refused(_)) => {}
         }
         drop(state);
-        result.map_err(|failure| failure.for_key(key.kind()))
+        result
     }
 
     fn backend(&self) -> Result<Arc<dyn Backend>, Failure> {
@@ -276,6 +383,19 @@ impl Store {
             }
         }
     }
+}
+
+fn parse_listing(names: Vec<String>) -> Listing {
+    let mut listing = Listing::default();
+    for name in names {
+        match SecretKey::from_entry(&name) {
+            Some(key) if !listing.keys.contains(&key) => listing.keys.push(key),
+            Some(_) => {}
+            None => listing.unrecognized += 1,
+        }
+    }
+    listing.keys.sort_by_key(SecretKey::entry);
+    listing
 }
 
 /// Copies the secret filed under its old name to its own, and removes the old entry only once the

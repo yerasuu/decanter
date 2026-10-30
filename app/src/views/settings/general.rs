@@ -11,6 +11,7 @@ use decanter_core::capabilities::Feature;
 use gpui::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
+use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
 use super::{column, field_row, inline};
 use crate::capabilities::Caps;
@@ -38,6 +39,7 @@ pub struct GeneralTab {
     release: Option<Result<Standing, ReleaseError>>,
     availability: Availability,
     install: Option<Install>,
+    credentials: Entity<CredentialsSection>,
     debug: Entity<DebugSection>,
 }
 
@@ -64,6 +66,7 @@ impl GeneralTab {
             release: None,
             availability: self_update::availability(),
             install: None,
+            credentials: cx.new(CredentialsSection::new),
             debug: cx.new(DebugSection::new),
         };
         this.reload();
@@ -542,6 +545,7 @@ impl Render for GeneralTab {
             ))
             .child(theme::h2(t!("settings.general.updates.title")))
             .child(self.release_section(cx))
+            .child(self.credentials.clone())
             .child(self.debug.clone())
     }
 }

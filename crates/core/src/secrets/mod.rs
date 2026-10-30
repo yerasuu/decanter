@@ -32,7 +32,7 @@ mod store;
 
 pub use key::{SecretKey, SecretKind, ShadnetSecret};
 pub use secret::Secret;
-pub use store::{BackendKind, Status, Store, StoreError};
+pub use store::{BackendKind, Forgotten, Listing, Status, Store, StoreError};
 
 static STORE: Store = Store::new();
 

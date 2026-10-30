@@ -74,13 +74,17 @@ impl ExternalView {
             }
         })
         .detach();
-        let api_key = cx.new(|cx| TextInput::new(Text::new("external.sources.key_placeholder"), cx));
-        // A keyring round trip: off the UI thread, filled in when it lands.
-        let field = api_key.clone();
-        cx.spawn(async move |_, cx| {
-            let key = tokio::task::spawn_blocking(art::api_key).await.ok().flatten();
-            if let Some(key) = key {
-                field.update(cx, |input, cx| input.set_text(key.expose().to_owned(), cx));
+        let api_key = cx.new(|cx| TextInput::new(Text::new("external.sources.key_placeholder"), cx).masked());
+        // A keyring round trip: off the UI thread. The key itself never goes back into the
+        // field; the field only says one is saved, and forgetting it is in Ajustes.
+        cx.spawn(async move |this, cx| {
+            let saved = tokio::task::spawn_blocking(art::api_key).await.ok().flatten().is_some();
+            if saved {
+                let _ = this.update(cx, |this, cx| {
+                    this.key_status
+                        .get_or_insert_with(|| Text::new("external.sources.key_saved"));
+                    cx.notify();
+                });
             }
         })
         .detach();
@@ -224,6 +228,11 @@ impl ExternalView {
 
     fn save_key(&mut self, cx: &mut Context<Self>) {
         let key = self.api_key.read(cx).text().trim().to_owned();
+        if key.is_empty() {
+            self.key_status = Some(Text::new("external.sources.empty"));
+            cx.notify();
+            return;
+        }
         self.key_status = Some(Text::new("external.sources.saving"));
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -232,7 +241,10 @@ impl ExternalView {
                 .unwrap_or_else(|err| Err(Text::verbatim(err)));
             let _ = this.update(cx, |this, cx| {
                 this.key_status = Some(match result {
-                    Ok(()) => Text::new("external.sources.saved"),
+                    Ok(()) => {
+                        this.api_key.update(cx, |input, cx| input.set_text("", cx));
+                        Text::new("external.sources.saved")
+                    }
                     Err(err) => err,
                 });
                 cx.notify();

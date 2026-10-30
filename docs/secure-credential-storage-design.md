@@ -372,13 +372,29 @@ Phases 5 and 6 replace phase 8 of `docs/windows-online-plan.md`.
 - `Db::delete_profile` deletes its GOG accounts' sessions; one the keyring cannot delete is
   counted in a warning and left, and the profile is deleted anyway.
 
+### Phase 2
+
+- `Store::list(known)` returns `Listing { keys, unrecognized }`, names only: the store's own
+  search (`service` on the Secret Service and Keychain, a `pattern` over the target name on
+  Windows, where the store cuts the dotted service at its last dot), else one probe per `known`
+  key. `Store::forget_all(known)` deletes what `list` finds one by one and counts `removed` and
+  `failed`. Both fail as `StoreError::Everything` (state `locked` or `unavailable`). The search
+  opens its own connection in `native::search_names`, since the `Backend` trait is not changed
+  here; phase 7 may move it into the trait.
+- Ajustes › General › "Credenciales guardadas" (`app/src/views/settings/credentials.rs`): a row
+  per entry (kind, account name and id, or NPID), "Olvidar" and "Olvidar todo" each behind a
+  `confirm_panel`, the status line with "Reintentar" while the store is not ready. A GOG session
+  with no account in any profile is marked as left behind. Entries of the service that no key
+  parses are not listed or deleted.
+- The `SteamGridDB` field and the GOG login field are masked; the saved key is never put back in
+  the field, which says a key is saved. Saving an empty field no longer deletes it.
+
 ### Not in the keyring, left for later phases
 
 - shadNet password and token in the launch environment of the whole launch tree (#716): phases
   5 and 6.
 - Report delete codes in `<library>/decanter/reports/sent.jsonl` (no ACL on Windows): phase 8.
-- The GOG OAuth login code through the clipboard and an unmasked field; the SteamGridDB field
-  shown in clear: phase 2.
+- The GOG OAuth login code still passes through the clipboard (the field is masked now).
 - The reports server's own secrets (`reports.toml`, `*_file`, systemd credentials), the Galaxy
   client id/secret (public constants) and GOG signed CDN links (memory only, stripped from
   errors): outside this store by design.
