@@ -210,14 +210,17 @@ const fn status_of(download: &UnfinishedDownload) -> InstallStatus {
     if download.in_use {
         return InstallStatus::Elsewhere {
             bytes_done: download.bytes_done,
-            total_bytes: download.total_bytes,
+            total_bytes: match download.total_bytes {
+                Some(total_bytes) => total_bytes,
+                None => 0,
+            },
         };
     }
     InstallStatus::Paused {
         reason: download.reason,
         room: download.room,
         bytes_done: download.bytes_done,
-        total_bytes: Some(download.total_bytes),
+        total_bytes: download.total_bytes,
         since: download.paused_since,
     }
 }

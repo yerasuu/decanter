@@ -30,7 +30,8 @@ pub struct UnfinishedDownload {
     /// For a full disk, how much it needed.
     pub room: Option<Room>,
     pub bytes_done: u64,
-    pub total_bytes: u64,
+    /// `None` for a download queued and never planned.
+    pub total_bytes: Option<u64>,
     /// The library folder it downloads into.
     pub root: PathBuf,
     /// Another decanter process (the CLI, say) is running it right now.
@@ -132,10 +133,18 @@ pub async fn unfinished_downloads(library: &Library) -> Vec<UnfinishedDownload> 
 }
 
 async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
-    let Some(journal::Found { header, folded, in_use }) = journal::inspect(staging).await else {
+    let Some(found) = journal::inspect(staging).await else {
         return None;
     };
-    let request = &header.request;
+    let done = found.bytes_done();
+    let journal::Found {
+        request,
+        header,
+        folded,
+        stop,
+        in_use,
+        ..
+    } = found;
     let expected_dir = match request.kind {
         Kind::Install => request.product_id.clone(),
         Kind::Repair => format!("{}-repair", request.product_id),
@@ -146,17 +155,20 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         tracing::warn!(staging = %staging.display(), "download journal names another download, skipping it");
         return None;
     }
-    let (reason, bytes_done) = match &folded {
+    let total_bytes = header.as_ref().map(|planned| planned.total_bytes);
+    let (logged, bytes_done) = match &folded {
         // The library already records it; only the folder was left.
         Some(folded) if folded.phase == Phase::Recorded => return None,
-        Some(folded) if folded.phase == Phase::Moving => (PauseReason::ClosedUnexpectedly, header.total_bytes),
-        Some(folded) => (
-            folded.paused.unwrap_or(PauseReason::ClosedUnexpectedly),
-            folded.bytes_done(&header),
-        ),
+        Some(folded) if folded.phase == Phase::Moving => (PauseReason::ClosedUnexpectedly, total_bytes.unwrap_or(0)),
+        Some(folded) => (folded.paused.unwrap_or(PauseReason::ClosedUnexpectedly), done),
         None => (PauseReason::ClosedUnexpectedly, 0),
     };
-    let room = folded.as_ref().and_then(|stopped| stopped.room);
+    // A stop recorded while it waited is newer than the log's last record.
+    let reason = stop.unwrap_or(logged);
+    let room = folded
+        .as_ref()
+        .and_then(|stopped| stopped.room)
+        .filter(|_| stop.is_none());
     Some(UnfinishedDownload {
         account_id: request.account_id.clone(),
         product_id: request.product_id.clone(),
@@ -167,7 +179,7 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         reason,
         room,
         bytes_done,
-        total_bytes: header.total_bytes,
+        total_bytes,
         root: root.to_path_buf(),
         in_use,
         paused_since: journal::last_written(staging).await,
@@ -228,11 +240,8 @@ pub async fn resume(
         let Some(found) = journal::inspect(&staging).await else {
             continue;
         };
-        let bytes_done = found
-            .folded
-            .as_ref()
-            .map_or(0, |folded| folded.bytes_done(&found.header));
-        let request = found.header.request;
+        let bytes_done = found.bytes_done();
+        let request = found.request;
         tracing::info!(account_id, product_id, root = %root.display(), "resuming an unfinished download");
         let outcome = super::install(
             &library.clone().targeting(&root),
@@ -267,21 +276,28 @@ pub async fn resume_repair(
         let Some(found) = journal::inspect(&staging).await else {
             continue;
         };
-        let bytes_done = found
-            .folded
-            .as_ref()
-            .map_or(0, |folded| folded.bytes_done(&found.header));
-        let broken: Vec<BrokenFile> = found
-            .header
-            .files
-            .into_iter()
-            .map(|file| BrokenFile {
-                relative_path: file.path,
-                // A repair journalled before owners were recorded is planned from the game's own depots.
-                owner: file.owner.unwrap_or_else(|| product_id.to_owned()),
-                reason: BrokenReason::Mismatched,
-            })
-            .collect();
+        let bytes_done = found.bytes_done();
+        let broken: Vec<BrokenFile> = match found.header {
+            Some(header) => header
+                .files
+                .into_iter()
+                .map(|file| BrokenFile {
+                    relative_path: file.path,
+                    // A repair journalled before owners were recorded is planned from the game's own depots.
+                    owner: file.owner.unwrap_or_else(|| product_id.to_owned()),
+                    reason: BrokenReason::Mismatched,
+                })
+                .collect(),
+            None => found
+                .files
+                .into_iter()
+                .map(|file| BrokenFile {
+                    relative_path: file.path,
+                    owner: file.owner,
+                    reason: BrokenReason::Mismatched,
+                })
+                .collect(),
+        };
         tracing::info!(account_id, product_id, root = %root.display(), files = broken.len(), "resuming an unfinished repair");
         let outcome = super::repair(
             &library.clone().targeting(&root),
@@ -316,7 +332,7 @@ fn still_paused(outcome: anyhow::Result<()>, bytes_done: u64, root: PathBuf) -> 
 }
 
 /// GOG or its CDN didn't answer, as opposed to refusing or no longer offering what was asked.
-fn is_offline(err: &anyhow::Error) -> bool {
+pub(super) fn is_offline(err: &anyhow::Error) -> bool {
     if err.is::<Paused>() || err.is::<Cancelled>() {
         return false;
     }

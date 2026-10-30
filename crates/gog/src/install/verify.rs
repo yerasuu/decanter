@@ -17,6 +17,7 @@ use decanter_core::{Storefront, platform};
 
 use super::download::PlannedDownload;
 use super::journal::{Header, Kind, Request};
+use super::pending::{Pending, PendingFile};
 use super::plan::{manifest_relative_path, resolve_depot_files};
 use crate::api::client::{DepotChunk, Sessionless};
 use crate::hook::REAL_DLL_BACKUP as HOOKED_GALAXY_DLL_BACKUP;
@@ -279,7 +280,8 @@ fn verify_file(path: &Path, chunks: &[DepotChunk]) -> std::io::Result<bool> {
 /// reports through `on_progress`, and stops on [`super::cancel`] or
 /// [`super::pause`] for the same `(account_id, product_id)` the same way,
 /// failing with [`super::Cancelled`] or [`super::Paused`]; a paused one
-/// carries on through [`super::resume_repair`].
+/// carries on through [`super::resume_repair`]. Until it is planned, what it
+/// repairs is recorded beside its journal, as an install's request is.
 pub async fn repair(
     library: &decanter_core::Library,
     account_id: &str,
@@ -293,7 +295,7 @@ pub async fn repair(
     tracing::info!(product_id, broken_count = broken.len(), "starting repair");
     super::tracking::claim(account_id, product_id).await;
     let key = (account_id.to_owned(), product_id.to_owned());
-    let _turn = crate::achv_try!(super::take_turn(&key).await);
+    let _settling = super::Settling::start();
     let game = crate::achv_try!(
         library
             .read_manifest(account_id, Storefront::Gog, product_id)
@@ -305,27 +307,12 @@ pub async fn repair(
             .context("unusable install directory")
     );
     let game_id: i64 = crate::achv_try!(product_id.parse().context("GOG product_id must be numeric"));
-
-    let access_token = crate::achv_try!(
-        crate::session::live_token(account_id)
-            .await
-            .map(|token| token.access_token)
-    );
-
     let staging = crate::achv_try!(super::staging::staging_root(
         &install_root,
         account_id,
         &format!("{product_id}-repair")
     ));
 
-    let downloads = crate::achv_try!(plan_repair(&game, access_token.expose(), game_id, broken).await);
-    if downloads.is_empty() {
-        tracing::warn!(
-            product_id,
-            "no broken file is listed by the build any more, nothing to repair"
-        );
-        return Ok(());
-    }
     // Journalled like an install, so a repair stopped half way carries on
     // when the next one plans the same files.
     let request = Request {
@@ -337,6 +324,43 @@ pub async fn repair(
         branch: game.branch.clone(),
         build_id: Some(game.build_id.clone()),
     };
+    let files = broken
+        .iter()
+        .map(|file| PendingFile {
+            path: file.relative_path.clone(),
+            owner: file.owner.clone(),
+        })
+        .collect();
+    let pending = Pending::new(request.clone(), files);
+    let entered = super::pending::enter(&staging, &pending).await;
+    let Some(turn) = super::tracking::wait_turn(library, &key).await else {
+        return Err(super::stopped_queued(entered, pending, &key).await);
+    };
+    let planning = async {
+        let access_token = crate::achv_try!(super::live_token(account_id).await);
+        plan_repair(&game, access_token.expose(), game_id, broken).await
+    };
+    let Some(planned) = super::tracking::until_stopped(&key, planning).await else {
+        drop(turn);
+        return Err(super::stopped_queued(entered, pending, &key).await);
+    };
+    let downloads = match planned {
+        Ok(downloads) => downloads,
+        Err(err) => return Err(super::unplanned(entered, err).await),
+    };
+    let _turn = turn;
+    if downloads.is_empty() {
+        tracing::warn!(
+            product_id,
+            "no broken file is listed by the build any more, nothing to repair"
+        );
+        if let Some(lock) = entered.lock
+            && let Err(err) = super::journal::discard_with(&staging, lock).await
+        {
+            tracing::warn!(path = %staging.display(), error = %err, "couldn't remove a repair with nothing left to do");
+        }
+        return Ok(());
+    }
     let header = crate::achv_try!(Header::new(
         request,
         game.build_id.clone(),
@@ -344,7 +368,7 @@ pub async fn repair(
         &downloads
     ));
     let (journal, _) = crate::achv_try!(
-        super::fetch_into_staging(&staging, header, downloads, key, product_id, &mut on_progress)
+        super::fetch_into_staging(&staging, header, downloads, key, entered.lock, &mut on_progress)
             .await
             .inspect_err(|err| {
                 if !err.is::<super::Cancelled>() {

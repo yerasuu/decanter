@@ -85,6 +85,10 @@ pub enum Cmd {
         branch: Option<String>,
         #[arg(long)]
         build_id: Option<String>,
+        /// Exit at once when another decanter process (the app, say) is
+        /// downloading, instead of waiting for its turn.
+        #[arg(long)]
+        no_wait: bool,
     },
     /// Cancels an install left running for this (account, product) —
     /// useful to clear an orphan left by a client that died mid-transfer.
@@ -178,8 +182,16 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
             title,
             branch,
             build_id,
+            no_wait,
         } => {
-            install::install(&account_id, &product_id, &title, branch.as_deref(), build_id.as_deref()).await?;
+            let target = install::Target {
+                account_id: &account_id,
+                product_id: &product_id,
+                title: &title,
+                branch: branch.as_deref(),
+                build_id: build_id.as_deref(),
+            };
+            install::install(target, no_wait).await?;
         }
         Cmd::CancelInstall { account_id, product_id } => {
             install::cancel(&account_id, &product_id).await;

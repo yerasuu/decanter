@@ -219,12 +219,14 @@ pub fn resume_download(key: DownloadKey, cx: &mut App) {
             cx.notify();
             return false;
         }
+        // One never planned has nothing staged to verify.
         let was_unclean = matches!(
             row.status,
             InstallStatus::Paused {
                 reason: decanter_gog::PauseReason::ClosedUnexpectedly,
+                bytes_done,
                 ..
-            }
+            } if bytes_done > 0
         );
         row.status = InstallStatus::Queued;
         if was_unclean {

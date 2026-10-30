@@ -6,6 +6,7 @@
 //!   download.json        the plan (Header), replaced whole, once per plan
 //!   progress.log         Records, each appended and synced after the bytes it names
 //!   lock                 held while a process owns the download
+//!   pending.json         the request, while it waits for a plan or stopped before one
 //!   files/<path>.part    a file in flight
 //!   files/<path>         a file complete, synced and renamed
 //! ```
@@ -101,7 +102,7 @@ pub struct Paused {
 }
 
 /// How to plan this download again: the caller's own request, not what it resolved to.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Request {
     pub(super) kind: Kind,
     pub(super) account_id: String,
@@ -420,22 +421,26 @@ pub(super) fn part_path(path: &Path) -> PathBuf {
 
 /// Takes `staging` for this download: carries on the journal there, keeping what still matches when
 /// GOG now plans another build, finishes its move when a crash hit that, and otherwise starts the
-/// download over.
+/// download over. `held` is the folder's lock when the caller already has it.
 ///
 /// # Errors
 /// [`LockError::Busy`] when another process owns the download, or the I/O error that stopped it.
-pub(super) async fn open(staging: &Path, header: Header) -> anyhow::Result<Opened> {
+pub(super) async fn open(staging: &Path, header: Header, held: Option<StagingLock>) -> anyhow::Result<Opened> {
     crate::achv_try!(
         tokio::fs::create_dir_all(staging)
             .await
             .with_context(|| format!("creating {}", staging.display()))
     );
-    let lock = crate::achv_try!(lock_waiting(staging).await);
+    let lock = match held {
+        Some(lock) => lock,
+        None => crate::achv_try!(lock_waiting(staging).await),
+    };
     let discarded = match read_header(staging).await {
         Ok(None) => None,
         Err(discarded) => Some(discarded),
         Ok(Some(previous)) => match crate::achv_try!(carry_on(staging, previous, &header).await) {
             CarryOn::Download { log, starts, switch } => {
+                crate::achv_try!(super::pending::clear(staging).await);
                 return Ok(Opened::Download {
                     journal: Journal::new(staging, log, lock),
                     header,
@@ -444,6 +449,7 @@ pub(super) async fn open(staging: &Path, header: Header) -> anyhow::Result<Opene
                 });
             }
             CarryOn::Move { log, previous } => {
+                crate::achv_try!(super::pending::clear(staging).await);
                 return Ok(Opened::Move {
                     journal: Journal::new(staging, log, lock),
                     header: *previous,
@@ -452,7 +458,14 @@ pub(super) async fn open(staging: &Path, header: Header) -> anyhow::Result<Opene
             CarryOn::Over(discarded) => Some(discarded),
         },
     };
-    start_over(staging, header, lock, discarded).await
+    let opened = crate::achv_try!(start_over(staging, header, lock, discarded).await);
+    crate::achv_try!(super::pending::clear(staging).await);
+    Ok(opened)
+}
+
+/// Whether `staging` holds a plan, as opposed to a download that is only queued.
+pub(super) async fn has_plan(staging: &Path) -> bool {
+    tokio::fs::try_exists(staging.join(HEADER)).await.unwrap_or(true)
 }
 
 impl Journal {
@@ -744,7 +757,8 @@ fn remove_file_now(path: &Path) -> io::Result<()> {
     }
 }
 
-/// Clears `staging` but for its lock and writes a fresh header and log.
+/// Clears `staging` but for its lock and its queued request, which stays until the fresh header
+/// written here holds it, and writes that header and a log.
 async fn start_over(
     staging: &Path,
     header: Header,
@@ -754,7 +768,7 @@ async fn start_over(
     if let Some(reason) = discarded {
         tracing::warn!(staging = %staging.display(), %reason, "starting the download over");
     }
-    crate::achv_try!(clear(staging).await);
+    crate::achv_try!(clear(staging, Keep::Pending).await);
 
     let encoded = crate::achv_try!(serde_json::to_vec(&header).context("encoding the download plan"));
     crate::achv_try!(
@@ -787,9 +801,15 @@ async fn start_over(
     })
 }
 
-/// Empties `staging` but for its lock, which the caller holds. The log goes
-/// first, so no header is ever read against a log that outlived its plan.
-async fn clear(staging: &Path) -> anyhow::Result<()> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Keep {
+    Lock,
+    Pending,
+}
+
+/// Empties `staging` but for its lock, which the caller holds, and for its queued request when
+/// asked. The log goes first, so no header is ever read against a log that outlived its plan.
+async fn clear(staging: &Path, keep: Keep) -> anyhow::Result<()> {
     crate::achv_try!(
         remove_file(&staging.join(LOG))
             .await
@@ -801,7 +821,8 @@ async fn clear(staging: &Path) -> anyhow::Result<()> {
             .with_context(|| format!("reading {}", staging.display()))
     );
     while let Some(entry) = crate::achv_try!(entries.next_entry().await) {
-        if entry.file_name() == "lock" {
+        let name = entry.file_name();
+        if name == "lock" || keep == Keep::Pending && name == super::pending::PENDING {
             continue;
         }
         let path = entry.path();
@@ -822,7 +843,12 @@ async fn clear(staging: &Path) -> anyhow::Result<()> {
 /// [`LockError::Busy`] when another process runs it, or what stopped the removal.
 pub(super) async fn discard(staging: &Path) -> anyhow::Result<()> {
     let lock = crate::achv_try!(decanter_runtime::journal::lock(staging));
-    crate::achv_try!(clear(staging).await);
+    discard_with(staging, lock).await
+}
+
+/// [`discard`], for a caller already holding `staging`'s lock.
+pub(super) async fn discard_with(staging: &Path, lock: StagingLock) -> anyhow::Result<()> {
+    crate::achv_try!(clear(staging, Keep::Lock).await);
     drop(lock);
     crate::achv_try!(
         remove_dir(staging)
@@ -843,7 +869,7 @@ pub(super) async fn discard_stray(staging: &Path) -> anyhow::Result<()> {
     if has_journal(staging) {
         anyhow::bail!("{} has a download journal", staging.display());
     }
-    crate::achv_try!(clear(staging).await);
+    crate::achv_try!(clear(staging, Keep::Lock).await);
     drop(lock);
     crate::achv_try!(
         remove_dir(staging)
@@ -853,11 +879,12 @@ pub(super) async fn discard_stray(staging: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A queued download's request counts: it is listed, and resumed, from that alone.
 pub(super) fn has_journal(staging: &Path) -> bool {
-    staging.join(HEADER).exists()
+    staging.join(HEADER).exists() || staging.join(super::pending::PENDING).exists()
 }
 
-async fn lock_waiting(staging: &Path) -> Result<StagingLock, LockError> {
+pub(super) async fn lock_waiting(staging: &Path) -> Result<StagingLock, LockError> {
     let deadline = Instant::now() + LOCK_WAIT;
     loop {
         match decanter_runtime::journal::lock(staging) {
@@ -893,38 +920,75 @@ async fn read_header(staging: &Path) -> Result<Option<Header>, Discarded> {
 
 /// What a journal says without taking it, for listing downloads left unfinished.
 pub(super) struct Found {
-    pub(super) header: Header,
+    pub(super) request: Request,
+    /// `None` for a download queued and never planned.
+    pub(super) header: Option<Header>,
     /// `None` when the log can't be read against the header: nothing of it would be kept.
     pub(super) folded: Option<Folded>,
+    /// Why it stopped while it waited for a plan, which is newer than anything the log says.
+    pub(super) stop: Option<PauseReason>,
+    /// What a repair never planned repairs.
+    pub(super) files: Vec<super::pending::PendingFile>,
     /// Another process owns it right now.
     pub(super) in_use: bool,
 }
 
+impl Found {
+    pub(super) fn bytes_done(&self) -> u64 {
+        self.header
+            .as_ref()
+            .zip(self.folded.as_ref())
+            .map_or(0, |(header, folded)| folded.bytes_done(header))
+    }
+}
+
 pub(super) async fn inspect(staging: &Path) -> Option<Found> {
     let header = match read_header(staging).await {
-        Ok(Some(header)) => header,
-        Ok(None) => return None,
+        Ok(header) => header,
         Err(reason) => {
             tracing::warn!(staging = %staging.display(), %reason, "skipping an unreadable download journal");
             return None;
         }
     };
+    let (request, stop, files) = match (&header, super::pending::read(staging).await) {
+        (Some(planned), queued) => (
+            planned.request.clone(),
+            queued.and_then(|stopped| stopped.stop),
+            Vec::new(),
+        ),
+        (None, Some(queued)) => (queued.request, queued.stop, queued.files),
+        (None, None) => return None,
+    };
     let in_use = matches!(decanter_runtime::journal::lock(staging), Err(LockError::Busy(_)));
-    let folded = decanter_runtime::journal::read_records(&staging.join(LOG))
-        .await
-        .ok()
-        .and_then(|lines| fold(&header, &lines));
-    Some(Found { header, folded, in_use })
+    let folded = match &header {
+        Some(planned) => decanter_runtime::journal::read_records(&staging.join(LOG))
+            .await
+            .ok()
+            .and_then(|lines| fold(planned, &lines)),
+        None => None,
+    };
+    Some(Found {
+        request,
+        header,
+        folded,
+        stop,
+        files,
+        in_use,
+    })
 }
 
 /// When the journal last recorded anything: for a paused download, when it paused.
 pub(super) async fn last_written(staging: &Path) -> Option<std::time::SystemTime> {
-    let written = match tokio::fs::metadata(staging.join(LOG)).await {
-        Ok(meta) => Ok(meta),
-        // The header is written before its log: a crash between the two leaves no log.
-        Err(_) => tokio::fs::metadata(staging.join(HEADER)).await,
-    };
-    written.and_then(|meta| meta.modified()).ok()
+    // The header is written before its log, and a queued download has neither.
+    for name in [LOG, HEADER, super::pending::PENDING] {
+        if let Ok(modified) = tokio::fs::metadata(staging.join(name))
+            .await
+            .and_then(|meta| meta.modified())
+        {
+            return Some(modified);
+        }
+    }
+    None
 }
 
 /// What a resume needs to know of each file, owned so the check runs off the async workers.

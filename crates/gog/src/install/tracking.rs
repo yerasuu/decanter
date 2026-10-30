@@ -3,13 +3,18 @@
 //! and [`pause`] need regardless of which phase an install is in — and whose
 //! turn it is to download.
 
+use core::future::Future;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use decanter_core::Library;
+use decanter_runtime::journal::{LockError, StagingLock};
 use tokio::sync::{Mutex, Notify, Semaphore, SemaphorePermit};
 
 use super::download::Cancel;
+use super::staging::DOWNLOADING;
 
 pub(super) type InstallKey = (String, String);
 
@@ -63,14 +68,25 @@ static TURN: Semaphore = Semaphore::const_new(1);
 /// Wakes the downloads waiting for their turn so they see a stop asked of them.
 static STOPS: Notify = Notify::const_new();
 
-/// Waits for `key`'s turn to download, which is held until the permit is
-/// dropped. `None` when a stop for `key`, or decanter quitting, comes first:
-/// the stop stays recorded for the caller to honour without taking a turn.
-pub(super) async fn wait_turn(key: &InstallKey) -> Option<SemaphorePermit<'static>> {
+/// How often a download waiting on another decanter process looks at the slot
+/// again: file locks wake no one when they are let go.
+const SLOT_POLL: Duration = Duration::from_secs(1);
+
+/// The turn to download, held until dropped: this process's own and the slot
+/// shared with every other decanter process using the library.
+pub(super) struct Turn {
+    // Let go of before the permit, so this process's next download finds it free.
+    _slot: Option<StagingLock>,
+    _permit: SemaphorePermit<'static>,
+}
+
+/// Runs `work` until it ends, or until a stop for `key` (or decanter quitting)
+/// comes first, which drops it and returns `None`; the stop stays recorded for
+/// the caller to honour.
+pub(super) async fn until_stopped<T>(key: &InstallKey, work: impl Future<Output = T>) -> Option<T> {
     // Pinned once, outside the loop, so waking up for someone else's stop
     // doesn't cost this download its place in the queue.
-    let turn = TURN.acquire();
-    tokio::pin!(turn);
+    tokio::pin!(work);
     loop {
         let stopped = STOPS.notified();
         tokio::pin!(stopped);
@@ -80,14 +96,86 @@ pub(super) async fn wait_turn(key: &InstallKey) -> Option<SemaphorePermit<'stati
             return None;
         }
         tokio::select! {
-            permit = &mut turn => {
-                return permit
-                    .inspect_err(|err| tracing::error!(error = %err, "the download queue is closed"))
-                    .ok();
-            }
+            done = &mut work => return Some(done),
             () = &mut stopped => {}
         }
     }
+}
+
+/// Waits for `key`'s turn to download: first this process's, then the slot
+/// other decanter processes share (#1320), so the CLI and the app never
+/// download at once. `None` when a stop comes first, as [`until_stopped`].
+pub(super) async fn wait_turn(library: &Library, key: &InstallKey) -> Option<Turn> {
+    let Some(acquired) = until_stopped(key, TURN.acquire()).await else {
+        return None;
+    };
+    let permit = match acquired {
+        Ok(permit) => permit,
+        Err(err) => {
+            tracing::error!(error = %err, "the download queue is closed");
+            return None;
+        }
+    };
+    let Some(slot) = until_stopped(key, take_slot(library)).await else {
+        return None;
+    };
+    Some(Turn {
+        _slot: slot,
+        _permit: permit,
+    })
+}
+
+/// The folder whose lock is the slot: the library folder every process using
+/// `library` agrees on whichever one it targets, the first present in order.
+fn slot_dir(library: &Library) -> Option<PathBuf> {
+    library
+        .roots()
+        .into_iter()
+        .filter(|root| root.is_dir())
+        .min()
+        .map(|root| root.join(DOWNLOADING))
+}
+
+/// `None` when the slot can't be locked at all (a read-only disk, say): the
+/// download then goes on without it rather than never.
+async fn take_slot(library: &Library) -> Option<StagingLock> {
+    let Some(dir) = slot_dir(library) else {
+        return None;
+    };
+    if let Err(err) = tokio::fs::create_dir_all(&dir).await {
+        tracing::warn!(dir = %dir.display(), error = %err, "couldn't create the shared download slot, downloading without it");
+        return None;
+    }
+    let mut is_waiting = false;
+    loop {
+        match decanter_runtime::journal::lock(&dir) {
+            Ok(slot) => {
+                if is_waiting {
+                    tracing::info!(dir = %dir.display(), "the other decanter process's download ended, taking the slot");
+                }
+                return Some(slot);
+            }
+            Err(LockError::Busy(_)) => {
+                if !is_waiting {
+                    tracing::info!(dir = %dir.display(), "another decanter process is downloading, waiting for its turn");
+                    is_waiting = true;
+                }
+                tokio::time::sleep(SLOT_POLL).await;
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "couldn't lock the shared download slot, downloading without it");
+                return None;
+            }
+        }
+    }
+}
+
+/// Whether another decanter process holds `library`'s download slot right now,
+/// so a download started here would wait for it.
+#[must_use]
+#[inline]
+pub fn download_slot_busy(library: &Library) -> bool {
+    slot_dir(library).is_some_and(|dir| matches!(decanter_runtime::journal::lock(&dir), Err(LockError::Busy(_))))
 }
 
 /// The stop asked for while `key` was still being planned, before any
@@ -121,8 +209,10 @@ pub async fn cancel(account_id: &str, product_id: &str) {
 /// Pauses an install for this (profile, product), queued or downloading.
 ///
 /// It stops within one chunk, records what it had synced and fails with
-/// [`super::Paused`], keeping its data for [`super::resume`]. A cancel
-/// already asked for stays a cancel.
+/// [`super::Paused`], keeping its data for [`super::resume`]. One still
+/// waiting or being planned stops at once, without asking GOG for anything,
+/// and records its request to be planned again. A cancel already asked for
+/// stays a cancel.
 pub async fn pause(account_id: &str, product_id: &str) {
     let key: InstallKey = (account_id.to_string(), product_id.to_string());
     stop_requested().lock().await.entry(key.clone()).or_insert(Stop::Pause);

@@ -22,6 +22,7 @@ use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront, p
 
 mod download;
 mod journal;
+mod pending;
 mod plan;
 mod program;
 mod rate;
@@ -32,7 +33,7 @@ mod verify;
 
 pub use download::Cancelled;
 pub use journal::{BuildSwitch, PauseReason, Paused, Room};
-pub use tracking::{cancel, pause, pause_for_quit};
+pub use tracking::{cancel, download_slot_busy, pause, pause_for_quit};
 pub use unfinished::{
     NothingToResume, StrayStaging, UnfinishedDownload, discard, discard_stray, downloading_dir, resume, resume_repair,
     stray_staging, unfinished_downloads,
@@ -41,9 +42,10 @@ pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 
 use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_all};
 use journal::{Header, Journal, Kind, Opened, Request, Start};
+use pending::{Entered, Pending};
 use plan::Plan;
 use rate::RateTracker;
-use staging::{move_into_library, staging_root};
+use staging::{move_into_library, staging_in, staging_root};
 use tracking::{InstallKey, Settling, Stop, active, claim};
 
 /// Kept free beyond what a download still needs, at least: the disk is never filled to its last
@@ -105,7 +107,10 @@ pub struct Progress {
 /// build GOG plans still shares, and finishes a move into the library a
 /// crash cut short.
 ///
-/// One download runs at a time: this waits for the ones asked for before it.
+/// One download runs at a time, across every decanter process using the
+/// library: this waits for the ones asked for before it. While it waits, and
+/// until its plan is in, its request is recorded in its staging folder, so a
+/// pause, a cancel or a quit then needs no network and a crash still lists it.
 ///
 /// # Errors
 /// [`Cancelled`] after [`cancel`], which deletes what was downloaded;
@@ -130,17 +135,81 @@ pub async fn install(
     tracing::info!(product_id, title, parent_id, branch, build_id, "starting gog install");
 
     claim(account_id, product_id).await;
-    let _turn = crate::achv_try!(take_turn(&(account_id.to_owned(), product_id.to_owned())).await);
+    let key: InstallKey = (account_id.to_owned(), product_id.to_owned());
+    // From here, so a quit waits for a queued download to record that it stopped too.
+    let _settling = Settling::start();
+    let request = Request {
+        kind: Kind::Install,
+        account_id: account_id.to_owned(),
+        product_id: product_id.to_owned(),
+        parent_id: parent_id.map(str::to_owned),
+        title: title.to_owned(),
+        branch: branch.map(str::to_owned),
+        build_id: build_id.map(str::to_owned),
+    };
+    let staging = crate::achv_try!(queued_staging(library, account_id, product_id, parent_id));
+    let pending = Pending::new(request.clone(), Vec::new());
+    let entered = pending::enter(&staging, &pending).await;
+    let Some(turn) = tracking::wait_turn(library, &key).await else {
+        return Err(stopped_queued(entered, pending, &key).await);
+    };
 
+    let planning = plan_install(library, account_id, game_id, parent_id, branch, build_id);
+    let Some(planned) = tracking::until_stopped(&key, planning).await else {
+        drop(turn);
+        return Err(stopped_queued(entered, pending, &key).await);
+    };
+    let (plan, effective_branch) = match planned {
+        Ok(resolved) => resolved,
+        Err(err) => return Err(unplanned(entered, err).await),
+    };
+    let _turn = turn;
+    install_into(
+        library,
+        request,
+        effective_branch.as_deref(),
+        plan,
+        entered,
+        &mut on_progress,
+    )
+    .await
+}
+
+/// The staging folder a download is entered into before it is planned: the
+/// one its plan will pick, as far as the library says without it. A DLC goes
+/// where its game is, or is queued to be.
+fn queued_staging(
+    library: &Library,
+    account_id: &str,
+    product_id: &str,
+    parent_id: Option<&str>,
+) -> anyhow::Result<std::path::PathBuf> {
+    let owner = parent_id.unwrap_or(product_id);
+    let installed = library
+        .read_manifest(account_id, Storefront::Gog, owner)
+        .and_then(|game| library.install_dir(&game.install_dir));
+    installed.map_or_else(
+        || staging_in(library.root(), account_id, product_id),
+        |destination| staging_root(&destination, account_id, product_id),
+    )
+}
+
+/// The plan and the branch it resolved to, asked of GOG once the turn is in.
+async fn plan_install(
+    library: &Library,
+    account_id: &str,
+    game_id: i64,
+    parent_id: Option<&str>,
+    branch: Option<&str>,
+    build_id: Option<&str>,
+) -> anyhow::Result<(Plan, Option<String>)> {
+    let product = game_id.to_string();
+    let product_id = product.as_str();
     // The depot API needs a live access token, renewed and stored first when it has expired.
-    let access_token = crate::achv_try!(
-        crate::session::live_token(account_id)
-            .await
-            .map(|token| token.access_token)
-            .inspect_err(
-                |err| tracing::error!(product_id, error = %err, "gog session refresh failed, aborting install")
-            )
-    );
+    let access_token =
+        crate::achv_try!(live_token(account_id).await.inspect_err(
+            |err| tracing::error!(product_id, error = %err, "gog session refresh failed, aborting install")
+        ));
 
     // A DLC's content lives in the base game's build, so that is whose
     // build gets read; which depots come out of it is the DLC's own id.
@@ -172,17 +241,73 @@ pub async fn install(
             |err| tracing::error!(product_id, error = %err, "resolving the install plan failed, aborting install")
         )
     );
+    Ok((plan, effective_branch))
+}
 
-    let request = Request {
-        kind: Kind::Install,
-        account_id: account_id.to_owned(),
-        product_id: product_id.to_owned(),
-        parent_id: parent_id.map(str::to_owned),
-        title: title.to_owned(),
-        branch: branch.map(str::to_owned),
-        build_id: build_id.map(str::to_owned),
+/// The session refresh runs on its own task: a stop that drops the plan
+/// waiting on it must not drop a renewed token before it is stored.
+async fn live_token(account_id: &str) -> anyhow::Result<decanter_core::secrets::Secret> {
+    let account = account_id.to_owned();
+    match tokio::spawn(async move { crate::session::live_token(&account).await }).await {
+        Ok(refreshed) => refreshed.map(|token| token.access_token),
+        Err(err) => Err(anyhow::Error::new(err).context("the gog session refresh task failed")),
+    }
+}
+
+/// A plan GOG refused leaves nothing queued behind, as before there were queued downloads; one it
+/// couldn't be asked for stays queued, for a resume to plan again once it is back.
+async fn unplanned(entered: Entered, err: anyhow::Error) -> anyhow::Error {
+    if let Some(held) = entered.lock
+        && !unfinished::is_offline(&err)
+        && !journal::has_plan(&entered.staging).await
+        && let Err(cleanup) = journal::discard_with(&entered.staging, held).await
+    {
+        tracing::warn!(path = %entered.staging.display(), error = %cleanup, "couldn't remove a download GOG wouldn't plan");
+    }
+    err
+}
+
+/// What a download stopped before its plan ends as, with no network asked:
+/// a cancel deletes what its folder held, a pause or a quit records why it
+/// stopped beside the request it is planned again from.
+async fn stopped_queued(entered: Entered, pending: Pending, key: &InstallKey) -> anyhow::Error {
+    let Entered { staging, lock } = entered;
+    let product_id = key.1.as_str();
+    let stop = match tracking::stop_while_queued(key).await {
+        Some(stop) => stop,
+        None if tracking::is_quitting() => Stop::Quit,
+        None => return anyhow::anyhow!("the download queue is closed"),
     };
-    install_into(library, request, effective_branch.as_deref(), plan, &mut on_progress).await
+    let reason = match stop {
+        Stop::Cancel => {
+            tracing::info!(product_id, "download cancelled while queued");
+            if let Some(held) = lock
+                && let Err(err) = journal::discard_with(&staging, held).await
+            {
+                tracing::warn!(path = %staging.display(), error = %err, "couldn't remove a cancelled download");
+            }
+            return Cancelled.into();
+        }
+        Stop::Pause => PauseReason::User,
+        Stop::Quit => PauseReason::AppClosed,
+    };
+    let bytes_done = journal::inspect(&staging).await.map_or(0, |found| found.bytes_done());
+    if let Some(held) = &lock {
+        pending::stopped(held, &staging, pending, reason).await;
+    } else {
+        tracing::warn!(
+            product_id,
+            "another process holds the download, its pause isn't recorded"
+        );
+    }
+    tracing::info!(product_id, ?reason, bytes_done, "download stopped while queued");
+    Paused {
+        reason,
+        bytes_done,
+        root: library_root(&staging),
+        room: None,
+    }
+    .into()
 }
 
 /// Downloads `request`'s plan, or carries on its journal, and lands it in
@@ -193,6 +318,7 @@ async fn install_into(
     request: Request,
     branch: Option<&str>,
     plan: Plan,
+    entered: Entered,
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
 ) -> anyhow::Result<()> {
     let account_id = request.account_id.clone();
@@ -228,6 +354,20 @@ async fn install_into(
 
     let key: InstallKey = (account_id.to_owned(), product_id.to_owned());
     let staging = crate::achv_try!(staging_root(&destination_root, account_id, product_id));
+    let lock = if entered.staging == staging {
+        entered.lock
+    } else {
+        // The plan picked another library folder (its game's files were found there): what was
+        // queued in the guessed one goes, unless an earlier download of it is staged there.
+        tracing::info!(product_id, from = %entered.staging.display(), to = %staging.display(), "download planned into another library folder");
+        if let Some(held) = entered.lock
+            && !journal::has_plan(&entered.staging).await
+            && let Err(err) = journal::discard_with(&entered.staging, held).await
+        {
+            tracing::warn!(path = %entered.staging.display(), error = %err, "couldn't remove a queued download's folder");
+        }
+        None
+    };
     let downloads = plan.downloads();
     let header = crate::achv_try!(Header::new(
         request,
@@ -236,7 +376,7 @@ async fn install_into(
         &downloads
     ));
     let (journal, header) =
-        crate::achv_try!(fetch_into_staging(&staging, header, downloads, key, product_id, on_progress).await);
+        crate::achv_try!(fetch_into_staging(&staging, header, downloads, key, lock, on_progress).await);
 
     // Everything downloaded: only now does anything appear in the
     // library, so an install is all-or-nothing.
@@ -319,24 +459,6 @@ async fn install_into(
     Ok(())
 }
 
-/// Waits for this download's turn. A stop asked while it waited lets it go on
-/// without one: it is still planned and its journal opened, where the stop
-/// lands before any byte moves, so a paused download always has a journal to
-/// resume from. Quitting stops it at once instead.
-async fn take_turn(key: &InstallKey) -> anyhow::Result<Option<tokio::sync::SemaphorePermit<'static>>> {
-    match tracking::wait_turn(key).await {
-        Some(turn) => Ok(Some(turn)),
-        None if tracking::is_quitting() => Err(Paused {
-            reason: PauseReason::AppClosed,
-            bytes_done: 0,
-            root: None,
-            room: None,
-        }
-        .into()),
-        None => Ok(None),
-    }
-}
-
 /// The room a download still needs on `staging`'s disk against what it has:
 /// what is left of it, plus the larger of [`MIN_MARGIN`] and 2 % of its size
 /// (#1277, §2.5). An update counts whole, since staging holds a second copy
@@ -367,11 +489,13 @@ async fn fetch_into_staging(
     header: Header,
     downloads: Vec<PlannedDownload>,
     key: InstallKey,
-    product_id: &str,
+    lock: Option<decanter_runtime::journal::StagingLock>,
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
 ) -> anyhow::Result<(Journal, Header)> {
+    let product = key.1.clone();
+    let product_id = product.as_str();
     let planned_bytes = header.total_bytes;
-    let (journal, header, starts, build_switch) = match journal::open(staging, header).await {
+    let (journal, header, starts, build_switch) = match journal::open(staging, header, lock).await {
         Ok(Opened::Move { journal, header }) => return Ok((journal, header)),
         Ok(Opened::Download {
             journal,
