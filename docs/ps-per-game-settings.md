@@ -41,6 +41,16 @@ the title's folder at each launch, and `PS_PATCHES_DIR`/`PS_PATCHES_CONFIG` come
 Mods tab shows the selected title's and says whose they are; an older port or an unusual title id
 keeps the shared files, as before.
 
+Built-in patches (kb #1387, decision #1388): the patch file a title's profile reads as its own
+(Bloodborne's `Bloodborne.xml`: Skip Intro, Performance Patch, the SSR switch and the rest) is no
+longer in psport's tree. decanter ships it (`crates/ps/data/bloodborne/Bloodborne.xml`, inside the
+binary), `bbport::builtin_patches::install` writes it into the bbport data folder's
+`builtin-patches/` before each launch (only when missing or different: it is decanter's to update,
+not the user's to edit), and the port gets the folder as `PS_BUILTIN_PATCHES_DIR`
+(`--builtin-patches-dir` where `psport.exe` runs directly). The user's own patches stay in the
+title's `patches/` folder (`--patches-dir`) and are not mixed with these. Run without decanter, a
+port finds no built-in file, says so in its log and starts without those patches.
+
 Phase 5 as built (kb #1311):
 
 - **Defaults for new games** are an explicit template, `defaults/settings.json` and

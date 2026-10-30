@@ -14,6 +14,7 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 | Report server (`crates/reports-server`) | AGPL-3.0-or-later; `crates/reports-server/LICENSE`. A separate binary with its own workspace; it links s3db (AGPL-3.0-or-later) and `decanter-report` |
 | Inter, JetBrains Mono and Oswald fonts (`app/assets/fonts`) | SIL Open Font License 1.1; copyright lines in LICENSES.json |
 | Twemoji bitmaps (`app/assets/emoji`) | CC-BY-4.0; Copyright Twitter, Inc and other contributors |
+| Bloodborne patch definitions (`crates/ps/data/bloodborne/Bloodborne.xml`) | No licence stated by their authors (Kyo, auser1337, Lance McDonald, illusion, emoose and others, named in the file's Author attributes); each keeps their rights and the file is redistributed as it is with their names |
 | decanter logo and icon (`app/assets`) | GPL-3.0-or-later, assumed; the owner has not recorded a separate licence yet (review: pending) |
 | Rust dependencies | Their own SPDX expressions, inventoried by `scripts/licenses.py inventory` |
 | psport and the PS4 ports | Separate works, see below |

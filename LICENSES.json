@@ -5,7 +5,8 @@
   "license_references": {
     "LicenseRef-psport-separate-work": "psport is a separate project under GPL-2.0-only, built or downloaded by decanter at run time and run as its own process. It is not linked into decanter and no psport source or binary is distributed in a decanter release.",
     "LicenseRef-Cargo-Dependencies": "Third-party Rust crates declare their own SPDX expressions in their Cargo.toml. scripts/licenses.py inventories them from cargo metadata and refuses an expression that has no alternative on its allow-list.",
-    "LicenseRef-raven-separate-work": "Raven (https://github.com/mirkobrombin/raven) is a separate project under GPL-3.0-or-later, cloned at a pinned commit and built on the user's machine only when they ask for it in the Raven section, and run as its own process. It is not linked into decanter and no Raven source or binary is distributed in a decanter release."
+    "LicenseRef-raven-separate-work": "Raven (https://github.com/mirkobrombin/raven) is a separate project under GPL-3.0-or-later, cloned at a pinned commit and built on the user's machine only when they ask for it in the Raven section, and run as its own process. It is not linked into decanter and no Raven source or binary is distributed in a decanter release.",
+    "LicenseRef-game-patch-authors": "crates/ps/data/bloodborne/Bloodborne.xml carries patches whose authors are named in their Author attributes: Kyo, auser1337, Lance McDonald (manfightdragon), illusion, emoose, Dasaav, Foxy Hooligans, Imedved, Whitehawkx, bloo, stagvant, yogesh1239 and bbport. No licence is stated for them; each author keeps their rights, and the file is redistributed as it is with their names (owner decision, kb #1131)."
   },
   "components": [
     {
@@ -141,6 +142,15 @@
       "license": "LicenseRef-raven-separate-work",
       "review": "reviewed",
       "provenance": "Built from https://github.com/mirkobrombin/raven at run time (GPL-3.0-or-later; crates/runtime/src/runner.rs RAVEN_COMMIT) after the user confirms it, and run as a separate process; decanter only starts it and keeps its build log."
+    },
+    {
+      "name": "Bloodborne patch definitions",
+      "paths": [
+        "crates/ps/data/bloodborne/Bloodborne.xml"
+      ],
+      "license": "LicenseRef-game-patch-authors",
+      "review": "reviewed",
+      "provenance": "The community's Bloodborne patch definitions, moved here from psport's patches/Bloodborne.xml (kb #1387, decision #1388) so decanter ships them and hands them to the port as its built-in patch file. The Author attributes name Kyo, auser1337, Lance McDonald (manfightdragon), illusion, emoose, Dasaav, Foxy Hooligans, Imedved, Whitehawkx, bloo, stagvant, yogesh1239 and bbport; the file is unchanged."
     }
   ]
 }

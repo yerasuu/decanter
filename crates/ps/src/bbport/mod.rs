@@ -6,6 +6,7 @@
 //! port update or reset never touches it; saves go to the profile's own
 //! directory.
 
+pub mod builtin_patches;
 pub mod direct;
 pub mod effects;
 mod features;
@@ -411,6 +412,16 @@ impl Bbport {
             .env("SDL_APP_ID", decanter_core::application_id(&game.key()));
         // The port picks the memory model itself (the PC model on AMD GPUs); the setting only forces
         // the PC model on other GPUs, so off must not pass PC_MODEL=0 and hold AMD on the old one.
+        if matches!(names, Names::Psport) {
+            match builtin_patches::install(&data).await {
+                Ok(dir) => {
+                    command.env(var("BUILTIN_PATCHES_DIR"), dir);
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "could not write the built-in patch files, the port starts without them")
+                }
+            }
+        }
         command.envs(cache_dir.map(|dir| (var("CACHE_DIR"), dir)));
         command.envs(
             config

@@ -152,6 +152,11 @@ pub fn arguments(command: &Command, data: &Path, out: &Path, local_player: Optio
         var_or("PS_PATCHES_DIR", data.join("patches")),
         OsString::from("--patches-config"),
         var_or("PS_PATCHES_CONFIG", data.join("patches.json")),
+    ]);
+    if let Some(dir) = path("PS_BUILTIN_PATCHES_DIR") {
+        args.extend([OsString::from("--builtin-patches-dir"), dir]);
+    }
+    args.extend([
         OsString::from("--app0"),
         game,
         OsString::from("--user"),
