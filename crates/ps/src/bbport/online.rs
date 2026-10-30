@@ -31,6 +31,8 @@ pub const NPID: &str = "online_npid";
 pub const UPNP: &str = "online_upnp";
 pub const BBSC: &str = "online_bbsc";
 pub const BBSC_LOCAL_SERVER: &str = "online_bbsc_local_server";
+pub const TLS: &str = "online_tls";
+pub const ALLOW_PLAINTEXT: &str = "online_allow_plaintext";
 
 /// The co-op extension whose switches the Bloodborne page shows.
 pub const BBSC_EXTENSION: &str = "bbsc";
@@ -207,6 +209,13 @@ impl Addresses {
     }
 }
 
+/// Whether `server` (`host:port`) is this machine, the only peer psport logs in to without TLS or
+/// the plain-text switch; a name is judged by its spelling, as the port resolves it itself.
+pub fn is_loopback_server(server: &str) -> bool {
+    let host = server.rsplit_once(':').map_or(server, |(host, _)| host);
+    host.eq_ignore_ascii_case("localhost") || host.starts_with("127.") || host == "[::1]"
+}
+
 /// The shadNet account name: what the server registered, never an email address. Empty is no
 /// account, which psport takes for playing without shadNet.
 pub fn check_npid(npid: &str) -> Result<Option<&str>, OnlineError> {
@@ -252,6 +261,8 @@ pub struct Online {
     upnp: bool,
     bbsc: bool,
     local_server: LocalServer,
+    tls: bool,
+    allow_plaintext: bool,
 }
 
 impl Online {
@@ -270,6 +281,8 @@ impl Online {
             upnp: settings.flag(UPNP, true),
             bbsc: settings.flag(BBSC, false),
             local_server: LocalServer::of(settings),
+            tls: settings.flag(TLS, false),
+            allow_plaintext: settings.flag(ALLOW_PLAINTEXT, false),
         }))
     }
 
@@ -296,6 +309,15 @@ impl Online {
             (names.var("BBSC"), switch(self.bbsc)),
             (names.var("BBSC_LOCAL_SERVER"), self.local_server.value()),
         ];
+        env.extend(
+            [
+                ("SHADNET_TLS", self.tls),
+                ("ONLINE_ALLOW_PLAINTEXT_LOGIN", self.allow_plaintext),
+            ]
+            .into_iter()
+            .filter(|&(_, on)| on)
+            .map(|(suffix, _)| (names.var(suffix), "1")),
+        );
         let account = [
             ("SHADNET_NPID", self.npid.as_deref()),
             ("SHADNET_PASSWORD", self.password.as_deref()),

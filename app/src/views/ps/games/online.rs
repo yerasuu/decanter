@@ -29,6 +29,9 @@ pub struct OnlineTitleView {
     is_online: bool,
     is_upnp: bool,
     is_bbsc: bool,
+    is_tls: bool,
+    is_plaintext: bool,
+    server_is_loopback: bool,
     local_server: LocalServer,
     local_player: Entity<TextInput>,
     error: Option<Text>,
@@ -51,6 +54,9 @@ impl OnlineTitleView {
             is_online: false,
             is_upnp: true,
             is_bbsc: false,
+            is_tls: false,
+            is_plaintext: false,
+            server_is_loopback: false,
             local_server: LocalServer::Off,
             local_player,
             error: None,
@@ -96,6 +102,9 @@ impl OnlineTitleView {
         self.is_online = false;
         self.is_upnp = true;
         self.is_bbsc = false;
+        self.is_tls = false;
+        self.is_plaintext = false;
+        self.server_is_loopback = false;
         self.local_server = LocalServer::Off;
         self.local_player
             .update(cx, |input, cx| input.set_text(String::new(), cx));
@@ -116,6 +125,10 @@ impl OnlineTitleView {
                         this.is_online = settings.flag(online::ONLINE, false);
                         this.is_upnp = settings.flag(online::UPNP, true);
                         this.is_bbsc = settings.flag(online::BBSC, false);
+                        this.is_tls = settings.flag(online::TLS, false);
+                        this.is_plaintext = settings.flag(online::ALLOW_PLAINTEXT, false);
+                        this.server_is_loopback = online::Addresses::of(&settings)
+                            .is_ok_and(|addresses| online::is_loopback_server(&addresses.server));
                         this.local_server = LocalServer::of(&settings);
                         let player = settings
                             .title_text(&title_id, local_player::KEY)
@@ -174,6 +187,8 @@ impl OnlineTitleView {
         match key {
             online::ONLINE => self.is_online = is_on,
             online::UPNP => self.is_upnp = is_on,
+            online::TLS => self.is_tls = is_on,
+            online::ALLOW_PLAINTEXT => self.is_plaintext = is_on,
             _ => self.is_bbsc = is_on,
         }
         self.save(move |settings, _| settings.set_flag(key, is_on), cx);
@@ -220,6 +235,21 @@ impl OnlineTitleView {
             t!("ps.online.upnp").into(),
             cx,
         );
+        let tls = Self::switch(
+            "ps-online-tls",
+            online::TLS,
+            self.is_tls,
+            t!("ps.online.tls.label").into(),
+            cx,
+        );
+        let plaintext = Self::switch(
+            "ps-online-plaintext",
+            online::ALLOW_PLAINTEXT,
+            self.is_plaintext,
+            t!("ps.online.plaintext.label").into(),
+            cx,
+        );
+        let is_refused = self.is_online && !self.server_is_loopback && !self.is_tls && !self.is_plaintext;
         div()
             .flex()
             .flex_col()
@@ -230,6 +260,16 @@ impl OnlineTitleView {
                     .child(theme::compact_row(true).child(upnp)),
             )
             .child(theme::muted(t!("ps.online.description")))
+            .child(
+                theme::card()
+                    .child(theme::compact_row(false).child(tls))
+                    .child(theme::compact_row(true).child(plaintext)),
+            )
+            .child(theme::muted(t!("ps.online.tls.note")))
+            .child(theme::muted(t!("ps.online.plaintext.warning")))
+            .when(is_refused, |column| {
+                column.child(theme::error(t!("ps.online.login_refused")))
+            })
             .into_any_element()
     }
 

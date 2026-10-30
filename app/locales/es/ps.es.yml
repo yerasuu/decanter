@@ -729,6 +729,11 @@ ps.online.errors.secret: la contraseña o el token guardados no se pueden pasar 
 ps.online.errors.secret_without_npid: 'Escribe primero el Online ID: la contraseña y el token se guardan con él.'
 ps.online.title_querying: Consultando los datos online del juego…
 ps.online.no_extension: Este juego no tiene un cooperativo propio en psport.
+ps.online.tls.label: Cifrar el login con TLS
+ps.online.tls.note: Desactivado por defecto. El servidor tiene que admitir TLS y su certificado tiene que ser válido para su nombre; si no, el login falla y no se vuelve al texto plano.
+ps.online.plaintext.label: Permitir enviar la contraseña en claro a este servidor
+ps.online.plaintext.warning: 'Sin TLS, la contraseña y el token de la cuenta viajan sin cifrar: cualquiera que esté en el camino entre tu equipo y el servidor (tu red, tu operador, una wifi pública) puede leerlos. Permítelo solo con un servidor de confianza que no tenga TLS.'
+ps.online.login_refused: 'El login se rechazará: activa TLS o permite el envío en claro.'
 ps.online.bbsc.label: Cooperativo sin cortes (BBSC)
 ps.online.bbsc.note: Desactivado por defecto. Todos los jugadores de la partida tienen que activarlo, y el servidor de la comunidad tiene que tener el servidor de juego de BBSC (el de Seamless Hunt lo tiene).
 ps.online.bbsc.local.label: Servidor de juego de BBSC en este equipo
