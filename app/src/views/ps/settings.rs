@@ -391,7 +391,9 @@ impl Render for SettingsView {
                 )
                 .child(theme::h2(t!("ps.settings.channel.title")))
                 .child(channels)
-                .child(self.online.clone())
+                .when(!Caps::get(cx).is_never_here(Feature::PsOnline), |page| {
+                    page.child(self.online.clone())
+                })
                 .children(self.error.as_ref().map(theme::error)),
         )
     }

@@ -119,6 +119,12 @@ impl Caps {
         self.current.support(feature)
     }
 
+    /// Whether this system's own table leaves `feature` out, which no setup or psport build changes:
+    /// what only it covers is hidden rather than shown with that reason.
+    pub fn is_never_here(&self, feature: Feature) -> bool {
+        matches!(self.support(feature), Support::Unavailable(Reason::NotOnThisSystem))
+    }
+
     /// Why `feature` isn't offered, for a view that leaves out a whole pane
     /// rather than one element.
     pub fn reason(&self, feature: Feature) -> Option<SharedString> {

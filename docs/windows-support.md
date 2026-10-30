@@ -145,7 +145,11 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
     (online play in Ajustes and Bloodborne's Online tab) is likewise off
     until a report lists `online_module`, and follows the `net` rows alone:
     an unavailable one takes it away with its reason, an experimental one
-    marks it as being tested.
+    marks it as being tested. Where the system's own table leaves it out
+    (Windows: psport's `online_module` row and `gpu/libpsport-net.so` are
+    Linux-only, and the direct launch has none of `run.sh`'s online steps),
+    the game's Online tab and Ajustes' online section are hidden
+    (`Caps::is_never_here`) rather than shown with the reason (#1294).
 - Views gate with `gate_or_reason` (the reason, muted), `gate_or` (their
   own text) and `reason` (a whole pane); `mark` badges what stays shown
   either way (the PS link) and `testing_badge` marks a menu item. No top
@@ -169,7 +173,7 @@ Decided 2026-10-17 (decision #538), done on `refactor/535-platform-layer`.
 | PsPlay | available | testing (Windows package or psport.exe folder) | no |
 | PsBuilds | available | testing (the branch built with the pinned toolchain and MinGit) | no |
 | MangoHud, GameMode | available | no | no |
-| PsMenuBinding, PsOnline | once psport lists it | no | no |
+| PsMenuBinding, PsOnline | once psport lists it | no (PsOnline: its tab and Ajustes section hidden) | no |
 | PsDownloads | available on x86_64 | testing (the release's Windows package) | no |
 
 ## The PS section on Windows (first slice)

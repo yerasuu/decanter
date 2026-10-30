@@ -4,6 +4,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use decanter_core::capabilities::Feature;
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::{self, Bbport, IniScope};
 use decanter_ps::failures::Log;
@@ -21,6 +22,7 @@ use super::mods::ModsView;
 use super::online::OnlineTitleView;
 use super::runs::RunsView;
 use super::{art_url, display_title, platform_label, status_text};
+use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{JobKey, Ps};
 use crate::theme;
@@ -618,7 +620,12 @@ impl Render for DetailView {
             Some(Port::AnyPs5) => &TABS,
             None => &UNSUPPORTED_TABS,
         };
-        let items: Vec<_> = shown.iter().map(|&tab| (tab, tab.label())).collect();
+        let is_online_never_here = Caps::get(cx).is_never_here(Feature::PsOnline);
+        let items: Vec<_> = shown
+            .iter()
+            .filter(|&&tab| tab != Tab::Online || !is_online_never_here)
+            .map(|&tab| (tab, tab.label()))
+            .collect();
         let tabs = crate::widgets::tabs("ps-detail-tabs", &items, self.tab, move |tab, _, cx| {
             let port = port.clone();
             entity.update(cx, |this, cx| this.select_tab(tab, port, cx));
