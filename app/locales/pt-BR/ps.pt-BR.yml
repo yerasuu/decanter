@@ -1,0 +1,992 @@
+ps.tabs.games: Jogos
+ps.tabs.ports: Ports
+ps.tabs.failures: Falhas
+ps.tabs.settings: Configurações
+ps.unsupported.title: 'PS: sem suporte neste sistema por enquanto'
+ps.log.running: '%{label}: em execução'
+ps.log.finished: '%{label}: concluído'
+ps.log.exited: '%{label}: encerrado com o código %{code}'
+ps.log.stopped: '%{label}: parado'
+ps.log.interrupted: '%{label}: interrompido'
+ps.log.copy: Copiar registro completo
+ps.log.copied: Copiado
+ps.copy_scrubbed: Nomes, contas, segredos e endereços IP ou MAC ficam de fora do que é copiado
+ps.log.full: Registro completo
+ps.log.tab_log: 'Registro (%{count})'
+ps.log.tab_metrics: 'Desempenho (%{count})'
+ps.log.no_metrics: 'Esta execução não imprimiu linhas de desempenho. O psport só as imprime com "Medir desempenho" ativado.'
+ps.log.no_frame_stats: 'Não há estatísticas de quadros: ative "Medir desempenho" para ver FPS e tempos.'
+ps.jobs.clone: clonagem
+ps.jobs.build: compilação
+ps.jobs.update: atualização
+ps.jobs.reset: redefinição
+ps.jobs.rollback: reversão
+ps.errors.environment: 'Não foi possível preparar o ambiente: %{error}'
+ps.errors.builds_unavailable: o decanter não compila ports de PS neste sistema
+ps.ports.title: Ports
+ps.ports.description: Cada port é clonado, compilado e atualizado por conta própria, com as ferramentas do sistema quando elas bastam e com o nix quando não bastam. Uma versão estável publicada como bundle roda sem nenhum dos dois.
+ps.ports.stage.idle: Configurado na primeira vez que for necessário
+ps.ports.stage.resolving: Procurando ferramentas…
+ps.ports.stage.downloading: 'Baixando o nix-portable: %{size}'
+ps.ports.stage.downloading_bundle: 'Baixando o bundle do port: %{size}'
+ps.ports.stage.cloning: Clonando…
+ps.ports.stage.updating: Atualizando…
+ps.ports.stage.fetching: Baixando o port pré-compilado…
+ps.ports.stage.building: Compilando…
+ps.ports.stage.rolling_back: Voltando ao último commit que compilou…
+ps.ports.stage.ready: Pronto
+ps.ports.toolchain: 'Ambiente: %{name}'
+ps.ports.origin.local: Compilado nesta máquina
+ps.ports.origin.cache: Compilado pela CI do port, baixado do cache nix dele
+ps.ports.origin.bundle: Pré-compilado, baixado como o bundle da versão, sem nix
+ps.ports.channel.release: 'Canal: versão estável'
+ps.ports.channel.release_at: 'Canal: versão estável · %{tag}'
+ps.ports.channel.behind: 'Canal: versão estável · %{tag} publicada, o checkout ainda não está nela'
+ps.ports.channel.no_release: 'Canal: versão estável · nenhuma publicada ainda: seguindo o master e compilando nesta máquina'
+ps.ports.channel.unknown: 'Canal: versão estável · não foi possível verificar a versão mais recente: %{error}'
+ps.ports.channel.testing: 'Canal: testes'
+ps.ports.channel.testing_at: 'Canal: testes · commit %{commit}'
+ps.ports.channel.fell_back: 'A versão estável pré-compilada não estava disponível: ela foi compilada nesta máquina'
+ps.ports.toolchains.host: ferramentas do sistema
+ps.ports.toolchains.system_nix: nix do sistema
+ps.ports.toolchains.portable: nix-portable do decanter
+ps.ports.toolchains.bundle: o bundle do port, sem nix
+ps.ports.upstream.up_to_date: '%{head} · atualizado com %{branch}'
+ps.ports.upstream.behind.one: '%{head} · %{count} novo commit em %{branch}'
+ps.ports.upstream.behind.other: '%{head} · %{count} novos commits em %{branch}'
+ps.ports.upstream.switching: '%{head} · mudando para %{branch}'
+ps.ports.upstream.rewritten: '%{head} · o upstream reescreveu o histórico'
+ps.ports.upstream.local.one: '%{head} · %{count} commit local que o upstream não tem'
+ps.ports.upstream.local.other: '%{head} · %{count} commits locais que o upstream não tem'
+ps.ports.upstream.error: 'Não foi possível verificar o upstream: %{error}'
+ps.ports.check: Verificar atualizações
+ps.ports.checking: Verificando…
+ps.ports.checked_at: Verificado às %{time}
+ps.ports.remote.offline: sem conexão com o remoto
+ps.ports.remote.rate_limited: o remoto está limitando as requisições; tente novamente daqui a pouco
+ps.ports.remote.missing: o repositório remoto sumiu ou mudou de lugar
+ps.ports.prepare: Preparar
+ps.ports.reset.start: Fazer backup e atualizar
+ps.ports.reset.confirm: 'Confirmar: salvar alterações locais e redefinir'
+ps.ports.errors.clone: Não foi possível clonar %{port}
+ps.ports.errors.cmake_cache: 'Não foi possível verificar o cache do CMake: %{error}'
+ps.ports.errors.build: A compilação de %{port} falhou; veja o registro dela
+ps.ports.errors.build_local: A compilação de %{port} falhou; veja o registro dela. Ele não foi devolvido ao commit %{commit}, o último que compilou, porque o checkout tem alterações locais
+ps.ports.errors.rollback: A compilação de %{port} falhou e não foi possível voltar ao commit %{commit}, o último que compilou; veja o registro dela
+ps.ports.fallback.text: Executando em %{good} porque %{failed} não compilou; as atualizações automáticas não vão mudar para %{failed} de novo
+ps.ports.fallback.log: Registro da compilação que falhou
+ps.ports.fallback.retry: Tentar a atualização de novo
+ps.ports.errors.record_build: 'Não foi possível registrar a compilação: %{error}'
+ps.ports.errors.download: 'Não foi possível baixar o nix-portable: %{error}'
+ps.ports.errors.checksum: O download do nix-portable não corresponde ao checksum fixado
+ps.package.title: psport para Windows
+ps.package.description: 'Cada versão marcada do psport traz o pacote para Windows: o decanter o baixa, confere com o checksum e o tamanho da versão e o guarda na biblioteca. Jogar executa a versão em uso, que acompanha a mais recente a menos que você escolha outra. Só a versão ou o build em uso permanece: quando outra passa a ser usada, o decanter remove as demais.'
+ps.package.in_use: 'Em uso: %{tag}'
+ps.package.in_use_pinned: 'Em uso: %{tag}, escolhida por você: as atualizações não a alteram'
+ps.package.in_use_folder: 'Em uso: a pasta do psport.exe escolhida em Configurações, %{dir}'
+ps.package.in_use_build: 'Em uso: o build do commit %{commit} feito neste PC (Testes)'
+ps.package.none_in_use: Ainda não há nenhuma na biblioteca; Jogar baixa antes a versão mais recente
+ps.package.downloading: 'Baixando %{tag}: %{size}'
+ps.package.list_error: 'Não foi possível listar as versões: %{error}'
+ps.package.no_releases: Nenhuma versão do psport traz um pacote para Windows ainda
+ps.package.published: 'publicada em %{date}'
+ps.package.downloaded: 'baixada em %{date}'
+ps.package.badge_in_use: Em uso
+ps.package.badge_downloaded: Baixada
+ps.package.download: Baixar e usar
+ps.package.use: Usar
+ps.package.delete: Excluir
+ps.package.confirm_delete.title: Excluir esta versão?
+ps.package.confirm_delete.body_size: 'O pacote %{tag} do psport será excluído da sua biblioteca, liberando %{size}. Ele pode ser baixado de novo a partir das versões publicadas.'
+ps.package.confirm_delete.body: 'O pacote %{tag} do psport será excluído da sua biblioteca. Ele pode ser baixado de novo a partir das versões publicadas.'
+ps.package.confirm_delete.confirm: Excluir a versão
+ps.package.errors.not_published: o psport não publica um pacote para Windows para este sistema
+ps.package.errors.offline: sem conexão com o GitHub
+ps.package.errors.rate_limited: 'o GitHub está limitando requisições anônimas; tente novamente daqui a pouco'
+ps.package.errors.no_checksum: A versão %{tag} não tem checksum para o pacote do Windows, então ele não é usado
+ps.package.errors.checksum: 'O download não corresponde à versão: %{error}'
+ps.package.errors.layout: 'O pacote não é usado: ele contém %{what}'
+ps.package.errors.failed: 'Não foi possível obter o pacote: %{error}'
+ps.package.errors.busy: '%{tag} está sendo baixada; tente de novo quando terminar'
+ps.package.errors.delete_in_use: Não é possível excluir a versão em uso, nem qualquer uma enquanto um jogo está em execução
+ps.package.errors.delete: 'Não foi possível excluir a versão: %{error}'
+ps.failures.title: Falhas
+ps.failures.description: Travamentos, STOPs, erros e saídas com falha de todas as execuções deste perfil, com a saída ao redor deles e o commit do port. Mantidos entre as sessões.
+ps.failures.empty: Nenhuma falha registrada.
+ps.failures.copy_all: Copiar tudo
+ps.failures.copied: Copiado
+ps.failures.copy_report: Copiar relatório
+ps.failures.clear.start: Limpar histórico
+ps.failures.clear.confirm: 'Confirmar: limpar todo o histórico'
+ps.failures.clear_error: 'Não foi possível limpar o histórico: %{error}'
+ps.failures.kinds.crash: Travamento
+ps.failures.kinds.stop: STOP
+ps.failures.kinds.error: Erro
+ps.failures.kinds.exit: Saída
+ps.failures.kinds.missing: Ausente
+ps.failures.missing.one: '%{total} item não implementado; o jogo chamou %{called}'
+ps.failures.missing.other: '%{total} itens não implementados; o jogo chamou %{called}'
+ps.failures.calls.summary: 'chamadas: %{unimplemented} não implementadas, %{stubs} com stub, %{failed} falhando, %{status} com status esperado, %{offline} esperadas offline'
+ps.failures.calls.unimplemented: Não implementadas (%{count})
+ps.failures.calls.stubs: Com stub, sem fazer nada (%{count})
+ps.failures.calls.failed: Falhando (%{count})
+ps.failures.calls.status: 'Status esperados: sem evento, timeout, ocupado (%{count})'
+ps.failures.calls.offline: 'Esperadas offline: sem rede ou conta PSN (%{count})'
+ps.failures.exit_code: encerrado com o código %{code}
+ps.failures.exit_signal: encerrado por um sinal
+ps.failures.notice.save_error: 'Não foi possível salvar o histórico de falhas: %{error}'
+ps.failures.notice.crashed: 'O jogo falhou: %{message} (veja Falhas)'
+ps.failures.notice.missing: '%{missing} (veja Falhas)'
+ps.failures.notice.errors_and_missing.one: '%{count} erro e %{missing} (veja Falhas)'
+ps.failures.notice.errors_and_missing.other: '%{count} erros e %{missing} (veja Falhas)'
+ps.failures.notice.errors.one: '%{count} erro registrado em Falhas'
+ps.failures.notice.errors.other: '%{count} erros registrados em Falhas'
+ps.settings.games.title: Pasta de jogos
+ps.settings.games.description: 'Ao lado de cada pasta de biblioteca do perfil, no mesmo disco. "Adicionar dump…", ou soltar a pasta dele na janela, copia ou move um dump para a principal, e os dumps de cada pasta aparecem por conta própria. Os saves e as configurações ficam sempre na principal; o cache vai para o local de cache da pasta de cada jogo. Para mover um jogo entre pastas, ou escolher para onde vai o cache dele, use Armazenamento.'
+ps.settings.sys_modules.title: Módulos do sistema (opcional)
+ps.settings.sys_modules.none: Nenhuma pasta
+ps.settings.sys_modules.description: 'Opcional: nenhum jogo precisa disso hoje. Uma pasta com o seu próprio dump dos módulos do console (*.sprx, como libSceNgs2.sprx), apenas para comparar com as bibliotecas do próprio port (PS_LLE) ou para um jogo que ainda precise de um módulo do console. Cada jogo escolhe se o carrega em Gráficos › Extras; por padrão todos os jogos, exceto Bloodborne, o carregam. O decanter não distribui nem copia nenhum.'
+ps.settings.psport_folder.title: Pasta do psport.exe
+ps.settings.psport_folder.none: Nenhuma pasta
+ps.settings.psport_folder.pick_title: Pasta que contém o psport.exe
+ps.settings.psport_folder.description: 'Opcional: uma pasta onde você mesmo descompactou um build do psport para Windows, com o psport.exe e a libpsport-gpu.dll. Enquanto uma estiver escolhida, Jogar inicia diretamente o psport.exe dela em vez da versão baixada em Ports; esqueça-a para voltar a essa versão.'
+ps.settings.psport_folder.errors.relative: '%{dir} não é um caminho completo sem ..'
+ps.settings.psport_folder.errors.not_local: '%{dir} não está em um disco deste computador'
+ps.settings.psport_folder.errors.not_a_folder: '%{dir} não é uma pasta: %{error}'
+ps.settings.psport_folder.errors.missing: '%{dir} não tem %{file}'
+ps.settings.psport_folder.errors.linked: '%{file} em %{dir} é um link, não o arquivo em si'
+ps.settings.sys_fonts.title: Fontes do sistema (opcional)
+ps.settings.sys_fonts.none: Nenhuma pasta
+ps.settings.sys_fonts.description: 'Opcional: uma pasta com o seu próprio dump das fontes do console. Sem ela, os jogos que usam as fontes do sistema mostram o texto em fontes substitutas e ele pode não ficar como no console. O decanter não distribui nem copia nenhuma.'
+ps.settings.channel.title: Canal do psport
+ps.settings.channel.release.title: Versão estável
+ps.settings.channel.release.description: A versão publicada mais recente do psport, baixada já pré-compilada.
+ps.settings.channel.testing.title: Testes
+ps.settings.channel.testing.description: 'Cada nova alteração do psport assim que chega: baixada depois que a CI a compila, ou compilada nesta máquina.'
+ps.settings.channel.save_error: 'Não foi possível salvar o canal: %{error}'
+ps.settings.channel.direct: 'Neste sistema, a versão que Jogar executa é escolhida em Ports: o pacote de uma versão ou um build do branch.'
+ps.settings.open: Abrir
+ps.settings.pick: Escolher
+ps.settings.forget: Remover
+ps.settings.save_error: 'Não foi possível salvar a pasta: %{error}'
+ps.games.search: Pesquisar
+ps.games.scanning: Procurando jogos…
+ps.games.no_dumps: 'Ainda não há dumps: adicione o primeiro ou solte a pasta dele na janela.'
+ps.games.no_match: Nada corresponde à pesquisa.
+ps.games.rescan: Atualizar biblioteca
+ps.games.browser_empty: 'Ainda não há jogos: adicione um dump, ou solte a pasta dele na janela, e o decanter o copia ou move para a pasta de jogos.'
+ps.games.wrapped: '"%{title}" estava solto na pasta de jogos: agora está em %{path}.'
+ps.games.wrap_failed: 'Não foi possível colocar o dump solto em %{path} em uma pasta própria: %{error}'
+ps.games.notices: '%{first} %{next}'
+ps.add.button: Adicionar dump…
+ps.add.pick_title: Escolha a pasta do dump
+ps.add.title: 'Adicionar "%{title}" (%{title_id})'
+ps.add.details: 'De %{source} para %{target} · %{size}'
+ps.add.free: '%{free} livres no destino'
+ps.add.question: 'Copiar deixa o original onde está; mover o tira de lá (instantâneo no mesmo disco).'
+ps.add.copy: Copiar
+ps.add.move: Mover
+ps.add.cancel: Cancelar
+ps.add.close: Fechar
+ps.add.copying: 'Copiando "%{title}"…'
+ps.add.moving: 'Movendo "%{title}"…'
+ps.add.measuring: Medindo o dump…
+ps.add.progress: '%{done} de %{total} (%{percent}%)'
+ps.add.cancelling: Cancelando…
+ps.add.done: '"%{title}" adicionado em %{path}.'
+ps.add.failed: 'Não foi possível adicionar "%{title}": %{error}'
+ps.add.refused.not_folder: '%{path} não é uma pasta.'
+ps.add.refused.not_dump: '%{path} não é um dump: ele não tem sce_sys/param.sfo (PS4) nem sce_sys/param.json (PS5).'
+ps.add.refused.title_id: 'O dump em %{path} tem um title id inutilizável (%{title_id}).'
+ps.add.refused.no_eboot: 'O dump em %{path} não tem eboot.bin: o jogo está incompleto.'
+ps.add.refused.in_games: '%{path} já está em uma pasta de jogos de PS.'
+ps.add.refused.holds_games: '%{path} contém a pasta de jogos de PS: escolha a pasta do próprio dump.'
+ps.add.refused.busy: 'Um dump já está sendo adicionado: espere ele terminar.'
+ps.status.ready: Pronto
+ps.status.needs_convert: Convertido ao jogar
+ps.status.needs_merge: 1.09 ainda não mesclada
+ps.status.has_playable: Use a cópia 1.09
+ps.status.other_edition: Outra edição
+ps.status.experimental: Experimental
+ps.status.needs_vr: Requer PS VR
+ps.status.needs_update: Requer 1.09
+ps.status.encrypted: eboot criptografado
+ps.status.no_eboot: Sem eboot.bin
+ps.menu.stop: Parar
+ps.menu.play: Jogar
+ps.menu.details: Ver detalhes
+ps.menu.merge: Mesclar atualização 1.09
+ps.menu.log: Abrir registro completo
+ps.menu.folder: Abrir pasta do dump
+ps.menu.title_id: Copiar Title ID
+ps.jobs.game: jogo
+ps.jobs.convert: conversão
+ps.jobs.log_error: 'Não foi possível salvar o registro completo: %{error}'
+ps.jobs.start_error: 'Não foi possível iniciar: %{error}'
+ps.errors.create_dir: 'Não foi possível criar %{dir}: %{error}'
+ps.errors.library_missing: 'A biblioteca do perfil (%{path}) não existe. Escolha o novo local dela em Configurações › Conta › Alterar local, ou conecte o disco dela de novo.'
+ps.games.library_error: 'Não foi possível usar a pasta da biblioteca: %{error}'
+ps.layouts.read_error: 'Não foi possível ler os layouts: %{error}'
+ps.play.prepare_error: 'Não foi possível preparar %{name}: %{error}'
+ps.play.direct.port_unavailable: '%{name} só roda com as ferramentas de compilação dele, que este sistema não tem'
+ps.play.direct.bad_folder: 'A pasta do psport.exe não pode ser usada: %{error}'
+ps.play.package.downloading: 'Baixando o psport %{tag} para Windows antes de o jogo iniciar…'
+ps.play.package.none: Nenhuma versão do psport traz um pacote para Windows ainda; escolha uma pasta do psport.exe em PS › Configurações
+ps.play.package.unavailable: 'Não há psport para jogar: %{error}'
+ps.play.mods_error: 'Não foi possível preparar os mods e os ícones: %{error}'
+ps.play.convert_prepare_error: 'Não foi possível preparar a conversão: %{error}'
+ps.play.convert_failed: A conversão falhou; veja o registro dela
+ps.play.merging: Mesclando a atualização…
+ps.play.merged: Criado %{dir}
+ps.play.merge_error: 'Não foi possível mesclar: %{error}'
+ps.play.moving: 'O jogo está sendo movido para outra pasta: espere terminar.'
+ps.detail.tabs.overview: Visão geral
+ps.detail.tabs.keyboard: Teclado
+ps.detail.tabs.gamepad: Controle
+ps.detail.tabs.graphics: Gráficos
+ps.detail.tabs.mods: Mods
+ps.detail.tabs.log: Registro
+ps.detail.tabs.performance: Desempenho
+ps.detail.hero.version: VERSÃO
+ps.detail.hero.status: STATUS
+ps.detail.stop: PARAR
+ps.detail.stopping: PARANDO…
+ps.detail.play: JOGAR
+ps.detail.preparing: PREPARANDO…
+ps.detail.open_folder: Abrir pasta
+ps.detail.open_folder_tooltip: Abrir a pasta do dump
+ps.detail.merge: Mesclar 1.09
+ps.detail.facts.title_id: Title ID
+ps.detail.facts.version: Versão
+ps.detail.facts.folder: Pasta
+ps.detail.facts.library: Biblioteca
+ps.detail.pick_game: Escolha um jogo na lista.
+ps.detail.no_runs: Nada foi executado para este jogo ainda.
+ps.learned.frame_overlap_off: 'Sobreposição de quadros desativada: o jogo reescreveu quadros em andamento (detectado em %{date}).'
+ps.learned.forget: Esquecer
+ps.learned.forget_tooltip: Na próxima execução os quadros voltam a se sobrepor; se o jogo os reescrever, o port vai detectar de novo.
+ps.learned.save_error: 'Não foi possível salvar o que foi aprendido sobre o jogo: %{error}'
+ps.learned.forget_error: 'Não foi possível esquecer: %{error}'
+ps.detail.reading_keyboard: Lendo o teclado…
+ps.scope.title: Estas configurações valem só para este jogo.
+ps.scope.older_port: 'Este port é anterior às configurações por jogo: o que você alterar aqui vale para todos os jogos. Atualize o port para dar a cada jogo as suas.'
+ps.scope.unusual_title_id: 'O Title ID deste dump não está no formato usual, então o que você alterar aqui vale para todos os jogos.'
+ps.scope.read_error: 'Não foi possível preparar as configurações deste jogo: %{error}'
+ps.detail.explain.needs_convert: Na primeira vez, ele é convertido com o AnyPS5 antes de iniciar.
+ps.detail.explain.needs_merge: 'Há uma atualização 1.09 ao lado deste dump. Mesclá-la cria ao lado uma cópia jogável, com hard links: ela não ocupa espaço extra e o dump original permanece intacto.'
+ps.detail.explain.has_playable: Você já tem a cópia 1.09 em %{dir}; jogue essa.
+ps.detail.explain.other_edition: o bbport só executa a edição CUSA03173 de Bloodborne na versão 1.09.
+ps.detail.explain.needs_update: 'O bbport precisa da versão 1.09: adicione a atualização dela a uma das suas pastas.'
+ps.detail.explain.experimental: 'O bbport foi feito só para Bloodborne. Este jogo inicia com tudo o que falta ao port substituído por stubs, sem patches nem mods: veja até onde ele chega em Registro.'
+ps.detail.explain.needs_vr: Este jogo só inicia com um headset PS VR, e o port não tem nenhum.
+ps.detail.explain.encrypted: O eboot.bin ainda está criptografado; ele precisa ser descriptografado no console.
+ps.detail.explain.no_eboot: Este dump não tem eboot.bin.
+ps.layouts.default: Padrão
+ps.layouts.custom: Personalizado
+ps.layouts.copy_name: '%{name} (cópia)'
+ps.layouts.name_placeholder: Nome do layout
+ps.layouts.layout: Layout
+ps.layouts.copy: Copiar como novo
+ps.layouts.remove: Excluir layout
+ps.layouts.hint_builtin: 'Os layouts internos não podem ser editados: o que você alterar aqui é salvo só para este jogo; copie-o como novo para ter um layout só seu.'
+ps.layouts.own_changes: 'Este jogo tem alterações próprias sobre o layout. Escolher o layout de novo as descarta.'
+ps.layouts.save_to_layout: Salvar no layout
+ps.layouts.save_error: 'Não foi possível salvar o layout: %{error}'
+ps.layouts.removed: Layout excluído.
+ps.layouts.remove_error: 'Não foi possível excluir o layout: %{error}'
+ps.layouts.confirm_remove.title: 'Excluir o layout “%{name}”?'
+ps.layouts.confirm_remove.body: 'Usado por: %{games}. Esses jogos mantêm os controles como estão e apenas deixam de seguir o layout. Uma cópia fica guardada nos backups.'
+ps.layouts.confirm_remove.yes: Excluir o layout
+ps.keyboard.groups.buttons: Botões
+ps.keyboard.groups.dpad: D-pad
+ps.keyboard.groups.left_stick: Analógico esquerdo
+ps.keyboard.groups.right_stick: Analógico direito
+ps.keyboard.groups.touch_window: Touchpad e janela
+ps.keyboard.game_actions.move: Mover
+ps.keyboard.game_actions.camera: Mover a câmera
+ps.keyboard.game_actions.menu_builtin: Insert também o abre
+ps.keyboard.actions.cross: ✕  Xis
+ps.keyboard.actions.circle: ○  Círculo
+ps.keyboard.actions.square: □  Quadrado
+ps.keyboard.actions.triangle: △  Triângulo
+ps.keyboard.actions.up: Para cima
+ps.keyboard.actions.down: Para baixo
+ps.keyboard.actions.left: Para a esquerda
+ps.keyboard.actions.right: Para a direita
+ps.keyboard.actions.touch_left: Touchpad à esquerda
+ps.keyboard.actions.touch_right: Touchpad à direita
+ps.keyboard.actions.toggle_mouse: Capturar o mouse
+ps.keyboard.actions.toggle_fullscreen: Tela cheia
+ps.keyboard.actions.open_menu: Abrir o menu do port
+ps.keyboard.sources.mouse_left: Botão esquerdo do mouse
+ps.keyboard.sources.mouse_middle: Botão do meio do mouse
+ps.keyboard.sources.mouse_right: Botão direito do mouse
+ps.keyboard.sources.mouse_x1: Botão voltar do mouse
+ps.keyboard.sources.mouse_x2: Botão avançar do mouse
+ps.keyboard.sources.wheel_up: Roda ↑
+ps.keyboard.sources.wheel_down: Roda ↓
+ps.keyboard.refusals.keys_only: o bbport só aceita teclas do teclado
+ps.keyboard.refusals.fullscreen_needs_key: Tela cheia só pode usar uma tecla do teclado
+ps.keyboard.refusals.wheel_needs_button: A roda do mouse só pode ser mapeada para um botão do controle
+ps.keyboard.unknown_key: A tecla '%{key}' não tem um nome SDL confiável; tente outra
+ps.keyboard.save_error: 'Não foi possível salvar %{path}: %{error}'
+ps.keyboard.save: Salvar
+ps.keyboard.saved: Salvo
+ps.keyboard.unbound: Sem atribuição
+ps.keyboard.assign: + Atribuir
+ps.keyboard.reset_all: Redefinir tudo
+ps.keyboard.hint.own: 'Seu layout: + Atribuir e pressione a tecla; Salvar grava só para este jogo e “Salvar no layout” grava também no layout. Enter salva o nome.'
+ps.keyboard.hint.custom: 'Este jogo não segue nenhum layout: as teclas dele são só dele; Salvar as grava e Copiar como novo as salva como um layout.'
+ps.keyboard.description.bbport: Teclado para o bbport (linhas key. no arquivo abaixo). Remover todas as teclas de uma ação a deixa sem atribuição.
+ps.keyboard.description.anyps5: Teclado e mouse para o AnyPS5. O controle sempre funciona sem configuração.
+ps.keyboard.capture: Pressione uma tecla ou um botão do mouse, ou mova a roda
+ps.gamepad.inputs.cross.label: ✕
+ps.gamepad.inputs.cross.action: Interagir
+ps.gamepad.inputs.circle.label: ○
+ps.gamepad.inputs.circle.action: Esquivar · correr (segurar)
+ps.gamepad.inputs.square.label: □
+ps.gamepad.inputs.square.action: Usar item
+ps.gamepad.inputs.triangle.label: △
+ps.gamepad.inputs.triangle.action: Frasco de sangue
+ps.gamepad.inputs.l1.label: L1
+ps.gamepad.inputs.l1.action: Transformar arma
+ps.gamepad.inputs.r1.label: R1
+ps.gamepad.inputs.r1.action: Atacar
+ps.gamepad.inputs.l2.label: L2
+ps.gamepad.inputs.l2.action: Atirar · aparar
+ps.gamepad.inputs.r2.label: R2
+ps.gamepad.inputs.r2.action: Ataque forte · carregado
+ps.gamepad.inputs.l3.label: L3
+ps.gamepad.inputs.l3.action: L3
+ps.gamepad.inputs.r3.label: R3
+ps.gamepad.inputs.r3.action: Fixar alvo
+ps.gamepad.inputs.options.label: Options
+ps.gamepad.inputs.options.action: Menu
+ps.gamepad.inputs.touchpad.label: Touchpad
+ps.gamepad.inputs.touchpad.action: Gestos
+ps.gamepad.inputs.up.label: D-pad ↑
+ps.gamepad.inputs.up.action: Trocar item rápido
+ps.gamepad.inputs.down.label: D-pad ↓
+ps.gamepad.inputs.down.action: D-pad para baixo
+ps.gamepad.inputs.left.label: D-pad ←
+ps.gamepad.inputs.left.action: Trocar arma da esquerda
+ps.gamepad.inputs.right.label: D-pad →
+ps.gamepad.inputs.right.action: Trocar arma da direita
+ps.gamepad.inputs.menu.label: Menu
+ps.gamepad.inputs.menu.action: Abrir o menu do port (L3 + R3 sempre o abre)
+ps.gamepad.buttons.a: A / ✕
+ps.gamepad.buttons.b: B / ○
+ps.gamepad.buttons.x: X / □
+ps.gamepad.buttons.y: Y / △
+ps.gamepad.buttons.leftshoulder: LB / L1
+ps.gamepad.buttons.rightshoulder: RB / R1
+ps.gamepad.buttons.lefttrigger: LT / L2
+ps.gamepad.buttons.righttrigger: RT / R2
+ps.gamepad.buttons.leftstick: Clique do analógico esquerdo
+ps.gamepad.buttons.rightstick: Clique do analógico direito
+ps.gamepad.buttons.l3_r3: L3 + R3
+ps.gamepad.buttons.back: Select / Voltar
+ps.gamepad.buttons.start: Start
+ps.gamepad.buttons.touchpad: Touchpad
+ps.gamepad.buttons.dpup: D-pad ↑
+ps.gamepad.buttons.dpdown: D-pad ↓
+ps.gamepad.buttons.dpleft: D-pad ←
+ps.gamepad.buttons.dpright: D-pad →
+ps.gamepad.buttons.misc1: Misc
+ps.gamepad.buttons.paddle1: Paddle 1
+ps.gamepad.buttons.paddle2: Paddle 2
+ps.gamepad.buttons.paddle3: Paddle 3
+ps.layouts.code_vein: Estilo Code Vein
+ps.gamepad.description: Configurações do bbport. Valem a partir da próxima inicialização. Os analógicos movem o personagem e a câmera em qualquer layout.
+ps.gamepad.reading: Lendo a configuração do controle…
+ps.gamepad.save_error: 'Não foi possível salvar: %{error}'
+ps.gamepad.controller.title: Controle
+ps.gamepad.controller.note: Com vários conectados, qual deles o jogo usa
+ps.gamepad.automatic: Automático (o primeiro)
+ps.gamepad.unplugged: '%{name} (desconectado)'
+ps.gamepad.icons.title: Ícones dos botões
+ps.gamepad.icons.note: Em menus e avisos; seguem o layout escolhido
+ps.gamepad.icons.pad: Controle (A/B/X/Y)
+ps.gamepad.icons.original: Os originais do jogo
+ps.gamepad.hint.own: 'Seu layout: escolha o botão de cada entrada (se outra entrada já o usava, elas trocam); ele é salvo na hora só para este jogo, e “Salvar no layout” o leva para o layout. Enter salva o nome.'
+ps.gamepad.hint.custom: 'Este jogo não segue nenhum layout: as linhas pad. dele são só dele; copie-as como novo para salvá-las como um layout.'
+ps.gamepad.mode.list: Lista
+ps.gamepad.mode.visual: Visual
+ps.gamepad.visual.pick: Clique em uma linha ou em um botão do desenho para escolher qual botão do seu controle o aciona.
+ps.gamepad.visual.button: Botão do controle
+ps.gamepad.visual.title: Configurações de controle
+ps.gamepad.visual.restore: Restaurar configurações padrão
+ps.gamepad.visual.apply: Aplicar
+ps.gamepad.visual.cancel: Cancelar
+ps.gamepad.visual.pending: Há alterações não aplicadas. Elas permanecem mesmo que você troque de aba, até você aplicá-las ou cancelá-las.
+ps.gamepad.visual.hint_template: 'Este é um modelo e não é modificado; aplicar salva suas alterações só para este jogo. Se outra entrada já usava um botão, elas trocam.'
+ps.gamepad.visual.hint_own: 'Sua configuração. As alterações são salvas para este jogo quando você clica em Aplicar, e “Salvar no layout” as leva para a configuração; se outra entrada já usava um botão, elas trocam. Em dourado, o que difere do layout padrão.'
+ps.gamepad.visual.locked: Aplique ou cancele primeiro as alterações do desenho.
+ps.gamepad.visual.left_stick: Mover
+ps.gamepad.visual.right_stick: Mover a câmera
+ps.gamepad.visual.stick_fixed: Os analógicos não podem ser remapeados; eles fazem o mesmo em qualquer configuração.
+ps.gamepad.scope.game: Jogo
+ps.gamepad.scope.port: Port
+ps.gamepad.config.template: '%{name} (modelo)'
+ps.gamepad.config.duplicate: Duplicar
+ps.gamepad.config.rename: Renomear
+ps.graphics.groups.game: Jogo
+ps.graphics.frame_gen.title: Geração de quadros
+ps.graphics.frame_gen.label: Geração de quadros (este jogo)
+ps.graphics.frame_gen.options.off: Desativada
+ps.graphics.frame_gen.options.fsr: FSR 3.1
+ps.graphics.frame_gen.note: Interpola quadros extras entre os do próprio jogo, o que adiciona latência e funciona melhor a partir de uma base de 40 FPS ou mais. Vale na próxima inicialização e só para este jogo.
+ps.graphics.language.label: Idioma do jogo
+ps.graphics.language.options.english: Inglês
+ps.graphics.language.options.spanish: Espanhol
+ps.graphics.language.options.french: Francês
+ps.graphics.language.options.german: Alemão
+ps.graphics.language.options.italian: Italiano
+ps.graphics.language.options.russian: Russo
+ps.graphics.language.options.japanese: Japonês
+ps.graphics.mods_enabled.label: Carregar mods
+ps.graphics.mods_enabled.note: A lista e a ordem dos mods são gerenciadas na aba Mods
+ps.graphics.groups.mode: Modo de operação
+ps.graphics.pc_model.label: Novo modelo de memória e tradução
+ps.graphics.pc_model.note: A GPU usa diretamente a memória do jogo e os comandos gráficos são traduzidos em vez de emulados. Sempre usado em GPUs AMD; ative para forçá-lo em outras GPUs (experimental fora da AMD)
+ps.graphics.groups.display: Tela
+ps.graphics.output_res.label: Resolução de saída
+ps.graphics.output_res.note: O upscaling preenche o quadro; no Steam Deck, 720p
+ps.graphics.output_res.options.r720: 1280×720 (Steam Deck)
+ps.graphics.output_res.options.r1080: 1920×1080
+ps.graphics.output_res.options.r1440: 2560×1440
+ps.graphics.output_res.options.r2160: 3840×2160
+ps.graphics.aspect_ratio.label: Proporção da tela
+ps.graphics.aspect_ratio.note: A da sua tela quando Automática; escolha outra se o jogo parecer esticado
+ps.graphics.aspect_ratio.options.auto: Automática (pela tela)
+ps.graphics.aspect_ratio.options.r4_3: '4:3'
+ps.graphics.aspect_ratio.options.r16_10: 16:10 (Steam Deck)
+ps.graphics.aspect_ratio.options.r16_9: '16:9'
+ps.graphics.aspect_ratio.options.r21_9: 21:9 (ultrawide)
+ps.graphics.aspect_ratio.options.r32_9: 32:9 (super ultrawide)
+ps.graphics.live_resolution.label: Mudança de resolução em tempo real
+ps.graphics.live_resolution.note: Sem reiniciar, mas mais lenta no Steam Deck e em GPUs mais antigas
+ps.graphics.live_resolution.options.auto: Automática (pela GPU)
+ps.graphics.live_resolution.options.off: Desativada (mais rápida)
+ps.graphics.live_resolution.options.on: Ativada
+ps.graphics.fullscreen.label: Tela cheia
+ps.graphics.present_mode.label: Modo de apresentação
+ps.graphics.present_mode.options.mailbox: Mailbox
+ps.graphics.present_mode.options.fifo: FIFO (VSync)
+ps.graphics.present_mode.options.fifo_relaxed: FIFO Relaxed
+ps.graphics.present_mode.options.immediate: Immediate
+ps.graphics.hdr.label: Permitir HDR
+ps.graphics.aniso.label: Filtragem anisotrópica
+ps.graphics.aniso.note: Forçá-la deixa mais nítidas as superfícies vistas em ângulo, mas também afeta texturas que não são superfícies
+ps.graphics.aniso.options.profile: A do perfil do jogo
+ps.graphics.aniso.options.game: O que o jogo pede
+ps.graphics.aniso.options.x4: 4x
+ps.graphics.aniso.options.x8: 8x
+ps.graphics.aniso.options.x16: 16x
+ps.graphics.groups.gamepad: Controle
+ps.graphics.gamepad.label: Controle
+ps.graphics.gamepad.note: Com vários conectados, qual deles o jogo usa; a lista é atualizada quando esta aba abre
+ps.graphics.pad_motion.label: Movimento de controle emulado
+ps.graphics.pad_motion.note: Para controles sem sensores de movimento
+ps.graphics.toypad.label: Toy pad emulado de LEGO Dimensions
+ps.graphics.toypad.note: 'Conecta o toy pad emulado; só para jogos que o usam (as figuras são colocadas no menu do psport, Insert ou L3+R3)'
+ps.graphics.groups.mouse: Mouse
+ps.graphics.groups.mouse_note: Salvo em bbport.ini, aplicado na próxima vez que o jogo iniciar
+ps.graphics.game_mouse_sensitivity.label: Sensibilidade do mouse no jogo
+ps.graphics.game_mouse_sensitivity.note: Velocidade do ponteiro em jogos que usam o mouse (1 = a do sistema)
+ps.graphics.mouse_look.label: Visão pelo mouse
+ps.graphics.mouse_look.note: Clicar na janela faz o mouse mover a câmera (o analógico direito); F1 o libera
+ps.graphics.mouse_sensitivity.label: Sensibilidade da visão pelo mouse
+ps.graphics.mouse_sensitivity.note: Em 1, cerca de 1000 pixels por segundo giram a câmera na velocidade máxima
+ps.graphics.mouse_invert_y.label: Inverter o eixo vertical da câmera
+ps.graphics.groups.keyboard: Teclado
+ps.graphics.groups.keyboard_note: As teclas de movimento e câmera como um analógico; salvo em bbport.ini, aplicado na próxima vez que o jogo iniciar
+ps.graphics.key_stick_opposite.label: Duas teclas opostas pressionadas
+ps.graphics.key_stick_opposite.options.last: A última vence
+ps.graphics.key_stick_opposite.options.last_note: O analógico segue a tecla pressionada por último, então uma mudança de direção não interrompe uma corrida
+ps.graphics.key_stick_opposite.options.neutral: Anulam-se
+ps.graphics.key_stick_opposite.options.neutral_note: O analógico volta ao centro enquanto as duas estiverem pressionadas
+ps.graphics.key_stick_hold_ms.label: Retenção do analógico de movimento (ms)
+ps.graphics.key_stick_hold_ms.note: Por quanto tempo o analógico mantém a direção depois que as teclas são soltas, para que trocar de tecla não seja uma parada
+ps.graphics.key_stick_hold_ms.zero: Sem retenção
+ps.graphics.groups.upscaling: Upscaling
+ps.graphics.groups.upscaling_note: Salvo em bbport.ini; no jogo, é alterado pelo menu (Insert ou L3+R3)
+ps.graphics.upscaler.label: Upscaler
+ps.graphics.upscaler.options.fsr4: FSR 4
+ps.graphics.upscaler.options.fsr411: FSR 4.1.1
+ps.graphics.upscaler.options.fsr3: FSR 3
+ps.graphics.upscaler.options.taa: TAA
+ps.graphics.upscaler.options.taa_note: Antialiasing na resolução de saída, sem um modelo FSR
+ps.graphics.upscaler.options.dlss: DLSS
+ps.graphics.upscaler.options.dlss_note: 'Só NVIDIA RTX, com a ponte DLSS embutida no port; sem ela, o FSR 3.1 é usado'
+ps.graphics.upscaler.options.off: Desativado
+ps.graphics.preset.label: Predefinição
+ps.graphics.preset.options.native: AA nativo
+ps.graphics.preset.options.quality: Qualidade (x1.5)
+ps.graphics.preset.options.balanced: Equilibrado (x1.7)
+ps.graphics.preset.options.performance: Desempenho (x2)
+ps.graphics.preset.options.ultra_performance: Desempenho ultra (x3)
+ps.graphics.sharpen.label: Nitidez (RCAS)
+ps.graphics.sharpness.label: Intensidade da nitidez
+ps.graphics.object_motion.label: Vetores de movimento de objetos
+ps.graphics.object_motion.note: Menos efeito fantasma nos personagens; custa cerca de 10% de FPS
+ps.graphics.show_fps.label: Mostrar FPS
+ps.graphics.groups.effects: Efeitos do jogo
+ps.graphics.groups.effects_note: Patches do jogo, aplicados ao iniciar
+ps.graphics.model_lod.label: Detalhe dos modelos
+ps.graphics.model_lod.options.game: Como no jogo
+ps.graphics.model_lod.options.max: Máximo (-2)
+ps.graphics.model_lod.options.lower: Menor (1)
+ps.graphics.model_lod.options.min: Mínimo (2)
+ps.graphics.effect_chromatic_aberration.label: Aberração cromática
+ps.graphics.effect_dof.label: Profundidade de campo
+ps.graphics.effect_motion_blur.label: Desfoque de movimento
+ps.graphics.effect_ssao.label: SSAO
+ps.graphics.effect_game_aa.label: O antialiasing do jogo
+ps.graphics.effect_dynamic_shadows.label: Sombras de luz dinâmica
+ps.graphics.effect_ssr.label: Reflexos SSR (não existem no jogo original)
+ps.graphics.effect_bloom.label: Bloom
+ps.graphics.skip_intro.label: Pular vídeos de abertura
+ps.graphics.debug_camera.label: Câmera livre (Xis + L3 / Espaço + Z)
+ps.graphics.debug_menu.label: Menu de depuração (touchpad à esquerda / Tab)
+ps.graphics.debug_menu.note: Requer DbgFont14h.ccm e DbgFont14h.tpf em dvdroot_ps4/font, na pasta do jogo
+ps.graphics.intel_tonemap.label: Correção de tone mapping para Intel
+ps.graphics.intel_tonemap.note: 'Em CPUs Intel, o tone mapping do jogo fica preto (principalmente nas áreas das DLCs); automático: ativado só na Intel'
+ps.graphics.intel_tonemap.options.auto: Automático
+ps.graphics.intel_tonemap.options.on: Ativado
+ps.graphics.intel_tonemap.options.off: Desativado
+ps.graphics.groups.frames: Taxa de quadros
+ps.graphics.fps_mode.label: Modo
+ps.graphics.fps_mode.note: Qual patch de taxa de quadros o jogo recebe
+ps.graphics.fps_mode.options.uncap: Sem limite (patch)
+ps.graphics.fps_mode.options.fps60: '60'
+ps.graphics.fps_mode.options.fps90: '90'
+ps.graphics.fps_mode.options.fps30: 30 (como no PS4)
+ps.graphics.fps_limit.label: Limite de FPS
+ps.graphics.fps_limit.note: '0: sem limite'
+ps.graphics.groups.performance: Desempenho
+ps.graphics.draw_pipe.label: Pipeline de GPU em dois estágios
+ps.graphics.draw_pipe.note: 20–30% mais rápido; desative se algo ficar instável
+ps.graphics.draw_pipe.options.auto: Automático
+ps.graphics.draw_pipe.options.auto_note: Ativado com 8 ou mais threads de CPU
+ps.graphics.draw_pipe.options.on: Ativado
+ps.graphics.draw_pipe.options.off: Desativado
+ps.graphics.draw_pipe.options.off_note: Mais estável, porém mais lento
+ps.graphics.readbacks.label: Leituras de dados da GPU
+ps.graphics.readbacks.options.relaxed: Relaxadas
+ps.graphics.readbacks.options.relaxed_note: Padrão
+ps.graphics.readbacks.options.off: Desativadas
+ps.graphics.readbacks.options.precise: Precisas
+ps.graphics.preupload.label: Pré-carregamento na memória de vídeo
+ps.graphics.preupload.note: Menos engasgos ao carregar áreas
+ps.graphics.preupload.options.normal: Normal
+ps.graphics.preupload.options.normal_note: Sem memória de vídeo extra
+ps.graphics.preupload.options.full: Completo
+ps.graphics.preupload.options.full_note: Cerca de 3 GB a mais de memória de vídeo
+ps.graphics.preupload.options.off: Desativado
+ps.graphics.groups.development: Desenvolvimento
+ps.graphics.save_log.label: Salvar registro e estatísticas em um arquivo
+ps.graphics.save_log.note: 'Na pasta de registros do bbport: para investigar engasgos e travamentos'
+ps.graphics.crash_diag.label: Diagnóstico de travamentos
+ps.graphics.crash_diag.note: Verifica o heap do jogo e registra as gravações na memória dele; um pouco mais lento
+ps.graphics.keep_logs.label: Execuções salvas a manter
+ps.graphics.keep_logs.note: 'Quando o registro é salvo, as execuções mais antigas são excluídas; 0: manter todas'
+ps.graphics.camera_cuts.label: Redefinir o upscaler nos cortes de câmera
+ps.graphics.camera_cuts.note: Evita lampejos da cena anterior nas cutscenes; desative só para comparar
+ps.graphics.image_traps.label: Vigiar gravações sobre texturas
+ps.graphics.image_traps.note: 'Detecta o jogo gravando em uma textura sem aviso; desativado: só as gravações anunciadas (para testar engasgos)'
+ps.graphics.as_0_3.label: Sincronização como na 0.3
+ps.graphics.as_0_3.note: 'Para caçar regressões: modelo de memória e esperas de cópia como na 0.3'
+ps.graphics.frame_stats.label: Estatísticas de quadros no registro
+ps.graphics.frame_stats.note: PS_FRAME_STATS
+ps.graphics.gpu_profile.label: Perfil da GPU no registro
+ps.graphics.gpu_profile.note: PS_GPU_PROFILE
+ps.graphics.vk_validation.label: Camadas de validação do Vulkan
+ps.graphics.vk_validation.note: Deixa tudo muito mais lento
+ps.graphics.description: Configurações do bbport. Valem a partir da próxima inicialização.
+ps.graphics.reading: Lendo as configurações…
+ps.graphics.no_limit: Sem limite
+ps.graphics.save_error: 'Não foi possível salvar: %{error}'
+ps.errors.bbport_not_ready: 'o bbport não está pronto: %{error}'
+ps.jobs.fsr411: build do FSR 4.1.1
+ps.jobs.vk_layer: camada de validação do Vulkan
+ps.vk_layer.preparing: Preparando a camada de validação do Vulkan…
+ps.vk_layer.unavailable: A camada de validação do Vulkan não está disponível; o jogo inicia sem validação. %{reason}
+ps.vk_layer.stopped: Inicialização cancelada enquanto a camada de validação do Vulkan era preparada.
+ps.vk_layer.reasons.no_nix: Este port roda fora do nix, então precisa do nix instalado no sistema.
+ps.vk_layer.reasons.setup: Não foi possível configurar o ambiente nix dela; veja o registro do decanter.
+ps.vk_layer.reasons.build: O nix não conseguiu baixá-la ou compilá-la (offline?); veja o registro dele.
+ps.fsr.checking: Verificando a DLL…
+ps.fsr.check_error: 'Não foi possível verificar a DLL: %{error}'
+ps.fsr.built: FSR 4.1.1 compilado e escolhido como o upscaler deste jogo
+ps.fsr.built_not_chosen: 'FSR 4.1.1 compilado, mas não foi possível escolhê-lo: %{error}'
+ps.fsr.cancelled: Build do FSR 4.1.1 cancelado
+ps.fsr.unsupported.fsr40: '%{name}: FSR %{version}, o FSR 4.0.x oficial da AMD, que só funciona em RDNA4 e não pode ser gravado no Proton em outras GPUs. É preciso o FSR 4.1.x (o FSR4_LATEST do OptiScaler ou a DLL de um jogo com FSR 4.1)'
+ps.fsr.unsupported.not_fsr4: '%{name}: não tem FSR 4; é preciso a amd_fidelityfx_upscaler_dx12.dll 4.1.x'
+ps.fsr.unsupported.other: '%{name}: versão %{version}. O bbport só reproduz o FSR 4.1.x oficial da AMD (modelo v07_fp8_no_scale); builds da comunidade ainda não têm suporte'
+ps.fsr.bad_loader.is_upscaler: essa é a DLL do upscaler; o loader é a amd_fidelityfx_loader_dx12.dll (ou a amd_fidelityfx_dx12.dll com o OptiScaler), na mesma pasta do jogo
+ps.fsr.bad_loader.wrong_version: '%{loader}: versão %{version}; é preciso o loader FidelityFX 2.x do mesmo jogo'
+ps.fsr.failures.bad_dll: 'A DLL não vai funcionar: detalhes no registro'
+ps.fsr.failures.no_proton: 'A gravação não encontrou nenhum Proton para executar, embora o decanter tenha preparado o dele: detalhes no registro'
+ps.fsr.failures.proton_not_ready: 'O decanter não conseguiu preparar o GE-Proton dele para a gravação: %{error}'
+ps.fsr.failures.missing_tools: 'Faltam ferramentas de compilação: a lista está no registro'
+ps.fsr.failures.no_proton_ran: 'Nenhum Proton executou o FSR 4.1 com essa DLL: eles são muito antigos ou a DLL não ativa o FSR 4.1 nesta GPU'
+ps.fsr.failures.mismatch: 'As passagens gravadas não correspondem ao que o bbport reproduz (outra versão da DLL ou uma GPU nova): detalhes no registro'
+ps.fsr.failures.no_loader: O loader FidelityFX 2.x não foi encontrado
+ps.fsr.failures.nixos: No NixOS, a gravação precisa do umu-launcher ou do Nix no sistema
+ps.fsr.failures.failed: 'A compilação falhou (código %{code}): detalhes no registro'
+ps.fsr.failures.stopped: A compilação foi interrompida
+ps.extras.title: Extras
+ps.extras.env.title: Variáveis extras
+ps.extras.env.hint: Enter salva
+ps.extras.env.placeholder: NOME=valor separados por espaços
+ps.extras.env.saved: Variáveis salvas; valem a partir da próxima inicialização
+ps.extras.env.save_error: 'Não foi possível salvar as variáveis: %{error}'
+ps.extras.sys_modules.title: Carregar o meu dump de módulos do sistema
+ps.extras.sys_modules.hint: A pasta nas Configurações da seção PS, só para este jogo; vale a partir da próxima inicialização
+ps.extras.sys_modules.no_folder: 'Não há pasta de módulos do sistema nas Configurações da seção PS: nada é carregado'
+ps.extras.sys_modules.save_error: 'Não foi possível salvar: %{error}'
+ps.extras.fsr.title: FSR 4.1.1 a partir da sua DLL da AMD
+ps.extras.fsr.pick: Escolher DLL…
+ps.extras.fsr.pick_upscaler: DLL do upscaler da AMD (amd_fidelityfx_upscaler_dx12.dll)
+ps.extras.fsr.pick_loader: Loader do FidelityFX (amd_fidelityfx_loader_dx12.dll)
+ps.extras.fsr.needs_loader: 'Não há loader ao lado da DLL: escolha a amd_fidelityfx_loader_dx12.dll na pasta do jogo'
+ps.extras.fsr.checking: Verificando…
+ps.extras.fsr.ready: Recursos prontos para esta resolução e predefinição
+ps.extras.fsr.missing_file: '%{file} está ausente ou danificado'
+ps.extras.fsr.missing: Sem recursos (%{problem}). Eles são gerados a partir da amd_fidelityfx_upscaler_dx12.dll 4.1.x (o FSR4_LATEST do OptiScaler ou a de um jogo com FSR 4.1); leva de 2 a 5 minutos e, na primeira vez, o decanter também baixa o GE-Proton para a gravação (cerca de 0,5 GB)
+ps.extras.fsr.progress.preparing: Preparando…
+ps.extras.fsr.progress.recording: 'Gravando as passagens no Proton: %{done} de %{total}'
+ps.extras.fsr.progress.translating: Traduzindo as passagens para SPIR-V…
+ps.extras.fsr.progress.runner_downloading: 'O decanter está preparando %{runner} para a gravação: %{received} de %{total}'
+ps.extras.fsr.progress.runner_downloading_size: 'O decanter está preparando %{runner} para a gravação: %{received}'
+ps.extras.fsr.progress.runner_unpacking: O decanter está descompactando %{runner}…
+ps.extras.fsr.progress.runner_building: O decanter está compilando %{runner}…
+ps.mods.description: Valem a partir da próxima inicialização; "Carregar mods" fica em Gráficos.
+ps.mods.loading: Preparando o bbport e procurando mods…
+ps.mods.no_port: Ainda não há um psport.exe para procurá-los; Jogar ou PS › Ports baixa um
+ps.mods.refresh: Atualizar
+ps.mods.open: Abrir
+ps.mods.change: Alterar
+ps.mods.save_error: 'Não foi possível salvar %{file}: %{error}'
+ps.mods.folder_error: 'Não foi possível salvar a pasta: %{error}'
+ps.mods.mods.title: Mods
+ps.mods.mods.note: Pastas com dvdroot_ps4/ ou os arquivos do jogo; as de baixo carregam depois e prevalecem em caso de conflito.
+ps.mods.mods.folder: Pasta de mods
+ps.mods.mods.read_error: 'Não foi possível ler os mods: %{error}'
+ps.mods.mods.empty: Nenhum mod na pasta
+ps.mods.patches.title: Patches externos
+ps.mods.patches.note: Patches XML no formato do shadPS4 para a versão 01.09.
+ps.mods.patches.folder: Pasta de patches
+ps.mods.patches.read_error: 'Não foi possível ler os patches: %{error}'
+ps.mods.patches.empty: Nenhum patch na pasta
+ps.runs.measure: Medir desempenho
+ps.runs.measure_note: As próximas execuções deste jogo começam com PS_FRAME_STATS=1; os números delas aparecem aqui quando terminarem.
+ps.runs.debug: Modo de depuração para este jogo
+ps.runs.debug_note: As próximas execuções deste jogo começam com PS_DEBUG=1 mesmo com o modo de depuração geral desativado; os registros delas vão para a pasta de registros de depuração (Configurações › Geral).
+ps.runs.reading: Lendo as execuções medidas…
+ps.runs.none: Ainda não há execuções medidas deste jogo.
+ps.runs.read_error: 'Não foi possível ler os registros das execuções: %{error}'
+ps.runs.save_error: 'Não foi possível salvar a configuração: %{error}'
+ps.runs.samples: '%{count} amostras de 5 s'
+ps.runs.delta: '%{delta}% de FPS em relação à execução anterior'
+ps.runs.average: FPS médio
+ps.runs.low: 1% mais baixo (FPS)
+ps.runs.frame_time: Tempo de quadro mín–máx
+ps.runs.compiles: Compilações na thread da GPU
+ps.runs.pipelines: 'Pipelines compilados em segundo plano: %{background}; draws que esperaram pelo seu: %{waited}; draws ignorados nesse meio-tempo: %{skipped}'
+ps.runs.method: O psport mede em janelas de cerca de 5 s, não quadro a quadro. O 1% mais baixo é estimado a partir do pior quadro de cada janela (um pouco pessimista acima de 30 FPS); o mínimo é o tempo médio de quadro da melhor janela e o máximo, o pior quadro da execução. A linha tracejada é a média.
+ps.detail.tabs.online: Online
+ps.play.online_error: 'Não foi possível configurar o jogo online: %{error}. Corrija nas Configurações da seção PS ou desative o jogo online na aba Online do jogo.'
+ps.play.online_keyring_error: O jogo online precisa da senha do shadNet guardada no chaveiro do sistema, que não está disponível (%{error}). Abra ou desbloqueie o chaveiro, ou desative o jogo online na aba Online do jogo para jogar offline.
+ps.online.title: Jogo online
+ps.online.per_game: 'A conta e os servidores que todos os jogos compartilham. Cada jogo ativa o jogo online na própria aba Online.'
+ps.online.play: Jogar online
+ps.online.upnp: UPnP (abrir a porta no roteador automaticamente)
+ps.online.description: 'Só para este jogo, desativado por padrão. Quando ativado, o psport conecta o jogo ao servidor da comunidade (mensagens, manchas de sangue, fantasmas) e a um servidor shadNet (sinos e invocações), com a conta das Configurações da seção PS. Vale a partir da próxima inicialização.'
+ps.online.server: Servidor shadNet
+ps.online.webapi: WebAPI do shadNet
+ps.online.webapi_placeholder: 'Vazio: o do próprio servidor shadNet (porta 31315)'
+ps.online.community: Servidor da comunidade
+ps.online.npid: ID online (NPID)
+ps.online.npid_placeholder: O nome da sua conta no servidor, não o seu e-mail
+ps.online.password: Senha
+ps.online.password_saved: Salva no chaveiro; digite outra para alterá-la
+ps.online.password_none: Nenhuma senha salva
+ps.online.password_unavailable: Chaveiro indisponível
+ps.online.token: Token (opcional)
+ps.online.token_placeholder: Só se o seu servidor lhe deu um
+ps.online.account_description: Uma conta shadNet registrada nesse servidor; o decanter não cria contas. A senha e o token ficam no chaveiro do sistema, nunca na biblioteca. Sem um ID online, o jogo funciona sem o shadNet.
+ps.online.keyring_unavailable: 'Não é possível ler o chaveiro do sistema: %{error}. Sem ele, o jogo online não inicia com uma conta.'
+ps.online.save: Salvar
+ps.online.saved: Salvo. Vale a partir da próxima inicialização.
+ps.online.save_error: 'Não foi possível salvar: %{error}'
+ps.online.keyring_error: 'Não foi possível usar o chaveiro: %{error}'
+ps.online.forget: Esquecer senha e token
+ps.online.check: Testar conexão
+ps.online.checking: Testando os servidores…
+ps.online.answers: responde
+ps.online.targets.game: Servidor do jogo
+ps.online.targets.shadnet: Servidor shadNet
+ps.online.targets.webapi: WebAPI
+ps.online.errors.server: o servidor shadNet "%{value}" não está no formato host:porta
+ps.online.errors.community: o servidor da comunidade "%{value}" não é um endereço http(s) válido
+ps.online.errors.webapi: a WebAPI "%{value}" não é um endereço http(s) válido
+ps.online.errors.credentials: '%{server}: o endereço não pode conter nome de usuário, senha nem query, só o servidor'
+ps.online.errors.npid_email: o ID online é o nome da conta (NPID) registrada no servidor, não um endereço de e-mail
+ps.online.errors.npid: o ID online "%{value}" deve ter de 3 a 16 letras, dígitos, '-' ou '_'
+ps.online.errors.secret: a senha ou o token salvos não podem ser passados ao jogo
+ps.online.errors.secret_without_npid: 'Digite primeiro o ID online: a senha e o token são salvos junto com ele.'
+ps.online.title_querying: Lendo os dados online do jogo…
+ps.online.no_extension: Este jogo não tem uma extensão de co-op própria no psport.
+ps.online.tls.label: Criptografar o login com TLS
+ps.online.tls.note: Desativado por padrão. O servidor deve oferecer suporte a TLS e o certificado dele deve ser válido para o nome dele; caso contrário, o login falha e não há retorno ao texto simples.
+ps.online.plaintext.label: Permitir o envio da senha em texto simples a este servidor
+ps.online.plaintext.warning: 'Sem TLS, a senha e o token da conta trafegam sem criptografia: qualquer pessoa no caminho entre você e o servidor (sua rede, seu provedor, um ponto de Wi-Fi) pode lê-los. Permita isso só para um servidor de confiança que não tenha TLS.'
+ps.online.login_refused: 'O login será recusado: ative o TLS ou permita o envio em texto simples.'
+ps.online.bbsc.label: Co-op contínuo (BBSC)
+ps.online.bbsc.note: Desativado por padrão. Todos os jogadores da sessão precisam tê-lo ativado, e o servidor da comunidade precisa executar o servidor de jogo do BBSC (o do Seamless Hunt executa).
+ps.online.bbsc.local.label: Servidor de jogo BBSC neste PC
+ps.online.bbsc.local.off: Nunca
+ps.online.bbsc.local.on: Sempre
+ps.online.bbsc.local.auto: Se o da comunidade não responder
+ps.online.bbsc.local.note: Com o servidor neste PC, as mensagens e as manchas de sangue são só deste PC; as invocações continuam passando pela WebAPI do shadNet.
+ps.online.local_player.label: Jogador local (co-op no mesmo PC)
+ps.online.local_player.placeholder: 'Vazio: um jogador'
+ps.online.local_player.invalid: o jogador local "%{value}" deve ter de 1 a 10 dígitos, nada mais
+ps.online.local_player.note: Necessário só para jogar co-op com duas janelas neste PC, cada janela com um número diferente (por exemplo 1001 e 1002), para que cada uma mexa só nos próprios saves. Deixe vazio para um jogador. Pressione Enter para salvar.
+ps.online.no_password: 'Há um ID online salvo sem senha no chaveiro: digite-a e pressione Salvar, ou limpe o ID online para jogar sem o shadNet. Até lá, o jogo online não inicia.'
+ps.online.kept_existing: Salvo. %{previous} mantém a senha e o token dele no chaveiro, pois o novo ID online já tinha os próprios e eles não foram sobrescritos.
+ps.play.online_no_password: O ID online %{npid} não tem senha no chaveiro. Digite-a nas Configurações da seção PS, limpe o ID online para jogar sem o shadNet, ou desative o jogo online na aba Online do jogo.
+ps.play.local_player_error: O jogador local "%{value}" salvo para este jogo não tem de 1 a 10 dígitos. Corrija na aba Online do jogo ou limpe-o.
+ps.play.title_settings_error: 'Não foi possível preparar as configurações deste jogo: %{error}'
+ps.branch.title: Branch do psport, compilado neste PC (Testes)
+ps.branch.description: 'O decanter busca o commit mais recente do branch do psport com o seu git, baixa a toolchain que ele fixa (llvm-mingw, CMake, Ninja e o pacote de toolchain do psport, cada um conferido com o SHA-256) e o compila aqui, sem nada do que baixa sendo executado além disso. Compilar executa os scripts do próprio branch com os seus privilégios, então cada novo commit pede a sua confirmação antes. Um build passa a ser usado assim que termina, e os builds e versões anteriores são removidos junto com seus registros.'
+ps.branch.toolchain.not_pinned: Este decanter ainda não fixa nenhum pacote de toolchain, então não consegue compilar; uma versão futura vai conseguir.
+ps.branch.toolchain.installed: 'Toolchain: toolchain-win32-%{number}, baixada e conferida'
+ps.branch.toolchain.missing: 'Toolchain: toolchain-win32-%{number}, ainda não baixada (cerca de 560 MB na primeira vez, 2 GB em disco)'
+ps.branch.head: 'Commit mais recente de %{branch}: %{commit} (%{remote})'
+ps.branch.check_error: 'Não foi possível consultar o branch: %{error}'
+ps.branch.check: Verificar o branch
+ps.branch.build: Compilar %{commit}
+ps.branch.retry: Tentar %{commit} de novo
+ps.branch.stop: Parar
+ps.branch.stopped: Compilação interrompida; nada do que ela iniciou continua em execução
+ps.branch.delete_toolchain: Excluir a toolchain
+ps.branch.confirm_delete.title: Excluir este build?
+ps.branch.confirm_delete.body: 'O build do commit %{commit} feito neste PC será excluído da sua biblioteca. Compilar esse commit de novo o compila do zero.'
+ps.branch.confirm_delete.confirm: Excluir o build %{commit}
+ps.branch.confirm_delete_toolchain.title: Excluir a toolchain?
+ps.branch.confirm_delete_toolchain.body: 'A toolchain %{number} baixada (llvm-mingw, CMake, Ninja e o pacote de toolchain do psport) será excluída da sua biblioteca. A próxima compilação a baixa de novo.'
+ps.branch.confirm_delete_toolchain.confirm: Excluir a toolchain
+ps.branch.redownload_toolchain: Baixar de novo
+ps.branch.open_settings: Abrir Configurações
+ps.branch.deleting: Excluindo…
+ps.branch.building: 'Compilando %{commit}: %{stage}'
+ps.branch.built: '%{branch} · compilado em %{date} · toolchain-win32-%{number}'
+ps.branch.stage.starting: iniciando
+ps.branch.stage.downloading: 'baixando %{name}: %{size}'
+ps.branch.stage.unpacking: conferindo e descompactando %{name}
+ps.branch.stage.verifying: 'conferindo os arquivos da toolchain: %{checked} de %{total}'
+ps.branch.stage.sources: buscando o código-fonte
+ps.branch.stage.configuring: configurando com o CMake
+ps.branch.stage.compiling: compilando com o Ninja
+ps.branch.stage.assembling: montando a pasta
+ps.branch.confirm.title: Compilar este commit?
+ps.branch.confirm.remote: 'Remoto: %{remote}'
+ps.branch.confirm.branch: 'Branch: %{branch}'
+ps.branch.confirm.commit: 'Commit: %{commit}'
+ps.branch.confirm.text: 'Compilar executa os scripts CMake deste commit no seu PC com os seus privilégios, dentro de um Job Object sem nenhuma variável sua, e nada impede que eles acessem a rede. Confirme só commits do psport em que você confia; sobre o mesmo commit não se pergunta de novo.'
+ps.branch.confirm.yes: Confirmar e compilar %{commit}
+ps.branch.confirm.no: Cancelar
+ps.branch.errors.not_pinned: este decanter ainda não fixa nenhum pacote de toolchain
+ps.branch.errors.tampered: 'o arquivo %{file} da toolchain mudou depois de instalado e conferido, então não é usado: exclua a toolchain para baixá-la de novo'
+ps.branch.errors.path_too_long: 'o build ficaria em %{path}, com %{length} caracteres, e builds para Windows precisam de no máximo %{max}: escolha um local mais curto para a biblioteca em Configurações › Conta › Alterar local, e o decanter a move para lá'
+ps.branch.errors.raw: '%{error}'
+ps.branch.errors.failed: 'A compilação falhou: %{error}. O registro dela: %{log}'
+ps.branch.errors.confirm: 'Não foi possível registrar a confirmação: %{error}'
+ps.branch.errors.busy: Uma compilação ou uma exclusão está em andamento; tente de novo quando terminar
+ps.branch.errors.delete_in_use: Não é possível excluir o build em uso, nem qualquer um enquanto um jogo ou uma compilação está em execução
+ps.branch.errors.delete_toolchain_busy: A toolchain não pode ser excluída enquanto um jogo ou uma compilação está em execução
+ps.branch.errors.delete: 'Não foi possível excluir: %{error}'
+ps.report.saved: 'Relatório salvo em %{path}'
+ps.report.what.run_log: o registro da execução
+ps.report.what.day_log: o registro do dia
+ps.report.what.log_folder: a pasta de registros
+ps.report.errors.no_failure: Não há nenhuma falha para relatar
+ps.report.errors.no_profile: Não há nenhum perfil ativo
+ps.report.errors.rejected: 'O relatório viola as regras (campo: regra): %{fields}'
+ps.report.errors.read: 'Não foi possível ler %{what}: %{error}'
+ps.report.errors.serialize: 'Não foi possível escrever o relatório: %{error}'
+ps.report.errors.exists: '%{path} já existe; ele não é sobrescrito'
+ps.report.errors.write: 'Não foi possível salvar %{path}: %{error}'
+ps.run.errors.too_many_env: 'No máximo %{max} variáveis --env'
+ps.run.errors.profile: 'Não foi possível ler o perfil ativo: %{error}'
+ps.run.errors.library: 'Não foi possível ler a biblioteca: %{error}'
+ps.run.errors.no_game: 'Nenhum jogo com title id %{title} na seção PS'
+ps.run.errors.not_playable: '%{title} não pode ser jogado como está; a seção PS explica o motivo'
+ps.run.errors.needs_convert: '%{title} ainda não foi convertido; jogue-o uma vez pela janela do decanter'
+ps.run.errors.port_not_ready: '%{port} ainda não foi compilado; prepare-o com decanter ps prepare, ou abra a seção PS do decanter'
+ps.run.errors.no_psport: 'Não há psport.exe para jogar; obtenha um com decanter ps prepare, escolha uma pasta do psport.exe em PS › Configurações, ou instale um pacote do psport para Windows pela janela do decanter'
+ps.run.errors.start: 'Não foi possível iniciar o jogo: %{error}'
+ps.prepare.errors.timeout: 'O port não estava pronto após %{secs} s; a tarefa que estava em execução foi interrompida'
+ps.report.save: Salvar relatório
+ps.report.close: Fechar
+ps.report.building: Preparando o relatório…
+ps.report.open: Relatar erros
+ps.report.title: Relatar erros
+ps.report.note: Isto é exatamente o que o relatório contém. Nada sai do seu computador até você confirmar, e o relatório não contém caminhos, nomes nem contas.
+ps.report.attach_log: Anexar o registro completo para o mantenedor (não é publicado)
+ps.report.cleaning: Limpando o registro…
+ps.report.cleaned: 'Omitido do registro antes do envio: nomes ou contas %{names}, valores secretos %{values}, endereços IP ou MAC %{addresses}.'
+ps.report.privacy: O relatório é público e é mantido até ser resolvido. Ele não contém caminhos, nomes nem contas. Você pode excluí-lo com o código que vai receber. Não há conta, e o seu IP é mantido só pelo tempo que o limite de requisições exigir.
+ps.report.send.button: Enviar relatório
+ps.report.send.confirm: 'Enviar este relatório agora? Ele será público.'
+ps.report.send.confirm_with_log: 'Enviar agora este relatório, que será público, e o seu registro, que só o mantenedor lê?'
+ps.report.send.confirm_yes: Sim, enviar
+ps.report.send.cancel: Cancelar
+ps.report.send.sending: Enviando…
+ps.report.send.off: O envio de relatórios está desativado nas configurações
+ps.report.send.no_log: Esta execução não tem registro para anexar
+ps.report.send.dry_run: 'Nada foi enviado. O relatório acima seria enviado para %{server}. Adicione --yes para enviá-lo.'
+ps.report.send.dry_run_log: 'Nada foi enviado. O relatório acima seria enviado para %{server}, com o seu registro em particular. Adicione --yes para enviá-lo.'
+ps.report.send.duplicate: 'Este relatório já foi enviado nesse dia: %{url}. Ele não é enviado de novo; exclua-o primeiro para enviá-lo outra vez.'
+ps.report.send.sent: 'Relatório enviado: %{url}'
+ps.report.send.code: 'Código de exclusão: %{code}'
+ps.report.send.code_label: 'Código de exclusão:'
+ps.report.send.address_label: 'Endereço público:'
+ps.report.send.copy: Copiar endereço
+ps.report.send.copy_code: Copiar código
+ps.report.send.copied: Copiado
+ps.report.send.open_page: Abrir
+ps.report.send.unrecorded: 'Não foi possível anotar o código na biblioteca; guarde-o você mesmo: %{error}'
+ps.report.send.log_attached: Registro anexado, em particular
+ps.report.send.log_failed: 'O relatório foi enviado, mas o registro não: %{error}'
+ps.report.send.sent_without_log: O relatório foi enviado, mas o registro não
+ps.report.send.none_sent: Nenhum relatório foi enviado a partir desta biblioteca
+ps.report.send.delete: Excluir relatório enviado
+ps.report.send.delete_dry_run: 'Nada foi excluído. O relatório %{id} seria excluído do servidor. Adicione --yes para excluí-lo.'
+ps.report.send.deleting: Excluindo…
+ps.report.send.deleted: 'Relatório %{id} excluído do servidor'
+ps.report.send.gone: 'O servidor não tem mais o relatório %{id}; ele foi removido da lista'
+ps.report.send.errors.address: 'O endereço do servidor de relatórios não é válido (%{address}): ele deve ser https://, ou http://127.0.0.1:PORTA / http://localhost:PORTA para desenvolvimento'
+ps.report.send.errors.network: 'Não foi possível se comunicar com o servidor de relatórios: %{error}'
+ps.report.send.errors.rejected: 'O servidor rejeitou o relatório (campo: regra): %{fields}'
+ps.report.send.errors.rate_limited.wait: 'Relatórios demais: o servidor pede que você espere %{seconds} s'
+ps.report.send.errors.rate_limited.later: 'Relatórios demais: tente novamente mais tarde'
+ps.report.send.errors.too_large: O relatório é grande demais para o servidor
+ps.report.send.errors.unsupported_type: O servidor não aceita este tipo de conteúdo
+ps.report.send.errors.status: 'O servidor respondeu com o status %{status}'
+ps.report.send.errors.answer: A resposta do servidor não é válida; nada foi armazenado
+ps.report.send.errors.not_found: O servidor não tem esse relatório, ou o código não corresponde
+ps.report.send.errors.conflict: Esse relatório já tem um registro anexado ou já foi resolvido
+ps.report.send.errors.unknown_report: 'Não há relatório %{id} na lista de relatórios enviados'
+ps.report.send.errors.registry: 'Não foi possível ler ou gravar a lista de relatórios enviados %{path}: %{error}'
+ps.defaults.title: Padrões para jogos novos
+ps.defaults.description: 'Com o que um jogo visto pela primeira vez começa: ele recebe uma cópia destes, uma única vez, e a partir daí as configurações dele são só dele. Alterá-los aqui não muda nenhum jogo que já tenha as suas configurações; para mudar um desses, use a página dele ou copie as configurações de outro jogo para ele.'
+ps.defaults.take_label: Tomar os padrões de um jogo
+ps.defaults.take: Usar as configurações dele
+ps.defaults.take_note: 'Copia tudo o que esse jogo tem (gráficos, teclado, layout do controle, opções online, extras) para os padrões; as pastas de mods e patches dele continuam sendo dele.'
+ps.defaults.confirm.title: Substituir os padrões?
+ps.defaults.confirm.body: 'Os padrões para jogos novos passam a ser uma cópia das configurações de %{game}. Os padrões atuais são salvos em backup antes.'
+ps.defaults.confirm.yes: Substituir os padrões
+ps.defaults.taken: 'Os padrões agora são uma cópia das configurações de %{game}'
+ps.defaults.online_title: Online para jogos novos
+ps.defaults.graphics_title: Gráficos para jogos novos
+ps.defaults.graphics_note: Estes são os padrões para jogos novos; jogos que já têm as suas configurações não os seguem.
+ps.defaults.read_error: 'Não foi possível preparar os padrões para jogos novos: %{error}'
+ps.defaults.save_error: 'Não foi possível salvar os padrões para jogos novos: %{error}'
+ps.defaults.older_port: 'Este port ainda lê as configurações compartilhadas: ele é anterior às configurações por jogo, então os jogos dele leem os arquivos compartilhados, nem os próprios nem estes padrões. Atualize o port para que estes valham.'
+ps.defaults.keyboard_title: Teclado para jogos novos
+ps.defaults.gamepad_title: Controle para jogos novos
+ps.per_game.title: Configurações deste jogo
+ps.per_game.description: 'Copiar, importar ou redefinir substitui as configurações deste jogo depois de perguntar, e guarda um backup das anteriores na pasta de backups da biblioteca. As configurações que todos os jogos compartilham (a conta shadNet, as pastas de dumps, o port em uso) nunca mudam aqui.'
+ps.per_game.copy_from: Copiar de outro jogo
+ps.per_game.copy: Copiar…
+ps.per_game.no_sources: Nenhum outro jogo tem configurações próprias ainda.
+ps.per_game.export: Exportar…
+ps.per_game.import: Importar…
+ps.per_game.reset: Redefinir para os padrões…
+ps.per_game.export_title: Exportar as configurações deste jogo
+ps.per_game.import_title: Importar as configurações de um jogo
+ps.per_game.categories.all: Todas as configurações
+ps.per_game.categories.graphics: Gráficos
+ps.per_game.categories.keyboard: Teclado
+ps.per_game.categories.gamepad: Controle
+ps.per_game.categories.mods: Mods e patches
+ps.per_game.categories.online: Online
+ps.per_game.categories.extras: Extras
+ps.per_game.confirm_copy.title: Substituir as configurações deste jogo?
+ps.per_game.confirm_copy.body: '%{part} deste jogo passam a ser uma cópia das de %{game}. As atuais são salvas em backup antes.'
+ps.per_game.confirm_copy.yes: Copiar
+ps.per_game.confirm_reset.title: Redefinir este jogo para os padrões?
+ps.per_game.confirm_reset.body: 'As configurações dele passam a ser uma cópia dos padrões para jogos novos; os mods e patches dele continuam como estão. As configurações atuais são salvas em backup antes.'
+ps.per_game.confirm_reset.yes: Redefinir
+ps.per_game.confirm_import.title: Importar estas configurações?
+ps.per_game.confirm_import.body: 'As configurações deste jogo passam a ser as do arquivo. As atuais são salvas em backup antes.'
+ps.per_game.confirm_import.yes: Importar
+ps.per_game.confirm_import.other_body: 'O arquivo contém as configurações de %{game}, não as deste jogo. Aplicá-las a este jogo mesmo assim? As atuais são salvas em backup antes.'
+ps.per_game.confirm_import.other_yes: Aplicar a este jogo
+ps.per_game.copied: 'Copiado de %{game}'
+ps.per_game.reset_done: Redefinido para os padrões
+ps.per_game.imported: Importado
+ps.per_game.exported: 'Exportado para %{path}'
+ps.per_game.done_with_backup: '%{done}. As configurações anteriores estão em %{path}'
+ps.per_game.apply_all_label: Aplicar as configurações deste jogo a todos os outros jogos
+ps.per_game.apply_all: Aplicar a todos…
+ps.per_game.no_destinations: Nenhum outro jogo deste port na biblioteca.
+ps.per_game.planning: Verificando quais jogos funcionam online…
+ps.per_game.confirm_all.title: Aplicar a todos os outros jogos?
+ps.per_game.confirm_all.body: '%{part} de %{count} outros jogos passam a ser uma cópia das deste jogo. As configurações atuais de cada um são salvas em backup antes; as pastas de mods e patches deles continuam sendo deles.'
+ps.per_game.confirm_all.without_online: '%{count} deles não funcionam online, então não recebem configurações online.'
+ps.per_game.confirm_all.yes: 'Aplicar a %{count} jogos'
+ps.per_game.applied_all: 'Aplicado a %{count} jogos. As configurações anteriores estão em %{path}'
+ps.per_game.applied_some: 'Aplicado a %{count} jogos; %{failed} não puderam ser alterados (%{title}: %{error})'
+ps.per_game.nothing_to_apply: 'Nenhum dos outros jogos funciona online, então não há nada a aplicar'
+ps.per_game.forget: Esquecer as configurações deste jogo…
+ps.per_game.confirm_forget.title: Esquecer as configurações deste jogo?
+ps.per_game.confirm_forget.body: 'As configurações dele e o ini do port são removidos após um backup, e na próxima vez que você o abrir ou jogar, ele começa de novo a partir dos padrões para jogos novos. Os mods e patches dele permanecem.'
+ps.per_game.confirm_forget.yes: Esquecer
+ps.per_game.forgotten: 'Configurações esquecidas: ele assume os padrões na próxima vez que for usado'
+ps.per_game.copy_entry: Copiar configurações de outro jogo…
+ps.per_game.copy_entry_extras: Copiar extras de outro jogo…
+ps.per_game.close: Fechar
+ps.per_game.errors.older_port: 'O port em uso é anterior às configurações por jogo: todos os jogos compartilham um único conjunto. Atualize o port para dar a cada jogo o seu.'
+ps.per_game.errors.no_settings: '%{title} ainda não tem configurações próprias: elas são criadas na primeira vez que a página dele abre ou que ele é jogado'
+ps.per_game.errors.same: A origem e o destino são o mesmo
+ps.per_game.errors.other_title: 'O arquivo contém as configurações de %{file}, não de %{title}'
+ps.per_game.errors.io: 'Não foi possível ler ou gravar as configurações: %{error}'
+ps.per_game.refused.not_export: O arquivo não é de configurações de um jogo exportadas pelo decanter
+ps.per_game.refused.version: 'O arquivo foi gravado por um decanter mais novo (formato %{version})'
+ps.per_game.refused.too_large: 'O arquivo é maior que %{bytes} bytes, mais do que as configurações de qualquer jogo'
+ps.per_game.refused.title_id: '%{title} não é um title id'
+ps.per_game.refused.unknown_key: '%{key} não é uma configuração que um jogo tenha'
+ps.per_game.refused.shared_key: '%{key} é compartilhada por todos os jogos: altere em PS › Configurações'
+ps.per_game.refused.value: '%{key} não aceita esse valor'
+ps.per_game.refused.outside: '%{key} indica uma pasta fora da biblioteca'
+ps.per_game.refused.too_many: O arquivo tem mais entradas do que as configurações de qualquer jogo
+ps.per_game.refused.name: O nome de um mod ou patch no arquivo não é um que uma pasta possa ter
+ps.per_game.refused.not_listed: '%{key} não é uma das opções que o port lista para este jogo'
+ps.settings_cli.no_titles: Nenhum jogo tem configurações próprias ainda
+ps.settings_cli.empty: '%{title} não define nada: todas as configurações estão no padrão'
+ps.settings_cli.unset: '%{key} não está definida: vale o padrão'
+ps.settings_cli.set: '%{key} salva para %{title}'
+ps.settings_cli.copy_dry_run: 'Copiaria %{categories} de %{from} sobre %{title}, após um backup; execute de novo com --yes para fazer isso'
+ps.settings_cli.copied: 'Copiado %{categories} de %{from} sobre %{title}'
+ps.settings_cli.reset_dry_run: 'Redefiniria %{title} para os padrões de jogos novos, mantendo os mods e patches dele, após um backup; execute de novo com --yes para fazer isso'
+ps.settings_cli.reset: '%{title} redefinido para os padrões de jogos novos'
+ps.settings_cli.exported: '%{title} exportado para %{path}'
+ps.settings_cli.import_dry_run: 'O arquivo passou em todas as verificações; execute de novo com --yes para substituir as configurações de %{title} por ele, após um backup'
+ps.settings_cli.imported: 'Configurações importadas para %{title}'
+ps.settings_cli.backup: 'Configurações anteriores salvas em backup em %{path}'
+ps.settings_cli.forget_dry_run: 'Esqueceria as configurações de %{title} (as configurações e o ini do port dele, após um backup; os mods e patches dele permanecem), de modo que ele assuma os padrões de jogos novos na próxima vez que for usado; execute de novo com --yes para fazer isso'
+ps.settings_cli.forgotten: 'Configurações de %{title} esquecidas: ele assume os padrões de jogos novos na próxima vez que for usado'
+ps.settings_cli.copy_all_dry_run: 'Copiaria %{categories} de %{from} sobre %{count} outros jogos, cada um após um backup e nunca as pastas de mods e patches deles; execute de novo com --yes para fazer isso. Os jogos:'
+ps.settings_cli.copy_all: 'Copiando %{categories} de %{from} sobre %{count} outros jogos'
+ps.settings_cli.copy_all_without_online: 'Sem online, então não recebem configurações online: %{titles}'
+ps.settings_cli.copy_all_done: '%{title}: concluído; configurações anteriores salvas em backup em %{path}'
+ps.settings_cli.copy_all_failed: '%{title}: não alterado: %{error}'
+ps.settings_cli.shape_only: '%{key} foi verificada só pelo formato: o port lista as opções próprias de um jogo, não as outras configurações dele'
+ps.settings_cli.shape_only_unlisted: '%{key} foi verificada só pelo formato: o port não forneceu uma lista das opções deste jogo (não compilado aqui, ou antigo demais para listá-las)'
+ps.settings_cli.import_unlisted: 'O port não lista estas opções para este jogo; elas são importadas, mas o port as ignora: %{keys}'
+ps.settings_cli.import_shape_only: 'O port não forneceu uma lista das opções deste jogo, então as do arquivo foram verificadas só pelo formato'

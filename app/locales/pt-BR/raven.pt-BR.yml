@@ -1,0 +1,71 @@
+raven.experimental: Experimental
+raven.description: 'O Raven é um runtime de Windows para Linux em estágio inicial (useraven.org). O decanter o compila na sua biblioteca a partir de um commit fixo, ou do commit mais recente do branch dele quando você pedir, e o usa para os programas do Windows que você adicionar aqui. Muitos programas ainda não iniciam: por enquanto ele está aqui para você experimentar.'
+raven.license: 'O Raven é software livre (GPL-3.0 ou posterior). Ele não vem com o decanter; o código dele é baixado do GitHub quando é compilado.'
+raven.build.title: Compilação
+raven.build.absent: O Raven não está compilado.
+raven.build.built: 'Executa no commit %{commit} · %{size}'
+raven.build.built_measuring: 'Executa no commit %{commit}'
+raven.build.build: Compilar…
+raven.build.remove: Remover
+raven.build.removing: Removendo o Raven…
+raven.build.cancel: Cancelar
+raven.build.stopped: Compilação cancelada.
+raven.build.failed: 'A compilação falhou: %{error}'
+raven.build.open_log: Abrir o registro da compilação
+raven.build.stage.starting: Iniciando…
+raven.build.stage.sources: Baixando o código do Raven…
+raven.build.stage.downloading: 'Baixando as ferramentas de compilação: %{received}'
+raven.build.stage.downloading_total: 'Baixando as ferramentas de compilação: %{received} de %{total}'
+raven.build.stage.unpacking: Descompactando…
+raven.build.stage.configuring: Preparando a compilação…
+raven.build.stage.compiling: 'Compilando: etapa %{done} de %{total}'
+raven.confirm.title: Compilar o Raven?
+raven.confirm.repo: 'Repositório: %{repo}'
+raven.confirm.commit: 'Commit: %{commit}'
+raven.confirm.text: 'O decanter vai baixar do GitHub o código do Raven neste commit (cerca de 18 MB), as bibliotecas necessárias para compilá-lo (do Nix, se o seu sistema não as tiver) e os dados que a compilação baixa, e vai compilá-lo na sua biblioteca. Leva alguns minutos. A pasta de compilação ocupa até cerca de 5 GB e o runtime cerca de 140 MB. É código de terceiros que o decanter não revisa.'
+raven.confirm.yes: Baixar e compilar
+raven.confirm.no: Cancelar
+raven.confirm_remove.title: Remover o Raven?
+raven.confirm_remove.body_size: 'Os builds do Raven e a toolchain dele serão removidos da sua biblioteca, liberando %{size}. Seus programas do Windows continuam na lista; compilar o Raven de novo baixa tudo outra vez.'
+raven.confirm_remove.body: 'Os builds do Raven e a toolchain dele serão removidos da sua biblioteca. Seus programas do Windows continuam na lista; compilar o Raven de novo baixa tudo outra vez.'
+raven.confirm_remove.confirm: Remover o Raven
+raven.programs.title: Programas do Windows
+raven.programs.add: Adicionar…
+raven.programs.pick_title: Escolha um programa do Windows
+raven.programs.filter: Programas do Windows
+raven.programs.drop_hint: Você também pode soltar um .exe nesta seção.
+raven.programs.drop_hover: Solte para adicionar o programa ao Raven
+raven.programs.empty: Você ainda não adicionou nenhum programa.
+raven.programs.added: 'Adicionado: %{name}'
+raven.programs.run: Executar
+raven.programs.stop: Parar
+raven.programs.remove: Remover
+raven.programs.open_log: Registro
+raven.programs.needs_build: Compile o Raven para executá-lo.
+raven.programs.failed: 'A última execução não terminou bem. Final do registro:'
+raven.errors.not_windows: não é um programa do Windows
+raven.errors.no_library: A biblioteca ativa não está disponível.
+raven.errors.save: 'Não foi possível adicioná-lo: %{error}'
+raven.errors.remove: 'Não foi possível removê-lo: %{error}'
+raven.errors.remove_running: Pare primeiro os programas do Raven.
+raven.errors.remove_build: 'Não foi possível remover o Raven: %{error}'
+raven.errors.not_pinned: Esta versão do decanter não tem um commit do Raven fixado.
+raven.build.building: 'Compilando o commit %{commit}: %{stage}'
+raven.build.build_pinned: Compilar o commit fixado…
+raven.build.use_pinned: Voltar ao commit fixado
+raven.update.check: Verificar atualizações
+raven.update.checking: Verificando…
+raven.update.newer: 'Commit mais recente de %{branch}: %{commit} (%{repo})'
+raven.update.up_to_date: 'O Raven executa o commit mais recente de %{branch} (%{commit}).'
+raven.update.check_error: 'Não foi possível consultar o repositório do Raven: %{error}'
+raven.update.build: Compilar %{commit}…
+raven.confirm.unpinned: 'Este commit não é o que o decanter fixa e não foi testado com ele: pode não compilar ou rodar pior. Você pode voltar ao commit fixado a qualquer momento.'
+raven.builds.title: Outros builds
+raven.builds.pinned: Fixado pelo decanter
+raven.builds.unpinned: Mais novo que o fixado, compilado a partir do branch
+raven.builds.use: Usar
+raven.builds.delete: Excluir
+raven.confirm_delete.title: Excluir este build?
+raven.confirm_delete.body: 'O build do commit %{commit} será removido da sua biblioteca. Compilar esse commit de novo o compila do zero.'
+raven.confirm_delete.confirm: Excluir o build %{commit}
+raven.errors.use: 'Não foi possível trocar para esse build: %{error}'

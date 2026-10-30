@@ -1,0 +1,41 @@
+chrome.window.minimize: Minimizar
+chrome.window.maximize: Maximizar
+chrome.window.close: Fechar
+chrome.nav.library: Biblioteca
+chrome.nav.storage: Armazenamento
+chrome.nav.downloads: Downloads
+chrome.downbar.downloading: 'Baixando: %{title}'
+chrome.profiles.create: Criar perfil
+chrome.profiles.elsewhere: '%{name} — %{path}'
+chrome.profiles.busy: '%{name} — %{path} (feche os jogos e as instalações em andamento antes)'
+chrome.profiles.unavailable: '%{path} (indisponível)'
+chrome.profile_form.title: NOVA PESSOA
+chrome.profile_form.name: Nome do perfil
+chrome.profile_form.library: 'Onde fica a biblioteca deste perfil:'
+chrome.profile_form.pick: Escolher pasta
+chrome.profile_form.pick_title: Escolha onde fica a biblioteca deste perfil
+chrome.profile_form.create: Criar
+chrome.onboarding.title: Bem-vindo ao Decanter
+chrome.onboarding.intro: Crie um perfil para começar — você poderá adicionar contas GOG a ele depois (e outras lojas no futuro) em Configurações.
+chrome.onboarding.library: 'Onde fica a biblioteca deste perfil (instalações, prefixos do Proton):'
+chrome.onboarding.library_native: 'Onde fica a biblioteca deste perfil (instalações):'
+chrome.tray.show: Mostrar o Decanter
+chrome.tray.quit: Sair
+chrome.unavailable.title: Biblioteca indisponível
+chrome.unavailable.body: 'Não foi possível encontrar a biblioteca em %{path}. Se ela estiver em um disco externo, conecte-o e abra o Decanter novamente, ou escolha outra biblioteca.'
+chrome.unavailable.use: Usar %{path}
+chrome.unavailable.pick: Escolher outra pasta
+chrome.unavailable.pick_title: Escolha a pasta da biblioteca
+chrome.passphrase.unlock_title: Desbloquear credenciais salvas
+chrome.passphrase.unlock_body: Não há um chaveiro do sistema disponível, então suas sessões da GOG e outras credenciais ficam em um arquivo neste computador, criptografado com a sua frase secreta. Digite-a para usá-las durante esta sessão.
+chrome.passphrase.unlock: Desbloquear
+chrome.passphrase.create_title: Proteja suas credenciais
+chrome.passphrase.create_body: 'Não há um chaveiro do sistema disponível. Escolha uma frase secreta para guardar suas sessões da GOG e outras credenciais em um arquivo criptografado neste computador; o Decanter vai pedi-la uma vez por sessão. Se você pular esta etapa, elas não serão salvas e você terá que fazer login de novo da próxima vez.'
+chrome.passphrase.create: Criar
+chrome.passphrase.placeholder: Frase secreta
+chrome.passphrase.repeat: Repita a frase secreta
+chrome.passphrase.no_recovery: Se você esquecê-la, as credenciais salvas não poderão ser recuperadas; você terá que fazer login de novo.
+chrome.passphrase.later: Agora não
+chrome.passphrase.mismatch: As duas frases secretas não coincidem.
+chrome.passphrase.wrong: Frase secreta incorreta.
+chrome.passphrase.failed: 'Não foi possível abrir o arquivo de credenciais: %{error}'

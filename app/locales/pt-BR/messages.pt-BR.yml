@@ -1,0 +1,12 @@
+messages.errors.not_installed: o jogo não consta mais como instalado
+messages.errors.create_dir: 'criando %{path}: %{error}'
+messages.errors.prefix: não foi possível localizar o prefixo do jogo
+messages.errors.user_folders: não foi possível encontrar as pastas de usuário do Windows
+messages.errors.no_prefix: este jogo não tem prefixo
+messages.errors.delete_prefix: 'excluindo o prefixo: %{error}'
+messages.errors.db_open: 'abrindo o banco de dados: %{error}'
+messages.errors.no_library: ainda não há uma biblioteca
+messages.errors.library_unavailable: a biblioteca em %{path} não está disponível
+messages.errors.save_libraries: 'salvando a lista de bibliotecas: %{error}'
+messages.errors.save_manifest: 'salvando o manifesto: %{error}'
+messages.errors.install_dir: diretório de instalação inválido

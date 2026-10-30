@@ -1,0 +1,36 @@
+downloads.title: Downloads
+downloads.empty: Nenhum download em andamento.
+downloads.eta: 'faltam %{left}'
+downloads.dismiss: Dispensar
+downloads.cancelling: Cancelando e excluindo o que foi baixado…
+downloads.cancel_confirm: 'Cancelar o download de %{title}? Os %{size} já baixados serão excluídos.'
+downloads.cancel_confirm_empty: Cancelar o download de %{title}?
+downloads.cancel_delete: Cancelar e excluir
+downloads.keep: Continuar baixando
+downloads.pause: Pausar
+downloads.resume: Retomar
+downloads.pause_all: Pausar tudo
+downloads.resume_all: Retomar tudo
+downloads.delete: Excluir
+downloads.stale: 'Download pausado há %{days} dias · %{size}'
+downloads.elsewhere: 'Em andamento em outro processo do Decanter · %{done} de %{total}'
+downloads.kind.dlc: DLC
+downloads.kind.update: Atualização
+downloads.kind.branch_switch: Troca de branch
+downloads.kind.rollback: Troca de versão
+downloads.kind.repair: Reparo
+downloads.paused: 'Pausado · %{done} de %{total}'
+downloads.paused_unsized: 'Pausado · %{done}'
+downloads.paused_reason.user: Você pausou
+downloads.paused_reason.network: 'Sem conexão; ele continua sozinho quando a rede voltar'
+downloads.paused_reason.app_closed: O Decanter foi fechado
+downloads.paused_reason.closed_unexpectedly: O Decanter foi fechado inesperadamente
+downloads.paused_reason.disk_full: Disco cheio
+downloads.paused_reason.disk_full_at: 'Disco cheio em %{path}'
+downloads.paused_reason.disk_full_short: 'Disco cheio: faltam mais %{short} de espaço livre em %{path}'
+downloads.paused_reason.disk_full_update: 'Disco cheio: a atualização precisa de %{needed} livres em %{path} durante o download; faltam %{short}'
+downloads.paused_reason.library_unavailable: A pasta da biblioteca está indisponível
+downloads.paused_reason.library_unavailable_at: 'A biblioteca %{path} está indisponível'
+downloads.reused: 'A GOG publicou outro build enquanto o download estava parado: %{kept} dos %{had} já baixados foram reaproveitados'
+downloads.verify_offer: '%{title} foi retomado depois que o Decanter foi fechado inesperadamente. Verificar os arquivos dele?'
+downloads.verify_now: Verificar agora

@@ -1,0 +1,6 @@
+closing.shortcut_name: Fechar o jogo em execução
+closing.notice.title: '%{name} está prestes a fechar'
+closing.notice.body: 'Ele será fechado em %{seconds} segundos. Para cancelar, segure Select + Start novamente ou pressione o atalho de teclado de novo.'
+closing.notice.body_pad: 'Ele será fechado em %{seconds} segundos. Para cancelar, segure Select + Start novamente.'
+closing.notice.body_keyboard: 'Ele será fechado em %{seconds} segundos. Para cancelar, pressione o atalho de teclado de novo.'
+closing.notice.cancelled: 'Fechamento cancelado: %{name} continua aberto'

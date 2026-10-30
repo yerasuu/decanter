@@ -1,0 +1,52 @@
+storage.title: Armazenamento
+storage.add: Adicionar pasta de biblioteca
+storage.add_title: Escolha onde guardar os jogos
+storage.stats.used.one: usado por 1 jogo
+storage.stats.used.other: usado por %{count} jogos
+storage.stats.folders.one: pasta de biblioteca
+storage.stats.folders.other: pastas de biblioteca
+storage.folder.primary: Principal
+storage.folder.extra: Extra
+storage.folder.offline: Disco não conectado
+storage.folder.used.one: '%{used} usados por 1 jogo'
+storage.folder.used.other: '%{used} usados por %{count} jogos'
+storage.folder.free: '%{free} livres de %{total}'
+storage.folder.remove: Remover
+storage.folder.remove_hint: Deixa de usar esta pasta; o que estiver no disco continua lá
+storage.folder.remove_blocked: 'Ela tem jogos: desinstale-os ou mova-os antes'
+storage.move_to: Mover para…
+storage.moving.started: Movendo...
+storage.moving.progress: Movendo %{done} de %{total}
+storage.errors.nested: '%{path} já faz parte da biblioteca (%{folder})'
+storage.errors.add: 'salvando a pasta: %{error}'
+storage.errors.remove: 'removendo a pasta: %{error}'
+storage.errors.hosted: 'Este jogo fica no prefixo do launcher dele: mova o launcher e o jogo vai junto.'
+storage.errors.running: 'O jogo está em execução: feche-o antes de movê-lo.'
+storage.errors.shared: 'Outra conta compartilha estes arquivos: eles não podem ser movidos isoladamente.'
+storage.errors.exists: '%{path} já existe na pasta de destino.'
+storage.errors.manifest: 'movendo o registro de %{game}: %{error}'
+storage.legacy.title: Dados antigos do Decanter
+storage.legacy.body: O Decanter agora guarda seus dados na biblioteca; %{path} só continua como uma cópia de como as coisas eram.
+storage.legacy.remove: Remover dados antigos
+storage.legacy.confirm: Remover? Isso não pode ser desfeito
+storage.errors.legacy_busy: 'Outro Decanter ou um jogo que pode estar usando esses dados está em execução: feche-os primeiro.'
+storage.errors.legacy: 'removendo os dados antigos: %{error}'
+storage.cache.title: Cache
+storage.unfinished.title: Downloads incompletos
+storage.cache.pick_title: Escolha onde esta pasta guarda o cache dela
+storage.cache.empty: vazio
+storage.cache.default: Dentro da pasta · %{size}
+storage.cache.custom: Escolhido por você · %{size}
+storage.cache.reset: Redefinir
+storage.cache.reset_hint: Voltar a guardar o cache dentro desta pasta.
+storage.cache.change: Alterar…
+storage.cache.change_hint: Os caches de shaders dos jogos desta pasta, de PC e de PS, ficam aqui. Em um disco rápido, os jogos carregam mais depressa.
+storage.cache.errors.save: 'Não foi possível salvar o local do cache: %{error}'
+storage.cache.errors.not_dir: '%{path} não é uma pasta.'
+storage.cache.errors.inside_games: '%{path} está dentro dos arquivos dos jogos: escolha outra pasta.'
+storage.cache.errors.not_writable: 'Não é possível gravar em %{path}: %{error}'
+storage.stray.note: 'Sem registro de download, então não pode ser retomado · %{size}'
+storage.stray.delete: Excluir
+storage.stray.keep: Manter
+storage.stray.confirm: 'Excluir o download incompleto %{name} (%{size})? Ele não tem registro de download, então não pode ser retomado.'
+storage.errors.stray: 'excluindo o download incompleto: %{error}'
