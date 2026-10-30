@@ -13,6 +13,8 @@ use decanter_report::Identity;
 /// Folders every library has, which name nothing about whose it is.
 const SHARED_FOLDERS: [&str; 3] = ["decanter", "steamapps", "psport"];
 
+const MIN_ACCOUNT_ID: usize = 6;
+
 pub fn collect() -> Identity {
     let mut identity = Identity::default();
     for user in ["USER", "USERNAME"].into_iter().filter_map(|name| env::var(name).ok()) {
@@ -88,9 +90,15 @@ fn profiles_and_accounts(identity: &mut Identity) {
     };
     for profile in profiles {
         match db.accounts_in_profile(&profile.id) {
-            Ok(accounts) => identity
-                .account_names
-                .extend(accounts.into_iter().map(|account| account.name)),
+            Ok(accounts) => {
+                for account in accounts {
+                    identity.account_names.push(account.name);
+                    // A short id would hide every number that holds it; storefront ids are long.
+                    if account.id.len() >= MIN_ACCOUNT_ID {
+                        identity.account_names.push(account.id);
+                    }
+                }
+            }
             Err(err) => tracing::warn!(%err, "could not list a profile's accounts for the report's identity"),
         }
         identity.extra.push(profile.name);

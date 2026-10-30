@@ -129,13 +129,19 @@ Neither the code nor the report is ever written to decanter's logs.
 
 ### The optional log
 
-A checkbox, **Adjuntar el registro completo para quien mantiene (no se publica)**, off by default,
-sends the failure's run log after the report was accepted, with the report's delete code. Before
-it leaves, the log is passed through the identity list (user, host, home folders, accounts,
-profile names: `decanter_report::scrub_log`) and cut to its last 5 MiB. That list is best effort:
-the log may hold names it does not know, which is why the file is private. A `PS_FAULT_DUMP` fault
-dump (raw bytes of guest memory, which can hold session data) is never in it: `scrub_log` drops
-every `Fault dump` block, and the variable is for the player's own debugging, not for reports. The
+A checkbox, **Adjuntar el registro completo para quien mantiene (no se publica)**, off by
+default, sends the failure's run log after the report was accepted, with the report's delete
+code. When the box is ticked the log is scrubbed (`app/src/report/scrub.rs`): the identity list
+(user, host, home folders, account names and ids, profile names, NPID) through
+`decanter_report::Guard`, then `decanter_core::redact::outgoing` (bearer tokens, JWTs, secret
+`name=value`, URL userinfo and queries, `npid=`/`accountId=` values and friends' NPIDs, IPv4,
+IPv6 and MAC addresses but loopback and wildcards), and cut to its last 5 MiB. The panel shows
+how many names, values and addresses were left out before **Enviar informe** is enabled, and
+the bytes counted are the ones sent. The copy buttons of Fallos and of a job's log use the same
+scrub. It is best effort: the log may hold names it does not know, which is why the file is
+private. A `PS_FAULT_DUMP` fault dump (raw bytes of guest memory, which can hold session data)
+is never in it: the scrub drops every `Fault dump` block, and the variable is for the player's
+own debugging, not for reports. The
 server stores it encrypted, only whoever maintains the server can read it, there is one per
 report, and it is deleted when the report is resolved or deleted. If the log cannot be attached
 the report stays sent and the player is told so.

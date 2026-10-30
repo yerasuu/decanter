@@ -50,6 +50,8 @@ const GENERIC_FOLDERS: &[&str] = &[
     "home", "users", "user", "root", "mnt", "media", "run", "var", "usr", "opt", "data",
 ];
 
+/// The folded identity strings, built once and matched against every text a report or a log
+/// that leaves the machine holds.
 pub struct Guard {
     needles: Vec<Vec<char>>,
 }
@@ -190,9 +192,15 @@ impl Guard {
     /// `smith`). Applied to input text before it is matched against a template.
     #[must_use]
     pub fn scrub<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        self.scrub_counted(text).0
+    }
+
+    /// [`Self::scrub`] and how many tokens it replaced.
+    #[must_use]
+    pub fn scrub_counted<'a>(&self, text: &'a str) -> (Cow<'a, str>, usize) {
         let mut hits = self.ranges(text);
         if hits.is_empty() {
-            return Cow::Borrowed(text);
+            return (Cow::Borrowed(text), 0);
         }
         for hit in &mut hits {
             while let Some(c) = text.get(..hit.start).and_then(|head| head.chars().next_back())
@@ -206,9 +214,14 @@ impl Guard {
                 hit.end += c.len_utf8();
             }
         }
+        hits.retain(|hit| !matches!(text.get(hit.start..hit.end), Some("redacted" | "address")));
+        if hits.is_empty() {
+            return (Cow::Borrowed(text), 0);
+        }
         hits.sort_by_key(|hit| hit.start);
         let mut out = String::with_capacity(text.len());
         let mut at = 0;
+        let mut count = 0;
         for hit in hits {
             if hit.start < at {
                 at = at.max(hit.end);
@@ -217,9 +230,10 @@ impl Guard {
             out.push_str(text.get(at..hit.start).unwrap_or_default());
             out.push_str("<redacted>");
             at = hit.end;
+            count += 1;
         }
         out.push_str(text.get(at..).unwrap_or_default());
-        Cow::Owned(out)
+        (Cow::Owned(out), count)
     }
 
     fn opt(&self, value: &mut Option<String>) {

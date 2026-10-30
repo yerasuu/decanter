@@ -12,7 +12,7 @@ use rust_i18n::t;
 use crate::i18n::Text;
 use crate::report::send::{self, Deleted, Server, Submitted};
 use crate::report::sent::Entry;
-use crate::report::{self, Built};
+use crate::report::{self, Attachment, Built};
 use crate::theme;
 use crate::widgets::{ButtonKind, button, checkbox};
 
@@ -58,6 +58,14 @@ enum Send {
     Done(Box<Done>),
 }
 
+/// The log as it would be attached, scrubbed when the player ticks it so the counts are shown
+/// before anything is sent, and what is sent is exactly what was counted.
+enum Prepared {
+    Cleaning,
+    Ready(Attachment),
+    Failed(Text),
+}
+
 /// What the player is shown once a report is out: its address and delete code, and how the rest of
 /// the send went.
 struct Done {
@@ -81,6 +89,7 @@ pub struct ReportView {
     /// `Ok(None)` when the setting turned sending off: the report can be read and saved, not sent.
     server: Result<Option<Server>, Text>,
     attach_log: bool,
+    attachment: Option<Prepared>,
     confirming: bool,
     send: Send,
 }
@@ -109,6 +118,7 @@ impl ReportView {
             saved: None,
             server: send::configured().map_err(|err| err.text()),
             attach_log: false,
+            attachment: None,
             confirming: false,
             send: Send::Idle,
         }
@@ -130,18 +140,52 @@ impl ReportView {
         .detach();
     }
 
+    fn toggle_log(&mut self, cx: &mut Context<Self>) {
+        self.attach_log = !self.attach_log;
+        self.confirming = false;
+        cx.notify();
+        let Some(log) = self.failure.log.clone() else {
+            return;
+        };
+        if !self.attach_log || matches!(self.attachment, Some(Prepared::Cleaning | Prepared::Ready(_))) {
+            return;
+        }
+        self.attachment = Some(Prepared::Cleaning);
+        let task = cx.background_spawn(async move { report::attachment(&log).map_err(|err| err.text()) });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.attachment = Some(match result {
+                    Ok(attachment) => Prepared::Ready(attachment),
+                    Err(text) => Prepared::Failed(text),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The log is asked for and not scrubbed yet, or could not be: nothing is sent until it is.
+    const fn is_log_pending(&self) -> bool {
+        self.attach_log && self.failure.log.is_some() && !matches!(self.attachment, Some(Prepared::Ready(_)))
+    }
+
     /// Only reached from the confirmation, so one press of «Sí, enviar» is one send.
     fn submit(&mut self, cx: &mut Context<Self>) {
         let (Build::Ready(built), Ok(Some(server))) = (&self.build, &self.server) else {
             return;
         };
+        let log = match &self.attachment {
+            Some(Prepared::Ready(attachment)) if self.attach_log => Some(attachment.bytes.clone()),
+            _ if self.is_log_pending() => return,
+            _ => None,
+        };
         let (built, server) = (built.clone(), server.clone());
-        let log = self.attach_log.then(|| self.failure.log.clone()).flatten();
         self.confirming = false;
         self.send = Send::Sending;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let result = send::submit(&built, &server, log.as_deref()).await;
+            let result = send::submit(&built, &server, log).await;
             let _ = this.update(cx, |this, cx| {
                 this.send = match result {
                     Ok(Submitted::Duplicate(earlier)) => Send::Duplicate(earlier.url),
@@ -226,21 +270,27 @@ impl ReportView {
                 has_log && matches!(self.send, Send::Idle | Send::Failed(_) | Send::Duplicate(_)),
                 |controls| {
                     let checked = self.attach_log;
-                    controls.child(
-                        div()
-                            .id("ps-report-attach")
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .cursor_pointer()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.attach_log = !checked;
-                                this.confirming = false;
-                                cx.notify();
+                    controls
+                        .child(
+                            div()
+                                .id("ps-report-attach")
+                                .flex()
+                                .items_center()
+                                .gap_3()
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, _, cx| this.toggle_log(cx)))
+                                .child(checkbox(checked))
+                                .child(div().min_w_0().child(t!("ps.report.attach_log"))),
+                        )
+                        .when(checked, |controls| {
+                            controls.children(self.attachment.as_ref().map(|prepared| match prepared {
+                                Prepared::Cleaning => theme::muted(t!("ps.report.cleaning")),
+                                Prepared::Ready(attachment) => {
+                                    theme::muted(attachment.cleaned.text("ps.report.cleaned"))
+                                }
+                                Prepared::Failed(text) => theme::error(text),
                             }))
-                            .child(checkbox(checked))
-                            .child(div().min_w_0().child(t!("ps.report.attach_log"))),
-                    )
+                        })
                 },
             )
             .when(idle, |controls| controls.child(theme::muted(t!("ps.report.privacy"))))
@@ -259,11 +309,13 @@ impl ReportView {
                             "ps-report-send",
                             ButtonKind::Primary,
                             t!("ps.report.send.button"),
-                            false,
+                            self.is_log_pending(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.confirming = true;
-                            cx.notify();
+                            if !this.is_log_pending() {
+                                this.confirming = true;
+                                cx.notify();
+                            }
                         })),
                     ),
                 )

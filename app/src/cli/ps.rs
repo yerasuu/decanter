@@ -270,6 +270,17 @@ async fn send_report(
         let path = report::save(built, Some(out)).map_err(|err| anyhow::anyhow!("{}", err.text()))?;
         println!("{}", Text::new("ps.report.saved").arg("path", path.display()));
     }
+    let attachment = match log {
+        Some(log) => {
+            let log = log.to_owned();
+            let attachment = tokio::task::spawn_blocking(move || report::attachment(&log))
+                .await?
+                .map_err(|err| anyhow::anyhow!("{}", err.text()))?;
+            println!("{}", attachment.cleaned.text("ps.report.cleaned"));
+            Some(attachment.bytes)
+        }
+        None => None,
+    };
     if !yes {
         let key = if log.is_some() {
             "ps.report.send.dry_run_log"
@@ -280,7 +291,7 @@ async fn send_report(
         println!("{}", Text::new("ps.report.privacy"));
         return Ok(());
     }
-    match send::submit(built, server, log)
+    match send::submit(built, server, attachment)
         .await
         .map_err(|err| anyhow::anyhow!("{}", err.text()))?
     {

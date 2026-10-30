@@ -9,6 +9,7 @@
 
 mod host;
 mod identity;
+pub mod scrub;
 pub mod send;
 pub mod sent;
 
@@ -24,6 +25,7 @@ use decanter_report::sources::game_log::GameLog;
 use decanter_report::{PsportInput, Rejection, Report, decanter_report, fingerprint, psport_report};
 
 use crate::i18n::Text;
+use scrub::{Cleaned, Scrubber};
 
 /// A run's log is read up to here; a report only draws from the lines it knows, and a longer
 /// file is a runaway output.
@@ -64,8 +66,16 @@ pub enum Error {
     Write { path: PathBuf, err: io::Error },
 }
 
+/// The private attachment as it goes out, with what was cleaned from it so the player is told before
+/// sending.
+#[derive(Clone)]
+pub struct Attachment {
+    pub bytes: Vec<u8>,
+    pub cleaned: Cleaned,
+}
+
 /// The private attachment: the failure's run log, scrubbed and cut to its last [`send::MAX_ATTACHMENT`] bytes.
-pub fn attachment(log: &Path) -> Result<Vec<u8>, Error> {
+pub fn attachment(log: &Path) -> Result<Attachment, Error> {
     let tail = || -> io::Result<Vec<u8>> {
         let mut file = fs::File::open(log)?;
         let len = file.metadata()?.len();
@@ -79,12 +89,15 @@ pub fn attachment(log: &Path) -> Result<Vec<u8>, Error> {
         err,
     })?;
     let text = String::from_utf8_lossy(&bytes);
-    let scrubbed = decanter_report::scrub_log(&identity::collect(), &text);
+    let (scrubbed, cleaned) = Scrubber::collect().log(&text);
     let mut start = scrubbed.len().saturating_sub(send::MAX_ATTACHMENT);
     while !scrubbed.is_char_boundary(start) {
         start += 1;
     }
-    Ok(scrubbed.into_bytes().split_off(start))
+    Ok(Attachment {
+        bytes: scrubbed.into_bytes().split_off(start),
+        cleaned,
+    })
 }
 
 impl Error {

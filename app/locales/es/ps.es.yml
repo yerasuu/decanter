@@ -828,6 +828,8 @@ ps.report.open: Reportar errores
 ps.report.title: Reportar errores
 ps.report.note: Aquí ves exactamente lo que contiene el informe. No sale nada de tu equipo hasta que lo confirmes, y el informe no lleva rutas, nombres ni cuentas.
 ps.report.attach_log: Adjuntar el registro completo para quien mantiene (no se publica)
+ps.report.cleaning: Limpiando el registro…
+ps.report.cleaned: 'Se quita del registro antes de enviarlo: nombres o cuentas %{names}, valores secretos %{values}, direcciones IP o MAC %{addresses}.'
 ps.report.privacy: El informe es público y se conserva hasta que se resuelva. No lleva rutas, nombres ni cuentas. Podrás borrarlo con el código que recibirás. No hay cuenta, y no se guarda tu IP salvo lo necesario para limitar el ritmo de envíos.
 ps.report.send.button: Enviar informe
 ps.report.send.confirm: '¿Enviar ahora este informe? Será público.'

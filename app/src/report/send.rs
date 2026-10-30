@@ -6,7 +6,7 @@
 //! logged.
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use decanter_core::Db;
@@ -388,9 +388,10 @@ pub enum Submitted {
 }
 
 /// The whole send of one press: the duplicate check, the report, the registry line and, if `log` is
-/// given, the private log. A failure of the log never undoes the report. Blocking file work runs on
-/// the runtime's blocking pool, so this is safe to await from the UI thread.
-pub async fn submit(built: &Built, server: &Server, log: Option<&Path>) -> Result<Submitted, Error> {
+/// given, the private log as [`super::attachment`] scrubbed it, the one whose counts the player was
+/// shown. A failure of the log never undoes the report. Blocking file work runs on the runtime's
+/// blocking pool, so this is safe to await from the UI thread.
+pub async fn submit(built: &Built, server: &Server, log: Option<Vec<u8>>) -> Result<Submitted, Error> {
     let (fingerprint, day) = (built.fingerprint.clone(), built.date.clone());
     if let Some(earlier) = blocking(move || sent::find(&fingerprint, &day)).await? {
         return Ok(Submitted::Duplicate(earlier));
@@ -407,15 +408,7 @@ pub async fn submit(built: &Built, server: &Server, log: Option<&Path>) -> Resul
     let recorded = entry.clone();
     let unrecorded = blocking(move || sent::record(&recorded)).await.err();
     let attached = match log {
-        Some(log) => {
-            let log = log.to_owned();
-            let bytes =
-                blocking(move || super::attachment(&log).map_err(|err| Error::Internal(err.text().to_string()))).await;
-            Some(match bytes {
-                Ok(bytes) => attach_log(server, &entry.id, &entry.delete_code, bytes).await,
-                Err(err) => Err(err),
-            })
-        }
+        Some(bytes) => Some(attach_log(server, &entry.id, &entry.delete_code, bytes).await),
         None => None,
     };
     Ok(Submitted::Sent {
