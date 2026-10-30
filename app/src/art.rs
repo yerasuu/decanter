@@ -273,6 +273,12 @@ impl Global for Decoded {}
 /// rather than dropping and reloading its own images in a loop.
 const IN_VIEW: Duration = Duration::from_millis(500);
 
+/// How many decoded images are kept and their bytes, for the memory log.
+pub fn decoded_stats(cx: &App) -> (usize, usize) {
+    cx.try_global::<Decoded>()
+        .map_or((0, 0), |decoded| (decoded.images.len(), decoded.bytes))
+}
+
 fn decoded_bytes(image: &RenderImage) -> usize {
     (0..image.frame_count())
         .map(|frame| image.as_bytes(frame).map_or(0, <[u8]>::len))

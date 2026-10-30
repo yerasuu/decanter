@@ -117,6 +117,7 @@ mod game_tools;
 mod i18n;
 mod launch;
 mod logs;
+mod memory;
 mod mods;
 mod platform;
 mod ps_play;
@@ -194,6 +195,7 @@ fn main() {
             state::AppState::init(cx);
             capabilities::Caps::init(cx);
             views::Lifecycle::init(close_to_tray, cx);
+            memory::start(cx);
 
             // Once, at the root: a game keeps running after decanter is
             // gone unless something goes and stops it.
