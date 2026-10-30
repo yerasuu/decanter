@@ -16,6 +16,8 @@ use crate::theme;
 
 pub type Dismiss = Rc<dyn Fn(&mut Window, &mut App)>;
 
+const MODAL_PRIORITY: usize = 2;
+
 /// A layer at `position` (window coordinates), kept 6px inside the window.
 pub fn popup(position: Point<Pixels>, content: impl IntoElement, window: &Window, dismiss: Dismiss) -> AnyElement {
     let viewport = window.viewport_size();
@@ -40,7 +42,10 @@ pub fn popup(position: Point<Pixels>, content: impl IntoElement, window: &Window
                 ),
         ),
     )
-    .with_priority(1)
+    // GPUI paints every deferred layer, nested ones included, in one pass sorted by priority, so a
+    // popup opened from inside a modal (a select in the install dialog) needs more than the
+    // modal's priority, otherwise it is painted and hit-tested underneath the modal's backdrop.
+    .with_priority(MODAL_PRIORITY + 1)
     .into_any_element()
 }
 
@@ -67,7 +72,7 @@ pub fn modal(content: impl IntoElement, window: &Window, dismiss: Dismiss) -> An
                 ),
         ),
     )
-    .with_priority(2)
+    .with_priority(MODAL_PRIORITY)
     .into_any_element()
 }
 
