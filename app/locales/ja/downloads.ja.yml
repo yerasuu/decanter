@@ -34,3 +34,15 @@ downloads.paused_reason.library_unavailable_at: "ライブラリ %{path} を利�
 downloads.reused: "停止中に GOG が別のビルドを公開しました。ダウンロード済みの %{had} のうち %{kept} を再利用しました"
 downloads.verify_offer: "%{title} は Decanter が予期せず終了したあとに再開されました。ファイルを検証しますか?"
 downloads.verify_now: "今すぐ検証"
+downloads.group.active: 'ダウンロード中'
+downloads.group.queued: '待機中'
+downloads.group.paused: '一時停止中'
+downloads.group.elsewhere: '別のプロセスで実行中'
+downloads.group.failed: '失敗'
+downloads.preparing: 'ダウンロードを準備しています…'
+downloads.queue_position: '待機列の %{position} 番目'
+downloads.move_up: '上へ移動'
+downloads.move_down: '下へ移動'
+downloads.move_first: '先頭へ移動'
+downloads.move_last: '末尾へ移動'
+downloads.drag_to_reorder: 'ドラッグして並べ替え'

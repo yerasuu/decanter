@@ -34,3 +34,15 @@ downloads.paused_reason.library_unavailable_at: "La libreria %{path} non è disp
 downloads.reused: "GOG ha pubblicato un'altra build mentre era fermo: %{kept} dei %{had} già scaricati sono stati riutilizzati"
 downloads.verify_offer: "%{title} è stato ripreso dopo una chiusura imprevista di Decanter. Verificare i suoi file?"
 downloads.verify_now: Verifica ora
+downloads.group.active: 'In download'
+downloads.group.queued: 'In coda'
+downloads.group.paused: 'In pausa'
+downloads.group.elsewhere: 'In esecuzione in un altro processo'
+downloads.group.failed: 'Non riuscito'
+downloads.preparing: 'Preparazione del download…'
+downloads.queue_position: 'N. %{position} in coda'
+downloads.move_up: 'Sposta su'
+downloads.move_down: 'Sposta giù'
+downloads.move_first: 'Sposta in cima'
+downloads.move_last: 'Sposta in fondo'
+downloads.drag_to_reorder: 'Trascina per riordinare'
