@@ -41,25 +41,7 @@ pub(super) struct InstallDialog {
     _languages_fetch: Task<()>,
 }
 
-impl InstallDialog {
-    /// A dialog with neither another library folder nor another branch or
-    /// language to pick (nor a disk or a missing language to warn about)
-    /// would only ask to confirm what the install button already said, so it
-    /// is never shown.
-    fn has_choice(&self) -> bool {
-        let named_branch = matches!(&self.branches, Some(Ok(list)) if list.iter().any(|branch| branch.name.is_some()));
-        let languages = self.languages.as_ref().map_or(0, Vec::len);
-        let lacks_language = self.language.as_ref().is_some_and(|picked| !picked.is_wanted);
-        self.folders.len() > 1 || !self.offline.is_empty() || named_branch || languages > 1 || lacks_language
-    }
-
-    fn is_loaded(&self) -> bool {
-        self.branches.is_some() && self.languages.is_some()
-    }
-}
-
-/// Reads the languages `branch`'s build offers into the open dialog, then
-/// starts the install at once if there turns out to be nothing to choose.
+/// Reads the languages `branch`'s build offers into the open dialog.
 fn fetch_languages(
     account_id: String,
     product_id: String,
@@ -78,27 +60,9 @@ fn fetch_languages(
             };
             dialog.language = decanter_gog::language::resolve(&wanted, &offered);
             dialog.languages = Some(offered);
-            settle(this, cx);
             cx.notify();
         });
     })
-}
-
-/// Once everything the dialog asks about has loaded, an install with
-/// nothing to choose starts without showing it.
-fn settle(this: &mut DetailView, cx: &mut Context<DetailView>) {
-    let Some(dialog) = &this.local.dialog else {
-        return;
-    };
-    if !dialog.is_loaded() || dialog.has_choice() {
-        return;
-    }
-    if let Some(mut dialog) = this.local.dialog.take()
-        && let Some(mut request) = dialog.request.take()
-    {
-        request.language = dialog.language.map(|picked| picked.tag);
-        actions::start_install(request, cx);
-    }
 }
 
 impl DetailView {
@@ -127,7 +91,6 @@ impl DetailView {
                     return;
                 };
                 dialog.branches = Some(result);
-                settle(this, cx);
                 cx.notify();
             });
         });
@@ -151,12 +114,9 @@ impl DetailView {
 
 /// Confirms an install before it starts, the way Steam does — which library
 /// folder it goes in and which branch to install (mainline by default, same
-/// as Steam defaults to no beta opt-in). `None` while there is nothing to
-/// choose, which is when the install starts without asking.
+/// as Steam defaults to no beta opt-in). Always shown, even with nothing to
+/// choose, and at once, while what it asks about is still loading.
 pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Context<DetailView>) -> Option<AnyElement> {
-    if !dialog.is_loaded() || !dialog.has_choice() {
-        return None;
-    }
     let this = cx.entity().downgrade();
     let close: menu::Dismiss = Rc::new({
         let this = this.clone();
