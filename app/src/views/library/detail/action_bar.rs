@@ -22,7 +22,7 @@ impl DetailView {
         }
         let properties_game = game.clone();
         bar.child(play_action(game, bar_state.launch, bar_state.running, cx))
-            .children(self.uninstall_action(game, cx))
+            .children(self.uninstall_action(game, &bar_state.dlcs, cx))
             .child(
                 button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
                     .tooltip(tooltip(t!("library.properties.title")))
@@ -32,7 +32,7 @@ impl DetailView {
 
     /// Always safe to call — uninstalling something that isn't installed is
     /// a no-op — but it deletes real files, so it still gets a confirm step.
-    fn uninstall_action(&self, game: &Game, cx: &Context<Self>) -> Vec<AnyElement> {
+    fn uninstall_action(&self, game: &Game, dlcs: &[(String, String)], cx: &Context<Self>) -> Vec<AnyElement> {
         let uninstall = &self.local.uninstall;
         if uninstall.busy {
             return vec![theme::muted(t!("library.detail.uninstall.busy")).into_any_element()];
@@ -63,21 +63,22 @@ impl DetailView {
         }
         let account_id = game.account_id.clone();
         let product_id = game.id.clone();
-        // Uninstalling deletes a paused download of the game too (#1133), so
-        // the question says so before it is answered.
-        let paused = match AppState::get(cx).background.read(cx).status(&account_id, &product_id) {
-            Some(status @ InstallStatus::Paused { .. }) => Some(status.bytes_downloaded()),
-            _ => None,
-        };
-        let mut elements: Vec<AnyElement> = paused
-            .map(|bytes| {
-                theme::muted(t!(
-                    "library.detail.uninstall.paused_download",
-                    size = crate::format::bytes(bytes)
-                ))
-                .into_any_element()
+        // Uninstalling deletes the paused downloads of the game and of its DLC
+        // too (#1133, #1316), so the question names each before it is answered.
+        let background = AppState::get(cx).background.read(cx);
+        let mut elements: Vec<AnyElement> = std::iter::once((product_id.as_str(), game.title.as_str()))
+            .chain(dlcs.iter().map(|(id, title)| (id.as_str(), title.as_str())))
+            .filter_map(|(id, title)| match background.status(&account_id, id) {
+                Some(status @ InstallStatus::Paused { .. }) => Some(
+                    theme::muted(t!(
+                        "library.detail.uninstall.paused_download",
+                        title = title,
+                        size = crate::format::bytes(status.bytes_downloaded())
+                    ))
+                    .into_any_element(),
+                ),
+                _ => None,
             })
-            .into_iter()
             .collect();
         elements.extend([
             button("uninstall-confirm", ButtonKind::Icon, confirm, false)

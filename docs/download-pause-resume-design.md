@@ -10,8 +10,8 @@ Code references are to `develop` at `123e5ab` (2026-10-29). Versions pinned in `
 reqwest 0.13.5, tokio 1.54.1, md5 0.8.1.
 
 **Status.** The owner accepted every recommendation in §6 (#1281). Phases 0 to 3 are
-integrated. Phase 4 is built as described below (#1310); nothing of phases 3 and 4 has been run
-against GOG yet.
+integrated. Phase 4 is built as described below (#1310), and phase 4b on top of it (#1315, #1316,
+#1319, #1320); nothing of phases 3 and 4 has been run against GOG yet.
 
 **Phase 3 as built.**
 
@@ -63,7 +63,7 @@ against GOG yet.
   *En cola* and start in the order they asked; the 4 files at once inside a download stay. A pause
   or cancel of a waiting download wakes it (`Notify`): it is planned and its journal opened without
   a turn, and the stop lands there before any byte moves, so a paused one always has a journal to
-  resume from. Quitting stops a waiting one at once. *Pausar* on the running one lets the next
+  resume from (phase 4b stops it without a plan instead). Quitting stops a waiting one at once. *Pausar* on the running one lets the next
   start. Restarts need nothing new: the startup scan resumes what it should, and those resumes
   queue in the order found.
 - Build drift. When the journal's `plan` differs from the new plan, the old journal is first
@@ -132,14 +132,57 @@ against GOG yet.
   build switch the recovered chunks go into the new log's `Commit`s instead. Each scan logs the
   recovered chunks and bytes, the discarded bytes, and the first rejected chunk and why.
 
-**Left for later** (deliberately): journalling the DLC ticked to install after a game, so a resumed
-game install doesn't install them afterwards; discarding a paused DLC download when its game is
-uninstalled (the confirmation would have to name it); listing staging folders without a journal in
-Storage with *Eliminar*; offering *Verify* after a resume from an unclean exit; showing the reused
-bytes of a build switch on the row; recording *app closed* for a download still planning or waiting
-its turn at quit (its journal keeps its previous last record, and a new install waiting its turn has
-no journal yet, so it is not listed after the restart); the queue is per process, so the CLI's
-`decanter install` and the app each run one.
+**Phase 4b as built.**
+
+- Queued downloads (#1319). `install` and `repair` enter their staging folder before waiting for
+  their turn (`pending::enter`): they take its `lock` and hold it until they end, so another process
+  lists them as running there, and a folder without a plan gets `pending.json`, the request (kind,
+  account, product, parent, title, branch, build) and, for a repair, the files it repairs (`path`,
+  `owner`), written whole with `write_atomic`. A folder with a plan already has the request in its
+  header; entering it drops an earlier stop, since the download is asked for again.
+- Stops before the plan. The wait for the turn and the plan (`tracking::until_stopped`) end as soon
+  as a pause, a cancel or a quit is asked, with nothing asked of GOG: a cancel deletes the folder
+  (`journal::discard_with`), a pause or a quit records `stop` (*user*, *app closed*) in
+  `pending.json` and fails with `Paused`. The session refresh runs on its own task, so a renewed
+  token is still stored when the plan waiting on it is dropped. A quit counts a queued download
+  among those not yet settled from its start, so the 2 s wait covers its record too.
+- Crash safety. `pending.json` never speaks for the bytes: a resume trusts what is staged by the
+  log alone, so a stop recorded there can't hide an unclean exit from the re-hash. It is written
+  only under the lock while nothing downloads, so its stop is newer than the log's last record, and
+  the listing takes it over the log's reason (and drops the log's `room` then). Opening the journal
+  for a download removes it, after the header is in place (`start_over` keeps it through the clear),
+  so a crash between the two still lists the request, and a crash after it reads as one.
+- Listing and resume. A folder with only `pending.json` is listed with no total; `resume` plans it
+  again from that request, and `resume_repair` from its files. A plan GOG refuses (not offline) drops
+  a folder that held only the request, as a failed fresh install left nothing before; one GOG
+  couldn't be asked for stays queued. A plan that picks another library folder than the guessed one
+  drops the guessed folder unless an earlier plan is staged there.
+- DLC after the game (#1315). `queue_dlcs` enters each DLC ticked with a game as a queued download
+  of its own (parent set), before the game's own install starts. A queued DLC never planned, with no
+  stop of its own, is listed with its game's reason. `install` of a DLC whose game isn't installed
+  pauses with that reason while the game has a download left, and is refused at once without one.
+  The app doesn't resume such a DLC at startup, *Reanudar* on it carries the game on instead, and
+  once the game lands from a resume its paused DLC rows resume. A cancelled game drops its queued
+  DLC; a paused one lists them paused for the same reason.
+- Uninstall (#1316). The confirmation names every paused download of the game and of its DLC with
+  its size (*Se borrará también la descarga en pausa de <título> (tamaño)*), and confirming
+  discards each before the uninstall.
+- One slot across processes (#1320). After this process's turn, a download takes the lock file
+  `<root>/downloading/lock` of the library folder every process using the library agrees on (the
+  first present, in path order), polled every second while another process holds it and given up at
+  once on a stop; it is held with the turn until the download ends, move included. A folder that
+  can't be locked at all lets the download go on without it. `decanter install` says when it waits
+  for another process and repeats it every 15 s until bytes move; `--no-wait` exits at once with a
+  clear message instead. The app lists the CLI's download, queued or running, as *En curso en otro
+  proceso de Decanter*.
+
+- With the follow-ups: a folder holding `pending.json` has a journal for `stray_staging` and
+  `discard_stray`, so a queued download is never offered as a stray; a resume of one never planned
+  isn't flagged for *Verify*, since nothing was staged.
+
+**Left for later** (deliberately): the slot is per library location, so two profiles with different
+library folders can still download at once; cross-process turns are not in asking order (the lock is
+polled); the DLC queued behind a game that failed are listed only after the next start.
 
 ## 1. Current behaviour
 

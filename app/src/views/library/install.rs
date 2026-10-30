@@ -565,15 +565,26 @@ async fn install_dlcs(
     }
 }
 
-/// Uninstalls the game, and with it a paused download of it (an update,
-/// say), which the confirmation the user answered named with its size.
+/// Uninstalls the game, and with it the paused downloads of it (an update,
+/// say) and of its DLC, which the confirmation the user answered named each
+/// with its size (#1316).
 pub async fn uninstall(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) -> Result<(), Text> {
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
         crate::core::library_for_account(&account_id)
             .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))
     );
-    crate::achv_try!(discard_paused_with(&core_library, DownloadKey::new(&account_id, &product_id), &state, cx).await);
+    let dlc_ids: Vec<String> = state.library.read_with(cx, |library, _| {
+        library
+            .games
+            .iter()
+            .filter(|entry| entry.parent_id.as_deref() == Some(product_id.as_str()))
+            .map(|entry| entry.game.id.clone())
+            .collect()
+    });
+    for id in dlc_ids.iter().chain(std::iter::once(&product_id)) {
+        crate::achv_try!(discard_paused_with(&core_library, DownloadKey::new(&account_id, id), &state, cx).await);
+    }
     crate::achv_try!(
         decanter_gog::uninstall(&core_library, &account_id, &product_id)
             .await
