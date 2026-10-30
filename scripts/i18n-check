@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Checks every app/locales/<code>/ folder against en: missing keys, extra
+# keys, empty values and %{name} placeholders that differ from the English
+# string of the same key. Exits 1 if anything is reported.
+# `language.machine_note` is the one key a language may have that en lacks.
+# Usage: scripts/i18n-check [CODE...]   (default: every folder but en)
+# I18N_LOCALES points it at another locales folder.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec python3 -I - "${I18N_LOCALES:-$root/app/locales}" "$@" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+ALLOWED_EXTRA = {"language.machine_note"}
+# Keys whose code passes more arguments than any one language uses: a
+# translation may use any subset of these instead of matching en.
+PLACEHOLDER_POOLS = {"common.date.time": {"hour12", "hour24", "minute", "meridiem"}}
+PLACEHOLDER = re.compile(r"%\{\s*(\w+)\s*\}")
+LINE = re.compile(r"^([A-Za-z0-9_.\-]+):\s*(.*)$")
+
+
+def scalar(raw):
+    raw = raw.strip()
+    if raw.startswith("'") and raw.endswith("'") and len(raw) >= 2:
+        return raw[1:-1].replace("''", "'")
+    if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2:
+        return raw[1:-1].encode().decode("unicode_escape") if "\\" in raw else raw[1:-1]
+    return re.sub(r"\s+#.*$", "", raw)
+
+
+def load(folder):
+    """Flat `key: value` files, the only shape the locales use."""
+    entries, problems = {}, []
+    for path in sorted(folder.glob("*.yml")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            match = LINE.match(line)
+            if not match or match.group(2).strip() in ("|", ">", "|-", ">-"):
+                problems.append(f"{path.name}:{number}: not a flat `key: value` line")
+                continue
+            key, value = match.group(1), scalar(match.group(2))
+            if key in entries:
+                problems.append(f"{path.name}:{number}: duplicate key {key}")
+            entries[key] = value
+    return entries, problems
+
+
+def main():
+    locales = Path(sys.argv[1])
+    english, problems = load(locales / "en")
+    if problems:
+        print("\n".join(f"en: {p}" for p in problems))
+    codes = sys.argv[2:] or sorted(d.name for d in locales.iterdir() if d.is_dir() and d.name != "en")
+    failed = bool(problems)
+    for code in codes:
+        folder = locales / code
+        if not folder.is_dir():
+            print(f"{code}: no such locale folder")
+            failed = True
+            continue
+        entries, found = load(folder)
+        found += [f"missing key {k}" for k in english if k not in entries]
+        found += [f"extra key {k}" for k in entries if k not in english and k not in ALLOWED_EXTRA]
+        for key, value in entries.items():
+            if not value.strip():
+                found.append(f"empty value for {key}")
+            elif key in PLACEHOLDER_POOLS:
+                outside = set(PLACEHOLDER.findall(value)) - PLACEHOLDER_POOLS[key]
+                if outside:
+                    found.append(f"placeholders of {key} outside {sorted(PLACEHOLDER_POOLS[key])}: {sorted(outside)}")
+            elif key in english and sorted(PLACEHOLDER.findall(value)) != sorted(PLACEHOLDER.findall(english[key])):
+                found.append(
+                    f"placeholders of {key} differ: {sorted(PLACEHOLDER.findall(value))}"
+                    f" vs en {sorted(PLACEHOLDER.findall(english[key]))}"
+                )
+        for line in found:
+            print(f"{code}: {line}")
+        print(f"{code}: {len(entries)} keys, {len(found)} problems")
+        failed = failed or bool(found)
+    sys.exit(1 if failed else 0)
+
+
+main()
+PY
