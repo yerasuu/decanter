@@ -1,9 +1,10 @@
 # GOG API client: behaviour specification for the clean-room rewrite
 
 Step 1 of the clean-room rewrite of kb #1227 (decision #1225). Four files of `crates/gog/src/api/client/`
-(`auth.rs`, `user.rs`, `products.rs`, `achievements.rs`) derive from gog 0.5.0 (GPL-3.0-only). This document
-says what they must do so that they can be written again from scratch, without reading them, and released
-under GPL-3.0-or-later with the rest of the crate.
+(`auth.rs`, `user.rs`, `products.rs`, `achievements.rs`) derived from gog 0.5.0 (GPL-3.0-only); they were
+rewritten from this document (kb #1228) and no derived code remains. It says what they must do so that they can
+be written again from scratch, without reading them, and released under GPL-3.0-or-later with the rest of the
+crate.
 
 Whoever writes the new files reads this document, the public types of the callers named here, and decanter's
 own files of the same directory (`mod.rs`, `http.rs`, `error.rs` and the other modules, all GPL-3.0-or-later).

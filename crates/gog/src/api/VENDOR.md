@@ -2,6 +2,20 @@
 
 This module began as gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0, and no longer holds any of its code.
 
+## Current state
+
+- `client/` is the whole module: `Client` (session-bearing: `auth`, `user`, `products`, `achievements`, `orders`),
+  `Sessionless` (an access token borrowed per call: `catalog`, `gamesdb`, `galaxy_products`, `content`), `http` (the
+  shared HTTP client, caps and host checks) and `error` (`Error`). `mod.rs` only declares `client`.
+- No gogapi-rs code remains. Every file is decanter's own, `GPL-3.0-or-later`, with no based-on line.
+- Upstream's `Gog` had about 30 methods and decanter called 5 of them. The ones decanter used (login code exchange and
+  refresh, user data, owned games, filtered products, achievements) are specified in
+  `docs/gog-api-behaviour-spec.md` and were rewritten from it. The other methods, which nothing called, were never
+  ported: they were removed with `gog.rs` (refactor(gog): remove the blocking gogapi client), and none was kept or
+  specified. No per-method list of them was written down; upstream's source is in this repository's history up to
+  that commit.
+- After phase 4 no item of `decanter-gog` is unused, and the crate's dependencies are all used.
+
 ## The original crate
 
 - Name and version: `gog` 0.5.0
