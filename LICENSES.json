@@ -103,6 +103,7 @@
       "name": "decanter artwork",
       "paths": [
         "app/assets/decanter.png",
+        "app/assets/decanter.svg",
         "app/assets/favicon.ico"
       ],
       "license": "GPL-3.0-or-later",
