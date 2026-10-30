@@ -7,9 +7,9 @@ use std::time::SystemTime;
 
 use decanter_core::Library;
 
-use super::journal::{self, Kind, PauseReason, Paused, Phase};
+use super::journal::{self, Kind, PauseReason, Paused, Phase, Room};
 use super::staging::{DOWNLOADING, staging_in};
-use super::{Cancelled, Progress};
+use super::{BrokenFile, BrokenReason, Cancelled, Progress};
 
 /// A download whose journal says it hasn't finished.
 #[derive(Debug, Clone)]
@@ -20,14 +20,15 @@ pub struct UnfinishedDownload {
     /// The base game, for a DLC.
     pub parent_id: Option<String>,
     pub title: String,
-    /// A repair carries on when the next one plans the same files, not
-    /// through [`resume`].
+    /// Carried on through [`resume_repair`] rather than [`resume`].
     pub is_repair: bool,
     /// A pinned build (a rollback), which a resume keeps.
     pub build_id: Option<String>,
     /// The journal's last pause, or [`PauseReason::ClosedUnexpectedly`] when
     /// it ends without one.
     pub reason: PauseReason,
+    /// For a full disk, how much it needed.
+    pub room: Option<Room>,
     pub bytes_done: u64,
     pub total_bytes: u64,
     /// The library folder it downloads into.
@@ -89,6 +90,7 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         ),
         None => (PauseReason::ClosedUnexpectedly, 0),
     };
+    let room = folded.as_ref().and_then(|stopped| stopped.room);
     Some(UnfinishedDownload {
         account_id: request.account_id.clone(),
         product_id: request.product_id.clone(),
@@ -97,6 +99,7 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         is_repair: request.kind == Kind::Repair,
         build_id: request.build_id.clone(),
         reason,
+        room,
         bytes_done,
         total_bytes: header.total_bytes,
         root: root.to_path_buf(),
@@ -142,7 +145,7 @@ pub struct NothingToResume;
 /// Carries on an unfinished download, in whichever library folder holds it.
 ///
 /// It is planned again from the request its journal recorded, since chunk
-/// URLs expire, and carries on only while GOG still plans the same build.
+/// URLs expire; a build GOG published meanwhile keeps the chunks it shares.
 ///
 /// # Errors
 /// [`NothingToResume`] when there is no journal of it; [`Paused`] for the
@@ -176,22 +179,74 @@ pub async fn resume(
             on_progress,
         )
         .await;
-        return match outcome {
-            // Before any byte moves a resume asks GOG for a session and a plan; offline, that is the
-            // same pause the download was in, not a failure that would end retrying it.
-            Err(err) if is_offline(&err) => {
-                tracing::info!(account_id, product_id, error = %err, "GOG unreachable while planning a resume, still paused");
-                Err(Paused {
-                    reason: PauseReason::Network,
-                    bytes_done,
-                    root: Some(root),
-                }
-                .into())
-            }
-            other => other,
-        };
+        return still_paused(outcome, bytes_done, root);
     }
     Err(NothingToResume.into())
+}
+
+/// Carries on an unfinished repair, in whichever library folder holds it:
+/// the files its journal lists are planned again from the depot each came
+/// from, at the build the game is on now.
+///
+/// # Errors
+/// As [`resume`], and as [`super::repair`].
+pub async fn resume_repair(
+    library: &Library,
+    account_id: &str,
+    product_id: &str,
+    on_progress: impl FnMut(Progress) + Send + 'static,
+) -> anyhow::Result<()> {
+    for root in library.roots() {
+        let staging = crate::achv_try!(staging_in(&root, account_id, &format!("{product_id}-repair")));
+        let Some(found) = journal::inspect(&staging).await else {
+            continue;
+        };
+        let bytes_done = found
+            .folded
+            .as_ref()
+            .map_or(0, |folded| folded.bytes_done(&found.header));
+        let broken: Vec<BrokenFile> = found
+            .header
+            .files
+            .into_iter()
+            .map(|file| BrokenFile {
+                relative_path: file.path,
+                // A repair journalled before owners were recorded is planned from the game's own depots.
+                owner: file.owner.unwrap_or_else(|| product_id.to_owned()),
+                reason: BrokenReason::Mismatched,
+            })
+            .collect();
+        tracing::info!(account_id, product_id, root = %root.display(), files = broken.len(), "resuming an unfinished repair");
+        let outcome = super::repair(
+            &library.clone().targeting(&root),
+            account_id,
+            product_id,
+            &broken,
+            on_progress,
+        )
+        .await;
+        return still_paused(outcome, bytes_done, root);
+    }
+    Err(NothingToResume.into())
+}
+
+/// Before any byte moves a resume asks GOG for a session and a plan; offline,
+/// that is the same pause the download was in, not a failure that would end
+/// retrying it.
+fn still_paused(outcome: anyhow::Result<()>, bytes_done: u64, root: PathBuf) -> anyhow::Result<()> {
+    match outcome {
+        Err(err) if is_offline(&err) => {
+            tracing::info!(error = %err, "GOG unreachable while planning a resume, still paused");
+            Err(Paused {
+                reason: PauseReason::Network,
+                bytes_done,
+                root: Some(root),
+                room: None,
+            }
+            .into())
+        }
+        other => other,
+    }
 }
 
 /// GOG or its CDN didn't answer, as opposed to refusing or no longer offering what was asked.

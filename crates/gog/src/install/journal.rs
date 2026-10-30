@@ -10,9 +10,11 @@
 //!   files/<path>         a file complete, synced and renamed
 //! ```
 //!
-//! Chunk URLs are not kept: they are signed and expire, so every resume plans again, and only a
-//! plan identical to the journal's (same build, files and chunks) carries on.
+//! Chunk URLs are not kept: they are signed and expire, so every resume plans again. A plan identical
+//! to the journal's (same build, files and chunks) carries on as it was; one for another build keeps,
+//! per file, only the leading chunks both builds share.
 
+use std::collections::HashMap;
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -24,9 +26,13 @@ use decanter_runtime::sanitize_relative_path;
 use serde::{Deserialize, Serialize};
 
 use super::download::PlannedDownload;
+use super::plan::parse_md5;
 
 const HEADER: &str = "download.json";
 const LOG: &str = "progress.log";
+/// A new build's log, written whole before its header replaces the old one and renamed into place
+/// after: a crash between the two leaves it here for the next open to finish the swap.
+const LOG_ASIDE: &str = "progress.log.new";
 const FILES: &str = "files";
 const FORMAT: u32 = 1;
 
@@ -57,6 +63,29 @@ pub enum PauseReason {
     LibraryUnavailable,
 }
 
+/// The free space a download needed on its library's disk, against what that disk had, when it
+/// stopped for it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Room {
+    /// What was left to download, plus a margin so the disk is never filled to the last byte.
+    pub needed: u64,
+    pub free: u64,
+}
+
+impl Room {
+    pub(super) const fn new(needed: u64, free: u64) -> Self {
+        Self { needed, free }
+    }
+
+    /// How much more has to be freed.
+    #[must_use]
+    #[inline]
+    pub const fn short(&self) -> u64 {
+        self.needed.saturating_sub(self.free)
+    }
+}
+
 /// What a download fails with when it stopped and kept what it had: resuming it carries on from
 /// `bytes_done`.
 #[derive(Debug, thiserror::Error)]
@@ -67,6 +96,8 @@ pub struct Paused {
     pub bytes_done: u64,
     /// The library folder it downloads into, so the app can tell when an unplugged one is back.
     pub root: Option<PathBuf>,
+    /// For a full disk, how much it needed.
+    pub room: Option<Room>,
 }
 
 /// How to plan this download again: the caller's own request, not what it resolved to.
@@ -109,6 +140,10 @@ pub(super) struct HeaderFile {
     executable: bool,
     size: u64,
     chunks: Vec<HeaderChunk>,
+    /// Whose depot a repaired file comes from, so the repair can be planned again from its journal.
+    /// None for an install, whose plan hash it then leaves as it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) owner: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -140,6 +175,7 @@ impl Header {
                         size: chunk.size,
                     })
                     .collect(),
+                owner: download.owner.clone(),
             })
             .collect();
         let plan = crate::achv_try!(serde_json::to_vec(&(&build_id, &files)).context("encoding the download plan"));
@@ -172,6 +208,8 @@ enum Record {
     },
     Paused {
         reason: PauseReason,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        room: Option<Room>,
     },
     Resumed,
     /// Files are being moved into the library: a resume finishes the move, never downloads again.
@@ -198,6 +236,8 @@ pub(super) struct Folded {
     pub(super) phase: Phase,
     /// Set when the last record is a pause: a clean stop, whose log is trusted as it is.
     pub(super) paused: Option<PauseReason>,
+    /// What a pause for a full disk needed.
+    pub(super) room: Option<Room>,
 }
 
 impl Folded {
@@ -224,6 +264,7 @@ fn fold(header: &Header, lines: &[Vec<u8>]) -> Option<Folded> {
         files: vec![FileProgress::Committed { chunks: 0, bytes: 0 }; header.files.len()],
         phase: Phase::Downloading,
         paused: None,
+        room: None,
     };
     for record in records {
         // The CRC held, so this is a record of a newer format; what follows it can't be read
@@ -233,6 +274,7 @@ fn fold(header: &Header, lines: &[Vec<u8>]) -> Option<Folded> {
             break;
         };
         folded.paused = None;
+        folded.room = None;
         match record {
             Record::Commit { file, chunks, bytes } => {
                 if let Some(slot) = folded.files.get_mut(file) {
@@ -244,7 +286,10 @@ fn fold(header: &Header, lines: &[Vec<u8>]) -> Option<Folded> {
                     *slot = FileProgress::Done;
                 }
             }
-            Record::Paused { reason } => folded.paused = Some(reason),
+            Record::Paused { reason, room } => {
+                folded.paused = Some(reason);
+                folded.room = room;
+            }
             Record::Moving => folded.phase = Phase::Moving,
             Record::Recorded => folded.phase = Phase::Recorded,
             Record::Begin { .. } | Record::Resumed => {}
@@ -279,8 +324,6 @@ enum Discarded {
     Unreadable(String),
     #[error("its progress log doesn't belong to its plan")]
     LogMismatch,
-    #[error("GOG now plans build {to} instead of build {from}")]
-    PlanChanged { from: String, to: String },
     #[error("it had already finished")]
     Finished,
 }
@@ -309,8 +352,8 @@ impl Journal {
         self.append(&Record::Done { file }).await
     }
 
-    pub(super) async fn paused(&self, reason: PauseReason) -> anyhow::Result<()> {
-        self.append(&Record::Paused { reason }).await
+    pub(super) async fn paused(&self, reason: PauseReason, room: Option<Room>) -> anyhow::Result<()> {
+        self.append(&Record::Paused { reason, room }).await
     }
 
     pub(super) async fn moving(&self) -> anyhow::Result<()> {
@@ -322,7 +365,7 @@ impl Journal {
     }
 
     async fn append(&self, record: &Record) -> anyhow::Result<()> {
-        let line = crate::achv_try!(serde_json::to_vec(record).context("encoding a download log record"));
+        let line = crate::achv_try!(encode(record));
         self.log
             .lock()
             .await
@@ -339,6 +382,10 @@ impl Journal {
         drop(lock);
         remove_dir(&dir).await
     }
+}
+
+fn encode(record: &Record) -> anyhow::Result<Vec<u8>> {
+    serde_json::to_vec(record).context("encoding a download log record")
 }
 
 async fn remove_dir(dir: &Path) -> io::Result<()> {
@@ -361,12 +408,13 @@ pub(super) fn part_path(path: &Path) -> PathBuf {
     PathBuf::from(part)
 }
 
-/// Takes `staging` for this download: carries on the journal there when it belongs to the same
-/// plan, finishes its move when a crash hit that, and otherwise starts the download over.
+/// Takes `staging` for this download: carries on the journal there, keeping what still matches when
+/// GOG now plans another build, finishes its move when a crash hit that, and otherwise starts the
+/// download over.
 ///
 /// # Errors
 /// [`LockError::Busy`] when another process owns the download, or the I/O error that stopped it.
-pub(super) async fn open(staging: &Path, header: Header, downloads: &[PlannedDownload]) -> anyhow::Result<Opened> {
+pub(super) async fn open(staging: &Path, header: Header) -> anyhow::Result<Opened> {
     crate::achv_try!(
         tokio::fs::create_dir_all(staging)
             .await
@@ -376,7 +424,7 @@ pub(super) async fn open(staging: &Path, header: Header, downloads: &[PlannedDow
     let discarded = match read_header(staging).await {
         Ok(None) => None,
         Err(discarded) => Some(discarded),
-        Ok(Some(previous)) => match crate::achv_try!(carry_on(staging, previous, &header, downloads).await) {
+        Ok(Some(previous)) => match crate::achv_try!(carry_on(staging, previous, &header).await) {
             CarryOn::Download { log, starts } => {
                 return Ok(Opened::Download {
                     journal: Journal::new(staging, log, lock),
@@ -412,12 +460,8 @@ enum CarryOn {
     Over(Discarded),
 }
 
-async fn carry_on(
-    staging: &Path,
-    previous: Header,
-    header: &Header,
-    downloads: &[PlannedDownload],
-) -> anyhow::Result<CarryOn> {
+async fn carry_on(staging: &Path, previous: Header, header: &Header) -> anyhow::Result<CarryOn> {
+    crate::achv_try!(finish_swap(staging, &previous).await);
     let (mut log, lines) = match LineLog::open(&staging.join(LOG)).await {
         Ok(opened) => opened,
         // The header is written before its log: a crash between the two leaves no log.
@@ -439,14 +483,14 @@ async fn carry_on(
             })
         }
         Phase::Recorded => Ok(CarryOn::Over(Discarded::Finished)),
-        Phase::Downloading if previous.plan != header.plan => Ok(CarryOn::Over(Discarded::PlanChanged {
-            from: previous.build_id,
-            to: header.build_id.clone(),
-        })),
+        Phase::Downloading if previous.plan != header.plan => {
+            drop(log);
+            let (swapped, starts) = crate::achv_try!(carry_over(staging, &previous, &folded, header).await);
+            Ok(CarryOn::Download { log: swapped, starts })
+        }
         Phase::Downloading => {
-            let starts = crate::achv_try!(reconcile(staging.join(FILES), downloads, &folded).await);
-            let resumed =
-                crate::achv_try!(serde_json::to_vec(&Record::Resumed).context("encoding a download log record"));
+            let starts = crate::achv_try!(reconcile(staging.join(FILES), &header.files, &folded).await);
+            let resumed = crate::achv_try!(encode(&Record::Resumed));
             crate::achv_try!(log.append(&resumed).await.context("writing the download log"));
             tracing::info!(
                 bytes_done = folded.bytes_done(&previous),
@@ -455,6 +499,201 @@ async fn carry_on(
             );
             Ok(CarryOn::Download { log, starts })
         }
+    }
+}
+
+/// A crash between writing a new build's header and putting its log in place left that log aside:
+/// it belongs to the header on disk, so the swap is finished, and otherwise it is dropped.
+async fn finish_swap(staging: &Path, header: &Header) -> anyhow::Result<()> {
+    let aside = staging.join(LOG_ASIDE);
+    let lines = match decanter_runtime::journal::read_records(&aside).await {
+        Ok(lines) => lines,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(anyhow::Error::new(err).context("reading the new build's download log")),
+    };
+    if fold(header, &lines).is_none() {
+        return remove_file(&aside)
+            .await
+            .context("removing the log of a build switch a crash cut short");
+    }
+    tracing::warn!(staging = %staging.display(), "finishing a build switch a crash interrupted");
+    swap_log(staging).await
+}
+
+async fn swap_log(staging: &Path) -> anyhow::Result<()> {
+    crate::achv_try!(
+        tokio::fs::rename(staging.join(LOG_ASIDE), staging.join(LOG))
+            .await
+            .context("putting the new build's download log in place")
+    );
+    decanter_runtime::journal::sync_dir(staging)
+        .await
+        .context("syncing the download folder")
+}
+
+/// What a build switch does to one file the earlier build had started or finished.
+#[derive(Clone, Copy)]
+enum Cut {
+    Keep,
+    /// A finished file sharing only its first chunks with the new build, or changing its mode, kept
+    /// as a file in flight.
+    Reopen {
+        bytes: u64,
+    },
+    Trim {
+        bytes: u64,
+    },
+    Drop,
+}
+
+/// GOG planned another build since the journal was written (#1281: carry on with the new build):
+/// each file keeps the leading chunks both builds share, by MD5 and size in order, and loses the
+/// rest, so no file ever mixes the two. The new plan's header and log replace the old ones only
+/// after every file is cut back, and every cut is one the old log already copes with, so a crash at
+/// any point resumes either build safely.
+async fn carry_over(
+    staging: &Path,
+    previous: &Header,
+    folded: &Folded,
+    header: &Header,
+) -> anyhow::Result<(LineLog, Vec<Start>)> {
+    let files = staging.join(FILES);
+    let before = crate::achv_try!(reconcile(files.clone(), &previous.files, folded).await);
+    let mut earlier: HashMap<&str, (&HeaderFile, Start)> = previous
+        .files
+        .iter()
+        .zip(before)
+        .map(|(file, start)| (file.path.as_str(), (file, start)))
+        .collect();
+    let mut cuts = Vec::with_capacity(previous.files.len());
+    let mut starts = Vec::with_capacity(header.files.len());
+    for file in &header.files {
+        let start = match earlier.remove(file.path.as_str()) {
+            Some((was, start)) => {
+                let (cut, start) = carried(was, start, file);
+                cuts.push((file.path.clone(), cut));
+                start
+            }
+            None => Start::At { chunk: 0, bytes: 0 },
+        };
+        starts.push(start);
+    }
+    cuts.extend(earlier.into_keys().map(|path| (path.to_owned(), Cut::Drop)));
+    let cut =
+        tokio::task::spawn_blocking(move || cuts.iter().try_for_each(|(path, cut)| apply_cut(&files, path, *cut)))
+            .await;
+    crate::achv_try!(match cut {
+        Ok(cut) => cut.context("cutting the files of the earlier build back"),
+        Err(err) => Err(anyhow::Error::new(err).context("build switch worker panicked")),
+    });
+
+    let mut records = Vec::with_capacity(starts.len() + 2);
+    records.push(crate::achv_try!(encode(&Record::Begin {
+        plan: header.plan.clone()
+    })));
+    for (file, start) in starts.iter().enumerate() {
+        match *start {
+            Start::Done => records.push(crate::achv_try!(encode(&Record::Done { file }))),
+            Start::At { chunk, bytes } if chunk > 0 => records.push(crate::achv_try!(encode(&Record::Commit {
+                file,
+                chunks: chunk,
+                bytes
+            }))),
+            Start::At { .. } => {}
+        }
+    }
+    records.push(crate::achv_try!(encode(&Record::Resumed)));
+    let aside = staging.join(LOG_ASIDE);
+    drop(crate::achv_try!(
+        LineLog::create_all(&aside, &records)
+            .await
+            .context("writing the new build's download log")
+    ));
+    let encoded = crate::achv_try!(serde_json::to_vec(header).context("encoding the download plan"));
+    crate::achv_try!(
+        decanter_runtime::journal::write_atomic(&staging.join(HEADER), &encoded)
+            .await
+            .context("writing the new build's download plan")
+    );
+    crate::achv_try!(swap_log(staging).await);
+    let (log, _) = crate::achv_try!(
+        LineLog::open(&staging.join(LOG))
+            .await
+            .context("reading the download log")
+    );
+
+    let kept: u64 = starts
+        .iter()
+        .zip(&header.files)
+        .map(|(start, file)| match start {
+            Start::Done => file.size,
+            Start::At { bytes, .. } => *bytes,
+        })
+        .sum();
+    tracing::info!(
+        from_build = previous.build_id,
+        to_build = header.build_id,
+        kept_bytes = kept,
+        had_bytes = folded.bytes_done(previous),
+        total_bytes = header.total_bytes,
+        "GOG published another build while the download was stopped; keeping what both share"
+    );
+    Ok((log, starts))
+}
+
+/// How file `was`, where `start` says it stood, carries into `now`, the same path in the new build.
+fn carried(was: &HeaderFile, start: Start, now: &HeaderFile) -> (Cut, Start) {
+    let shared = was
+        .chunks
+        .iter()
+        .zip(&now.chunks)
+        .take_while(|(old, new)| old.md5 == new.md5 && old.size == new.size)
+        .count();
+    let bytes_of = |count: usize| now.chunks.iter().take(count).map(|chunk| len64(chunk.size)).sum();
+    match start {
+        Start::Done if shared == now.chunks.len() && shared == was.chunks.len() && was.executable == now.executable => {
+            (Cut::Keep, Start::Done)
+        }
+        // Reopened even when every chunk matches, so a file that changed only its mode gets the new one
+        // as it is finished again.
+        Start::Done if shared > 0 => {
+            let bytes = bytes_of(shared);
+            (Cut::Reopen { bytes }, Start::At { chunk: shared, bytes })
+        }
+        Start::At { chunk, bytes } if chunk > 0 && chunk <= shared => (Cut::Keep, Start::At { chunk, bytes }),
+        Start::At { chunk, .. } if chunk > 0 && shared > 0 => {
+            let bytes = bytes_of(shared);
+            (Cut::Trim { bytes }, Start::At { chunk: shared, bytes })
+        }
+        Start::Done | Start::At { .. } => (Cut::Drop, Start::At { chunk: 0, bytes: 0 }),
+    }
+}
+
+fn apply_cut(files: &Path, path: &str, cut: Cut) -> io::Result<()> {
+    let complete = files.join(path);
+    let part = part_path(&complete);
+    match cut {
+        Cut::Keep => Ok(()),
+        Cut::Reopen { bytes } => {
+            crate::achv_try!(std::fs::rename(&complete, &part));
+            cut_to(&part, bytes)
+        }
+        Cut::Trim { bytes } => cut_to(&part, bytes),
+        Cut::Drop => {
+            crate::achv_try!(remove_file_now(&complete));
+            remove_file_now(&part)
+        }
+    }
+}
+
+fn cut_to(path: &Path, bytes: u64) -> io::Result<()> {
+    crate::achv_try!(std::fs::OpenOptions::new().write(true).open(path)).set_len(bytes)
+}
+
+fn remove_file_now(path: &Path) -> io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err),
+        Ok(()) | Err(_) => Ok(()),
     }
 }
 
@@ -626,15 +865,18 @@ fn len64(size: usize) -> u64 {
     u64::try_from(size).unwrap_or(u64::MAX)
 }
 
-async fn reconcile(files: PathBuf, downloads: &[PlannedDownload], folded: &Folded) -> anyhow::Result<Vec<Start>> {
-    let shapes: Vec<Shape> = downloads
+/// Brings every file of `plan` (the plan `folded` was read against) back to what its log vouches for.
+async fn reconcile(files: PathBuf, plan: &[HeaderFile], folded: &Folded) -> anyhow::Result<Vec<Start>> {
+    let shapes: Vec<Shape> = plan
         .iter()
-        .map(|download| Shape {
-            path: PathBuf::from(&download.relative_path),
-            chunks: download
+        .map(|file| Shape {
+            path: PathBuf::from(&file.path),
+            // Written by `hex_digest`, so it parses; one that didn't would match no bytes, and the
+            // re-hash would cut the file back there, which is safe.
+            chunks: file
                 .chunks
                 .iter()
-                .map(|chunk| (len64(chunk.size), chunk.md5))
+                .map(|chunk| (len64(chunk.size), parse_md5(&chunk.md5).unwrap_or_default()))
                 .collect(),
         })
         .collect();

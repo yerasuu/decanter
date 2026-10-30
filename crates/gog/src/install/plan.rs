@@ -39,6 +39,7 @@ impl Plan {
                 relative_path: file.relative_path.clone(),
                 chunks: file.chunks.clone(),
                 is_executable: file.is_executable,
+                owner: None,
             })
             .collect()
     }
@@ -146,7 +147,7 @@ pub(super) async fn plan(
 }
 
 /// A manifest's hex MD5, as bytes; `None` for anything but 32 hex digits.
-fn parse_md5(hex: &str) -> Option<[u8; 16]> {
+pub(super) fn parse_md5(hex: &str) -> Option<[u8; 16]> {
     let (pairs, rest) = hex.as_bytes().as_chunks::<2>();
     if pairs.len() != 16 || !rest.is_empty() {
         return None;

@@ -31,9 +31,11 @@ mod unfinished;
 mod verify;
 
 pub use download::Cancelled;
-pub use journal::{PauseReason, Paused};
+pub use journal::{PauseReason, Paused, Room};
 pub use tracking::{cancel, pause, pause_for_quit};
-pub use unfinished::{NothingToResume, UnfinishedDownload, discard, downloading_dir, resume, unfinished_downloads};
+pub use unfinished::{
+    NothingToResume, UnfinishedDownload, discard, downloading_dir, resume, resume_repair, unfinished_downloads,
+};
 pub use verify::{BrokenFile, BrokenReason, VerifyReport, repair, verify};
 
 use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_all};
@@ -42,6 +44,10 @@ use plan::Plan;
 use rate::RateTracker;
 use staging::{move_into_library, staging_root};
 use tracking::{InstallKey, Settling, Stop, active, claim};
+
+/// Kept free beyond what a download still needs, at least: the disk is never filled to its last
+/// byte, which other programs (and the move into the library) need too.
+const MIN_MARGIN: u64 = 1024 * 1024 * 1024;
 
 /// Progress for the install as a whole, not for one file: several files
 /// transfer at once, so per-file numbers jump around and never add up to
@@ -91,13 +97,16 @@ pub struct Progress {
 /// launches it.
 ///
 /// What a download fetched is journalled in its staging folder, so a later
-/// `install` of the same product carries on from it when GOG still plans
-/// the same build, and finishes a move into the library a crash cut short.
+/// `install` of the same product carries on from it, keeping what a newer
+/// build GOG plans still shares, and finishes a move into the library a
+/// crash cut short.
+///
+/// One download runs at a time: this waits for the ones asked for before it.
 ///
 /// # Errors
 /// [`Cancelled`] after [`cancel`], which deletes what was downloaded;
-/// [`Paused`] after [`pause`], or when the network, the disk or the library
-/// folder gave out, keeping it.
+/// [`Paused`] after [`pause`], when its disk lacks the room it still needs,
+/// or when the network, the disk or the library folder gave out, keeping it.
 ///
 /// `library` is the caller's to resolve (a profile can pick its own
 /// location — see `decanter_core::Library`'s own callers for how) rather
@@ -117,6 +126,7 @@ pub async fn install(
     tracing::info!(product_id, title, parent_id, branch, build_id, "starting gog install");
 
     claim(account_id, product_id).await;
+    let _turn = crate::achv_try!(take_turn(&(account_id.to_owned(), product_id.to_owned())).await);
 
     // The depot API needs a live access token, renewed and stored first when it has expired.
     let access_token = crate::achv_try!(
@@ -305,6 +315,36 @@ async fn install_into(
     Ok(())
 }
 
+/// Waits for this download's turn. A stop asked while it waited lets it go on
+/// without one: it is still planned and its journal opened, where the stop
+/// lands before any byte moves, so a paused download always has a journal to
+/// resume from. Quitting stops it at once instead.
+async fn take_turn(key: &InstallKey) -> anyhow::Result<Option<tokio::sync::SemaphorePermit<'static>>> {
+    match tracking::wait_turn(key).await {
+        Some(turn) => Ok(Some(turn)),
+        None if tracking::is_quitting() => Err(Paused {
+            reason: PauseReason::AppClosed,
+            bytes_done: 0,
+            root: None,
+            room: None,
+        }
+        .into()),
+        None => Ok(None),
+    }
+}
+
+/// The room a download still needs on `staging`'s disk against what it has:
+/// what is left of it, plus the larger of [`MIN_MARGIN`] and 2 % of its size
+/// (#1277, §2.5). An update counts whole, since staging holds a second copy
+/// of the game until the move. `None` when the free space can't be read.
+fn room(staging: &Path, total: u64, done: u64) -> Option<Room> {
+    let Some((free, _)) = decanter_core::disk_usage(staging) else {
+        return None;
+    };
+    let margin = total.div_ceil(50).max(MIN_MARGIN);
+    Some(Room::new(total.saturating_sub(done).saturating_add(margin), free))
+}
+
 /// Opens `staging`'s journal for `header` and fetches whatever it still
 /// lacks under `key`'s stop flag, reporting the whole set's progress;
 /// shared by installs and repairs so both stop and carry on the same way.
@@ -316,7 +356,8 @@ async fn install_into(
 /// # Errors
 /// [`Cancelled`] after a confirmed cancel, which deletes the download;
 /// [`Paused`] when it stopped and kept its data (a pause, the network, a
-/// full disk, a library gone); any other failure keeps the data too.
+/// full disk or too little room to start, a library gone); any other
+/// failure keeps the data too.
 async fn fetch_into_staging(
     staging: &Path,
     header: Header,
@@ -325,7 +366,8 @@ async fn fetch_into_staging(
     product_id: &str,
     on_progress: &mut (impl FnMut(Progress) + Send + 'static),
 ) -> anyhow::Result<(Journal, Header)> {
-    let (journal, header, starts) = match journal::open(staging, header, &downloads).await {
+    let planned_bytes = header.total_bytes;
+    let (journal, header, starts) = match journal::open(staging, header).await {
         Ok(Opened::Move { journal, header }) => return Ok((journal, header)),
         Ok(Opened::Download {
             journal,
@@ -339,6 +381,9 @@ async fn fetch_into_staging(
                     reason,
                     bytes_done: 0,
                     root: library_root(staging),
+                    room: (reason == PauseReason::DiskFull)
+                        .then(|| room(staging, planned_bytes, 0))
+                        .flatten(),
                 }
                 .into()
             }));
@@ -376,13 +421,27 @@ async fn fetch_into_staging(
             Start::At { bytes, .. } => *bytes,
         })
         .collect();
+    let bytes_before: u64 = per_file_bytes.iter().sum();
+    let lacking = room(staging, header.total_bytes, bytes_before).filter(|room| room.short() > 0);
     let outcome = if in_flight.requested().is_some() {
         tracing::info!(product_id, "download stopped before it started");
         Err(Cancelled.into())
+    } else if let Some(lacking) = lacking {
+        tracing::warn!(
+            product_id,
+            needed = lacking.needed,
+            free = lacking.free,
+            "not enough free space to download, pausing before it starts"
+        );
+        Err(std::io::Error::new(
+            std::io::ErrorKind::StorageFull,
+            "not enough free space for the download",
+        )
+        .into())
     } else {
         let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<ProgressUpdate>(32);
         let worker = download_all(downloads, starts, &journal, in_flight.clone(), progress_tx);
-        let mut rate_tracker = RateTracker::new(per_file_bytes.iter().sum());
+        let mut rate_tracker = RateTracker::new(bytes_before);
         let total_bytes = Some(header.total_bytes);
         let per_file_bytes = &mut per_file_bytes;
         let report = async move {
@@ -414,7 +473,7 @@ async fn fetch_into_staging(
         Ok(()) => Ok((journal, header)),
         Err(err) => {
             let bytes_done = per_file_bytes.iter().sum();
-            Err(settle(journal, err, &in_flight, bytes_done, staging, product_id).await)
+            Err(settle(journal, &header, err, &in_flight, bytes_done, staging).await)
         }
     }
 }
@@ -424,12 +483,13 @@ async fn fetch_into_staging(
 /// recorded, and any other failure fails, keeping it too (#1281).
 async fn settle(
     journal: Journal,
+    header: &Header,
     err: anyhow::Error,
     in_flight: &Cancel,
     bytes_done: u64,
     staging: &Path,
-    product_id: &str,
 ) -> anyhow::Error {
+    let product_id = header.request.product_id.as_str();
     let reason = match in_flight.requested() {
         Some(Stop::Cancel) => {
             tracing::info!(product_id, "download cancelled, removing what it downloaded");
@@ -446,14 +506,18 @@ async fn settle(
         tracing::error!(product_id, error = %err, "install download failed, keeping what it downloaded");
         return err;
     };
-    if let Err(record_err) = journal.paused(reason).await {
+    let room = (reason == PauseReason::DiskFull)
+        .then(|| room(staging, header.total_bytes, bytes_done))
+        .flatten();
+    if let Err(record_err) = journal.paused(reason, room).await {
         tracing::warn!(product_id, error = %record_err, "couldn't record the pause; a resume treats it as a crash");
     }
-    tracing::info!(product_id, ?reason, bytes_done, error = %err, "download paused");
+    tracing::info!(product_id, ?reason, bytes_done, ?room, error = %err, "download paused");
     Paused {
         reason,
         bytes_done,
         root: library_root(staging),
+        room,
     }
     .into()
 }

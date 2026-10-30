@@ -206,6 +206,8 @@ pub(super) struct PlannedDownload {
     /// Given the mode a program needs to run once written, where this
     /// system has one; the move into the library keeps it.
     pub(super) is_executable: bool,
+    /// Whose depot a repaired file comes from; none for an install.
+    pub(super) owner: Option<String>,
 }
 
 impl PlannedDownload {

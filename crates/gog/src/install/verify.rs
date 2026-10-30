@@ -9,7 +9,7 @@
 //! actually needs fixing.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Context;
@@ -275,9 +275,11 @@ fn verify_file(path: &Path, chunks: &[DepotChunk]) -> std::io::Result<bool> {
 ///
 /// Runs the same plan → download → move pipeline [`super::install`] uses,
 /// just filtered down to the broken set — a repair is a small install, not
-/// a special case of one. So it reports through `on_progress` and stops on
-/// [`super::cancel`] for the same `(account_id, product_id)` the same way,
-/// failing with [`super::Cancelled`].
+/// a special case of one. So it waits its turn behind other downloads,
+/// reports through `on_progress`, and stops on [`super::cancel`] or
+/// [`super::pause`] for the same `(account_id, product_id)` the same way,
+/// failing with [`super::Cancelled`] or [`super::Paused`]; a paused one
+/// carries on through [`super::resume_repair`].
 pub async fn repair(
     library: &decanter_core::Library,
     account_id: &str,
@@ -291,6 +293,7 @@ pub async fn repair(
     tracing::info!(product_id, broken_count = broken.len(), "starting repair");
     super::tracking::claim(account_id, product_id).await;
     let key = (account_id.to_owned(), product_id.to_owned());
+    let _turn = crate::achv_try!(super::take_turn(&key).await);
     let game = crate::achv_try!(
         library
             .read_manifest(account_id, Storefront::Gog, product_id)
@@ -357,14 +360,15 @@ pub async fn repair(
 
 /// Every broken file's download, planned per owner before any byte moves,
 /// so the progress total covers the whole repair and one cancel flag stops
-/// all of it.
+/// all of it. Owners in order, so the same broken files plan the same
+/// journal and a stopped repair carries on as it was.
 async fn plan_repair(
     game: &decanter_core::InstalledGame,
     access_token: &str,
     game_id: i64,
     broken: &[BrokenFile],
 ) -> anyhow::Result<Vec<PlannedDownload>> {
-    let mut by_owner: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut by_owner: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for file in broken {
         by_owner
             .entry(file.owner.as_str())
@@ -401,6 +405,7 @@ async fn plan_repair(
                 relative_path: file.relative_path,
                 chunks: file.chunks,
                 is_executable,
+                owner: Some(owner.to_owned()),
             });
         }
     }

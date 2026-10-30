@@ -157,19 +157,45 @@ impl LineLog {
     /// `record` must not contain a newline: lines are what records are told apart by.
     #[inline]
     pub async fn append(&mut self, record: &[u8]) -> io::Result<()> {
-        if record.contains(&b'\n') {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "a log record can't hold a newline",
-            ));
-        }
-        let mut line = Vec::with_capacity(record.len() + 10);
-        line.extend_from_slice(record);
-        line.extend_from_slice(format!("\t{:08x}\n", crc32(record)).as_bytes());
-        self.file.write_all(&line).await?;
+        self.file.write_all(&line(record)?).await?;
         self.file.flush().await?;
         self.file.sync_data().await
     }
+
+    /// Starts `path` over with `records`, synced once rather than once per record, so a log that
+    /// restates thousands of files costs one sync.
+    ///
+    /// # Errors
+    /// When a record holds a newline, or the file can't be written or synced.
+    #[inline]
+    pub async fn create_all(path: &Path, records: &[Vec<u8>]) -> io::Result<Self> {
+        let mut lines = Vec::new();
+        for record in records {
+            lines.extend_from_slice(&line(record)?);
+        }
+        let mut file = tokio::fs::File::create(path).await?;
+        file.write_all(&lines).await?;
+        file.flush().await?;
+        file.sync_data().await?;
+        if let Some(dir) = path.parent() {
+            sync_dir(dir).await?;
+        }
+        Ok(Self { file })
+    }
+}
+
+/// `record` as a line of the log, ended by its CRC.
+fn line(record: &[u8]) -> io::Result<Vec<u8>> {
+    if record.contains(&b'\n') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a log record can't hold a newline",
+        ));
+    }
+    let mut line = Vec::with_capacity(record.len() + 10);
+    line.extend_from_slice(record);
+    line.extend_from_slice(format!("\t{:08x}\n", crc32(record)).as_bytes());
+    Ok(line)
 }
 
 /// The good records of the log at `path`, read without touching it, for a reader that doesn't own

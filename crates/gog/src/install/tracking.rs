@@ -1,12 +1,13 @@
-//! Process-wide install bookkeeping: which downloads are in flight, and
-//! which (profile, game) pairs have been asked to stop — shared state
-//! [`cancel`] and [`pause`] need regardless of which phase an install is in.
+//! Process-wide install bookkeeping: which downloads are in flight, which
+//! (profile, game) pairs have been asked to stop — shared state [`cancel`]
+//! and [`pause`] need regardless of which phase an install is in — and whose
+//! turn it is to download.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify, Semaphore, SemaphorePermit};
 
 use super::download::Cancel;
 
@@ -55,6 +56,40 @@ pub(super) async fn claim(account_id: &str, product_id: &str) {
     stop_requested().lock().await.remove(&key);
 }
 
+/// One download runs at a time (owner's decision, #1281): the rest wait for
+/// their turn, in the order they asked, since the semaphore is fair.
+static TURN: Semaphore = Semaphore::const_new(1);
+
+/// Wakes the downloads waiting for their turn so they see a stop asked of them.
+static STOPS: Notify = Notify::const_new();
+
+/// Waits for `key`'s turn to download, which is held until the permit is
+/// dropped. `None` when a stop for `key`, or decanter quitting, comes first:
+/// the stop stays recorded for the caller to honour without taking a turn.
+pub(super) async fn wait_turn(key: &InstallKey) -> Option<SemaphorePermit<'static>> {
+    // Pinned once, outside the loop, so waking up for someone else's stop
+    // doesn't cost this download its place in the queue.
+    let turn = TURN.acquire();
+    tokio::pin!(turn);
+    loop {
+        let stopped = STOPS.notified();
+        tokio::pin!(stopped);
+        // Registered before the check, so a stop landing in between still wakes this.
+        stopped.as_mut().enable();
+        if is_quitting() || stop_requested().lock().await.contains_key(key) {
+            return None;
+        }
+        tokio::select! {
+            permit = &mut turn => {
+                return permit
+                    .inspect_err(|err| tracing::error!(error = %err, "the download queue is closed"))
+                    .ok();
+            }
+            () = &mut stopped => {}
+        }
+    }
+}
+
 /// The stop asked for while `key` was still being planned, before any
 /// download existed to reach. Consumes it.
 pub(super) async fn stop_while_queued(key: &InstallKey) -> Option<Stop> {
@@ -74,6 +109,7 @@ pub async fn cancel(account_id: &str, product_id: &str) {
     // but recording it here too costs nothing and means the early check in
     // `install` doesn't need to know which phase a given cancel landed in.
     stop_requested().lock().await.insert(key.clone(), Stop::Cancel);
+    STOPS.notify_waiters();
     let in_flight = active().lock().await.remove(&key);
     let was_active = in_flight.is_some();
     if let Some(in_flight) = in_flight {
@@ -90,6 +126,7 @@ pub async fn cancel(account_id: &str, product_id: &str) {
 pub async fn pause(account_id: &str, product_id: &str) {
     let key: InstallKey = (account_id.to_string(), product_id.to_string());
     stop_requested().lock().await.entry(key.clone()).or_insert(Stop::Pause);
+    STOPS.notify_waiters();
     let in_flight = active().lock().await.get(&key).cloned();
     let was_active = in_flight.is_some();
     if let Some(in_flight) = in_flight {
@@ -136,6 +173,7 @@ pub async fn pause_for_quit(wait: Duration) -> bool {
     // Set before the running ones are collected, so a download whose plan
     // lands meanwhile stops as soon as it takes its flag.
     QUITTING.store(true, Ordering::Release);
+    STOPS.notify_waiters();
     let running: Vec<Cancel> = active().lock().await.values().cloned().collect();
     for in_flight in &running {
         in_flight.quit();
