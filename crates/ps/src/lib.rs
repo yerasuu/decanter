@@ -31,6 +31,7 @@ pub mod learned;
 pub mod library;
 pub mod mapping;
 pub mod metric_lines;
+pub mod online_support;
 pub mod os;
 pub mod paths;
 pub mod port;

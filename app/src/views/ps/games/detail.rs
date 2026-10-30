@@ -2,6 +2,7 @@
 //! way, and its tabs.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use decanter_core::capabilities::Feature;
@@ -106,6 +107,9 @@ pub struct DetailView {
     graphics: Option<Entity<GraphicsView>>,
     mods: Option<Entity<ModsView>>,
     online: Option<Entity<OnlineTitleView>>,
+    /// By game folder, whether its eboot names an NP online library. A game missing from it is
+    /// still being scanned (or could not be read) and shows no Online tab.
+    online_support: HashMap<PathBuf, bool>,
     /// What earlier runs of `selected` taught, and the revision it was read at.
     learned: Option<FrameOverlap>,
     learned_read_at: Option<u32>,
@@ -138,6 +142,7 @@ impl DetailView {
             graphics: None,
             mods: None,
             online: None,
+            online_support: HashMap::new(),
             learned: None,
             learned_read_at: None,
             learned_error: None,
@@ -187,7 +192,8 @@ impl DetailView {
             .detach();
             view
         });
-        self.selected = Some(dir);
+        self.selected = Some(dir.clone());
+        self.sync_online_support(dir, cx);
         self.report = None;
         self.report_error = None;
         self.tab = Tab::Overview;
@@ -199,6 +205,49 @@ impl DetailView {
         self.sync_log(cx);
         self.sync_learned(cx);
         cx.notify();
+    }
+
+    fn sync_online_support(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        let entry = self
+            .ps
+            .read(cx)
+            .entries()
+            .iter()
+            .find(|entry| entry.game.dir == dir && entry.port == Some(Port::Bbport))
+            .map(|entry| entry.game.title_id.clone());
+        let Some(title_id) = entry else {
+            return;
+        };
+        if let Some(&is_online) = self.online_support.get(&dir) {
+            self.show_online_support(is_online, cx);
+            return;
+        }
+        self.show_online_support(false, cx);
+        let scanned = dir.clone();
+        let task = cx.background_spawn(async move {
+            decanter_ps::online_support::is_online(&decanter_ps::paths::active(), &scanned, &title_id)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                let is_online = result.unwrap_or_else(|err| {
+                    tracing::warn!(path = %dir.join("eboot.bin").display(), %err, "online support unknown");
+                    false
+                });
+                this.online_support.insert(dir.clone(), is_online);
+                if this.selected.as_ref() == Some(&dir) {
+                    this.show_online_support(is_online, cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn show_online_support(&self, is_online: bool, cx: &mut Context<Self>) {
+        if let Some(settings) = &self.title_settings {
+            settings.update(cx, |settings, cx| settings.set_has_online(is_online, cx));
+        }
     }
 
     /// Reads the profile's failures off the UI thread and opens the report of the last run's.
@@ -640,10 +689,11 @@ impl Render for DetailView {
             Some(Port::AnyPs5) => &TABS,
             None => &UNSUPPORTED_TABS,
         };
-        let is_online_never_here = Caps::get(cx).is_never_here(Feature::PsOnline);
+        let has_online = !Caps::get(cx).is_never_here(Feature::PsOnline)
+            && self.online_support.get(&entry.game.dir).copied().unwrap_or(false);
         let items: Vec<_> = shown
             .iter()
-            .filter(|&&tab| tab != Tab::Online || !is_online_never_here)
+            .filter(|&&tab| tab != Tab::Online || has_online)
             .map(|&tab| (tab, tab.label()))
             .collect();
         let tabs = crate::widgets::tabs("ps-detail-tabs", &items, self.tab, move |tab, _, cx| {

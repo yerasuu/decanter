@@ -40,6 +40,8 @@ pub struct TitleSettingsView {
     source: Option<String>,
     /// `None` for every category.
     category: Option<Category>,
+    /// Whether the game plays online; without it the Online category is left out of copies.
+    has_online: bool,
     pending: Option<Pending>,
     is_busy: bool,
     message: Option<(Text, bool)>,
@@ -55,12 +57,28 @@ impl TitleSettingsView {
             sources: Vec::new(),
             source: None,
             category: None,
+            has_online: false,
             pending: None,
             is_busy: false,
             message: None,
         };
         this.reload_sources(cx);
         this
+    }
+
+    pub fn set_has_online(&mut self, has_online: bool, cx: &mut Context<Self>) {
+        self.has_online = has_online;
+        if !has_online && self.category == Some(Category::Online) {
+            self.category = None;
+        }
+        cx.notify();
+    }
+
+    fn categories(&self) -> impl Iterator<Item = Category> {
+        let has_online = self.has_online;
+        Category::ALL
+            .into_iter()
+            .filter(move |&category| has_online || category != Category::Online)
     }
 
     fn reload_sources(&self, cx: &mut Context<Self>) {
@@ -122,10 +140,11 @@ impl TitleSettingsView {
             return;
         };
         let (title_id, category) = (self.title_id.clone(), self.category);
+        let all: Vec<Category> = self.categories().collect();
         let done = Text::new("ps.per_game.copied").arg("game", self.name(&source, cx));
         self.run(
             move |root| {
-                let categories = category.map_or_else(|| Category::ALL.to_vec(), |category| vec![category]);
+                let categories = category.map_or_else(|| all.clone(), |category| vec![category]);
                 let (from, to) = (Target::parse(root, &source)?, Target::parse(root, &title_id)?);
                 per_game::copy(root, &from, &to, &categories).map(Some)
             },
@@ -312,7 +331,7 @@ impl TitleSettingsView {
             SharedString::from(ALL),
             SharedString::from(t!("ps.per_game.categories.all")),
         ))
-        .chain(Category::ALL.into_iter().map(|category| {
+        .chain(self.categories().map(|category| {
             (
                 SharedString::from(category.id()),
                 SharedString::from(category_label(category)),
