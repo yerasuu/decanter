@@ -1,0 +1,34 @@
+common.errors.internal_task: 'die interne Aufgabe ist fehlgeschlagen: %{error}'
+common.errors.verbatim: '%{error}'
+common.cancel: Abbrechen
+common.loading: Wird geladen...
+common.queued: In Warteschlange…
+common.running: Läuft
+common.duration.hours_minutes: '%{hours} h %{minutes} min'
+common.duration.minutes: '%{minutes} min'
+common.duration.minutes_seconds: '%{minutes} min %{seconds} s'
+common.duration.seconds: '%{seconds} s'
+common.unavailable_here: Auf diesem System nicht verfügbar
+common.needs_setup: 'Auf diesem System fehlt: %{what}'
+common.setup.release_key: der Schlüssel zur Prüfung von Updates
+common.setup.tray_host: ein System-Tray (StatusNotifier-Host)
+common.setup.psport_menu_binding: ein psport-Build, der port_menu_binding auflistet
+common.setup.psport_key_stick: ein psport-Build, der key_stick auflistet
+common.setup.psport_frame_gen: ein psport-Build, der frame_gen_fsr auflistet
+common.setup.psport_online: ein psport-Build, der online_module auflistet
+common.reported_by_ps: 'Der PS-Port unterstützt das nicht: %{why}'
+common.not_ported_yet_ps: 'psport unterstützt %{system} noch nicht'
+common.downloads_instead_ps: 'psport wird auf %{system} noch nicht kompiliert: Der stabile Release-Kanal lädt stattdessen sein fertiges Paket herunter'
+common.testing: Im Test
+game_tools.title: Spiel-Tools
+game_tools.intro: Sie gelten beim nächsten Start des Spiels.
+game_tools.default_on: Wie in den Einstellungen (an)
+game_tools.default_off: Wie in den Einstellungen (aus)
+game_tools.on: Aktiviert
+game_tools.off: Deaktiviert
+game_tools.mangohud_missing: MangoHud ist nicht installiert (seine Vulkan-Ebene wurde nicht gefunden).
+game_tools.gamemode_missing: GameMode ist nicht installiert (gamemoded oder sein D-Bus-Dienst fehlt).
+common.pick_profile: Wähle oben ein Profil.
+common.date.months: Jan Feb Mär Apr Mai Jun Jul Aug Sep Okt Nov Dez
+common.date.format: '%{day}. %{month} %{year}'
+common.date.time: '%{hour24}:%{minute}'

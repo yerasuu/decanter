@@ -1,0 +1,36 @@
+downloads.title: Downloads
+downloads.empty: Keine Downloads in Arbeit.
+downloads.eta: 'noch %{left}'
+downloads.dismiss: Ausblenden
+downloads.cancelling: Wird abgebrochen, Heruntergeladenes wird gelöscht…
+downloads.cancel_confirm: Download von %{title} abbrechen? Die bereits heruntergeladenen %{size} werden gelöscht.
+downloads.cancel_confirm_empty: Download von %{title} abbrechen?
+downloads.cancel_delete: Abbrechen und löschen
+downloads.keep: Weiter herunterladen
+downloads.pause: Pausieren
+downloads.resume: Fortsetzen
+downloads.pause_all: Alle pausieren
+downloads.resume_all: Alle fortsetzen
+downloads.delete: Löschen
+downloads.stale: 'Download seit %{days} Tagen pausiert · %{size}'
+downloads.elsewhere: 'Läuft in einem anderen Decanter-Prozess · %{done} von %{total}'
+downloads.kind.dlc: DLC
+downloads.kind.update: Update
+downloads.kind.branch_switch: Branch-Wechsel
+downloads.kind.rollback: Versionswechsel
+downloads.kind.repair: Reparatur
+downloads.paused: Pausiert · %{done} von %{total}
+downloads.paused_unsized: Pausiert · %{done}
+downloads.paused_reason.user: Du hast ihn pausiert
+downloads.paused_reason.network: Keine Verbindung; er wird automatisch fortgesetzt, sobald das Netzwerk wieder da ist
+downloads.paused_reason.app_closed: Decanter wurde geschlossen
+downloads.paused_reason.closed_unexpectedly: Decanter wurde unerwartet beendet
+downloads.paused_reason.disk_full: Datenträger voll
+downloads.paused_reason.disk_full_at: 'Datenträger voll unter %{path}'
+downloads.paused_reason.disk_full_short: 'Datenträger voll: Unter %{path} werden noch %{short} freier Speicher benötigt'
+downloads.paused_reason.disk_full_update: 'Datenträger voll: Das Update braucht während des Downloads %{needed} frei unter %{path}; es fehlen %{short}'
+downloads.paused_reason.library_unavailable: Der Bibliotheksordner ist nicht verfügbar
+downloads.paused_reason.library_unavailable_at: 'Die Bibliothek %{path} ist nicht verfügbar'
+downloads.reused: 'GOG hat einen anderen Build veröffentlicht, während der Download angehalten war: %{kept} von %{had} bereits heruntergeladenen Daten wurden weiterverwendet'
+downloads.verify_offer: '%{title} wurde fortgesetzt, nachdem Decanter unerwartet beendet wurde. Dateien überprüfen?'
+downloads.verify_now: Jetzt prüfen

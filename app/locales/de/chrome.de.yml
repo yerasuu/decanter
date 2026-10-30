@@ -1,0 +1,41 @@
+chrome.window.minimize: Minimieren
+chrome.window.maximize: Maximieren
+chrome.window.close: Schließen
+chrome.nav.library: Bibliothek
+chrome.nav.storage: Speicher
+chrome.nav.downloads: Downloads
+chrome.downbar.downloading: 'Wird heruntergeladen: %{title}'
+chrome.profiles.create: Profil erstellen
+chrome.profiles.elsewhere: '%{name} — %{path}'
+chrome.profiles.busy: '%{name} — %{path} (zuerst laufende Spiele und Installationen beenden)'
+chrome.profiles.unavailable: '%{path} (nicht verfügbar)'
+chrome.profile_form.title: NEUE PERSON
+chrome.profile_form.name: Profilname
+chrome.profile_form.library: 'Wo die Bibliothek dieses Profils liegt:'
+chrome.profile_form.pick: Ordner wählen
+chrome.profile_form.pick_title: Wähle, wo die Bibliothek dieses Profils liegt
+chrome.profile_form.create: Erstellen
+chrome.onboarding.title: Willkommen bei Decanter
+chrome.onboarding.intro: Erstelle ein Profil, um loszulegen — GOG-Konten (und später weitere Shops) kannst du ihm danach in den Einstellungen hinzufügen.
+chrome.onboarding.library: 'Wo die Bibliothek dieses Profils liegt (Installationen, Proton-Prefixes):'
+chrome.onboarding.library_native: 'Wo die Bibliothek dieses Profils liegt (Installationen):'
+chrome.tray.show: Decanter anzeigen
+chrome.tray.quit: Beenden
+chrome.unavailable.title: Bibliothek nicht verfügbar
+chrome.unavailable.body: Die Bibliothek unter %{path} wurde nicht gefunden. Liegt sie auf einem externen Laufwerk, schließe es an und öffne Decanter erneut, oder wähle eine andere.
+chrome.unavailable.use: '%{path} verwenden'
+chrome.unavailable.pick: Anderen Ordner wählen
+chrome.unavailable.pick_title: Bibliotheksordner wählen
+chrome.passphrase.unlock_title: Gespeicherte Zugangsdaten entsperren
+chrome.passphrase.unlock_body: Es gibt keinen System-Keyring, daher liegen deine GOG-Sitzungen und anderen Zugangsdaten in einer Datei auf diesem Computer, verschlüsselt mit deiner Passphrase. Gib sie ein, um sie in dieser Sitzung zu nutzen.
+chrome.passphrase.unlock: Entsperren
+chrome.passphrase.create_title: Zugangsdaten schützen
+chrome.passphrase.create_body: Es gibt keinen System-Keyring. Wähle eine Passphrase, um deine GOG-Sitzungen und anderen Zugangsdaten in einer verschlüsselten Datei auf diesem Computer zu speichern; Decanter fragt einmal pro Sitzung danach. Überspringst du das, werden sie nicht gespeichert und du musst dich beim nächsten Mal erneut anmelden.
+chrome.passphrase.create: Erstellen
+chrome.passphrase.placeholder: Passphrase
+chrome.passphrase.repeat: Passphrase wiederholen
+chrome.passphrase.no_recovery: Wenn du sie vergisst, lassen sich die gespeicherten Zugangsdaten nicht wiederherstellen; du müsstest dich erneut anmelden.
+chrome.passphrase.later: Jetzt nicht
+chrome.passphrase.mismatch: Die beiden Passphrasen stimmen nicht überein.
+chrome.passphrase.wrong: Falsche Passphrase.
+chrome.passphrase.failed: 'Die Datei mit den Zugangsdaten konnte nicht geöffnet werden: %{error}'

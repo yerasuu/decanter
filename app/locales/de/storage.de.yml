@@ -1,0 +1,52 @@
+storage.title: Speicher
+storage.add: Bibliotheksordner hinzufügen
+storage.add_title: Wähle, wo Spiele gespeichert werden
+storage.stats.used.one: von 1 Spiel belegt
+storage.stats.used.other: von %{count} Spielen belegt
+storage.stats.folders.one: Bibliotheksordner
+storage.stats.folders.other: Bibliotheksordner
+storage.folder.primary: Haupt
+storage.folder.extra: Zusatz
+storage.folder.offline: Laufwerk nicht verbunden
+storage.folder.used.one: '%{used} von 1 Spiel belegt'
+storage.folder.used.other: '%{used} von %{count} Spielen belegt'
+storage.folder.free: '%{free} frei von %{total}'
+storage.folder.remove: Entfernen
+storage.folder.remove_hint: Der Ordner wird nicht mehr verwendet; was auf dem Laufwerk liegt, bleibt dort
+storage.folder.remove_blocked: 'Er enthält Spiele: deinstalliere oder verschiebe sie zuerst'
+storage.move_to: Verschieben nach…
+storage.moving.started: Wird verschoben...
+storage.moving.progress: Verschiebe %{done} von %{total}
+storage.errors.nested: '%{path} ist bereits Teil der Bibliothek (%{folder})'
+storage.errors.add: 'Ordner wird gespeichert: %{error}'
+storage.errors.remove: 'Ordner wird entfernt: %{error}'
+storage.errors.hosted: 'Dieses Spiel liegt im Prefix seines Launchers: Verschiebe den Launcher, dann zieht es mit um.'
+storage.errors.running: 'Das Spiel läuft: Beende es, bevor du es verschiebst.'
+storage.errors.shared: 'Ein anderes Konto teilt sich diese Dateien: Sie lassen sich nicht einzeln verschieben.'
+storage.errors.exists: '%{path} existiert im Zielordner bereits.'
+storage.errors.manifest: 'Eintrag von %{game} wird verschoben: %{error}'
+storage.legacy.title: Alte Decanter-Daten
+storage.legacy.body: Decanter speichert seine Daten jetzt in der Bibliothek; %{path} ist nur noch eine Kopie des früheren Zustands.
+storage.legacy.remove: Alte Daten entfernen
+storage.legacy.confirm: Entfernen? Das lässt sich nicht rückgängig machen
+storage.errors.legacy_busy: 'Ein anderes Decanter oder ein Spiel, das sie womöglich verwendet, läuft: Beende sie zuerst.'
+storage.errors.legacy: 'Alte Daten werden entfernt: %{error}'
+storage.cache.title: Cache
+storage.unfinished.title: Unvollständige Downloads
+storage.cache.pick_title: Wähle, wo dieser Ordner seinen Cache ablegt
+storage.cache.empty: leer
+storage.cache.default: Im Ordner · %{size}
+storage.cache.custom: Von dir gewählt · %{size}
+storage.cache.reset: Zurücksetzen
+storage.cache.reset_hint: Den Cache wieder in diesem Ordner ablegen.
+storage.cache.change: Ändern…
+storage.cache.change_hint: Hier landen die Shader-Caches der Spiele dieses Ordners, PC und PS. Auf einer schnellen Platte laden Spiele schneller.
+storage.cache.errors.save: 'Der Cache-Speicherort konnte nicht gespeichert werden: %{error}'
+storage.cache.errors.not_dir: '%{path} ist kein Ordner.'
+storage.cache.errors.inside_games: '%{path} liegt in den Dateien der Spiele: Wähle einen anderen Ordner.'
+storage.cache.errors.not_writable: 'In %{path} kann nicht geschrieben werden: %{error}'
+storage.stray.note: 'Kein Download-Journal, daher nicht fortsetzbar · %{size}'
+storage.stray.delete: Löschen
+storage.stray.keep: Behalten
+storage.stray.confirm: 'Den unvollständigen Download %{name} (%{size}) löschen? Er hat kein Journal und lässt sich nicht fortsetzen.'
+storage.errors.stray: 'Unvollständiger Download wird gelöscht: %{error}'

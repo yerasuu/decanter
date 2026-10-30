@@ -1,0 +1,134 @@
+external.title: Externe Spiele
+external.intro: 'Spiele von außerhalb von GOG: Jedes läuft wie ein installiertes Spiel in einem eigenen Prefix und erscheint zusammen mit den anderen in der Bibliothek.'
+external.intro_native: 'Spiele von außerhalb von GOG: Jedes startet direkt aus seiner ausführbaren Datei und erscheint zusammen mit den anderen in der Bibliothek.'
+external.add_another: Weiteres Spiel hinzufügen
+external.tabs.add: Spiel hinzufügen
+external.tabs.edit: Spiel bearbeiten
+external.tabs.games: Deine Spiele
+external.tabs.sources: Bildquellen
+external.games.empty: Du hast noch keine externen Spiele hinzugefügt.
+external.games.edit: Bearbeiten
+external.games.in_host: In %{host}
+external.games.found: 'Gefunden in %{host}: %{game}'
+external.games.add_found: Hinzufügen
+external.games.remove.button: Löschen
+external.games.remove.running: Beende das Spiel, bevor du es löschst
+external.games.remove.hosted: Entfernt das Spiel; das Prefix gehört weiterhin zu %{host}
+external.games.remove.alone: Entfernt das Spiel und löscht sein Prefix
+external.games.remove.native: Entfernt das Spiel aus der Bibliothek; seine Dateien bleiben, wo sie sind
+external.games.remove.launcher.one: Entfernt das Spiel, sein Prefix und das Spiel, das es installiert hat
+external.games.remove.launcher.other: Entfernt das Spiel, sein Prefix und die %{count} Spiele, die es installiert hat
+external.sources.hint: Mit einem SteamGridDB-Schlüssel liefert die Suche dessen Cover, Hintergründe und Icons; ohne Schlüssel durchsucht sie nur Steam.
+external.sources.key_placeholder: SteamGridDB-API-Schlüssel
+external.sources.save: Speichern
+external.sources.saving: Wird gespeichert...
+external.sources.key_saved: Ein Schlüssel ist gespeichert. Gib einen neuen ein, um ihn zu ersetzen; unter Einstellungen › Allgemein lässt er sich vergessen.
+external.sources.empty: Gib zuerst einen Schlüssel ein.
+external.sources.saved: Gespeichert.
+external.sources.get_key: Schlüssel besorgen
+external.sources.errors.keyring: 'Schlüssel wird im Keyring gespeichert: %{error}'
+external.form.name: Name
+external.form.executable: Ausführbare Datei (.exe)
+external.form.hosted: 'Installiert von %{host}: Es läuft in dessen Prefix, mit dessen Proton, dessen Sitzung und dessen Daten.'
+external.form.pick_exe.button: Datei wählen...
+external.form.pick_exe.title: Ausführbare Datei des Spiels wählen
+external.form.pick_exe.filter: Windows-Programme
+external.form.folder.title: Ordner
+external.form.folder.free: '%{free} frei'
+external.form.installer.run: Installer ausführen...
+external.form.installer.pick_title: Installer wählen
+external.form.installer.filter: Windows-Installer
+external.form.installer.hint: Hat es einen Installer? Führe ihn hier aus. Ist es schon im Prefix eines anderen Tools installiert (Lutris, Bottles, Heroic, Steam)? Importiere es.
+external.form.installer.hint_native: Hat es einen Installer? Führe ihn hier aus und wähle dann die ausführbare Datei, die er installiert hat.
+external.form.installer.running: Wird installiert... Folge den Schritten des Installers.
+external.form.installer.done: Installer beendet. Wähle die ausführbare Datei, die er installiert hat.
+external.form.import.button: Prefix importieren...
+external.form.import.pick_title: Prefix-Ordner wählen
+external.form.import.copy: Kopieren
+external.form.import.move: Verschieben
+external.form.import.cancel: Nicht importieren
+external.form.import.copy_hint: 'Beim Hinzufügen des Spiels wird das Prefix %{prefix} nach decanter kopiert: Das andere Tool behält es, aber es belegt doppelt so viel Platz und die Spielstände bleiben getrennt.'
+external.form.import.move_hint: 'Beim Hinzufügen des Spiels wird das Prefix %{prefix} nach decanter verschoben: Es belegt keinen zusätzlichen Platz, aber das andere Tool verliert es.'
+external.form.import.measuring: Prefix wird vermessen...
+external.form.import.progress: '%{done} von %{total} (%{percent}%)'
+external.form.import.stop: Kopieren abbrechen
+external.form.umu.title: Proton-Fixes
+external.form.umu.search: UMU durchsuchen
+external.form.umu.hint: 'Das Spiel in der UMU-Datenbank: Damit wendet protonfixes seine Fixes auf jedem Proton an.'
+external.form.umu.automatic: Automatisch
+external.form.umu.searching: UMU-Datenbank wird durchsucht...
+external.form.umu.not_found: Dieser Name steht nicht in der UMU-Datenbank.
+external.form.art.cover: Cover
+external.form.art.hero: Hintergrund
+external.form.art.icon: Icon
+external.form.art.search: Bilder suchen
+external.form.art.searching: Suche läuft...
+external.form.art.hint: Nach Name, auf SteamGridDB und Steam.
+external.form.art.none: Mit diesem Namen wurden keine Bilder gefunden.
+external.form.art.found.one: 1 gefunden
+external.form.art.found.other: '%{count} gefunden'
+external.form.art.file: Datei...
+external.form.art.clear: Entfernen
+external.form.art.previous: Vorheriges anzeigen
+external.form.art.next: Nächstes anzeigen
+external.form.art.empty: Kein Bild
+external.form.art.pick_title: Bild wählen
+external.form.art.filter: Bilder
+external.form.save.edit: Änderungen speichern
+external.form.save.add: Zur Bibliothek hinzufügen
+external.form.save.copy: Prefix kopieren und hinzufügen
+external.form.save.move: Prefix verschieben und hinzufügen
+external.form.save.copying: Prefix wird kopiert...
+external.form.save.moving: Prefix wird verschoben...
+external.form.errors.name_for_art: Gib einen Namen ein, um nach den Bildern zu suchen.
+external.form.errors.name_for_umu: Gib einen Namen ein, um auf UMU danach zu suchen.
+external.form.errors.missing: Gib einen Namen und eine ausführbare Datei an.
+external.form.errors.no_executable: Diese ausführbare Datei existiert nicht.
+external.art.no_key: kein Schlüssel, es wurde nur Steam durchsucht.
+external.art.problem: '%{source}: %{problem}'
+external.art.errors.offline: keine Verbindung (%{error})
+external.art.errors.bad_key: der Schlüssel ist ungültig
+external.art.errors.status: Antwort %{status} (%{error})
+external.art.errors.truncated: Antwort abgeschnitten (%{error})
+external.art.errors.unexpected: unerwartete Antwort (%{error})
+external.art.errors.base_url: ungültige Basis-URL
+external.art.errors.unknown_game: es kennt kein Spiel namens „%{name}“
+external.art.errors.no_game: es hat kein Spiel namens „%{name}“
+external.umu.errors.download: 'UMU-Datenbank wird heruntergeladen: %{error}'
+external.umu.errors.read: 'UMU-Datenbank wird gelesen: %{error}'
+external.errors.save: 'Spiel wird gespeichert: %{error}'
+external.errors.remove: 'Spiel wird gelöscht: %{error}'
+external.errors.exec_bit: 'decanter konnte %{path} nicht die Berechtigung zum Ausführen geben: %{error}'
+external.errors.installer: 'Der Installer konnte nicht gestartet werden: %{error}'
+external.errors.not_an_installer: Das ist kein Windows-Installer (.exe oder .msi).
+external.errors.not_a_prefix: Dieser Ordner ist kein Wine-Prefix (er enthält kein drive_c).
+external.errors.prefix_busy: 'In diesem Prefix läuft etwas: Beende es zuerst.'
+external.errors.new_prefix: das neue Prefix konnte nicht ermittelt werden
+external.errors.has_prefix: Dieses Spiel hat bereits ein eigenes Prefix; beginne ein neues, um zu importieren.
+external.transfer.errors.not_empty: '%{path} ist nicht leer: %{error}'
+external.transfer.errors.place: 'Prefix wird an seinen Platz gelegt: %{error}'
+external.transfer.errors.measure: '%{path} wird vermessen: %{error}'
+external.transfer.errors.clean: '%{path} wird aufgeräumt: %{error}'
+external.transfer.errors.copy: 'Prefix wird kopiert: %{error}'
+external.transfer.errors.rsync: 'Prefix wird mit rsync kopiert: %{error}'
+external.transfer.errors.verify: 'die Kopie enthält %{found} von %{expected}; das Original bleibt, wo es war'
+external.transfer.errors.cancelled: 'Kopieren abgebrochen: Nichts blieb halb fertig zurück'
+external.drop.hint: Lege die ausführbare Datei ab, um das Spiel hinzuzufügen
+external.drop.added.one: '„%{name}“ hinzugefügt.'
+external.drop.added.other: '%{count} Spiele hinzugefügt: %{names}.'
+external.drop.existing: '„%{name}“ war bereits in deiner Bibliothek.'
+external.drop.no_profile: Wähle ein Profil, bevor du Spiele hinzufügst.
+external.drop.refused.line: '%{file}: %{reason}.'
+external.drop.refused.missing: nicht mehr vorhanden
+external.drop.refused.directory: ein Ordner; lege die ausführbare Datei des Spiels ab
+external.drop.refused.special: keine reguläre Datei
+external.drop.refused.unreadable: 'nicht lesbar (%{error})'
+external.drop.refused.library: eine Bibliothek, kein Programm
+external.drop.refused.unsupported: 'keine ausführbare Datei, die decanter hinzufügen kann: Lege eine Windows-.exe, ein Linux-Programm, ein AppImage oder ein #!-Skript ab'
+external.drop.refused.unsupported_windows: 'keine ausführbare Datei, die decanter hinzufügen kann: Lege eine .exe ab'
+external.drop.refused.other_system: ein Programm für ein anderes System
+external.drop.refused.one_dump: ein weiterer Dump in derselben Ablage; füge ihn hinzu, sobald der erste fertig ist
+external.drop.edit: Bearbeiten
+external.drop.undo: Rückgängig
+external.drop.undo_running: Beende das Spiel, bevor du es rückgängig machst
+external.drop.close: Schließen

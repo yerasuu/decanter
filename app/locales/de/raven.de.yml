@@ -1,0 +1,71 @@
+raven.experimental: Experimentell
+raven.description: 'Raven ist eine frühe Windows-Laufzeit für Linux (useraven.org). decanter baut sie in deiner Bibliothek aus einem festgelegten Commit oder, auf Wunsch, aus dem neuesten Commit ihres Branches und nutzt sie für die Windows-Programme, die du hier hinzufügst. Viele Programme starten noch nicht: Vorerst ist sie zum Ausprobieren da.'
+raven.license: Raven ist freie Software (GPL-3.0 oder neuer). Sie wird nicht mit decanter ausgeliefert; ihr Code wird beim Bauen von GitHub heruntergeladen.
+raven.build.title: Build
+raven.build.absent: Raven ist nicht gebaut.
+raven.build.built: 'Läuft auf Commit %{commit} · %{size}'
+raven.build.built_measuring: 'Läuft auf Commit %{commit}'
+raven.build.build: Bauen…
+raven.build.remove: Entfernen
+raven.build.removing: Raven wird entfernt…
+raven.build.cancel: Abbrechen
+raven.build.stopped: Build abgebrochen.
+raven.build.failed: 'Der Build ist fehlgeschlagen: %{error}'
+raven.build.open_log: Build-Protokoll öffnen
+raven.build.stage.starting: Start…
+raven.build.stage.sources: Code von Raven wird heruntergeladen…
+raven.build.stage.downloading: 'Build-Tools werden heruntergeladen: %{received}'
+raven.build.stage.downloading_total: 'Build-Tools werden heruntergeladen: %{received} von %{total}'
+raven.build.stage.unpacking: Wird entpackt…
+raven.build.stage.configuring: Build wird vorbereitet…
+raven.build.stage.compiling: 'Kompilierung: Schritt %{done} von %{total}'
+raven.confirm.title: Raven bauen?
+raven.confirm.repo: 'Repository: %{repo}'
+raven.confirm.commit: 'Commit: %{commit}'
+raven.confirm.text: 'decanter lädt den Code von Raven in diesem Commit von GitHub herunter (etwa 18 MB), dazu die zum Bauen nötigen Bibliotheken (aus Nix, falls dein System sie nicht hat) und die Daten, die der Build herunterlädt, und kompiliert ihn in deiner Bibliothek. Das dauert einige Minuten. Der Build-Ordner belegt bis zu etwa 5 GB und die Laufzeit etwa 140 MB. Es ist Code von Dritten, den decanter nicht prüft.'
+raven.confirm.yes: Herunterladen und bauen
+raven.confirm.no: Abbrechen
+raven.confirm_remove.title: Raven entfernen?
+raven.confirm_remove.body_size: 'Die Builds und die Toolchain von Raven werden aus deiner Bibliothek entfernt und geben %{size} frei. Deine Windows-Programme bleiben in der Liste; baust du Raven erneut, wird alles wieder heruntergeladen.'
+raven.confirm_remove.body: 'Die Builds und die Toolchain von Raven werden aus deiner Bibliothek entfernt. Deine Windows-Programme bleiben in der Liste; baust du Raven erneut, wird alles wieder heruntergeladen.'
+raven.confirm_remove.confirm: Raven entfernen
+raven.programs.title: Windows-Programme
+raven.programs.add: Hinzufügen…
+raven.programs.pick_title: Windows-Programm wählen
+raven.programs.filter: Windows-Programme
+raven.programs.drop_hint: Du kannst auch eine .exe auf diesen Bereich ziehen.
+raven.programs.drop_hover: Ablegen, um das Programm zu Raven hinzuzufügen
+raven.programs.empty: Du hast noch kein Programm hinzugefügt.
+raven.programs.added: 'Hinzugefügt: %{name}'
+raven.programs.run: Ausführen
+raven.programs.stop: Stopp
+raven.programs.remove: Entfernen
+raven.programs.open_log: Protokoll
+raven.programs.needs_build: Baue Raven, um es auszuführen.
+raven.programs.failed: 'Der letzte Lauf ist nicht gut zu Ende gegangen. Ende seines Protokolls:'
+raven.errors.not_windows: ist kein Windows-Programm
+raven.errors.no_library: Die aktive Bibliothek ist nicht verfügbar.
+raven.errors.save: 'Es konnte nicht hinzugefügt werden: %{error}'
+raven.errors.remove: 'Es konnte nicht entfernt werden: %{error}'
+raven.errors.remove_running: Beende zuerst die Programme von Raven.
+raven.errors.remove_build: 'Raven konnte nicht entfernt werden: %{error}'
+raven.errors.not_pinned: Diese Version von decanter legt keinen Raven-Commit fest.
+raven.build.building: 'Commit %{commit} wird gebaut: %{stage}'
+raven.build.build_pinned: Festgelegten Commit bauen…
+raven.build.use_pinned: Zurück zum festgelegten Commit
+raven.update.check: Nach Updates suchen
+raven.update.checking: Suche läuft…
+raven.update.newer: 'Neuester Commit von %{branch}: %{commit} (%{repo})'
+raven.update.up_to_date: 'Raven läuft auf dem neuesten Commit von %{branch} (%{commit}).'
+raven.update.check_error: 'Das Repository von Raven konnte nicht abgefragt werden: %{error}'
+raven.update.build: '%{commit} bauen…'
+raven.confirm.unpinned: 'Dieser Commit ist nicht der von decanter festgelegte und wurde nicht mit ihm getestet: Er lässt sich womöglich nicht bauen oder läuft schlechter. Du kannst jederzeit zum festgelegten Commit zurückkehren.'
+raven.builds.title: Andere Builds
+raven.builds.pinned: Von decanter festgelegt
+raven.builds.unpinned: Neuer als der festgelegte, aus dem Branch gebaut
+raven.builds.use: Verwenden
+raven.builds.delete: Löschen
+raven.confirm_delete.title: Diesen Build löschen?
+raven.confirm_delete.body: 'Der Build von Commit %{commit} wird aus deiner Bibliothek entfernt. Baust du diesen Commit erneut, wird er von Grund auf kompiliert.'
+raven.confirm_delete.confirm: Build %{commit} löschen
+raven.errors.use: 'Der Wechsel zu diesem Build ist fehlgeschlagen: %{error}'

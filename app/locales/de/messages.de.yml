@@ -1,0 +1,12 @@
+messages.errors.not_installed: das Spiel ist nicht mehr als installiert aufgeführt
+messages.errors.create_dir: '%{path} wird erstellt: %{error}'
+messages.errors.prefix: das Prefix des Spiels konnte nicht ermittelt werden
+messages.errors.user_folders: deine Windows-Benutzerordner wurden nicht gefunden
+messages.errors.no_prefix: dieses Spiel hat kein Prefix
+messages.errors.delete_prefix: 'Prefix wird gelöscht: %{error}'
+messages.errors.db_open: 'Datenbank wird geöffnet: %{error}'
+messages.errors.no_library: es gibt noch keine Bibliothek
+messages.errors.library_unavailable: die Bibliothek unter %{path} ist nicht verfügbar
+messages.errors.save_libraries: 'Liste der Bibliotheken wird gespeichert: %{error}'
+messages.errors.save_manifest: 'Manifest wird gespeichert: %{error}'
+messages.errors.install_dir: ungültiges Installationsverzeichnis

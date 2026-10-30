@@ -1,0 +1,6 @@
+closing.shortcut_name: Laufendes Spiel beenden
+closing.notice.title: '%{name} wird gleich beendet'
+closing.notice.body: Es wird in %{seconds} Sekunden beendet. Zum Abbrechen halte Select + Start erneut gedrückt oder drücke das Tastenkürzel noch einmal.
+closing.notice.body_pad: Es wird in %{seconds} Sekunden beendet. Zum Abbrechen halte Select + Start erneut gedrückt.
+closing.notice.body_keyboard: Es wird in %{seconds} Sekunden beendet. Zum Abbrechen drücke das Tastenkürzel noch einmal.
+closing.notice.cancelled: 'Beenden abgebrochen: %{name} bleibt geöffnet'
