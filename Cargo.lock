@@ -1381,6 +1381,7 @@ dependencies = [
  "decanter-report",
  "decanter-runtime",
  "dirs 7.0.0",
+ "embed-resource",
  "futures",
  "global-hotkey",
  "gpui",

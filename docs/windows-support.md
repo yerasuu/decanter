@@ -62,6 +62,10 @@ that starts the sibling `decanter.exe` with the same arguments and the terminal'
 and exits with its status. It ships next to `decanter.exe` and never needs updating, since the CLI
 lives only in `decanter`.
 
+`decanter.exe` carries the application icon (`app/assets/favicon.ico`) and a version resource
+(`app/assets/decanter.rc`, compiled by `app/build.rs` through `embed-resource`, with `windres` for
+windows-gnu and `rc.exe` for MSVC), so Explorer and the taskbar show it instead of the generic icon.
+
 Cargo can't gate a `[[bin]]` by target, so the bin has `required-features = ["windows-cli"]` and the
 Windows build passes `--features windows-cli` (CI's Windows build does). Every process decanter
 starts on Windows is created with `CREATE_NO_WINDOW` through `without_console`, except games.

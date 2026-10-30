@@ -51,6 +51,8 @@ chacha20poly1305 = { version = "0.11.0", default-features = false }
 chrono = "0.4.45"
 clap = "4.6.7"
 dirs = "7.0.0"
+# Embeds the application icon and version info into decanter.exe (app/build.rs, Windows targets only).
+embed-resource = "3.0.11"
 flate2 = "1.1.10"
 futures = "0.3.34"
 futures-util = "0.3.34"

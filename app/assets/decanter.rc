@@ -1,0 +1,28 @@
+1 ICON "favicon.ico"
+
+#define DECANTER_STRINGIFY_(x) #x
+#define DECANTER_STRINGIFY(x) DECANTER_STRINGIFY_(x)
+
+1 VERSIONINFO
+FILEVERSION DECANTER_VERSION_COMMA
+PRODUCTVERSION DECANTER_VERSION_COMMA
+FILEOS 0x4
+FILETYPE 0x1
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "ProductName", "Decanter"
+            VALUE "FileDescription", "Decanter"
+            VALUE "OriginalFilename", "decanter.exe"
+            VALUE "InternalName", "decanter"
+            VALUE "FileVersion", DECANTER_STRINGIFY(DECANTER_VERSION)
+            VALUE "ProductVersion", DECANTER_STRINGIFY(DECANTER_VERSION)
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04B0
+    END
+END
