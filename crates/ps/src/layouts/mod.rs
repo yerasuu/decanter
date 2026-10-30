@@ -1,19 +1,44 @@
-//! Named control layouts: gamepad layouts for bbport and keyboard layouts
-//! for each port, kept in decanter's PS data directory.
+//! Named control layouts: gamepad layouts for bbport and keyboard layouts for each port, a catalog
+//! of templates shared by every game of the library (`docs/ps-per-game-settings.md`, D4), one file
+//! per layout under `<library>/psport/layouts/` ([`catalog`]).
 //!
-//! The ones shipped with decanter are rebuilt from code every time and
-//! never written; only the user's own are stored. Any layout can be
-//! copied into a new, editable one. Which layout is in use is not stored:
-//! it is read back from the port's own file, so a file edited elsewhere
-//! shows as no layout rather than as one it no longer matches.
+//! The ones shipped with decanter are rebuilt from code every time and never written; only the
+//! user's own are stored. Any layout can be copied into a new, editable one. Applying a layout copies
+//! its lines into the game's own file, which is what the port reads, so editing a template changes
+//! no game. Each game records which layout it took ([`choice`]); what its file holds beyond that
+//! layout are its own changes.
+
+mod catalog;
+pub mod choice;
 
 use std::io;
-use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub use catalog::{put_keys, put_pad, remove};
+
 use crate::bbport::pad::PadLayout;
 use crate::mapping::{Mapping, Target};
+
+/// One of the catalog's three lists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Pad,
+    Keys(Target),
+}
+
+impl Kind {
+    pub const ALL: [Self; 3] = [Self::Pad, Self::Keys(Target::Bbport), Self::Keys(Target::AnyPs5)];
+
+    /// The catalog's folder for this kind.
+    const fn dir(self) -> &'static str {
+        match self {
+            Self::Pad => "pad",
+            Self::Keys(Target::Bbport) => "bbport-keys",
+            Self::Keys(Target::AnyPs5) => "anyps5-keys",
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyLayout {
@@ -47,45 +72,24 @@ impl KeyLayout {
     }
 }
 
-/// Cloned for each save, so the write happens off the UI thread on a
-/// snapshot while the view keeps editing its own copy.
-#[derive(Clone, Default, Serialize, Deserialize)]
+/// The catalog as read once, which a view edits in memory; each change is written on its own
+/// ([`put_pad`], [`put_keys`], [`remove`]), so two views never overwrite each other's layouts.
+#[derive(Clone, Default)]
 pub struct Store {
-    #[serde(default)]
     pad: Vec<PadLayout>,
-    #[serde(default)]
     bbport_keys: Vec<KeyLayout>,
-    #[serde(default)]
     anyps5_keys: Vec<KeyLayout>,
+    /// Ids of files that could not be read, never handed to a new layout so that file is never
+    /// overwritten.
+    unreadable: Vec<(Kind, String)>,
 }
 
 impl Store {
-    fn path() -> PathBuf {
-        crate::paths::active().join("layouts.json")
-    }
-
-    /// A missing file is an empty store; one that does not parse is an
-    /// error, so it is never overwritten with nothing. File I/O: off the
-    /// UI thread.
+    /// The catalog, made from the former `layouts.json` the first time ([`catalog`]). A layout file
+    /// that doesn't parse is skipped and logged; a former file that doesn't parse is an error, so
+    /// nothing is made from half of it. File I/O: off the UI thread.
     pub fn load() -> io::Result<Self> {
-        Self::load_from(&Self::path())
-    }
-
-    fn load_from(path: &Path) -> io::Result<Self> {
-        match std::fs::read(path) {
-            Ok(data) => serde_json::from_slice(&data).map_err(io::Error::other),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(err) => Err(err),
-        }
-    }
-
-    pub fn save(&self) -> io::Result<()> {
-        self.save_to(&Self::path())
-    }
-
-    fn save_to(&self, path: &Path) -> io::Result<()> {
-        let text = serde_json::to_string_pretty(self).map_err(io::Error::other)? + "\n";
-        crate::files::write_atomic(path, text.as_bytes())
+        catalog::load(&crate::paths::active())
     }
 
     /// The shipped layouts first, then the user's.
@@ -118,20 +122,30 @@ impl Store {
         }
     }
 
-    /// `user-<n>`, past every id already used, so a deleted layout's id is
-    /// never handed to a new one.
-    fn next_id<'a>(ids: impl Iterator<Item = &'a str>) -> String {
-        let last = ids
+    /// `user-<n>`, past every id of `kind` in the catalog, unreadable files included.
+    fn next_id(&self, kind: Kind) -> String {
+        let stored: Vec<&str> = match kind {
+            Kind::Pad => self.pad.iter().map(|layout| layout.id.as_str()).collect(),
+            Kind::Keys(target) => self.keys(target).iter().map(|layout| layout.id.as_str()).collect(),
+        };
+        let last = stored
+            .into_iter()
+            .chain(
+                self.unreadable
+                    .iter()
+                    .filter(|(of, _)| *of == kind)
+                    .map(|(_, id)| id.as_str()),
+            )
             .filter_map(|id| id.strip_prefix("user-")?.parse::<u32>().ok())
             .max()
             .unwrap_or(0);
         format!("user-{}", last.saturating_add(1))
     }
 
-    /// An editable copy of `source` under `name`.
+    /// An editable copy of `source` under `name`, to be written with [`put_pad`].
     pub fn copy_pad(&mut self, source: &PadLayout, name: String) -> PadLayout {
         let copy = PadLayout {
-            id: Self::next_id(self.pad.iter().map(|layout| layout.id.as_str())),
+            id: self.next_id(Kind::Pad),
             name,
             lines: source.lines.clone(),
             template: source.template().to_owned(),
@@ -141,16 +155,15 @@ impl Store {
         copy
     }
 
-    /// An editable copy of `source` under `name`.
+    /// An editable copy of `source` under `name`, to be written with [`put_keys`].
     pub fn copy_keys(&mut self, target: Target, source: &KeyLayout, name: String) -> KeyLayout {
-        let keys = self.keys_mut(target);
         let copy = KeyLayout {
-            id: Self::next_id(keys.iter().map(|layout| layout.id.as_str())),
+            id: self.next_id(Kind::Keys(target)),
             name,
             text: source.text.clone(),
             builtin: false,
         };
-        keys.push(copy.clone());
+        self.keys_mut(target).push(copy.clone());
         copy
     }
 
@@ -173,6 +186,27 @@ impl Store {
 
     pub fn remove_keys(&mut self, target: Target, id: &str) {
         self.keys_mut(target).retain(|layout| layout.id != id);
+    }
+
+    fn has(&self, kind: Kind, id: &str) -> bool {
+        match kind {
+            Kind::Pad => self.pad_layouts().iter().any(|layout| layout.id == id),
+            Kind::Keys(target) => self.key_layouts(target).iter().any(|layout| layout.id == id),
+        }
+    }
+
+    /// The layout a game uses: the one it recorded ([`choice`]) while the catalog still has it,
+    /// else the one its own lines equal (`matched`), as before games recorded theirs.
+    pub fn in_use(
+        &self,
+        kind: Kind,
+        recorded: Option<&str>,
+        matched: impl FnOnce() -> Option<String>,
+    ) -> Option<String> {
+        recorded
+            .filter(|id| self.has(kind, id))
+            .map(str::to_owned)
+            .or_else(matched)
     }
 }
 

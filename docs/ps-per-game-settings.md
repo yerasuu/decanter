@@ -6,8 +6,8 @@ under `<library>/psport/ports/bbport` (psport with `psport.ini`). Phases 1 (per-
 `crates/ps/src/bbport/settings/title.rs`), 3 (online and system modules switches per game), 4
 (mods and patches per game, `crates/ps/src/bbport/mods.rs`, `ModFiles`) and 5 (defaults for new
 games, copy, export and import, reset, `decanter ps settings`; `crates/ps/src/bbport/settings/`) are
-implemented, and phase 6a (below); phase 6b (layouts catalog, migration step 4, GTK leftovers) is not
-yet.
+implemented, and phase 6a (below); of phase 6b, the layouts catalog is (`crates/ps/src/layouts/`,
+below).
 
 Phase 2 as built: the shared keys are an allow-list (`SHARED` in `settings/title.rs`): E1-E3, plus
 `mods_dir`/`patches_dir` (until phase 4, which made them each title's). A title's file is made from the shared one the first time
@@ -128,8 +128,43 @@ Phase 6a as built (kb #1343):
   icons and the controller go to `defaults/settings.json`); the layouts catalog stays shared (D4).
   Extras are still taken from a game.
 
-Left for phase 6b: the layouts catalog, the GTK leftovers, and migration step 4 (rewriting the shared
+Left for phase 6b: the GTK leftovers and migration step 4 (rewriting the shared
 file with the E1-E3 keys only), still waiting since an older port's launches read the shared file.
+
+Phase 6b as built (kb #1344):
+
+- **Layouts catalog** (D4, `crates/ps/src/layouts/`): the user's keyboard and gamepad layouts are a
+  catalog shared by every game of the library, one file per layout:
+  `<library>/psport/layouts/pad/<id>.json` (`id`, `name`, `lines` as `[input, SDL buttons]` pairs,
+  `template`), `layouts/bbport-keys/<id>.json` and `layouts/anyps5-keys/<id>.json` (`id`, `name`,
+  `text`, the keys over the port's defaults). Ids are `user-<n>`; a file whose name is not a layout id
+  is skipped, and one that doesn't parse is skipped and its id never handed out again, both logged.
+  The shipped layouts (default, Code Vein) stay in code, listed first, never written. Each change
+  writes its own file, so two tabs never overwrite each other's layouts.
+- **Made from the former file**: the first read with no `layouts/` folder copies `layouts.json` into
+  `backups/per-game-settings-<date>/layouts-<HHMMSS>/`, writes every layout into a scratch folder and
+  renames it into place whole (an id no file may have gets a new one, so no layout is lost).
+  `layouts.json` is left as it was, for an older decanter. One that doesn't parse stops it: nothing is
+  made, the tabs show the read error, and the file is untouched.
+- **Each game records which layout it took**: `pad_layout` and `key_layout` in the title's
+  `settings.json` (categories gamepad and keyboard, so copy, reset, export and the defaults carry
+  them), and `anyps5/<TITLE_ID>/layout.json` (`{"keys": id}`) for an AnyPS5 title. The lines stay in
+  the game's own file, which is what the port reads: what they hold beyond the layout are the game's
+  own changes, shown as such. A game that recorded nothing (every game before this) follows the layout
+  its lines equal, as before, so nothing is migrated in the games' files and nothing changes for the
+  player; the record is written the first time a layout is picked or the bindings are saved. A title
+  on the shared files (an older port, an unusual id) records nothing, since its lines are every
+  title's. The defaults page's Keyboard and Gamepad editors work on the same catalog and record the
+  layout in `defaults/settings.json`, which a new game copies with the lines it came with (no game's
+  record is written from there); copy, apply to all games and forget carry or drop the two keys with
+  their categories.
+- **Editors**: every layout's bindings can be changed for one game (Teclado: Guardar; Mando: at once
+  in the list, Aplicar on the drawing), a shipped one included; "Save to the layout" takes them into
+  the user's own layout, which games that took it earlier don't follow (they keep their copy, D4).
+  Copy as new, rename and delete work on the catalog; renaming writes no game. Deleting a layout a
+  game uses asks first and names the games (#1133): they keep their lines and only stop following it
+  (their record is dropped, the defaults' too), and the layout's file is copied into
+  `backups/per-game-settings-<date>/layouts-<HHMMSS>/` first.
 
 ## The owner's rule
 
@@ -152,7 +187,7 @@ All PS launch configuration lives in one folder per library, `<library>/psport/b
 | `mods.json`, `patches.json` (`crates/ps/src/bbport/tools.rs:185,224`) | Mods tab | `run.sh` / `direct::arguments` (`--mods-config`, `--patches-config`) |
 | `mods-effective/`, `mods-effective.json` (`crates/ps/src/bbport/mods.rs:116,131`) | every Bloodborne launch, rebuilt | the port (`--mods`) |
 | `learned.json` (`crates/ps/src/learned.rs:51`) | run scanner | launch; **already keyed by `TITLE_ID`** |
-| `<library>/psport/layouts.json` (`crates/ps/src/layouts.rs:63`) | Keyboard and Gamepad tabs (named layouts) | same tabs |
+| `<library>/psport/layouts.json` (`crates/ps/src/layouts.rs:63`; since phase 6b the catalog `layouts/`, made from it) | Keyboard and Gamepad tabs (named layouts) | same tabs |
 | `<library>/psport/anyps5/<TITLE_ID>/anyps5-input.ini` | Keyboard tab for AnyPS5 games | AnyPS5; **already per title** |
 
 `settings.json` has one per-title map, `titles.<TITLE_ID>`, holding only `frame_gen`
@@ -300,6 +335,7 @@ One folder per title inside the library's PS folder, beside the shared data:
 <library>/psport/defaults/
     settings.json        the user's defaults for new games (launch keys)
     psport.ini           the user's defaults for new games (port keys)
+<library>/psport/layouts/{pad,bbport-keys,anyps5-keys}/<id>.json   the shared layouts catalog (D4)
 <library>/psport/bbport/settings.json   only shared keys: online identity, dump folders, port selection
 ```
 

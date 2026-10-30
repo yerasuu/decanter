@@ -288,7 +288,15 @@ ps.layouts.name_placeholder: Layout name
 ps.layouts.layout: Layout
 ps.layouts.copy: Copy as new
 ps.layouts.remove: Delete layout
-ps.layouts.hint_builtin: 'Built-in layouts can''t be edited: copy it as new to change it.'
+ps.layouts.hint_builtin: 'Built-in layouts can''t be edited: what you change here is saved for this game only; copy it as new to have a layout of your own.'
+ps.layouts.own_changes: 'This game has changes of its own on top of the layout. Picking the layout again drops them.'
+ps.layouts.save_to_layout: Save to the layout
+ps.layouts.save_error: 'Couldn''t save the layout: %{error}'
+ps.layouts.removed: Layout deleted.
+ps.layouts.remove_error: 'Couldn''t delete the layout: %{error}'
+ps.layouts.confirm_remove.title: 'Delete the layout “%{name}”?'
+ps.layouts.confirm_remove.body: 'Used by: %{games}. Those games keep their controls as they are and only stop following the layout. A copy is kept in backups.'
+ps.layouts.confirm_remove.yes: Delete the layout
 ps.keyboard.groups.buttons: Buttons
 ps.keyboard.groups.dpad: D-pad
 ps.keyboard.groups.left_stick: Left stick
@@ -327,8 +335,8 @@ ps.keyboard.saved: Saved
 ps.keyboard.unbound: Unbound
 ps.keyboard.assign: + Assign
 ps.keyboard.reset_all: Reset all
-ps.keyboard.hint.own: 'Your layout: + Assign and press the key; Save writes it. Enter saves the name.'
-ps.keyboard.hint.custom: The file has hand-edited keys; copy them as new to save them as a layout.
+ps.keyboard.hint.own: 'Your layout: + Assign and press the key; Save writes it for this game only and “Save to the layout” into the layout too. Enter saves the name.'
+ps.keyboard.hint.custom: 'This game follows no layout: its keys are its own; Save writes them and Copy as new saves them as a layout.'
 ps.keyboard.description.bbport: Keyboard for bbport (key. lines in the file below). Removing every key from an action leaves it unbound.
 ps.keyboard.description.anyps5: Keyboard and mouse for AnyPS5. The controller always works without setup.
 ps.keyboard.capture: Press a key or a mouse button, or move the wheel
@@ -400,8 +408,8 @@ ps.gamepad.icons.title: Button icons
 ps.gamepad.icons.note: In menus and prompts; they follow the chosen layout
 ps.gamepad.icons.pad: Controller (A/B/X/Y)
 ps.gamepad.icons.original: The game's originals
-ps.gamepad.hint.own: 'Your layout: pick each input''s button; if another input already used it, they swap. Enter saves the name.'
-ps.gamepad.hint.custom: bbport.ini has hand-edited pad. lines; copy them as new to save them as a layout.
+ps.gamepad.hint.own: 'Your layout: pick each input''s button (if another input already used it, they swap); it is saved at once for this game only, and “Save to the layout” takes it into the layout. Enter saves the name.'
+ps.gamepad.hint.custom: 'This game follows no layout: its pad. lines are its own; copy them as new to save them as a layout.'
 ps.gamepad.mode.list: List
 ps.gamepad.mode.visual: Visual
 ps.gamepad.visual.pick: Click a row or a button on the drawing to choose which button on your controller triggers it.
@@ -411,8 +419,8 @@ ps.gamepad.visual.restore: Restore default settings
 ps.gamepad.visual.apply: Apply
 ps.gamepad.visual.cancel: Cancel
 ps.gamepad.visual.pending: There are unapplied changes. They stay even if you switch tabs, until you apply or cancel them.
-ps.gamepad.visual.hint_template: This is a template and isn't modified; applying your changes saves them as a new configuration of your own. If another input already used a button, they swap.
-ps.gamepad.visual.hint_own: Your configuration. Changes are saved when you click Apply; if another input already used a button, they swap. In gold, what differs from the default layout.
+ps.gamepad.visual.hint_template: 'This is a template and isn''t modified; applying saves your changes for this game only. If another input already used a button, they swap.'
+ps.gamepad.visual.hint_own: 'Your configuration. Changes are saved for this game when you click Apply, and “Save to the layout” takes them into the configuration; if another input already used a button, they swap. In gold, what differs from the default layout.'
 ps.gamepad.visual.locked: Apply or cancel the drawing's changes first.
 ps.gamepad.visual.left_stick: Move
 ps.gamepad.visual.right_stick: Move the camera

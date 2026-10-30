@@ -131,6 +131,52 @@ impl LauncherSettings {
         own.write_at(root, &path)
     }
 
+    /// `key` of `title_id`'s own file as it is, without making the file; `None` where the title
+    /// reads the shared one, whose keys are every title's.
+    pub(crate) fn own_text(root: &Root, title_id: &str, key: &str) -> io::Result<Option<String>> {
+        let names = Names::of_blocking(&Port::Bbport.checkout(root));
+        let Ok(id) = port_ini::own_title(names, title_id) else {
+            return Ok(None);
+        };
+        Self::text_at(&root.title(&id).join(FILE), key)
+    }
+
+    /// `value` under `key` in `title_id`'s own file; nothing where the title reads the shared one.
+    /// Whether it was written.
+    pub(crate) fn set_own_text(root: &Root, title_id: &str, key: &str, value: &str) -> io::Result<bool> {
+        let Some(path) = title_file(root, title_id)? else {
+            return Ok(false);
+        };
+        let mut own = Self::read_at(&path, true)?;
+        if own.text(key) == Some(value) {
+            return Ok(false);
+        }
+        own.set_text(key, value);
+        own.values.retain(|key, _| !Self::is_shared(key));
+        own.write_at(root, &path)?;
+        Ok(true)
+    }
+
+    /// `key` of a title's or the defaults' file at `path`, `None` when the file or the key is absent.
+    pub(crate) fn text_at(path: &Path, key: &str) -> io::Result<Option<String>> {
+        Ok(Self::read_at(path, true)?.text(key).map(str::to_owned))
+    }
+
+    /// Drops `key` from the title's or the defaults' file at `path` where it holds `value`. Whether
+    /// it did.
+    pub(crate) fn forget_text_at(root: &Root, path: &Path, key: &str, value: &str) -> io::Result<bool> {
+        if !path.is_file() {
+            return Ok(false);
+        }
+        let mut own = Self::read_at(path, true)?;
+        if own.text(key) != Some(value) {
+            return Ok(false);
+        }
+        own.values.remove(key);
+        own.write_at(root, path)?;
+        Ok(true)
+    }
+
     /// `key`'s value in the shared file and in every title's own, for what must know them all,
     /// such as the pad names a report hides. A file that can't be read is skipped and logged.
     /// File I/O: off the UI thread.

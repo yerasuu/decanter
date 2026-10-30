@@ -1,9 +1,10 @@
-//! Teclado: one game's keyboard and mouse bindings, captured by pressing
-//! them, kept as named layouts. Any layout can be copied into a new
-//! editable one; the one picked is the one in the port's file. The controller is the Mando tab's, for bbport; AnyPS5 reads it
-//! as it is.
+//! Teclado: one game's keyboard and mouse bindings, captured by pressing them, starting from a
+//! layout of the shared catalog. Any layout can be copied into a new editable one; the game records
+//! the one it took, and what it changes beyond it is saved for this game alone unless saved into the
+//! layout. The controller is the Mando tab's, for bbport; AnyPS5 reads it as it is.
 
 use std::borrow::Cow;
+use std::io;
 use std::path::PathBuf;
 
 use decanter_core::capabilities::Feature;
@@ -16,14 +17,15 @@ use rust_i18n::t;
 use decanter_ps::bbport::IniScope;
 use decanter_ps::bbport::pad::INPUTS;
 use decanter_ps::keys::sdl_key_name;
-use decanter_ps::layouts::{self, KeyLayout, Store};
+use decanter_ps::layouts::{self, KeyLayout, Kind, Store, choice};
 use decanter_ps::mapping::{Action, Mapping, MouseButton, Refusal, Source, Target, Wheel};
 
-use super::{layout_name, scope_note};
+use super::{game_names, layout_name, scope_note};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
+use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, select::SelectStyle};
+use crate::widgets::{ButtonKind, InputEvent, Select, TextInput, button, confirm_panel, select::SelectStyle};
 
 const GROUPS: [(&str, &[Action]); 5] = [
     (
@@ -156,6 +158,8 @@ const fn refusal_text(refusal: Refusal) -> Text {
 const CUSTOM: &str = "custom";
 
 pub struct KeyboardView {
+    ps: Entity<Ps>,
+    title_id: String,
     target: Target,
     path: PathBuf,
     scope: IniScope,
@@ -172,18 +176,34 @@ pub struct KeyboardView {
     focus: FocusHandle,
     /// Editing the defaults new games copy rather than one game's bindings.
     is_defaults: bool,
+    /// A layout about to be deleted and the games that use it, while the question is shown.
+    removing: Option<(KeyLayout, Vec<String>)>,
+}
+
+/// Where a title's keyboard bindings are and what it took them from, read off the UI thread.
+pub struct Controls {
+    pub title_id: String,
+    pub path: PathBuf,
+    pub scope: IniScope,
+    pub mapping: Mapping,
+    /// The layout the title recorded ([`choice`]).
+    pub recorded: Option<String>,
+    pub store: Store,
 }
 
 impl KeyboardView {
-    pub fn new(
-        target: Target,
-        path: PathBuf,
-        scope: IniScope,
-        mapping: Mapping,
-        store: Store,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let current = layouts::current_keys(target, &mapping, &store.key_layouts(target));
+    pub fn new(ps: Entity<Ps>, target: Target, controls: Controls, cx: &mut Context<Self>) -> Self {
+        let Controls {
+            title_id,
+            path,
+            scope,
+            mapping,
+            recorded,
+            store,
+        } = controls;
+        let current = store.in_use(Kind::Keys(target), recorded.as_deref(), || {
+            layouts::current_keys(target, &mapping, &store.key_layouts(target))
+        });
         let name = cx.new(|cx| TextInput::new(Text::new("ps.layouts.name_placeholder"), cx));
         cx.subscribe(&name, |this, name, event, cx| {
             if matches!(event, InputEvent::Submit) {
@@ -193,6 +213,8 @@ impl KeyboardView {
         })
         .detach();
         let mut this = Self {
+            ps,
+            title_id,
             target,
             path,
             scope,
@@ -206,6 +228,7 @@ impl KeyboardView {
             status: None,
             focus: cx.focus_handle(),
             is_defaults: false,
+            removing: None,
         };
         this.sync_name(cx);
         this
@@ -235,18 +258,25 @@ impl KeyboardView {
         self.name.update(cx, |input, cx| input.set_text(name, cx));
     }
 
-    /// Writes `self.mapping` into the port's file, and the store first when
-    /// it changed; both off the UI thread.
-    fn persist(&mut self, store_changed: bool, cx: &mut Context<Self>) {
+    /// Writes `layout` into the catalog when given, then `self.mapping` into the game's file (or the
+    /// defaults') and the layout it follows into its record; all off the UI thread.
+    fn persist(&mut self, layout: Option<KeyLayout>, cx: &mut Context<Self>) {
         let (target, path, mapping) = (self.target, self.path.clone(), self.mapping.clone());
-        let store = store_changed.then(|| self.store.clone());
+        let (title_id, current, is_defaults) = (self.title_id.clone(), self.current.clone(), self.is_defaults);
         let task = cx.background_spawn(async move {
-            if let Some(store) = store
-                && let Err(err) = store.save()
-            {
-                return Err(err);
+            if let Some(layout) = layout {
+                layouts::put_keys(target, &layout)?;
             }
-            decanter_ps::binds::save(target, &path, &mapping).map(|()| mapping)
+            decanter_ps::binds::save(target, &path, &mapping)?;
+            if let Some(id) = current {
+                let root = decanter_ps::paths::active();
+                if is_defaults {
+                    choice::record_default(&root, Kind::Keys(target), &id)?;
+                } else {
+                    choice::record(&root, Kind::Keys(target), &title_id, &id)?;
+                }
+            }
+            Ok::<_, io::Error>(mapping)
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -271,6 +301,24 @@ impl KeyboardView {
         cx.notify();
     }
 
+    /// Writes only the catalog's file of `layout`, for a change no game's bindings follow.
+    fn write_layout(&mut self, layout: KeyLayout, cx: &mut Context<Self>) {
+        let target = self.target;
+        let task = cx.background_spawn(async move { layouts::put_keys(target, &layout) });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                if let Err(err) = result {
+                    this.status = Some((Text::new("ps.layouts.save_error").arg("error", err), true));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        self.sync_name(cx);
+        cx.notify();
+    }
+
     fn choose(&mut self, id: &str, cx: &mut Context<Self>) {
         let Some(layout) = self
             .store
@@ -283,7 +331,7 @@ impl KeyboardView {
         self.mapping = layout.mapping(self.target);
         self.current = Some(layout.id);
         self.capturing = None;
-        self.persist(false, cx);
+        self.persist(None, cx);
     }
 
     /// A new editable layout from what is shown, edits not yet saved
@@ -301,8 +349,8 @@ impl KeyboardView {
             name = layout_name(&source.id, source.builtin, &source.name)
         );
         let copy = self.store.copy_keys(self.target, &source, name.into_owned());
-        self.current = Some(copy.id);
-        self.persist(true, cx);
+        self.current = Some(copy.id.clone());
+        self.persist(Some(copy), cx);
     }
 
     fn rename(&mut self, name: String, cx: &mut Context<Self>) {
@@ -311,17 +359,89 @@ impl KeyboardView {
         };
         layout.name = name;
         self.store.update_keys(self.target, &layout);
-        self.persist(true, cx);
+        self.write_layout(layout, cx);
     }
 
+    /// Asks first when a game uses the layout, naming them (#1133); deletes at once otherwise.
     fn remove(&mut self, cx: &mut Context<Self>) {
         let Some(layout) = self.layout().filter(|layout| !layout.builtin) else {
             return;
         };
+        let target = self.target;
+        let task = cx.background_spawn({
+            let layout = layout.clone();
+            async move { choice::key_users(&decanter_ps::paths::active(), target, &layout) }
+        });
+        cx.spawn(async move |this, cx| {
+            let users = task.await;
+            let _ = this.update(cx, |this, cx| {
+                if users.is_empty() {
+                    this.delete(layout, cx);
+                } else {
+                    this.removing = Some((layout, users));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// The game keeps its bindings as they are; it only stops following the layout.
+    fn delete(&mut self, layout: KeyLayout, cx: &mut Context<Self>) {
+        self.removing = None;
         self.store.remove_keys(self.target, &layout.id);
-        self.current = Some("default".to_owned());
-        self.mapping = self.defaults.clone();
-        self.persist(true, cx);
+        self.current = layouts::current_keys(self.target, &self.saved, &self.store.key_layouts(self.target));
+        let target = self.target;
+        let task = cx.background_spawn(async move {
+            layouts::remove(&decanter_ps::paths::active(), Kind::Keys(target), &layout.id)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.status = Some(match result {
+                    Ok(_) => (Text::new("ps.layouts.removed"), false),
+                    Err(err) => (Text::new("ps.layouts.remove_error").arg("error", err), true),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+        self.sync_name(cx);
+        cx.notify();
+    }
+
+    fn confirmation(&self, cx: &Context<Self>) -> Option<Div> {
+        let (layout, users) = self.removing.as_ref()?;
+        let entity = cx.entity();
+        let cancel = cx.entity();
+        Some(confirm_panel(
+            "ps-key-remove-confirm",
+            t!("ps.layouts.confirm_remove.title", name = layout.name),
+            t!(
+                "ps.layouts.confirm_remove.body",
+                games = game_names(self.ps.read(cx), users)
+            ),
+            t!("ps.layouts.confirm_remove.yes"),
+            move |_, _, cx| {
+                entity.update(cx, |this, cx| {
+                    if let Some((layout, _)) = this.removing.take() {
+                        this.delete(layout, cx);
+                    }
+                });
+            },
+            move |_, _, cx| {
+                cancel.update(cx, |this, cx| {
+                    this.removing = None;
+                    cx.notify();
+                });
+            },
+        ))
+    }
+
+    /// Whether the game's saved bindings differ from the layout it follows.
+    fn has_own_changes(&self) -> bool {
+        self.layout()
+            .is_some_and(|layout| layout.mapping(self.target) != self.saved)
     }
 
     fn capture(&mut self, source: Source, cx: &mut Context<Self>) {
@@ -392,20 +512,25 @@ impl KeyboardView {
         }
     }
 
+    /// This game's bindings only; the layout stays as it is.
     fn save(&mut self, cx: &mut Context<Self>) {
+        self.persist(None, cx);
+    }
+
+    /// Into the user's layout too, which games that took it earlier don't follow (D4).
+    fn save_to_layout(&mut self, cx: &mut Context<Self>) {
         let Some(mut layout) = self.layout().filter(|layout| !layout.builtin) else {
             return;
         };
         layout.set_mapping(self.target, &self.mapping);
         self.store.update_keys(self.target, &layout);
-        self.persist(true, cx);
+        self.persist(Some(layout), cx);
     }
 
     fn row(&self, action: Action, last: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let sources = self.mapping.get(action);
         let changed = sources != self.defaults.get(action);
-        let editable = self.editable();
-        let removable = editable && (self.target.allows_unbound() || sources.len() > 1);
+        let removable = self.target.allows_unbound() || sources.len() > 1;
         let capturing = self.capturing == Some(action);
         theme::compact_row(last)
             .py(px(6.))
@@ -467,34 +592,32 @@ impl KeyboardView {
                             })
                     })),
             )
-            .when(editable, |row| {
-                row.child(
-                    button(
-                        SharedString::from(format!("add-{}", action.name())),
-                        ButtonKind::Secondary,
-                        t!("ps.keyboard.assign"),
-                        false,
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.capturing = Some(action);
-                        this.status = None;
-                        window.focus(&this.focus, cx);
-                        cx.notify();
-                    })),
+            .child(
+                button(
+                    SharedString::from(format!("add-{}", action.name())),
+                    ButtonKind::Secondary,
+                    t!("ps.keyboard.assign"),
+                    false,
                 )
-                .child(
-                    button(
-                        SharedString::from(format!("reset-{}", action.name())),
-                        ButtonKind::Secondary,
-                        "↺",
-                        false,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.mapping.reset(action, &this.defaults);
-                        cx.notify();
-                    })),
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.capturing = Some(action);
+                    this.status = None;
+                    window.focus(&this.focus, cx);
+                    cx.notify();
+                })),
+            )
+            .child(
+                button(
+                    SharedString::from(format!("reset-{}", action.name())),
+                    ButtonKind::Secondary,
+                    "↺",
+                    false,
                 )
-            })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.mapping.reset(action, &this.defaults);
+                    cx.notify();
+                })),
+            )
     }
 
     fn layout_bar(&self, editable: bool, cx: &Context<Self>) -> Div {
@@ -568,7 +691,11 @@ impl KeyboardView {
         groups
     }
 
-    fn header(&self, dirty: bool, editable: bool, cx: &Context<Self>) -> Div {
+    fn header(&self, dirty: bool, own: bool, cx: &Context<Self>) -> Div {
+        let unsaved_in_layout = own
+            && self
+                .layout()
+                .is_some_and(|layout| layout.mapping(self.target) != self.mapping);
         div()
             .flex()
             .items_center()
@@ -604,33 +731,41 @@ impl KeyboardView {
                     }))
                     .child(SharedString::from(text))
             }))
-            .when(editable, |header| {
-                header
-                    .child(
-                        button(
-                            "binds-reset-all",
-                            ButtonKind::Secondary,
-                            t!("ps.keyboard.reset_all"),
-                            false,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.mapping = this.defaults.clone();
-                            cx.notify();
-                        })),
+            .child(
+                button(
+                    "binds-reset-all",
+                    ButtonKind::Secondary,
+                    t!("ps.keyboard.reset_all"),
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.mapping = this.defaults.clone();
+                    cx.notify();
+                })),
+            )
+            .child(
+                button(
+                    "binds-save",
+                    ButtonKind::Primary,
+                    if dirty {
+                        t!("ps.keyboard.save")
+                    } else {
+                        t!("ps.keyboard.saved")
+                    },
+                    !dirty,
+                )
+                .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
+            )
+            .when(unsaved_in_layout, |header| {
+                header.child(
+                    button(
+                        "binds-save-layout",
+                        ButtonKind::Secondary,
+                        t!("ps.layouts.save_to_layout"),
+                        false,
                     )
-                    .child(
-                        button(
-                            "binds-save",
-                            ButtonKind::Primary,
-                            if dirty {
-                                t!("ps.keyboard.save")
-                            } else {
-                                t!("ps.keyboard.saved")
-                            },
-                            !dirty,
-                        )
-                        .when(dirty, |b| b.on_click(cx.listener(|this, _, _, cx| this.save(cx)))),
-                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.save_to_layout(cx))),
+                )
             })
     }
 
@@ -683,9 +818,9 @@ impl KeyboardView {
 impl Render for KeyboardView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dirty = self.mapping != self.saved;
-        let editable = self.editable();
-        let layout_bar = self.layout_bar(editable, cx);
-        let hint = if editable {
+        let own = self.editable();
+        let layout_bar = self.layout_bar(own, cx);
+        let hint = if own {
             t!("ps.keyboard.hint.own")
         } else if self.current.is_some() {
             t!("ps.layouts.hint_builtin")
@@ -702,9 +837,13 @@ impl Render for KeyboardView {
             .flex()
             .flex_col()
             .gap_4()
-            .child(self.header(dirty, editable, cx))
+            .child(self.header(dirty, own, cx))
             .child(layout_bar)
+            .children(self.confirmation(cx))
             .child(theme::muted(hint).text_size(px(12.)))
+            .when(self.has_own_changes(), |root| {
+                root.child(theme::muted(t!("ps.layouts.own_changes")).text_size(px(12.)))
+            })
             .child(groups)
             // While capturing, an overlay takes every click and wheel step so they bind instead of
             // pressing the buttons underneath; only its Cancel button escapes.

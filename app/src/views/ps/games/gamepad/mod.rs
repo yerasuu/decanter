@@ -1,8 +1,8 @@
-//! Mando: which controller bbport reads and which configuration its
-//! buttons follow ([`config`]). The bindings show as a list or on a drawing
-//! of the pad ([`visual`]), whichever the user keeps: the list writes an
-//! edit to the game's port ini at once, the drawing stages edits until they are
-//! applied ([`staged`]). Everything applies on the next start.
+//! Mando: which controller bbport reads and which configuration of the shared catalog its buttons
+//! start from ([`config`]). The bindings show as a list or on a drawing of the pad ([`visual`]),
+//! whichever the user keeps: the list writes an edit to the game's port ini at once, the drawing
+//! stages edits until they are applied ([`staged`]). Edits are this game's own; only "Save to the
+//! layout" takes them into the user's configuration. Everything applies on the next start.
 
 mod config;
 mod staged;
@@ -12,14 +12,14 @@ use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::pad::{self, BUTTONS, INPUTS, MENU, MENU_CHORDS, PadLayout};
 use decanter_ps::bbport::per_game::DEFAULTS;
 use decanter_ps::bbport::values::{self, Values};
-use decanter_ps::bbport::{Bbport, Control, GROUPS, Setting};
-use decanter_ps::layouts::Store;
+use decanter_ps::bbport::{Bbport, Control, GROUPS, IniScope, Setting};
+use decanter_ps::layouts::{self, Kind, Store, choice};
 use decanter_ps::port::Port;
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 use staged::Scope;
 
-use super::{layout_name, scope_note};
+use super::{game_names, layout_name, scope_note};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::Ps;
@@ -55,10 +55,11 @@ impl Mode {
 /// One title's: [`Values::ini_path`] is the file its layout is written to.
 struct Loaded {
     store: Store,
-    /// The id of the layout in the port ini; `None` when it matches none.
+    /// The id of the layout the game follows: the one it recorded, else the one its `pad.` lines
+    /// equal; `None` when neither.
     current: Option<String>,
-    /// The port ini's own `pad.` lines, for copying when they match none.
-    custom: PadLayout,
+    /// The port ini's own `pad.` lines, the layout's with the game's own changes.
+    game: PadLayout,
     values: Values,
 }
 
@@ -67,9 +68,28 @@ impl Loaded {
         let id = self.current.as_deref()?;
         self.store.pad_layouts().into_iter().find(|layout| layout.id == id)
     }
+
+    /// Whether the game's `pad.` lines differ from the layout it follows.
+    fn has_own_changes(&self) -> bool {
+        self.layout().is_some_and(|layout| !same_lines(&layout, &self.game))
+    }
+
+    /// Only a title's own file records a layout: a shared one's lines are every title's.
+    fn records(&self) -> bool {
+        self.values.scope() == IniScope::Title && !self.values.is_defaults()
+    }
+}
+
+fn same_lines(a: &PadLayout, b: &PadLayout) -> bool {
+    let mut a = a.lines.clone();
+    let mut b = b.lines.clone();
+    a.sort();
+    b.sort();
+    a == b
 }
 
 pub struct GamepadView {
+    ps: Entity<Ps>,
     /// The shown title, whose settings `loaded` holds once read.
     title_id: Option<String>,
     loaded: Option<Result<Loaded, Text>>,
@@ -83,6 +103,8 @@ pub struct GamepadView {
     /// The drawing's edits not yet applied; `None` when there are none.
     draft: Option<PadLayout>,
     scope: Scope,
+    /// A layout about to be deleted and the games that use it, while the question is shown.
+    removing: Option<(PadLayout, Vec<String>)>,
 }
 
 fn gamepad_setting() -> Option<&'static Setting> {
@@ -139,6 +161,7 @@ impl GamepadView {
             .detach();
         }
         Self {
+            ps: ps.clone(),
             title_id: None,
             loaded: None,
             gamepads: Vec::new(),
@@ -148,6 +171,7 @@ impl GamepadView {
             selected: None,
             draft: None,
             scope: Scope::Game,
+            removing: None,
         }
     }
 
@@ -166,6 +190,7 @@ impl GamepadView {
             self.loaded = None;
             self.draft = None;
             self.selected = None;
+            self.removing = None;
         }
         let title_id = title_id.to_owned();
         let load = cx.background_spawn({
@@ -185,9 +210,14 @@ impl GamepadView {
                     Ok(values) => values,
                     Err(err) => return Err(Text::new("ps.scope.read_error").arg("error", err)),
                 };
+                let recorded = (values.scope() == IniScope::Title)
+                    .then(|| values.launch().text(choice::PAD_KEY))
+                    .flatten();
                 Ok(Loaded {
-                    current: pad::current(values.ini_path(), &store.pad_layouts()),
-                    custom: pad::from_ini(values.ini_path()),
+                    current: store.in_use(Kind::Pad, recorded, || {
+                        pad::current(values.ini_path(), &store.pad_layouts())
+                    }),
+                    game: pad::from_ini(values.ini_path()),
                     values,
                     store,
                 })
@@ -294,23 +324,41 @@ impl GamepadView {
         self.name.update(cx, |input, cx| input.set_text(name, cx));
     }
 
-    /// Makes `layout` the one in use: written into the shown title's port ini, and the
-    /// store saved first when it changed. Both off the UI thread.
-    fn apply(&mut self, layout: PadLayout, store_changed: bool, cx: &mut Context<Self>) {
+    /// Writes `lines` into the shown title's port ini and makes the layout they carry the one it
+    /// follows (none for lines of no layout), and `catalog` into the catalog first when given. Off
+    /// the UI thread.
+    fn write_game(&mut self, lines: PadLayout, catalog: Option<PadLayout>, cx: &mut Context<Self>) {
         let Some(loaded) = self.loaded_mut() else {
             return;
         };
-        loaded.current = Some(layout.id.clone());
-        let store = store_changed.then(|| loaded.store.clone());
+        if !lines.id.is_empty() {
+            loaded.current = Some(lines.id.clone());
+        }
+        loaded.game.lines.clone_from(&lines.lines);
+        let is_defaults = loaded.values.is_defaults();
+        let record = (is_defaults || loaded.records())
+            .then(|| loaded.current.clone())
+            .flatten()
+            .map(|id| (loaded.values.title_id().to_owned(), id));
         let ini = loaded.values.ini_path().to_owned();
         let task = cx.background_spawn(async move {
-            if let Some(store) = store
-                && let Err(err) = store.save()
-            {
-                return Err(err);
+            if let Some(layout) = catalog {
+                layouts::put_pad(&layout)?;
             }
-            layout.save_to_ini(&ini)
+            lines.save_to_ini(&ini)?;
+            let root = decanter_ps::paths::active();
+            match record {
+                Some((_, id)) if is_defaults => choice::record_default(&root, Kind::Pad, &id),
+                Some((title_id, id)) => choice::record(&root, Kind::Pad, &title_id, &id),
+                None => Ok(()),
+            }
         });
+        Self::report(task, cx);
+        self.sync_name(cx);
+        cx.notify();
+    }
+
+    fn report(task: gpui::Task<std::io::Result<()>>, cx: &Context<Self>) {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -321,20 +369,23 @@ impl GamepadView {
             });
         })
         .detach();
+    }
+
+    /// Writes only the catalog's file of `layout`, for a change no game's lines follow.
+    fn write_layout(&mut self, layout: PadLayout, cx: &mut Context<Self>) {
+        let task = cx.background_spawn(async move { layouts::put_pad(&layout) });
+        Self::report(task, cx);
         self.sync_name(cx);
         cx.notify();
     }
 
+    /// This game's own change, on whichever layout it follows.
     fn assign(&mut self, input: &str, button: &str, cx: &mut Context<Self>) {
-        let Some(loaded) = self.loaded_mut() else {
+        let Some(mut shown) = self.saved() else {
             return;
         };
-        let Some(mut layout) = loaded.layout().filter(|layout| !layout.builtin) else {
-            return;
-        };
-        layout.assign(input, button);
-        loaded.store.update_pad(&layout);
-        self.apply(layout, true, cx);
+        shown.assign(input, button);
+        self.write_game(shown, None, cx);
     }
 
     /// The game's own glyphs, or the pad's buttons as the layout puts them,
@@ -518,7 +569,7 @@ impl GamepadView {
                             .py(px(6.))
                             .child(theme::mono().w(px(100.)).flex_none().child(t!(label)))
                             .child(div().flex_1().min_w_0().truncate().child(t!(action)))
-                            .child(Self::binding_control(layout, input, !layout.builtin, Self::assign, cx))
+                            .child(Self::binding_control(layout, input, true, Self::assign, cx))
                     }),
             )
             .into_any_element()
@@ -555,12 +606,15 @@ impl Render for GamepadView {
         };
         let layouts = loaded.store.pad_layouts();
         let current = loaded.layout();
-        let shown = current.clone().unwrap_or_else(|| loaded.custom.clone());
+        let has_own_changes = loaded.has_own_changes();
         let values = loaded.values.clone();
+        let Some(shown) = self.saved() else {
+            return div().into_any_element();
+        };
 
         let layout_select = self.layout_select(&layouts, current.as_ref(), cx);
         let own = current.as_ref().is_some_and(|layout| !layout.builtin);
-        let actions = self.layout_actions(own, cx);
+        let actions = self.layout_actions(own, own && has_own_changes, cx);
         // The drawing says how its own staged edits land, so this hint is the list's.
         let hint = if own {
             t!("ps.gamepad.hint.own")
@@ -629,7 +683,11 @@ impl Render for GamepadView {
                     )),
             )
             .child(actions)
+            .children(self.confirmation(cx))
             .when(list, |view| view.child(theme::muted(hint).text_size(px(12.))))
+            .when(has_own_changes, |view| {
+                view.child(theme::muted(t!("ps.layouts.own_changes")).text_size(px(12.)))
+            })
             .child(bindings)
             .into_any_element()
     }

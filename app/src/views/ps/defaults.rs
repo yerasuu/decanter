@@ -8,11 +8,12 @@ use decanter_core::capabilities::Feature;
 use decanter_ps::bbport::online;
 use decanter_ps::bbport::per_game::{self, Category, Target};
 use decanter_ps::bbport::{Bbport, IniScope, LauncherSettings};
+use decanter_ps::layouts::choice;
 use decanter_ps::mapping;
 use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
-use super::games::{GamepadView, GraphicsView, KeyboardView, display_title};
+use super::games::{Controls, GamepadView, GraphicsView, KeyboardView, display_title};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{Ps, per_game_error};
@@ -82,11 +83,9 @@ impl DefaultsView {
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.is_port_shared = is_port_shared;
-                this.keyboard = Some(bindings.map(|(path, mapping, store)| {
-                    cx.new(|cx| {
-                        KeyboardView::new(mapping::Target::Bbport, path, IniScope::Title, mapping, store, cx)
-                            .for_defaults()
-                    })
+                let ps = this.ps.clone();
+                this.keyboard = Some(bindings.map(|controls| {
+                    cx.new(|cx| KeyboardView::new(ps, mapping::Target::Bbport, controls, cx).for_defaults())
                 }));
                 match defaults {
                     Ok(defaults) => this.switches = SWITCHES.map(|(key, _, absent)| defaults.flag(key, absent)),
@@ -237,15 +236,26 @@ impl DefaultsView {
     }
 }
 
-/// The defaults' port ini with the bindings in it and the named layouts, for the keyboard editor.
-fn defaults_bindings(
-    root: &decanter_ps::paths::Root,
-) -> Result<(std::path::PathBuf, mapping::Mapping, decanter_ps::layouts::Store), Text> {
-    let path = Bbport::defaults_ini(root).map_err(|err| Text::new("ps.defaults.read_error").arg("error", err))?;
+/// The defaults' port ini with the bindings in it, the layout they came from and the named layouts,
+/// for the keyboard editor.
+fn defaults_bindings(root: &decanter_ps::paths::Root) -> Result<Controls, Text> {
+    let read_error = |err| Text::new("ps.defaults.read_error").arg("error", err);
+    let path = Bbport::defaults_ini(root).map_err(read_error)?;
+    let recorded = LauncherSettings::defaults(root)
+        .map_err(read_error)?
+        .text(choice::KEYS_KEY)
+        .map(str::to_owned);
     let mapping = decanter_ps::binds::read(mapping::Target::Bbport, &path).map_err(Text::verbatim)?;
     let store =
         decanter_ps::layouts::Store::load().map_err(|err| Text::new("ps.layouts.read_error").arg("error", err))?;
-    Ok((path, mapping, store))
+    Ok(Controls {
+        title_id: String::new(),
+        path,
+        scope: IniScope::Title,
+        mapping,
+        recorded,
+        store,
+    })
 }
 
 impl Render for DefaultsView {

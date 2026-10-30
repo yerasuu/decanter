@@ -66,6 +66,21 @@ pub fn is_bloodborne(game: &Game) -> bool {
     game.platform == Platform::Ps4 && is_bloodborne_title(&game.title_id)
 }
 
+/// `backups/per-game-settings-<date>/<name>-<HHMMSS>/`, made empty: a folder of its own each time,
+/// so a second backup the same day never replaces the first.
+pub(crate) fn fresh_backup_dir(root: &Root, name: &str) -> io::Result<PathBuf> {
+    let day = root.backups().join(format!("per-game-settings-{}", port_ini::today()));
+    let name = format!("{name}-{}", port_ini::now_hms());
+    let mut dir = day.join(&name);
+    let mut attempt = 1_u32;
+    while dir.exists() {
+        attempt = attempt.saturating_add(1);
+        dir = day.join(format!("{name}-{attempt}"));
+    }
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 /// [`is_bloodborne`] for what knows only the title, such as a title's launch settings.
 #[must_use]
 pub fn is_bloodborne_title(title_id: &str) -> bool {

@@ -13,6 +13,7 @@ use crate::bbport::local_player::{self, LocalPlayer};
 use crate::bbport::online::{self, LocalServer};
 use crate::bbport::port_ini::MENU_LANGUAGE;
 use crate::bbport::{Control, GROUPS, Setting, Store, mods};
+use crate::layouts::choice;
 
 const MAX_INI_KEY: usize = 64;
 const MAX_INI_VALUE: usize = 512;
@@ -28,9 +29,9 @@ pub enum Category {
     /// The Graphics tab: display, upscaling, effects, mouse, keyboard-as-stick, performance and
     /// development rows, frame generation.
     Graphics,
-    /// The keyboard bindings (`key.*`).
+    /// The keyboard bindings (`key.*`) and the layout they came from.
     Keyboard,
-    /// The pad layout (`pad.*`), the controller picked and the button icons.
+    /// The pad layout (`pad.*`) and the one it came from, the controller picked and the button icons.
     Gamepad,
     /// Whether mods load, the mods and patches folders, the load order and the patch switches.
     Mods,
@@ -145,7 +146,7 @@ fn launch_kind(key: &str) -> Option<Kind> {
         frame_gen::KEY => Kind::FrameGen,
         local_player::KEY => Kind::LocalPlayer,
         "gamepad_name" => Kind::Name,
-        "button_icons" => Kind::Word,
+        "button_icons" | choice::PAD_KEY | choice::KEYS_KEY => Kind::Word,
         "extra_env" => Kind::Env,
         _ if mods::FOLDER_KEYS.contains(&key) => Kind::Folder,
         _ => return None,
@@ -212,7 +213,8 @@ pub(super) fn launch_category(key: &str) -> Option<Category> {
         return None;
     }
     Some(match key {
-        "gamepad" | "gamepad_name" | "button_icons" => Category::Gamepad,
+        "gamepad" | "gamepad_name" | "button_icons" | choice::PAD_KEY => Category::Gamepad,
+        choice::KEYS_KEY => Category::Keyboard,
         "mods_enabled" => Category::Mods,
         online::ONLINE
         | online::UPNP

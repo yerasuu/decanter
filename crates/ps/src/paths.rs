@@ -97,6 +97,11 @@ impl Root {
         self.join("defaults")
     }
 
+    /// The catalog of named control layouts, one file per layout, shared by every title.
+    pub(crate) fn layouts(&self) -> PathBuf {
+        self.join("layouts")
+    }
+
     /// AnyPS5 conversions, one directory per title, shared by every profile.
     pub fn anyps5(&self) -> PathBuf {
         self.join("anyps5")

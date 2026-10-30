@@ -10,6 +10,7 @@ use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::per_game::Category;
 use decanter_ps::bbport::{self, Bbport, IniScope};
 use decanter_ps::failures::Log;
+use decanter_ps::layouts;
 use decanter_ps::learned::{self, FrameOverlap};
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
@@ -19,7 +20,7 @@ use rust_i18n::t;
 
 use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
-use super::keyboard::KeyboardView;
+use super::keyboard::{Controls, KeyboardView};
 use super::mods::ModsView;
 use super::online::OnlineTitleView;
 use super::runs::RunsView;
@@ -388,11 +389,19 @@ impl DetailView {
                 },
                 Port::AnyPs5 => (AnyPs5::binds_path(&root, &title_id), IniScope::Title),
             };
-            let store =
-                decanter_ps::layouts::Store::load().map_err(|err| Text::new("ps.layouts.read_error").arg("error", err));
-            decanter_ps::binds::read(target, &path)
-                .map_err(Text::verbatim)
-                .and_then(|mapping| store.map(|store| (path, scope, mapping, store)))
+            let store = decanter_ps::layouts::Store::load()
+                .map_err(|err| Text::new("ps.layouts.read_error").arg("error", err))?;
+            let recorded = layouts::choice::recorded(&root, layouts::Kind::Keys(target), &title_id)
+                .map_err(|err| Text::new("ps.scope.read_error").arg("error", err))?;
+            let mapping = decanter_ps::binds::read(target, &path).map_err(Text::verbatim)?;
+            Ok(Controls {
+                title_id,
+                path,
+                scope,
+                mapping,
+                recorded,
+                store,
+            })
         });
         cx.spawn(async move |this, cx| {
             let mapping = task.await;
@@ -401,9 +410,8 @@ impl DetailView {
                 if this.selected != selected {
                     return;
                 }
-                this.controls = Some(mapping.map(|(path, scope, mapping, store)| {
-                    cx.new(|cx| KeyboardView::new(target, path, scope, mapping, store, cx))
-                }));
+                let ps = this.ps.clone();
+                this.controls = Some(mapping.map(|controls| cx.new(|cx| KeyboardView::new(ps, target, controls, cx))));
                 cx.notify();
             });
         })

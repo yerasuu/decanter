@@ -288,7 +288,15 @@ ps.layouts.name_placeholder: Nombre del esquema
 ps.layouts.layout: Esquema
 ps.layouts.copy: Copiar como nuevo
 ps.layouts.remove: Borrar esquema
-ps.layouts.hint_builtin: 'Los esquemas de fábrica no se editan: cópialo como nuevo para cambiarlo.'
+ps.layouts.hint_builtin: 'Los esquemas de fábrica no se editan: lo que cambies aquí se guarda solo en este juego; cópialo como nuevo para tener un esquema tuyo.'
+ps.layouts.own_changes: 'Este juego tiene cambios propios sobre el esquema. Elegir el esquema otra vez los descarta.'
+ps.layouts.save_to_layout: Guardar en el esquema
+ps.layouts.save_error: 'No se pudo guardar el esquema: %{error}'
+ps.layouts.removed: Esquema borrado.
+ps.layouts.remove_error: 'No se pudo borrar el esquema: %{error}'
+ps.layouts.confirm_remove.title: '¿Borrar el esquema «%{name}»?'
+ps.layouts.confirm_remove.body: 'Lo usan: %{games}. Esos juegos conservan sus controles tal como están y solo dejan de seguir el esquema. Se guarda una copia en backups.'
+ps.layouts.confirm_remove.yes: Borrar el esquema
 ps.keyboard.groups.buttons: Botones
 ps.keyboard.groups.dpad: Cruceta
 ps.keyboard.groups.left_stick: Stick izquierdo
@@ -327,8 +335,8 @@ ps.keyboard.saved: Guardado
 ps.keyboard.unbound: Sin asignar
 ps.keyboard.assign: + Asignar
 ps.keyboard.reset_all: Restaurar todo
-ps.keyboard.hint.own: 'Tu esquema: + Asignar y pulsa la tecla; Guardar lo escribe. Enter guarda el nombre.'
-ps.keyboard.hint.custom: El archivo tiene teclas editadas a mano; cópialas como nuevo para guardarlas como esquema.
+ps.keyboard.hint.own: 'Tu esquema: + Asignar y pulsa la tecla; Guardar lo escribe solo en este juego y «Guardar en el esquema» también en el esquema. Enter guarda el nombre.'
+ps.keyboard.hint.custom: 'Este juego no sigue ningún esquema: sus teclas son suyas; Guardar las escribe y «Copiar como nuevo» las guarda como esquema.'
 ps.keyboard.description.bbport: Teclado para bbport (líneas key. del archivo de abajo). Quitar todas las teclas de una acción la deja sin asignar.
 ps.keyboard.description.anyps5: Teclado y ratón para AnyPS5. El mando funciona siempre sin configurar.
 ps.keyboard.capture: Pulsa una tecla, un botón del ratón o mueve la rueda
@@ -400,8 +408,8 @@ ps.gamepad.icons.title: Iconos de botones
 ps.gamepad.icons.note: En menús y avisos; siguen al esquema elegido
 ps.gamepad.icons.pad: Del mando (A/B/X/Y)
 ps.gamepad.icons.original: Originales del juego
-ps.gamepad.hint.own: 'Tu esquema: elige el botón de cada entrada; si ya lo usaba otra, se intercambian. Enter guarda el nombre.'
-ps.gamepad.hint.custom: bbport.ini tiene líneas pad. editadas a mano; cópialas como nuevo para guardarlas como esquema.
+ps.gamepad.hint.own: 'Tu esquema: elige el botón de cada entrada (si ya lo usaba otra, se intercambian); se guarda al momento solo en este juego, y «Guardar en el esquema» lo lleva al esquema. Enter guarda el nombre.'
+ps.gamepad.hint.custom: 'Este juego no sigue ningún esquema: sus líneas pad. son suyas; cópialas como nuevo para guardarlas como esquema.'
 ps.gamepad.mode.list: Lista
 ps.gamepad.mode.visual: Visual
 ps.gamepad.visual.pick: Pulsa una fila o un botón del dibujo para elegir qué botón de tu mando lo activa.
@@ -411,8 +419,8 @@ ps.gamepad.visual.restore: Restaurar valores por defecto
 ps.gamepad.visual.apply: Aplicar
 ps.gamepad.visual.cancel: Cancelar
 ps.gamepad.visual.pending: Hay cambios sin aplicar. Se mantienen aunque cambies de pestaña, hasta que los apliques o los canceles.
-ps.gamepad.visual.hint_template: Es una plantilla y no se modifica; al aplicar tus cambios se guardan como una configuración tuya nueva. Si un botón ya lo usaba otra entrada, se intercambian.
-ps.gamepad.visual.hint_own: Tu configuración. Los cambios se guardan al pulsar Aplicar; si un botón ya lo usaba otra entrada, se intercambian. En dorado, lo que difiere del esquema predeterminado.
+ps.gamepad.visual.hint_template: 'Es una plantilla y no se modifica; al aplicar, tus cambios se guardan solo en este juego. Si un botón ya lo usaba otra entrada, se intercambian.'
+ps.gamepad.visual.hint_own: 'Tu configuración. Los cambios se guardan en este juego al pulsar Aplicar, y «Guardar en el esquema» los lleva a la configuración; si un botón ya lo usaba otra entrada, se intercambian. En dorado, lo que difiere del esquema predeterminado.'
 ps.gamepad.visual.locked: Aplica o cancela antes los cambios del dibujo.
 ps.gamepad.visual.left_stick: Moverse
 ps.gamepad.visual.right_stick: Mover la cámara

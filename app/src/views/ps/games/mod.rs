@@ -35,7 +35,7 @@ use context_menu::GameMenu;
 use detail::DetailView;
 pub(super) use gamepad::GamepadView;
 pub(super) use graphics::GraphicsView;
-pub(super) use keyboard::KeyboardView;
+pub(super) use keyboard::{Controls, KeyboardView};
 
 const SIDEBAR_WIDTH: f32 = 292.;
 const ICON: f32 = 26.;
@@ -346,6 +346,20 @@ pub(super) fn display_title(game: &Game) -> String {
     } else {
         title.to_owned()
     }
+}
+
+/// `title_ids` by the names the library shows, for a question that names the games it affects.
+fn game_names(ps: &Ps, title_ids: &[String]) -> String {
+    title_ids
+        .iter()
+        .map(|title_id| {
+            ps.entries()
+                .iter()
+                .find(|entry| entry.game.title_id == *title_id)
+                .map_or_else(|| title_id.clone(), |entry| display_title(&entry.game))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The shipped layouts in the UI's language; the user's own keep the name they were given.
