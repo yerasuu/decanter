@@ -16,18 +16,21 @@ thiserror.workspace = true
 dirs.workspace = true
 toml.workspace = true
 uuid = { workspace = true, features = ["v4"] }
-# keyring has no default backend, and without one falls back to its `mock`
-# store, which isn't shared between calls (every `Entry::new()` is its own
-# throwaway instance) — a session save silently didn't survive past the
-# call that made it. `dbus-secret-service-keyring-store` is the blocking
-# D-Bus backend `credentials.rs`'s own doc comment describes.
-# The default `v1` feature already picks the native store on Windows
-# (Credential Manager) and macOS (Keychain).
-keyring = { workspace = true, features = ["dbus-secret-service-keyring-store"] }
+zeroize.workspace = true
+keyring-core.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { workspace = true, features = ["fs"] }
+# The Secret Service over zbus (GNOME Keyring, KWallet, KeePassXC); `crypto-rust` encrypts the
+# session with it without linking OpenSSL.
+zbus-secret-service-keyring-store = { workspace = true, features = ["crypto-rust"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { workspace = true, features = ["keychain"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 fs4.workspace = true

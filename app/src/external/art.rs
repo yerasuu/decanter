@@ -9,7 +9,7 @@
 
 use std::sync::LazyLock;
 
-use decanter_core::Storefront;
+use decanter_core::secrets::{self, Secret, SecretKey};
 use serde::Deserialize;
 
 use crate::i18n::Text;
@@ -19,9 +19,6 @@ static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 const SGDB_API: &str = "https://www.steamgriddb.com/api/v2";
 /// Where someone signed in to SteamGridDB generates their key.
 pub const SGDB_KEY_PAGE: &str = "https://www.steamgriddb.com/profile/preferences/api";
-/// The keyring "account" the key is filed under: not a storefront account,
-/// but the keyring entry is keyed the same way.
-const SGDB_KEYRING_ACCOUNT: &str = "steamgriddb";
 
 const STEAM_SEARCH: &str = "https://store.steampowered.com/api/storesearch/";
 /// Steam's own store API has no art paths for library assets; this public
@@ -65,22 +62,24 @@ impl Candidates {
 }
 
 /// The saved SteamGridDB key, if any. Blocking: a keyring round trip.
-pub fn api_key() -> Option<String> {
-    decanter_core::load_session(SGDB_KEYRING_ACCOUNT, Storefront::Unspecified)
+pub fn api_key() -> Option<Secret> {
+    secrets::store()
+        .get(&SecretKey::STEAMGRIDDB)
         .inspect_err(|err| tracing::warn!(%err, "could not read the steamgriddb key from the keyring"))
         .ok()
         .flatten()
 }
 
 /// Saves the key, or forgets it when `key` is empty. Blocking.
-pub fn set_api_key(key: &str) -> Result<(), Text> {
-    let result = if key.is_empty() {
-        decanter_core::delete_session(SGDB_KEYRING_ACCOUNT, Storefront::Unspecified)
+pub fn set_api_key(key: String) -> Result<(), Text> {
+    let cleared = key.is_empty();
+    let result = if cleared {
+        secrets::store().delete(&SecretKey::STEAMGRIDDB)
     } else {
-        decanter_core::save_session(SGDB_KEYRING_ACCOUNT, Storefront::Unspecified, key)
+        secrets::store().put(&SecretKey::STEAMGRIDDB, &Secret::from(key))
     };
     result
-        .inspect(|()| tracing::info!(cleared = key.is_empty(), "steamgriddb key updated"))
+        .inspect(|()| tracing::info!(cleared, "steamgriddb key updated"))
         .map_err(|err| Text::new("external.sources.errors.keyring").arg("error", err))
 }
 
@@ -91,7 +90,7 @@ pub async fn search(name: &str) -> Candidates {
     let (sgdb, steam) = futures::join!(
         async {
             match key {
-                Some(key) => Some(search_sgdb(&key, name).await),
+                Some(key) => Some(search_sgdb(key.expose(), name).await),
                 None => None,
             }
         },

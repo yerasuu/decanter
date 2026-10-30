@@ -4,7 +4,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use decanter_core::{KeyringError, ShadnetSecret};
+use decanter_core::secrets::{self, SecretKey, ShadnetSecret, StoreError};
 use decanter_nix::Toolchain;
 use decanter_ps::anyps5::{self, AnyPs5};
 use decanter_ps::bbport::GameLaunch;
@@ -297,9 +297,9 @@ async fn online_play(settings: &LauncherSettings, online: OnlinePlay) -> Result<
         return Ok(Some(online));
     };
     let secrets = tokio::task::spawn_blocking(move || {
-        let password = decanter_core::load_shadnet(&npid, ShadnetSecret::Password)?;
-        let token = decanter_core::load_shadnet(&npid, ShadnetSecret::Token)?;
-        Ok::<_, KeyringError>((password, token))
+        let password = secrets::store().get(&SecretKey::shadnet(&npid, ShadnetSecret::Password)?)?;
+        let token = secrets::store().get(&SecretKey::shadnet(&npid, ShadnetSecret::Token)?)?;
+        Ok::<_, StoreError>((password, token))
     })
     .await;
     let (password, token) = match secrets {
@@ -311,7 +311,8 @@ async fn online_play(settings: &LauncherSettings, online: OnlinePlay) -> Result<
         tracing::warn!("online play with a shadNet NPID but no password in the keyring, not starting");
         return Err(LaunchError::NoPassword(online.npid().unwrap_or_default().to_owned()));
     }
-    match online.set_secrets(password, token) {
+    let exposed = |secret: Option<secrets::Secret>| secret.map(|secret| secret.expose().to_owned());
+    match online.set_secrets(exposed(password), exposed(token)) {
         Ok(()) => Ok(Some(online)),
         Err(err) => Err(LaunchError::Online(err)),
     }

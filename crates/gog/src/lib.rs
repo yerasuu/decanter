@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
 use anyhow::Context;
+use decanter_core::secrets::{self, Secret, SecretKey};
 use decanter_core::{CachedAchievement, Db, Storefront};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -82,14 +83,13 @@ pub(crate) fn http_client() -> reqwest::Client {
         })
 }
 
-/// This account's stored GOG session, as the raw JSON `write_session` saved
-/// it — `decanter_core::credentials` keyed by [`Storefront::Gog`], wrapped in
-/// `spawn_blocking` since the OS keyring is a blocking D-Bus round trip.
-async fn read_session(account_id: &str) -> anyhow::Result<Option<String>> {
-    let account_id = account_id.to_owned();
-    let for_worker = account_id.clone();
+/// This account's stored GOG session, as the raw JSON `write_session` saved it, from
+/// `decanter_core::secrets` in `spawn_blocking`, since the OS keyring is a blocking D-Bus round
+/// trip.
+async fn read_session(account_id: &str) -> anyhow::Result<Option<Secret>> {
+    let key = SecretKey::gog_session(account_id)?;
     let session = achv_try!(
-        tokio::task::spawn_blocking(move || decanter_core::load_session(&for_worker, Storefront::Gog))
+        tokio::task::spawn_blocking(move || secrets::store().get(&key))
             .await
             .context("session-read worker task panicked")
     )
@@ -99,12 +99,11 @@ async fn read_session(account_id: &str) -> anyhow::Result<Option<String>> {
 }
 
 /// Stores this account's GOG session as serialized JSON.
-async fn write_session(account_id: &str, session_json: String) -> anyhow::Result<()> {
-    let session_bytes = session_json.len();
-    let account_id = account_id.to_owned();
-    let for_worker = account_id.clone();
+async fn write_session(account_id: &str, session_json: Secret) -> anyhow::Result<()> {
+    let session_bytes = session_json.expose().len();
+    let key = SecretKey::gog_session(account_id)?;
     achv_try!(
-        tokio::task::spawn_blocking(move || decanter_core::save_session(&for_worker, Storefront::Gog, &session_json))
+        tokio::task::spawn_blocking(move || secrets::store().put(&key, &session_json))
             .await
             .context("session-write worker task panicked")
     )
@@ -115,10 +114,9 @@ async fn write_session(account_id: &str, session_json: String) -> anyhow::Result
 
 /// Drops this account's stored GOG session.
 async fn clear_session(account_id: &str) -> anyhow::Result<()> {
-    let account_id = account_id.to_owned();
-    let for_worker = account_id.clone();
+    let key = SecretKey::gog_session(account_id)?;
     achv_try!(
-        tokio::task::spawn_blocking(move || decanter_core::delete_session(&for_worker, Storefront::Gog))
+        tokio::task::spawn_blocking(move || secrets::store().delete(&key))
             .await
             .context("session-clear worker task panicked")
     )

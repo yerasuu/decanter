@@ -5,7 +5,7 @@
 //! a grouping: what it groups is the storefront accounts in
 //! [`crate::accounts`], and it's those accounts (not the profile) that
 //! the library cache, achievements, playtime, installs and the keyring
-//! entries in [`crate::credentials`] are actually keyed by. Switching the
+//! entries in [`crate::secrets`] are actually keyed by. Switching the
 //! active profile swaps out the whole set of accounts in play at once.
 
 #![expect(

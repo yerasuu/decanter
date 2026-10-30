@@ -11,6 +11,7 @@
 //! no notion of a profile at all.
 
 use anyhow::Context as _;
+use decanter_core::secrets::Secret;
 
 use crate::api::client::{CLIENT_ID, Client, REDIRECT_URI};
 
@@ -84,7 +85,7 @@ pub async fn log_in(pasted_code: &str) -> anyhow::Result<Account> {
     {
         let lock = crate::session_lock(&user.id);
         let _guard = lock.lock().await;
-        crate::achv_try!(crate::write_session(&user.id, credentials).await);
+        crate::achv_try!(crate::write_session(&user.id, Secret::from(credentials)).await);
     }
     tracing::info!(account_id = %user.id, "GOG login succeeded");
 

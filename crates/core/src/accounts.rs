@@ -4,7 +4,7 @@
 //! storefront (two GOG logins, say) — [`Account::id`] is the storefront's
 //! own account id, so `(id, storefront)` is what tells two accounts apart,
 //! not which profile they belong to. Library, achievements, playtime and
-//! the keyring entries in [`crate::credentials`] are keyed by account, not
+//! the keyring entries in [`crate::secrets`] are keyed by account, not
 //! by profile — see [`crate::db`] for why.
 
 #![expect(

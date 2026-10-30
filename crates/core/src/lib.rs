@@ -8,7 +8,6 @@ mod cache;
 pub mod capabilities;
 mod catalog;
 mod collections;
-mod credentials;
 mod db;
 mod disk;
 mod fingerprint;
@@ -20,6 +19,7 @@ pub mod platform;
 mod profiles;
 pub mod runner;
 mod scope;
+pub mod secrets;
 pub mod steam;
 mod vdf;
 
@@ -27,10 +27,6 @@ pub use accounts::Account;
 pub use cache::{cache_group, default_cache_root, game_cache_dir, shader_cache_env};
 pub use catalog::{Game, GameSystem, InstallState, Storefront, UnknownStorefront};
 pub use collections::Collection;
-pub use credentials::{
-    KeyringError, ShadnetSecret, delete as delete_session, delete_shadnet, load as load_session, load_shadnet,
-    save as save_session, save_shadnet,
-};
 pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result};
 pub use disk::disk_usage;
 pub use fingerprint::install_fingerprint;

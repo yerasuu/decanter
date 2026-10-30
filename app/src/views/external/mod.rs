@@ -80,7 +80,7 @@ impl ExternalView {
         cx.spawn(async move |_, cx| {
             let key = tokio::task::spawn_blocking(art::api_key).await.ok().flatten();
             if let Some(key) = key {
-                field.update(cx, |input, cx| input.set_text(key, cx));
+                field.update(cx, |input, cx| input.set_text(key.expose().to_owned(), cx));
             }
         })
         .detach();
@@ -227,7 +227,7 @@ impl ExternalView {
         self.key_status = Some(Text::new("external.sources.saving"));
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let result = tokio::task::spawn_blocking(move || art::set_api_key(&key))
+            let result = tokio::task::spawn_blocking(move || art::set_api_key(key))
                 .await
                 .unwrap_or_else(|err| Err(Text::verbatim(err)));
             let _ = this.update(cx, |this, cx| {

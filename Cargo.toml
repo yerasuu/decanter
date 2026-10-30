@@ -57,7 +57,12 @@ fs4 = { version = "1.1.0", default-features = false }
 # KGlobalAccel over D-Bus.
 global-hotkey = "0.9.0"
 image = "0.25.10"
-keyring = "4.2.0"
+# The OS keyring as decanter_core::secrets uses it: keyring-core with the store crate of each
+# platform, which `keyring`'s own docs advise for applications that choose their stores.
+keyring-core = "1.0.0"
+apple-native-keyring-store = "1.0.2"
+windows-native-keyring-store = "1.1.0"
+zbus-secret-service-keyring-store = "1.0.1"
 ksni = "0.3.7"
 md5 = "0.8.1"
 # Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
@@ -96,6 +101,9 @@ uuid = "1.29.0"
 # Job Objects for native Windows game sessions, through a safe API since the
 # workspace forbids `unsafe`.
 win32job = "2.0.3"
+# Secrets zeroed when dropped (decanter_core::secrets::Secret); already locked through the
+# keyring and TLS stacks.
+zeroize = "1.9.0"
 # Already in the graph through ksni, GPUI and the keyring; decanter talks to
 # KGlobalAccel and the notification server with it, on the tokio runtime.
 zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }

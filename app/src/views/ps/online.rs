@@ -2,8 +2,8 @@
 //! game plays online is its own Online tab's. The password and token go to the keyring, never to
 //! the library (decision #715); the connection test runs only when clicked (decision #601).
 
-use decanter_core::ShadnetSecret;
 use decanter_core::capabilities::Feature;
+use decanter_core::secrets::{self, Secret, SecretKey, ShadnetSecret};
 use decanter_ps::bbport::LauncherSettings;
 use decanter_ps::bbport::online::{self, Addresses, Probe, Target};
 use gpui::{AppContext as _, Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
@@ -152,7 +152,7 @@ impl OnlineView {
             let copy_npid = npid.clone();
             let copy_previous = previous.clone();
             let copied = tokio::task::spawn_blocking(move || {
-                copy_secrets(copy_npid.as_deref(), copy_previous.as_deref(), &password, &token)
+                copy_secrets(copy_npid.as_deref(), copy_previous.as_deref(), password, token)
             })
             .await
             .unwrap_or_else(|err| Err(err.to_string()));
@@ -357,8 +357,8 @@ async fn stored_secrets(npid: Option<String>) -> Result<Stored, String> {
         return Ok(Stored::default());
     };
     tokio::task::spawn_blocking(move || {
-        let password = decanter_core::load_shadnet(&npid, ShadnetSecret::Password).map_err(|err| err.to_string())?;
-        let token = decanter_core::load_shadnet(&npid, ShadnetSecret::Token).map_err(|err| err.to_string())?;
+        let password = load(&npid, ShadnetSecret::Password)?;
+        let token = load(&npid, ShadnetSecret::Token)?;
         Ok(Stored {
             password: password.is_some(),
             token: token.is_some(),
@@ -379,15 +379,14 @@ enum Moved {
 /// Typed secrets under `npid`. An empty field keeps what `npid` has, or else takes what
 /// `previous`, the NPID given up, had; never overwrites one `npid` already has. Blocking: keyring
 /// round trips.
-fn copy_secrets(npid: Option<&str>, previous: Option<&str>, password: &str, token: &str) -> Result<Moved, String> {
-    let load = |npid: &str, secret| decanter_core::load_shadnet(npid, secret).map_err(|err| err.to_string());
+fn copy_secrets(npid: Option<&str>, previous: Option<&str>, password: String, token: String) -> Result<Moved, String> {
     let mut moved = Moved::All;
     let Some(npid) = npid else {
         return Ok(moved);
     };
     for (secret, typed) in [(ShadnetSecret::Password, password), (ShadnetSecret::Token, token)] {
         let value = match previous {
-            _ if !typed.is_empty() => Some(typed.to_owned()),
+            _ if !typed.is_empty() => Some(Secret::from(typed)),
             Some(previous) => match load(previous, secret)? {
                 Some(_) if load(npid, secret)?.is_some() => {
                     moved = Moved::KeptBoth;
@@ -398,7 +397,9 @@ fn copy_secrets(npid: Option<&str>, previous: Option<&str>, password: &str, toke
             None => None,
         };
         if let Some(value) = value {
-            decanter_core::save_shadnet(npid, secret, &value).map_err(|err| err.to_string())?;
+            secrets::store()
+                .put(&key(npid, secret)?, &value)
+                .map_err(|err| err.to_string())?;
         }
     }
     Ok(moved)
@@ -407,7 +408,18 @@ fn copy_secrets(npid: Option<&str>, previous: Option<&str>, password: &str, toke
 /// Blocking: keyring round trips.
 fn forget(npid: &str) -> Result<(), String> {
     for secret in [ShadnetSecret::Password, ShadnetSecret::Token] {
-        decanter_core::delete_shadnet(npid, secret).map_err(|err| err.to_string())?;
+        secrets::store()
+            .delete(&key(npid, secret)?)
+            .map_err(|err| err.to_string())?;
     }
     Ok(())
+}
+
+fn key(npid: &str, secret: ShadnetSecret) -> Result<SecretKey, String> {
+    SecretKey::shadnet(npid, secret).map_err(|err| err.to_string())
+}
+
+/// Blocking: a keyring round trip.
+fn load(npid: &str, secret: ShadnetSecret) -> Result<Option<Secret>, String> {
+    secrets::store().get(&key(npid, secret)?).map_err(|err| err.to_string())
 }

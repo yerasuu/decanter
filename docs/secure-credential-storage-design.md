@@ -321,3 +321,22 @@ Phases 5 and 6 replace phase 8 of `docs/windows-online-plan.md`.
    or move to the store.
 6. Whether Ajustes may show a GOG session's or shadNet secret's existence when
    the store is locked (requires an unlock prompt for `list`).
+
+## 6. As built
+
+### Phase 1
+
+- `crates/core/src/secrets/` (`mod.rs`, `key.rs`, `secret.rs`, `store.rs`, `native.rs`) is the
+  only code that touches the OS keyring: `native.rs` alone names `keyring_core`; no other crate
+  depends on a keyring crate. `credentials.rs` is gone, and `keyring` with it.
+- `secrets::store()` builds its backend on first use and drops it when the platform reports a
+  failure, so the next call (at most every 5 s) connects again. `Status` is `Unknown`,
+  `Ready(BackendKind)`, `Locked` or `Missing`; a fallback backend (decision #1307, phase 7) plugs
+  in behind the private `Backend` trait as another `BackendKind`, chosen where `Missing` is set.
+- Entry names unchanged: `<account_id>/STOREFRONT_GOG`, `shadnet/<NPID>/{password,token}`,
+  `steamgriddb/STOREFRONT_UNSPECIFIED`.
+- Call sites moved to `secrets`: `crates/gog/src/lib.rs` (`read_session`, `write_session`,
+  `clear_session`, the only GOG path to the store; `session.rs` and `auth.rs` call them),
+  `app/src/external/art.rs` (`api_key`, `set_api_key`), `app/src/views/ps/online.rs`
+  (`stored_secrets`, `copy_secrets`, `forget`), `app/src/ps_play/launch.rs` (`online_play`).
+  The reports server (`crates/reports-server`) and the hook never used the keyring.
