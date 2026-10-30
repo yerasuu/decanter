@@ -14,7 +14,7 @@ use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, InputEvent, TextInput, button, language_select};
+use crate::widgets::{ButtonKind, InputEvent, TextInput, button, language_note, language_select};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
@@ -175,12 +175,20 @@ impl ProfileForm {
             .top(px(16.))
             .right(px(16.))
             .flex()
-            .items_center()
+            .flex_col()
+            .items_end()
             .gap_2()
-            .child(theme::muted(i18n::label_in_all()))
-            .child(language_select(self.language, move |language, window, cx| {
-                entity.update(cx, |this, cx| this.set_language(language, window, cx));
-            }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(theme::muted(i18n::label_in_all()))
+                    .child(language_select(self.language, move |language, window, cx| {
+                        entity.update(cx, |this, cx| this.set_language(language, window, cx));
+                    })),
+            )
+            .children(language_note(self.language).map(|note| note.max_w(px(360.))))
     }
 }
 

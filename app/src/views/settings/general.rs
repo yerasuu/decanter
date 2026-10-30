@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use decanter_core::capabilities::Feature;
-use gpui::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div, prelude::*};
+use gpui::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::credentials::CredentialsSection;
@@ -21,7 +21,7 @@ use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, checkbox, language_select};
+use crate::widgets::{ButtonKind, button, checkbox, language_note, language_select};
 
 pub struct GeneralTab {
     language: Option<Language>,
@@ -480,6 +480,7 @@ impl Render for GeneralTab {
         column()
             .child(theme::h2(t!("settings.general.language.title")))
             .child(self.language_select(cx))
+            .children(language_note(self.language).map(|note| note.mb(px(12.)).max_w(px(520.))))
             .child(theme::h2(t!("settings.general.close.title")))
             .child(offered(
                 Feature::CloseToTray,

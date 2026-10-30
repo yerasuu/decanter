@@ -134,7 +134,7 @@ mod tray;
 mod views;
 mod widgets;
 
-rust_i18n::i18n!("locales", fallback = "es");
+rust_i18n::i18n!("locales", fallback = ["en", "es"]);
 
 fn main() {
     logs::init();

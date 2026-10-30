@@ -97,7 +97,7 @@ impl Root {
 
 impl Render for Root {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
+        theme::with_cjk_fallbacks(div())
             .size_full()
             .bg(rgb(theme::BG_DEEP))
             .text_color(rgb(theme::TEXT_PRIMARY))

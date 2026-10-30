@@ -2,25 +2,45 @@
 //! none is.
 
 use std::borrow::Cow;
-use std::sync::LazyLock;
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
 
 use decanter_core::capabilities::Feature;
 use gpui::AppContext as _;
 use rust_i18n::t;
 
 /// Every language with a folder in `locales/`, so adding one is adding its
-/// files.
-static AVAILABLE: LazyLock<Vec<Cow<'static, str>>> = LazyLock::new(|| rust_i18n::available_locales!());
+/// files. English and Spanish lead; the rest follow by native name, so the
+/// picker stays in a stable order however many languages are added.
+static AVAILABLE: LazyLock<Vec<Language>> = LazyLock::new(|| {
+    let mut languages: Vec<Language> = rust_i18n::available_locales!()
+        .into_iter()
+        // Leaked once into a `'static` so `Language` stays `Copy`.
+        .map(|code| Language(Box::leak(code.into_owned().into_boxed_str())))
+        .collect();
+    let rank = |language: &Language| {
+        LEADING
+            .iter()
+            .position(|code| *code == language.0)
+            .unwrap_or(LEADING.len())
+    };
+    languages.sort_by_cached_key(|language| (rank(language), language.native_name().to_lowercase()));
+    languages
+});
+
+const LEADING: [&str; 2] = ["en", "es"];
 
 /// What a system locale none of `AVAILABLE` matches gets.
 const OTHER_SYSTEMS: &str = "en";
+
+const MACHINE_NOTE_KEY: &str = "language.machine_note";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Language(&'static str);
 
 impl Language {
     pub fn all() -> impl Iterator<Item = Self> {
-        AVAILABLE.iter().map(|code| Self(code))
+        AVAILABLE.iter().copied()
     }
 
     pub const fn code(self) -> &'static str {
@@ -37,13 +57,51 @@ impl Language {
         t!("language.native_name", locale = self.0)
     }
 
-    /// The system locale's region's language (`pt_BR` as `pt-BR`) when
-    /// there is one, else its language's.
-    fn system() -> Self {
+    /// A sentence in this language saying its translation is automatic, for
+    /// the languages whose `_language.<code>.yml` defines it; reviewed ones
+    /// (en, es) have none. Looked up in the language alone, never through the
+    /// fallback, so a language without the key can't show another's note.
+    pub fn machine_note(self) -> Option<Cow<'static, str>> {
+        crate::_rust_i18n_backend()
+            .translate(self.0, MACHINE_NOTE_KEY)
+            .map(|note| note.into_owned().into())
+    }
+
+    /// The system locale's language, matched by region first (`pt_BR` as
+    /// `pt-BR`), then by language, then by any folder of the same language
+    /// (`pt_PT` and plain `pt` get `pt-BR`, `zh_Hans_CN` gets `zh-CN`).
+    /// Traditional Chinese (`zh_TW`, `zh_HK`, `zh_MO`, any `Hant`) gets
+    /// English instead: the only Chinese on offer is Simplified, and
+    /// silently showing it to readers of the other script would be wrong.
+    pub fn system() -> Self {
         let locale = decanter_core::platform::system_locale().unwrap_or_default();
         let tag = locale.split(['.', '@']).next().unwrap_or_default().replace('_', "-");
-        Self::from_code(&tag)
-            .or_else(|| tag.split('-').next().and_then(Self::from_code))
+        Self::from_system_tag(&tag)
+    }
+
+    fn from_system_tag(tag: &str) -> Self {
+        let mut subtags = tag.split('-');
+        let primary = subtags.next().unwrap_or_default();
+        let traditional = primary.eq_ignore_ascii_case("zh")
+            && subtags.any(|subtag| {
+                ["Hant", "TW", "HK", "MO"]
+                    .iter()
+                    .any(|marker| subtag.eq_ignore_ascii_case(marker))
+            });
+        let same_language = |language: &Language| {
+            language
+                .0
+                .split('-')
+                .next()
+                .is_some_and(|code| code.eq_ignore_ascii_case(primary))
+        };
+        if traditional {
+            return Self(OTHER_SYSTEMS);
+        }
+        Self::all()
+            .find(|language| language.0.eq_ignore_ascii_case(tag))
+            .or_else(|| Self::all().find(|language| language.0.eq_ignore_ascii_case(primary)))
+            .or_else(|| Self::all().find(same_language))
             .unwrap_or(Self(OTHER_SYSTEMS))
     }
 }
@@ -116,6 +174,7 @@ impl Text {
 
 impl std::fmt::Display for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        note_if_missing(self.key);
         let template = t!(self.key);
         if self.args.is_empty() {
             return f.write_str(&template);
@@ -142,6 +201,29 @@ impl From<&Text> for gpui::SharedString {
 impl From<Text> for gpui::SharedString {
     fn from(text: Text) -> Self {
         (&text).into()
+    }
+}
+
+/// Logs, once per language and key, a key the current language lacks and
+/// English or Spanish is standing in for, so an incomplete translation shows
+/// up in the logs instead of as unexplained foreign text. Only the keys
+/// that go through [`Text`] are seen; a direct `t!` falls back silently.
+fn note_if_missing(key: &'static str) {
+    static SEEN: LazyLock<Mutex<HashSet<(String, &'static str)>>> = LazyLock::new(Mutex::default);
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    let locale = rust_i18n::locale();
+    if crate::_rust_i18n_backend().translate(&locale, key).is_some() {
+        return;
+    }
+    let first_time = SEEN.lock().is_ok_and(|mut seen| seen.insert((locale.to_string(), key)));
+    if first_time {
+        tracing::debug!(
+            language = &*locale,
+            key,
+            "translation missing, using the fallback language"
+        );
     }
 }
 

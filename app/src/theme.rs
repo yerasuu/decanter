@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use gpui::{App, BoxShadow, Div, FontWeight, Hsla, SharedString, div, point, prelude::*, px, rgb};
+use gpui::{App, BoxShadow, Div, FontFallbacks, FontWeight, Hsla, SharedString, div, point, prelude::*, px, rgb};
 
 pub const BG_DEEP: u32 = 0x0e141b;
 pub const BG_PANEL: u32 = 0x1b2838;
@@ -101,6 +101,53 @@ pub fn h3(text: impl AsRef<str>) -> Div {
         .text_color(rgb(TEXT_BRIGHT))
         .mb_4()
         .child(text.as_ref().to_uppercase())
+}
+
+/// The system fonts to draw a language's CJK text with, ahead of whatever the
+/// platform picks on its own: Han characters are shared by zh, ja and ko, and
+/// the platform's pick follows the system locale, not the UI language, so a
+/// Japanese UI on an English system would otherwise get Chinese glyph forms.
+/// Names that a system lacks are skipped by GPUI, so one list serves the
+/// platform's own fonts and the common Noto/Source Han ones.
+fn cjk_families(language: &str) -> &'static [&'static str] {
+    match language {
+        "zh-CN" => &[
+            "Noto Sans CJK SC",
+            "Source Han Sans SC",
+            "Microsoft YaHei",
+            "PingFang SC",
+            "WenQuanYi Micro Hei",
+        ],
+        "ja" => &[
+            "Noto Sans CJK JP",
+            "Source Han Sans JP",
+            "Yu Gothic",
+            "Hiragino Sans",
+            "Meiryo",
+        ],
+        "ko" => &[
+            "Noto Sans CJK KR",
+            "Source Han Sans KR",
+            "Malgun Gothic",
+            "Apple SD Gothic Neo",
+        ],
+        _ => &[],
+    }
+}
+
+/// Puts the current language's CJK fonts behind the bundled ones for the
+/// element and its children; call it where `font_family` sets `SANS`.
+pub fn with_cjk_fallbacks<E>(mut element: E) -> E
+where
+    E: gpui::Styled,
+{
+    let families = cjk_families(&rust_i18n::locale());
+    if !families.is_empty() {
+        element.text_style().font_fallbacks = Some(FontFallbacks::from_fonts(
+            families.iter().map(|family| (*family).to_owned()).collect(),
+        ));
+    }
+    element
 }
 
 /// The Oswald 600 face every heading-like label uses, at `size` px.

@@ -266,7 +266,7 @@ impl Render for PropertiesWindow {
 
         // Same root styling the main window's `Root` sets, since a second
         // window inherits none of it.
-        div()
+        theme::with_cjk_fallbacks(div())
             .size_full()
             .relative()
             .flex()

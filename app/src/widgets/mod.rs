@@ -365,7 +365,7 @@ pub fn emoji(which: Emoji, text_size: f32) -> gpui::Img {
     gpui::img(image).h(px(text_size)).w(px(text_size * 76. / 72.))
 }
 
-/// The UI language picker, shared by Ajustes and the first-run screen so
+/// The UI language picker (a `*` marks the machine-translated ones), shared by Ajustes and the first-run screen so
 /// both offer the same choices. Native names, never translated, so it can be
 /// used from a UI in a language the reader doesn't know.
 pub fn language_select(
@@ -373,8 +373,23 @@ pub fn language_select(
     on_change: impl Fn(Option<Language>, &mut Window, &mut App) + 'static,
 ) -> Select {
     const SYSTEM_LANGUAGE: &str = "system";
-    let options = std::iter::once((SYSTEM_LANGUAGE.into(), t!("settings.general.language.system").into()))
-        .chain(Language::all().map(|language| (language.code().into(), language.native_name().into())));
+    let options = std::iter::once((SYSTEM_LANGUAGE.into(), t!("settings.general.language.system").into())).chain(
+        Language::all().map(|language| {
+            let marker = if language.machine_note().is_some() { " *" } else { "" };
+            (
+                language.code().into(),
+                format!("{}{marker}", language.native_name()).into(),
+            )
+        }),
+    );
     Select::new("language", options, selected.map_or(SYSTEM_LANGUAGE, Language::code))
         .on_change(move |value, window, cx| on_change(Language::from_code(value), window, cx))
+}
+
+/// Under the picker: the machine-translation warning of the language that is
+/// in effect (the system's when none is chosen), in that language, since
+/// whoever needs the warning reads that one. Nothing for reviewed languages.
+pub fn language_note(selected: Option<Language>) -> Option<gpui::Div> {
+    let note = selected.unwrap_or_else(Language::system).machine_note()?;
+    Some(theme::muted(note.into_owned()).text_size(px(12.)))
 }
