@@ -14,15 +14,13 @@ use crate::files::write_atomic;
 use crate::paths::Root;
 use crate::title_id::TitleId;
 
-const NAMES: [&[u8]; 4] = [
-    b"libSceNpMatching2",
-    b"libSceNpWebApi",
-    b"libSceNpSessionSignaling",
-    b"libSceNpParty",
-];
+/// Matchmaking, peer signalling and parties: what a game that plays online with other people
+/// links. `libSceNpWebApi` is left out because nearly every title links it for PSN friends,
+/// presence and trophy sync, which says nothing about playing online.
+const NAMES: [&[u8]; 3] = [b"libSceNpMatching2", b"libSceNpSessionSignaling", b"libSceNpParty"];
 const CHUNK: usize = 1 << 20;
 /// Bumped when `NAMES` changes, so answers cached with the old list are scanned again.
-const SCAN_VERSION: u32 = 1;
+const SCAN_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct Cached {
