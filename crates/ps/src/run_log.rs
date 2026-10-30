@@ -8,11 +8,13 @@
 //! it ended. Both are `# key: value` lines in English whatever the UI's
 //! language, so a log reads the same for whoever it is sent to.
 
+use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use decanter_core::redact;
 use tokio::io::{AsyncWriteExt as _, BufWriter};
 use tokio::process::Command;
 
@@ -190,19 +192,26 @@ fn header(
     ];
     lines.extend(facts.iter().map(|(name, value)| format!("{name}: {value}")));
     lines.push(format!("program: {}", std.get_program().to_string_lossy()));
-    lines.extend(std.get_args().map(|arg| format!("arg: {}", arg.to_string_lossy())));
+    lines.extend(
+        redact::args(std.get_args().map(OsStr::to_string_lossy))
+            .into_iter()
+            .map(|arg| format!("arg: {arg}")),
+    );
     if let Some(dir) = std.get_current_dir() {
         lines.push(format!("cwd: {}", dir.display()));
     }
     // What decanter set, removed variables included: the rest is the environment it runs in.
     let mut envs: Vec<_> = std.get_envs().collect();
     envs.sort();
-    lines.extend(envs.into_iter().map(|(key, value)| match value {
-        Some(_) if crate::bbport::online::is_secret_var(&key.to_string_lossy()) => {
-            format!("env: {}=<hidden>", key.to_string_lossy())
+    lines.extend(envs.into_iter().map(|(key, value)| {
+        let key = key.to_string_lossy();
+        match value.map(OsStr::to_string_lossy) {
+            Some(set) if redact::is_secret_env(&key, &set) => {
+                format!("env: {key}={} ({} bytes)", redact::REDACTED, set.len())
+            }
+            Some(set) => format!("env: {key}={}", redact::text(&set)),
+            None => format!("env_removed: {key}"),
         }
-        Some(set) => format!("env: {}={}", key.to_string_lossy(), set.to_string_lossy()),
-        None => format!("env_removed: {}", key.to_string_lossy()),
     }));
     if let Some(path) = calls_path {
         lines.push(format!("call_report: {}", path.display()));

@@ -152,7 +152,7 @@ pub(crate) async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     // routing a secret through it.
     tracing::debug!(
         executable = %launch.executable.display(),
-        args = ?launch.args,
+        args = ?decanter_core::redact::args(&launch.args),
         game_id = %launch.game_id,
         store = ?launch.store,
         gamemode = launch.gamemoded.is_some(),
@@ -269,7 +269,7 @@ fn prepare_native(prefix: &Prefix, mut launch: Launch, working_directory: &Path)
     command.envs(launch.env.iter().map(|entry| (entry.0.as_str(), entry.1.as_str())));
     tracing::debug!(
         executable = %executable.display(),
-        args = ?launch.args,
+        args = ?decanter_core::redact::args(&launch.args),
         game_id = %launch.game_id,
         gamemode = launch.gamemoded.is_some(),
         session = %prefix.path.display(),

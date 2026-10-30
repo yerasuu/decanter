@@ -723,6 +723,7 @@ ps.online.targets.webapi: WebAPI
 ps.online.errors.server: el servidor shadNet «%{value}» no es host:puerto
 ps.online.errors.community: el servidor de la comunidad «%{value}» no es una dirección http(s) válida
 ps.online.errors.webapi: la WebAPI «%{value}» no es una dirección http(s) válida
+ps.online.errors.credentials: '%{server}: la dirección no puede llevar usuario, contraseña ni consulta, solo el servidor'
 ps.online.errors.npid_email: el Online ID es el nombre de la cuenta (NPID) registrado en el servidor, no una dirección de correo
 ps.online.errors.npid: el Online ID «%{value}» debe tener de 3 a 16 letras, cifras, «-» o «_»
 ps.online.errors.secret: la contraseña o el token guardados no se pueden pasar al juego

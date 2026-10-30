@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use decanter_core::redact;
 use serde::{Deserialize, Serialize};
 
 use crate::bbport::frame_gen::FrameGen;
@@ -461,6 +462,7 @@ impl Scanner {
         self.frame_gen
     }
 
+    /// Read as the port printed it; kept, in records and their copies, with secrets redacted.
     pub fn line(&mut self, line: &str) {
         if let Some(choice) = FrameGen::from_menu_line(line) {
             self.frame_gen = Some(choice);
@@ -470,8 +472,9 @@ impl Scanner {
         }
         let classified = classify(line);
         let fatal = matches!(classified, Some(Kind::Crash | Kind::Stop));
+        let kept = redact::text(line);
         if !fatal && let Some(rank) = missing_rank(line) {
-            let line = line.trim();
+            let line = kept.trim();
             if !self.missing.iter().any(|(_, seen)| seen == line) {
                 self.missing.push((rank, line.to_owned()));
             }
@@ -479,13 +482,13 @@ impl Scanner {
         }
         if let Some(pending) = &mut self.pending {
             if classified.is_none() && pending.after.len() < CONTEXT_AFTER {
-                pending.after.push(line.to_owned());
+                pending.after.push(kept.into_owned());
                 return;
             }
             self.finish_pending();
         }
         if let Some(kind) = classified {
-            let message = line.trim().to_owned();
+            let message = kept.trim().to_owned();
             if let Some(seen) = self.found.iter_mut().find(|f| f.kind == kind && f.message == message) {
                 seen.count += 1;
             } else {
@@ -510,7 +513,7 @@ impl Scanner {
         if self.recent.len() == CONTEXT_BEFORE {
             self.recent.pop_front();
         }
-        self.recent.push_back(line.to_owned());
+        self.recent.push_back(kept.into_owned());
     }
 
     /// Ends the run. A failing exit is a failure of its own only when nothing above explains it;

@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use decanter_core::redact;
 use decanter_core::secrets::Secret;
 use decanter_nix::Toolchain;
 
@@ -59,6 +60,9 @@ pub enum OnlineError {
     Npid(String),
     #[error("shadNet password or token unusable in the environment")]
     Secret,
+    /// No value: it would carry what was refused.
+    #[error("{0:?} address carries a user, password or query")]
+    Credentials(Target),
 }
 
 /// Whether the title's co-op extension runs its game server on this PC (`PS_BBSC_LOCAL_SERVER`).
@@ -160,6 +164,15 @@ fn http_address(address: &str) -> Option<String> {
     })
 }
 
+/// Userinfo or a query in a server address would be logged, exported to the launch and passed to
+/// every server with it, so it is refused where the field comes in. The authority ends at the first
+/// `/`, `?` or `#`, at or past where the URL parser ends it, so no userinfo it would read passes.
+fn has_credentials(address: &str) -> bool {
+    let rest = address.split_once("://").map_or(address, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    authority.contains('@') || rest.contains('?')
+}
+
 /// A field holding a control character is refused whole rather than cleaned up.
 fn has_control(text: &str) -> bool {
     text.chars().any(char::is_control)
@@ -187,6 +200,15 @@ impl Addresses {
         }
         if has_control(webapi) {
             return Err(OnlineError::Webapi(webapi.escape_default().to_string()));
+        }
+        for (field, target) in [
+            (server, Target::Shadnet),
+            (webapi, Target::Webapi),
+            (community, Target::Game),
+        ] {
+            if has_credentials(field) {
+                return Err(OnlineError::Credentials(target));
+            }
         }
         let server = server_address(server)?;
         let community = community_address(community);
@@ -248,11 +270,6 @@ fn check_secret(secret: Option<Secret>) -> Result<Option<Secret>, OnlineError> {
         }
         secret => Ok(secret.filter(|secret| !secret.is_empty())),
     }
-}
-
-/// Variables never written out with a run's command, since they hold the shadNet secrets.
-pub fn is_secret_var(name: &str) -> bool {
-    name.ends_with("SHADNET_PASSWORD") || name.ends_with("SHADNET_TOKEN")
 }
 
 /// One launch's online play, checked. No `Debug`, though the secrets are [`Secret`]s: nothing
@@ -430,9 +447,9 @@ pub struct Probe {
 /// WebAPI's status. Only ever run on the user's click (decision #601: nothing automatic connects).
 pub async fn check(addresses: &Addresses) -> [Probe; 3] {
     tracing::info!(
-        server = %addresses.server,
-        webapi = %addresses.webapi,
-        community = %addresses.community,
+        server = %redact::text(&addresses.server),
+        webapi = %redact::text(&addresses.webapi),
+        community = %redact::text(&addresses.community),
         "testing the online servers"
     );
     let game = format!("{}:20443/bb-eu/ss.info", addresses.community);
@@ -473,9 +490,16 @@ pub async fn check(addresses: &Addresses) -> [Probe; 3] {
 
 fn log_probe(probe: &Probe) {
     match &probe.outcome {
-        Ok(()) => tracing::info!(target = ?probe.target, address = %probe.address, "online server answers"),
+        Ok(()) => {
+            tracing::info!(target = ?probe.target, address = %redact::text(&probe.address), "online server answers");
+        }
         Err(err) => {
-            tracing::warn!(target = ?probe.target, address = %probe.address, %err, "online server doesn't answer");
+            tracing::warn!(
+                target = ?probe.target,
+                address = %redact::text(&probe.address),
+                err = %redact::text(err),
+                "online server doesn't answer"
+            );
         }
     }
 }

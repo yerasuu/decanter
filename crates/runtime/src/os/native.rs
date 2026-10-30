@@ -99,7 +99,7 @@ pub(crate) async fn prepare(mut launch: Launch) -> anyhow::Result<Prepared> {
     // a caller routing a secret through it.
     tracing::debug!(
         executable = %launch.executable.display(),
-        args = ?launch.args,
+        args = ?decanter_core::redact::args(&launch.args),
         working_directory = %working_directory.display(),
         key = %launch.key,
         "native command built"

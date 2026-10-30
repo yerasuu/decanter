@@ -723,6 +723,7 @@ ps.online.targets.webapi: WebAPI
 ps.online.errors.server: the shadNet server "%{value}" isn't host:port
 ps.online.errors.community: the community server "%{value}" isn't a valid http(s) address
 ps.online.errors.webapi: the WebAPI "%{value}" isn't a valid http(s) address
+ps.online.errors.credentials: '%{server}: the address can''t carry a user name, password or query, only the server'
 ps.online.errors.npid_email: the Online ID is the account name (NPID) registered on the server, not an email address
 ps.online.errors.npid: the Online ID "%{value}" must be 3 to 16 letters, digits, '-' or '_'
 ps.online.errors.secret: the saved password or token can't be passed to the game

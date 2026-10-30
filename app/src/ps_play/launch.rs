@@ -87,6 +87,14 @@ pub fn online_error(err: &OnlineError) -> Text {
         OnlineError::NpidEmail => Text::new("ps.online.errors.npid_email"),
         OnlineError::Npid(value) => Text::new("ps.online.errors.npid").arg("value", value),
         OnlineError::Secret => Text::new("ps.online.errors.secret"),
+        OnlineError::Credentials(target) => Text::new("ps.online.errors.credentials").text(
+            "server",
+            Text::new(match target {
+                online::Target::Game => "ps.online.targets.game",
+                online::Target::Shadnet => "ps.online.targets.shadnet",
+                online::Target::Webapi => "ps.online.targets.webapi",
+            }),
+        ),
     }
 }
 
