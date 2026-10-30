@@ -66,7 +66,7 @@ flate2 = "1.1.10"
 # --- Data, files and the command line ---
 serde = "1.0.229"
 serde_json = "1.0.154"
-toml = "1.1.8+spec-1.1.0"
+toml = "1.1.8"
 # A macOS build's Info.plist, which names the app bundle's executable; XML or
 # binary, both of which bundles ship (decision #892).
 plist = { version = "1.10.3", default-features = false }

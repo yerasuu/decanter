@@ -22,12 +22,15 @@ pub fn private_temp_dir(purpose: &str) -> io::Result<PathBuf> {
         .filter(|dir| dir.is_absolute())
         .unwrap_or_else(env::temp_dir);
     let dir = base.join(format!("decanter-{purpose}-{}", Uuid::new_v4().simple()));
-    let mut builder = DirBuilder::new();
     #[cfg(unix)]
-    {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt as _;
+        let mut builder = DirBuilder::new();
         builder.mode(0o700);
-    }
+        builder
+    };
+    #[cfg(not(unix))]
+    let builder = DirBuilder::new();
     builder.create(&dir)?;
     Ok(dir)
 }

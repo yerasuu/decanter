@@ -47,13 +47,15 @@ fn failed(path: &Path, err: io::Error) -> Error {
 }
 
 fn private_options() -> OpenOptions {
-    let mut options = OpenOptions::new();
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
+        let mut options = OpenOptions::new();
         options.mode(0o600);
+        options
     }
-    options
+    #[cfg(not(unix))]
+    OpenOptions::new()
 }
 
 /// Windows has no modes, so the file's access list is cut to this user, SYSTEM and Administrators

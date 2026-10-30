@@ -1,7 +1,7 @@
 //! External games that are Linux programs, run as themselves with their
 //! prefix's path only naming their session.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
 use decanter_runtime::Launch;
@@ -49,7 +49,7 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
 ///
 /// When the file can't be read or its permissions changed, e.g. it belongs to someone else.
 #[cfg(unix)]
-pub(super) fn allow_to_run(executable: &Path) -> std::io::Result<()> {
+pub(super) fn allow_to_run(executable: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     let mut permissions = std::fs::metadata(executable)?.permissions();
     let mode = permissions.mode();
