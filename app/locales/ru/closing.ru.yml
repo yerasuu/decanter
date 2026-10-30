@@ -1,0 +1,6 @@
+closing.shortcut_name: 'Закрыть запущенную игру'
+closing.notice.title: '%{name} скоро закроется'
+closing.notice.body: 'Игра закроется через %{seconds} с. Чтобы отменить, снова удерживайте Select + Start или ещё раз нажмите сочетание клавиш.'
+closing.notice.body_pad: 'Игра закроется через %{seconds} с. Чтобы отменить, снова удерживайте Select + Start.'
+closing.notice.body_keyboard: 'Игра закроется через %{seconds} с. Чтобы отменить, ещё раз нажмите сочетание клавиш.'
+closing.notice.cancelled: 'Закрытие отменено: %{name} остаётся открытой'
