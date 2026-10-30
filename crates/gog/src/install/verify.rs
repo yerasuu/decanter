@@ -287,6 +287,18 @@ pub async fn repair(
     account_id: &str,
     product_id: &str,
     broken: &[BrokenFile],
+    on_progress: impl FnMut(super::Progress) + Send + 'static,
+) -> anyhow::Result<()> {
+    let outcome = repair_run(library, account_id, product_id, broken, on_progress).await;
+    super::queue::settle(&(account_id.to_owned(), product_id.to_owned()), &outcome).await;
+    outcome
+}
+
+async fn repair_run(
+    library: &decanter_core::Library,
+    account_id: &str,
+    product_id: &str,
+    broken: &[BrokenFile],
     mut on_progress: impl FnMut(super::Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
     if broken.is_empty() {

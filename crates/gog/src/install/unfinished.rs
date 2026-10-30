@@ -405,5 +405,6 @@ pub async fn discard(library: &Library, account_id: &str, product_id: &str) -> a
             tracing::info!(account_id, product_id, staging = %staging.display(), "discarded an unfinished download");
         }
     }
+    super::queue::forget(&(account_id.to_owned(), product_id.to_owned())).await;
     Ok(())
 }

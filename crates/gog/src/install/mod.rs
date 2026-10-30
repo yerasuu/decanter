@@ -12,6 +12,7 @@
 //! [`journal`] records how far it got so it can stop and carry on,
 //! [`unfinished`] finds the downloads that did stop,
 //! [`tracking`] is the process-wide bookkeeping [`cancel`] and [`pause`] need,
+//! [`queue`] the order downloads take their turn in,
 //! [`program`] guesses which file launches the game once it's all in
 //! place, and [`rate`] smooths the transfer rate reported back.
 
@@ -25,6 +26,7 @@ mod journal;
 mod pending;
 mod plan;
 mod program;
+mod queue;
 mod rate;
 mod staging;
 mod tracking;
@@ -33,6 +35,7 @@ mod verify;
 
 pub use download::Cancelled;
 pub use journal::{BuildSwitch, PauseReason, Paused, Room};
+pub use queue::{DownloadQueue, QueueMove, download_queue, move_queued, queue_changed, restore_queue};
 pub use tracking::{cancel, download_slot_busy, pause, pause_for_quit};
 pub use unfinished::{
     NothingToResume, StrayStaging, UnfinishedDownload, discard, discard_stray, downloading_dir, resume, resume_repair,
@@ -108,7 +111,8 @@ pub struct Progress {
 /// crash cut short.
 ///
 /// One download runs at a time, across every decanter process using the
-/// library: this waits for the ones asked for before it. While it waits, and
+/// library: this waits for the ones ahead of it in the queue ([`move_queued`]
+/// reorders it), and for another process's download. While it waits, and
 /// until its plan is in, its request is recorded in its staging folder, so a
 /// pause, a cancel or a quit then needs no network and a crash still lists it.
 ///
@@ -122,6 +126,31 @@ pub struct Progress {
 /// than assumed here, so this crate has no opinion of its own on where
 /// anything lives.
 pub async fn install(
+    library: &Library,
+    account_id: &str,
+    product_id: &str,
+    parent_id: Option<&str>,
+    title: &str,
+    branch: Option<&str>,
+    build_id: Option<&str>,
+    on_progress: impl FnMut(Progress) + Send + 'static,
+) -> anyhow::Result<()> {
+    let outcome = install_run(
+        library,
+        account_id,
+        product_id,
+        parent_id,
+        title,
+        branch,
+        build_id,
+        on_progress,
+    )
+    .await;
+    queue::settle(&(account_id.to_owned(), product_id.to_owned()), &outcome).await;
+    outcome
+}
+
+async fn install_run(
     library: &Library,
     account_id: &str,
     product_id: &str,

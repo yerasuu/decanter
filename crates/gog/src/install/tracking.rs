@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 
 use decanter_core::Library;
 use decanter_runtime::journal::{LockError, StagingLock};
-use tokio::sync::{Mutex, Notify, Semaphore, SemaphorePermit};
+use tokio::sync::{Mutex, Notify};
 
 use super::download::Cancel;
+use super::queue::{Place, take_turn};
 use super::staging::DOWNLOADING;
 
 pub(super) type InstallKey = (String, String);
@@ -61,10 +62,6 @@ pub(super) async fn claim(account_id: &str, product_id: &str) {
     stop_requested().lock().await.remove(&key);
 }
 
-/// One download runs at a time (owner's decision, #1281): the rest wait for
-/// their turn, in the order they asked, since the semaphore is fair.
-static TURN: Semaphore = Semaphore::const_new(1);
-
 /// Wakes the downloads waiting for their turn so they see a stop asked of them.
 static STOPS: Notify = Notify::const_new();
 
@@ -77,7 +74,7 @@ const SLOT_POLL: Duration = Duration::from_secs(1);
 pub(super) struct Turn {
     // Let go of before the permit, so this process's next download finds it free.
     _slot: Option<StagingLock>,
-    _permit: SemaphorePermit<'static>,
+    _place: Place,
 }
 
 /// Runs `work` until it ends, or until a stop for `key` (or decanter quitting)
@@ -102,32 +99,25 @@ pub(super) async fn until_stopped<T>(key: &InstallKey, work: impl Future<Output 
     }
 }
 
-/// Waits for `key`'s turn to download: first this process's, then the slot
-/// other decanter processes share (#1320), so the CLI and the app never
-/// download at once. `None` when a stop comes first, as [`until_stopped`].
+/// Waits for `key`'s turn to download: first this process's, in the queue's order (#1281, #1349),
+/// then the slot other decanter processes share (#1320), so the CLI and the app never download at
+/// once. `None` when a stop comes first, as [`until_stopped`].
 pub(super) async fn wait_turn(library: &Library, key: &InstallKey) -> Option<Turn> {
-    let Some(acquired) = until_stopped(key, TURN.acquire()).await else {
+    let Some(place) = until_stopped(key, take_turn(key)).await else {
         return None;
-    };
-    let permit = match acquired {
-        Ok(permit) => permit,
-        Err(err) => {
-            tracing::error!(error = %err, "the download queue is closed");
-            return None;
-        }
     };
     let Some(slot) = until_stopped(key, take_slot(library)).await else {
         return None;
     };
     Some(Turn {
         _slot: slot,
-        _permit: permit,
+        _place: place,
     })
 }
 
 /// The folder whose lock is the slot: the library folder every process using
 /// `library` agrees on whichever one it targets, the first present in order.
-fn slot_dir(library: &Library) -> Option<PathBuf> {
+pub(super) fn slot_dir(library: &Library) -> Option<PathBuf> {
     library
         .roots()
         .into_iter()
