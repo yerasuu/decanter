@@ -11,7 +11,7 @@ reqwest 0.13.5, tokio 1.54.1, md5 0.8.1.
 
 **Status.** The owner accepted every recommendation in §6 (#1281). Phases 0 to 3 are
 integrated. Phase 4 is built as described below (#1310), and phase 4b on top of it (#1315, #1316,
-#1319, #1320); nothing of phases 3 and 4 has been run against GOG yet.
+#1319, #1320), and the reorderable queue (#1349); nothing of phases 3 and 4 has been run against GOG yet.
 
 **Phase 3 as built.**
 
@@ -179,6 +179,44 @@ integrated. Phase 4 is built as described below (#1310), and phase 4b on top of 
 - With the follow-ups: a folder holding `pending.json` has a journal for `stray_staging` and
   `discard_stray`, so a queued download is never offered as a stray; a resume of one never planned
   isn't flagged for *Verify*, since nothing was staged.
+
+**Queue order as built** (#1349).
+
+- Engine (`crates/gog/src/install/queue.rs`). The fair one-permit semaphore of phase 4 is replaced
+  by an explicit order: `order`, every download that has a place (the one holding the turn first,
+  then the waiting ones and the stopped ones, which keep their place), and the waiting tickets.
+  `tracking::wait_turn` takes `queue::take_turn` (under `until_stopped`, so a pause, cancel or quit
+  still ends the wait at once and offline) and then the cross-process slot, unchanged. The turn goes
+  to the waiting download first in `order` when nobody holds it; taking it moves that download to the
+  front. A place is given up (`queue::settle`, `forget`) when the download finishes, is cancelled,
+  fails or is discarded; one paused (by the user, a quit, the network, a full disk) keeps it, so a
+  resume rejoins where it was and the download *Pausar* stopped comes back ahead of the rest.
+- API. `download_queue()` gives the one holding the turn and the waiting ones in start order, with
+  `position()`; `move_queued(account, product, QueueMove)` moves a waiting one (`Up`, `Down`,
+  `First`, `Last`, `To(i)`) among the waiting ones only, which trade the places they hold, so the
+  running one is never interrupted and the stopped ones keep theirs; `queue_changed()` resolves on
+  the next change, which the app turns into a re-render.
+- Persistence. `restore_queue(library, listed, resuming)`, called by the app after each scan of the
+  library's journals and before the resumes it starts, reads `<root>/downloading/queue.json` (the
+  folder of the shared slot) once per folder and from then on rewrites it on every change of the
+  order, whole, with `write_atomic` (written aside, synced, renamed, folder synced): `{"format": 1,
+  "entries": [{"account_id", "product_id", "seq"}]}`. Entries are sorted by `seq`; ids that aren't
+  plain ids, duplicates and downloads no journal lists are dropped. A missing file is an empty order;
+  an unreadable, corrupt or unknown-format one is logged once and the downloads take arrival order,
+  none of them lost, since the file only orders what the journals list. A failed write is logged and
+  the order kept in memory. The CLI never restores, so it keeps arrival order and never writes the
+  file.
+- Restart. The resumes the startup scan starts reach the queue each on its own task; the ones it
+  starts are expected for up to 5 s (`ARRIVAL_GRACE`) and one behind an expected one in the saved
+  order does not take the turn first. After `kill -9` the saved order already holds the running
+  download first, so it starts first again.
+- Page. Descargas shows *Descargando* (the download holding the turn, *Preparando la descarga…* until
+  its plan is in, then progress, speed and time left), *En cola* (in start order, each *N.º n en la
+  cola*), *En pausa*, *En curso en otro proceso* and *Con errores*. A waiting row, with two or more
+  waiting, can be dragged by its row (GPUI `on_drag` / `drag_over` / `on_drop`, as the library's
+  shelves) onto another one to take its place, and has *↑* (*Subir*), *↓* (*Bajar*), *Subir al
+  principio* and *Bajar al final*. Storage and the game's page show the same *N.º n en la cola*.
+  *Descargar ahora* (stop the running one to start this one) is not built.
 
 **Left for later** (deliberately): the slot is per library location, so two profiles with different
 library folders can still download at once; cross-process turns are not in asking order (the lock is

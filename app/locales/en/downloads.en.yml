@@ -34,3 +34,15 @@ downloads.paused_reason.library_unavailable_at: 'The library %{path} is unavaila
 downloads.reused: 'GOG published another build while it was stopped: %{kept} of the %{had} already downloaded were reused'
 downloads.verify_offer: '%{title} was resumed after Decanter closed unexpectedly. Verify its files?'
 downloads.verify_now: Verify now
+downloads.group.active: Downloading
+downloads.group.queued: Queued
+downloads.group.paused: Paused
+downloads.group.elsewhere: Running in another process
+downloads.group.failed: Failed
+downloads.preparing: Preparing the download…
+downloads.queue_position: '#%{position} in the queue'
+downloads.move_up: Move up
+downloads.move_down: Move down
+downloads.move_first: Move to top
+downloads.move_last: Move to bottom
+downloads.drag_to_reorder: Drag to reorder

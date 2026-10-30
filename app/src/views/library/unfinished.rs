@@ -79,16 +79,24 @@ pub async fn watch(state: AppState, cx: &mut AsyncApp) {
             {
                 roots = current;
                 scanned = Instant::now();
-                for key in scan(&library, &state, cx).await {
-                    if started.insert(key.clone()) {
-                        cx.update(|cx| actions::resume_download(key, cx));
-                    }
+                let (listed, found) = scan(&library, &state, cx).await;
+                let resume: Vec<DownloadKey> = found.into_iter().filter(|key| started.insert(key.clone())).collect();
+                // Before the resumes, so each takes its saved place in the queue.
+                decanter_gog::restore_queue(&library, &pairs(&listed), &pairs(&resume)).await;
+                for key in resume {
+                    cx.update(|cx| actions::resume_download(key, cx));
                 }
             }
         }
         retry_stopped(&state, &mut retries, cx);
         cx.background_executor().timer(TICK).await;
     }
+}
+
+fn pairs(keys: &[DownloadKey]) -> Vec<(String, String)> {
+    keys.iter()
+        .map(|key| (key.account_id.clone(), key.product_id.clone()))
+        .collect()
 }
 
 /// Tries again the downloads the network or an unplugged library folder
@@ -140,15 +148,15 @@ fn retry_stopped(state: &AppState, retries: &mut HashMap<DownloadKey, Retry>, cx
 
 /// Lists what `library`'s folders hold unfinished. A row already listed
 /// stays as it is, but for one another process ran, which takes what its
-/// journal says now. Returns the rows new to the list that carry on by
-/// themselves.
-async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> Vec<DownloadKey> {
+/// journal says now. Returns every download listed, and the rows new to the
+/// list that carry on by themselves.
+async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> (Vec<DownloadKey>, Vec<DownloadKey>) {
     let on_start = crate::core::db()
         .and_then(|db| db.resume_downloads_on_start().map_err(crate::core::StoreError::Query))
         .inspect_err(|err| tracing::warn!(%err, "could not read the resume-on-start setting, resuming"))
         .unwrap_or(true);
     let found = decanter_gog::unfinished_downloads(library).await;
-    let (resume, gone) = state.background.update(cx, |background, cx| {
+    let (resume, gone, listed) = state.background.update(cx, |background, cx| {
         let mut resume = Vec::new();
         let mut listed = HashSet::new();
         for download in found {
@@ -191,7 +199,7 @@ async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> Vec<Dow
             background.installing.remove(key);
         }
         cx.notify();
-        (resume, gone)
+        (resume, gone, listed)
     });
     for key in gone {
         tracing::info!(
@@ -201,7 +209,7 @@ async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> Vec<Dow
         );
         install::refresh_install_state(state, &key.account_id, &key.product_id, cx);
     }
-    resume
+    (listed.into_iter().collect(), resume)
 }
 
 /// Whether a download found stopped carries on by itself: one decanter's

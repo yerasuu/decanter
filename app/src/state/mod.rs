@@ -111,6 +111,16 @@ impl AppState {
         let watched = state.clone();
         cx.spawn(async move |cx| crate::views::library::unfinished::watch(watched, cx).await)
             .detach();
+        // The queue changes without a row changing (a download joins it, takes the turn or is
+        // moved), and every page showing a place in it reads it when the rows re-render.
+        let rows = state.background.clone();
+        cx.spawn(async move |cx| {
+            loop {
+                decanter_gog::queue_changed().await;
+                rows.update(cx, |_, cx| cx.notify());
+            }
+        })
+        .detach();
         cx.set_global(state);
     }
 

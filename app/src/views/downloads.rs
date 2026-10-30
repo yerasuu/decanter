@@ -5,14 +5,14 @@
 
 use std::time::{Duration, SystemTime};
 
-use gpui::{App, Context, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{App, BoxShadow, Context, FontWeight, SharedString, Window, div, point, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use crate::format;
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 use crate::theme;
 use crate::views::library::actions;
-use crate::widgets::{ButtonKind, button, progress_bar};
+use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
 
 /// A download paused this long gets a notice offering to resume or delete
 /// it (owner's decision, #1281); nothing deletes it on its own.
@@ -63,7 +63,7 @@ pub fn progress_lines(key: &DownloadKey, download: &Download) -> Vec<gpui::AnyEl
     match status {
         InstallStatus::Queued => vec![
             progress_bar(bar_id, None, 4.).into_any_element(),
-            label(t!("common.queued").into_owned()),
+            label(queued_label(key)),
         ],
         InstallStatus::Installing {
             bytes_downloaded,
@@ -131,6 +131,21 @@ pub fn progress_lines(key: &DownloadKey, download: &Download) -> Vec<gpui::AnyEl
         ],
         InstallStatus::Failed(err) => vec![theme::error(err.clone()).into_any_element()],
     }
+}
+
+/// Where a queued download stands: being prepared once it has the turn, else its place in the queue.
+fn queued_label(key: &DownloadKey) -> String {
+    let queue = decanter_gog::download_queue();
+    if queue.is_running(&key.account_id, &key.product_id) {
+        return t!("downloads.preparing").into_owned();
+    }
+    queue
+        .position(&key.account_id, &key.product_id)
+        .map_or_else(
+            || t!("common.queued"),
+            |position| t!("downloads.queue_position", position = position + 1),
+        )
+        .into_owned()
 }
 
 /// "Se reutilizaron X de Y" once GOG's new build kept part of what was downloaded.
@@ -323,10 +338,252 @@ fn kind_label(kind: DownloadKind) -> Option<std::borrow::Cow<'static, str>> {
     }
 }
 
+/// The page's sections, in the order they are shown.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Group {
+    Active,
+    Queued,
+    Paused,
+    Elsewhere,
+    Failed,
+}
+
+impl Group {
+    const ALL: [Self; 5] = [Self::Active, Self::Queued, Self::Paused, Self::Elsewhere, Self::Failed];
+
+    fn of(key: &DownloadKey, download: &Download, queue: &decanter_gog::DownloadQueue) -> Self {
+        let waits = match download.status {
+            InstallStatus::Queued => !queue.is_running(&key.account_id, &key.product_id),
+            // A cancel stopping a download that waited stays where it waited.
+            InstallStatus::Cancelling { .. } => queue.position(&key.account_id, &key.product_id).is_some(),
+            InstallStatus::Installing { .. }
+            | InstallStatus::Paused { .. }
+            | InstallStatus::Elsewhere { .. }
+            | InstallStatus::Failed(_) => false,
+        };
+        if waits {
+            return Self::Queued;
+        }
+        match download.status {
+            InstallStatus::Paused { .. } => Self::Paused,
+            InstallStatus::Elsewhere { .. } => Self::Elsewhere,
+            InstallStatus::Failed(_) => Self::Failed,
+            InstallStatus::Installing { .. } | InstallStatus::Queued | InstallStatus::Cancelling { .. } => Self::Active,
+        }
+    }
+
+    fn title(self) -> std::borrow::Cow<'static, str> {
+        match self {
+            Self::Active => t!("downloads.group.active"),
+            Self::Queued => t!("downloads.group.queued"),
+            Self::Paused => t!("downloads.group.paused"),
+            Self::Elsewhere => t!("downloads.group.elsewhere"),
+            Self::Failed => t!("downloads.group.failed"),
+        }
+    }
+}
+
+/// What a queued row carries while it is dragged to another place in the queue.
+struct QueueDrag {
+    key: DownloadKey,
+    title: SharedString,
+}
+
+/// The row's ghost under the cursor while it is dragged.
+struct QueueGhost {
+    title: SharedString,
+}
+
+impl Render for QueueGhost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(18.))
+            .py(px(8.))
+            .opacity(0.7)
+            .bg(rgb(theme::BG_PANEL))
+            .rounded(px(theme::RADIUS))
+            .font_weight(FontWeight::SEMIBOLD)
+            .child(self.title.clone())
+    }
+}
+
+/// Subir and Bajar beside the row's buttons, for moving it without dragging.
+fn step_buttons(index: usize, key: &DownloadKey, position: usize, count: usize) -> Vec<gpui::AnyElement> {
+    let step = |id: &'static str, glyph: &'static str, hint, to, disabled: bool| {
+        let key = key.clone();
+        button((id, index), ButtonKind::Secondary, glyph, disabled)
+            .tooltip(tooltip(hint))
+            .when(!disabled, |button| {
+                button.on_click(move |_, _, cx| actions::move_in_queue(key.clone(), to, cx))
+            })
+            .into_any_element()
+    };
+    vec![
+        step(
+            "queue-up",
+            "↑",
+            t!("downloads.move_up"),
+            decanter_gog::QueueMove::Up,
+            position == 0,
+        ),
+        step(
+            "queue-down",
+            "↓",
+            t!("downloads.move_down"),
+            decanter_gog::QueueMove::Down,
+            position + 1 == count,
+        ),
+    ]
+}
+
+/// Subir al principio and Bajar al final, under the row's progress.
+fn end_buttons(index: usize, key: &DownloadKey, position: usize, count: usize) -> gpui::Div {
+    let to_end = |id: &'static str, text, to, disabled: bool| {
+        let key = key.clone();
+        button((id, index), ButtonKind::Icon, text, disabled)
+            .text_size(px(11.))
+            .when(!disabled, |button| {
+                button.on_click(move |_, _, cx| actions::move_in_queue(key.clone(), to, cx))
+            })
+    };
+    div()
+        .flex()
+        .gap_4()
+        .mt_1()
+        .child(to_end(
+            "queue-first",
+            t!("downloads.move_first"),
+            decanter_gog::QueueMove::First,
+            position == 0,
+        ))
+        .child(to_end(
+            "queue-last",
+            t!("downloads.move_last"),
+            decanter_gog::QueueMove::Last,
+            position + 1 == count,
+        ))
+}
+
+/// A row's buttons: Descartar on a failure, else what `download_actions` offers.
+fn row_buttons(index: usize, key: &DownloadKey, download: &Download, confirming: bool) -> Vec<gpui::AnyElement> {
+    let InstallStatus::Failed(_) = download.status else {
+        return download_actions(index, key, download, confirming);
+    };
+    // A failure is already over; the row is just a notice the user hasn't
+    // read yet, so it's dismissed, not cancelled.
+    let key = key.clone();
+    vec![
+        button(("dismiss", index), ButtonKind::Icon, t!("downloads.dismiss"), false)
+            .on_click(move |_, _, cx| {
+                tracing::debug!(
+                    account_id = key.account_id,
+                    product_id = key.product_id,
+                    "dismissing failed download notice"
+                );
+                actions::dismiss_install(&key, cx);
+            })
+            .into_any_element(),
+    ]
+}
+
+/// One row; `queued` is its place among `count` waiting downloads, which makes it draggable and
+/// movable.
+fn row(
+    index: usize,
+    is_last: bool,
+    key: &DownloadKey,
+    download: &Download,
+    confirming: bool,
+    queued: Option<(usize, usize)>,
+) -> gpui::Stateful<gpui::Div> {
+    let mut main = div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .items_center()
+                .mb_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(download.title.clone()))
+                .children(
+                    kind_label(download.kind)
+                        .map(|kind| div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(kind)),
+                ),
+        )
+        .children(progress_lines(key, download));
+    if let InstallStatus::Installing { current_file, .. } = &download.status {
+        main = main.child(
+            div()
+                .mt_1()
+                .text_size(px(11.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .truncate()
+                .child(current_file.clone()),
+        );
+    }
+    let movable = queued.filter(|(_, count)| *count > 1 && !confirming);
+    if let Some((position, count)) = movable {
+        main = main.child(end_buttons(index, key, position, count));
+    }
+    let buttons = movable
+        .map(|(position, count)| step_buttons(index, key, position, count))
+        .unwrap_or_default()
+        .into_iter()
+        .chain(row_buttons(index, key, download, confirming));
+    let row = theme::list_row(("download-row", index), is_last)
+        .items_start()
+        .when(movable.is_some(), |row| {
+            row.child(
+                div()
+                    .id(("queue-grip", index))
+                    .flex_none()
+                    .tooltip(tooltip(t!("downloads.drag_to_reorder")))
+                    .text_size(px(13.))
+                    .text_color(rgb(theme::TEXT_DIM))
+                    .child("⠿"),
+            )
+        })
+        .child(main)
+        .child(div().flex_none().flex().items_start().gap_2().children(buttons));
+    let Some((position, _)) = movable else {
+        return row;
+    };
+    let drag = QueueDrag {
+        key: key.clone(),
+        title: SharedString::from(download.title.clone()),
+    };
+    let dragged = key.clone();
+    // Steam moves a queued download by dragging its row; the whole row is the handle.
+    row.cursor_grab()
+        .on_drag(drag, |drag, _, _, cx| {
+            let title = drag.title.clone();
+            cx.new(|_| QueueGhost { title })
+        })
+        .drag_over::<QueueDrag>(move |style, drag, _, _| {
+            if drag.key == dragged {
+                return style;
+            }
+            style.shadow(vec![BoxShadow {
+                color: rgb(theme::ACCENT_BLUE).into(),
+                offset: point(px(0.), px(-2.)),
+                blur_radius: px(0.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+        })
+        .on_drop(move |drag: &QueueDrag, _, cx| {
+            actions::move_in_queue(drag.key.clone(), decanter_gog::QueueMove::To(position), cx);
+        })
+}
+
 impl Render for DownloadsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = AppState::get(cx).clone();
         let background = state.background.read(cx);
+        let queue = decanter_gog::download_queue();
         // Sorted so the list doesn't reshuffle on every progress tick — a
         // `HashMap`'s iteration order is arbitrary. The account breaks ties:
         // the same game can download for two accounts of one profile.
@@ -376,7 +633,7 @@ impl Render for DownloadsView {
                     .on_click(move |_, _, cx| actions::dismiss_verify_offer(&dismiss_key, cx)),
                 )
         });
-        let column = div()
+        let mut column = div()
             .flex()
             .flex_col()
             .child(header)
@@ -386,61 +643,34 @@ impl Render for DownloadsView {
         if entries.is_empty() {
             return theme::page("downloads", column.child(theme::empty(t!("downloads.empty"))));
         }
-        let count = entries.len();
-        let rows = entries.into_iter().enumerate().map(|(index, (key, download))| {
-            let mut main = div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .items_center()
-                        .mb_2()
-                        .child(div().font_weight(FontWeight::SEMIBOLD).child(download.title.clone()))
-                        .children(
-                            kind_label(download.kind)
-                                .map(|kind| div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(kind)),
-                        ),
-                )
-                .children(progress_lines(key, download));
-            if let InstallStatus::Installing { current_file, .. } = &download.status {
-                main = main.child(
-                    div()
-                        .mt_1()
-                        .text_size(px(11.))
-                        .text_color(rgb(theme::TEXT_MUTED))
-                        .truncate()
-                        .child(current_file.clone()),
-                );
+        let mut index = 0;
+        for group in Group::ALL {
+            let mut members: Vec<(&DownloadKey, &Download)> = entries
+                .iter()
+                .copied()
+                .filter(|(key, download)| Group::of(key, download, &queue) == group)
+                .collect();
+            if members.is_empty() {
+                continue;
             }
-            let buttons = match &download.status {
-                // A failure is already over; the row is just a notice the
-                // user hasn't read yet, so it's dismissed, not cancelled.
-                InstallStatus::Failed(_) => {
-                    let key = key.clone();
-                    vec![
-                        button(("dismiss", index), ButtonKind::Icon, t!("downloads.dismiss"), false)
-                            .on_click(move |_, _, cx| {
-                                tracing::debug!(
-                                    account_id = key.account_id,
-                                    product_id = key.product_id,
-                                    "dismissing failed download notice"
-                                );
-                                actions::dismiss_install(&key, cx);
-                            })
-                            .into_any_element(),
-                    ]
-                }
-                _ => download_actions(index, key, download, background.cancel_confirm.as_ref() == Some(key)),
-            };
-            theme::list_row(("download-row", index), index + 1 == count)
-                .items_start()
-                .child(main)
-                .child(div().flex_none().flex().items_start().gap_2().children(buttons))
-        });
-        theme::page("downloads", column.child(theme::card().children(rows)))
+            if group == Group::Queued {
+                // In the order they will start; one still joining the queue goes last.
+                members.sort_by_key(|(key, _)| queue.position(&key.account_id, &key.product_id).unwrap_or(usize::MAX));
+            }
+            let waiting = queue.waiting.len();
+            let count = members.len();
+            let mut card = theme::card();
+            for (offset, (key, download)) in members.into_iter().enumerate() {
+                let queued = (group == Group::Queued)
+                    .then(|| queue.position(&key.account_id, &key.product_id))
+                    .flatten()
+                    .map(|position| (position, waiting));
+                let confirming = background.cancel_confirm.as_ref() == Some(key);
+                card = card.child(row(index, offset + 1 == count, key, download, confirming, queued));
+                index += 1;
+            }
+            column = column.child(theme::h2(group.title())).child(card);
+        }
+        theme::page("downloads", column)
     }
 }

@@ -276,6 +276,12 @@ fn game_ahead_of(state: &AppState, key: &DownloadKey, cx: &App) -> Option<Downlo
         .then_some(game)
 }
 
+/// Moves a queued download within the queue; the page follows the queue's own change.
+pub fn move_in_queue(key: DownloadKey, to: decanter_gog::QueueMove, cx: &App) {
+    cx.spawn(async move |_| decanter_gog::move_queued(&key.account_id, &key.product_id, to).await)
+        .detach();
+}
+
 pub const fn is_resumable(download: &Download) -> bool {
     matches!(download.status, InstallStatus::Paused { .. })
 }
