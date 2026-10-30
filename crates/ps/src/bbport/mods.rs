@@ -63,9 +63,15 @@ impl ModFiles {
         };
         let ([mods_key, patches_key], [mods_name, patches_name]) = (FOLDER_KEYS, FOLDER_NAMES);
         let dir = |key: &str, name: &str| settings.text(key).map_or_else(|| folder.join(name), PathBuf::from);
+        let patches_dir = dir(patches_key, patches_name);
+        if settings.text(patches_key).is_none()
+            && let Err(err) = super::builtin_patches::seed(&patches_dir, title_id)
+        {
+            tracing::warn!(dir = %patches_dir.display(), %err, "could not seed the title's patches folder");
+        }
         Ok(Self {
             mods_dir: dir(mods_key, mods_name),
-            patches_dir: dir(patches_key, patches_name),
+            patches_dir,
             mods_config: folder.join(MODS_FILE),
             patches_config: folder.join(PATCHES_FILE),
             scope,
