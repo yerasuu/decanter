@@ -325,7 +325,7 @@ fn is_env(text: &str) -> bool {
                 (1..=MAX_ENV_NAME).contains(&name.len())
                     && name.bytes().next().is_some_and(|byte| !byte.is_ascii_digit())
                     && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-                    && !online::is_secret_var(name)
+                    && !decanter_core::redact::is_secret_name(name)
             })
         })
 }
@@ -336,7 +336,7 @@ pub(super) fn without_secrets(env: &str) -> String {
     env.split_whitespace()
         .filter(|item| {
             item.split_once('=')
-                .is_none_or(|(name, _)| !online::is_secret_var(name))
+                .is_none_or(|(name, _)| !decanter_core::redact::is_secret_name(name))
         })
         .collect::<Vec<_>>()
         .join(" ")
