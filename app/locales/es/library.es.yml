@@ -277,3 +277,4 @@ library.mods.unavailable: 'La lista de mods de GOG no está disponible ahora mis
 library.mods.none: GOG no ofrece ningún mod ahora mismo.
 library.mods.owned: En tu biblioteca
 library.mods.view: Ver en GOG
+library.properties.language.use: Usar este idioma

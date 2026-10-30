@@ -25,6 +25,7 @@ const LISTED_FILES: usize = 8;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Busy {
     Switching,
+    Using,
     Listing,
     Removing,
 }
@@ -142,6 +143,40 @@ impl LanguageTab {
                     tracing::info!(account_id, product_id, language = tag, "language change finished");
                     this.list_unused(tag, cx);
                 }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Records the language of a game that has every language on disk: nothing is downloaded or
+    /// removed.
+    fn use_language(&mut self, tag: String, cx: &mut Context<Self>) {
+        let target = Rc::clone(&self.target);
+        self.busy = Some(Busy::Using);
+        self.error = None;
+        self.cleanup = None;
+        self.freed = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let account_id = target.account_id.as_str();
+            let product_id = target.product_id.as_str();
+            let outcome = match crate::core::library_for_account(account_id) {
+                Ok(core_library) => decanter_gog::use_language(&core_library, account_id, product_id, &tag)
+                    .await
+                    .inspect_err(|err| tracing::error!(account_id, product_id, language = tag, error = %err, "recording the game's language failed"))
+                    .map_err(Text::verbatim),
+                Err(err) => Err(err.localized()),
+            };
+            if outcome.is_ok() {
+                crate::core::set_gog_language(account_id, product_id, &tag);
+            }
+            let _ = this.update(cx, |this, cx| {
+                this.busy = None;
+                if let Err(error) = outcome {
+                    this.error = Some(error);
+                }
+                this.reload();
                 cx.notify();
             });
         })
@@ -357,8 +392,21 @@ impl Render for LanguageTab {
             let label = match self.busy {
                 Some(Busy::Listing) => t!("library.properties.language.listing"),
                 Some(Busy::Removing) => t!("library.properties.language.removing"),
-                Some(Busy::Switching) | None => t!("library.properties.language.remove_unused"),
+                Some(Busy::Switching | Busy::Using) | None => t!("library.properties.language.remove_unused"),
             };
+            if installed.language.is_none() {
+                let tag = keep.clone();
+                let label = if self.busy == Some(Busy::Using) {
+                    t!("library.properties.language.switching")
+                } else {
+                    t!("library.properties.language.use")
+                };
+                actions = actions.child(
+                    button("language-use", ButtonKind::Primary, label, is_busy).when(!is_busy, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| this.use_language(tag.clone(), cx)))
+                    }),
+                );
+            }
             actions = actions.child(
                 button("language-unused", ButtonKind::Secondary, label, is_busy).when(!is_busy, |b| {
                     b.on_click(cx.listener(move |this, _, _, cx| this.list_unused(keep.clone(), cx)))

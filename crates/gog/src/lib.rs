@@ -41,7 +41,7 @@ pub use install::{
     cancel, discard, discard_stray, download_queue, download_slot_busy, downloading_dir, install, move_queued,
     offered_languages, pause, pause_for_quit, queue_changed, queue_dlcs, remove_unused_languages, repair,
     restore_queue, resume, resume_repair, stray_staging, unfinished_downloads, uninstall, uninstall_dlc,
-    unused_language_files, verify,
+    unused_language_files, use_language, verify,
 };
 pub use library::{Batch, GameKind, LibraryEntry, enrich_games, find_game, list_games};
 pub use mods::{GogMod, gog_mods};

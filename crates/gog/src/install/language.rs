@@ -552,6 +552,50 @@ pub async fn remove_unused_languages(
     Ok(removed)
 }
 
+/// Records `tag` as the language of a game that has every language on disk, without downloading
+/// or removing anything: its manifest, and the `goggame-<id>.info` of the game and its installed
+/// DLC that a launcher reads the language from. The files of the other languages stay until the
+/// user asks to remove them.
+///
+/// # Errors
+///
+/// When the game isn't installed, is downloading, or its manifest can't be written.
+#[inline]
+pub async fn use_language(library: &Library, account_id: &str, product_id: &str, tag: &str) -> anyhow::Result<()> {
+    let mut game = crate::achv_try!(
+        library
+            .read_manifest(account_id, Storefront::Gog, product_id)
+            .with_context(|| format!("{product_id} is not installed"))
+    );
+    let key: InstallKey = (account_id.to_owned(), product_id.to_owned());
+    anyhow::ensure!(
+        !active().lock().await.contains_key(&key),
+        "the game is downloading; change its language once it finishes"
+    );
+    let install_root = crate::achv_try!(
+        library
+            .install_dir(&game.install_dir)
+            .context("unusable install directory")
+    );
+    game.language = Some(tag.to_owned());
+    crate::achv_try!(
+        library
+            .write_manifest(&game)
+            .inspect_err(|err| tracing::error!(product_id, error = %err, "recording the game's language failed"))
+            .context("recording the game's language")
+    );
+    write_info(&install_root, product_id, tag, &[]).await;
+    for dlc in game.dlcs.keys() {
+        write_info(&install_root, dlc, tag, &[]).await;
+    }
+    tracing::info!(
+        product_id,
+        language = tag,
+        "recorded the language of a game that has every language"
+    );
+    Ok(())
+}
+
 /// Writes `tag` as the language of `product_id`'s `goggame-<id>.info` in `install_root`, the way
 /// GOG Galaxy records the language a game was installed in: `language` its English name and
 /// `languages` the tag. Everything else in the file stays. Best-effort: a game without the file,
