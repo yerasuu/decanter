@@ -494,10 +494,13 @@ enum Update {
     Progress(usize, usize),
     /// The listing failed because GOG closed the session.
     SessionClosed,
-    /// A cycle finished; `listed` says whether pass one succeeded.
-    CycleDone {
+    /// Pass one is settled: the library is complete enough to show, whatever pass two still has
+    /// to add. `listed` says whether it succeeded.
+    Listed {
         listed: bool,
     },
+    /// A cycle finished, enrichment included.
+    CycleDone,
 }
 
 /// One account's fetch loop, split in two: the fetch itself, the cache
@@ -531,19 +534,20 @@ async fn watch_games(account_id: String, this: WeakEntity<GogLibrary>, cx: &mut 
                     Update::Shown(shown) => latest = Some(shown),
                     Update::Progress(done, total) => library.enrich_progress = Some((done, total)),
                     Update::SessionClosed => library.session_closed(&account_id, cx),
-                    Update::CycleDone { listed } => {
-                        library.enrich_progress = None;
+                    Update::Listed { listed } => {
                         // `state` starts as `Loading` for a fresh account
                         // (see `reconcile`) and this is the one place that
                         // ever moves it to `Loaded` — a failed first listing
                         // included, since the library works offline and
-                        // there's nothing more to wait for.
+                        // there's nothing more to wait for. Enrichment only
+                        // adds metadata, so it must not hold the splash.
                         library.state = LibraryState::Loaded;
                         if listed {
                             tracing::info!(account_id, "gog library ready");
                             library.closed_sessions.remove(&account_id);
                         }
                     }
+                    Update::CycleDone => library.enrich_progress = None,
                 }
             }
             let stored = latest.is_none_or(|shown| library.store(&account_id, shown, cx));
@@ -584,6 +588,10 @@ async fn fetch_loop(
                 return None;
             };
             if !listed_ok && session_closed(&account_id).await && !send(Update::SessionClosed) {
+                return None;
+            }
+
+            if !send(Update::Listed { listed: listed_ok }) {
                 return None;
             }
 
@@ -638,17 +646,14 @@ async fn fetch_loop(
                     enriched_at = Some(Instant::now());
                 }
             }
-            Some(listed_ok)
+            Some(())
         };
-        let listed_ok = tokio::select! {
-            listed = cycle => listed,
+        let finished = tokio::select! {
+            finished = cycle => finished,
             () = updates.closed() => return,
             _ = shutdown.wait_for(|down| *down) => return,
         };
-        let Some(listed_ok) = listed_ok else {
-            return;
-        };
-        if !send(Update::CycleDone { listed: listed_ok }) {
+        if finished.is_none() || !send(Update::CycleDone) {
             return;
         }
         tokio::select! {
