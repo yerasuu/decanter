@@ -14,7 +14,6 @@ downloads.resume_all: Reanudar todo
 downloads.delete: Eliminar
 downloads.stale: 'Descarga en pausa desde hace %{days} días · %{size}'
 downloads.elsewhere: 'En curso en otro proceso de Decanter · %{done} de %{total}'
-downloads.repair_resume: Vuelve a reparar desde Archivos locales y seguirá donde lo dejó
 downloads.kind.dlc: DLC
 downloads.kind.update: Actualización
 downloads.kind.branch_switch: Cambio de rama
@@ -27,4 +26,8 @@ downloads.paused_reason.network: Sin conexión; se reanudará sola cuando vuelva
 downloads.paused_reason.app_closed: Decanter se cerró
 downloads.paused_reason.closed_unexpectedly: Decanter se cerró de forma inesperada
 downloads.paused_reason.disk_full: Disco lleno
+downloads.paused_reason.disk_full_at: 'Disco lleno en %{path}'
+downloads.paused_reason.disk_full_short: 'Disco lleno: faltan %{short} libres en %{path}'
+downloads.paused_reason.disk_full_update: 'Disco lleno: la actualización necesita %{needed} libres en %{path} mientras se descarga; faltan %{short}'
 downloads.paused_reason.library_unavailable: La carpeta de la biblioteca no está disponible
+downloads.paused_reason.library_unavailable_at: 'La biblioteca %{path} no está disponible'

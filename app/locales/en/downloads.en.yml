@@ -14,7 +14,6 @@ downloads.resume_all: Resume all
 downloads.delete: Delete
 downloads.stale: 'Download paused for %{days} days · %{size}'
 downloads.elsewhere: 'Running in another Decanter process · %{done} of %{total}'
-downloads.repair_resume: Repair again from Local files and it carries on where it stopped
 downloads.kind.dlc: DLC
 downloads.kind.update: Update
 downloads.kind.branch_switch: Branch switch
@@ -27,4 +26,8 @@ downloads.paused_reason.network: No connection; it resumes on its own when the n
 downloads.paused_reason.app_closed: Decanter was closed
 downloads.paused_reason.closed_unexpectedly: Decanter closed unexpectedly
 downloads.paused_reason.disk_full: Disk full
+downloads.paused_reason.disk_full_at: 'Disk full at %{path}'
+downloads.paused_reason.disk_full_short: 'Disk full: %{short} more free space needed at %{path}'
+downloads.paused_reason.disk_full_update: 'Disk full: the update needs %{needed} free at %{path} while it downloads; %{short} short'
 downloads.paused_reason.library_unavailable: The library folder is unavailable
+downloads.paused_reason.library_unavailable_at: 'The library %{path} is unavailable'

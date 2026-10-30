@@ -49,7 +49,8 @@ pub fn open(cx: &mut App) {
 /// The bar and the "x / y · rate · faltan z" line, shared with the detail
 /// pane's own install progress so the same download reads identically in
 /// both places.
-pub fn progress_lines(key: &DownloadKey, status: &InstallStatus) -> Vec<gpui::AnyElement> {
+pub fn progress_lines(key: &DownloadKey, download: &Download) -> Vec<gpui::AnyElement> {
+    let status = &download.status;
     let label = |text: String| {
         div()
             .text_size(px(11.))
@@ -90,6 +91,7 @@ pub fn progress_lines(key: &DownloadKey, status: &InstallStatus) -> Vec<gpui::An
         ],
         InstallStatus::Paused {
             reason,
+            room,
             bytes_done,
             total_bytes,
             ..
@@ -101,7 +103,7 @@ pub fn progress_lines(key: &DownloadKey, status: &InstallStatus) -> Vec<gpui::An
             );
             let mut lines = vec![
                 progress_bar(bar_id, status.fraction(), 4.).into_any_element(),
-                label(format!("{progress} · {}", pause_reason(*reason))),
+                label(format!("{progress} · {}", pause_reason(*reason, *room, download))),
             ];
             if let Some(days) = stale_days(status) {
                 lines.push(label(
@@ -128,14 +130,39 @@ pub fn progress_lines(key: &DownloadKey, status: &InstallStatus) -> Vec<gpui::An
     }
 }
 
-fn pause_reason(reason: decanter_gog::PauseReason) -> std::borrow::Cow<'static, str> {
-    match reason {
-        decanter_gog::PauseReason::User => t!("downloads.paused_reason.user"),
-        decanter_gog::PauseReason::Network => t!("downloads.paused_reason.network"),
-        decanter_gog::PauseReason::DiskFull => t!("downloads.paused_reason.disk_full"),
-        decanter_gog::PauseReason::LibraryUnavailable => t!("downloads.paused_reason.library_unavailable"),
-        decanter_gog::PauseReason::AppClosed => t!("downloads.paused_reason.app_closed"),
-        decanter_gog::PauseReason::ClosedUnexpectedly => t!("downloads.paused_reason.closed_unexpectedly"),
+/// Why `download` is paused, naming its library folder and, for a full
+/// disk, how much has to be freed there.
+fn pause_reason(
+    reason: decanter_gog::PauseReason,
+    room: Option<decanter_gog::Room>,
+    download: &Download,
+) -> std::borrow::Cow<'static, str> {
+    let folder = download.root.as_ref().map(|root| root.display().to_string());
+    match (reason, folder) {
+        (decanter_gog::PauseReason::User, _) => t!("downloads.paused_reason.user"),
+        (decanter_gog::PauseReason::Network, _) => t!("downloads.paused_reason.network"),
+        (decanter_gog::PauseReason::DiskFull, Some(path)) => match room.filter(|room| room.short() > 0) {
+            // Staging holds a whole second copy of the game until the move.
+            Some(room) if download.kind == DownloadKind::Update => t!(
+                "downloads.paused_reason.disk_full_update",
+                needed = format::bytes(room.needed),
+                short = format::bytes(room.short()),
+                path = path
+            ),
+            Some(room) => t!(
+                "downloads.paused_reason.disk_full_short",
+                short = format::bytes(room.short()),
+                path = path
+            ),
+            None => t!("downloads.paused_reason.disk_full_at", path = path),
+        },
+        (decanter_gog::PauseReason::DiskFull, None) => t!("downloads.paused_reason.disk_full"),
+        (decanter_gog::PauseReason::LibraryUnavailable, Some(path)) => {
+            t!("downloads.paused_reason.library_unavailable_at", path = path)
+        }
+        (decanter_gog::PauseReason::LibraryUnavailable, None) => t!("downloads.paused_reason.library_unavailable"),
+        (decanter_gog::PauseReason::AppClosed, _) => t!("downloads.paused_reason.app_closed"),
+        (decanter_gog::PauseReason::ClosedUnexpectedly, _) => t!("downloads.paused_reason.closed_unexpectedly"),
     }
 }
 
@@ -227,7 +254,7 @@ pub fn download_actions(
                     .into_any_element(),
             )
         }
-        InstallStatus::Paused { .. } if actions::is_resumable(download) => {
+        InstallStatus::Paused { .. } => {
             let key = key.clone();
             Some(
                 button(("resume", index), ButtonKind::Secondary, t!("downloads.resume"), false)
@@ -235,14 +262,6 @@ pub fn download_actions(
                     .into_any_element(),
             )
         }
-        InstallStatus::Paused { .. } => Some(
-            div()
-                .text_size(px(11.))
-                .text_color(rgb(theme::TEXT_MUTED))
-                .max_w(px(220.))
-                .child(t!("downloads.repair_resume"))
-                .into_any_element(),
-        ),
         InstallStatus::Cancelling { .. } | InstallStatus::Elsewhere { .. } | InstallStatus::Failed(_) => None,
     };
     toggle.into_iter().chain(std::iter::once(cancel)).collect()
@@ -327,7 +346,7 @@ impl Render for DownloadsView {
                                 .map(|kind| div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(kind)),
                         ),
                 )
-                .children(progress_lines(key, &download.status));
+                .children(progress_lines(key, download));
             if let InstallStatus::Installing { current_file, .. } = &download.status {
                 main = main.child(
                     div()

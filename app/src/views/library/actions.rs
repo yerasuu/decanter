@@ -191,10 +191,11 @@ pub fn pause_download(key: DownloadKey, cx: &App) {
         .detach();
 }
 
-/// Reanudar, also what carries a download on by itself. Only a paused row
-/// that isn't a repair, which carries on from Archivos locales instead; it
-/// reads Queued at once, so a second press or the watcher can't start it
-/// twice.
+/// Reanudar, also what carries a download on by itself. Only a paused row;
+/// it reads Queued at once, so a second press or the watcher can't start it
+/// twice, and waits there for the download ahead of it. One whose library
+/// folder is away stays paused for that, saying so, rather than failing to
+/// find its journal.
 pub fn resume_download(key: DownloadKey, cx: &mut App) {
     let state = AppState::get(cx).clone();
     let resumable = state.background.update(cx, |background, cx| {
@@ -202,6 +203,20 @@ pub fn resume_download(key: DownloadKey, cx: &mut App) {
             return false;
         };
         if !is_resumable(row) {
+            return false;
+        }
+        if let (InstallStatus::Paused { reason, room, .. }, Some(root)) = (&mut row.status, &row.root)
+            && !root.is_dir()
+        {
+            tracing::info!(
+                account_id = key.account_id,
+                product_id = key.product_id,
+                root = %root.display(),
+                "library folder unavailable, the download stays paused"
+            );
+            *reason = decanter_gog::PauseReason::LibraryUnavailable;
+            *room = None;
+            cx.notify();
             return false;
         }
         row.status = InstallStatus::Queued;
@@ -213,8 +228,8 @@ pub fn resume_download(key: DownloadKey, cx: &mut App) {
     }
 }
 
-pub fn is_resumable(download: &Download) -> bool {
-    matches!(download.status, InstallStatus::Paused { .. }) && download.kind != DownloadKind::Repair
+pub const fn is_resumable(download: &Download) -> bool {
+    matches!(download.status, InstallStatus::Paused { .. })
 }
 
 pub fn pause_all(cx: &App) {

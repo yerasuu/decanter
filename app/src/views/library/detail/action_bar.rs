@@ -154,7 +154,7 @@ impl DetailView {
                         .flex_col()
                         .gap(px(6.))
                         .min_w(px(220.))
-                        .children(progress_lines(&key, &download.status))
+                        .children(progress_lines(&key, &download))
                         .children(current_file.map(|file| {
                             div()
                                 .mt_1()

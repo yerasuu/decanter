@@ -64,9 +64,9 @@ pub struct Download {
 
 #[derive(Clone, PartialEq)]
 pub enum InstallStatus {
-    /// Enqueued, but no bytes have moved yet — the depot manifest is
-    /// still being resolved, or other installs are ahead of this one in
-    /// the download manager's queue.
+    /// Enqueued, but no bytes have moved yet — another download is ahead
+    /// of this one (one runs at a time), or its depot manifest is still
+    /// being resolved.
     Queued,
     Installing {
         current_file: String,
@@ -83,6 +83,8 @@ pub enum InstallStatus {
     /// install of it carries on from `bytes_done`.
     Paused {
         reason: decanter_gog::PauseReason,
+        /// For a full disk, how much it needed.
+        room: Option<decanter_gog::Room>,
         bytes_done: u64,
         total_bytes: Option<u64>,
         /// When it stopped, for the notice on downloads left paused for long.

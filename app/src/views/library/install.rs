@@ -54,6 +54,7 @@ pub enum Ended<T> {
     /// Stopped with its data kept; the row says why.
     Paused {
         reason: decanter_gog::PauseReason,
+        room: Option<decanter_gog::Room>,
         bytes_done: u64,
         root: Option<PathBuf>,
     },
@@ -159,6 +160,7 @@ pub async fn track<T>(
             }
             Ended::Paused {
                 reason,
+                room,
                 bytes_done,
                 root,
             } => {
@@ -170,6 +172,7 @@ pub async fn track<T>(
                     };
                     row.status = InstallStatus::Paused {
                         reason: *reason,
+                        room: *room,
                         bytes_done: *bytes_done,
                         total_bytes,
                         since: Some(SystemTime::now()),
@@ -216,6 +219,7 @@ fn ended<T>(key: &DownloadKey, outcome: anyhow::Result<T>, was_cancelled: bool) 
         );
         return Ended::Paused {
             reason: stop.reason,
+            room: stop.room,
             bytes_done: stop.bytes_done,
             root: stop.root.clone(),
         };
@@ -363,9 +367,9 @@ async fn landed(state: &AppState, account_id: &str, product_id: &str, cx: &mut A
     }
 }
 
-/// Reanudar: carries on `key`'s download from its journal, planned again
-/// since chunk URLs expire. The row already reads Queued, set by whoever
-/// asked, so it can't be asked twice.
+/// Reanudar: carries on `key`'s download, or repair, from its journal,
+/// planned again since chunk URLs expire. The row already reads Queued, set
+/// by whoever asked, so it can't be asked twice.
 pub async fn resume(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
     let Some((title, kind)) = state.background.read_with(cx, |background, _| {
         background.installing.get(&key).map(|row| (row.title.clone(), row.kind))
@@ -383,7 +387,13 @@ pub async fn resume(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
     };
     tracing::info!(account_id, product_id, "resuming download");
     let (on_progress, progress) = progress_channel();
-    let work = async move { decanter_gog::resume(&library, &account_id, &product_id, on_progress).await };
+    let work = async move {
+        if kind == DownloadKind::Repair {
+            decanter_gog::resume_repair(&library, &account_id, &product_id, on_progress).await
+        } else {
+            decanter_gog::resume(&library, &account_id, &product_id, on_progress).await
+        }
+    };
     let job = DownloadJob {
         key: key.clone(),
         title,

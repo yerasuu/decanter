@@ -397,7 +397,7 @@ impl StorageView {
                         .flex_1()
                         .min_w_0()
                         .child(download.title.clone())
-                        .children(downloads::progress_lines(key, &download.status)),
+                        .children(downloads::progress_lines(key, download)),
                 )
                 .child(
                     div()

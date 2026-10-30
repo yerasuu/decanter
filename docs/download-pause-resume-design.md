@@ -9,8 +9,9 @@ that are the owner's.
 Code references are to `develop` at `123e5ab` (2026-10-29). Versions pinned in `Cargo.lock`:
 reqwest 0.13.5, tokio 1.54.1, md5 0.8.1.
 
-**Status.** The owner accepted every recommendation in §6 (#1281). Phases 0, 1 and 2 are
-integrated. Phase 3 is built as described below; nothing of it has been run yet.
+**Status.** The owner accepted every recommendation in §6 (#1281). Phases 0 to 3 are
+integrated. Phase 4 is built as described below (#1310); nothing of phases 3 and 4 has been run
+against GOG yet.
 
 **Phase 3 as built.**
 
@@ -54,14 +55,56 @@ integrated. Phase 3 is built as described below; nothing of it has been run yet.
   la descarga en pausa (tamaño)*, and confirming discards it (`decanter_gog::discard`) before the
   uninstall.
 
-**Left for phase 4** (deliberately): the one-active-download queue; build drift at resume (a new
-build still starts over, as in phase 2); the free-space check, and the shortfall and folder in the
-*Disco lleno* and *biblioteca no disponible* texts; *Reanudar* on a repair (it carries on by
-repairing again from Archivos locales, which the row says); journalling the DLC ticked to install
-after a game, so a resumed game install doesn't install them afterwards; discarding a paused DLC
-download when its game is uninstalled; listing staging folders without a journal in Storage with
-*Eliminar*; offering *Verify* after a resume from an unclean exit; recording *app closed* for a
-download still planning at quit (its journal keeps its previous last record).
+**Phase 4 as built.**
+
+- Queue. One download runs at a time (`tracking::wait_turn`, a fair one-permit semaphore taken by
+  `install` and `repair` before the session refresh and the plan, so chunk URLs are signed only
+  when the download is about to use them, and held until it ends, move included). The rest read
+  *En cola* and start in the order they asked; the 4 files at once inside a download stay. A pause
+  or cancel of a waiting download wakes it (`Notify`): it is planned and its journal opened without
+  a turn, and the stop lands there before any byte moves, so a paused one always has a journal to
+  resume from. Quitting stops a waiting one at once. *Pausar* on the running one lets the next
+  start. Restarts need nothing new: the startup scan resumes what it should, and those resumes
+  queue in the order found.
+- Build drift. When the journal's `plan` differs from the new plan, the old journal is first
+  reconciled against its own plan (the phase 2 checks: truncate to committed, re-hash the last
+  window after an unclean exit). Then each file of the new plan with the same path keeps the
+  longest prefix of chunks equal in MD5 and size, in order: a finished file identical in chunks
+  and mode stays finished, a finished one sharing a prefix (or changing only its mode) is renamed
+  back to `.part` and cut there, a file in flight is cut to the shared prefix, and every other
+  staged file is deleted. A file never holds chunks of two builds. Only cuts happen before the
+  switch, and each is one the old log already copes with. The new log (`Begin` with the new plan,
+  a `Commit` or `Done` per kept file, `Resumed`) is written whole as `progress.log.new` with one
+  sync (`LineLog::create_all`), then the new header replaces the old one atomically, then the log
+  is renamed into place and the folder synced. A crash before the header leaves the old journal
+  valid (the stray log is dropped at the next open); a crash after it finishes the rename at the
+  next open (`finish_swap`). The reused bytes are logged, not shown. A pinned build stays pinned; a
+  pinned build GOG no longer offers fails and keeps the data, as before.
+- Free space. Before the first byte of every start or resume, `remaining = total − on disk` plus
+  the larger of 1 GiB and 2 % of `total` is compared with the free space of the staging folder's
+  disk. Short, the download does not start: it pauses as *Disco lleno* and journals the
+  `Room{needed, free}`. `ENOSPC` while writing pauses the same way and records the room measured
+  then. The row reads *Disco lleno: faltan 3,2 GB libres en <biblioteca>*, and for an update
+  *Disco lleno: la actualización necesita 41 GB libres en <biblioteca> mientras se descarga;
+  faltan 3,2 GB*. A full disk still never resumes on its own; *Reanudar* checks again.
+- Library unavailable. The row reads *La biblioteca <ruta> no está disponible*. *Reanudar* on a
+  paused row whose library folder is not a directory keeps it paused with that reason instead of
+  failing to find its journal.
+- Repair. A paused repair has *Reanudar* (and *Reanudar todo* takes it): `decanter_gog::resume_repair`
+  rebuilds the broken-file list from its journal, each file with the depot it came from
+  (`HeaderFile.owner`, journalled for repairs only, so install plan hashes are unchanged; an older
+  repair journal plans every file from the game's own depots), and repairs again at the build the
+  game is on. Owners are planned in order (`BTreeMap`), so the same broken files give the same
+  plan and the repair carries on as it was. Repairs still never resume on their own.
+
+**Left for later** (deliberately): journalling the DLC ticked to install after a game, so a resumed
+game install doesn't install them afterwards; discarding a paused DLC download when its game is
+uninstalled (the confirmation would have to name it); listing staging folders without a journal in
+Storage with *Eliminar*; offering *Verify* after a resume from an unclean exit; showing the reused
+bytes of a build switch on the row; recording *app closed* for a download still planning or waiting
+its turn at quit (its journal keeps its previous last record, and a new install waiting its turn has
+no journal yet, so it is not listed after the restart); the queue is per process, so the CLI's
+`decanter install` and the app each run one.
 
 ## 1. Current behaviour
 

@@ -1,7 +1,9 @@
 //! Downloads left unfinished, by a previous run or by what stopped them in
 //! this one: listed as paused rows, and carried on by themselves once what
 //! stopped them is gone (#1281). Never one the user paused, nor one a full
-//! disk stopped, which waits for the user to free space and press Reanudar.
+//! disk stopped, which waits for the user to free space and press Reanudar,
+//! nor a repair. Those carried on together wait their turn: one downloads at
+//! a time, in the order they were found.
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -213,6 +215,7 @@ const fn status_of(download: &UnfinishedDownload) -> InstallStatus {
     }
     InstallStatus::Paused {
         reason: download.reason,
+        room: download.room,
         bytes_done: download.bytes_done,
         total_bytes: Some(download.total_bytes),
         since: download.paused_since,
