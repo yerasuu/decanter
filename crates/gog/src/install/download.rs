@@ -55,7 +55,7 @@ const COMMIT_INTERVAL: Duration = Duration::from_secs(5);
 
 /// One chunk of a file: where to get it, and what it must hash to. GOG's
 /// depot chunks are always zlib.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct ChunkSource {
     pub(super) url: Url,
     /// Of the bytes as served, checked before spending work on inflating.
@@ -63,6 +63,18 @@ pub(super) struct ChunkSource {
     pub(super) md5: [u8; 16],
     /// Inflated, at most [`super::plan::MAX_CHUNK_SIZE`].
     pub(super) size: usize,
+}
+
+/// Without the URL, which is signed.
+impl std::fmt::Debug for ChunkSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChunkSource")
+            .field("host", &self.url.host_str())
+            .field("compressed_md5", &self.compressed_md5)
+            .field("md5", &self.md5)
+            .field("size", &self.size)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Which check a chunk failed: a failed try, retried like a dropped

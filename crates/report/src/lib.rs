@@ -100,9 +100,28 @@ fn message_key(failure: &schema::Failure) -> String {
 ///
 /// Line by line, since a match never spans lines and the guard folds its whole input in memory.
 /// Best effort: a name `identity` does not list passes through, which is why the attachment is
-/// private and never published.
+/// private and never published. The `PS_FAULT_DUMP` blocks are raw guest memory, which no identity
+/// list can scrub, so they are dropped whole.
 #[must_use]
 pub fn scrub_log(identity: &Identity, log: &str) -> String {
     let guard = identity::Guard::new(identity);
-    log.split_inclusive('\n').map(|line| guard.scrub(line)).collect()
+    let mut in_dump = false;
+    log.split_inclusive('\n')
+        .filter(|line| {
+            if line.starts_with("Fault dump ") {
+                in_dump = true;
+                return false;
+            }
+            in_dump = in_dump && is_dump_row(line);
+            !in_dump
+        })
+        .map(|line| guard.scrub(line))
+        .collect()
+}
+
+/// A row of a fault dump: two spaces, a 16-digit address and a colon, then the bytes or `unreadable`.
+fn is_dump_row(line: &str) -> bool {
+    line.strip_prefix("  ")
+        .and_then(|row| row.split_once(':'))
+        .is_some_and(|(address, _)| address.len() == 16 && address.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
