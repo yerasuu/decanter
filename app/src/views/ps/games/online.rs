@@ -55,7 +55,7 @@ impl OnlineTitleView {
             is_upnp: true,
             is_bbsc: false,
             is_tls: false,
-            is_plaintext: false,
+            is_plaintext: true,
             server_is_loopback: false,
             local_server: LocalServer::Off,
             local_player,
@@ -103,7 +103,7 @@ impl OnlineTitleView {
         self.is_upnp = true;
         self.is_bbsc = false;
         self.is_tls = false;
-        self.is_plaintext = false;
+        self.is_plaintext = true;
         self.server_is_loopback = false;
         self.local_server = LocalServer::Off;
         self.local_player
@@ -126,7 +126,7 @@ impl OnlineTitleView {
                         this.is_upnp = settings.flag(online::UPNP, true);
                         this.is_bbsc = settings.flag(online::BBSC, false);
                         this.is_tls = settings.flag(online::TLS, false);
-                        this.is_plaintext = settings.flag(online::ALLOW_PLAINTEXT, false);
+                        this.is_plaintext = settings.flag(online::ALLOW_PLAINTEXT, true);
                         this.server_is_loopback = online::Addresses::of(&settings)
                             .is_ok_and(|addresses| online::is_loopback_server(&addresses.server));
                         this.local_server = LocalServer::of(&settings);

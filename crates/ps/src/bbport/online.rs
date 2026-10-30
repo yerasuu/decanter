@@ -282,7 +282,7 @@ impl Online {
             bbsc: settings.flag(BBSC, false),
             local_server: LocalServer::of(settings),
             tls: settings.flag(TLS, false),
-            allow_plaintext: settings.flag(ALLOW_PLAINTEXT, false),
+            allow_plaintext: settings.flag(ALLOW_PLAINTEXT, true),
         }))
     }
 
