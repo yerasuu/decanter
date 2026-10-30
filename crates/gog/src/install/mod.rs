@@ -138,6 +138,11 @@ pub async fn install(
     let key: InstallKey = (account_id.to_owned(), product_id.to_owned());
     // From here, so a quit waits for a queued download to record that it stopped too.
     let _settling = Settling::start();
+    if let Some(parent) = parent_id
+        && let Some(refused) = without_game(library, account_id, product_id, parent).await
+    {
+        return Err(refused);
+    }
     let request = Request {
         kind: Kind::Install,
         account_id: account_id.to_owned(),
@@ -175,6 +180,36 @@ pub async fn install(
     .await
 }
 
+/// Why a DLC can't be queued yet, if its game isn't installed: it waits, paused as the game is,
+/// behind a game still downloading, and is refused with no game at all, since its files can only
+/// go into the game's directory.
+async fn without_game(library: &Library, account_id: &str, product_id: &str, parent_id: &str) -> Option<anyhow::Error> {
+    if library.read_manifest(account_id, Storefront::Gog, parent_id).is_some() {
+        return None;
+    }
+    let Some((reason, root)) = unfinished::stopped_reason(library, account_id, parent_id).await else {
+        tracing::error!(product_id, parent_id, "dlc install aborted, its game isn't installed");
+        return Some(anyhow::anyhow!(
+            "install the base game before its DLC (product {parent_id})"
+        ));
+    };
+    tracing::info!(
+        product_id,
+        parent_id,
+        ?reason,
+        "dlc waits for its game, still unfinished"
+    );
+    Some(
+        Paused {
+            reason,
+            bytes_done: 0,
+            root: Some(root),
+            room: None,
+        }
+        .into(),
+    )
+}
+
 /// The staging folder a download is entered into before it is planned: the
 /// one its plan will pick, as far as the library says without it. A DLC goes
 /// where its game is, or is queued to be.
@@ -192,6 +227,31 @@ fn queued_staging(
         || staging_in(library.root(), account_id, product_id),
         |destination| staging_root(&destination, account_id, product_id),
     )
+}
+
+/// Records the DLC ticked to install with `parent_id` as queued downloads of their own.
+///
+/// Never planned until the game is in, so a crash or a quit before then still
+/// lists them (#1315); each waits for the game, and is installed after it.
+#[inline]
+pub async fn queue_dlcs(library: &Library, account_id: &str, parent_id: &str, dlcs: &[(String, String)]) {
+    for (dlc_id, title) in dlcs {
+        let request = Request {
+            kind: Kind::Install,
+            account_id: account_id.to_owned(),
+            product_id: dlc_id.clone(),
+            parent_id: Some(parent_id.to_owned()),
+            title: title.clone(),
+            branch: None,
+            build_id: None,
+        };
+        match queued_staging(library, account_id, dlc_id, Some(parent_id)) {
+            Ok(staging) => drop(pending::enter(&staging, &Pending::new(request, Vec::new())).await),
+            Err(err) => {
+                tracing::warn!(dlc_id, parent_id, error = %err, "couldn't record the dlc queued after its game");
+            }
+        }
+    }
 }
 
 /// The plan and the branch it resolved to, asked of GOG once the turn is in.

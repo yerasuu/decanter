@@ -160,7 +160,17 @@ async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> Vec<Dow
                 }
                 Some(_) => {}
                 None => {
-                    if !download.in_use && !download.is_repair && resumes_when_found(download.reason, on_start) {
+                    // A DLC whose game isn't in yet follows the game, once that lands.
+                    let waits_for_game = download.parent_id.as_ref().is_some_and(|parent_id| {
+                        library
+                            .read_manifest(&download.account_id, decanter_core::Storefront::Gog, parent_id)
+                            .is_none()
+                    });
+                    if !download.in_use
+                        && !download.is_repair
+                        && !waits_for_game
+                        && resumes_when_found(download.reason, on_start)
+                    {
                         resume.push(key.clone());
                     }
                     let mut row = install::queued(download.title.clone(), kind_of(library, &download));

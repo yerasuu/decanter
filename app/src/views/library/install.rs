@@ -348,6 +348,7 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         return;
     };
 
+    decanter_gog::queue_dlcs(&core_library, &account_id, &product_id, &dlcs).await;
     let (on_progress, progress) = progress_channel();
     let install = decanter_gog::install(
         &core_library,
@@ -364,15 +365,88 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         title: title.clone(),
         kind,
     };
-    if !matches!(track(&state, job, progress, install, cx).await, Ended::Done(())) {
-        refresh_install_state(&state, &account_id, &product_id, cx);
-        return;
+    match track(&state, job, progress, install, cx).await {
+        Ended::Done(()) => {}
+        ended @ (Ended::Cancelled | Ended::Paused { .. } | Ended::Failed(_)) => {
+            dlcs_after_stop(&core_library, &account_id, &dlcs, &ended, &state, cx).await;
+            refresh_install_state(&state, &account_id, &product_id, cx);
+            return;
+        }
     }
     tracing::info!(account_id, product_id, "install finished");
     landed(&state, &account_id, &product_id, cx).await;
 
     install_dlcs(&core_library, &account_id, &product_id, dlcs, &state, cx).await;
     refresh_install_state(&state, &account_id, &product_id, cx);
+}
+
+/// The DLC queued behind a game that stopped short: a cancel takes them with it, a pause lists
+/// them as paused for the same reason, to install once the game does (#1315). Behind a failure
+/// they stay queued on disk, listed with the game at the next start.
+async fn dlcs_after_stop(
+    core_library: &decanter_core::Library,
+    account_id: &str,
+    dlcs: &[(String, String)],
+    ended: &Ended<()>,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) {
+    match ended {
+        Ended::Cancelled => {
+            for (dlc_id, _) in dlcs {
+                if let Err(err) = decanter_gog::discard(core_library, account_id, dlc_id).await {
+                    tracing::warn!(account_id, dlc_id, %err, "couldn't drop a dlc queued behind a cancelled game");
+                }
+            }
+        }
+        Ended::Paused { reason, root, .. } => state.background.update(cx, |background, cx| {
+            for (dlc_id, dlc_title) in dlcs {
+                let mut row = queued(dlc_title.clone(), DownloadKind::Dlc);
+                row.status = InstallStatus::Paused {
+                    reason: *reason,
+                    room: None,
+                    bytes_done: 0,
+                    total_bytes: None,
+                    since: Some(SystemTime::now()),
+                };
+                row.root.clone_from(root);
+                background
+                    .installing
+                    .entry(DownloadKey::new(account_id, dlc_id))
+                    .or_insert(row);
+            }
+            cx.notify();
+        }),
+        Ended::Done(()) | Ended::Failed(_) => {}
+    }
+}
+
+/// The paused downloads of `product_id`'s DLC that waited for it, carried on now that it is in.
+fn resume_dlcs_of(state: &AppState, account_id: &str, product_id: &str, cx: &AsyncApp) {
+    let waiting: Vec<DownloadKey> = state.library.read_with(cx, |library, cx| {
+        let background = state.background.read(cx);
+        library
+            .games
+            .iter()
+            .filter(|entry| entry.parent_id.as_deref() == Some(product_id))
+            .map(|entry| DownloadKey::new(account_id, &entry.game.id))
+            .filter(|key| {
+                background
+                    .installing
+                    .get(key)
+                    .is_some_and(|row| matches!(row.status, InstallStatus::Paused { .. }))
+            })
+            .collect()
+    });
+    for key in waiting {
+        tracing::info!(
+            account_id,
+            product_id,
+            dlc_id = key.product_id,
+            "carrying on a dlc that waited for its game"
+        );
+        cx.update(|cx| super::actions::resume_download(key, cx));
+    }
 }
 
 /// What a game that just installed gets beyond its files: a Steam shortcut and a taskbar entry.
@@ -420,6 +494,7 @@ pub async fn resume(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
     let is_done = matches!(track(&state, job, progress, work, cx).await, Ended::Done(()));
     if is_done && kind == DownloadKind::Install {
         landed(&state, &key.account_id, &key.product_id, cx).await;
+        resume_dlcs_of(&state, &key.account_id, &key.product_id, cx);
     } else {
         refresh_install_state(&state, &key.account_id, &key.product_id, cx);
     }

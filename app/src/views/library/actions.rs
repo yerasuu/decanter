@@ -195,9 +195,20 @@ pub fn pause_download(key: DownloadKey, cx: &App) {
 /// it reads Queued at once, so a second press or the watcher can't start it
 /// twice, and waits there for the download ahead of it. One whose library
 /// folder is away stays paused for that, saying so, rather than failing to
-/// find its journal.
+/// find its journal. A DLC whose game isn't in yet carries the game on
+/// instead, and follows it once it lands.
 pub fn resume_download(key: DownloadKey, cx: &mut App) {
     let state = AppState::get(cx).clone();
+    if let Some(game) = game_ahead_of(&state, &key, cx) {
+        tracing::info!(
+            account_id = key.account_id,
+            product_id = key.product_id,
+            parent_id = game.product_id,
+            "dlc waits for its game, carrying the game on"
+        );
+        resume_download(game, cx);
+        return;
+    }
     let resumable = state.background.update(cx, |background, cx| {
         let Some(row) = background.installing.get_mut(&key) else {
             return false;
@@ -238,6 +249,31 @@ pub fn resume_download(key: DownloadKey, cx: &mut App) {
     if resumable {
         cx.spawn(async move |cx| install::resume(key, state, cx).await).detach();
     }
+}
+
+/// The game `key`'s DLC download waits for: one not installed yet, with a download of its own.
+fn game_ahead_of(state: &AppState, key: &DownloadKey, cx: &App) -> Option<DownloadKey> {
+    let background = state.background.read(cx);
+    if background
+        .installing
+        .get(key)
+        .is_none_or(|row| row.kind != DownloadKind::Dlc)
+    {
+        return None;
+    }
+    let Some(parent_id) = state
+        .library
+        .read(cx)
+        .games
+        .iter()
+        .find(|entry| entry.game.id == key.product_id)
+        .and_then(|entry| entry.parent_id.clone())
+    else {
+        return None;
+    };
+    let game = DownloadKey::new(&key.account_id, &parent_id);
+    (background.installing.contains_key(&game) && crate::core::installed_game(&key.account_id, &parent_id).is_none())
+        .then_some(game)
 }
 
 pub const fn is_resumable(download: &Download) -> bool {

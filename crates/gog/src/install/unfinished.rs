@@ -39,6 +39,8 @@ pub struct UnfinishedDownload {
     /// When its journal last recorded anything, which for a paused download
     /// is when it paused.
     pub paused_since: Option<SystemTime>,
+    /// A DLC ticked with its game and never planned, which takes the game's reason.
+    pub is_queued_behind_game: bool,
 }
 
 /// Where every download of the library folder `root` is staged, for sizing what they hold.
@@ -128,6 +130,28 @@ pub async fn unfinished_downloads(library: &Library) -> Vec<UnfinishedDownload> 
             }
         }
     }
+    // A DLC queued behind its game stopped when the game did, and says why the same way.
+    let reasons: Vec<(String, String, PauseReason)> = found
+        .iter()
+        .map(|download| {
+            (
+                download.account_id.clone(),
+                download.product_id.clone(),
+                download.reason,
+            )
+        })
+        .collect();
+    for download in &mut found {
+        if !download.is_queued_behind_game {
+            continue;
+        }
+        let game = reasons.iter().find(|(account_id, product_id, _)| {
+            *account_id == download.account_id && Some(product_id) == download.parent_id.as_ref()
+        });
+        if let Some((_, _, reason)) = game {
+            download.reason = *reason;
+        }
+    }
     tracing::info!(count = found.len(), "scanned for unfinished downloads");
     found
 }
@@ -183,7 +207,26 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         root: root.to_path_buf(),
         in_use,
         paused_since: journal::last_written(staging).await,
+        is_queued_behind_game: request.parent_id.is_some() && header.is_none() && stop.is_none(),
     })
+}
+
+/// Why `account_id`'s download of `product_id` is stopped, and in which
+/// library folder, when it has one left unfinished.
+pub(super) async fn stopped_reason(
+    library: &Library,
+    account_id: &str,
+    product_id: &str,
+) -> Option<(PauseReason, PathBuf)> {
+    for root in library.roots() {
+        let Ok(staging) = staging_in(&root, account_id, product_id) else {
+            continue;
+        };
+        if let Some(download) = unfinished(&root, &staging).await {
+            return Some((download.reason, root));
+        }
+    }
+    None
 }
 
 async fn subfolders(dir: &Path) -> Vec<PathBuf> {
