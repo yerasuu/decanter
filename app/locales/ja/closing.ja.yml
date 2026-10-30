@@ -1,0 +1,6 @@
+closing.shortcut_name: "実行中のゲームを閉じる"
+closing.notice.title: "%{name} をまもなく終了します"
+closing.notice.body: "%{seconds} 秒後に終了します。取り消すには、Select + Start をもう一度長押しするか、キーボードショートカットをもう一度押してください。"
+closing.notice.body_pad: "%{seconds} 秒後に終了します。取り消すには、Select + Start をもう一度長押ししてください。"
+closing.notice.body_keyboard: "%{seconds} 秒後に終了します。取り消すには、キーボードショートカットをもう一度押してください。"
+closing.notice.cancelled: "終了を取り消しました: %{name} は開いたままです"
