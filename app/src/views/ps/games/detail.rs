@@ -15,7 +15,9 @@ use decanter_ps::learned::{self, FrameOverlap};
 use decanter_ps::mapping::Target;
 use decanter_ps::port::Port;
 use decanter_ps::status::{Entry, Status};
-use gpui::{AnyElement, Context, Entity, ObjectFit, SharedString, Window, div, img, prelude::*, px, rgb};
+use gpui::{
+    AnyElement, Context, Div, Entity, ObjectFit, SharedString, Stateful, Window, div, img, prelude::*, px, rgb,
+};
 use rust_i18n::t;
 
 use super::gamepad::GamepadView;
@@ -92,6 +94,13 @@ const OTHER_PS4_TABS: [Tab; 8] = [
     Tab::Imports,
     Tab::Log,
 ];
+
+/// The three log tabs share one height, so the tabs above them stay in view while their content scrolls.
+const LOG_PANE_HEIGHT: f32 = 460.;
+
+fn log_pane(id: &'static str) -> Stateful<Div> {
+    div().id(id).h(px(LOG_PANE_HEIGHT)).overflow_y_scroll()
+}
 
 /// A game no port runs has nothing to bind.
 const UNSUPPORTED_TABS: [Tab; 1] = [Tab::Overview];
@@ -778,16 +787,16 @@ impl Render for DetailView {
         }
         let copy_entry = self.copy_entry(self.tab, cx);
         let body = match self.tab {
-            Tab::Performance => self
-                .runs
-                .clone()
-                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
-            Tab::Imports => self
-                .imports
-                .clone()
-                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Performance => self.runs.clone().map_or_else(
+                || div().into_any_element(),
+                |runs| log_pane("ps-runs-pane").child(runs).into_any_element(),
+            ),
+            Tab::Imports => self.imports.clone().map_or_else(
+                || div().into_any_element(),
+                |imports| log_pane("ps-imports-pane").child(imports).into_any_element(),
+            ),
             Tab::Log => match &self.log {
-                Some(log) => div().h(px(460.)).child(log.clone()).into_any_element(),
+                Some(log) => div().h(px(LOG_PANE_HEIGHT)).child(log.clone()).into_any_element(),
                 None => theme::muted(t!("ps.detail.no_runs")).into_any_element(),
             },
             Tab::Gamepad => self
