@@ -147,9 +147,11 @@ impl Ps {
             return;
         };
         let ps = global.0.clone();
-        for job in ps.read(cx).jobs.values().cloned().collect::<Vec<_>>() {
-            job.update(cx, |job, _| job.kill());
-        }
+        ps.update(cx, |ps, cx| {
+            for job in ps.jobs.values() {
+                job.update(cx, |job, _| job.kill());
+            }
+        });
     }
 
     pub fn get(cx: &mut App) -> Entity<Self> {
