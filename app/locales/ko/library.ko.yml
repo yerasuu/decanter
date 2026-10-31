@@ -240,6 +240,7 @@ library.properties.compatibility.prefix: 프리픽스
 library.properties.compatibility.prefix_created: 생성됨
 library.properties.compatibility.prefix_missing: 프리픽스 없음 (처음 실행할 때 생성됨)
 library.run.dx7_hint: 이 게임은 DirectX 7(DirectDraw)을 사용하며 오류와 함께 종료되었습니다. 실행 파일 옆에 DirectDraw 래퍼(cnc-ddraw, dgVoodoo2 등)가 필요할 수 있습니다.
+library.run.wayland_mode_hint: "이 게임은 이 Proton의 Wayland 드라이버가 제공하지 않는 화면 모드를 요청했고 몇 초 만에 종료되었습니다. X11을 사용하는 Proton은 해당 모드를 제공합니다."
 library.session_renewal.window_title: GOG 세션 갱신
 library.session_renewal.closed: '%{name}의 세션이 GOG에서 종료되었습니다. 게임은 그대로 있으며 플레이할 수 있습니다. 다운로드, 저장 데이터 동기화, 업적 추적을 하려면 세션을 갱신하세요.'
 library.session_renewal.renew: 세션 갱신

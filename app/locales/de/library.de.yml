@@ -240,6 +240,7 @@ library.properties.compatibility.prefix: Prefix
 library.properties.compatibility.prefix_created: erstellt
 library.properties.compatibility.prefix_missing: kein Prefix (wird beim ersten Start erstellt)
 library.run.dx7_hint: Dieses Spiel nutzt DirectX 7 (DirectDraw) und wurde mit einem Fehler beendet. Möglicherweise braucht es einen DirectDraw-Wrapper (etwa cnc-ddraw oder dgVoodoo2) neben seiner ausführbaren Datei.
+library.run.wayland_mode_hint: "Dieses Spiel verlangte einen Bildschirmmodus, den der Wayland-Treiber dieses Protons nicht anbietet, und wurde nach wenigen Sekunden beendet. Ein Proton mit X11 bietet diesen Modus an."
 library.session_renewal.window_title: GOG-Sitzung erneuern
 library.session_renewal.closed: 'Die Sitzung von %{name} wurde bei GOG beendet. Deine Spiele sind weiterhin da und du kannst sie spielen; erneuere sie, um herunterzuladen, Spielstände zu synchronisieren und Erfolge zu verfolgen.'
 library.session_renewal.renew: Sitzung erneuern

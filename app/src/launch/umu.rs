@@ -1,15 +1,27 @@
 //! Windows games run under Proton through umu-run, each in its own prefix.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use decanter_core::InstalledGame;
+use decanter_ps::process::Job;
+use decanter_ps::run_log::RunLog;
 use decanter_runtime::Launch;
+use gpui::{AsyncApp, Entity};
 use rust_i18n::t;
 
 use super::Planned;
 use crate::i18n::Text;
 
 const LAUNCHER: &str = "umu-run";
+
+/// Longer than any game takes to give up on a screen mode it cannot set, so a session that ran
+/// for a while is never blamed on it.
+const MODE_FAILURE_WINDOW: Duration = Duration::from_secs(30);
+
+const WAYLAND_MODE_HINT: &str = "# hint: the game asked for a screen mode that the Wayland window driver \
+                                 (winewayland.drv) does not offer and ended within seconds; \
+                                 a Proton that uses X11 offers the mode";
 
 pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) -> Option<Planned> {
     let Some(prefix) = crate::core::prefix_for(account_id, &game.game_id) else {
@@ -147,4 +159,56 @@ pub async fn reset_prefix(account_id: String, game_id: String) -> Result<(), Tex
             Err(Text::new("messages.errors.delete_prefix").arg("error", err))
         }
     }
+}
+
+/// Points at the Wayland window driver when a short session shows it refused the game's screen
+/// mode: `winewayland.drv` lists only each output's own modes, so a game that insists on another
+/// resolution (640x480 fullscreen, say) gets `DISP_CHANGE_BADMODE` and Direct3D never starts.
+/// Read from the run's Wine log, so it holds for any game; `log` is handed back for the run to
+/// finish.
+pub(super) async fn hint_after_mode_failure(
+    job: &Entity<Job>,
+    log: Option<RunLog>,
+    elapsed: Duration,
+    game_id: &str,
+    cx: &mut AsyncApp,
+) -> Option<RunLog> {
+    if elapsed > MODE_FAILURE_WINDOW {
+        return log;
+    }
+    let refused = job.read_with(cx, |job, _| {
+        !job.stop_requested && refused_by_wayland_driver(job.lines.iter().map(String::as_str))
+    });
+    if !refused {
+        return log;
+    }
+    tracing::warn!(
+        game_id,
+        seconds = elapsed.as_secs(),
+        "game ended soon after winewayland refused its screen mode"
+    );
+    crate::run_log::note(
+        job,
+        log,
+        WAYLAND_MODE_HINT,
+        t!("library.run.wayland_mode_hint").into_owned(),
+        game_id,
+        cx,
+    )
+    .await
+}
+
+/// `-2` is `DISP_CHANGE_BADMODE`, what `NtUserChangeDisplaySettings` answers to a mode the driver
+/// does not list.
+fn refused_by_wayland_driver<'line>(lines: impl Iterator<Item = &'line str>) -> bool {
+    let mut is_wayland = false;
+    let mut is_refused = false;
+    for line in lines {
+        is_wayland |= line.contains("Loaded") && line.contains("winewayland.drv");
+        is_refused |= line.contains("NtUserChangeDisplaySettings") && line.contains("returned -2.");
+        if is_wayland && is_refused {
+            return true;
+        }
+    }
+    false
 }

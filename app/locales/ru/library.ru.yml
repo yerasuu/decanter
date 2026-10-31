@@ -240,6 +240,7 @@ library.properties.compatibility.prefix: 'Префикс'
 library.properties.compatibility.prefix_created: 'создан'
 library.properties.compatibility.prefix_missing: 'префикса нет (создаётся при первом запуске)'
 library.run.dx7_hint: 'Эта игра использует DirectX 7 (DirectDraw) и завершилась с ошибкой. Возможно, ей нужна обёртка DirectDraw (например, cnc-ddraw или dgVoodoo2) рядом с исполняемым файлом.'
+library.run.wayland_mode_hint: "Игра запросила режим экрана, которого нет в драйвере Wayland этого Proton, и закрылась через несколько секунд. Proton с X11 предлагает этот режим."
 library.session_renewal.window_title: 'Обновление сеанса GOG'
 library.session_renewal.closed: 'Сеанс %{name} был закрыт в GOG. Ваши игры по-прежнему здесь, и в них можно играть; обновите сеанс, чтобы загружать, синхронизировать сохранения и отслеживать достижения.'
 library.session_renewal.renew: 'Обновить сеанс'

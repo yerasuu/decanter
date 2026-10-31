@@ -240,6 +240,7 @@ library.properties.compatibility.prefix: Prefisso
 library.properties.compatibility.prefix_created: creato
 library.properties.compatibility.prefix_missing: nessun prefisso (creato al primo avvio)
 library.run.dx7_hint: "Questo gioco usa DirectX 7 (DirectDraw) e si è chiuso con un errore. Potrebbe servire un wrapper DirectDraw (come cnc-ddraw o dgVoodoo2) accanto al suo eseguibile."
+library.run.wayland_mode_hint: "Questo gioco ha chiesto una modalità schermo che il driver Wayland di questo Proton non offre, e si è chiuso dopo pochi secondi. Un Proton che usa X11 offre quella modalità."
 library.session_renewal.window_title: Rinnova la sessione GOG
 library.session_renewal.closed: "La sessione di %{name} è stata chiusa su GOG. I tuoi giochi sono ancora qui e puoi giocarci; rinnovala per scaricare, sincronizzare i salvataggi e tracciare gli obiettivi."
 library.session_renewal.renew: Rinnova la sessione

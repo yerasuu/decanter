@@ -260,7 +260,8 @@ pub async fn start(
     let (exit, log) = crate::run_log::follow(&job, events, log, &game.game_id, cx).await;
     let log = match kind {
         Kind::Native => native::hint_after_failure(&hinted, exit, &job, log, &game.game_id, cx).await,
-        Kind::Umu | Kind::LinuxNative | Kind::Raven => log,
+        Kind::Umu => umu::hint_after_mode_failure(&job, log, started.elapsed(), &game.game_id, cx).await,
+        Kind::LinuxNative | Kind::Raven => log,
     };
     crate::run_log::finish(log, exit, &game.game_id).await;
     cx.update(|cx| crate::closing::ended(&target, cx));
