@@ -247,6 +247,7 @@ ps.detail.tabs.graphics: Grafik
 ps.detail.tabs.mods: Mods
 ps.detail.tabs.log: Protokoll
 ps.detail.tabs.performance: Leistung
+ps.detail.tabs.imports: "Importe"
 ps.detail.hero.version: VERSION
 ps.detail.hero.status: STATUS
 ps.detail.stop: STOPP
@@ -695,6 +696,37 @@ ps.runs.frame_time: Frame-Zeit min–max
 ps.runs.compiles: Kompilierungen im GPU-Thread
 ps.runs.pipelines: 'Im Hintergrund kompilierte Pipelines: %{background}; Draws, die auf ihre warteten: %{waited}; währenddessen übersprungene Draws: %{skipped}'
 ps.runs.method: psport misst in Fenstern von etwa 5 s, nicht Frame für Frame. Das 1-%-Low wird aus dem schlechtesten Frame jedes Fensters geschätzt (über 30 FPS etwas pessimistisch); das Minimum ist die mittlere Frame-Zeit des besten Fensters und das Maximum der schlechteste Frame des Laufs. Die gestrichelte Linie ist der Durchschnitt.
+ps.imports.reading: "Protokoll des letzten Laufs wird gelesen…"
+ps.imports.read_error: "Das Protokoll des letzten Laufs konnte nicht gelesen werden: %{error}"
+ps.imports.run: "Letzter Lauf"
+ps.imports.old_port: "Das Protokoll dieses Laufs nennt keine Importe: Der Port, der ihn ausgeführt hat, ist älter als diese Zeilen, oder das Spiel hielt vor dem Linken an."
+ps.imports.all_covered: "Der Port deckte in diesem Lauf jeden Import des Spiels ab."
+ps.imports.totals.imports: "Importe"
+ps.imports.totals.host: "Vom Port bedient"
+ps.imports.totals.game_modules: "Spielmodule"
+ps.imports.totals.system_modules: "Systemmodule"
+ps.imports.totals.loaded_modules: "Vom Spiel geladene Module"
+ps.imports.totals.stubs: "Stubs"
+ps.imports.totals.unimplemented: "Nicht implementiert"
+ps.imports.title: "Importe, die der Port nicht abdeckt"
+ps.imports.filter.all: "Alle"
+ps.imports.gap.unimplemented: "Keine Implementierung"
+ps.imports.gap.stub: "Stub"
+ps.imports.gap.left_to_host: "Dem Port überlassen (nur die Versionen weichen ab)"
+ps.imports.gap.called: "Zur Laufzeit aufgerufen"
+ps.imports.column.nid: "NID"
+ps.imports.column.name: "Name"
+ps.imports.column.kind: "Art"
+ps.imports.column.calls: "Aufrufe"
+ps.imports.unresolved: "Name nicht aufgelöst"
+ps.imports.called: "ja"
+ps.imports.calls_note: "Die Aufrufzahlen stammen aus dem Aufrufbericht des Laufs, sofern es einen gibt; „ja“ markiert einen Import, dessen Aufruf das Protokoll ohne Zählung zeigt."
+ps.imports.decisions: "Entscheidungen des Loaders"
+ps.imports.served: "Nicht gelinkt: Der Port bedient es"
+ps.imports.linked_although: "Gelinkt, obwohl dem Port %{count} der Importe von %{library} fehlen (der erste: %{first})"
+ps.imports.linked_although_some: "Gelinkt, obwohl dem Port Importe seiner Bibliothek fehlen"
+ps.imports.truncated: "Nur die ersten %{read} MiB des Protokolls wurden gelesen; weitere %{unread} MiB wurden ausgelassen."
+ps.imports.dropped: "%{count} weitere Zeilen wurden ausgelassen: Das Protokoll nennt mehr Importe oder Module, als ein Spiel hat."
 ps.detail.tabs.online: Online
 ps.play.online_error: 'Online-Spiel konnte nicht eingerichtet werden: %{error}. Behebe es in den Einstellungen des PS-Bereichs oder schalte das Online-Spiel im Tab Online des Spiels aus.'
 ps.play.online_keyring_error: Das Online-Spiel braucht das shadNet-Passwort aus dem System-Keyring, der nicht verfügbar ist (%{error}). Öffne oder entsperre den Keyring oder schalte das Online-Spiel im Tab Online des Spiels aus, um offline zu spielen.

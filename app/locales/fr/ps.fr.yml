@@ -247,6 +247,7 @@ ps.detail.tabs.graphics: Graphismes
 ps.detail.tabs.mods: Mods
 ps.detail.tabs.log: Journal
 ps.detail.tabs.performance: Performances
+ps.detail.tabs.imports: "Imports"
 ps.detail.hero.version: VERSION
 ps.detail.hero.status: STATUT
 ps.detail.stop: ARRÊTER
@@ -695,6 +696,37 @@ ps.runs.frame_time: Temps d’image min–max
 ps.runs.compiles: Compilations sur le thread GPU
 ps.runs.pipelines: 'Pipelines compilés en arrière-plan : %{background} ; dessins qui ont attendu les leurs : %{waited} ; dessins ignorés entre-temps : %{skipped}'
 ps.runs.method: psport mesure par fenêtres d’environ 5 s, pas image par image. Le 1 % bas est estimé à partir de la pire image de chaque fenêtre (un peu pessimiste au-dessus de 30 FPS) ; le minimum est le temps d’image moyen de la meilleure fenêtre et le maximum la pire image de l’exécution. La ligne en pointillés est la moyenne.
+ps.imports.reading: "Lecture du journal de la dernière exécution…"
+ps.imports.read_error: "Impossible de lire le journal de la dernière exécution : %{error}"
+ps.imports.run: "Dernière exécution"
+ps.imports.old_port: "Le journal de cette exécution ne liste aucun import : le port qui l’a lancée est antérieur à ces lignes, ou le jeu s’est arrêté avant d’être lié."
+ps.imports.all_covered: "Le port a couvert chaque import du jeu lors de cette exécution."
+ps.imports.totals.imports: "Imports"
+ps.imports.totals.host: "Servis par le port"
+ps.imports.totals.game_modules: "Modules du jeu"
+ps.imports.totals.system_modules: "Modules système"
+ps.imports.totals.loaded_modules: "Modules chargés par le jeu"
+ps.imports.totals.stubs: "Stubs"
+ps.imports.totals.unimplemented: "Non implémentés"
+ps.imports.title: "Imports que le port ne couvre pas"
+ps.imports.filter.all: "Tous"
+ps.imports.gap.unimplemented: "Aucune implémentation"
+ps.imports.gap.stub: "Stub"
+ps.imports.gap.left_to_host: "Laissé au port (seules les versions diffèrent)"
+ps.imports.gap.called: "Appelé à l’exécution"
+ps.imports.column.nid: "NID"
+ps.imports.column.name: "Nom"
+ps.imports.column.kind: "Type"
+ps.imports.column.calls: "Appels"
+ps.imports.unresolved: "nom non résolu"
+ps.imports.called: "oui"
+ps.imports.calls_note: "Les nombres d’appels viennent du rapport d’appels de l’exécution, s’il existe ; « oui » marque un import que le journal montre appelé, sans compte."
+ps.imports.decisions: "Décisions du chargeur"
+ps.imports.served: "Non lié : le port le sert"
+ps.imports.linked_although: "Lié bien qu’il manque au port %{count} des imports de %{library} (le premier : %{first})"
+ps.imports.linked_although_some: "Lié bien qu’il manque au port des imports de sa bibliothèque"
+ps.imports.truncated: "Seuls les %{read} premiers Mio du journal ont été lus ; %{unread} Mio de plus ont été ignorés."
+ps.imports.dropped: "%{count} lignes de plus ont été ignorées : le journal cite plus d’imports ou de modules qu’un jeu n’en a."
 ps.detail.tabs.online: En ligne
 ps.play.online_error: 'Impossible de configurer le jeu en ligne : %{error}. Corrigez-le dans les Paramètres de la section PS ou désactivez le jeu en ligne dans l’onglet En ligne du jeu.'
 ps.play.online_keyring_error: Le jeu en ligne nécessite le mot de passe shadNet du trousseau système, qui n’est pas disponible (%{error}). Ouvrez ou déverrouillez le trousseau, ou désactivez le jeu en ligne dans l’onglet En ligne du jeu pour jouer hors ligne.

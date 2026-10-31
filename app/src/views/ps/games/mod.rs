@@ -7,6 +7,7 @@ mod detail;
 mod extras;
 mod gamepad;
 mod graphics;
+mod imports;
 mod keyboard;
 mod mods;
 mod online;

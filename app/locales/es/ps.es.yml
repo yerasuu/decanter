@@ -247,6 +247,7 @@ ps.detail.tabs.graphics: Gráficos
 ps.detail.tabs.mods: Mods
 ps.detail.tabs.log: Registro
 ps.detail.tabs.performance: Rendimiento
+ps.detail.tabs.imports: "Importaciones"
 ps.detail.hero.version: VERSIÓN
 ps.detail.hero.status: ESTADO
 ps.detail.stop: DETENER
@@ -695,6 +696,37 @@ ps.runs.frame_time: Fotograma mín.–máx.
 ps.runs.compiles: Compilaciones en el hilo de GPU
 ps.runs.pipelines: 'Pipelines compilados en segundo plano: %{background}; draws que esperaron al suyo: %{waited}; draws omitidos mientras tanto: %{skipped}'
 ps.runs.method: psport mide en intervalos de unos 5 s, no fotograma a fotograma. El 1 % bajo se estima con el peor fotograma de cada intervalo (algo pesimista a más de 30 FPS); el mínimo es el tiempo medio del mejor intervalo y el máximo, el peor fotograma de la partida. La línea discontinua es la media.
+ps.imports.reading: "Leyendo el registro de la última partida…"
+ps.imports.read_error: "No se pudo leer el registro de la última partida: %{error}"
+ps.imports.run: "Última partida"
+ps.imports.old_port: "El registro de esta partida no lista importaciones: el port que la ejecutó es anterior a estas líneas o el juego se detuvo antes de enlazarse."
+ps.imports.all_covered: "En esta partida el port cubrió todas las importaciones del juego."
+ps.imports.totals.imports: "Importaciones"
+ps.imports.totals.host: "Las sirve el port"
+ps.imports.totals.game_modules: "Módulos del juego"
+ps.imports.totals.system_modules: "Módulos del sistema"
+ps.imports.totals.loaded_modules: "Módulos que carga el juego"
+ps.imports.totals.stubs: "Stubs"
+ps.imports.totals.unimplemented: "Sin implementar"
+ps.imports.title: "Importaciones que el port no cubre"
+ps.imports.filter.all: "Todas"
+ps.imports.gap.unimplemented: "Sin implementación"
+ps.imports.gap.stub: "Stub"
+ps.imports.gap.left_to_host: "Se deja al port (solo difieren las versiones)"
+ps.imports.gap.called: "Llamada durante la partida"
+ps.imports.column.nid: "NID"
+ps.imports.column.name: "Nombre"
+ps.imports.column.kind: "Tipo"
+ps.imports.column.calls: "Llamadas"
+ps.imports.unresolved: "nombre sin resolver"
+ps.imports.called: "sí"
+ps.imports.calls_note: "Las llamadas salen del informe de llamadas de la partida, si dejó uno; «sí» marca una importación que el registro muestra llamada sin contarlas."
+ps.imports.decisions: "Decisiones del cargador"
+ps.imports.served: "Sin enlazar: lo sirve el port"
+ps.imports.linked_although: "Enlazado aunque al port le faltan %{count} de las importaciones de %{library} (la primera, %{first})"
+ps.imports.linked_although_some: "Enlazado aunque al port le faltan importaciones de su biblioteca"
+ps.imports.truncated: "Solo se han leído los primeros %{read} MiB del registro; se han omitido %{unread} MiB más."
+ps.imports.dropped: "Se han omitido %{count} líneas más: el registro nombra más importaciones o módulos de los que tiene un juego."
 ps.detail.tabs.online: Online
 ps.play.online_error: 'No se pudo preparar el juego online: %{error}. Corrígelo en Ajustes de PS o desactiva el juego online en la pestaña Online del juego.'
 ps.play.online_keyring_error: El juego online necesita la contraseña de shadNet del llavero del sistema, que no está disponible (%{error}). Abre o desbloquea el llavero, o desactiva el juego online en la pestaña Online del juego para jugar sin conexión.

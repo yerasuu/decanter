@@ -247,6 +247,7 @@ ps.detail.tabs.graphics: Graphics
 ps.detail.tabs.mods: Mods
 ps.detail.tabs.log: Log
 ps.detail.tabs.performance: Performance
+ps.detail.tabs.imports: "Imports"
 ps.detail.hero.version: VERSION
 ps.detail.hero.status: STATUS
 ps.detail.stop: STOP
@@ -695,6 +696,37 @@ ps.runs.frame_time: Frame time min–max
 ps.runs.compiles: Compiles on the GPU thread
 ps.runs.pipelines: 'Pipelines compiled in the background: %{background}; draws that waited for theirs: %{waited}; draws skipped meanwhile: %{skipped}'
 ps.runs.method: psport measures in windows of about 5 s, not frame by frame. The 1% low is estimated from each window's worst frame (somewhat pessimistic above 30 FPS); the minimum is the best window's mean frame time and the maximum the run's worst frame. The dashed line is the average.
+ps.imports.reading: "Reading the last run's log…"
+ps.imports.read_error: "Couldn't read the last run's log: %{error}"
+ps.imports.run: "Last run"
+ps.imports.old_port: "This run's log lists no imports: the port that ran it predates these lines, or the game stopped before it was linked."
+ps.imports.all_covered: "The port covered every import of the game in this run."
+ps.imports.totals.imports: "Imports"
+ps.imports.totals.host: "Served by the port"
+ps.imports.totals.game_modules: "Game modules"
+ps.imports.totals.system_modules: "System modules"
+ps.imports.totals.loaded_modules: "Modules the game loads"
+ps.imports.totals.stubs: "Stubs"
+ps.imports.totals.unimplemented: "Unimplemented"
+ps.imports.title: "Imports the port does not cover"
+ps.imports.filter.all: "All"
+ps.imports.gap.unimplemented: "No implementation"
+ps.imports.gap.stub: "Stub"
+ps.imports.gap.left_to_host: "Left to the port (only versions differ)"
+ps.imports.gap.called: "Called at run time"
+ps.imports.column.nid: "NID"
+ps.imports.column.name: "Name"
+ps.imports.column.kind: "Kind"
+ps.imports.column.calls: "Calls"
+ps.imports.unresolved: "name not resolved"
+ps.imports.called: "yes"
+ps.imports.calls_note: "Call counts come from the run's call report, when it left one; “yes” marks an import the log shows called without a count."
+ps.imports.decisions: "Loader decisions"
+ps.imports.served: "Not linked: the port serves it"
+ps.imports.linked_although: "Linked although the port lacks %{count} of the imports of %{library} (the first, %{first})"
+ps.imports.linked_although_some: "Linked although the port lacks some of its library's imports"
+ps.imports.truncated: "Only the first %{read} MiB of the log were read; %{unread} MiB more were left out."
+ps.imports.dropped: "%{count} more lines were left out: the log names more imports or modules than a game has."
 ps.detail.tabs.online: Online
 ps.play.online_error: 'Couldn''t set up online play: %{error}. Fix it in the PS section''s Settings or turn online play off in the game''s Online tab.'
 ps.play.online_keyring_error: Online play needs the shadNet password from the system keyring, which isn't available (%{error}). Open or unlock the keyring, or turn online play off in the game's Online tab to play offline.

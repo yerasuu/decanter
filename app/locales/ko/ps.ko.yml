@@ -247,6 +247,7 @@ ps.detail.tabs.graphics: 그래픽
 ps.detail.tabs.mods: 모드
 ps.detail.tabs.log: 로그
 ps.detail.tabs.performance: 성능
+ps.detail.tabs.imports: "임포트"
 ps.detail.hero.version: 버전
 ps.detail.hero.status: 상태
 ps.detail.stop: 중지
@@ -695,6 +696,37 @@ ps.runs.frame_time: 프레임 시간 최소–최대
 ps.runs.compiles: GPU 스레드의 컴파일
 ps.runs.pipelines: '백그라운드에서 컴파일한 파이프라인: %{background}, 컴파일을 기다린 드로우: %{waited}, 그동안 건너뛴 드로우: %{skipped}'
 ps.runs.method: psport는 프레임 단위가 아니라 약 5초 단위의 구간으로 측정합니다. 1% 최저는 각 구간에서 가장 나쁜 프레임으로 추정하므로 30 FPS 이상에서는 다소 비관적입니다. 최소는 가장 좋은 구간의 평균 프레임 시간이고 최대는 실행 중 가장 나쁜 프레임입니다. 점선은 평균입니다.
+ps.imports.reading: "마지막 실행의 로그를 읽는 중…"
+ps.imports.read_error: "마지막 실행의 로그를 읽을 수 없습니다: %{error}"
+ps.imports.run: "마지막 실행"
+ps.imports.old_port: "이 실행의 로그에는 임포트 목록이 없습니다. 실행한 포트가 이 줄보다 오래되었거나 링크 전에 게임이 멈췄습니다."
+ps.imports.all_covered: "이 실행에서 포트가 게임의 모든 임포트를 처리했습니다."
+ps.imports.totals.imports: "임포트"
+ps.imports.totals.host: "포트가 제공"
+ps.imports.totals.game_modules: "게임 모듈"
+ps.imports.totals.system_modules: "시스템 모듈"
+ps.imports.totals.loaded_modules: "게임이 불러오는 모듈"
+ps.imports.totals.stubs: "스텁"
+ps.imports.totals.unimplemented: "미구현"
+ps.imports.title: "포트가 처리하지 않는 임포트"
+ps.imports.filter.all: "전체"
+ps.imports.gap.unimplemented: "구현 없음"
+ps.imports.gap.stub: "스텁"
+ps.imports.gap.left_to_host: "포트에 맡김(버전만 다름)"
+ps.imports.gap.called: "실행 중 호출됨"
+ps.imports.column.nid: "NID"
+ps.imports.column.name: "이름"
+ps.imports.column.kind: "종류"
+ps.imports.column.calls: "호출"
+ps.imports.unresolved: "이름을 확인할 수 없음"
+ps.imports.called: "예"
+ps.imports.calls_note: "호출 횟수는 실행이 호출 보고서를 남긴 경우 그 보고서에서 가져옵니다. '예'는 로그에 호출이 보이지만 횟수가 없는 임포트입니다."
+ps.imports.decisions: "로더의 결정"
+ps.imports.served: "링크하지 않음: 포트가 제공"
+ps.imports.linked_although: "링크됨. 단, 포트에 %{library}의 임포트 %{count}개가 없습니다(첫 번째: %{first})"
+ps.imports.linked_although_some: "링크됨. 단, 포트에 해당 라이브러리의 임포트 일부가 없습니다"
+ps.imports.truncated: "로그의 처음 %{read} MiB만 읽었습니다. 나머지 %{unread} MiB는 생략했습니다."
+ps.imports.dropped: "%{count}줄을 더 생략했습니다. 로그에 게임이 가진 것보다 많은 임포트나 모듈이 있습니다."
 ps.detail.tabs.online: 온라인
 ps.play.online_error: '온라인 플레이를 설정할 수 없습니다: %{error}. PS 섹션의 설정에서 해결하거나 게임의 온라인 탭에서 온라인 플레이를 끄세요.'
 ps.play.online_keyring_error: 온라인 플레이에는 시스템 키링의 shadNet 비밀번호가 필요한데 키링을 사용할 수 없습니다(%{error}). 키링을 열거나 잠금을 해제하거나, 게임의 온라인 탭에서 온라인 플레이를 끄고 오프라인으로 플레이하세요.

@@ -184,7 +184,7 @@ fn measurement(text: &str) -> Option<f64> {
 }
 
 /// `2026-10-16T09:41:07Z` as `2026-10-16 09:41 UTC`, the way failures are dated.
-fn display_time(iso: &str) -> Option<String> {
+pub(crate) fn display_time(iso: &str) -> Option<String> {
     let well_formed = iso.len() == 20
         && iso.bytes().enumerate().all(|(index, byte)| match index {
             4 | 7 => byte == b'-',

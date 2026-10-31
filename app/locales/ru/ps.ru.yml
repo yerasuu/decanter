@@ -247,6 +247,7 @@ ps.detail.tabs.graphics: 'Графика'
 ps.detail.tabs.mods: 'Моды'
 ps.detail.tabs.log: 'Журнал'
 ps.detail.tabs.performance: 'Производительность'
+ps.detail.tabs.imports: "Импорты"
 ps.detail.hero.version: 'ВЕРСИЯ'
 ps.detail.hero.status: 'СТАТУС'
 ps.detail.stop: 'СТОП'
@@ -695,6 +696,37 @@ ps.runs.frame_time: 'Время кадра, мин–макс'
 ps.runs.compiles: 'Компиляции в потоке GPU'
 ps.runs.pipelines: 'Конвейеры, скомпилированные в фоне: %{background}; отрисовки, ждавшие свои: %{waited}; отрисовки, пропущенные за это время: %{skipped}'
 ps.runs.method: 'psport измеряет окнами примерно по 5 с, а не по кадрам. 1% минимума оценивается по худшему кадру каждого окна (несколько пессимистично выше 30 FPS); минимум — среднее время кадра в лучшем окне, а максимум — худший кадр запуска. Пунктирная линия — среднее значение.'
+ps.imports.reading: "Чтение журнала последнего запуска…"
+ps.imports.read_error: "Не удалось прочитать журнал последнего запуска: %{error}"
+ps.imports.run: "Последний запуск"
+ps.imports.old_port: "В журнале этого запуска нет списка импортов: порт, который его выполнил, старше этих строк, или игра остановилась до компоновки."
+ps.imports.all_covered: "В этом запуске порт покрыл все импорты игры."
+ps.imports.totals.imports: "Импорты"
+ps.imports.totals.host: "Обслуживает порт"
+ps.imports.totals.game_modules: "Модули игры"
+ps.imports.totals.system_modules: "Системные модули"
+ps.imports.totals.loaded_modules: "Модули, загружаемые игрой"
+ps.imports.totals.stubs: "Заглушки"
+ps.imports.totals.unimplemented: "Не реализованы"
+ps.imports.title: "Импорты, которые порт не покрывает"
+ps.imports.filter.all: "Все"
+ps.imports.gap.unimplemented: "Нет реализации"
+ps.imports.gap.stub: "Заглушка"
+ps.imports.gap.left_to_host: "Оставлен порту (различаются только версии)"
+ps.imports.gap.called: "Вызван во время работы"
+ps.imports.column.nid: "NID"
+ps.imports.column.name: "Имя"
+ps.imports.column.kind: "Вид"
+ps.imports.column.calls: "Вызовы"
+ps.imports.unresolved: "имя не определено"
+ps.imports.called: "да"
+ps.imports.calls_note: "Число вызовов берётся из отчёта о вызовах запуска, если он есть; «да» отмечает импорт, вызов которого виден в журнале без подсчёта."
+ps.imports.decisions: "Решения загрузчика"
+ps.imports.served: "Не скомпонован: его обслуживает порт"
+ps.imports.linked_although: "Скомпонован, хотя порту не хватает %{count} импортов %{library} (первый: %{first})"
+ps.imports.linked_although_some: "Скомпонован, хотя порту не хватает части импортов его библиотеки"
+ps.imports.truncated: "Прочитаны только первые %{read} МиБ журнала; ещё %{unread} МиБ пропущено."
+ps.imports.dropped: "Пропущено ещё %{count} строк: в журнале больше импортов или модулей, чем бывает у игры."
 ps.detail.tabs.online: 'Онлайн'
 ps.play.online_error: 'Не удалось настроить онлайн-игру: %{error}. Исправьте это в настройках раздела PS или отключите онлайн-игру на вкладке «Онлайн» игры.'
 ps.play.online_keyring_error: 'Для онлайн-игры нужен пароль shadNet из системной связки ключей, которая недоступна (%{error}). Откройте или разблокируйте связку ключей либо отключите онлайн-игру на вкладке «Онлайн» игры, чтобы играть офлайн.'

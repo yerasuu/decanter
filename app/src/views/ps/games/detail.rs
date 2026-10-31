@@ -20,6 +20,7 @@ use rust_i18n::t;
 
 use super::gamepad::GamepadView;
 use super::graphics::GraphicsView;
+use super::imports::ImportsView;
 use super::keyboard::{Controls, KeyboardView};
 use super::mods::ModsView;
 use super::online::OnlineTitleView;
@@ -44,6 +45,7 @@ enum Tab {
     Mods,
     Online,
     Performance,
+    Imports,
     Log,
 }
 
@@ -57,6 +59,7 @@ impl Tab {
             Self::Mods => t!("ps.detail.tabs.mods"),
             Self::Online => t!("ps.detail.tabs.online"),
             Self::Performance => t!("ps.detail.tabs.performance"),
+            Self::Imports => t!("ps.detail.tabs.imports"),
             Self::Log => t!("ps.detail.tabs.log"),
         }
     }
@@ -66,7 +69,7 @@ const TABS: [Tab; 3] = [Tab::Overview, Tab::Keyboard, Tab::Log];
 
 /// bbport has settings and gamepad layouts of its own; AnyPS5 reads the
 /// controller as it is and takes no settings.
-const BBPORT_TABS: [Tab; 8] = [
+const BBPORT_TABS: [Tab; 9] = [
     Tab::Overview,
     Tab::Keyboard,
     Tab::Gamepad,
@@ -74,17 +77,19 @@ const BBPORT_TABS: [Tab; 8] = [
     Tab::Mods,
     Tab::Online,
     Tab::Performance,
+    Tab::Imports,
     Tab::Log,
 ];
 
 /// Another PS4 title on bbport: its mods are Bloodborne's.
-const OTHER_PS4_TABS: [Tab; 7] = [
+const OTHER_PS4_TABS: [Tab; 8] = [
     Tab::Overview,
     Tab::Keyboard,
     Tab::Gamepad,
     Tab::Graphics,
     Tab::Online,
     Tab::Performance,
+    Tab::Imports,
     Tab::Log,
 ];
 
@@ -100,6 +105,8 @@ pub struct DetailView {
     log: Option<Entity<LogView>>,
     /// The selected game's measured runs, made when its Registro first shows.
     runs: Option<Entity<RunsView>>,
+    /// What the selected game's last run lacked, made when its tab first shows.
+    imports: Option<Entity<ImportsView>>,
     /// The bindings of `selected`, read when its Controles tab opens.
     controls: Option<Result<Entity<KeyboardView>, Text>>,
     /// Kept across selections and told which title is selected, whose settings it shows.
@@ -139,6 +146,7 @@ impl DetailView {
             tab: Tab::Overview,
             log: None,
             runs: None,
+            imports: None,
             controls: None,
             gamepad: None,
             graphics: None,
@@ -167,6 +175,7 @@ impl DetailView {
         self.controls = None;
         self.log = None;
         self.runs = None;
+        self.imports = None;
         cx.notify();
     }
 
@@ -203,6 +212,7 @@ impl DetailView {
         self.tab = Tab::Overview;
         self.controls = None;
         self.runs = None;
+        self.imports = None;
         self.learned = None;
         self.learned_read_at = None;
         self.learned_error = None;
@@ -311,7 +321,7 @@ impl DetailView {
             Tab::Gamepad => &[(Category::Gamepad, "ps.per_game.copy_entry")],
             Tab::Mods => &[(Category::Mods, "ps.per_game.copy_entry")],
             Tab::Online => &[(Category::Online, "ps.per_game.copy_entry")],
-            Tab::Overview | Tab::Performance | Tab::Log => return None,
+            Tab::Overview | Tab::Performance | Tab::Imports | Tab::Log => return None,
         };
         if settings.read(cx).is_copy_only() {
             return Some(div().mb_4().child(settings).into_any_element());
@@ -762,10 +772,18 @@ impl Render for DetailView {
             let (ps, dir, title_id) = (self.ps.clone(), entry.game.dir.clone(), entry.game.title_id.clone());
             self.runs = Some(cx.new(|cx| RunsView::new(ps, dir, title_id, cx)));
         }
+        if self.tab == Tab::Imports && entry.port == Some(Port::Bbport) && self.imports.is_none() {
+            let (ps, dir, title_id) = (self.ps.clone(), entry.game.dir.clone(), entry.game.title_id.clone());
+            self.imports = Some(cx.new(|cx| ImportsView::new(ps, dir, title_id, cx)));
+        }
         let copy_entry = self.copy_entry(self.tab, cx);
         let body = match self.tab {
             Tab::Performance => self
                 .runs
+                .clone()
+                .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
+            Tab::Imports => self
+                .imports
                 .clone()
                 .map_or_else(|| div().into_any_element(), IntoElement::into_any_element),
             Tab::Log => match &self.log {
