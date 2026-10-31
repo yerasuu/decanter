@@ -648,6 +648,14 @@ ps.extras.env.hint: Enter saves
 ps.extras.env.placeholder: NAME=value separated by spaces
 ps.extras.env.saved: Variables saved; they apply on the next start
 ps.extras.env.save_error: 'Couldn''t save the variables: %{error}'
+ps.extras.skip_draws.title: 'Draws to skip'
+ps.extras.skip_draws.hint: 'Diagnostic: psport skips the draws whose shader pair matches. <vs>:<ps> pairs of hexadecimal hashes from the frame capture''s per-draw lines, separated by commas; * matches any shader and #N skips only the N-th match of each frame, counting from 0. Enter saves; empty clears it'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'Draws to skip saved; they apply on the next start'
+ps.extras.skip_draws.save_error: 'Couldn''t save the draws to skip: %{error}'
+ps.extras.skip_draws.too_long: 'The draws to skip are longer than %{max} characters'
+ps.extras.skip_draws.too_many: 'More than %{max} draws to skip'
+ps.extras.skip_draws.bad_entry: '"%{entry}" isn''t <vs>:<ps> with an optional #N: each side is a hexadecimal hash of up to 16 digits or *, and N is a number'
 ps.extras.sys_modules.title: Load my system modules dump
 ps.extras.sys_modules.hint: The folder in the PS section's Settings, for this game only; applies on the next start
 ps.extras.sys_modules.no_folder: 'No system modules folder in the PS section''s Settings: nothing is loaded'

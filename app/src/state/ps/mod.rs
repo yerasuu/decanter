@@ -28,6 +28,7 @@ use decanter_core::runner::{Progress, Runner};
 use decanter_ps::bbport::Compat;
 use decanter_ps::bbport::direct::FolderError;
 use decanter_ps::bbport::per_game::{PerGameError, Refusal};
+use decanter_ps::bbport::skip_draws::{self, SkipDrawsError};
 use decanter_ps::library;
 use decanter_ps::port::Port;
 use decanter_ps::process::Job;
@@ -537,6 +538,16 @@ fn refusal_text(refusal: &Refusal) -> Text {
         Refusal::TooMany => Text::new("ps.per_game.refused.too_many"),
         Refusal::Name => Text::new("ps.per_game.refused.name"),
         Refusal::NotListed(key) => Text::new("ps.per_game.refused.not_listed").arg("key", key),
+        Refusal::SkipDraws(err) => skip_draws_error(err),
+    }
+}
+
+/// Why a list of draws to skip was refused, typed in the game's page or from the command line.
+pub fn skip_draws_error(err: &SkipDrawsError) -> Text {
+    match err {
+        SkipDrawsError::TooLong => Text::new("ps.extras.skip_draws.too_long").arg("max", skip_draws::MAX_CHARS),
+        SkipDrawsError::TooMany => Text::new("ps.extras.skip_draws.too_many").arg("max", skip_draws::MAX_ENTRIES),
+        SkipDrawsError::Entry(entry) => Text::new("ps.extras.skip_draws.bad_entry").arg("entry", entry),
     }
 }
 

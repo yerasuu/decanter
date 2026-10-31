@@ -648,6 +648,14 @@ ps.extras.env.hint: Invio salva
 ps.extras.env.placeholder: NOME=valore separati da spazi
 ps.extras.env.saved: "Variabili salvate; si applicano al prossimo avvio"
 ps.extras.env.save_error: "Impossibile salvare le variabili: %{error}"
+ps.extras.skip_draws.title: 'Draw da saltare'
+ps.extras.skip_draws.hint: 'Diagnostica: psport salta i draw la cui coppia di shader corrisponde. Coppie <vs>:<ps> di hash esadecimali dalle righe per draw della cattura del fotogramma, separate da virgole; * corrisponde a qualsiasi shader e #N salta solo la N-esima corrispondenza di ogni fotogramma, contando da 0. Invio salva; vuoto lo cancella'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'Draw da saltare salvati; si applicano al prossimo avvio'
+ps.extras.skip_draws.save_error: 'Impossibile salvare i draw da saltare: %{error}'
+ps.extras.skip_draws.too_long: 'I draw da saltare superano i %{max} caratteri'
+ps.extras.skip_draws.too_many: 'Più di %{max} draw da saltare'
+ps.extras.skip_draws.bad_entry: '«%{entry}» non è <vs>:<ps> con un #N facoltativo: ogni lato è un hash esadecimale di al massimo 16 cifre o *, e N è un numero'
 ps.extras.sys_modules.title: Carica il mio dump dei moduli di sistema
 ps.extras.sys_modules.hint: "La cartella nelle Impostazioni della sezione PS, solo per questo gioco; si applica al prossimo avvio"
 ps.extras.sys_modules.no_folder: "Nessuna cartella dei moduli di sistema nelle Impostazioni della sezione PS: non viene caricato nulla"

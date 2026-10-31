@@ -648,6 +648,14 @@ ps.extras.env.hint: Entrée enregistre
 ps.extras.env.placeholder: NOM=valeur séparés par des espaces
 ps.extras.env.saved: Variables enregistrées ; elles s’appliquent au prochain démarrage
 ps.extras.env.save_error: 'Impossible d’enregistrer les variables : %{error}'
+ps.extras.skip_draws.title: 'Rendus à ignorer'
+ps.extras.skip_draws.hint: 'Diagnostic : psport ignore les rendus dont la paire de shaders correspond. Paires <vs>:<ps> de hachages hexadécimaux tirés des lignes par rendu de la capture d’image, séparées par des virgules ; * correspond à n’importe quel shader et #N n’ignore que la N-ième correspondance de chaque image, en comptant depuis 0. Entrée enregistre ; vide l’efface'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'Rendus à ignorer enregistrés ; ils s’appliquent au prochain démarrage'
+ps.extras.skip_draws.save_error: 'Impossible d’enregistrer les rendus à ignorer : %{error}'
+ps.extras.skip_draws.too_long: 'Les rendus à ignorer dépassent %{max} caractères'
+ps.extras.skip_draws.too_many: 'Plus de %{max} rendus à ignorer'
+ps.extras.skip_draws.bad_entry: '« %{entry} » n’est pas <vs>:<ps> avec un #N facultatif : chaque côté est un hachage hexadécimal de 16 chiffres au plus ou *, et N est un nombre'
 ps.extras.sys_modules.title: Charger mon dump des modules système
 ps.extras.sys_modules.hint: Le dossier des Paramètres de la section PS, pour ce jeu uniquement ; s’applique au prochain démarrage
 ps.extras.sys_modules.no_folder: 'Aucun dossier de modules système dans les Paramètres de la section PS : rien n’est chargé'

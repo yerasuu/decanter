@@ -648,6 +648,14 @@ ps.extras.env.hint: "按 Enter 保存"
 ps.extras.env.placeholder: "NAME=value，以空格分隔"
 ps.extras.env.saved: "变量已保存；将在下次启动时生效"
 ps.extras.env.save_error: "无法保存变量：%{error}"
+ps.extras.skip_draws.title: '要跳过的绘制'
+ps.extras.skip_draws.hint: '诊断用：psport 会跳过着色器对匹配的绘制。填写帧捕获中每次绘制那一行给出的十六进制哈希 <vs>:<ps> 对，用逗号分隔；* 匹配任意着色器，#N 只跳过每帧中第 N 次匹配（从 0 开始计数）。按 Enter 保存；留空即清除'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: '已保存要跳过的绘制；下次启动时生效'
+ps.extras.skip_draws.save_error: '无法保存要跳过的绘制：%{error}'
+ps.extras.skip_draws.too_long: '要跳过的绘制超过 %{max} 个字符'
+ps.extras.skip_draws.too_many: '要跳过的绘制超过 %{max} 项'
+ps.extras.skip_draws.bad_entry: '“%{entry}”不是 <vs>:<ps> 格式（#N 可选）：每一侧是不超过 16 位的十六进制哈希或 *，N 是数字'
 ps.extras.sys_modules.title: "加载我的系统模块转储"
 ps.extras.sys_modules.hint: "使用 PS 部分“设置”中的文件夹，仅适用于此游戏；将在下次启动时生效"
 ps.extras.sys_modules.no_folder: "PS 部分的“设置”中没有系统模块文件夹：不会加载任何内容"

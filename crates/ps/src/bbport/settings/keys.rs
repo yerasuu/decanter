@@ -12,6 +12,7 @@ use crate::bbport::frame_gen::{self, FrameGen};
 use crate::bbport::local_player::{self, LocalPlayer};
 use crate::bbport::online::{self, LocalServer};
 use crate::bbport::port_ini::MENU_LANGUAGE;
+use crate::bbport::skip_draws::{self, SkipDraws, SkipDrawsError};
 use crate::bbport::{Control, GROUPS, Setting, Store, mods};
 use crate::layouts::choice;
 
@@ -37,7 +38,7 @@ pub enum Category {
     Mods,
     /// Online play and its options, and the local player.
     Online,
-    /// The extra environment and whether the system modules dump loads.
+    /// The extra environment, whether the system modules dump loads, and the draws to skip.
     Extras,
 }
 
@@ -96,6 +97,8 @@ pub enum Refusal {
     Name,
     #[error("{0} isn't one of the switches the port lists for this game")]
     NotListed(String),
+    #[error("{key} can't take that value: {0}", key = skip_draws::KEY)]
+    SkipDraws(SkipDrawsError),
 }
 
 /// What a launch key may hold.
@@ -119,6 +122,8 @@ enum Kind {
     Env,
     /// A mods or patches folder.
     Folder,
+    /// Shader pairs whose draws psport skips, as [`SkipDraws`] reads them.
+    SkipDraws,
 }
 
 fn rows() -> impl Iterator<Item = &'static Setting> {
@@ -148,6 +153,7 @@ fn launch_kind(key: &str) -> Option<Kind> {
         "gamepad_name" => Kind::Name,
         "button_icons" | choice::PAD_KEY | choice::KEYS_KEY => Kind::Word,
         "extra_env" => Kind::Env,
+        skip_draws::KEY => Kind::SkipDraws,
         _ if mods::FOLDER_KEYS.contains(&key) => Kind::Folder,
         _ => return None,
     })
@@ -223,7 +229,7 @@ pub(super) fn launch_category(key: &str) -> Option<Category> {
         | online::TLS
         | online::ALLOW_PLAINTEXT
         | local_player::KEY => Category::Online,
-        "extra_env" | SYS_MODULES => Category::Extras,
+        "extra_env" | SYS_MODULES | skip_draws::KEY => Category::Extras,
         _ if mods::FOLDER_KEYS.contains(&key) => Category::Mods,
         _ => Category::Graphics,
     })
@@ -259,6 +265,13 @@ pub(super) fn check_launch(key: &str, value: &Value, library: &Path) -> Result<(
         };
     }
     let text = value.as_str();
+    if matches!(kind, Kind::SkipDraws) {
+        return match text.map(SkipDraws::parse) {
+            Some(Ok(_)) => Ok(()),
+            Some(Err(err)) => Err(Refusal::SkipDraws(err)),
+            None => Err(Refusal::Value(key.to_owned())),
+        };
+    }
     let is_valid = match kind {
         Kind::Flag => value.is_boolean(),
         Kind::Number { min, max } => value
@@ -274,7 +287,7 @@ pub(super) fn check_launch(key: &str, value: &Value, library: &Path) -> Result<(
         Kind::Name => text.is_some_and(|text| text.chars().count() <= MAX_NAME && !text.chars().any(char::is_control)),
         Kind::Word => text.is_some_and(is_word),
         Kind::Env => text.is_some_and(is_env),
-        Kind::Folder => false,
+        Kind::Folder | Kind::SkipDraws => false,
     };
     if is_valid {
         Ok(())
@@ -284,7 +297,8 @@ pub(super) fn check_launch(key: &str, value: &Value, library: &Path) -> Result<(
 }
 
 /// `text` from the command line as the JSON value `key` keeps: a switch takes `on`/`off`,
-/// `true`/`false` or `1`/`0`; a number keeps whole numbers whole. Checked as [`check_launch`].
+/// `true`/`false` or `1`/`0`; a number keeps whole numbers whole; the draws to skip lose the
+/// whitespace around their entries. Checked as [`check_launch`].
 pub(super) fn launch_value(key: &str, text: &str, library: &Path) -> Result<Value, Refusal> {
     let value = match launch_kind(key) {
         Some(Kind::Flag) => match text {
@@ -300,6 +314,10 @@ pub(super) fn launch_value(key: &str, text: &str, library: &Path) -> Result<Valu
                 .and_then(serde_json::Number::from_f64)
                 .map(Value::Number)
                 .ok_or_else(|| Refusal::Value(key.to_owned()))?,
+        },
+        Some(Kind::SkipDraws) => match SkipDraws::parse(text).map_err(Refusal::SkipDraws)? {
+            Some(draws) => Value::String(draws.into()),
+            None => return Err(Refusal::Value(key.to_owned())),
         },
         _ => Value::String(text.to_owned()),
     };

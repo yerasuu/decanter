@@ -648,6 +648,14 @@ ps.extras.env.hint: "Enter で保存"
 ps.extras.env.placeholder: "NAME=value をスペースで区切って入力"
 ps.extras.env.saved: "環境変数を保存しました。次回の起動時に適用されます"
 ps.extras.env.save_error: "環境変数を保存できませんでした: %{error}"
+ps.extras.skip_draws.title: 'スキップする描画'
+ps.extras.skip_draws.hint: '診断用: シェーダーの組が一致する描画を psport がスキップします。フレームキャプチャの描画ごとの行にある 16 進ハッシュの <vs>:<ps> の組をカンマ区切りで指定します。* は任意のシェーダーに一致し、#N は各フレームで N 番目 (0 から数える) の一致だけをスキップします。Enter で保存、空にすると解除します'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'スキップする描画を保存しました。次回の起動から適用されます'
+ps.extras.skip_draws.save_error: 'スキップする描画を保存できませんでした: %{error}'
+ps.extras.skip_draws.too_long: 'スキップする描画が %{max} 文字を超えています'
+ps.extras.skip_draws.too_many: 'スキップする描画が %{max} 件を超えています'
+ps.extras.skip_draws.bad_entry: '「%{entry}」は <vs>:<ps> (#N は任意) の形式ではありません。各側は 16 桁以内の 16 進ハッシュか * で、N は数値です'
 ps.extras.sys_modules.title: "自分のシステムモジュールのダンプを読み込む"
 ps.extras.sys_modules.hint: "PS セクションの設定にあるフォルダーを、このゲームにのみ使用します。次回の起動時に適用されます"
 ps.extras.sys_modules.no_folder: "PS セクションの設定にシステムモジュールのフォルダーがないため、何も読み込まれません"

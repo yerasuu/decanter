@@ -648,6 +648,14 @@ ps.extras.env.hint: Enter guarda
 ps.extras.env.placeholder: NOMBRE=valor separadas por espacios
 ps.extras.env.saved: Variables guardadas; se aplican en el próximo arranque
 ps.extras.env.save_error: 'No se pudieron guardar las variables: %{error}'
+ps.extras.skip_draws.title: 'Dibujos a saltar'
+ps.extras.skip_draws.hint: 'Diagnóstico: psport se salta los dibujos cuyo par de shaders coincide. Pares <vs>:<ps> de hashes hexadecimales de las líneas por dibujo de la captura de fotogramas, separados por comas; * coincide con cualquier shader y #N salta solo la N-ésima coincidencia de cada fotograma, contando desde 0. Enter guarda; vacío lo borra'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'Dibujos a saltar guardados; se aplican en el próximo arranque'
+ps.extras.skip_draws.save_error: 'No se pudieron guardar los dibujos a saltar: %{error}'
+ps.extras.skip_draws.too_long: 'Los dibujos a saltar ocupan más de %{max} caracteres'
+ps.extras.skip_draws.too_many: 'Hay más de %{max} dibujos a saltar'
+ps.extras.skip_draws.bad_entry: '«%{entry}» no es <vs>:<ps> con un #N opcional: cada lado es un hash hexadecimal de hasta 16 dígitos o *, y N es un número'
 ps.extras.sys_modules.title: Cargar mi volcado de módulos del sistema
 ps.extras.sys_modules.hint: La carpeta de Ajustes de PS, solo para este juego; se aplica en el próximo arranque
 ps.extras.sys_modules.no_folder: 'Sin carpeta de módulos del sistema en Ajustes de PS: no se carga nada'

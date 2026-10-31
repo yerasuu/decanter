@@ -648,6 +648,14 @@ ps.extras.env.hint: Enter 키로 저장
 ps.extras.env.placeholder: 공백으로 구분한 NAME=value
 ps.extras.env.saved: 변수를 저장했습니다. 다음 시작 때 적용됩니다
 ps.extras.env.save_error: '변수를 저장할 수 없습니다: %{error}'
+ps.extras.skip_draws.title: '건너뛸 드로우'
+ps.extras.skip_draws.hint: '진단용: 셰이더 쌍이 일치하는 드로우를 psport가 건너뜁니다. 프레임 캡처의 드로우별 줄에 나오는 16진수 해시의 <vs>:<ps> 쌍을 쉼표로 구분해 입력합니다. *는 모든 셰이더와 일치하고, #N은 각 프레임에서 N번째(0부터 셈) 일치만 건너뜁니다. Enter 키로 저장하고, 비우면 해제됩니다'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: '건너뛸 드로우를 저장했습니다. 다음 실행부터 적용됩니다'
+ps.extras.skip_draws.save_error: '건너뛸 드로우를 저장할 수 없습니다: %{error}'
+ps.extras.skip_draws.too_long: '건너뛸 드로우가 %{max}자를 넘습니다'
+ps.extras.skip_draws.too_many: '건너뛸 드로우가 %{max}개를 넘습니다'
+ps.extras.skip_draws.bad_entry: '"%{entry}"은(는) <vs>:<ps>(#N은 선택) 형식이 아닙니다. 각 쪽은 16자리 이하의 16진수 해시 또는 *이고, N은 숫자입니다'
 ps.extras.sys_modules.title: 내 시스템 모듈 덤프 로드
 ps.extras.sys_modules.hint: 이 게임에 한해 PS 섹션의 설정에 있는 폴더를 사용하며, 다음 시작 때 적용됩니다
 ps.extras.sys_modules.no_folder: 'PS 섹션의 설정에 시스템 모듈 폴더가 없어 아무것도 로드되지 않습니다'

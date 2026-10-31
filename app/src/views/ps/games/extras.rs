@@ -1,7 +1,8 @@
 //! What bbport's settings table can't hold: building FSR 4.1.1 from an AMD
-//! DLL, and, for the shown game alone, free-form environment and whether it
-//! loads the user's system modules dump.
+//! DLL, and, for the shown game alone, free-form environment, whether it
+//! loads the user's system modules dump, and the draws psport skips.
 
+use decanter_ps::bbport::skip_draws::{self, SkipDraws};
 use decanter_ps::bbport::tools::{self, Fsr411Progress};
 use decanter_ps::bbport::values::Values;
 use decanter_ps::bbport::{LauncherSettings, SYS_MODULES};
@@ -12,7 +13,7 @@ use rust_i18n::t;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::runners;
-use crate::state::{DllOutcome, JobKey, Ps};
+use crate::state::{DllOutcome, JobKey, Ps, skip_draws_error};
 use crate::theme;
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button, checkbox};
 
@@ -24,6 +25,7 @@ pub struct ExtrasView {
     checked_at: Option<u32>,
     message: Option<(Text, bool)>,
     env: Entity<TextInput>,
+    skip_draws: Entity<TextInput>,
     /// Whether the title loads the system modules dump, and whether Ajustes has its folder;
     /// `None` while they are read.
     sys_modules: Option<(bool, bool)>,
@@ -48,12 +50,21 @@ impl ExtrasView {
             }
         })
         .detach();
+        let skip_draws = cx.new(|cx| TextInput::new(Text::new("ps.extras.skip_draws.placeholder"), cx));
+        cx.subscribe(&skip_draws, |this, input, event, cx| {
+            if matches!(event, InputEvent::Submit) {
+                let value = input.read(cx).text().to_owned();
+                this.save_skip_draws(&value, cx);
+            }
+        })
+        .detach();
         let mut this = Self {
             ps,
             fsr_problem: None,
             checked_at: None,
             message: None,
             env,
+            skip_draws,
             sys_modules: None,
             fsr_job: None,
             title_id: None,
@@ -77,6 +88,8 @@ impl ExtrasView {
     /// Another title's text and switch go at once, so they are never saved as this one's.
     fn load_settings(&mut self, title_id: &str, cx: &mut Context<Self>) {
         self.env.update(cx, |input, cx| input.set_text(String::new(), cx));
+        self.skip_draws
+            .update(cx, |input, cx| input.set_text(String::new(), cx));
         self.sys_modules = None;
         let title_id = title_id.to_owned();
         cx.spawn(async move |this, cx| {
@@ -86,11 +99,12 @@ impl ExtrasView {
                     async move {
                         LauncherSettings::of_title(&decanter_ps::paths::active(), &title_id).map(|settings| {
                             let env = settings.text("extra_env").map(str::to_owned).unwrap_or_default();
+                            let skip_draws = settings.text(skip_draws::KEY).map(str::to_owned).unwrap_or_default();
                             let sys_modules = (
                                 settings.uses_sys_modules(&title_id),
                                 settings.text("sys_modules_dir").is_some(),
                             );
-                            (env, sys_modules)
+                            (env, skip_draws, sys_modules)
                         })
                     }
                 })
@@ -100,9 +114,10 @@ impl ExtrasView {
                     return;
                 }
                 match loaded {
-                    Ok((env, sys_modules)) => {
+                    Ok((env, skip_draws, sys_modules)) => {
                         this.sys_modules = Some(sys_modules);
                         this.env.update(cx, |input, cx| input.set_text(env, cx));
+                        this.skip_draws.update(cx, |input, cx| input.set_text(skip_draws, cx));
                         cx.notify();
                     }
                     Err(err) => {
@@ -178,6 +193,40 @@ impl ExtrasView {
                 this.message = Some(match result {
                     Ok(()) => (Text::new("ps.extras.env.saved"), false),
                     Err(err) => (Text::new("ps.extras.env.save_error").arg("error", err), true),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Refused as typed when psport wouldn't read it; empty clears it, so the variable isn't passed.
+    fn save_skip_draws(&mut self, value: &str, cx: &mut Context<Self>) {
+        let Some(title_id) = self.title_id.clone() else {
+            return;
+        };
+        let draws = match SkipDraws::parse(value) {
+            Ok(draws) => draws,
+            Err(err) => {
+                self.message = Some((skip_draws_error(&err), true));
+                cx.notify();
+                return;
+            }
+        };
+        let shown = draws.as_ref().map(SkipDraws::as_str).unwrap_or_default().to_owned();
+        self.skip_draws.update(cx, |input, cx| input.set_text(shown, cx));
+        let task = cx.background_spawn(async move {
+            LauncherSettings::edit_title(&decanter_ps::paths::active(), &title_id, |settings| match draws {
+                Some(draws) => settings.set_text(skip_draws::KEY, draws.as_str()),
+                None => settings.remove(skip_draws::KEY),
+            })
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.message = Some(match result {
+                    Ok(()) => (Text::new("ps.extras.skip_draws.saved"), false),
+                    Err(err) => (Text::new("ps.extras.skip_draws.save_error").arg("error", err), true),
                 });
                 cx.notify();
             });
@@ -353,18 +402,34 @@ impl Render for ExtrasView {
                     .map(|(text, error)| if *error { theme::error(text) } else { theme::muted(text) }),
             )
             .child(
-                theme::card().children(fsr_row).children(sys_modules_row).child(
-                    theme::compact_row(true)
-                        .child(
-                            div()
-                                .flex_none()
-                                .flex()
-                                .flex_col()
-                                .child(t!("ps.extras.env.title"))
-                                .child(theme::muted(t!("ps.extras.env.hint")).text_size(px(12.))),
-                        )
-                        .child(div().flex_1().min_w_0().child(self.env.clone())),
-                ),
+                theme::card()
+                    .children(fsr_row)
+                    .children(sys_modules_row)
+                    .child(
+                        theme::compact_row(false)
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .flex()
+                                    .flex_col()
+                                    .child(t!("ps.extras.env.title"))
+                                    .child(theme::muted(t!("ps.extras.env.hint")).text_size(px(12.))),
+                            )
+                            .child(div().flex_1().min_w_0().child(self.env.clone())),
+                    )
+                    .child(
+                        theme::compact_row(true)
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(t!("ps.extras.skip_draws.title"))
+                                    .child(theme::muted(t!("ps.extras.skip_draws.hint")).text_size(px(12.))),
+                            )
+                            .child(div().flex_1().min_w_0().child(self.skip_draws.clone())),
+                    ),
             )
     }
 }

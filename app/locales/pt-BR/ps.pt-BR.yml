@@ -648,6 +648,14 @@ ps.extras.env.hint: Enter salva
 ps.extras.env.placeholder: NOME=valor separados por espaços
 ps.extras.env.saved: Variáveis salvas; valem a partir da próxima inicialização
 ps.extras.env.save_error: 'Não foi possível salvar as variáveis: %{error}'
+ps.extras.skip_draws.title: 'Draws a pular'
+ps.extras.skip_draws.hint: 'Diagnóstico: o psport pula os draws cujo par de shaders corresponde. Pares <vs>:<ps> de hashes hexadecimais das linhas por draw da captura de quadro, separados por vírgulas; * corresponde a qualquer shader e #N pula só a N-ésima correspondência de cada quadro, contando a partir de 0. Enter salva; vazio limpa'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'Draws a pular salvos; valem a partir da próxima inicialização'
+ps.extras.skip_draws.save_error: 'Não foi possível salvar os draws a pular: %{error}'
+ps.extras.skip_draws.too_long: 'Os draws a pular passam de %{max} caracteres'
+ps.extras.skip_draws.too_many: 'Mais de %{max} draws a pular'
+ps.extras.skip_draws.bad_entry: '"%{entry}" não é <vs>:<ps> com um #N opcional: cada lado é um hash hexadecimal de até 16 dígitos ou *, e N é um número'
 ps.extras.sys_modules.title: Carregar o meu dump de módulos do sistema
 ps.extras.sys_modules.hint: A pasta nas Configurações da seção PS, só para este jogo; vale a partir da próxima inicialização
 ps.extras.sys_modules.no_folder: 'Não há pasta de módulos do sistema nas Configurações da seção PS: nada é carregado'

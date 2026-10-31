@@ -73,7 +73,7 @@ Phase 5 as built (kb #1311):
   `gamepad`, `gamepad_name`, `button_icons`), mods (`mods_enabled`, `mods_dir`, `patches_dir`,
   `mods.json`, `patches.json`), online (`online`, `online_upnp`, `online_bbsc`,
   `online_bbsc_local_server`, `online_tls`, `online_allow_plaintext`, `local_player`), extras
-  (`extra_env`, `sys_modules`). Never any: the `SHARED` keys (E1-E3), a file's own record
+  (`extra_env`, `sys_modules`, `skip_draws`). Never any: the `SHARED` keys (E1-E3), a file's own record
   (`format`, `created_from`, `created_on`), the GTK leftovers, `menu_language`.
 - **Copy from another game** (`per_game::copy`), all of it or one category, on the game's Resumen
   (`app/src/views/ps/games/title_settings.rs`): the category's keys of the destination are replaced
@@ -87,7 +87,8 @@ Phase 5 as built (kb #1311):
   anything is written: at most 256 KiB, no unknown field, `title_id` as `^[A-Z]{4}[0-9]{5}$` (or
   `defaults`), launch keys against an allow-list with typed values (the settings table's switches,
   numbers in range and choices among its options, frame generation, local server, local player,
-  pad GUID, icon style, `extra_env` as `NAME=value` items with no shadNet secret), `mods_dir` and
+  pad GUID, icon style, `extra_env` as `NAME=value` items with no shadNet secret, `skip_draws` in
+  psport's grammar), `mods_dir` and
   `patches_dir` only as a full path inside the library, ini keys of the port's shape
   (`[A-Za-z0-9_.]`, at most 64) with one-line values and the settings table's keys typed, mod and
   patch names that can't leave their folder. Another title's file asks "apply to this game" first
@@ -264,6 +265,7 @@ port at start and most are rewritten by its menu.
 | `frame_stats` | settings.json, global **and** `titles.*` | G ∪ T | T | `mod.rs:570` ORs them: the global switch forces it on in every game |
 | `debug` | `titles.*` | T | T | plus decanter's own debug mode (D, `app/src/debug_logs.rs:67`): that one is the app's, kept |
 | `extra_env` (Extras) | settings.json | G | T | `extras.rs:114`, applied to every launch `mod.rs:468` |
+| `skip_draws` (Extras, `PS_SKIP_DRAWS`) | settings.json | T | T | diagnostic, `skip_draws.rs`: `<vs>:<ps>[#N]` shader hash pairs from the frame capture, comma-separated, at most 64 entries and 1024 characters; checked when typed, set from the CLI or imported, and again at launch, where an invalid stored value is logged and not passed |
 | `menu_language` | psport.ini | G | T | written by the menu; dropped on UI language change (`app/src/i18n.rs:186`) |
 | `menu_pos` | psport.ini | G | T | overlay position, menu-written |
 | `mangohud`, gamemode | decanter DB per game key (`launch.rs:342`) | T | T | already right; the `mangohud` key in settings.json is a leftover of the GTK launcher, read by nothing |

@@ -22,6 +22,7 @@ pub mod online;
 pub mod pad;
 mod port_ini;
 mod settings;
+pub mod skip_draws;
 pub mod tools;
 pub mod values;
 
@@ -51,6 +52,7 @@ use crate::os::linux::toolchain;
 use crate::paths::Root;
 use crate::port::Port;
 use names::single_memory_model;
+use skip_draws::SkipDraws;
 
 const BLOODBORNE_IDS: [&str; 6] = [
     "CUSA00207",
@@ -593,7 +595,8 @@ fn optional_env<'settings>(
     let keep = settings
         .number("keep_logs")
         .map(|keep| (names.var("KEEP_LOGS"), format!("{keep:.0}")));
-    values.chain(on).chain(off).chain(keep)
+    let skip_draws = SkipDraws::of_settings(settings, title_id).map(|draws| (names.var("SKIP_DRAWS"), draws.into()));
+    values.chain(on).chain(off).chain(keep).chain(skip_draws)
 }
 
 /// The port's debug mode, each run's logs gathered in `dir` under the port's own folder per host.

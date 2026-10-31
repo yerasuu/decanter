@@ -648,6 +648,14 @@ ps.extras.env.hint: Eingabe speichert
 ps.extras.env.placeholder: NAME=Wert, durch Leerzeichen getrennt
 ps.extras.env.saved: Variablen gespeichert; sie gelten ab dem nächsten Start
 ps.extras.env.save_error: 'Die Variablen konnten nicht gespeichert werden: %{error}'
+ps.extras.skip_draws.title: 'Zu überspringende Draws'
+ps.extras.skip_draws.hint: 'Diagnose: psport überspringt die Draws, deren Shader-Paar passt. <vs>:<ps>-Paare hexadezimaler Hashes aus den Zeilen pro Draw der Frame-Aufnahme, durch Kommas getrennt; * passt auf jeden Shader und #N überspringt nur den N-ten Treffer jedes Frames, gezählt ab 0. Eingabe speichert; leer löscht es'
+ps.extras.skip_draws.placeholder: 'be30c20c:a5278660,*:f1d2402d#1'
+ps.extras.skip_draws.saved: 'Zu überspringende Draws gespeichert; sie gelten ab dem nächsten Start'
+ps.extras.skip_draws.save_error: 'Die zu überspringenden Draws konnten nicht gespeichert werden: %{error}'
+ps.extras.skip_draws.too_long: 'Die zu überspringenden Draws sind länger als %{max} Zeichen'
+ps.extras.skip_draws.too_many: 'Mehr als %{max} zu überspringende Draws'
+ps.extras.skip_draws.bad_entry: '„%{entry}“ ist nicht <vs>:<ps> mit optionalem #N: jede Seite ist ein hexadezimaler Hash mit bis zu 16 Stellen oder *, und N ist eine Zahl'
 ps.extras.sys_modules.title: Meinen Dump der Systemmodule laden
 ps.extras.sys_modules.hint: Der Ordner aus den Einstellungen des PS-Bereichs, nur für dieses Spiel; gilt ab dem nächsten Start
 ps.extras.sys_modules.no_folder: 'Kein Systemmodule-Ordner in den Einstellungen des PS-Bereichs: Es wird nichts geladen'
