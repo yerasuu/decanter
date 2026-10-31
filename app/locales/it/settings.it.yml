@@ -15,6 +15,10 @@ settings.general.window_display.primary: 'Schermo %{index}: %{width} × %{height
 settings.general.window_display.missing: Schermo salvato (non collegato)
 settings.general.window_display.note: Si applica alla prossima finestra aperta o dal prossimo avvio di Decanter.
 settings.general.window_display.note_wayland: Su Wayland è il compositor a decidere su quale schermo si apre ogni finestra, quindi lì questa opzione non ha effetto.
+settings.general.window_display.kde_display: 'Schermo %{index}: %{width} × %{height} (%{name})'
+settings.general.window_display.kde_primary: 'Schermo %{index}: %{width} × %{height} (%{name}, principale)'
+settings.general.window_display.note_kde: 'Applicato tramite KDE: le finestre di Decanter passano su quello schermo e una finestra che si apre può comparire per un istante sullo schermo predefinito prima di spostarsi.'
+settings.general.window_display.note_wayland_rules: Per sceglierlo, usa le regole delle finestre del tuo compositor per l'app_id «decanter».
 settings.general.close.title: Alla chiusura della finestra
 settings.general.close.to_tray: Mantieni Decanter in esecuzione nell'area di notifica invece di uscire
 settings.general.close.restart_hint: Per applicare la modifica Decanter deve essere riavviato.

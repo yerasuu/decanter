@@ -214,6 +214,22 @@ impl Db {
         }
     }
 
+    /// The connector name (`DP-3`) of the output KWin opens decanter's
+    /// windows on in a KDE Wayland session, where gpui can't pick one, or
+    /// `None` to leave them where KWin puts them.
+    pub fn window_output(&self) -> Result<Option<String>> {
+        let output = self.setting("window_output")?;
+        tracing::debug!(output = output.as_deref(), "read window_output setting");
+        Ok(output)
+    }
+
+    pub fn set_window_output(&self, output: Option<&str>) -> Result<()> {
+        match output {
+            Some(name) => self.set_setting("window_output", name),
+            None => self.delete_setting("window_output"),
+        }
+    }
+
     /// Arbitrary key/value storage — one-off flags and view state that
     /// don't warrant a table of their own (see [`crate::adopt`] and
     /// [`crate::profiles`] for two callers).

@@ -1,3 +1,4 @@
+mod kwin;
 mod notice;
 mod pads;
 mod shortcut;
@@ -10,6 +11,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, LazyLock};
 
+pub use kwin::{is_kde_wayland, kwin_outputs, place_windows_on, stop_placing_windows};
 use nix::unistd::{AccessFlags, access, getuid};
 pub use tray::{refresh_tray, spawn_tray};
 

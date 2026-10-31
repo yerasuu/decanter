@@ -174,6 +174,26 @@ impl Lifecycle {
     }
 }
 
+/// The main window at start. In a KDE Wayland session KWin's placement
+/// script is loaded first, so it already covers that window.
+pub fn show_first_window(cx: &mut App) {
+    let compositor = cx.compositor_name();
+    if !crate::platform::is_kde_wayland(compositor) {
+        show_main_window(cx);
+        return;
+    }
+    let output = crate::core::db()
+        .and_then(|db| db.window_output().map_err(crate::core::StoreError::Query))
+        .inspect_err(|err| tracing::warn!(error = %err, "failed to read window_output setting"))
+        .ok()
+        .flatten();
+    cx.spawn(async move |cx| {
+        crate::platform::place_windows_on(compositor, output.as_deref()).await;
+        cx.update(show_main_window);
+    })
+    .detach();
+}
+
 /// Opens the main window, or brings it back to the front if it's open.
 pub fn show_main_window(cx: &mut App) {
     if let Some(main) = cx.global::<Lifecycle>().main

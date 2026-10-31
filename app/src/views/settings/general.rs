@@ -15,6 +15,7 @@ use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
 use super::modio::ModioKeySection;
 use super::nexus::NexusSection;
+use super::window_display::WindowDisplaySection;
 use super::{Tab, column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
@@ -23,7 +24,7 @@ use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, Select, SettingRow, button, language_note, language_select};
+use crate::widgets::{ButtonKind, SettingRow, button, language_note, language_select};
 
 /// Hidden until uploading Galaxy achievements exists; the setting and its code stay.
 const GALAXY_UPLOAD_AVAILABLE: bool = false;
@@ -31,8 +32,6 @@ const GALAXY_UPLOAD_AVAILABLE: bool = false;
 pub struct GeneralTab {
     tab: Tab,
     language: Option<Language>,
-    /// The saved display's uuid; `None` lets the system place windows.
-    window_display: Option<String>,
     close_to_tray: bool,
     close_game_shortcut: bool,
     steam_compat: bool,
@@ -56,6 +55,7 @@ pub struct GeneralTab {
     nexus: Entity<NexusSection>,
     credentials: Entity<CredentialsSection>,
     debug: Entity<DebugSection>,
+    window_display: Entity<WindowDisplaySection>,
 }
 
 enum Install {
@@ -69,7 +69,6 @@ impl GeneralTab {
         let mut this = Self {
             tab,
             language: None,
-            window_display: None,
             close_to_tray: false,
             close_game_shortcut: true,
             steam_compat: true,
@@ -92,6 +91,7 @@ impl GeneralTab {
             nexus: cx.new(NexusSection::new),
             credentials: cx.new(CredentialsSection::new),
             debug: cx.new(DebugSection::new),
+            window_display: cx.new(WindowDisplaySection::new),
         };
         this.reload();
         this
@@ -99,13 +99,6 @@ impl GeneralTab {
 
     fn reload(&mut self) {
         self.language = i18n::saved();
-        self.window_display = crate::core::db()
-            .and_then(|db| db.window_display().map_err(crate::core::StoreError::Query))
-            .inspect_err(
-                |err| tracing::warn!(error = %err, "failed to read window_display setting, defaulting to automatic"),
-            )
-            .ok()
-            .flatten();
         self.close_to_tray = crate::core::db()
             .and_then(|db| db.close_to_tray().map_err(crate::core::StoreError::Query))
             .inspect_err(
@@ -187,18 +180,6 @@ impl GeneralTab {
 
     fn set_language(&mut self, language: Option<Language>, cx: &mut Context<Self>) {
         i18n::set(language, cx);
-        self.reload();
-        cx.notify();
-    }
-
-    fn set_window_display(&mut self, uuid: Option<&str>, cx: &mut Context<Self>) {
-        let saved =
-            crate::core::db().and_then(|db| db.set_window_display(uuid).map_err(crate::core::StoreError::Query));
-        if let Err(err) = saved {
-            tracing::warn!(uuid, error = %err, "failed to save window_display setting");
-            return;
-        }
-        tracing::info!(uuid, "window display setting changed");
         self.reload();
         cx.notify();
     }
@@ -674,51 +655,6 @@ impl GeneralTab {
             }))
     }
 
-    /// One entry per display gpui can name by uuid, numbered in gpui's order,
-    /// plus the saved one while it is unplugged so the picker still shows it.
-    fn window_display_select(&self, cx: &Context<Self>) -> impl IntoElement {
-        const AUTOMATIC: &str = "auto";
-        let primary = cx.primary_display().map(|display| display.id());
-        let displays = cx.displays();
-        let mut options = Vec::with_capacity(displays.len() + 2);
-        options.push((AUTOMATIC.into(), t!("settings.general.window_display.auto").into()));
-        options.extend((1_usize..).zip(&displays).filter_map(|(index, display)| {
-            let uuid = display.uuid().ok()?.to_string();
-            let size = display.bounds().size;
-            let label = t!(
-                if primary == Some(display.id()) {
-                    "settings.general.window_display.primary"
-                } else {
-                    "settings.general.window_display.display"
-                },
-                index = index,
-                width = f32::from(size.width).round(),
-                height = f32::from(size.height).round()
-            );
-            Some((uuid.into(), label.into()))
-        }));
-        if let Some(saved) = &self.window_display
-            && !options.iter().any(|(value, _)| value == saved)
-        {
-            options.push((
-                saved.clone().into(),
-                t!("settings.general.window_display.missing").into(),
-            ));
-        }
-        let entity = cx.entity();
-        field_row().child(
-            Select::new(
-                "window-display",
-                options,
-                self.window_display.as_deref().unwrap_or(AUTOMATIC),
-            )
-            .on_change(move |value, _, cx| {
-                let uuid = (value != AUTOMATIC).then_some(value.as_ref());
-                entity.update(cx, |this, cx| this.set_window_display(uuid, cx));
-            }),
-        )
-    }
-
     fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
         field_row().child(language_select(self.language, move |language, _, cx| {
@@ -763,12 +699,7 @@ impl Render for GeneralTab {
                 .child(section("language", self.language_select(cx)))
                 .children(language_note(self.language).map(|note| note.mb(px(12.)).max_w(px(520.))))
                 .child(theme::h2(t!("settings.general.window_display.title")))
-                .child(section("window-display-section", self.window_display_select(cx)))
-                .child(theme::muted(if cx.compositor_name() == "Wayland" {
-                    t!("settings.general.window_display.note_wayland")
-                } else {
-                    t!("settings.general.window_display.note")
-                }))
+                .child(section("window-display-section", self.window_display.clone()))
                 .child(theme::h2(t!("settings.general.close.title")))
                 .child(section(
                     "close-to-tray-section",

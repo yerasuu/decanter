@@ -15,6 +15,10 @@ settings.general.window_display.primary: 'Display %{index}: %{width} × %{height
 settings.general.window_display.missing: Saved display (not connected)
 settings.general.window_display.note: Applies to the next window that opens, or from the next start of Decanter.
 settings.general.window_display.note_wayland: On Wayland the compositor decides which display each window opens on, so this option has no effect there.
+settings.general.window_display.kde_display: 'Display %{index}: %{width} × %{height} (%{name})'
+settings.general.window_display.kde_primary: 'Display %{index}: %{width} × %{height} (%{name}, primary)'
+settings.general.window_display.note_kde: 'Applied through KDE: Decanter''s windows move to that display, and a window that opens may show on the default display for a moment before moving.'
+settings.general.window_display.note_wayland_rules: To choose it, use your compositor's window rules for the app_id “decanter”.
 settings.general.close.title: When closing the window
 settings.general.close.to_tray: Keep Decanter running in the tray instead of quitting
 settings.general.close.restart_hint: Decanter has to be restarted for the change to take effect.

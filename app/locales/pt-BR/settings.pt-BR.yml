@@ -15,6 +15,10 @@ settings.general.window_display.primary: 'Tela %{index}: %{width} × %{height} (
 settings.general.window_display.missing: Tela salva (não conectada)
 settings.general.window_display.note: Vale para a próxima janela aberta ou a partir da próxima inicialização do Decanter.
 settings.general.window_display.note_wayland: No Wayland, é o compositor que decide em qual tela cada janela abre, então esta opção não tem efeito lá.
+settings.general.window_display.kde_display: 'Tela %{index}: %{width} × %{height} (%{name})'
+settings.general.window_display.kde_primary: 'Tela %{index}: %{width} × %{height} (%{name}, principal)'
+settings.general.window_display.note_kde: 'Aplicado pelo KDE: as janelas do Decanter passam para essa tela, e uma janela ao abrir pode aparecer por um instante na tela padrão antes de ser movida.'
+settings.general.window_display.note_wayland_rules: Para escolher, use as regras de janela do seu compositor para o app_id “decanter”.
 settings.general.close.title: Ao fechar a janela
 settings.general.close.to_tray: Manter o Decanter em execução na bandeja do sistema em vez de sair
 settings.general.close.restart_hint: É preciso reiniciar o Decanter para a alteração ter efeito.

@@ -17,6 +17,7 @@ mod game_tools;
 mod general;
 mod modio;
 mod nexus;
+mod window_display;
 
 use std::borrow::Cow;
 

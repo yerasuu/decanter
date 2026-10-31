@@ -11,6 +11,20 @@ pub async fn status_notifier_host() -> bool {
     true
 }
 
+/// gpui places windows on the chosen display itself here (see
+/// `views::chrome::window_options`); KWin is a Linux matter.
+pub const fn is_kde_wayland(_compositor: &str) -> bool {
+    false
+}
+
+pub async fn kwin_outputs(_compositor: &str) -> Option<Vec<super::KwinOutput>> {
+    None
+}
+
+pub async fn place_windows_on(_compositor: &str, _output: Option<&str>) {}
+
+pub async fn stop_placing_windows() {}
+
 /// Only the owner's mode bits are checked, without `access(2)`: decanter
 /// never rewrites itself here, so nothing finer depends on it.
 ///

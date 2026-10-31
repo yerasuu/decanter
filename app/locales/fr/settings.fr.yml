@@ -15,6 +15,10 @@ settings.general.window_display.primary: 'Écran %{index} : %{width} × %{height
 settings.general.window_display.missing: Écran enregistré (non connecté)
 settings.general.window_display.note: S'applique à la prochaine fenêtre ouverte, ou dès le prochain démarrage de Decanter.
 settings.general.window_display.note_wayland: Sous Wayland, c'est le compositeur qui décide sur quel écran s'ouvre chaque fenêtre ; cette option n'y a donc aucun effet.
+settings.general.window_display.kde_display: 'Écran %{index} : %{width} × %{height} (%{name})'
+settings.general.window_display.kde_primary: 'Écran %{index} : %{width} × %{height} (%{name}, principal)'
+settings.general.window_display.note_kde: 'Appliqué via KDE : les fenêtres de Decanter passent sur cet écran, et une fenêtre qui s''ouvre peut apparaître un instant sur l''écran par défaut avant d''y être déplacée.'
+settings.general.window_display.note_wayland_rules: Pour le choisir, utilise les règles de fenêtre de ton compositeur pour l'app_id « decanter ».
 settings.general.close.title: À la fermeture de la fenêtre
 settings.general.close.to_tray: Laisser Decanter actif dans la zone de notification au lieu de quitter
 settings.general.close.restart_hint: Decanter doit être redémarré pour que le changement prenne effet.

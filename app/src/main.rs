@@ -216,11 +216,12 @@ fn main() {
             if close_to_tray && capabilities::Caps::get(cx).is_offered(Feature::Tray) {
                 tray::spawn(cx);
             }
-            views::show_main_window(cx);
+            views::show_first_window(cx);
         });
 
     state::gog_library::shut_down_fetch_loops(&runtime);
     drop(tokio_context);
+    runtime.block_on(platform::stop_placing_windows());
     // Dropping the runtime blocks until outstanding `spawn_blocking` work
     // finishes — the reason quitting goes through here rather than
     // `std::process::exit` (see `launch::exit_with_games_on_signal`).
