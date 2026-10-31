@@ -3,12 +3,12 @@
 //! surfaces. Shared by the main window and the properties window.
 
 use std::rc::Rc;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Once};
 
 use gpui::{
-    App, CursorStyle, Div, Image, ImageFormat, MouseButton, ObjectFit, Pixels, ResizeEdge, SharedString, Size,
-    Stateful, Window, WindowBounds, WindowControlArea, WindowDecorations, WindowOptions, div, img, prelude::*, px, rgb,
-    size,
+    App, CursorStyle, DisplayId, Div, Image, ImageFormat, MouseButton, ObjectFit, Pixels, ResizeEdge, SharedString,
+    Size, Stateful, Window, WindowBounds, WindowControlArea, WindowDecorations, WindowOptions, div, img, prelude::*,
+    px, rgb, size,
 };
 use rust_i18n::t;
 
@@ -17,7 +17,8 @@ use crate::theme;
 use crate::widgets::tooltip;
 
 /// Options shared by every window: client-drawn decorations, since the
-/// topbar draws its own controls, and the given minimum size.
+/// topbar draws its own controls, the given minimum size, and the display
+/// picked in Ajustes > General.
 pub fn window_options(
     title: &str,
     width: f32,
@@ -26,9 +27,11 @@ pub fn window_options(
     min_height: f32,
     cx: &App,
 ) -> WindowOptions {
-    let bounds = gpui::Bounds::centered(None, fitted(size(px(width), px(height)), cx), cx);
+    let display_id = chosen_display(cx);
+    let bounds = gpui::Bounds::centered(display_id, fitted(size(px(width), px(height)), cx), cx);
     crate::platform::with_window_icon(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        display_id,
         titlebar: Some(gpui::TitlebarOptions {
             title: Some(title.to_owned().into()),
             appears_transparent: NATIVE_FRAME_CONTROLS,
@@ -52,6 +55,40 @@ fn fitted(wanted: Size<Pixels>, cx: &App) -> Size<Pixels> {
     cx.displays()
         .iter()
         .fold(wanted, |fit, display| fit.min(&display.bounds().size))
+}
+
+/// The connected display whose gpui uuid is the one saved, or `None` for
+/// the system's own placement when nothing is saved or that display is
+/// unplugged.
+fn chosen_display(cx: &App) -> Option<DisplayId> {
+    static FALLBACK_LOGGED: Once = Once::new();
+    let saved = crate::core::db()
+        .and_then(|db| db.window_display().map_err(crate::core::StoreError::Query))
+        .inspect_err(|err| tracing::warn!(error = %err, "failed to read window_display setting"))
+        .ok()
+        .flatten();
+    let Some(saved) = saved else {
+        FALLBACK_LOGGED.call_once(|| tracing::info!(fallback = "system", "no window display chosen"));
+        return None;
+    };
+    let wanted = uuid::Uuid::parse_str(&saved)
+        .inspect_err(|err| tracing::warn!(uuid = saved, %err, "window_display setting is not a uuid"))
+        .ok()?;
+    let found = cx
+        .displays()
+        .into_iter()
+        .find(|display| display.uuid().is_ok_and(|uuid| uuid == wanted))
+        .map(|display| display.id());
+    if found.is_none() {
+        FALLBACK_LOGGED.call_once(|| {
+            tracing::info!(
+                uuid = saved,
+                fallback = "system",
+                "chosen window display is not connected"
+            );
+        });
+    }
+    found
 }
 
 /// Starts the move a native title bar would start on mousedown.

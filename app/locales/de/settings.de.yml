@@ -8,6 +8,13 @@ settings.tabs.advanced: "Erweitert"
 settings.storage_error: 'Fehler beim Öffnen des Speichers: %{error}'
 settings.general.language.title: Sprache
 settings.general.language.system: Systemstandard
+settings.general.window_display.title: Bildschirm für Fenster
+settings.general.window_display.auto: Automatisch (das System entscheidet)
+settings.general.window_display.display: 'Bildschirm %{index}: %{width} × %{height}'
+settings.general.window_display.primary: 'Bildschirm %{index}: %{width} × %{height} (primär)'
+settings.general.window_display.missing: Gespeicherter Bildschirm (nicht verbunden)
+settings.general.window_display.note: Gilt für das nächste Fenster, das sich öffnet, oder ab dem nächsten Start von Decanter.
+settings.general.window_display.note_wayland: Unter Wayland entscheidet der Compositor, auf welchem Bildschirm sich jedes Fenster öffnet, daher hat diese Option dort keine Wirkung.
 settings.general.close.title: Beim Schließen des Fensters
 settings.general.close.to_tray: Decanter im Tray weiterlaufen lassen, statt zu beenden
 settings.general.close.restart_hint: Decanter muss neu gestartet werden, damit die Änderung wirkt.

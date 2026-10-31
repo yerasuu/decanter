@@ -8,6 +8,13 @@ settings.tabs.advanced: "Advanced"
 settings.storage_error: 'Error opening storage: %{error}'
 settings.general.language.title: Language
 settings.general.language.system: System default
+settings.general.window_display.title: Window display
+settings.general.window_display.auto: Automatic (the system decides)
+settings.general.window_display.display: 'Display %{index}: %{width} × %{height}'
+settings.general.window_display.primary: 'Display %{index}: %{width} × %{height} (primary)'
+settings.general.window_display.missing: Saved display (not connected)
+settings.general.window_display.note: Applies to the next window that opens, or from the next start of Decanter.
+settings.general.window_display.note_wayland: On Wayland the compositor decides which display each window opens on, so this option has no effect there.
 settings.general.close.title: When closing the window
 settings.general.close.to_tray: Keep Decanter running in the tray instead of quitting
 settings.general.close.restart_hint: Decanter has to be restarted for the change to take effect.

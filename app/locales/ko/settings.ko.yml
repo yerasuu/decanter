@@ -8,6 +8,13 @@ settings.tabs.advanced: "고급"
 settings.storage_error: '저장 공간을 여는 중 오류: %{error}'
 settings.general.language.title: 언어
 settings.general.language.system: 시스템 기본값
+settings.general.window_display.title: 창을 열 디스플레이
+settings.general.window_display.auto: 자동(시스템이 결정)
+settings.general.window_display.display: '디스플레이 %{index}: %{width} × %{height}'
+settings.general.window_display.primary: '디스플레이 %{index}: %{width} × %{height} (기본)'
+settings.general.window_display.missing: 저장된 디스플레이(연결되지 않음)
+settings.general.window_display.note: 다음에 열리는 창 또는 다음 Decanter 시작부터 적용됩니다.
+settings.general.window_display.note_wayland: Wayland에서는 각 창이 열릴 디스플레이를 컴포지터가 결정하므로 이 옵션은 효과가 없습니다.
 settings.general.close.title: 창을 닫을 때
 settings.general.close.to_tray: 종료하지 않고 Decanter를 트레이에서 계속 실행
 settings.general.close.restart_hint: 변경 사항을 적용하려면 Decanter를 다시 시작해야 합니다.

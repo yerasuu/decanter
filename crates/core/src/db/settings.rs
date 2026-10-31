@@ -199,6 +199,21 @@ impl Db {
         }
     }
 
+    /// The uuid gpui reports for the display decanter's windows open on, or
+    /// `None` to let the system place them.
+    pub fn window_display(&self) -> Result<Option<String>> {
+        let uuid = self.setting("window_display")?;
+        tracing::debug!(uuid = uuid.as_deref(), "read window_display setting");
+        Ok(uuid)
+    }
+
+    pub fn set_window_display(&self, display: Option<&str>) -> Result<()> {
+        match display {
+            Some(uuid) => self.set_setting("window_display", uuid),
+            None => self.delete_setting("window_display"),
+        }
+    }
+
     /// Arbitrary key/value storage — one-off flags and view state that
     /// don't warrant a table of their own (see [`crate::adopt`] and
     /// [`crate::profiles`] for two callers).

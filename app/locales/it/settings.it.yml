@@ -8,6 +8,13 @@ settings.tabs.advanced: "Avanzate"
 settings.storage_error: "Errore nell'apertura dell'archiviazione: %{error}"
 settings.general.language.title: Lingua
 settings.general.language.system: Predefinita del sistema
+settings.general.window_display.title: Schermo delle finestre
+settings.general.window_display.auto: Automatico (decide il sistema)
+settings.general.window_display.display: 'Schermo %{index}: %{width} × %{height}'
+settings.general.window_display.primary: 'Schermo %{index}: %{width} × %{height} (principale)'
+settings.general.window_display.missing: Schermo salvato (non collegato)
+settings.general.window_display.note: Si applica alla prossima finestra aperta o dal prossimo avvio di Decanter.
+settings.general.window_display.note_wayland: Su Wayland è il compositor a decidere su quale schermo si apre ogni finestra, quindi lì questa opzione non ha effetto.
 settings.general.close.title: Alla chiusura della finestra
 settings.general.close.to_tray: Mantieni Decanter in esecuzione nell'area di notifica invece di uscire
 settings.general.close.restart_hint: Per applicare la modifica Decanter deve essere riavviato.

@@ -8,6 +8,13 @@ settings.tabs.advanced: "Avançado"
 settings.storage_error: 'Erro ao abrir o armazenamento: %{error}'
 settings.general.language.title: Idioma
 settings.general.language.system: Padrão do sistema
+settings.general.window_display.title: Tela das janelas
+settings.general.window_display.auto: Automática (o sistema decide)
+settings.general.window_display.display: 'Tela %{index}: %{width} × %{height}'
+settings.general.window_display.primary: 'Tela %{index}: %{width} × %{height} (principal)'
+settings.general.window_display.missing: Tela salva (não conectada)
+settings.general.window_display.note: Vale para a próxima janela aberta ou a partir da próxima inicialização do Decanter.
+settings.general.window_display.note_wayland: No Wayland, é o compositor que decide em qual tela cada janela abre, então esta opção não tem efeito lá.
 settings.general.close.title: Ao fechar a janela
 settings.general.close.to_tray: Manter o Decanter em execução na bandeja do sistema em vez de sair
 settings.general.close.restart_hint: É preciso reiniciar o Decanter para a alteração ter efeito.
