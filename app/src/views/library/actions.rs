@@ -79,6 +79,9 @@ pub fn open_in_file_manager(path: &std::path::Path) {
 pub fn launch_game(account_id: String, game: InstalledGame, cx: &mut App) {
     let background = AppState::get(cx).background.clone();
     cx.spawn(async move |cx| {
+        // Re-read because the pane's copy predates a change made in the properties (the program picked,
+        // say), which the manifest already holds.
+        let game = crate::core::installed_game(&account_id, &game.game_id).unwrap_or(game);
         let product_id = game.game_id.clone();
         let storefront = game.storefront;
         tracing::info!(account_id, product_id, "launching game");

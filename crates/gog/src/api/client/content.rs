@@ -90,6 +90,12 @@ pub struct BuildMeta {
     pub client_id: Option<String>,
     #[serde(rename = "clientSecret", default)]
     pub client_secret: Option<String>,
+    /// The redistributables this build needs (`MSVC2015_x64`, `DirectX`), as ids of GOG's
+    /// dependency repository ([`Sessionless::dependency_repository`]). Read leniently, since a
+    /// build that lists none, or lists them in a shape this misreads, still installs; an id that
+    /// is not [`is_dependency_id`] is left out.
+    #[serde(default, deserialize_with = "lenient_dependencies")]
+    pub dependencies: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +137,35 @@ where
         ),
         _ => None,
     })
+}
+
+fn lenient_dependencies<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let serde_json::Value::Array(ids) = serde_json::Value::deserialize(deserializer)? else {
+        return Ok(Vec::new());
+    };
+    Ok(ids
+        .into_iter()
+        .filter_map(|id| match id {
+            serde_json::Value::String(id) if is_dependency_id(&id) => Some(id),
+            other => {
+                tracing::warn!(id = %other, "build manifest lists a dependency id that is not one, skipped");
+                None
+            }
+        })
+        .collect())
+}
+
+/// A dependency id as GOG's repository names them: ASCII letters, digits, `_`, `-` and `.`,
+/// so it can key a record and name a log line without escaping.
+pub(super) fn is_dependency_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-.".contains(&byte))
 }
 
 #[derive(Deserialize)]
@@ -180,8 +215,8 @@ pub struct DepotChunk {
 }
 
 #[derive(Deserialize)]
-struct SecureLinkAnswer {
-    urls: Vec<SecureLinkEntry>,
+pub(super) struct SecureLinkAnswer {
+    pub(super) urls: Vec<SecureLinkEntry>,
 }
 
 /// One CDN endpoint chunk URLs can be built from.
@@ -194,6 +229,16 @@ pub struct SecureLinkEntry {
 }
 
 impl SecureLinkEntry {
+    /// The download URL of one redistributable chunk, mirroring gogdl's `_get_download_url_v2` for
+    /// the `redist` product: the galaxy-sharded hash goes onto the endpoint's plain `url`, since
+    /// the `url_format` template of a dependency link points nowhere (404).
+    #[inline]
+    #[must_use]
+    pub fn redist_chunk_url(&self, compressed_md5: &str) -> Option<String> {
+        let base = self.url.as_deref()?;
+        Some(format!("{base}/{}", galaxy_path(compressed_md5)))
+    }
+
     /// The download URL of one chunk, mirroring gogdl's `_get_download_url_v2`: append the
     /// chunk's compressed-bytes hash (galaxy-sharded) onto the endpoint's base path, then
     /// substitute the resulting parameters into its `{placeholder}` URL template.
@@ -284,15 +329,18 @@ impl Sessionless {
     /// others when the CDN cannot be asked.
     #[inline]
     pub async fn depot_files(&self, manifest: &str) -> Result<Vec<DepotFile>, Error> {
-        let is_manifest_id = !manifest.is_empty()
-            && manifest.len() <= MAX_MANIFEST_ID_LEN
-            && manifest.bytes().all(|byte| byte.is_ascii_hexdigit() || byte == b'/');
-        if !is_manifest_id {
+        if !is_manifest_id(manifest) {
             return Err(Error::InvalidInput {
                 what: "depot manifest id",
             });
         }
-        let url = Host::Cdn.url(&format!("/content-system/v2/meta/{}", galaxy_path(manifest)));
+        self.manifest_files("/content-system/v2/meta", manifest).await
+    }
+
+    /// Every file of the depot manifest `manifest` (already checked to be a manifest id) under
+    /// `base` on the public CDN.
+    pub(super) async fn manifest_files(&self, base: &str, manifest: &str) -> Result<Vec<DepotFile>, Error> {
+        let url = Host::Cdn.url(&format!("{base}/{}", galaxy_path(manifest)));
         let compressed = self
             .get_bytes(&DEPOT_MANIFEST, &url, Host::Cdn.name(), &[], None)
             .await?;
@@ -346,6 +394,13 @@ impl Sessionless {
     }
 }
 
+/// A manifest id: hex digits, optionally already split by `/` into its CDN path.
+pub(super) fn is_manifest_id(manifest: &str) -> bool {
+    !manifest.is_empty()
+        && manifest.len() <= MAX_MANIFEST_ID_LEN
+        && manifest.bytes().all(|byte| byte.is_ascii_hexdigit() || byte == b'/')
+}
+
 /// The content system's name for `system`.
 const fn os_segment(system: GameSystem) -> &'static str {
     match system {
@@ -367,7 +422,7 @@ fn galaxy_path(hash: &str) -> String {
 /// credentials on `gog.com` or under it, or on one of GOG's `gog-cdn-*` hosts at `gcdn.co`
 /// (Cyberpunk 2077's build links point there). Only `gog.com` hosts may be sent the access
 /// token; the CDN's manifests are public.
-fn manifest_host(link: &str) -> Option<(String, bool)> {
+pub(super) fn manifest_host(link: &str) -> Option<(String, bool)> {
     let url = url::Url::parse(link).ok()?;
     let host = url.host_str()?;
     let is_plain =
@@ -379,7 +434,7 @@ fn manifest_host(link: &str) -> Option<(String, bool)> {
 
 /// The scheme, host and port of `link` for an error message: never the path or query, which carry
 /// ids and signed tokens.
-fn describe_link(link: &str) -> String {
+pub(super) fn describe_link(link: &str) -> String {
     match url::Url::parse(link) {
         Ok(url) => format!(
             "scheme {}, host {}{}",
@@ -392,7 +447,7 @@ fn describe_link(link: &str) -> String {
 }
 
 /// Reads zlib'd `compressed` as `T`, refused once it inflates past `max` bytes.
-fn inflated<T>(call: &Call, compressed: &[u8], max: usize) -> Result<T, Error>
+pub(super) fn inflated<T>(call: &Call, compressed: &[u8], max: usize) -> Result<T, Error>
 where
     T: DeserializeOwned,
 {

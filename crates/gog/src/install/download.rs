@@ -198,7 +198,7 @@ pub(super) type ProgressUpdate = (usize, String, u64);
 /// practice — hangs forever instead of erroring. `read_timeout` bounds
 /// idle time between reads, so a large chunk still actively transferring
 /// isn't penalized.
-fn client() -> anyhow::Result<&'static reqwest::Client> {
+pub(super) fn client() -> anyhow::Result<&'static reqwest::Client> {
     static CLIENT: std::sync::OnceLock<Option<reqwest::Client>> = std::sync::OnceLock::new();
     CLIENT
         .get_or_init(|| {
@@ -491,7 +491,11 @@ async fn commit(
 }
 
 /// One chunk, retried for up to [`RETRY_WINDOW`], returned decompressed.
-async fn fetch_chunk(client: &reqwest::Client, chunk: &ChunkSource, cancel: &Cancel) -> anyhow::Result<Vec<u8>> {
+pub(super) async fn fetch_chunk(
+    client: &reqwest::Client,
+    chunk: &ChunkSource,
+    cancel: &Cancel,
+) -> anyhow::Result<Vec<u8>> {
     let mut failing_since = None;
     let mut backoff = FIRST_BACKOFF;
     loop {

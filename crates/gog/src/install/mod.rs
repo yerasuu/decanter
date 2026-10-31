@@ -14,7 +14,8 @@
 //! [`tracking`] is the process-wide bookkeeping [`cancel`] and [`pause`] need,
 //! [`queue`] the order downloads take their turn in,
 //! [`program`] guesses which file launches the game once it's all in
-//! place, and [`rate`] smooths the transfer rate reported back.
+//! place, [`redist`] fetches the redistributables the build names, and
+//! [`rate`] smooths the transfer rate reported back.
 
 use std::path::Path;
 
@@ -29,6 +30,7 @@ mod plan;
 mod program;
 mod queue;
 mod rate;
+mod redist;
 mod staging;
 mod tracking;
 mod unfinished;
@@ -40,7 +42,9 @@ pub use language::{
     LanguageCleanup, UnusedFile, add_language, offered_languages, remove_unused_languages, unused_language_files,
     use_language,
 };
+pub use program::{PlayTask, play_tasks};
 pub use queue::{DownloadQueue, QueueMove, download_queue, move_queued, queue_changed, restore_queue};
+pub use redist::{RedistFailure, run_redist};
 pub use tracking::{cancel, download_slot_busy, pause, pause_for_quit};
 pub use unfinished::{
     NothingToResume, StrayStaging, UnfinishedDownload, discard, discard_stray, downloading_dir, resume, resume_repair,
@@ -560,18 +564,23 @@ async fn install_into(
         return Ok(());
     }
 
-    let launch_executable = program::find_launch_executable(
-        &destination_root,
-        &relative_paths,
-        &header.install_directory,
-        product_id,
-        plan.system,
-    );
-
     // A reinstall (an update, a branch switch) must not drop what only
     // lives on the previous record: the DLC already sitting in the
-    // directory, which Proton build was pinned, when it was last played.
+    // directory, which Proton build was pinned, when it was last played,
+    // which of the game's programs it starts.
     let previous = library.read_manifest(account_id, Storefront::Gog, product_id);
+    let launch_executable = program::kept_or_found(
+        previous.as_ref().and_then(|game| game.launch_executable.as_deref()),
+        &destination_root,
+        &relative_paths,
+        program::find_launch_executable(
+            &destination_root,
+            &relative_paths,
+            &header.install_directory,
+            product_id,
+            plan.system,
+        ),
+    );
     let dlcs = previous.as_ref().map(|game| game.dlcs.clone()).unwrap_or_default();
     let proton = previous.as_ref().and_then(|game| game.proton.clone());
     let last_played = previous.as_ref().and_then(|game| game.last_played);
@@ -606,9 +615,31 @@ async fn install_into(
             .context("writing the appmanifest")
     );
 
+    if redist::wanted(plan.system) {
+        fetch_redist(library, account_id, product_id, &plan.dependencies).await;
+    }
     finish(journal, product_id).await;
     tracing::info!(product_id, file_count, bytes = downloaded, "install completed");
     Ok(())
+}
+
+/// [`redist::fetch`] into the library folder the game was recorded in,
+/// while the download's turn is still held, so two installs never write
+/// the shared redist folder at once.
+async fn fetch_redist(library: &Library, account_id: &str, product_id: &str, dependencies: &[String]) {
+    let Some(root) = library.root_of(account_id, product_id) else {
+        tracing::warn!(
+            product_id,
+            "no library folder holds the game just recorded, redistributables not fetched"
+        );
+        return;
+    };
+    match live_token(account_id).await {
+        Ok(token) => redist::fetch(&root, token.expose(), product_id, dependencies).await,
+        Err(err) => {
+            tracing::warn!(product_id, error = %format_args!("{err:#}"), "gog session refresh failed, redistributables not fetched");
+        }
+    }
 }
 
 /// The room a download still needs on `staging`'s disk against what it has:

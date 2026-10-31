@@ -7,7 +7,7 @@ use decanter_core::GameSystem;
 use decanter_runtime::sanitize_relative_path;
 
 use super::download::{ChunkSource, PlannedDownload};
-use crate::api::client::{DepotFile, Sessionless};
+use crate::api::client::{DepotChunk, DepotFile, SecureLinkEntry, Sessionless};
 use crate::language::Resolved;
 
 /// A file to fetch and where it goes, resolved from the depot manifest.
@@ -32,6 +32,8 @@ pub(super) struct Plan {
     pub(super) files: Vec<PlannedFile>,
     /// The language whose depots were taken; `None` when every depot was.
     pub(super) language: Option<Resolved>,
+    /// The ids of the redistributables the build names.
+    pub(super) dependencies: Vec<String>,
 }
 
 /// Which of a product's depots a plan takes, by language.
@@ -63,6 +65,7 @@ pub(super) struct DepotFiles {
     pub(super) build_id: String,
     pub(super) files: Vec<DepotFile>,
     pub(super) language: Option<Resolved>,
+    pub(super) dependencies: Vec<String>,
 }
 
 impl Plan {
@@ -112,6 +115,7 @@ pub(super) async fn plan(
         build_id: version,
         files: depot_files,
         language,
+        dependencies,
     } = crate::achv_try!(
         resolve_depot_files(
             &http,
@@ -147,36 +151,13 @@ pub(super) async fn plan(
         .into_owned();
 
         let mut chunks = Vec::with_capacity(depot_file.chunks.len());
-        for chunk in depot_file.chunks {
-            // Skipping a chunk would write a file that's silently short —
-            // an install that "succeeded" but produced a corrupt game. Fail
-            // the whole thing instead.
-            let Some(url) = secure_link
-                .iter()
-                .find_map(|entry| entry.chunk_url(&chunk.compressed_md5))
-            else {
-                tracing::error!(relative_path, "no usable gog cdn endpoint for a chunk, aborting plan");
-                anyhow::bail!("no usable GOG CDN endpoint for a chunk of {relative_path}");
-            };
-            let url =
-                crate::achv_try!(url::Url::parse(&url).with_context(|| format!("bad chunk URL for {relative_path}")));
-            // Checked here, where the manifest comes in, so the download
-            // compares fixed bytes and sizes buffers it can trust.
-            let (Some(compressed_md5), Some(md5)) = (parse_md5(&chunk.compressed_md5), parse_md5(&chunk.md5)) else {
-                anyhow::bail!("malformed chunk checksum in the GOG manifest for {relative_path}");
-            };
-            let chunk_size = crate::achv_try!(
-                usize::try_from(chunk.size)
-                    .ok()
-                    .filter(|&chunk_size| chunk_size <= MAX_CHUNK_SIZE)
-                    .with_context(|| format!("implausible chunk size {} for {relative_path}", chunk.size))
-            );
-            chunks.push(ChunkSource {
-                url,
-                compressed_md5,
-                md5,
-                size: chunk_size,
-            });
+        for chunk in &depot_file.chunks {
+            chunks.push(crate::achv_try!(chunk_source(
+                &secure_link,
+                SecureLinkEntry::chunk_url,
+                chunk,
+                &relative_path
+            )));
         }
 
         let is_executable = system == GameSystem::MacOs && depot_file.flags.iter().any(|flag| flag == "executable");
@@ -194,6 +175,44 @@ pub(super) async fn plan(
         install_directory,
         files,
         language,
+        dependencies,
+    })
+}
+
+/// Where one chunk of `relative_path` is fetched from and what it must hash to.
+///
+/// Skipping a chunk would write a file that's silently short — an install that "succeeded" but
+/// produced a corrupt game — so a chunk with no endpoint fails the whole plan instead.
+pub(super) fn chunk_source(
+    secure_link: &[SecureLinkEntry],
+    url_of: fn(&SecureLinkEntry, &str) -> Option<String>,
+    chunk: &DepotChunk,
+    relative_path: &str,
+) -> anyhow::Result<ChunkSource> {
+    let Some(url) = secure_link
+        .iter()
+        .find_map(|entry| url_of(entry, &chunk.compressed_md5))
+    else {
+        tracing::error!(relative_path, "no usable gog cdn endpoint for a chunk, aborting plan");
+        anyhow::bail!("no usable GOG CDN endpoint for a chunk of {relative_path}");
+    };
+    let url = crate::achv_try!(url::Url::parse(&url).with_context(|| format!("bad chunk URL for {relative_path}")));
+    // Checked here, where the manifest comes in, so the download
+    // compares fixed bytes and sizes buffers it can trust.
+    let (Some(compressed_md5), Some(md5)) = (parse_md5(&chunk.compressed_md5), parse_md5(&chunk.md5)) else {
+        anyhow::bail!("malformed chunk checksum in the GOG manifest for {relative_path}");
+    };
+    let size = crate::achv_try!(
+        usize::try_from(chunk.size)
+            .ok()
+            .filter(|&chunk_size| chunk_size <= MAX_CHUNK_SIZE)
+            .with_context(|| format!("implausible chunk size {} for {relative_path}", chunk.size))
+    );
+    Ok(ChunkSource {
+        url,
+        compressed_md5,
+        md5,
+        size,
     })
 }
 
@@ -325,6 +344,7 @@ pub(super) async fn resolve_depot_files(
         build_id: build.build_id.clone(),
         files: unique,
         language,
+        dependencies: meta.dependencies,
     })
 }
 

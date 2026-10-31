@@ -162,6 +162,9 @@ library.properties.general.build: 빌드
 library.properties.general.size: 크기
 library.properties.general.played: 플레이 시간
 library.properties.general.open_folder: 폴더 열기
+library.properties.general.executable: '플레이로 시작할 프로그램'
+library.properties.general.primary: '%{name} (기본)'
+library.redist.failed: '재배포 패키지 %{name}을(를) 프리픽스에 설치하지 못했습니다: %{reason}'
 library.properties.updates.check: 업데이트 확인
 library.properties.updates.checking: 확인 중...
 library.properties.updates.update: 지금 업데이트

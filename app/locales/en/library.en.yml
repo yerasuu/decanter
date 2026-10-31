@@ -165,6 +165,9 @@ library.properties.general.build: Build
 library.properties.general.size: Size
 library.properties.general.played: Played
 library.properties.general.open_folder: Open folder
+library.properties.general.executable: Program PLAY starts
+library.properties.general.primary: '%{name} (primary)'
+library.redist.failed: 'Redistributable %{name} not installed in the prefix: %{reason}'
 library.properties.updates.check: Check for updates
 library.properties.updates.checking: Checking...
 library.properties.updates.update: Update now

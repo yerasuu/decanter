@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
 use decanter_runtime::Launch;
+use rust_i18n::t;
 
 use super::Planned;
 use crate::i18n::Text;
@@ -44,6 +45,29 @@ pub(super) fn plan(account_id: &str, game: &InstalledGame, executable: PathBuf) 
         mangohud,
         is_raven: false,
     })
+}
+
+/// Installs in `launch`'s prefix the redistributables `game`'s build named
+/// that haven't run there yet; what failed, as lines for the run's log.
+pub(super) async fn install_redist(account_id: &str, game: &InstalledGame, launch: &Launch) -> Vec<String> {
+    let Some(prefix) = launch.prefix.as_ref() else {
+        return Vec::new();
+    };
+    let root = match crate::core::library_for_account(account_id) {
+        Ok(library) => library.root_of(account_id, &game.game_id),
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "no library to find the redistributables in, starting without them");
+            None
+        }
+    };
+    let Some(root) = root else {
+        return Vec::new();
+    };
+    decanter_gog::run_redist(&root, &game.game_id, prefix, &launch.proton)
+        .await
+        .into_iter()
+        .map(|failure| t!("library.redist.failed", name = failure.name, reason = failure.reason).into_owned())
+        .collect()
 }
 
 /// `launch` under the umu id protonfixes looks `game` up by.

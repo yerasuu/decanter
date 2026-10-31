@@ -162,6 +162,9 @@ library.properties.general.build: Build
 library.properties.general.size: Tamanho
 library.properties.general.played: Tempo de jogo
 library.properties.general.open_folder: Abrir pasta
+library.properties.general.executable: Programa que JOGAR inicia
+library.properties.general.primary: '%{name} (principal)'
+library.redist.failed: 'Redistribuível %{name} não instalado no prefixo: %{reason}'
 library.properties.updates.check: Verificar atualizações
 library.properties.updates.checking: Verificando...
 library.properties.updates.update: Atualizar agora

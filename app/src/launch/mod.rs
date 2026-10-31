@@ -237,7 +237,16 @@ pub async fn start(
     let cloud_save_checkpoint = sync_cloud_saves_before_launch(&account_id, saves_game).await;
     let achievement_log = planned.achievement_log.take();
 
-    let Some((job, events, log)) = spawn(&account_id, &game, planned, &background, cx).await else {
+    // Shown as running while the redistributables install, which can take a
+    // minute, so the game reads as starting and can be stopped.
+    let notes = if kind == Kind::Umu && game.storefront == decanter_core::Storefront::Gog {
+        set_running(&background, &game.game_id, true, cx);
+        umu::install_redist(&account_id, &game, &planned.launch).await
+    } else {
+        Vec::new()
+    };
+    let Some((job, events, log)) = spawn(&account_id, &game, planned, notes, &background, cx).await else {
+        set_running(&background, &game.game_id, false, cx);
         return None;
     };
 
@@ -271,12 +280,13 @@ pub async fn start(
 }
 
 /// Starts `launch` with its output followed into the game's run, which the
-/// library's Registro tab shows; `None` when it never started, with the
-/// reason in that run.
+/// library's Registro tab shows, `notes` first; `None` when it never
+/// started, with the reason in that run.
 async fn spawn(
     account_id: &str,
     game: &InstalledGame,
     mut planned: Planned,
+    notes: Vec<String>,
     background: &Entity<Background>,
     cx: &mut AsyncApp,
 ) -> Option<(Entity<Job>, UnboundedReceiver<Event>, Option<RunLog>)> {
@@ -331,8 +341,8 @@ async fn spawn(
         }
     });
     job.log_file = log.as_ref().map(|log| log.path().to_owned());
-    if let Some(error) = log_error {
-        job.push(Event::Line(error));
+    for line in notes.into_iter().chain(log_error) {
+        job.push(Event::Line(line));
     }
     let job = cx.new(|_| job);
     background.update(cx, |background, cx| {

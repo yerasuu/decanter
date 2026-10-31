@@ -16,6 +16,9 @@ implemented.
   bundles, toolchain with nix-portable, settings, mods, profiles, layouts,
   run logs).
 - Per-game desktop entries and icons: `<root>/decanter/{desktop,icons}`.
+- GOG redistributables a build names: `<root>/decanter/redist/` (the depots' `__redist/...`
+  files and `redist.json`, what was fetched and which game needs which), in the folder holding
+  the game; what already ran in a prefix is `<prefix>/decanter-redist.json`.
 - MangoHud's performance logs: `<root>/decanter/logs/mangohud/` (its
   `output_folder`); the per-game tool choices are rows of the database's
   `game_options`.

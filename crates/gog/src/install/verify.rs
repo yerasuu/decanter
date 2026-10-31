@@ -269,7 +269,7 @@ fn verification_target(path: &Path) -> Cow<'_, Path> {
 /// Reads `path` in the manifest's own chunk boundaries and hashes each
 /// slice. `Ok(false)` for a hash mismatch, `Err` for a file that couldn't
 /// even be read (missing, wrong size, permissions).
-fn verify_file(path: &Path, chunks: &[DepotChunk]) -> std::io::Result<bool> {
+pub(super) fn verify_file(path: &Path, chunks: &[DepotChunk]) -> std::io::Result<bool> {
     use std::io::Read;
     let mut file = crate::achv_try!(std::fs::File::open(path));
     for chunk in chunks {

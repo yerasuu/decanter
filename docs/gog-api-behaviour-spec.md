@@ -398,6 +398,29 @@ never misread as language-specific. A game's `goggame-<id>.info` names a languag
 `Polish` and `["pl-PL"]` on an install that took every depot (kb #1353). That GOG Galaxy rewrites
 both to the language chosen is *(unverified, from that file's shape)*.
 
+## 8b. Content system: dependencies (redistributables)
+
+`crates/gog/src/api/client/dependencies.rs`, as heroic-gogdl reads the same answers (GOG documents
+none of them): [dependencies.py](https://github.com/Heroic-Games-Launcher/heroic-gogdl/blob/main/gogdl/dl/managers/dependencies.py),
+[constants.py](https://github.com/Heroic-Games-Launcher/heroic-gogdl/blob/main/gogdl/constants.py),
+[dl_utils.py](https://github.com/Heroic-Games-Launcher/heroic-gogdl/blob/main/gogdl/dl/dl_utils.py),
+and Heroic's [setup.ts](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/main/src/backend/storeManagers/gog/setup.ts)
+for how the installers run.
+
+- A build manifest's `dependencies` is an array of ids (`MSVC2015_x64`). Read leniently: absent or not
+  an array is none, and an entry that isn't a plain id (ASCII letters, digits, `_ - .`, at most 64) is
+  dropped and logged.
+- `GET content-system.gog.com/dependencies/repository?generation=2` (bearer) answers
+  `repository_manifest`, a URL to zlib'd JSON whose `depots` list `dependencyId`, `readableName`,
+  `manifest`, `executable {path, arguments}`, `size`, `compressedSize`.
+- A dependency's files: `GET <cdn>/content-system/v2/dependencies/meta/<galaxy path of manifest>`, the
+  same zlib'd depot manifest shape as a game's. Their chunks are signed by
+  `GET content-system.gog.com/open_link?generation=2&_version=2&path=/dependencies/store/` (bearer, no
+  product), whose `urls` build chunk URLs as `secure_link`'s do.
+- An `executable.path` under `__redist\` runs from the shared folder the depot was fetched into; any
+  other path is fetched into the game's own directory by gogdl and is not run by decanter. An empty
+  path has nothing to run.
+
 ## 9. Sources
 
 - [gogapidocs: Authentication](https://gogapidocs.readthedocs.io/en/latest/auth.html): login page, token

@@ -135,11 +135,126 @@ fn read_info_plist(path: &Path) -> anyhow::Result<plist::Value> {
     plist::Value::from_reader(Cursor::new(contents)).context("parsing it")
 }
 
-/// GOG ships a `goggame-<id>.info` beside the game naming its primary
-/// play task. Present often enough to try first, absent often enough not
-/// to rely on.
-fn find_goggame_primary_executable(install_root: &Path, relative_paths: &[String]) -> Option<String> {
-    let Some(info_path) = relative_paths.iter().find(|path| {
+/// One program a game's `goggame-<id>.info` lists: the game itself, and often a
+/// configuration tool or a launcher beside it.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct PlayTask {
+    /// GOG's name for it (`Configuration tool`), as the info file has it.
+    pub name: String,
+    /// Relative to the install directory, with forward slashes, the shape
+    /// `LaunchExecutable` records.
+    pub path: String,
+    /// The one GOG starts by default.
+    pub is_primary: bool,
+}
+
+/// Far above any real info file, which runs to a few kilobytes.
+const INFO_MAX_BYTES: u64 = 1024 * 1024;
+
+/// The programs `goggame-<product_id>.info` at the root of `install_root`
+/// lists, primary first; empty when there is none or it can't be read,
+/// which is logged.
+#[must_use]
+#[inline]
+pub fn play_tasks(install_root: &Path, product_id: &str) -> Vec<PlayTask> {
+    let name = format!("goggame-{product_id}.info");
+    let found = match std::fs::read_dir(install_root) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .find(|file| file.to_str().is_some_and(|file| file.eq_ignore_ascii_case(&name))),
+        Err(err) => {
+            tracing::warn!(path = %install_root.display(), error = %err, "couldn't list the install directory for its info file");
+            return Vec::new();
+        }
+    };
+    let Some(file) = found else {
+        tracing::debug!(product_id, path = %install_root.display(), "no goggame info file, no play tasks");
+        return Vec::new();
+    };
+    let mut tasks = read_play_tasks(install_root, &file.to_string_lossy());
+    tasks.sort_by_key(|task| !task.is_primary);
+    tasks
+}
+
+/// The `FileTask`s of the info file at `info_path` (relative to
+/// `install_root`), their paths made relative to the install directory.
+/// `URLTask`s (a support page, a forum) launch nothing and are left out; a
+/// task with no type but a path is taken as a file, since the primary task
+/// was always read that way.
+fn read_play_tasks(install_root: &Path, info_path: &str) -> Vec<PlayTask> {
+    let info_file = install_root.join(info_path);
+    let contents = match read_info(&info_file) {
+        Ok(contents) => contents,
+        Err(err) => {
+            tracing::warn!(path = %info_file.display(), error = %format_args!("{err:#}"), "couldn't read goggame info file");
+            return Vec::new();
+        }
+    };
+    let info: serde_json::Value = match serde_json::from_slice(&contents) {
+        Ok(info) => info,
+        Err(err) => {
+            tracing::warn!(path = %info_file.display(), error = %err, "couldn't parse goggame info file");
+            return Vec::new();
+        }
+    };
+    let Some(play_tasks) = info.get("playTasks").and_then(serde_json::Value::as_array) else {
+        return Vec::new();
+    };
+    let root = Path::new(info_path).parent().unwrap_or_else(|| Path::new(""));
+    play_tasks
+        .iter()
+        .filter(|task| task.get("type").and_then(serde_json::Value::as_str) != Some("URLTask"))
+        .filter_map(|task| {
+            let executable = task.get("path").and_then(serde_json::Value::as_str)?;
+            // The path comes from a downloaded file and becomes a program to run: it stays
+            // inside the install directory or the task is dropped.
+            let Some(relative) = super::plan::manifest_relative_path(&root.join(executable).to_string_lossy()) else {
+                tracing::warn!(path = %info_file.display(), executable, "goggame info file names a program outside the install, skipped");
+                return None;
+            };
+            let path = relative.to_string_lossy().replace('\\', "/");
+            let name = task
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map_or_else(|| path.clone(), |name| name.chars().take(MAX_TASK_NAME).collect());
+            Some(PlayTask {
+                name,
+                path,
+                is_primary: task.get("isPrimary").and_then(serde_json::Value::as_bool) == Some(true),
+            })
+        })
+        .collect()
+}
+
+/// A task's name is shown in a selector, never more than a line of it.
+const MAX_TASK_NAME: usize = 120;
+
+/// Read as a regular file only, never through a symlink, and only up to
+/// [`INFO_MAX_BYTES`], since it came with the download.
+fn read_info(path: &Path) -> anyhow::Result<Vec<u8>> {
+    let metadata = symlink_metadata(path).context("reading its metadata")?;
+    ensure!(metadata.is_file(), "not a regular file");
+    ensure!(
+        metadata.len() <= INFO_MAX_BYTES,
+        "{} bytes, over the {INFO_MAX_BYTES}-byte limit",
+        metadata.len()
+    );
+    let mut contents = Vec::new();
+    File::open(path)
+        .context("opening it")?
+        .take(INFO_MAX_BYTES)
+        .read_to_end(&mut contents)
+        .context("reading it")?;
+    Ok(contents)
+}
+
+/// The info file GOG ships beside the game, wherever the depot put it.
+fn info_file(relative_paths: &[String]) -> Option<&String> {
+    relative_paths.iter().find(|path| {
         Path::new(path)
             .file_name()
             .and_then(|name| name.to_str())
@@ -147,40 +262,43 @@ fn find_goggame_primary_executable(install_root: &Path, relative_paths: &[String
                 let name = name.to_ascii_lowercase();
                 name.starts_with("goggame-") && name.ends_with(".info")
             })
-    }) else {
-        return None;
-    };
+    })
+}
 
-    let info_file = install_root.join(info_path);
-    let contents = match std::fs::read(&info_file) {
-        Ok(contents) => contents,
-        Err(err) => {
-            tracing::warn!(path = %info_file.display(), error = %err, "couldn't read goggame info file");
-            return None;
-        }
-    };
-    let info: serde_json::Value = match serde_json::from_slice(&contents) {
-        Ok(info) => info,
-        Err(err) => {
-            tracing::warn!(path = %info_file.display(), error = %err, "couldn't parse goggame info file");
-            return None;
-        }
-    };
-    let Some(play_tasks) = info.get("playTasks").and_then(serde_json::Value::as_array) else {
-        return None;
-    };
-    let Some(primary_task) = play_tasks
-        .iter()
-        .find(|task| task.get("isPrimary").and_then(serde_json::Value::as_bool) == Some(true))
-    else {
-        return None;
-    };
-    let Some(executable) = primary_task.get("path").and_then(serde_json::Value::as_str) else {
-        return None;
-    };
+/// GOG ships a `goggame-<id>.info` beside the game naming its primary
+/// play task. Present often enough to try first, absent often enough not
+/// to rely on.
+fn find_goggame_primary_executable(install_root: &Path, relative_paths: &[String]) -> Option<String> {
+    let info_path = info_file(relative_paths)?;
+    read_play_tasks(install_root, info_path)
+        .into_iter()
+        .find(|task| task.is_primary)
+        .map(|task| task.path)
+}
 
-    let root = Path::new(info_path).parent().unwrap_or_else(|| Path::new(""));
-    Some(root.join(executable.replace('\\', "/")).to_string_lossy().into_owned())
+/// The program an update or a reinstall keeps launching: the one the user
+/// picked among the play tasks, while the new build still lists it; else
+/// the one [`find_launch_executable`] finds.
+pub(super) fn kept_or_found(
+    previous: Option<&str>,
+    install_root: &Path,
+    relative_paths: &[String],
+    found: Option<String>,
+) -> Option<String> {
+    let Some(previous) = previous.filter(|previous| found.as_deref() != Some(*previous)) else {
+        return found;
+    };
+    let is_listed = info_file(relative_paths).is_some_and(|info| {
+        read_play_tasks(install_root, info)
+            .iter()
+            .any(|task| task.path == previous)
+    });
+    if is_listed {
+        tracing::debug!(executable = previous, "keeping the program picked among the play tasks");
+        Some(previous.to_owned())
+    } else {
+        found
+    }
 }
 
 /// Falls back to guessing from the installed file list.
