@@ -151,7 +151,7 @@ frames with audio, the seventh (ALTDEUS) the GPU without visible frames.
 | Bloodborne | frames, audio | 6 |
 | Atelier Ryza | frames, audio | 61 |
 | Atelier Ayesha DX | frames, audio | 56 |
-| Tales of Symphonia Remastered | frames, audio | 348 |
+| Symphonia | frames, audio | 348 |
 | Astrea | frames, audio | 348 |
 | SaGa Emerald Beyond | frames, audio | 329 |
 | ALTDEUS: Beyond Chronos | GPU, black frames (needs PS VR) | 325 |
@@ -175,7 +175,7 @@ byte stream under FFmpeg's mp4 demuxer before seeking, after which every
 read returned end of file (upstream shadPS4 has the same code). It now
 seeks the streams only (`604f623`).
 
-### Unity IL2CPP: Tales of Symphonia Remastered (CUSA50989), Astrea (CUSA49515), SaGa Emerald Beyond (CUSA43027), ALTDEUS: Beyond Chronos (CUSA26563)
+### Unity IL2CPP: Symphonia (CUSA50989), Astrea (CUSA49515), SaGa Emerald Beyond (CUSA43027), ALTDEUS: Beyond Chronos (CUSA26563)
 
 The same engine build in all four. They load `Il2CppUserAssemblies.prx`
 and `PS4Util.prx` through `sceKernelLoadStartModule` and run with the
