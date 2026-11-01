@@ -2,6 +2,69 @@
 
 Grouped by area. Each version's technical record is in `tag-changelog/vX.Y.Z.md`.
 
+## v0.4.0
+
+### Breaking
+
+- Only for the error-report server, new in this version's development: its single admin key is gone, so a config with `admin_key`, `admin_key_file` or `admin_key_env` no longer loads, and admins log in with a key from `decanter-reports user add <name> --role admin`. Error reports use schema 2 (the message is a template with typed values, never free text); a client of the first schema is refused. Nothing a release up to v0.3.4 wrote is affected.
+
+### gog
+
+- Downloads pause, resume and survive a crash: a journal in the library's `downloading/` folder keeps what was written, a pause on closing, a lost network, a full disk or an unplugged library, and carries on by itself at the next start (switch in Ajustes). A new build keeps the chunks it shares with the old one.
+- One download at a time, in an order you set: Downloads is grouped like Steam, with a reorderable queue, Pausar, Reanudar and Cancelar, also for updates, DLC and repairs. DLC ticked with a game wait for it.
+- Every chunk is checked against GOG's sizes and MD5s; cloud saves are written atomically.
+- Pick a game's language at install and in Propiedades: only that language's files are downloaded, and the files of unused languages can be removed.
+- Redistributables a build names are installed once per prefix before the game starts, and the program to launch can be picked among the build's own.
+- GOG's fan-made mods are listed, with the ones you own marked; a DLC without files of its own installs; builds on GOG's `gcdn.co` CDN (Cyberpunk 2077) install.
+- GOG access runs on decanter's own async client; the old third-party client is gone.
+
+### library
+
+- Third-party mods for GOG games: add a folder of loose files, enable it, see conflicts; the game starts from a mirror of its install, so verify, repair and updates leave the install untouched.
+- Add a game by dropping its executable: name and icon are read from the file, and Linux programs run natively.
+- A profile's library path that names its own library follows the folder when it is moved.
+
+### ps
+
+- Every game has its own settings: launch settings, port ini, online and module switches, mods and patches, and layouts, copied from your defaults the first time and backed up first. A game's Resumen copies from another game, exports, imports and resets; PS Ajustes edits the defaults.
+- `decanter ps run`, `prepare`, `settings` and `report` work without the window.
+- Error reports: preview and save the exact report in Fallos, and send it from Reportar errores after confirming; private names are kept out and nothing leaves without your confirmation.
+- Online: per-game TLS and clear-text login switches; shadNet secrets reach psport by a private file or stdin, not by environment variable.
+- Per-game frame generation (Off or FSR) and Local player; the game menu's frame generation choice is remembered; the compatibility state of each dump (playable, experimental, broken, unsupported) shows in the list.
+- Add a dump with Add dump or by dropping its folder, copying or moving it; a dump loose in a games folder is put in its own folder.
+- Bloodborne's built-in patches ship with decanter; the Online tab shows only for games that use an online library.
+- New Rendimiento and Importaciones tabs per game: performance lines apart from the log, and the imports psport does not cover.
+- DETENER works from the moment a launch starts and ends the game at once.
+
+### runtime
+
+- decanter fetches and checks its own umu-run and GE-Proton 11-6 (no Steam needed), with a card in Compatibility to remove it.
+- Raven, an experimental runtime for Windows programs, can be switched on in Ajustes, built from its pinned commit (or its branch's newest) after confirmation, and used in its own section.
+- Deleting builds, packages, the toolchain, GE-Proton and Raven asks first.
+
+### app
+
+- Secrets (GOG sessions, shadNet passwords, the SteamGridDB key) live in one store: the system keyring, or an encrypted passphrase file when there is none or it stays locked. Old plaintext copies are moved; Ajustes lists and forgets saved credentials.
+- Logs, reports, run logs and the database are private to your user; reports, copied logs and debug-folder copies are scrubbed of secrets, addresses and names.
+- The install dialog always opens, also from the game's menu.
+- An AppImage in a read-only folder updates itself into its own copy and hands over to it.
+- Quitting stops every psport job; the library is ready as soon as it is listed; the database no longer reports "database is locked" from repeated migrations.
+- A hint in Registro when winewayland refuses a screen mode.
+
+### i18n
+
+- Interface in English, Spanish, German, French, Italian, Brazilian Portuguese, Russian, Simplified Chinese, Japanese and Korean, picked in Ajustes; all but English and Spanish are machine translations and are marked so. Missing text falls back to English.
+
+### Windows (testing)
+
+- The PS section plays psport's Windows package, downloaded from its releases, or a build of psport's branch made here with a pinned toolchain, with no Nix or bash; PS Ports, builds and downloads are no longer marked as tested.
+- `decanter-cli.exe` runs the command line from a terminal; `decanter.exe` opens no console and carries its icon.
+- Online play is not offered on Windows.
+
+### error-report server
+
+- `decanter-reports`, a separate server in `crates/reports-server`, receives reports, re-validates them and publishes a clean public version; maintainers get named accounts with viewer and admin roles, an audit log, and a private log viewer with search and comparison.
+
 ## v0.3.4
 
 ### macOS (testing)
