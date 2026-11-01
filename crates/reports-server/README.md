@@ -2,7 +2,7 @@
 
 The server that receives decanter's error reports, re-validates them, and publishes the ones that pass as public
 pages. One Rust binary, no database (everything in an S3-compatible bucket through `s3db`, encrypted at rest), no
-accounts, no JavaScript. It speaks plain HTTP on loopback; a tunnel in
+reporter accounts (maintainers sign in with keys, see "Maintainer accounts"), no JavaScript. It speaks plain HTTP on loopback; a tunnel in
 front exposes the port and terminates TLS (see `docs/deploy.md`).
 
 Design decisions live in decanter's board: #985, #986, #987, #988, #989, #991, #1033, #1034, #1047, #1049, #1055,
