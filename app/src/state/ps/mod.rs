@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 
 use decanter_core::capabilities::Feature;
 use decanter_core::runner::{Progress, Runner};
+use decanter_ps::bbport::Compat;
 use decanter_ps::bbport::direct::FolderError;
 use decanter_ps::bbport::per_game::{PerGameError, Refusal};
 use decanter_ps::library;
@@ -54,6 +55,8 @@ pub use crate::ps_play::launch::online_error;
 pub struct Ps {
     profile_id: Option<String>,
     entries: Vec<Entry>,
+    /// What psport last said about each title; `None` from a port that doesn't answer.
+    compat: Option<Compat>,
     /// The library folders the last scan read, the primary one first.
     library_roots: Vec<PathBuf>,
     scanning: bool,
@@ -165,6 +168,7 @@ impl Ps {
             let mut this = Self {
                 profile_id: None,
                 entries: Vec::new(),
+                compat: None,
                 library_roots: Vec::new(),
                 notice: None,
                 run_notices: HashMap::new(),
@@ -203,6 +207,15 @@ impl Ps {
 
     pub fn entries(&self) -> &[Entry] {
         &self.entries
+    }
+
+    pub const fn compat(&self) -> Option<&Compat> {
+        self.compat.as_ref()
+    }
+
+    pub fn set_compat(&mut self, compat: Option<Compat>, cx: &mut Context<Self>) {
+        self.compat = compat;
+        cx.notify();
     }
 
     pub fn library_roots(&self) -> &[PathBuf] {

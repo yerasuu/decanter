@@ -123,7 +123,7 @@ are listed in its [compatible games list](https://github.com/yerasuu/psport/blob
 | Title | Status |
 |---|---|
 | Bloodborne (`CUSA03173`, version 01.09) | Supported. A base dump with a 1.09 update beside it is offered a merge. |
-| Other PS4 titles | Experimental: they start with the imports the port lacks stubbed, and the log shows how far they get. |
+| Other PS4 titles | The state psport lists for the title (playable, experimental, broken, unsupported), with its note; Experimental when the port doesn't list it: it starts with the imports it lacks stubbed, and the log shows how far it gets. |
 | Titles that need PS VR (bit 26 of `ATTRIBUTE` in `param.sfo`) | Shown as unsupported; they can't be started. |
 | PS5 titles | Run through AnyPS5, converted first. |
 

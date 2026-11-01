@@ -173,6 +173,7 @@ ps.games.search: 'Поиск'
 ps.games.scanning: 'Поиск игр…'
 ps.games.no_dumps: 'Дампов пока нет: добавьте первый или перетащите его папку в окно.'
 ps.games.no_match: 'По запросу ничего не найдено.'
+ps.games.compatible_list: "Совместимые игры"
 ps.games.rescan: 'Обновить библиотеку'
 ps.games.browser_empty: 'Игр пока нет: добавьте дамп или перетащите его папку в окно, и decanter скопирует или переместит его в папку игр.'
 ps.games.wrapped: '«%{title}» лежала в папке игр россыпью: теперь она в %{path}.'
@@ -212,6 +213,9 @@ ps.status.needs_vr: 'Нужен PS VR'
 ps.status.needs_update: 'Нужна версия 1.09'
 ps.status.encrypted: 'eboot зашифрован'
 ps.status.no_eboot: 'Нет eboot.bin'
+ps.status.playable: "Играбельно"
+ps.status.broken: "Неисправно"
+ps.status.unsupported: "Не поддерживается"
 ps.menu.stop: 'Остановить'
 ps.menu.play: 'Играть'
 ps.menu.details: 'Подробнее'
@@ -281,6 +285,8 @@ ps.detail.explain.needs_update: 'bbport нужна версия 1.09: добав
 ps.detail.explain.needs_vr: 'Эта игра запускается только с гарнитурой PS VR, а у порта её нет.'
 ps.detail.explain.encrypted: 'eboot.bin всё ещё зашифрован; его нужно расшифровать на консоли.'
 ps.detail.explain.no_eboot: 'В этом дампе нет eboot.bin.'
+ps.detail.explain.broken: "Эта игра запускается, но psport отмечает её как неисправную: возможны проблемы."
+ps.detail.explain.unsupported: "psport отмечает эту игру как неподдерживаемую: на этом порте она не работает."
 ps.layouts.default: 'По умолчанию'
 ps.layouts.custom: 'Своя'
 ps.layouts.copy_name: '%{name} (копия)'

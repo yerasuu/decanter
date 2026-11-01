@@ -173,6 +173,7 @@ ps.games.search: Search
 ps.games.scanning: Looking for games…
 ps.games.no_dumps: 'No dumps yet: add the first one, or drop its folder on the window.'
 ps.games.no_match: Nothing matches the search.
+ps.games.compatible_list: "Compatible games"
 ps.games.rescan: Refresh library
 ps.games.browser_empty: 'No games yet: add a dump, or drop its folder on the window, and decanter copies or moves it into the games folder.'
 ps.games.wrapped: '"%{title}" lay loose in the games folder: it is now in %{path}.'
@@ -212,6 +213,9 @@ ps.status.needs_vr: Needs PS VR
 ps.status.needs_update: Needs 1.09
 ps.status.encrypted: Encrypted eboot
 ps.status.no_eboot: No eboot.bin
+ps.status.playable: "Playable"
+ps.status.broken: "Broken"
+ps.status.unsupported: "Unsupported"
 ps.menu.stop: Stop
 ps.menu.play: Play
 ps.menu.details: View details
@@ -281,6 +285,8 @@ ps.detail.explain.needs_update: 'bbport needs version 1.09: add its update to on
 ps.detail.explain.needs_vr: This game only starts with a PS VR headset, and the port has none.
 ps.detail.explain.encrypted: The eboot.bin is still encrypted; it has to be decrypted on the console.
 ps.detail.explain.no_eboot: This dump has no eboot.bin.
+ps.detail.explain.broken: "This title starts, but psport lists it as broken: expect problems."
+ps.detail.explain.unsupported: "psport lists this title as unsupported: it does not run on this port."
 ps.layouts.default: Default
 ps.layouts.custom: Custom
 ps.layouts.copy_name: '%{name} (copy)'

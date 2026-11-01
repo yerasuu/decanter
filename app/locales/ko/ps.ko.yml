@@ -173,6 +173,7 @@ ps.games.search: 검색
 ps.games.scanning: 게임을 찾는 중…
 ps.games.no_dumps: '아직 덤프가 없습니다. 첫 덤프를 추가하거나 폴더를 창에 끌어다 놓으세요.'
 ps.games.no_match: 검색과 일치하는 항목이 없습니다.
+ps.games.compatible_list: "호환 게임 목록"
 ps.games.rescan: 라이브러리 새로 고침
 ps.games.browser_empty: '아직 게임이 없습니다. 덤프를 추가하거나 폴더를 창에 끌어다 놓으면 decanter가 게임 폴더로 복사 또는 이동합니다.'
 ps.games.wrapped: '게임 폴더에 그냥 놓여 있던 "%{title}"을(를) 이제 %{path}에서 사용합니다.'
@@ -212,6 +213,9 @@ ps.status.needs_vr: PS VR 필요
 ps.status.needs_update: 1.09 필요
 ps.status.encrypted: 암호화된 eboot
 ps.status.no_eboot: eboot.bin 없음
+ps.status.playable: "플레이 가능"
+ps.status.broken: "문제 있음"
+ps.status.unsupported: "지원 안 함"
 ps.menu.stop: 중지
 ps.menu.play: 플레이
 ps.menu.details: 세부 정보 보기
@@ -281,6 +285,8 @@ ps.detail.explain.needs_update: 'bbport에는 버전 1.09가 필요합니다. �
 ps.detail.explain.needs_vr: 이 게임은 PS VR 헤드셋이 있어야만 시작되는데, 포트에는 이를 지원하지 않습니다.
 ps.detail.explain.encrypted: eboot.bin이 아직 암호화되어 있습니다. 콘솔에서 복호화해야 합니다.
 ps.detail.explain.no_eboot: 이 덤프에는 eboot.bin이 없습니다.
+ps.detail.explain.broken: "이 타이틀은 실행되지만 psport에서 문제 있음으로 표시되어 있습니다. 문제가 생길 수 있습니다."
+ps.detail.explain.unsupported: "psport에서 이 타이틀을 지원 안 함으로 표시했습니다. 이 포트에서는 실행되지 않습니다."
 ps.layouts.default: 기본
 ps.layouts.custom: 사용자 지정
 ps.layouts.copy_name: '%{name} (사본)'

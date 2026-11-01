@@ -173,6 +173,7 @@ ps.games.search: Rechercher
 ps.games.scanning: Recherche des jeux…
 ps.games.no_dumps: 'Aucun dump pour l’instant : ajoutez le premier, ou déposez son dossier sur la fenêtre.'
 ps.games.no_match: Rien ne correspond à la recherche.
+ps.games.compatible_list: "Jeux compatibles"
 ps.games.rescan: Actualiser la bibliothèque
 ps.games.browser_empty: 'Aucun jeu pour l’instant : ajoutez un dump, ou déposez son dossier sur la fenêtre, et decanter le copie ou le déplace dans le dossier des jeux.'
 ps.games.wrapped: '« %{title} » se trouvait en vrac dans le dossier des jeux : il est maintenant dans %{path}.'
@@ -212,6 +213,9 @@ ps.status.needs_vr: Nécessite PS VR
 ps.status.needs_update: Nécessite 1.09
 ps.status.encrypted: eboot chiffré
 ps.status.no_eboot: Pas de eboot.bin
+ps.status.playable: "Jouable"
+ps.status.broken: "Défaillant"
+ps.status.unsupported: "Non pris en charge"
 ps.menu.stop: Arrêter
 ps.menu.play: Jouer
 ps.menu.details: Voir les détails
@@ -281,6 +285,8 @@ ps.detail.explain.needs_update: 'bbport nécessite la version 1.09 : ajoutez sa 
 ps.detail.explain.needs_vr: Ce jeu ne démarre qu’avec un casque PS VR, et le port n’en a pas.
 ps.detail.explain.encrypted: Le eboot.bin est encore chiffré ; il doit être déchiffré sur la console.
 ps.detail.explain.no_eboot: Ce dump n’a pas de eboot.bin.
+ps.detail.explain.broken: "Ce titre démarre, mais psport le signale comme défaillant : attendez-vous à des problèmes."
+ps.detail.explain.unsupported: "psport signale ce titre comme non pris en charge : il ne fonctionne pas avec ce port."
 ps.layouts.default: Par défaut
 ps.layouts.custom: Personnalisée
 ps.layouts.copy_name: '%{name} (copie)'

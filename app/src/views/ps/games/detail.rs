@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use decanter_core::capabilities::Feature;
 use decanter_ps::anyps5::AnyPs5;
 use decanter_ps::bbport::per_game::Category;
-use decanter_ps::bbport::{self, Bbport, IniScope};
+use decanter_ps::bbport::{self, Bbport, Compat, CompatState, IniScope};
 use decanter_ps::failures::Log;
 use decanter_ps::layouts;
 use decanter_ps::learned::{self, FrameOverlap};
@@ -28,7 +28,7 @@ use super::mods::ModsView;
 use super::online::OnlineTitleView;
 use super::runs::RunsView;
 use super::title_settings::{Changed, TitleSettingsView};
-use super::{art_url, display_title, platform_label, status_text};
+use super::{art_url, display_title, entry_status_text, platform_label};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{JobKey, Ps};
@@ -508,7 +508,7 @@ impl DetailView {
 
     /// Biblioteca's hero: the dump's own wide art (`pic1.png`) under a
     /// scrim, the platform badge and the title large, a couple of figures.
-    fn hero(entry: &Entry) -> AnyElement {
+    fn hero(entry: &Entry, compat: Option<&Compat>) -> AnyElement {
         let game = &entry.game;
         let fallback = || {
             div()
@@ -553,7 +553,7 @@ impl DetailView {
                     .gap(px(10.))
                     .child(hero_stat(game.version.clone(), t!("ps.detail.hero.version")))
                     .child(hero_stat(
-                        status_text(&entry.status).into_owned(),
+                        entry_status_text(entry, compat).into_owned(),
                         t!("ps.detail.hero.status"),
                     )),
             )
@@ -592,7 +592,7 @@ impl DetailView {
             .port
             .and_then(|port| ps.port(port))
             .is_some_and(|state| state.is_busy());
-        let playable = entry.status.playable();
+        let playable = entry.is_playable(ps.compat());
         let action = if running && ps.is_stopping(&game.dir) {
             button("ps-stop", ButtonKind::PlaySecondary, t!("ps.detail.stopping"), true).into_any_element()
         } else if running {
@@ -654,8 +654,13 @@ impl DetailView {
                 )
                 .child(theme::mono().min_w_0().truncate().child(value))
         };
+        let reported = entry.reported(self.ps.read(cx).compat());
         let explanation = match &entry.status {
-            Status::Ready | Status::Experimental => None,
+            Status::Ready | Status::Experimental => reported.and_then(|title| match title.state {
+                CompatState::Broken => Some(t!("ps.detail.explain.broken")),
+                CompatState::Unsupported => Some(t!("ps.detail.explain.unsupported")),
+                CompatState::Playable | CompatState::Experimental => None,
+            }),
             Status::NeedsConvert => Some(t!("ps.detail.explain.needs_convert")),
             Status::NeedsMerge(_) => Some(t!("ps.detail.explain.needs_merge")),
             Status::HasPlayable(dir) => Some(t!("ps.detail.explain.has_playable", dir = dir.display())),
@@ -714,6 +719,11 @@ impl DetailView {
             .flex_col()
             .gap_4()
             .children(explanation.map(theme::muted))
+            .children(
+                reported
+                    .filter(|title| !title.note.is_empty())
+                    .map(|title| theme::muted(title.note.clone())),
+            )
             .children(merge.map(|merge| div().flex().child(merge)))
             .children(learned)
             .children(self.learned_error.as_ref().map(theme::error))
@@ -825,7 +835,7 @@ impl Render for DetailView {
         div()
             .flex()
             .flex_col()
-            .child(Self::hero(&entry))
+            .child(Self::hero(&entry, self.ps.read(cx).compat()))
             .child(self.action_bar(&entry, cx))
             .children(notice.clone().or_else(|| run_notice.clone()).map(|(text, error)| {
                 div()

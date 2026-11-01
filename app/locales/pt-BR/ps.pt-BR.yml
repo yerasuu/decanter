@@ -173,6 +173,7 @@ ps.games.search: Pesquisar
 ps.games.scanning: Procurando jogos…
 ps.games.no_dumps: 'Ainda não há dumps: adicione o primeiro ou solte a pasta dele na janela.'
 ps.games.no_match: Nada corresponde à pesquisa.
+ps.games.compatible_list: "Jogos compatíveis"
 ps.games.rescan: Atualizar biblioteca
 ps.games.browser_empty: 'Ainda não há jogos: adicione um dump, ou solte a pasta dele na janela, e o decanter o copia ou move para a pasta de jogos.'
 ps.games.wrapped: '"%{title}" estava solto na pasta de jogos: agora está em %{path}.'
@@ -212,6 +213,9 @@ ps.status.needs_vr: Requer PS VR
 ps.status.needs_update: Requer 1.09
 ps.status.encrypted: eboot criptografado
 ps.status.no_eboot: Sem eboot.bin
+ps.status.playable: "Jogável"
+ps.status.broken: "Com defeito"
+ps.status.unsupported: "Sem suporte"
 ps.menu.stop: Parar
 ps.menu.play: Jogar
 ps.menu.details: Ver detalhes
@@ -281,6 +285,8 @@ ps.detail.explain.needs_update: 'O bbport precisa da versão 1.09: adicione a at
 ps.detail.explain.needs_vr: Este jogo só inicia com um headset PS VR, e o port não tem nenhum.
 ps.detail.explain.encrypted: O eboot.bin ainda está criptografado; ele precisa ser descriptografado no console.
 ps.detail.explain.no_eboot: Este dump não tem eboot.bin.
+ps.detail.explain.broken: "Este título inicia, mas o psport o lista como com defeito: espere problemas."
+ps.detail.explain.unsupported: "O psport lista este título como sem suporte: ele não roda neste port."
 ps.layouts.default: Padrão
 ps.layouts.custom: Personalizado
 ps.layouts.copy_name: '%{name} (cópia)'

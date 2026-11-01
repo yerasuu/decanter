@@ -390,6 +390,8 @@ impl Host for Section {
         }
         let report = bbport::host_features(&Bbport::new(root.clone()), toolchain).await;
         self.cx.update(|app| Caps::take_psport_report(app, report.as_ref()));
+        let compat = bbport::compat_table(&Bbport::new(root.clone()), toolchain).await;
+        let _ = self.this.update(&mut self.cx, |this, cx| this.set_compat(compat, cx));
     }
 
     async fn move_checkout(&mut self, port: Port, root: &Root, command: Command) -> Option<bool> {

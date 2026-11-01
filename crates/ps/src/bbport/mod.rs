@@ -7,6 +7,7 @@
 //! directory.
 
 pub mod builtin_patches;
+mod compat;
 pub mod direct;
 pub mod effects;
 mod features;
@@ -36,6 +37,7 @@ use decanter_nix::Toolchain;
 use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 
+pub use compat::{Compat, CompatState, CompatTitle, compat_table};
 pub use features::{HostFeatures, host_features};
 pub use groups::{Control, GROUPS, Group, OPTION_FEATURES, Setting, Store};
 pub use ini::{Ini, read_binds, write_binds};

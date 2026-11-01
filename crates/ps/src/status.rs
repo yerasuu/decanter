@@ -8,7 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::anyps5::{self, AnyPs5, Eboot};
-use crate::bbport;
+use crate::bbport::{self, Compat, CompatState, CompatTitle};
 use crate::library::{Game, Platform};
 use crate::paths::Root;
 use crate::port::Port;
@@ -43,6 +43,29 @@ pub struct Entry {
     pub game: Game,
     pub port: Option<Port>,
     pub status: Status,
+}
+
+impl Entry {
+    /// What psport says about this title, for a dump that would start as is: a status that waits
+    /// on the user (an update, a merge) comes first. `None` without a report or a row for it.
+    #[inline]
+    #[must_use]
+    pub fn reported<'compat>(&self, compat: Option<&'compat Compat>) -> Option<&'compat CompatTitle> {
+        if self.port != Some(Port::Bbport) || !matches!(self.status, Status::Ready | Status::Experimental) {
+            return None;
+        }
+        compat?.get(&self.game.title_id)
+    }
+
+    /// Play stays open for a title psport calls broken: it warns, it doesn't forbid.
+    #[inline]
+    #[must_use]
+    pub fn is_playable(&self, compat: Option<&Compat>) -> bool {
+        match self.reported(compat) {
+            Some(title) => title.state != CompatState::Unsupported,
+            None => self.status.playable(),
+        }
+    }
 }
 
 /// Every playable dump with its status; bare updates are left out, since

@@ -45,7 +45,7 @@ pub fn render(
             },
         ));
     } else {
-        let playable = entry.status.playable();
+        let playable = entry.is_playable(state.compat());
         let (ps, dir, close) = (ps.clone(), target.dir.clone(), Rc::clone(&dismiss));
         panel = panel.child(
             menu::item("ps-menu-play", !playable)

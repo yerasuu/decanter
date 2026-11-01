@@ -205,7 +205,7 @@ impl HostFeatures {
 /// and dropped the same way.
 #[inline]
 pub async fn host_features(bbport: &Bbport, toolchain: &Toolchain) -> Option<HostFeatures> {
-    let stdout = list_features(bbport, toolchain).await?;
+    let stdout = query(bbport, toolchain, "--list-features", MAX_ANSWER).await?;
     match HostFeatures::parse(&stdout) {
         Ok(features) => {
             tracing::info!(count = features.rows.len(), "psport listed its features");
@@ -218,28 +218,28 @@ pub async fn host_features(bbport: &Bbport, toolchain: &Toolchain) -> Option<Hos
     }
 }
 
-/// `out/psport --list-features`'s output, from wherever the port runs from.
-async fn list_features(bbport: &Bbport, toolchain: &Toolchain) -> Option<Vec<u8>> {
+/// `out/psport <flag>`'s output (`--list-features`, `--list-compat`), from wherever the port runs from.
+pub(super) async fn query(bbport: &Bbport, toolchain: &Toolchain, flag: &str, max: usize) -> Option<Vec<u8>> {
     let port_dir = bbport.port_dir().await;
     if !matches!(Names::of(&port_dir).await, Names::Psport) {
         return None;
     }
-    let script = format!(r#"exec "$DECANTER_PORT_DIR/{}" --list-features"#, Names::Psport.probe());
+    let script = format!(r#"exec "$DECANTER_PORT_DIR/{}" {flag}"#, Names::Psport.probe());
     let answered = match toolchain::command(toolchain, &bbport.root, Port::Bbport, &script).await {
         Ok(mut command) => {
             command.env("DECANTER_PORT_DIR", port_dir);
-            super::query_port(command, MAX_ANSWER).await
+            super::query_port(command, max).await
         }
         Err(err) => Err(err),
     };
     match answered {
         Ok((status, stdout)) if status.success() => Some(stdout),
         Ok((status, _)) => {
-            tracing::info!(%status, "psport doesn't list its features, keeping decanter's table");
+            tracing::info!(%status, flag, "psport doesn't answer, keeping decanter's own table");
             None
         }
         Err(err) => {
-            tracing::warn!(%err, "cannot ask psport for its features");
+            tracing::warn!(%err, flag, "cannot ask psport");
             None
         }
     }

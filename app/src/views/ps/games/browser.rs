@@ -11,7 +11,7 @@ use rust_i18n::t;
 
 use super::GamesView;
 use super::detail::DetailView;
-use super::{art_url, display_title, platform_label, status_text};
+use super::{art_url, display_title, entry_status_color, entry_status_text, platform_label};
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::ButtonKind;
@@ -38,12 +38,12 @@ impl BrowserView {
         Self { ps, detail, games }
     }
 
-    fn card(&self, entry: &Entry) -> impl IntoElement + use<> {
+    fn card(&self, entry: &Entry, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let compat = self.ps.read(cx).compat();
         let game = &entry.game;
         let dir = game.dir.clone();
         let detail = self.detail.clone();
         let (games, menu_dir) = (self.games.clone(), game.dir.clone());
-        let ready = entry.status.playable();
         let art = div()
             .id("ps-cover-art")
             .relative()
@@ -102,8 +102,8 @@ impl BrowserView {
                     .rounded(px(theme::RADIUS_SM))
                     .bg(theme::alpha(theme::BG_DEEP, 0.85))
                     .text_size(px(10.))
-                    .text_color(rgb(if ready { theme::ACCENT_GREEN } else { theme::TEXT_MUTED }))
-                    .child(SharedString::from(status_text(&entry.status))),
+                    .text_color(rgb(entry_status_color(entry, compat)))
+                    .child(SharedString::from(entry_status_text(entry, compat))),
             );
         div()
             .id(SharedString::from(format!("ps-cover-{}", game.dir.display())))
@@ -138,7 +138,7 @@ impl Render for BrowserView {
                     .entries()
                     .iter()
                     .filter(|entry| entry.game.platform == platform)
-                    .map(|entry| self.card(entry).into_any_element())
+                    .map(|entry| self.card(entry, cx).into_any_element())
                     .collect();
                 (!cards.is_empty()).then(|| {
                     div()

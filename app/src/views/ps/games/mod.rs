@@ -14,9 +14,9 @@ mod online;
 mod runs;
 mod title_settings;
 
-use decanter_ps::bbport::IniScope;
+use decanter_ps::bbport::{Compat, CompatState, IniScope};
 use decanter_ps::library::{Game, Platform};
-use decanter_ps::status::Status;
+use decanter_ps::status::{Entry, Status};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -41,6 +41,7 @@ pub(super) use keyboard::{Controls, KeyboardView};
 const SIDEBAR_WIDTH: f32 = 292.;
 const ICON: f32 = 26.;
 /// One height for headers and games alike, so the list can be uniform.
+const COMPATIBLE_GAMES_URL: &str = "https://github.com/yerasuu/psport/blob/develop/docs/en/GAMES.md";
 const ROW: f32 = 40.;
 
 #[derive(Clone, Copy)]
@@ -162,9 +163,7 @@ impl GamesView {
                     .filter_map(|index| rows.get(index))
                     .filter_map(|row| match *row {
                         Row::Header(platform, count) => Some(header(platform, count)),
-                        Row::Game(index) => entries
-                            .get(index)
-                            .map(|entry| this.row(&entry.game, &entry.status, view.clone(), cx)),
+                        Row::Game(index) => entries.get(index).map(|entry| this.row(entry, view.clone(), cx)),
                     })
                     .collect()
             })
@@ -192,6 +191,21 @@ impl GamesView {
                     .child(self.refresh_button(cx)),
             )
             .child(body)
+            .child(
+                div().p(px(14.)).child(
+                    button(
+                        "ps-compatible-games",
+                        ButtonKind::Secondary,
+                        t!("ps.games.compatible_list"),
+                        false,
+                    )
+                    .on_click(|_, _, _| {
+                        if let Err(err) = crate::desktop::open(COMPATIBLE_GAMES_URL) {
+                            tracing::warn!(%err, "could not open the compatible games list");
+                        }
+                    }),
+                ),
+            )
     }
 
     /// Reads the games folder again — for dumps copied in while the
@@ -210,7 +224,9 @@ impl GamesView {
             })
     }
 
-    fn row(&self, game: &Game, status: &Status, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
+    fn row(&self, entry: &Entry, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
+        let game = &entry.game;
+        let playable = entry.is_playable(self.ps.read(cx).compat());
         let active = self.detail.read(cx).selected() == Some(&game.dir);
         let running = self.ps.read(cx).is_running(&JobKey::Game(game.dir.clone()), cx);
         let dir = game.dir.clone();
@@ -228,9 +244,7 @@ impl GamesView {
             .text_color(rgb(theme::TEXT_PRIMARY))
             .cursor_pointer()
             .hover(|row| row.bg(rgb(theme::BG_PANEL_2)))
-            .when(!running && !status.playable(), |row| {
-                row.text_color(rgb(theme::TEXT_MUTED))
-            })
+            .when(!running && !playable, |row| row.text_color(rgb(theme::TEXT_MUTED)))
             .when(active, |row| {
                 row.bg(rgb(theme::BG_PANEL_2))
                     .text_color(rgb(theme::TEXT_BRIGHT))
@@ -327,6 +341,30 @@ fn status_text(status: &Status) -> Cow<'static, str> {
         Status::NeedsUpdate => t!("ps.status.needs_update"),
         Status::Encrypted => t!("ps.status.encrypted"),
         Status::NoEboot => t!("ps.status.no_eboot"),
+    }
+}
+
+/// What the dump shows as its state: psport's word for the title when it gave one, else decanter's.
+fn entry_status_text(entry: &Entry, compat: Option<&Compat>) -> Cow<'static, str> {
+    match entry.reported(compat).map(|title| title.state) {
+        Some(CompatState::Playable) => t!("ps.status.playable"),
+        Some(CompatState::Experimental) => t!("ps.status.experimental"),
+        Some(CompatState::Broken) => t!("ps.status.broken"),
+        Some(CompatState::Unsupported) => t!("ps.status.unsupported"),
+        None => status_text(&entry.status),
+    }
+}
+
+fn entry_status_color(entry: &Entry, compat: Option<&Compat>) -> u32 {
+    if entry
+        .reported(compat)
+        .is_some_and(|title| title.state == CompatState::Broken)
+    {
+        theme::ACCENT_GOLD
+    } else if entry.is_playable(compat) {
+        theme::ACCENT_GREEN
+    } else {
+        theme::TEXT_MUTED
     }
 }
 

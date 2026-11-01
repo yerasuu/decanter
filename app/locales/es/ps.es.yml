@@ -173,6 +173,7 @@ ps.games.search: Buscar
 ps.games.scanning: Buscando juegos…
 ps.games.no_dumps: 'Todavía no hay volcados: añade el primero o suelta su carpeta en la ventana.'
 ps.games.no_match: Nada coincide con la búsqueda.
+ps.games.compatible_list: "Juegos compatibles"
 ps.games.rescan: Actualizar biblioteca
 ps.games.browser_empty: 'Todavía no hay juegos: añade un volcado, o suelta su carpeta en la ventana, y decanter lo copia o lo mueve a la carpeta de juegos.'
 ps.games.wrapped: '«%{title}» estaba suelto en la carpeta de juegos: ahora está en %{path}.'
@@ -212,6 +213,9 @@ ps.status.needs_vr: Necesita PS VR
 ps.status.needs_update: Necesita 1.09
 ps.status.encrypted: eboot cifrado
 ps.status.no_eboot: Sin eboot.bin
+ps.status.playable: "Jugable"
+ps.status.broken: "Roto"
+ps.status.unsupported: "No compatible"
 ps.menu.stop: Detener
 ps.menu.play: Jugar
 ps.menu.details: Ver detalles
@@ -281,6 +285,8 @@ ps.detail.explain.needs_update: 'bbport necesita la versión 1.09: añade su act
 ps.detail.explain.needs_vr: Este juego solo arranca con un casco PS VR, y el port no tiene uno.
 ps.detail.explain.encrypted: El eboot.bin sigue cifrado; hay que descifrarlo en la consola.
 ps.detail.explain.no_eboot: Este volcado no tiene eboot.bin.
+ps.detail.explain.broken: "Este título arranca, pero psport lo marca como roto: espera problemas."
+ps.detail.explain.unsupported: "psport marca este título como no compatible: no funciona con este port."
 ps.layouts.default: Predeterminado
 ps.layouts.custom: Personalizado
 ps.layouts.copy_name: '%{name} (copia)'
