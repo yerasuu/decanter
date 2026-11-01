@@ -305,10 +305,9 @@ sh /path/to/decanter/crates/reports-server/deploy/install.sh 0.1.0
 deployment folder, pulls the tag, resolves it to a digest and runs `gh attestation verify` when `gh` exists (it warns
 when it does not), pinned to the repository `yerasuu/decanter` and to the signing workflow `reports-image.yml`
 (`--repo`, `--signer-workflow`; the constants are at the top of the script). It asks for the host, the S3 endpoint, the bucket, the region and the two bucket keys (the secret is
-read without echo), suggests Traefik's and the tunnel's addresses from `docker network inspect expose-public` only when exactly one
-container matches, naming it (with several it suggests nothing), validates every answer (one address for Traefik; one
-address or CIDR for the tunnel, never wider than /8 for IPv4 or /32 for IPv6; an https:// endpoint; bucket and region
-in `[a-z0-9.-]`) and single-quotes every value of `.env`, and
+read without echo), suggests Traefik's address from `docker network inspect expose-public` only when exactly one
+container matches, naming it (with several it suggests nothing), validates every answer (one address for Traefik; an
+https:// endpoint; bucket and region in `[a-z0-9.-]`) and single-quotes every value of `.env`, and
 makes the passphrase with `docker run --rm <image> secret`. It writes `.env` under `umask 077` and never overwrites an
 existing one, runs `--check-config` (it stops if the passphrase does not open an initialised bucket), prints the
 passphrase once and waits for its last 6 characters, runs `docker compose up -d` and creates the first admin with
@@ -332,12 +331,13 @@ BuildKit takes the ignore file named after the Dockerfile, `deploy/Containerfile
   (`docker network inspect expose-public`), a single address: pin it with `ipv4_address` in Traefik's own compose, or
   it can change on a restart and every request is counted against Traefik's address. Then run the forged-header test
   from the requirements above through the real tunnel.
-- **Origin.** `traefik.http.middlewares.decanter-reports-origin.ipallowlist.sourcerange` (`TUNNEL_SOURCE`) is the
-  address `cloudflared` connects to Traefik from; every other source gets a 404 on this host name
-  ([ipAllowList](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/ipallowlist/)).
-  Without it, anyone who reaches Traefik's port from the local network can send their own `CF-Connecting-IP` and
-  choose the address the limits count. The middleware has no `ipStrategy`: it checks the peer address, not
-  `X-Forwarded-For`. Traefik v3 names it `ipAllowList`; v2 called it `ipWhiteList`, so check the version in use.
+- **Origin.** The router has no `ipAllowList`, like the home server's other services: `cloudflared` reaches Traefik
+  by the `Host` rule and nothing else is configured for it. The cost is that anyone who reaches Traefik's port from the
+  local network can send their own `CF-Connecting-IP` and choose the address the limits count, so keep that port off
+  networks that are not the owner's. To restrict it later, add the `ipallowlist.sourcerange` middleware with the
+  address `cloudflared` connects from
+  ([ipAllowList](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/ipallowlist/); Traefik v2
+  called it `ipWhiteList`).
 - **Entry point.** Timeouts and the grace period belong to Traefik's static configuration, under
   `entryPoints.websecure.transport`: `respondingTimeouts.readTimeout` (default 60s, the whole request including the
   body), `idleTimeout` (default 180s) and `lifeCycle.graceTimeOut` (default 10s)

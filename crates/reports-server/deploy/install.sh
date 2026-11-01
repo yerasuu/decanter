@@ -108,29 +108,6 @@ is_address() {
     is_ipv4 "$1" || is_ipv6 "$1"
 }
 
-# An address, or an address with a prefix no shorter than /8 (IPv4) or /32 (IPv6): a wider range would let more than
-# the tunnel through the allow list.
-is_address_or_cidr() {
-    case $1 in
-    */*)
-        addr=${1%%/*}
-        prefix=${1#*/}
-        case $prefix in
-        '' | 0* | *[!0-9]*) return 1 ;;
-        esac
-        [ "${#prefix}" -le 3 ] || return 1
-        if is_ipv4 "$addr"; then
-            [ "$prefix" -ge 8 ] && [ "$prefix" -le 32 ]
-        elif is_ipv6 "$addr"; then
-            [ "$prefix" -ge 32 ] && [ "$prefix" -le 128 ]
-        else
-            return 1
-        fi
-        ;;
-    *) is_address "$1" ;;
-    esac
-}
-
 env_line() {
     printf "%s='%s'\n" "$1" "$2"
 }
@@ -234,17 +211,8 @@ suggest() {
     esac
 }
 traefik_ip=$(ask "Traefik's address on $NETWORK (single address)" "$(suggest traefik)")
-tunnel_ip=$(ask "Address the tunnel connects from (address or CIDR)" "$(suggest cloudflared)")
 [ -n "$traefik_ip" ] || die "Traefik's address is required"
-[ -n "$tunnel_ip" ] || die "the tunnel's address is required"
 is_address "$traefik_ip" || die "Traefik's address must be one IPv4 or IPv6 address, not '$traefik_ip'"
-is_address_or_cidr "$tunnel_ip" ||
-    die "the tunnel's address must be one address or one CIDR (at least /8 for IPv4, /32 for IPv6), not '$tunnel_ip'"
-case $tunnel_ip in
-*/*) ;;
-*:*) tunnel_ip="$tunnel_ip/128" ;;
-*) tunnel_ip="$tunnel_ip/32" ;;
-esac
 
 # 6. The passphrase is made by the binary, never by the serving process.
 passphrase=$(docker run --rm --pull=never "$digest_image" secret)
@@ -260,7 +228,6 @@ trap 'rm -f -- "$tmp_env"' EXIT INT TERM
     printf '# Written by install.sh for reports-v%s. Holds secrets: mode 0600, never in git.\n' "$version"
     env_line REPORTS_IMAGE "$digest_image"
     env_line REPORTS_HOST "$public_host"
-    env_line TUNNEL_SOURCE "$tunnel_ip"
     env_line DECANTER_REPORTS_PUBLIC_URL "https://$public_host"
     env_line DECANTER_REPORTS_TRUSTED_PROXIES "$traefik_ip"
     env_line DECANTER_REPORTS_CLIENT_IP_HEADER cf-connecting-ip
