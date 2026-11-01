@@ -1368,7 +1368,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "decanter"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-core"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "apple-native-keyring-store",
  "argon2",
@@ -1433,7 +1433,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-gog"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1456,7 +1456,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-mods"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "decanter-core",
  "serde",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-nix"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "decanter-core",
  "reqwest",
@@ -1481,7 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-ps"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "decanter-core",
  "decanter-nix",
@@ -1502,7 +1502,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-report"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-runtime"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "decanter-core",
