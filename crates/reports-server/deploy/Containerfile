@@ -12,7 +12,7 @@ WORKDIR /src
 COPY . /src
 WORKDIR /src/crates/reports-server
 # s3db is a git dependency (.cargo/config.toml fetches it with the git CLI), so the build stage needs network to
-# git.yerasuu.com and crates.io, or a vendored copy.
+# github.com and crates.io, or a vendored copy.
 RUN cargo build --release --locked
 
 # The runtime image has no shell, so /data is made here and copied over with its owner: a new named volume takes

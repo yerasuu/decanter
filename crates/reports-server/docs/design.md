@@ -121,7 +121,7 @@ same headers as every page; the raw attachment stays reachable only through the 
 ## Data model
 
 **Decision (#1047, #1049): no database.** Like gitquarry, the server's only storage is an object bucket, reached
-through `s3db` (`git.yerasuu.com/yerasuu/s3db`, pinned by tag `v0.6.1`): a typed, encrypted, compare-and-swap
+through `s3db` (`github.com/yerasuu/s3db`, pinned by tag `v0.6.1`): a typed, encrypted, compare-and-swap
 database over S3, R2 or a local directory. Everything is in the bucket, attachments included; the bucket is the
 owner's own MinIO. The code is in `src/store/`.
 

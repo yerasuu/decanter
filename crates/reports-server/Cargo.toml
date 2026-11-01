@@ -1,6 +1,6 @@
 [package]
 name = "decanter-reports"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.97"
 license = "AGPL-3.0-or-later"
@@ -26,7 +26,7 @@ hyper = { version = "1.11.0", default-features = false, features = ["http1", "se
 hyper-util = { version = "0.1.20", default-features = false, features = ["tokio", "server-graceful"] }
 # The storage engine, its own project: pinned by tag like gitquarry pins it, never a branch, so a rebuild resolves
 # the exact same engine. Its rust-version (1.97) sets this crate's.
-s3db = { git = "https://git.yerasuu.com/yerasuu/s3db", tag = "v0.6.1" }
+s3db = { git = "https://github.com/yerasuu/s3db", tag = "v0.6.1" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.10.9"

@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "decanter-reports"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1920,7 +1920,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 [[package]]
 name = "s3db"
 version = "0.6.1"
-source = "git+https://git.yerasuu.com/yerasuu/s3db?tag=v0.6.1#8b1197103c409076a9e8dcf37330e2983fdc5a85"
+source = "git+https://github.com/yerasuu/s3db?tag=v0.6.1#8b1197103c409076a9e8dcf37330e2983fdc5a85"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1947,7 +1947,7 @@ dependencies = [
 [[package]]
 name = "s3db-crypto"
 version = "0.6.1"
-source = "git+https://git.yerasuu.com/yerasuu/s3db?tag=v0.6.1#8b1197103c409076a9e8dcf37330e2983fdc5a85"
+source = "git+https://github.com/yerasuu/s3db?tag=v0.6.1#8b1197103c409076a9e8dcf37330e2983fdc5a85"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1963,7 +1963,7 @@ dependencies = [
 [[package]]
 name = "s3db-macros"
 version = "0.6.1"
-source = "git+https://git.yerasuu.com/yerasuu/s3db?tag=v0.6.1#8b1197103c409076a9e8dcf37330e2983fdc5a85"
+source = "git+https://github.com/yerasuu/s3db?tag=v0.6.1#8b1197103c409076a9e8dcf37330e2983fdc5a85"
 dependencies = [
  "proc-macro2",
  "quote",

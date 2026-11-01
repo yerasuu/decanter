@@ -45,7 +45,7 @@ bodies are capped in size and read time.
 
 ## The bucket (MinIO)
 
-All state lives in one S3-compatible bucket through [s3db](https://git.yerasuu.com/yerasuu/s3db): reports, groups,
+All state lives in one S3-compatible bucket through [s3db](https://github.com/yerasuu/s3db): reports, groups,
 counters and the private attachments, every object encrypted under a key derived from a passphrase. The bucket is
 split by product (#1055): every report key the server writes is under `decanter/` or `psport/`, and the maintainers'
 accounts are under `accounts/` (#1153), each an s3db store of its own, behind the optional root `prefix`. The owner's bucket is a MinIO (or similar) on the home server. Create a
@@ -214,7 +214,7 @@ limit. Backups are the bucket's, see `docs/runbook.md`.
 
 `deploy/Containerfile` builds a release image on distroless. The build context is the root of decanter's repository,
 because `decanter-report` is a path dependency in the same repository, and the build stage needs network to fetch
-`s3db` (a git dependency on `git.yerasuu.com`) and the crates; `deploy/Containerfile.containerignore` lets through
+`s3db` (a git dependency on `github.com`) and the crates; `deploy/Containerfile.containerignore` lets through
 only the workspace manifests, `decanter-report` and this crate, and keeps `.git`, `.brain`, `target` and keys out of
 the build (podman reads it next to the Containerfile; copy it to the context root as `.containerignore` with an
 older podman).
