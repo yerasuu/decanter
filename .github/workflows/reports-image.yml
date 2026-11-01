@@ -8,13 +8,19 @@ on:
 permissions: {}
 
 jobs:
-  image:
-    runs-on: ubuntu-24.04-arm
+  # One native build per architecture (no QEMU), each pushed under its own tag; `merge` joins them into the version tag.
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
-      contents: write # gh release create
+      contents: read
       packages: write # push to GHCR
-      id-token: write # keyless signing of the attestation
-      attestations: write
     env:
       IMAGE: ghcr.io/yerasuu/decanter-reports
     steps:
@@ -44,29 +50,58 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # arm64 only, built natively on an arm runner (no QEMU): the home server is arm64. Add amd64 as a second job
-      # when a host needs it. No `latest` tag: a deployment names a version, and install.sh pins its digest.
+      # provenance is off here because the merged image is attested once, below; a per-arch attestation manifest
+      # would nest an index inside the final one.
       - name: Build and push
-        id: push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: crates/reports-server/deploy/Containerfile
-          platforms: linux/arm64
+          platforms: linux/${{ matrix.arch }}
+          provenance: false
           push: true
-          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}-${{ matrix.arch }}
+
+  # No `latest` tag: a deployment names a version, and install.sh pins its digest.
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # gh release create
+      packages: write # push to GHCR
+      id-token: write # keyless signing of the attestation
+      attestations: write
+    env:
+      IMAGE: ghcr.io/yerasuu/decanter-reports
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Join the architectures under the version tag
+        id: merge
+        run: |
+          VERSION="${GITHUB_REF_NAME#reports-v}"
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.merge.outputs.digest }}
           push-to-registry: true
 
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
-              --notes "Image: $IMAGE:$VERSION ($DIGEST), linux/arm64. Verify with: gh attestation verify oci://$IMAGE@$DIGEST --repo yerasuu/decanter --signer-workflow yerasuu/decanter/.github/workflows/reports-image.yml"
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" \
+              --notes "Image: $IMAGE:$VERSION ($DIGEST), linux/amd64 and linux/arm64. Verify with: gh attestation verify oci://$IMAGE@$DIGEST --repo yerasuu/decanter --signer-workflow yerasuu/decanter/.github/workflows/reports-image.yml"
