@@ -2,6 +2,9 @@
 # network `expose-public`, the constraint label and the `websecure` entry point. It runs a published image and reads
 # its whole configuration, secrets included, from .env next to this file: install.sh sets both up in a deployment
 # folder outside the checkout. docs/deploy.md ("Docker and Traefik") explains every value.
+# Named so that Compose does not derive `deploy` from the folder: another stack in a folder of the same name would share
+# the project, see this container as its orphan and `--remove-orphans` would delete it.
+name: decanter-reports
 services:
   decanter-reports:
     image: ${REPORTS_IMAGE:?set REPORTS_IMAGE in .env (run install.sh)}
