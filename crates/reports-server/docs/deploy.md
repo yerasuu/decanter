@@ -219,13 +219,14 @@ only the workspace manifests, `decanter-report` and this crate, and keeps `.git`
 the build (podman reads it next to the Containerfile; copy it to the context root as `.containerignore` with an
 older podman).
 
-The `ARG` lines pin both base images by digest, and the published image is built with these defaults. To move a pin
-(or for a local build, by build argument):
+The `ARG` lines pin both base images by the digest of their multi-arch index, since the published image is built for
+amd64 and arm64: the digest of one platform (what `podman inspect` prints for a pulled image) would build the other
+architecture on the wrong base and the binary would not start. To move a pin (or for a local build, by build
+argument), read the index digest from the registry and check that it lists both platforms:
 
 ```sh
-podman pull docker.io/library/rust:1.98-bookworm gcr.io/distroless/cc-debian12:nonroot
-podman inspect --format '{{index .RepoDigests 0}}' docker.io/library/rust:1.98-bookworm
-podman inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/cc-debian12:nonroot
+curl -sI -H 'Accept: application/vnd.oci.image.index.v1+json' https://gcr.io/v2/distroless/cc-debian12/manifests/nonroot
+podman manifest inspect gcr.io/distroless/cc-debian12@sha256:<digest> | grep architecture
 # then: podman build --build-arg RUST_IMAGE=<name@sha256:...> --build-arg RUNTIME_IMAGE=<name@sha256:...> ...
 ```
 
