@@ -186,7 +186,7 @@ if [ -e .env ]; then
 fi
 
 # 3. Questions.
-public_host=$(ask_required "Public host name (e.g. reports.example.org)")
+public_host=$(ask "Public host name" "reports.yerasuu.com")
 s3_endpoint=$(ask_required "S3 endpoint (https://...)")
 bucket=$(ask "Bucket" "decanter-reports")
 region=$(ask "Region" "us-east-1")

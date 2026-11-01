@@ -219,9 +219,8 @@ only the workspace manifests, `decanter-report` and this crate, and keeps `.git`
 the build (podman reads it next to the Containerfile; copy it to the context root as `.containerignore` with an
 older podman).
 
-The base images are named by tag only: this file was written offline and could not fetch digests. The published
-image is built with these defaults, so pin them in the `ARG` lines before tagging a release (and for any local build,
-by build argument):
+The `ARG` lines pin both base images by digest, and the published image is built with these defaults. To move a pin
+(or for a local build, by build argument):
 
 ```sh
 podman pull docker.io/library/rust:1.98-bookworm gcr.io/distroless/cc-debian12:nonroot
@@ -288,9 +287,7 @@ published on the host. There is no config file and no secret file: every setting
 The image is built only from a `reports-vX.Y.Z` tag by `.github/workflows/reports-image.yml` (linux/amd64, with a
 provenance attestation) and has no `latest` tag. The GHCR package is private until its owner makes it public.
 Before the first tag, set a tag protection rule (or a ruleset) in the repository settings so only the owner can create
-tags matching `reports-v*`: the workflow only checks that the tagged commit is on `main`. Also fill the workflow's
-`<sha>` placeholders and the base-image digests in the `Containerfile` (see above); a tag pushed before that publishes
-an image built from unpinned bases.
+tags matching `reports-v*`: the workflow only checks that the tagged commit is on `main`.
 
 **Installing.** Keep `.env` in a deployment folder outside the checkout, so it is never committed and the build
 context never sees it. Verify the script before running it, since it handles the bucket keys and the passphrase:
@@ -357,8 +354,7 @@ BuildKit takes the ignore file named after the Dockerfile, `deploy/Containerfile
 
 Nothing here was run: no Docker, Traefik or GitHub Actions was available when `compose.yaml`, `install.sh` and the
 workflow were written. The script was only syntax-checked and exercised with a stubbed `docker` and `gh`; the
-subcommands `secret` and `user add` are the interface the server work delivers. The workflow's action SHAs and the base
-image digests are placeholders to fill in before the first release.
+subcommands `secret` and `user add` are the interface the server work delivers.
 
 ## Operating it
 
