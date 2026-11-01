@@ -117,6 +117,9 @@ See [Development](#development).
 
 ## PS section
 
+The titles psport has been seen to run, with their state and what each one does,
+are listed in its [compatible games list](https://github.com/yerasuu/psport/blob/develop/docs/en/GAMES.md).
+
 | Title | Status |
 |---|---|
 | Bloodborne (`CUSA03173`, version 01.09) | Supported. A base dump with a 1.09 update beside it is offered a merge. |
