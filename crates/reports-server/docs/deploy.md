@@ -284,7 +284,7 @@ published on the host. There is no config file and no secret file: every setting
 `DECANTER_REPORTS_*` variable in a `.env` (mode 0600) that Compose reads as `env_file` and for the labels;
 `deploy/compose.env.example` lists them all.
 
-The image is built only from a `reports-vX.Y.Z` tag by `.github/workflows/reports-image.yml` (linux/amd64, with a
+The image is built only from a `reports-vX.Y.Z` tag by `.github/workflows/reports-image.yml` (linux/arm64, with a
 provenance attestation) and has no `latest` tag. The GHCR package is private until its owner makes it public.
 Before the first tag, set a tag protection rule (or a ruleset) in the repository settings so only the owner can create
 tags matching `reports-v*`: the workflow only checks that the tagged commit is on `main`.
