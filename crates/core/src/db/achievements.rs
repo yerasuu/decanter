@@ -148,6 +148,9 @@ impl Db {
                 newly_unlocked.push(item.clone());
             }
 
+            // A row decanter unlocked locally (`changed`) stays unlocked while GOG still reports
+            // it locked, since GOG never hears of it without a Galaxy client; GOG reporting it
+            // unlocked confirms it and clears `changed`.
             tx.execute(
                 "INSERT INTO achievement_cache (account_id, storefront, product_id, achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at,
                     achievement_id, visible_while_locked, rarity, rarity_level_description, rarity_level_slug, mode)
@@ -157,8 +160,12 @@ impl Db {
                     description = excluded.description,
                     icon_unlocked_url = excluded.icon_unlocked_url,
                     icon_locked_url = excluded.icon_locked_url,
-                    unlocked = excluded.unlocked,
-                    unlocked_at = excluded.unlocked_at,
+                    unlocked = CASE WHEN changed = 1 AND unlocked = 1 AND excluded.unlocked = 0
+                        THEN unlocked ELSE excluded.unlocked END,
+                    unlocked_at = CASE WHEN changed = 1 AND unlocked = 1 AND excluded.unlocked = 0
+                        THEN unlocked_at ELSE excluded.unlocked_at END,
+                    changed = CASE WHEN excluded.unlocked = 1 THEN 0 ELSE changed END,
+                    changed_at = CASE WHEN excluded.unlocked = 1 THEN NULL ELSE changed_at END,
                     achievement_id = excluded.achievement_id,
                     visible_while_locked = excluded.visible_while_locked,
                     rarity = excluded.rarity,
@@ -211,6 +218,9 @@ impl Db {
     /// matched -- `false` means this game's achievement list was never
     /// synced from GOG yet, so there was nothing to mark; the caller is
     /// expected to run this again after the next real sync.
+    ///
+    /// The row is flagged `changed` so later syncs keep the unlock until GOG
+    /// reports it too, and so a future upload knows what GOG is missing.
     pub fn mark_local_unlock(
         &self,
         account_id: &str,
@@ -220,7 +230,7 @@ impl Db {
         unlocked_at: &str,
     ) -> Result<bool> {
         let updated = self.conn.execute(
-            "UPDATE achievement_cache SET unlocked = 1, unlocked_at = ?5
+            "UPDATE achievement_cache SET unlocked = 1, unlocked_at = ?5, changed = 1, changed_at = strftime('%s','now')
              WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3 AND achievement_key = ?4
                    AND unlocked = 0",
             params![account_id, storefront as i32, product_id, achievement_key, unlocked_at],
