@@ -53,6 +53,15 @@
       "provenance": "crates/hook/Cargo.toml. A Windows DLL cross-compiled from this crate by crates/gog/build.rs and embedded in decanter; it runs inside the Wine/Proton prefix of a GOG game, as the game's own Galaxy64.dll."
     },
     {
+      "name": "GalaxyCommunication stand-in service",
+      "paths": [
+        "crates/galaxy-service"
+      ],
+      "license": "GPL-3.0-or-later",
+      "review": "reviewed",
+      "provenance": "crates/galaxy-service/Cargo.toml. A dependency-free Windows executable cross-compiled from this crate by crates/gog/build.rs and embedded in decanter; it is registered as the GalaxyCommunication service in the Wine/Proton prefix of a game that uses the Galaxy SDK. Written for this repository; it holds none of the code of GOG's or comet's dummy service."
+    },
+    {
       "name": "Report server",
       "paths": [
         "crates/reports-server"

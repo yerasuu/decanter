@@ -1,4 +1,5 @@
-//! Builds `crates/hook` into `Galaxy64.dll` and hands the result
+//! Builds `crates/hook` into `Galaxy64.dll` (and `crates/galaxy-service` into
+//! `GalaxyCommunication.exe`, the same way) and hands the result
 //! to `steam_export`/`install` (well, not yet -- see that module) as
 //! `env!("GALAXY64_DLL_PATH")`, embedded via `include_bytes!`.
 //!
@@ -18,7 +19,7 @@
 )]
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -36,28 +37,50 @@ fn main() {
         _ => return,
     };
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let hook_dir = manifest_dir.join("../hook");
-    let hook_manifest = hook_dir.join("Cargo.toml");
+    println!("cargo::rerun-if-env-changed=CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER");
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("cargo always sets OUT_DIR for a build script"));
+
+    // `include_bytes!` needs a path fixed at compile time, hence the env
+    // vars rather than returning these -- `OUT_DIR` itself isn't stable
+    // across a `cargo clean`, so the paths are re-derived by decanter-gog's
+    // own build every time rather than cached anywhere longer-lived.
+    let dll_path = build_windows_crate(&manifest_dir, &out_dir, &hook_target, "hook", "Galaxy64.dll");
+    println!("cargo::rustc-env=GALAXY64_DLL_PATH={}", dll_path.display());
+    // The stand-in `GalaxyCommunication` service rides on the same gate: it
+    // only does anything in a prefix next to the hook.
+    let service_path = build_windows_crate(
+        &manifest_dir,
+        &out_dir,
+        &hook_target,
+        "galaxy-service",
+        "GalaxyCommunication.exe",
+    );
+    println!("cargo::rustc-env=GALAXY_SERVICE_EXE_PATH={}", service_path.display());
+    println!("cargo::rustc-cfg=galaxy_hook");
+}
+
+/// Cross-compiles the workspace-excluded `crates/<crate_dir>` for `target`
+/// and returns where its `artifact` landed.
+fn build_windows_crate(manifest_dir: &Path, out_dir: &Path, target: &str, crate_dir: &str, artifact: &str) -> PathBuf {
+    let crate_path = manifest_dir.join("..").join(crate_dir);
+    let manifest = crate_path.join("Cargo.toml");
 
     // Only re-run this (genuinely slow -- a full cross-compile) when the
-    // hook crate's own inputs actually changed, not on every rebuild of
-    // this crate.
-    println!("cargo::rerun-if-changed={}", hook_dir.join("src").display());
-    println!("cargo::rerun-if-changed={}", hook_manifest.display());
-    println!("cargo::rerun-if-env-changed=CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER");
+    // crate's own inputs actually changed, not on every rebuild of this
+    // crate.
+    println!("cargo::rerun-if-changed={}", crate_path.join("src").display());
+    println!("cargo::rerun-if-changed={}", manifest.display());
 
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("cargo always sets OUT_DIR for a build script"));
-    let hook_target_dir = out_dir.join("hook-target");
-
+    let target_dir = out_dir.join(format!("{crate_dir}-target"));
     let status = Command::new(env!("CARGO"))
         .arg("build")
         .arg("--release")
         .arg("--target")
-        .arg(&hook_target)
+        .arg(target)
         .arg("--manifest-path")
-        .arg(&hook_manifest)
+        .arg(&manifest)
         .arg("--target-dir")
-        .arg(&hook_target_dir)
+        .arg(&target_dir)
         // Cargo hands a build script `CARGO_ENCODED_RUSTFLAGS` for *this*
         // build (here, empty -- decanter-gog's own host target has none
         // set), and that variable outranks `RUSTFLAGS` and every
@@ -73,28 +96,22 @@ fn main() {
         .status()
         .unwrap_or_else(|err| {
             panic!(
-                "could not run `cargo build` for crates/hook ({err}) -- \
-                 the achievement hook needs the {hook_target} target; see shell.nix"
+                "could not run `cargo build` for crates/{crate_dir} ({err}) -- \
+                 {crate_dir} needs the {target} target; see shell.nix"
             )
         });
     if !status.success() {
         panic!(
-            "building crates/hook into Galaxy64.dll for {hook_target} failed ({status}) -- \
+            "building crates/{crate_dir} for {target} failed ({status}) -- \
              cross-compiling needs CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER; see shell.nix"
         );
     }
 
-    let dll_path = hook_target_dir.join(&hook_target).join("release").join("Galaxy64.dll");
+    let artifact_path = target_dir.join(target).join("release").join(artifact);
     assert!(
-        dll_path.is_file(),
-        "crates/hook built successfully but {} is missing",
-        dll_path.display()
+        artifact_path.is_file(),
+        "crates/{crate_dir} built successfully but {} is missing",
+        artifact_path.display()
     );
-
-    // `include_bytes!` needs a path fixed at compile time, hence the env
-    // var rather than returning this -- `OUT_DIR` itself isn't stable
-    // across a `cargo clean`, so the path is re-derived by decanter-gog's
-    // own build every time rather than cached anywhere longer-lived.
-    println!("cargo::rustc-env=GALAXY64_DLL_PATH={}", dll_path.display());
-    println!("cargo::rustc-cfg=galaxy_hook");
+    artifact_path
 }

@@ -11,6 +11,7 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 | --- | --- |
 | decanter application and its crates (`app`, `crates/core`, `crates/galaxy`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
 | Galaxy64.dll achievement proxy (`crates/hook`) | GPL-3.0-or-later; `crates/hook/Cargo.toml`. A Windows DLL built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a GOG game |
+| GalaxyCommunication stand-in service (`crates/galaxy-service`) | GPL-3.0-or-later; `crates/galaxy-service/Cargo.toml`. A dependency-free Windows executable built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a game that uses the Galaxy SDK |
 | Report server (`crates/reports-server`) | AGPL-3.0-or-later; `crates/reports-server/LICENSE`. A separate binary with its own workspace; it links s3db (AGPL-3.0-or-later) and `decanter-report` |
 | Inter, JetBrains Mono and Oswald fonts (`app/assets/fonts`) | SIL Open Font License 1.1; copyright lines in LICENSES.json |
 | Twemoji bitmaps (`app/assets/emoji`) | CC-BY-4.0; Copyright Twitter, Inc and other contributors |

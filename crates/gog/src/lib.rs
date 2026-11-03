@@ -24,6 +24,7 @@ pub mod cloud_saves;
 mod depot;
 mod galaxy_launch;
 mod galaxy_store;
+pub mod galaxy_service;
 pub mod hook;
 mod install;
 pub mod language;

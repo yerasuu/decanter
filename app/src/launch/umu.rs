@@ -82,6 +82,25 @@ pub(super) async fn install_redist(account_id: &str, game: &InstalledGame, launc
         .collect()
 }
 
+/// Registers the stand-in Galaxy service in `launch`'s prefix when `game` ships the Galaxy SDK;
+/// a failure is logged there and never stops the launch.
+pub(super) async fn register_galaxy_service(account_id: &str, game: &InstalledGame, launch: &Launch) {
+    let Some(prefix) = launch.prefix.as_ref() else {
+        return;
+    };
+    let install_dir = match crate::core::library_for_account(account_id) {
+        Ok(library) => library.install_dir(&game.install_dir),
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "no library to find the install in, no Galaxy service");
+            None
+        }
+    };
+    let Some(install_dir) = install_dir else {
+        return;
+    };
+    decanter_gog::galaxy_service::ensure(&install_dir, &launch.executable, prefix, &launch.proton).await;
+}
+
 /// `launch` under the umu id protonfixes looks `game` up by.
 ///
 /// `umu-<product id>` with `STORE=gog` is how protonfixes finds a GOG

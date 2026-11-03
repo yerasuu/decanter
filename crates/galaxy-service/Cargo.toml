@@ -1,0 +1,25 @@
+[package]
+name = "decanter-galaxy-service"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+# Excluded from the workspace (see root Cargo.toml) for the same reason as
+# `crates/hook`: it is a Windows executable with its own target and linker.
+# Talking to the service control manager is raw Win32, so unsafe is the job.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = "warn"
+
+# Named after the service because that is the file name a Galaxy build and
+# the registered binary path both expect.
+[[bin]]
+name = "GalaxyCommunication"
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+strip = true
+opt-level = "s"

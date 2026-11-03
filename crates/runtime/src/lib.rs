@@ -43,6 +43,7 @@ mod path;
 mod prefix;
 mod proton;
 pub mod runner;
+mod service;
 mod session;
 mod umu;
 
@@ -50,6 +51,7 @@ pub use launch::Launch;
 pub use path::sanitize_relative_path;
 pub use prefix::{Prefix, live_prefixes, processes_by_prefix};
 pub use proton::{Proton, UMU_PROTON_REPO, steam_compat_dir};
+pub use service::Service;
 pub use session::{Prepared, Session, end, is_live, prepare, start, stop, stop_all, take_killed};
 pub use umu::{UMU_LAUNCHER_REPO, UMU_LAUNCHER_SHA256, UMU_LAUNCHER_VERSION, umu_run_dir, umu_run_path};
 

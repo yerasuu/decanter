@@ -239,10 +239,11 @@ pub async fn start(
     // Held until the game exits; every return before that releases it.
     let galaxy = galaxy_service(&account_id, &game).await;
 
-    // Shown as running while the redistributables install, which can take a
+    // Shown as running while the Galaxy service and the redistributables install, which can take a
     // minute, so the game reads as starting and can be stopped.
     let notes = if kind == Kind::Umu && game.storefront == decanter_core::Storefront::Gog {
         set_running(&background, &game.game_id, true, cx);
+        umu::register_galaxy_service(&account_id, &game, &planned.launch).await;
         umu::install_redist(&account_id, &game, &planned.launch).await
     } else {
         Vec::new()
