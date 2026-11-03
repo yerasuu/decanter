@@ -311,8 +311,10 @@ stops when `page >= max(total_pages, 1)`); products filed under no media type ap
 
 `date_unlocked` is kept as GOG writes it, e.g. `2021-10-12T00:00:56+0000` (format observed by decanter's app,
 `app/src/views/library/data.rs`; the docs show only `null`). `crates/gog/src/lib.rs::poll_achievements` moves
-every field out and treats `date_unlocked.is_some()` as unlocked. GOG's answer also carries `achievement_id` and
-`visible`, which are not read. Field list from [gogapidocs: Galaxy](https://gogapidocs.readthedocs.io/en/latest/galaxy.html).
+every field out and treats `date_unlocked.is_some()` as unlocked. It also reads, each dropped to `None` when absent or
+out of range: `achievement_id` (positive integer, number or numeric text), `visible` (as `visible_while_locked`),
+`rarity` (0 to 100), `rarity_level_description` (up to 64 bytes), `rarity_level_slug` (up to 32 bytes) and, from the
+listing, `achievements_mode` (up to 32 bytes) as `mode` on every item. Field list from [gogapidocs: Galaxy](https://gogapidocs.readthedocs.io/en/latest/galaxy.html).
 
 ### 6.2 `Client::achievements(&self, product_id: i64) -> Result<Vec<Achievement>, Error>`
 

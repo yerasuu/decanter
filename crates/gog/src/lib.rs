@@ -188,6 +188,12 @@ pub async fn poll_achievements(
             icon_locked_url: Some(a.image_url_locked),
             unlocked: a.date_unlocked.is_some(),
             unlocked_at: a.date_unlocked,
+            achievement_id: a.achievement_id,
+            visible_while_locked: a.visible_while_locked,
+            rarity: a.rarity,
+            rarity_level_description: a.rarity_level_description,
+            rarity_level_slug: a.rarity_level_slug,
+            mode: a.mode,
         })
         .collect();
 

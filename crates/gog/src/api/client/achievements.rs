@@ -2,7 +2,8 @@
 //! One game's achievements with the account's progress, from Galaxy's `gameplay.gog.com`
 //! ([gogapidocs: Galaxy](https://gogapidocs.readthedocs.io/en/latest/galaxy.html)).
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use serde_json::Value;
 
 use super::Error;
 use super::auth::is_account_id;
@@ -27,11 +28,62 @@ pub struct Achievement {
     /// GOG's own text, such as `2021-10-12T00:00:56+0000`; `None` while locked.
     #[serde(default)]
     pub date_unlocked: Option<String>,
+    /// The numeric id the Galaxy SDK uses; `None` when GOG omits it or sends something that is not a positive integer.
+    #[serde(default, deserialize_with = "lenient_id")]
+    pub achievement_id: Option<i64>,
+    /// GOG's `visible`: whether the achievement shows its details while locked.
+    #[serde(default, rename = "visible")]
+    pub visible_while_locked: Option<bool>,
+    /// Share of players with it, in percent; `None` outside 0 to 100.
+    #[serde(default, deserialize_with = "lenient_rarity")]
+    pub rarity: Option<f64>,
+    #[serde(default, deserialize_with = "lenient_text::<64, _>")]
+    pub rarity_level_description: Option<String>,
+    #[serde(default, deserialize_with = "lenient_text::<32, _>")]
+    pub rarity_level_slug: Option<String>,
+    /// The listing's `achievements_mode`, repeated on every item; never part of an item's own JSON.
+    #[serde(skip)]
+    pub mode: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct Listing {
     items: Vec<Achievement>,
+    #[serde(default, deserialize_with = "lenient_text::<32, _>")]
+    achievements_mode: Option<String>,
+}
+
+// A malformed optional field is dropped instead of failing the whole listing, so the value is read
+// as a generic JSON value first, which always consumes it.
+fn lenient_id<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let parsed = match Value::deserialize(deserializer)? {
+        Value::Number(number) => number.as_i64(),
+        Value::String(text) => text.parse().ok(),
+        Value::Null | Value::Bool(_) | Value::Array(_) | Value::Object(_) => None,
+    };
+    Ok(parsed.filter(|id| *id > 0))
+}
+
+fn lenient_rarity<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let percent = Value::deserialize(deserializer)?.as_f64();
+    Ok(percent.filter(|value| (0.0_f64..=100.0_f64).contains(value)))
+}
+
+fn lenient_text<'de, const MAX: usize, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = match Value::deserialize(deserializer)? {
+        Value::String(text) => Some(text),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => None,
+    };
+    Ok(value.filter(|text| !text.is_empty() && text.len() <= MAX && !text.chars().any(char::is_control)))
 }
 
 impl Client {
@@ -56,7 +108,14 @@ impl Client {
         }
         let path = format!("/clients/{product_id}/users/{account_id}/achievements");
         self.get(&ACHIEVEMENTS, Host::Gameplay, &path, &[], |listing: Listing| {
-            Ok(listing.items)
+            let Listing {
+                mut items,
+                achievements_mode,
+            } = listing;
+            for item in &mut items {
+                item.mode.clone_from(&achievements_mode);
+            }
+            Ok(items)
         })
         .await
     }

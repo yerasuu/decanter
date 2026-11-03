@@ -14,6 +14,12 @@ pub struct CachedAchievement {
     pub icon_locked_url: Option<String>,
     pub unlocked: bool,
     pub unlocked_at: Option<String>,
+    pub achievement_id: Option<i64>,
+    pub visible_while_locked: Option<bool>,
+    pub rarity: Option<f64>,
+    pub rarity_level_description: Option<String>,
+    pub rarity_level_slug: Option<String>,
+    pub mode: Option<String>,
 }
 
 /// One `decanter-hook` failure to install its `SetAchievement` patch,
@@ -65,7 +71,8 @@ impl Db {
         product_id: &str,
     ) -> Result<Vec<CachedAchievement>> {
         let mut stmt = self.conn.prepare(
-            "SELECT achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at
+            "SELECT achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at,
+                    achievement_id, visible_while_locked, rarity, rarity_level_description, rarity_level_slug, mode
              FROM achievement_cache
              WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3
              ORDER BY unlocked DESC, name ASC",
@@ -79,6 +86,12 @@ impl Db {
                 icon_locked_url: row.get(4)?,
                 unlocked: row.get(5)?,
                 unlocked_at: row.get(6)?,
+                achievement_id: row.get(7)?,
+                visible_while_locked: row.get(8)?,
+                rarity: row.get(9)?,
+                rarity_level_description: row.get(10)?,
+                rarity_level_slug: row.get(11)?,
+                mode: row.get(12)?,
             })
         })?;
         let achievements = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;
@@ -136,15 +149,22 @@ impl Db {
             }
 
             tx.execute(
-                "INSERT INTO achievement_cache (account_id, storefront, product_id, achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                "INSERT INTO achievement_cache (account_id, storefront, product_id, achievement_key, name, description, icon_unlocked_url, icon_locked_url, unlocked, unlocked_at,
+                    achievement_id, visible_while_locked, rarity, rarity_level_description, rarity_level_slug, mode)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                  ON CONFLICT(account_id, storefront, product_id, achievement_key) DO UPDATE SET
                     name = excluded.name,
                     description = excluded.description,
                     icon_unlocked_url = excluded.icon_unlocked_url,
                     icon_locked_url = excluded.icon_locked_url,
                     unlocked = excluded.unlocked,
-                    unlocked_at = excluded.unlocked_at",
+                    unlocked_at = excluded.unlocked_at,
+                    achievement_id = excluded.achievement_id,
+                    visible_while_locked = excluded.visible_while_locked,
+                    rarity = excluded.rarity,
+                    rarity_level_description = excluded.rarity_level_description,
+                    rarity_level_slug = excluded.rarity_level_slug,
+                    mode = excluded.mode",
                 params![
                     account_id,
                     storefront as i32,
@@ -156,6 +176,12 @@ impl Db {
                     item.icon_locked_url,
                     item.unlocked,
                     item.unlocked_at,
+                    item.achievement_id,
+                    item.visible_while_locked,
+                    item.rarity,
+                    item.rarity_level_description,
+                    item.rarity_level_slug,
+                    item.mode,
                 ],
             )?;
         }

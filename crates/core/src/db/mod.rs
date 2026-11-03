@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS achievement_cache (
     icon_locked_url   TEXT,
     unlocked          INTEGER NOT NULL DEFAULT 0,
     unlocked_at       TEXT,
+    achievement_id    INTEGER,
+    visible_while_locked INTEGER,
+    rarity            REAL,
+    rarity_level_description TEXT,
+    rarity_level_slug TEXT,
+    mode              TEXT,
     PRIMARY KEY (account_id, storefront, product_id, achievement_key)
 );
 
@@ -192,7 +198,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -310,6 +316,22 @@ impl Db {
         if !has_column(&conn, "games_cache", "has_macos_build")? {
             tracing::info!(table = "games_cache", "adding has_macos_build column");
             conn.execute_batch("ALTER TABLE games_cache ADD COLUMN has_macos_build INTEGER;")?;
+        }
+
+        // Additive and nullable: rows an older decanter wrote stay readable and get filled by the
+        // next achievements sync.
+        for (column, ty) in [
+            ("achievement_id", "INTEGER"),
+            ("visible_while_locked", "INTEGER"),
+            ("rarity", "REAL"),
+            ("rarity_level_description", "TEXT"),
+            ("rarity_level_slug", "TEXT"),
+            ("mode", "TEXT"),
+        ] {
+            if !has_column(&conn, "achievement_cache", column)? {
+                tracing::info!(table = "achievement_cache", column, "adding column");
+                conn.execute_batch(&format!("ALTER TABLE achievement_cache ADD COLUMN {column} {ty};"))?;
+            }
         }
 
         let db = Self { conn };
