@@ -387,6 +387,28 @@ owner's own account, and the answers go back into this document.
 | Q12 | Is `user_id` of the token answer always the account's id decanter has stored? | Compare for the owner's account |
 | Q13 | Does a very large listing page or truncate? | Only if a game with many files exists |
 
+## 6.1 Observed on 2026-11-03
+
+Run by the owner's decision (kb #1525, notes #1540) against the owner's account with the rewritten client: reads on
+five games' buckets (three were empty, one held 2 objects, one held 97), and one write round on the empty bucket of a
+game with no playtime: a throwaway object `__default/decanter-probe-<unix time>.txt` (30 bytes of text, gzip level 6,
+header time 0) uploaded, listed, downloaded and deleted. The bucket was empty before and after. Every request carried
+`User-Agent: decanter/<version> dont_sync_marker/true`.
+
+| Q | Observed |
+| --- | --- |
+| Q1 | `POST <bucket>` answered success. The object was already in the listing after the PUT and before the POST, and the listing did not change after it, from the same token. Whether another client (Galaxy, another machine) needs the commit to see an upload is not tested. |
+| Q2 | No Galaxy User-Agent was needed: listing, PUT, GET of an object, DELETE and the commit POST all succeeded with the decanter agent. |
+| Q3 | A game with no cloud saves, or never synced, answers 200 with an empty list (three of five games), not 404. |
+| Q4 | After `DELETE` the object was gone from the listing at once, before any commit: no tombstone, for an object this client had created. Tombstones made by Galaxy itself were not seen. |
+| Q6 | The listing's `last_modified` is the server's time of the upload, with fractions (upload header 22:07:17Z, listed 22:07:20.43Z). `X-Object-Meta-LocalLastModified` came back verbatim on the download, whole seconds. |
+| Q7 | A body sent with `Content-Encoding: gzip` and an `Etag` of the md5 of the compressed bytes was accepted. A mismatching `Etag` was not tried. |
+| Q12 | The exchange's `user_id` equalled the account's stored id. |
+| Downloads | `GET <bucket>/<name>` returned exactly the stored bytes (the gzip stream, starting `1f 8b`) and the `X-Object-Meta-LocalLastModified` header. |
+| Names | Real listings hold both location-qualified names (`saves/AutoSave-0/sav.dat`, dated 2025, written by Galaxy) and flat names with no `/` (`autosave.sav`, `config.ini`, dated 2026-10-31, probably written by earlier decanter versions, which synced flat paths). A client has to decide what a name with no `/` means: see kb #1525 for how the rewrite treats them. |
+
+Not run: Q5, Q8, Q9, Q10, Q11, Q13.
+
 ## 7. Sources
 
 Licences read from each repository's licence file through the GitHub API on 2026-11-03.
