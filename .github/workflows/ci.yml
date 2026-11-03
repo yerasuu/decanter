@@ -261,7 +261,7 @@ jobs:
           version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
           [[ "$GITHUB_REF_NAME" == "v$version" ]] || { echo "::error::tag $GITHUB_REF_NAME isn't v$version"; exit 1; }
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$notes"
+            || gh release create "$GITHUB_REF_NAME" --verify-tag --latest --title "$GITHUB_REF_NAME" --notes-file "$notes"
           if [[ -f windows/decanter.exe && -f windows/decanter-cli.exe ]]; then
             cp windows/decanter.exe "dist/decanter-$version-windows-x86_64.exe"
             cp windows/decanter-cli.exe "dist/decanter-cli-$version-windows-x86_64.exe"

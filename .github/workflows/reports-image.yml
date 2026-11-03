@@ -103,5 +103,5 @@ jobs:
           DIGEST: ${{ steps.merge.outputs.digest }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false --title "$GITHUB_REF_NAME" \
               --notes "Image: $IMAGE:$VERSION ($DIGEST), linux/amd64 and linux/arm64. Verify with: gh attestation verify oci://$IMAGE@$DIGEST --repo yerasuu/decanter --signer-workflow yerasuu/decanter/.github/workflows/reports-image.yml"
