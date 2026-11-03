@@ -48,7 +48,7 @@ decanter-runtime = { path = "crates/runtime" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f" }
 rfd = "0.17.2"
-image = "0.25.10"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "ico"] }
 unicode-segmentation = "1.13.3"
 open = "5.4.5"
 rust-i18n = "4.2.4"
