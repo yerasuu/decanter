@@ -104,9 +104,9 @@ jobs:
         run: cargo clippy --workspace --all-targets --target "${{ matrix.target }}"
       # The Windows build: a CI artifact of the tag's run, attached to the release when it built.
       - name: Windows build
-        if: matrix.os == 'windows-latest' && github.event_name == 'push'
+        if: matrix.os == 'windows-2025' && github.event_name == 'push'
         run: cargo build --release -p decanter --features windows-cli --target "${{ matrix.target }}"
-      - if: matrix.os == 'windows-latest' && github.event_name == 'push'
+      - if: matrix.os == 'windows-2025' && github.event_name == 'push'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: decanter-windows-x86_64
