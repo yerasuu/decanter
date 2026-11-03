@@ -19,7 +19,7 @@ env:
 
 jobs:
   moderate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     if: ${{ !endsWith(github.actor, '[bot]') }}
     steps:
