@@ -14,6 +14,7 @@
       "paths": [
         "app",
         "crates/core",
+        "crates/galaxy",
         "crates/gog",
         "crates/mods",
         "crates/nix",
@@ -118,7 +119,7 @@
       ],
       "license": "LicenseRef-Cargo-Dependencies",
       "review": "generated",
-      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified. The gog crate is no longer a dependency: it is the api module of decanter-gog (crates/gog/src/api), listed as its own component."
+      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified. prost, prost-derive, prost-types and prost-build are Apache-2.0; protox, protox-parse and prost-reflect MIT OR Apache-2.0 (crates/galaxy, kb #1532). The gog crate is no longer a dependency: it is the api module of decanter-gog (crates/gog/src/api), listed as its own component."
     },
     {
       "name": "Rust dependencies of the report server",
@@ -151,6 +152,15 @@
       "license": "LicenseRef-game-patch-authors",
       "review": "reviewed",
       "provenance": "The community's Bloodborne patch definitions, moved here from psport's patches/Bloodborne.xml (kb #1387, decision #1388) so decanter ships them and hands them to the port as its built-in patch file. The Author attributes name Kyo, auser1337, Lance McDonald (manfightdragon), illusion, emoose, Dasaav, Foxy Hooligans, Imedved, Whitehawkx, bloo, stagvant, yogesh1239 and bbport; the file is unchanged."
+    },
+    {
+      "name": "Galaxy protocol definitions",
+      "paths": [
+        "crates/galaxy/proto"
+      ],
+      "license": "CC0-1.0",
+      "review": "reviewed",
+      "provenance": "Four .proto files of https://github.com/Yepoleb/gog_protocols at commit 923e8a0008603365d29002db611559190da5bf99 (gog.protocols.pb, galaxy.protocols.communication_service, galaxy.protocols.webbroker_service, galaxy.common.protocols.connection), copied verbatim with that repository's LICENSE (CC0 1.0 Universal); reverse-engineered by their authors, not GOG's. crates/galaxy/build.rs generates Rust from them at build time with protox and prost-build (kb #1532)."
     }
   ]
 }

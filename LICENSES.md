@@ -9,12 +9,13 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 
 | Component | Terms and source |
 | --- | --- |
-| decanter application and its crates (`app`, `crates/core`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
+| decanter application and its crates (`app`, `crates/core`, `crates/galaxy`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
 | Galaxy64.dll achievement proxy (`crates/hook`) | GPL-3.0-or-later; `crates/hook/Cargo.toml`. A Windows DLL built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a GOG game |
 | Report server (`crates/reports-server`) | AGPL-3.0-or-later; `crates/reports-server/LICENSE`. A separate binary with its own workspace; it links s3db (AGPL-3.0-or-later) and `decanter-report` |
 | Inter, JetBrains Mono and Oswald fonts (`app/assets/fonts`) | SIL Open Font License 1.1; copyright lines in LICENSES.json |
 | Twemoji bitmaps (`app/assets/emoji`) | CC-BY-4.0; Copyright Twitter, Inc and other contributors |
 | Bloodborne patch definitions (`crates/ps/data/bloodborne/Bloodborne.xml`) | No licence stated by their authors (Kyo, auser1337, Lance McDonald, illusion, emoose and others, named in the file's Author attributes); each keeps their rights and the file is redistributed as it is with their names |
+| Galaxy protocol definitions (`crates/galaxy/proto`) | CC0-1.0; four `.proto` files copied verbatim from [Yepoleb/gog_protocols](https://github.com/Yepoleb/gog_protocols) at commit `923e8a0008603365d29002db611559190da5bf99`, with its `LICENSE`. Reverse-engineered by their authors, not GOG's; `crates/galaxy/build.rs` generates Rust from them |
 | decanter logo and icon (`app/assets`) | GPL-3.0-or-later, assumed; the owner has not recorded a separate licence yet (review: pending) |
 | Rust dependencies | Their own SPDX expressions, inventoried by `scripts/licenses.py inventory` |
 | psport and the PS4 ports | Separate works, see below |
@@ -38,6 +39,9 @@ similar permissive terms. Exceptions this review found:
   without a based-on line; what carried over is GOG's own interface (endpoints, header and JSON field names) and the
   module's public items, which the specification documents. While the port remained, the binaries that linked it,
   v0.4.0 among them, carried GPL-3.0-only terms for the combined work; they can now be offered under GPL-3.0-or-later.
+- `crates/galaxy` adds prost, prost-derive, prost-types and prost-build (Apache-2.0), protox, protox-parse and
+  prost-reflect (MIT OR Apache-2.0) and their build-time helpers (logos, petgraph, multimap, prettyplease, beef:
+  MIT OR Apache-2.0; miette: Apache-2.0; foldhash: Zlib).
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.

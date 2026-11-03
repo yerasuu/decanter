@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "decanter-galaxy"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# No HTTP client on purpose: the service answers from what decanter stores and never reaches GOG
+# (docs/galaxy-local-service-plan.md, security requirement 9).
+[dependencies]
+prost.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "time", "macros"] }
+tracing.workspace = true
+
+# Generated at build time from proto/ with protox, so no protoc has to be on the build machine.
+[build-dependencies]
+prost-build.workspace = true
+protox.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tracing-subscriber.workspace = true

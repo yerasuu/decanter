@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/core",
+    "crates/galaxy",
     "crates/gog",
     "crates/mods",
     "crates/nix",
@@ -75,6 +76,11 @@ chrono = "0.4.45"
 uuid = "1.29.0"
 dirs = "7.0.0"
 clap = "4.6.7"
+# The local Galaxy service's messages (crates/galaxy), generated from its vendored .proto files by
+# protox, a pure-Rust compiler, instead of a protoc binary the nix shell and CI would have to provide.
+prost = { version = "0.14.4", default-features = false, features = ["derive", "std"] }
+prost-build = "0.14.4"
+protox = "0.9.1"
 
 # --- Errors and logging ---
 anyhow = "1.0.104"
