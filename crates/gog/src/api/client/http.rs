@@ -60,6 +60,10 @@ impl Host {
 /// What an authorized call answers when GOG turns the access token down.
 pub(super) const SESSION_REFUSED: &[StatusCode] = &[StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN];
 
+/// How long before its expiry a token handed out by [`Client::fresh_token`] is renewed anyway,
+/// since the hosts it then goes to never renew it and an install or verify outlasts one request.
+const HANDOUT_MARGIN_SECS: u64 = 5 * 60;
+
 /// One kind of request: its name in errors, the statuses that mean GOG refused the credentials,
 /// the largest body it may answer with, and whether that body holds credentials, which a parse
 /// error could quote.
@@ -130,6 +134,27 @@ impl Client {
     #[inline]
     pub async fn refresh(&self) -> Result<Token, Error> {
         let seen = duplicate(&self.token.read().await.access_token);
+        self.renew(&seen).await?;
+        Ok(self.token().await)
+    }
+
+    /// The session with an access token that outlasts [`HANDOUT_MARGIN_SECS`], renewed first
+    /// when it does not, without asking GOG anything else: for a token handed to [`Sessionless`]
+    /// calls, which never renew it.
+    ///
+    /// # Errors
+    ///
+    /// Only when a renewal is due: [`Error::Rejected`] when GOG refuses the refresh token; the
+    /// others when GOG cannot be asked or answers something unreadable.
+    #[inline]
+    pub async fn fresh_token(&self) -> Result<Token, Error> {
+        let seen = {
+            let token = self.token.read().await;
+            if !token.expires_within(HANDOUT_MARGIN_SECS) {
+                return Ok(token.clone());
+            }
+            duplicate(&token.access_token)
+        };
         self.renew(&seen).await?;
         Ok(self.token().await)
     }

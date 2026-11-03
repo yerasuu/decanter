@@ -98,23 +98,22 @@ pub(crate) async fn with_client<T>(
     crate::achv_try!(answer.context("no GOG session for this account — log in first"))
 }
 
-/// The session as GOG still accepts it, for the requests decanter sends
-/// itself with its access token (content-system, CDN, cloud storage, remote
-/// config): asking for the user renews an expired access token first and
-/// turns a refused session into an error here rather than at those hosts.
+/// The session for the requests decanter sends itself with its access token
+/// (content-system, CDN, cloud storage, remote config), renewed first when
+/// its access token is about to expire, so that a refused session is an
+/// error here rather than at those hosts. A token still in date is handed
+/// out without asking GOG: a session revoked before then shows up at those
+/// hosts as their own refusal.
 ///
 /// # Errors
 ///
-/// As [`with_client`], plus GOG refusing the session or not answering.
+/// As [`with_client`], plus GOG refusing a due renewal or not answering it.
 pub(crate) async fn live_token(account_id: &str) -> anyhow::Result<Token> {
     with_client(account_id, async |client| {
-        crate::achv_try!(
-            client
-                .user()
-                .await
-                .map_err(|err| failed("GOG session is not valid", err))
-        );
-        Ok(client.token().await)
+        client
+            .fresh_token()
+            .await
+            .map_err(|err| failed("GOG session is not valid", err))
     })
     .await
 }

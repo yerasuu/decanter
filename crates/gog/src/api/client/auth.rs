@@ -79,6 +79,13 @@ impl Token {
     pub fn is_expired(&self) -> bool {
         self.updated_at.saturating_add(self.expires_in) <= unix_now()
     }
+
+    /// Whether the access token expires within `margin_secs`, already expired included.
+    #[inline]
+    #[must_use]
+    pub fn expires_within(&self, margin_secs: u64) -> bool {
+        self.updated_at.saturating_add(self.expires_in) <= unix_now().saturating_add(margin_secs)
+    }
 }
 
 impl Clone for Token {
