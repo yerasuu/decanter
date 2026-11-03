@@ -22,7 +22,8 @@ pub const REDIRECT_URI: &str = "https://embed.gog.com/on_login_success?origin=cl
 
 /// GOG answers a spent or expired grant with 400, so on this endpoint 400 is a refusal of the
 /// credentials and not a malformed request.
-const GRANT_REFUSED: &[StatusCode] = &[StatusCode::BAD_REQUEST, StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN];
+pub(super) const GRANT_REFUSED: &[StatusCode] =
+    &[StatusCode::BAD_REQUEST, StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN];
 
 /// Both grants answer with a fresh token pair, so neither body may be quoted in an error.
 const CODE_EXCHANGE: Call = Call {
@@ -117,7 +118,7 @@ where
     serializer.serialize_str(secret.expose())
 }
 
-fn secret<'de, D>(deserializer: D) -> Result<Secret, D::Error>
+pub(super) fn secret<'de, D>(deserializer: D) -> Result<Secret, D::Error>
 where
     D: Deserializer<'de>,
 {

@@ -5,8 +5,9 @@ This module began as gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0, and no longer h
 ## Current state
 
 - `client/` is the whole module: `Client` (session-bearing: `auth`, `user`, `products`, `achievements`, `orders`),
-  `Sessionless` (an access token borrowed per call: `catalog`, `gamesdb`, `galaxy_products`, `content`), `http` (the
-  shared HTTP client, caps and host checks) and `error` (`Error`). `mod.rs` only declares `client`.
+  `Sessionless` (an access token borrowed per call: `catalog`, `gamesdb`, `galaxy_products`, `content`,
+  `cloud_storage`), `http` (the shared HTTP client, caps and host checks) and `error` (`Error`). `mod.rs` only
+  declares `client`.
 - No gogapi-rs code remains. Every file is decanter's own, `GPL-3.0-or-later`, with no based-on line.
 - Upstream's `Gog` had about 30 methods and decanter called 5 of them. The ones decanter used (login code exchange and
   refresh, user data, owned games, filtered products, achievements) are specified in
@@ -82,3 +83,4 @@ This module began as gog 0.5.0 (gogapi-rs) by nicohman, GPL-3.0, and no longer h
 | `client/auth.rs`, `client/user.rs`, `client/products.rs` and `client/achievements.rs` removed and written again from `docs/gog-api-behaviour-spec.md`, `GPL-3.0-or-later`; the public items, endpoints, error mapping and stored `Token` JSON unchanged | Clean-room rewrite (kb #1228, decision #1225): the last files derived from upstream go, so the crate and the binaries can be offered under "or later" | refactor(gog): rewrite the derived client files from a specification |
 | `LICENSE` and `README.upstream.md` removed; `license` of `crates/gog/Cargo.toml` back to `GPL-3.0-or-later`; the gogapi component and `LICENSES/GPL-3.0-only.txt` dropped from `LICENSES.json`, `LICENSES.md` and `LICENSES/` | They described code that is no longer here; the credit stays in this file and in `README.md` | docs(gog): the client no longer derives from gogapi |
 | `client/http.rs`: `Client::renew` refuses a renewed `Token` whose `user_id` differs from the one it replaces, as `Error::Rejected` (`token refresh`, a fixed reason quoting neither id), and keeps the old token | Every renewal goes through `renew`, so a session can never change account there and be stored under the wrong account id | fix(gog): reject a renewed token of another account |
+| `client/cloud_storage.rs` (GPL-3.0-or-later): the game session exchange (`Sessionless::game_session`, `without_new_session=1`, 400, 401 and 403 read as a refusal, no body quoted) and the `cloudstorage.gog.com` bucket calls (`Bucket`, `cloud_objects`, `cloud_download`, `cloud_upload`, `cloud_delete`, `cloud_commit`) on the new `Host::CloudStorage`; `Sessionless::request` and `Sessionless::answer` in `client/http.rs` for requests of other methods than GET, with the same status reading and answer-from-the-host-asked check; caps of 8 MiB for a listing and 256 MiB for an object | The clean-room rewrite of `cloud_saves.rs` from `docs/gog-cloud-saves-behaviour-spec.md` (kb #1525) sends its requests through this client, so they get its HTTPS-only, GOG-hosts-only redirect policy, timeout and redacted errors | refactor(gog): rewrite cloud saves from a specification |

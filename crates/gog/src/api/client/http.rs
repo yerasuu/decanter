@@ -5,7 +5,7 @@
 
 use core::time::Duration;
 
-use reqwest::{RequestBuilder, Response, StatusCode, redirect};
+use reqwest::{Method, RequestBuilder, Response, StatusCode, Url, redirect};
 use serde::de::DeserializeOwned;
 use tokio::sync::RwLock;
 
@@ -21,6 +21,7 @@ pub(super) enum Host {
     Auth,
     Catalog,
     Cdn,
+    CloudStorage,
     ContentSystem,
     Embed,
     GamesDb,
@@ -28,11 +29,12 @@ pub(super) enum Host {
 }
 
 impl Host {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 9] = [
         Self::Api,
         Self::Auth,
         Self::Catalog,
         Self::Cdn,
+        Self::CloudStorage,
         Self::ContentSystem,
         Self::Embed,
         Self::GamesDb,
@@ -45,6 +47,7 @@ impl Host {
             Self::Auth => "auth.gog.com",
             Self::Catalog => "catalog.gog.com",
             Self::Cdn => "gog-cdn-fastly.gog.com",
+            Self::CloudStorage => "cloudstorage.gog.com",
             Self::ContentSystem => "content-system.gog.com",
             Self::Embed => "embed.gog.com",
             Self::GamesDb => "gamesdb.gog.com",
@@ -277,6 +280,17 @@ impl Sessionless {
         if let Some(token) = bearer {
             request = request.bearer_auth(token);
         }
+        let response = self.answer(call, request, host).await?;
+        read(response, call).await
+    }
+
+    /// A request of any method to `url`, to be sent through [`Sessionless::answer`].
+    pub(super) fn request(&self, method: Method, url: Url) -> RequestBuilder {
+        self.http.request(method, url)
+    }
+
+    /// Sends `request` and keeps its 2xx answer, which must come from `host`.
+    pub(super) async fn answer(&self, call: &Call, request: RequestBuilder, host: &str) -> Result<Response, Error> {
         let response = receive(request, call).await?;
         if response.url().host_str() != Some(host) {
             return Err(Error::Malformed {
@@ -284,7 +298,7 @@ impl Sessionless {
                 reason: "answered from another host".to_owned(),
             });
         }
-        read(response, call).await
+        Ok(response)
     }
 }
 
@@ -342,7 +356,7 @@ async fn receive(request: RequestBuilder, call: &Call) -> Result<Response, Error
 }
 
 /// The body of `response`, refused once it grows past `call.max_body` bytes.
-async fn read(mut response: Response, call: &Call) -> Result<Vec<u8>, Error> {
+pub(super) async fn read(mut response: Response, call: &Call) -> Result<Vec<u8>, Error> {
     let too_large = || Error::Malformed {
         call: call.name,
         reason: format!("body larger than {} bytes", call.max_body),

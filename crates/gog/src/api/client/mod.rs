@@ -4,6 +4,7 @@
 mod achievements;
 mod auth;
 mod catalog;
+mod cloud_storage;
 mod content;
 mod dependencies;
 mod error;
@@ -18,6 +19,7 @@ mod user;
 pub use achievements::Achievement;
 pub use auth::{CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, Token};
 pub use catalog::{CatalogMods, CatalogProduct};
+pub use cloud_storage::{Bucket, CloudObject, Downloaded, GameSession};
 pub use content::{Build, BuildMeta, DepotChunk, DepotFile, DepotMeta, SecureLinkEntry};
 pub use dependencies::Dependency;
 pub use error::Error;

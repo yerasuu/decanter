@@ -68,7 +68,7 @@ fn is_identifier(text: &str) -> bool {
     !text.is_empty() && text.len() <= MAX_ID_LEN && !text.chars().any(char::is_control)
 }
 
-fn is_client_id(text: &str) -> bool {
+pub(super) fn is_client_id(text: &str) -> bool {
     (1..=MAX_CLIENT_ID_LEN).contains(&text.len()) && text.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
