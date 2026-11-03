@@ -28,7 +28,7 @@
       ],
       "license": "GPL-3.0-or-later",
       "review": "reviewed",
-      "provenance": "LICENSE. The GOG web API client in crates/gog/src/api began as gog 0.5.0 (gogapi-rs) by nicohman (GPL-3.0-only); none of its code remains: its files were removed and the last four derived ones rewritten clean-room from docs/gog-api-behaviour-spec.md (kb #1228, decision #1225), see crates/gog/src/api/VENDOR.md. Until then the binaries were distributed under GPL-3.0-only terms (kb #1073); they can now be offered under GPL-3.0-or-later"
+      "provenance": "LICENSE. The GOG web API client in crates/gog/src/api began as gog 0.5.0 (gogapi-rs) by nicohman (GPL-3.0-only); none of its code remains: its files were removed and the last four derived ones rewritten clean-room from docs/gog-api-behaviour-spec.md (kb #1228, decision #1225), see crates/gog/src/api/VENDOR.md. Until then the binaries were distributed under GPL-3.0-only terms (kb #1073); they can now be offered under GPL-3.0-or-later crates/gog/src/cloud_saves.rs is still a port of heroic-gogdl (GPL-3, no \"or later\" notice, kb #1530): until it is rewritten clean-room from docs/gog-cloud-saves-behaviour-spec.md (kb #1525) the binaries that link it carry GPL-3.0-only terms for the combined work."
     },
     {
       "name": "decanter documentation and screenshots",

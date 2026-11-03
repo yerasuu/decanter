@@ -29,6 +29,10 @@ similar permissive terms. Exceptions this review found:
   module of `decanter-gog` on 2026-10-29; its files were removed and the last four derived from it were rewritten
   clean-room from `docs/gog-api-behaviour-spec.md` (kb #1228). While they remained, the binaries were distributed under
   GPL-3.0-only terms (kb #1073); with nothing of it left, the whole application can be offered under GPL-3.0-or-later.
+- `crates/gog/src/cloud_saves.rs` was ported from heroic-gogdl (`gogdl/saves.py`, `gogdl/auth.py`), which declares only
+  "GPL-3" (the GPLv3 text, no "or later" notice in any file: kb #1530). Until it is rewritten clean-room from
+  `docs/gog-cloud-saves-behaviour-spec.md` (kb #1525), the binaries that link it, v0.4.0 among them, carry GPL-3.0-only
+  terms for the combined work, not "or later".
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.
