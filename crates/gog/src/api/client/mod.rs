@@ -12,6 +12,7 @@ mod gamesdb;
 mod http;
 mod orders;
 mod products;
+mod stats;
 mod user;
 
 pub use achievements::Achievement;

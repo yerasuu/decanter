@@ -16,6 +16,7 @@ mod library_caches;
 mod playtime;
 mod settings;
 mod steam_shortcuts;
+mod user_stats;
 
 use std::path::{Path, PathBuf};
 
@@ -25,6 +26,7 @@ pub use self::{
     achievements::{CachedAchievement, HookDiagnostic},
     games::CachedGame,
     playtime::Playtime,
+    user_stats::{StatDefinition, StatKind, StatValue, UserStat},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -198,7 +200,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -296,6 +298,7 @@ impl Db {
         }
 
         conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(user_stats::SCHEMA)?;
         tracing::debug!("applied schema");
 
         // Additive, unlike the drop-and-rebuild migrations above: `profiles`

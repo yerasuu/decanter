@@ -32,6 +32,7 @@ pub mod save_location;
 mod session;
 mod steam_export;
 mod updates;
+mod user_stats;
 
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
@@ -49,6 +50,7 @@ pub use orders::purchase_dates;
 pub use session::{SessionState, check_session, renew_session};
 pub use steam_export::{remove_steam_shortcut, sync_steam_shortcut};
 pub use updates::{Branch, check_all_updates, check_update, list_branches, list_builds};
+pub use user_stats::seed_user_stats;
 
 /// Propagates a `Result`'s error out of the enclosing `anyhow::Result` fn,
 /// same as `?` — kept as a macro so every call site across this crate's mix

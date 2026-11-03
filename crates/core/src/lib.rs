@@ -31,7 +31,10 @@ pub use accounts::Account;
 pub use cache::{cache_group, default_cache_root, game_cache_dir, shader_cache_env};
 pub use catalog::{Game, GameSystem, InstallState, Storefront, UnknownStorefront};
 pub use collections::Collection;
-pub use db::{CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result};
+pub use db::{
+    CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result, StatDefinition, StatKind, StatValue,
+    UserStat,
+};
 pub use disk::disk_usage;
 pub use fingerprint::install_fingerprint;
 pub use game_tools::{GameTool, gamemode_prefix, gamemoded, mangohud_env, mangohud_installed, mangohud_log_dir};

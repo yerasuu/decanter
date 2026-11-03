@@ -31,7 +31,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use decanter_core::platform;
 use decanter_core::secrets::Secret;
 
-use crate::api::client::Sessionless;
+use crate::api::client::{Sessionless, Token};
 use crate::depot;
 
 /// Base URL for GOG's Cloud Saves storage API.
@@ -85,15 +85,16 @@ pub struct SyncOutcome {
     pub last_sync: i64,
 }
 
-/// A cloud-saves session scoped to one game's Galaxy client id, exchanged
-/// from decanter's own login session — see [`game_token`].
-struct GameToken {
-    /// Bearer token for this game's cloud-saves session.
-    access_token: Secret,
+/// A session scoped to one game's Galaxy client id, exchanged from
+/// decanter's own login session — see [`exchange_game_token`]. Cloud saves
+/// and user stats both answer only to it.
+pub(crate) struct GameToken {
+    /// Bearer token for this game's session.
+    pub access_token: Secret,
     /// GOG account id the session belongs to.
-    user_id: String,
-    /// The game build's own Galaxy client id — buckets are keyed by it.
-    client_id: String,
+    pub user_id: String,
+    /// The game build's own Galaxy client id — buckets and stats are keyed by it.
+    pub client_id: String,
 }
 
 /// This build's Galaxy client credentials, as resolved by [`resolve_build_client`].
@@ -392,16 +393,20 @@ fn classify(
 /// own refresh token for a session scoped to it — Cloud Saves buckets are
 /// keyed by a game's own client id, not decanter's login client.
 async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
-    let http = crate::http_client();
-    let (access_token, refresh_token) = match crate::session::live_token(account_id).await {
-        Ok(token) => (token.access_token, token.refresh_token),
-        Err(err) => return Err(err),
-    };
+    match crate::session::live_token(account_id).await {
+        Ok(session) => exchange_game_token(&session, game_id).await,
+        Err(err) => Err(err),
+    }
+}
 
+/// [`game_token`] for a caller that already holds a live login `session`,
+/// so that it can read GOG not answering apart from GOG refusing it.
+pub(crate) async fn exchange_game_token(session: &Token, game_id: i64) -> Result<GameToken> {
+    let http = crate::http_client();
     let BuildClient {
         client_id,
         client_secret,
-    } = match resolve_build_client(access_token.expose(), game_id).await {
+    } = match resolve_build_client(session.access_token.expose(), game_id).await {
         Ok(client) => client,
         Err(err) => return Err(err),
     };
@@ -416,7 +421,7 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
         ("client_id", client_id.as_str()),
         ("client_secret", client_secret.expose()),
         ("grant_type", "refresh_token"),
-        ("refresh_token", refresh_token.expose()),
+        ("refresh_token", session.refresh_token.expose()),
         ("without_new_session", "1"),
     ]);
     // The URL carries the client secret and the refresh token, and reqwest puts it in its errors.
@@ -424,7 +429,7 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
         Ok(response) => response,
         Err(err) => {
             let err = err.without_url();
-            tracing::error!(game_id, error = %err, "gog cloud-saves token request failed, aborting sync");
+            tracing::error!(game_id, error = %err, "gog game token request failed");
             return Err(err.into());
         }
     };
@@ -432,19 +437,19 @@ async fn game_token(account_id: &str, game_id: i64) -> Result<GameToken> {
         Ok(response) => response,
         Err(err) => {
             let err = err.without_url();
-            tracing::error!(game_id, error = %err, "gog refused a cloud-saves session, aborting sync");
-            return Err(anyhow::Error::new(err).context("GOG refused a cloud-saves session for this game"));
+            tracing::error!(game_id, error = %err, "gog refused a game session");
+            return Err(anyhow::Error::new(err).context("GOG refused a session for this game"));
         }
     };
     let response: TokenResponse = match response.json().await {
         Ok(response) => response,
         // A decode error's source is serde_json's, which quotes the value it choked on: part of
         // a body that carries a token.
-        Err(err) if err.is_decode() => return Err(anyhow::anyhow!("GOG's cloud-saves session answer does not parse")),
+        Err(err) if err.is_decode() => return Err(anyhow::anyhow!("GOG's game session answer does not parse")),
         Err(err) => return Err(err.without_url().into()),
     };
 
-    tracing::debug!(game_id, "exchanged gog cloud-saves session");
+    tracing::debug!(game_id, "exchanged gog game session");
     Ok(GameToken {
         access_token: Secret::from(response.access_token),
         user_id: response.user_id,
