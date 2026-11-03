@@ -1,0 +1,32 @@
+# Advisories that are "unmaintained" notices, not vulnerabilities, in crates reached only through
+# gpui, image and accesskit. Each lapses on its date so it is looked at again.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+effectiveUntil = 2027-05-03
+reason = "paste: unmaintained notice only (no vulnerability); proc-macro pulled by image's exr and rav1e at build time, no maintained drop-in is chosen by those crates yet"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0206"
+effectiveUntil = 2027-05-03
+reason = "rustybuzz: unmaintained notice only; text shaping for SVG inside gpui's usvg, which decanter does not control"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0192"
+effectiveUntil = 2027-05-03
+reason = "ttf-parser: unmaintained notice only; font parsing pulled by gpui's fontdb, cosmic-text and usvg"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+effectiveUntil = 2027-05-03
+reason = "zbus_names: unmaintained notice only (merged into zbus 6); pulled by accesskit's atspi, so decanter's own zbus bump would not remove it"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+effectiveUntil = 2027-05-03
+reason = "zvariant: unmaintained notice only (merged into zbus 6); pulled by accesskit's atspi"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+effectiveUntil = 2027-05-03
+reason = "zvariant_derive: unmaintained notice only (merged into zbus 6); pulled by accesskit's atspi"
