@@ -6,6 +6,7 @@ use core::net::SocketAddr;
 use core::num::NonZeroU32;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use prost::Message as _;
 use tokio::task::spawn_blocking;
@@ -13,14 +14,16 @@ use tokio::task::spawn_blocking;
 use crate::codec::Frame;
 use crate::header::ResponseHeader;
 use crate::proto::communication::{
-    AuthInfoRequest, AuthInfoResponse, EnvironmentType, GetUserAchievementsRequest, GetUserAchievementsResponse,
-    MessageType, Region, get_user_achievements_response::UserAchievement,
+    AuthInfoRequest, AuthInfoResponse, ClearUserAchievementRequest, EnvironmentType, GetUserAchievementsRequest,
+    GetUserAchievementsResponse, GetUserStatsRequest, GetUserStatsResponse, GetUserTimePlayedRequest,
+    GetUserTimePlayedResponse, MessageType, Region, UnlockUserAchievementRequest, UpdateUserStatRequest, ValueType,
+    get_user_achievements_response::UserAchievement, get_user_stats_response::UserStat,
 };
 use crate::proto::pb::Header;
 use crate::proto::pb::response::Status;
 use crate::proto::webbroker;
 use crate::service::Shared;
-use crate::source::{AchievementList, ClientId, SourceError};
+use crate::source::{AchievementList, ClientId, GameStore, SourceError, Stat, StatKind, StatValue};
 
 const COMMUNICATION_SORT: u32 = 1;
 const WEBBROKER_SORT: u32 = 2;
@@ -33,6 +36,15 @@ const MAX_SECRET_BYTES: usize = 128;
 const MAX_TICKET_BYTES: usize = 4096;
 /// Plan 2.4; GOG games have far fewer.
 const MAX_ACHIEVEMENTS: usize = 4096;
+const MAX_STATS: usize = 4096;
+/// An unlock time further ahead than this is a wrong clock, not a time, and gets now instead
+/// (plan 2.1, row 25).
+const MAX_CLOCK_AHEAD_SECONDS: u32 = 24 * 60 * 60;
+/// UNVERIFIED: the unit of `GetUserTimePlayedResponse.time_played`. Seconds per the SDK's
+/// `GetUserTimePlayed` and decanter's own `playtime.seconds_total`; comet forwards GOG's
+/// `time_sum`, whose unit neither comet nor GOG states (plan 2.1 row 43, section 9). The first
+/// real-game run checks the number the game shows; if GOG counts minutes this becomes 60.
+const TIME_PLAYED_SECONDS_PER_UNIT: u64 = 1;
 
 struct Reply {
     code: Status,
@@ -46,6 +58,15 @@ impl Reply {
             code: Status::Ok,
             description: None,
             payload: message.encode_to_vec(),
+        }
+    }
+
+    /// The protocol has no response message for writes: the header's code is the answer.
+    const fn done() -> Self {
+        Self {
+            code: Status::Ok,
+            description: None,
+            payload: Vec::new(),
         }
     }
 
@@ -89,6 +110,11 @@ impl Connection {
         let reply = match message {
             Some(MessageType::AuthInfoRequest) => self.auth_info(&frame.payload),
             Some(MessageType::GetUserAchievementsRequest) => self.user_achievements(&frame.payload).await,
+            Some(MessageType::UnlockUserAchievementRequest) => self.unlock_achievement(&frame.payload).await,
+            Some(MessageType::ClearUserAchievementRequest) => self.clear_achievement(&frame.payload).await,
+            Some(MessageType::GetUserStatsRequest) => self.user_stats(&frame.payload).await,
+            Some(MessageType::UpdateUserStatRequest) => self.update_user_stat(&frame.payload).await,
+            Some(MessageType::GetUserTimePlayedRequest) => self.time_played(&frame.payload).await,
             _ => Reply::refuse(
                 Status::NotImplemented,
                 "not implemented by decanter's local Galaxy service",
@@ -157,40 +183,231 @@ impl Connection {
         })
     }
 
+    fn signed_in(&self) -> Result<ClientId, Reply> {
+        self.signed_in
+            .clone()
+            .ok_or_else(|| Reply::refuse(Status::Unauthorized, "sign in with AUTH_INFO first"))
+    }
+
+    /// comet answers any user id with the signed-in user's data (gap, defects). The SDK echoes the
+    /// tagged id it was given; the untagged form names the same account.
+    fn is_other_user(&self, user_id: Option<u64>) -> bool {
+        user_id.is_some_and(|asked| asked != self.shared.user_id && asked != self.shared.account_id)
+    }
+
+    /// Runs one store call on the blocking pool and turns its failure into the answer the SDK gets,
+    /// logged with what was being done.
+    async fn with_store<T, F>(&self, client_id: &ClientId, what: &'static str, call: F) -> Result<T, Reply>
+    where
+        T: Send + 'static,
+        F: FnOnce(&dyn GameStore) -> Result<T, SourceError> + Send + 'static,
+    {
+        let store = Arc::clone(&self.shared.store);
+        match spawn_blocking(move || call(&*store)).await {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(SourceError::Unavailable(reason))) => {
+                tracing::warn!(peer = %self.peer, %client_id, what, %reason, "Galaxy store unavailable");
+                Err(Reply::refuse(Status::Unavailable, reason))
+            }
+            Ok(Err(SourceError::NotFound(reason))) => {
+                tracing::warn!(peer = %self.peer, %client_id, what, %reason, "Galaxy request named nothing stored");
+                Err(Reply::refuse(Status::NotFound, reason))
+            }
+            Ok(Err(err)) => {
+                tracing::warn!(peer = %self.peer, %client_id, what, %err, "Galaxy store failed");
+                Err(Reply::refuse(Status::InternalError, format!("{what} failed")))
+            }
+            Err(err) => {
+                tracing::warn!(peer = %self.peer, %client_id, what, %err, "Galaxy store call did not finish");
+                Err(Reply::refuse(Status::InternalError, format!("{what} failed")))
+            }
+        }
+    }
+
     async fn user_achievements(&self, payload: &[u8]) -> Reply {
-        let Some(client_id) = self.signed_in.clone() else {
-            return Reply::refuse(Status::Unauthorized, "sign in with AUTH_INFO first");
+        let client_id = match self.signed_in() {
+            Ok(client_id) => client_id,
+            Err(reply) => return reply,
         };
         let request = match GetUserAchievementsRequest::decode(payload) {
             Ok(request) => request,
             Err(err) => return Reply::refuse(Status::BadRequest, format!("GetUserAchievementsRequest: {err}")),
         };
-        // comet answers any user id with the signed-in user's list (gap, defects). The SDK echoes
-        // the tagged id it was given; the untagged form names the same account.
-        if request
-            .user_id
-            .is_some_and(|user_id| user_id != self.shared.user_id && user_id != self.shared.account_id)
-        {
+        if self.is_other_user(request.user_id) {
             return Reply::refuse(Status::Forbidden, "only the signed-in user's achievements are served");
         }
-        let source = Arc::clone(&self.shared.source);
         let lookup = client_id.clone();
-        let list = match spawn_blocking(move || source.achievements(&lookup)).await {
-            Ok(Ok(list)) => list,
-            Ok(Err(SourceError::Unavailable(reason))) => {
-                tracing::warn!(peer = %self.peer, %client_id, %reason, "achievements unavailable to the SDK");
-                return Reply::refuse(Status::Unavailable, reason);
-            }
-            Ok(Err(err)) => {
-                tracing::warn!(peer = %self.peer, %client_id, %err, "reading achievements for the SDK failed");
-                return Reply::refuse(Status::InternalError, "achievements could not be read");
-            }
-            Err(err) => {
-                tracing::warn!(peer = %self.peer, %client_id, %err, "the achievement read did not finish");
-                return Reply::refuse(Status::InternalError, "achievements could not be read");
+        match self
+            .with_store(&client_id, "reading achievements", move |store| {
+                store.achievements(&lookup)
+            })
+            .await
+        {
+            Ok(list) => Reply::ok(&self.to_wire(&client_id, list)),
+            Err(reply) => reply,
+        }
+    }
+
+    async fn unlock_achievement(&self, payload: &[u8]) -> Reply {
+        let client_id = match self.signed_in() {
+            Ok(client_id) => client_id,
+            Err(reply) => return reply,
+        };
+        let request = match UnlockUserAchievementRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("UnlockUserAchievementRequest: {err}")),
+        };
+        let Some(achievement_id) = request.achievement_id else {
+            return Reply::refuse(Status::BadRequest, "achievement_id is required");
+        };
+        let Some(unlocked_at) = unlock_time(request.time) else {
+            tracing::warn!(peer = %self.peer, %client_id, "the system clock is unreadable, unlock refused");
+            return Reply::refuse(Status::InternalError, "no unlock time could be set");
+        };
+        let lookup = client_id.clone();
+        if let Err(reply) = self
+            .with_store(&client_id, "unlocking an achievement", move |store| {
+                store.unlock_achievement(&lookup, achievement_id, unlocked_at)
+            })
+            .await
+        {
+            return reply;
+        }
+        tracing::info!(peer = %self.peer, %client_id, achievement_id, unlocked_at, "achievement unlocked locally");
+        Reply::done()
+    }
+
+    async fn clear_achievement(&self, payload: &[u8]) -> Reply {
+        let client_id = match self.signed_in() {
+            Ok(client_id) => client_id,
+            Err(reply) => return reply,
+        };
+        let request = match ClearUserAchievementRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("ClearUserAchievementRequest: {err}")),
+        };
+        let Some(achievement_id) = request.achievement_id else {
+            return Reply::refuse(Status::BadRequest, "achievement_id is required");
+        };
+        let lookup = client_id.clone();
+        if let Err(reply) = self
+            .with_store(&client_id, "clearing an achievement", move |store| {
+                store.clear_achievement(&lookup, achievement_id)
+            })
+            .await
+        {
+            return reply;
+        }
+        tracing::info!(peer = %self.peer, %client_id, achievement_id, "achievement cleared locally");
+        Reply::done()
+    }
+
+    async fn stored_stats(&self, client_id: &ClientId) -> Result<Vec<Stat>, Reply> {
+        let lookup = client_id.clone();
+        self.with_store(client_id, "reading user stats", move |store| store.user_stats(&lookup))
+            .await
+    }
+
+    async fn user_stats(&self, payload: &[u8]) -> Reply {
+        let client_id = match self.signed_in() {
+            Ok(client_id) => client_id,
+            Err(reply) => return reply,
+        };
+        let request = match GetUserStatsRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("GetUserStatsRequest: {err}")),
+        };
+        if self.is_other_user(request.user_id) {
+            return Reply::refuse(Status::Forbidden, "only the signed-in user's stats are served");
+        }
+        let mut stats = match self.stored_stats(&client_id).await {
+            Ok(stats) => stats,
+            Err(reply) => return reply,
+        };
+        if stats.len() > MAX_STATS {
+            tracing::warn!(peer = %self.peer, %client_id, total = stats.len(), cap = MAX_STATS, "stat list truncated");
+            stats.truncate(MAX_STATS);
+        }
+        tracing::info!(peer = %self.peer, %client_id, served = stats.len(), "user stats served");
+        Reply::ok(&GetUserStatsResponse {
+            user_stats: stats.iter().map(stat_to_wire).collect(),
+        })
+    }
+
+    async fn update_user_stat(&self, payload: &[u8]) -> Reply {
+        let client_id = match self.signed_in() {
+            Ok(client_id) => client_id,
+            Err(reply) => return reply,
+        };
+        let request = match UpdateUserStatRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("UpdateUserStatRequest: {err}")),
+        };
+        let Some(stat_id) = request.stat_id else {
+            return Reply::refuse(Status::BadRequest, "stat_id is required");
+        };
+        let stats = match self.stored_stats(&client_id).await {
+            Ok(stats) => stats,
+            Err(reply) => return reply,
+        };
+        let Some(stat) = stats.into_iter().find(|stat| stat.stat_id == stat_id) else {
+            tracing::warn!(peer = %self.peer, %client_id, stat_id, "stat update refused: unknown stat id");
+            return Reply::refuse(
+                Status::NotFound,
+                format!("stat {stat_id} is not one of this game's stats"),
+            );
+        };
+        let value = match checked_value(&stat, &request) {
+            Ok(value) => value,
+            Err(reason) => {
+                tracing::warn!(peer = %self.peer, %client_id, stat_key = %stat.key, %reason, "stat update refused");
+                return Reply::refuse(Status::BadRequest, reason);
             }
         };
-        Reply::ok(&self.to_wire(&client_id, list))
+        if value == stat.value {
+            return Reply::done();
+        }
+        let lookup = client_id.clone();
+        let key = stat.key.clone();
+        if let Err(reply) = self
+            .with_store(&client_id, "storing a stat", move |store| {
+                store.set_stat(&lookup, &key, value)
+            })
+            .await
+        {
+            return reply;
+        }
+        tracing::info!(peer = %self.peer, %client_id, stat_key = %stat.key, ?value, previous = ?stat.value, "stat stored locally");
+        Reply::done()
+    }
+
+    async fn time_played(&self, payload: &[u8]) -> Reply {
+        let client_id = match self.signed_in() {
+            Ok(client_id) => client_id,
+            Err(reply) => return reply,
+        };
+        let request = match GetUserTimePlayedRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("GetUserTimePlayedRequest: {err}")),
+        };
+        if self.is_other_user(request.user_id) {
+            return Reply::refuse(Status::Forbidden, "only the signed-in user's time played is served");
+        }
+        let lookup = client_id.clone();
+        let seconds = match self
+            .with_store(&client_id, "reading time played", move |store| {
+                store.seconds_played(&lookup)
+            })
+            .await
+        {
+            Ok(seconds) => seconds,
+            Err(reply) => return reply,
+        };
+        let time_played = time_played_units(seconds);
+        tracing::info!(peer = %self.peer, %client_id, seconds, time_played, "time played served");
+        Reply::ok(&GetUserTimePlayedResponse {
+            time_played: Some(time_played),
+        })
     }
 
     fn to_wire(&self, client_id: &ClientId, list: AchievementList) -> GetUserAchievementsResponse {
@@ -232,6 +449,117 @@ impl Connection {
             language: list.language,
             achievements_mode: list.mode,
         }
+    }
+}
+
+/// The SDK's time, unless it is unset (`0`) or a wrong clock far ahead: then now (plan 2.1, row 25).
+fn unlock_time(requested: Option<u32>) -> Option<NonZeroU32> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| u32::try_from(elapsed.as_secs()).ok())
+        .and_then(NonZeroU32::new);
+    match (requested.and_then(NonZeroU32::new), now) {
+        (Some(at), Some(current)) if at.get() <= current.get().saturating_add(MAX_CLOCK_AHEAD_SECONDS) => Some(at),
+        (_, Some(current)) => Some(current),
+        (sent, None) => sent,
+    }
+}
+
+/// `time_played` is a `uint32`: saturated rather than wrapped.
+fn time_played_units(seconds: u64) -> u32 {
+    let units = seconds.checked_div(TIME_PLAYED_SECONDS_PER_UNIT).unwrap_or(seconds);
+    u32::try_from(units).unwrap_or(u32::MAX)
+}
+
+/// The new value of `stat` if the request may set it: same kind, a finite float, within
+/// `min`/`max`, not lower when `increment_only`, and at most `max_change` away from the stored
+/// value. comet checks none of these (gap, row 17); nothing else does offline.
+#[expect(
+    clippy::float_arithmetic,
+    reason = "the step from the stored value, in f64, where both kinds are exact"
+)]
+fn checked_value(stat: &Stat, request: &UpdateUserStatRequest) -> Result<StatValue, String> {
+    let key = &stat.key;
+    let sent = request
+        .value_type
+        .and_then(|number| ValueType::try_from(number).ok())
+        .ok_or_else(|| format!("stat {key}: value_type is missing or unknown"))?;
+    let value = match (stat.kind, sent) {
+        (StatKind::Int, ValueType::Int) => request
+            .int_value
+            .map(StatValue::Int)
+            .ok_or_else(|| format!("stat {key}: int_value is missing"))?,
+        (StatKind::Float, ValueType::Float) | (StatKind::AvgRate, ValueType::Avgrate) => match request.float_value {
+            Some(float) if float.is_finite() => StatValue::Float(float),
+            Some(_) => return Err(format!("stat {key}: the value is not a finite number")),
+            None => return Err(format!("stat {key}: float_value is missing")),
+        },
+        (kind, other) => {
+            return Err(format!(
+                "stat {key} is {kind:?}, the request sent {}",
+                other.as_str_name()
+            ));
+        }
+    };
+    let new = value.as_f64();
+    let current = stat.value.as_f64();
+    if let Some(min) = stat.min_value
+        && new < min.as_f64()
+    {
+        return Err(format!("stat {key}: {new} is below its minimum {}", min.as_f64()));
+    }
+    if let Some(max) = stat.max_value
+        && new > max.as_f64()
+    {
+        return Err(format!("stat {key}: {new} is above its maximum {}", max.as_f64()));
+    }
+    if stat.increment_only && new < current {
+        return Err(format!(
+            "stat {key} only increases: {new} is below the stored {current}"
+        ));
+    }
+    if let Some(max_change) = stat.max_change
+        && (new - current).abs() > max_change.as_f64()
+    {
+        return Err(format!(
+            "stat {key}: {new} is more than {} away from the stored {current}",
+            max_change.as_f64()
+        ));
+    }
+    Ok(value)
+}
+
+fn stat_to_wire(stat: &Stat) -> UserStat {
+    let int = |value: Option<StatValue>| match value {
+        Some(StatValue::Int(int)) => Some(int),
+        Some(StatValue::Float(_)) | None => None,
+    };
+    let float = |value: Option<StatValue>| match value {
+        Some(StatValue::Float(float)) => Some(float),
+        Some(StatValue::Int(_)) | None => None,
+    };
+    let value_type = match stat.kind {
+        StatKind::Int => ValueType::Int,
+        StatKind::Float => ValueType::Float,
+        StatKind::AvgRate => ValueType::Avgrate,
+    };
+    UserStat {
+        stat_id: Some(stat.stat_id),
+        key: Some(stat.key.clone()),
+        value_type: Some(value_type.into()),
+        float_value: float(Some(stat.value)),
+        int_value: int(Some(stat.value)),
+        window_size: stat.window,
+        float_default_value: float(stat.default_value),
+        int_default_value: int(stat.default_value),
+        float_min_value: float(stat.min_value),
+        int_min_value: int(stat.min_value),
+        float_max_value: float(stat.max_value),
+        int_max_value: int(stat.max_value),
+        float_max_change: float(stat.max_change),
+        int_max_change: int(stat.max_change),
+        increment_only: Some(stat.increment_only),
     }
 }
 

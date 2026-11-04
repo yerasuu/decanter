@@ -5,8 +5,8 @@
 //! GOG documents none of the protocol. The messages come from the reverse-engineered, CC0
 //! definitions vendored in `proto/`; the framing and the order of calls are what comet's handlers
 //! show, not anything seen from a real SDK yet (docs/galaxy-local-service-plan.md, sections 0-2).
-//! This stage serves sign-in and the achievement list; every other request is answered
-//! `NOT_IMPLEMENTED` and counted. Nothing here reaches the network beyond the loopback listener.
+//! It serves sign-in, achievements (list, unlock, clear), user stats (list, bounded update) and
+//! time played; every other request is answered `NOT_IMPLEMENTED` and counted. Nothing here reaches the network beyond the loopback listener.
 
 #![expect(
     clippy::implicit_return,
@@ -62,4 +62,4 @@ pub use codec::{
 pub use error::Error;
 pub use header::ResponseHeader;
 pub use service::{Account, Config, DEFAULT_PORT, Service};
-pub use source::{Achievement, AchievementList, AchievementSource, ClientId, SourceError};
+pub use source::{Achievement, AchievementList, ClientId, GameStore, SourceError, Stat, StatKind, StatValue};

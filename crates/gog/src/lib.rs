@@ -22,6 +22,7 @@ pub mod api;
 mod auth;
 pub mod cloud_saves;
 mod depot;
+mod galaxy_store;
 pub mod hook;
 mod install;
 pub mod language;
@@ -36,6 +37,7 @@ mod user_stats;
 
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
+pub use galaxy_store::GalaxyStore;
 pub use install::{
     BrokenFile, BrokenReason, BuildSwitch, Cancelled, DownloadQueue, LanguageCleanup, NothingToResume, PauseReason,
     Paused, PlayTask, Progress, QueueMove, RedistFailure, Room, StrayStaging, UnfinishedDownload, UnusedFile,

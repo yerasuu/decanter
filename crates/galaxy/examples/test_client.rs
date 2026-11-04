@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Throwaway test client for the local Galaxy service (plan stage S1): starts the service over an
-//! in-memory achievement list, then signs in and reads it back through the real codec, the way a
-//! game's SDK would. Not part of the app; no game and no GOG involved.
+//! Throwaway test client for the local Galaxy service (plan stages S1 and S2): starts the service
+//! over in-memory achievements and stats, then signs in, reads, unlocks, clears and updates them
+//! through the real codec, the way a game's SDK would. Not part of the app; no game and no GOG
+//! involved. `decanter-gog`'s `galaxy_db_probe` runs the S2 part against the database.
 //!
 //! `cargo run -p decanter-galaxy --example test_client [port]` (default 9977).
 
@@ -33,6 +34,8 @@
     clippy::default_numeric_fallback,
     clippy::arbitrary_source_item_ordering,
     clippy::big_endian_bytes,
+    clippy::too_many_lines,
+    clippy::significant_drop_tightening,
     clippy::absolute_paths,
     reason = "a throwaway probe that prints what it got; read top to bottom, not linted like the service"
 )]
@@ -40,19 +43,20 @@
 
 use core::error::Error;
 use core::num::NonZeroU32;
-use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use decanter_galaxy::proto::communication::{
-    AuthInfoRequest, AuthInfoResponse, GetUserAchievementsRequest, GetUserAchievementsResponse, LibraryInfoRequest,
-    MessageType,
+    AuthInfoRequest, AuthInfoResponse, ClearUserAchievementRequest, GetUserAchievementsRequest,
+    GetUserAchievementsResponse, GetUserStatsRequest, GetUserStatsResponse, GetUserTimePlayedRequest,
+    GetUserTimePlayedResponse, LibraryInfoRequest, MessageType, UnlockUserAchievementRequest, UpdateUserStatRequest,
+    ValueType,
 };
 use decanter_galaxy::proto::pb::Header;
 use decanter_galaxy::proto::webbroker::{self, SubscribeTopicRequest};
 use decanter_galaxy::{
-    Account, Achievement, AchievementList, AchievementSource, ClientId, Config, DEFAULT_PORT, ResponseHeader, Service,
-    SourceError, read_frame, write_frame,
+    Account, Achievement, AchievementList, ClientId, Config, DEFAULT_PORT, GameStore, ResponseHeader, Service,
+    SourceError, Stat, StatKind, StatValue, read_frame, write_frame,
 };
 use prost::Message;
 use tokio::io::AsyncWriteExt as _;
@@ -67,20 +71,98 @@ const ACCOUNT_ID: u64 = 46_988_240_917_958_416;
 /// Responses carry whole lists, so the client reads more than the service accepts per request.
 const MAX_RESPONSE_BYTES: u32 = 16 << 20;
 
-struct MemorySource {
-    games: HashMap<ClientId, AchievementList>,
+struct MemoryStore {
+    client_id: ClientId,
+    achievements: RwLock<AchievementList>,
+    stats: RwLock<Vec<Stat>>,
+    seconds_played: u64,
 }
 
-impl AchievementSource for MemorySource {
-    fn achievements(&self, client_id: &ClientId) -> Result<AchievementList, SourceError> {
-        self.games
-            .get(client_id)
-            .cloned()
-            .ok_or_else(|| SourceError::Unavailable(format!("no achievement list was fetched for {client_id}")))
+impl MemoryStore {
+    fn check(&self, client_id: &ClientId) -> Result<(), SourceError> {
+        if *client_id == self.client_id {
+            Ok(())
+        } else {
+            Err(SourceError::Unavailable(format!(
+                "no achievement list was fetched for {client_id}"
+            )))
+        }
+    }
+
+    fn with_achievement(
+        &self,
+        client_id: &ClientId,
+        achievement_id: u64,
+        change: impl FnOnce(&mut Achievement),
+    ) -> Result<(), SourceError> {
+        self.check(client_id)?;
+        let mut list = self
+            .achievements
+            .write()
+            .map_err(|_poisoned| SourceError::Unavailable("poisoned".into()))?;
+        let achievement = list
+            .achievements
+            .iter_mut()
+            .find(|achievement| achievement.achievement_id == Some(achievement_id))
+            .ok_or_else(|| SourceError::NotFound(format!("achievement {achievement_id} is not one of this game's")))?;
+        change(achievement);
+        Ok(())
     }
 }
 
-fn seeded(client_id: &ClientId) -> MemorySource {
+impl GameStore for MemoryStore {
+    fn achievements(&self, client_id: &ClientId) -> Result<AchievementList, SourceError> {
+        self.check(client_id)?;
+        self.achievements
+            .read()
+            .map(|list| list.clone())
+            .map_err(|_poisoned| SourceError::Unavailable("poisoned".into()))
+    }
+
+    fn unlock_achievement(
+        &self,
+        client_id: &ClientId,
+        achievement_id: u64,
+        unlocked_at: NonZeroU32,
+    ) -> Result<(), SourceError> {
+        self.with_achievement(client_id, achievement_id, |achievement| {
+            achievement.unlocked_at.get_or_insert(unlocked_at);
+        })
+    }
+
+    fn clear_achievement(&self, client_id: &ClientId, achievement_id: u64) -> Result<(), SourceError> {
+        self.with_achievement(client_id, achievement_id, |achievement| achievement.unlocked_at = None)
+    }
+
+    fn user_stats(&self, client_id: &ClientId) -> Result<Vec<Stat>, SourceError> {
+        self.check(client_id)?;
+        self.stats
+            .read()
+            .map(|stats| stats.clone())
+            .map_err(|_poisoned| SourceError::Unavailable("poisoned".into()))
+    }
+
+    fn set_stat(&self, client_id: &ClientId, stat_key: &str, value: StatValue) -> Result<(), SourceError> {
+        self.check(client_id)?;
+        let mut stats = self
+            .stats
+            .write()
+            .map_err(|_poisoned| SourceError::Unavailable("poisoned".into()))?;
+        let stat = stats
+            .iter_mut()
+            .find(|stat| stat.key == stat_key)
+            .ok_or_else(|| SourceError::NotFound(format!("stat {stat_key} is not one of this game's")))?;
+        stat.value = value;
+        Ok(())
+    }
+
+    fn seconds_played(&self, client_id: &ClientId) -> Result<u64, SourceError> {
+        self.check(client_id)?;
+        Ok(self.seconds_played)
+    }
+}
+
+fn seeded(client_id: &ClientId) -> MemoryStore {
     let achievement = |id: Option<u64>, key: &str, name: &str, unlocked_at: Option<u32>| Achievement {
         achievement_id: id,
         key: key.to_owned(),
@@ -103,9 +185,42 @@ fn seeded(client_id: &ClientId) -> MemorySource {
         language: Some("en-US".to_owned()),
         mode: Some("all_visible".to_owned()),
     };
-    MemorySource {
-        games: HashMap::from([(client_id.clone(), list)]),
+    MemoryStore {
+        client_id: client_id.clone(),
+        achievements: RwLock::new(list),
+        stats: RwLock::new(seeded_stats()),
+        seconds_played: 4_321,
     }
+}
+
+/// The same two stats the database probe seeds: a bounded, increment-only int and a float.
+fn seeded_stats() -> Vec<Stat> {
+    vec![
+        Stat {
+            stat_id: 7_001,
+            key: "KILLS".to_owned(),
+            kind: StatKind::Int,
+            value: StatValue::Int(10),
+            default_value: Some(StatValue::Int(0)),
+            min_value: Some(StatValue::Int(0)),
+            max_value: Some(StatValue::Int(1_000)),
+            max_change: Some(StatValue::Int(50)),
+            increment_only: true,
+            window: None,
+        },
+        Stat {
+            stat_id: 7_002,
+            key: "BEST_TIME".to_owned(),
+            kind: StatKind::Float,
+            value: StatValue::Float(90.5),
+            default_value: None,
+            min_value: Some(StatValue::Float(0.0)),
+            max_value: None,
+            max_change: None,
+            increment_only: false,
+            window: None,
+        },
+    ]
 }
 
 struct Client {
@@ -276,6 +391,214 @@ async fn signed_in_session(port: u16, user_id: u64) -> Probe<()> {
     Ok(())
 }
 
+/// Plan stage S2: what a game's `SetAchievement`, `ClearAchievement`, `SetStat*` + `Store` and
+/// `GetUserTimePlayed` send, each answered from the store and read back.
+async fn write_session(port: u16, user_id: u64) -> Probe<()> {
+    let mut client = Client::connect(port).await?;
+    let sort = 1;
+    println!("-> UNLOCK_USER_ACHIEVEMENT before sign-in");
+    client
+        .call(
+            sort,
+            MessageType::UnlockUserAchievementRequest.into(),
+            &UnlockUserAchievementRequest {
+                achievement_id: Some(5_502),
+                time: Some(1_762_300_000),
+            },
+        )
+        .await?;
+    sign_in(&mut client).await?;
+
+    println!("-> UNLOCK_USER_ACHIEVEMENT 5502 at 1762300000");
+    client
+        .call(
+            sort,
+            MessageType::UnlockUserAchievementRequest.into(),
+            &UnlockUserAchievementRequest {
+                achievement_id: Some(5_502),
+                time: Some(1_762_300_000),
+            },
+        )
+        .await?;
+    println!("-> UNLOCK_USER_ACHIEVEMENT 5502 again at 1762399999 (keeps the first time)");
+    client
+        .call(
+            sort,
+            MessageType::UnlockUserAchievementRequest.into(),
+            &UnlockUserAchievementRequest {
+                achievement_id: Some(5_502),
+                time: Some(1_762_399_999),
+            },
+        )
+        .await?;
+    println!("-> UNLOCK_USER_ACHIEVEMENT 9999, which the game does not have");
+    client
+        .call(
+            sort,
+            MessageType::UnlockUserAchievementRequest.into(),
+            &UnlockUserAchievementRequest {
+                achievement_id: Some(9_999),
+                time: None,
+            },
+        )
+        .await?;
+    print_achievements(&mut client, user_id).await?;
+
+    println!("-> CLEAR_USER_ACHIEVEMENT 5501");
+    client
+        .call(
+            sort,
+            MessageType::ClearUserAchievementRequest.into(),
+            &ClearUserAchievementRequest {
+                achievement_id: Some(5_501),
+            },
+        )
+        .await?;
+    print_achievements(&mut client, user_id).await?;
+
+    print_stats(&mut client, user_id).await?;
+    let int_update = |stat_id: u64, value: i32| UpdateUserStatRequest {
+        stat_id: Some(stat_id),
+        value_type: Some(ValueType::Int.into()),
+        float_value: None,
+        int_value: Some(value),
+    };
+    for (label, request) in [
+        ("KILLS 10 -> 40 (within max_change 50)", int_update(7_001, 40)),
+        ("KILLS 40 -> 200 (more than max_change 50)", int_update(7_001, 200)),
+        ("KILLS 40 -> 30 (increment_only)", int_update(7_001, 30)),
+        (
+            "KILLS as a float",
+            UpdateUserStatRequest {
+                stat_id: Some(7_001),
+                value_type: Some(ValueType::Float.into()),
+                float_value: Some(41.0),
+                int_value: None,
+            },
+        ),
+        (
+            "BEST_TIME -> -1 (below min 0)",
+            UpdateUserStatRequest {
+                stat_id: Some(7_002),
+                value_type: Some(ValueType::Float.into()),
+                float_value: Some(-1.0),
+                int_value: None,
+            },
+        ),
+        (
+            "BEST_TIME -> NaN",
+            UpdateUserStatRequest {
+                stat_id: Some(7_002),
+                value_type: Some(ValueType::Float.into()),
+                float_value: Some(f32::NAN),
+                int_value: None,
+            },
+        ),
+        (
+            "BEST_TIME -> 75.25",
+            UpdateUserStatRequest {
+                stat_id: Some(7_002),
+                value_type: Some(ValueType::Float.into()),
+                float_value: Some(75.25),
+                int_value: None,
+            },
+        ),
+        ("stat 7999, which the game does not have", int_update(7_999, 1)),
+    ] {
+        println!("-> UPDATE_USER_STAT {label}");
+        client
+            .call(sort, MessageType::UpdateUserStatRequest.into(), &request)
+            .await?;
+    }
+    print_stats(&mut client, user_id).await?;
+
+    println!("-> GET_USER_TIME_PLAYED");
+    let (_, payload) = client
+        .call(
+            sort,
+            MessageType::GetUserTimePlayedRequest.into(),
+            &GetUserTimePlayedRequest { user_id: Some(user_id) },
+        )
+        .await?;
+    println!(
+        "  time_played {} (seconds, unit UNVERIFIED)",
+        GetUserTimePlayedResponse::decode(payload.as_slice())?.time_played()
+    );
+    println!("-> DELETE_USER_STATS (not in S2)");
+    client
+        .call(
+            sort,
+            MessageType::DeleteUserStatsRequest.into(),
+            &GetUserStatsRequest { user_id: None },
+        )
+        .await?;
+    Ok(())
+}
+
+async fn sign_in(client: &mut Client) -> Probe<()> {
+    println!("-> AUTH_INFO for client {CLIENT_ID}");
+    client
+        .call(
+            1,
+            MessageType::AuthInfoRequest.into(),
+            &AuthInfoRequest {
+                client_id: Some(CLIENT_ID.to_owned()),
+                ..AuthInfoRequest::default()
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+async fn print_achievements(client: &mut Client, user_id: u64) -> Probe<()> {
+    println!("-> GET_USER_ACHIEVEMENTS");
+    let (_, payload) = client
+        .call(
+            1,
+            MessageType::GetUserAchievementsRequest.into(),
+            &GetUserAchievementsRequest { user_id: Some(user_id) },
+        )
+        .await?;
+    for achievement in GetUserAchievementsResponse::decode(payload.as_slice())?.user_achievements {
+        println!(
+            "  id {} key {} unlock_time {}",
+            achievement.achievement_id(),
+            achievement.key(),
+            achievement.unlock_time()
+        );
+    }
+    Ok(())
+}
+
+async fn print_stats(client: &mut Client, user_id: u64) -> Probe<()> {
+    println!("-> GET_USER_STATS");
+    let (_, payload) = client
+        .call(
+            1,
+            MessageType::GetUserStatsRequest.into(),
+            &GetUserStatsRequest { user_id: Some(user_id) },
+        )
+        .await?;
+    for stat in GetUserStatsResponse::decode(payload.as_slice())?.user_stats {
+        println!(
+            "  id {} key {} {:?} int {:?} float {:?} min {:?}/{:?} max {:?}/{:?} max_change {:?}/{:?} increment_only {}",
+            stat.stat_id(),
+            stat.key(),
+            stat.value_type(),
+            stat.int_value,
+            stat.float_value,
+            stat.int_min_value,
+            stat.float_min_value,
+            stat.int_max_value,
+            stat.float_max_value,
+            stat.int_max_change,
+            stat.float_max_change,
+            stat.increment_only()
+        );
+    }
+    Ok(())
+}
+
 async fn refused_sessions(port: u16) -> Probe<()> {
     println!("-> AUTH_INFO for an unregistered client on a new connection");
     let mut client = Client::connect(port).await?;
@@ -358,7 +681,10 @@ async fn main() -> Probe<()> {
 
     let tagged = (2_u64 << 56_u32) | ACCOUNT_ID;
     let result = match signed_in_session(port, tagged).await {
-        Ok(()) => refused_sessions(port).await,
+        Ok(()) => match write_session(port, tagged).await {
+            Ok(()) => refused_sessions(port).await,
+            Err(err) => Err(err),
+        },
         Err(err) => Err(err),
     };
     let _ignored = stop.send(());

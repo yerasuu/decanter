@@ -246,6 +246,38 @@ impl Db {
         Ok(updated > 0)
     }
 
+    /// Locks one cached achievement again because the game's SDK cleared it, flagged `changed`
+    /// as a local edit. Local only: nothing uploads a clear, and a later GOG poll that still
+    /// reports it unlocked unlocks it again, since a refresh never lowers what GOG holds.
+    /// Returns whether the row was unlocked before.
+    ///
+    /// # Errors
+    ///
+    /// The database refusing the write.
+    pub fn clear_local_unlock(
+        &self,
+        account_id: &str,
+        storefront: Storefront,
+        product_id: &str,
+        achievement_key: &str,
+    ) -> Result<bool> {
+        let updated = self.conn.execute(
+            "UPDATE achievement_cache SET unlocked = 0, unlocked_at = NULL, changed = 1, changed_at = strftime('%s','now')
+             WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3 AND achievement_key = ?4
+                   AND unlocked = 1",
+            params![account_id, storefront as i32, product_id, achievement_key],
+        )?;
+        tracing::debug!(
+            account_id,
+            ?storefront,
+            product_id,
+            achievement_key,
+            matched = updated > 0,
+            "cleared an achievement unlock locally"
+        );
+        Ok(updated > 0)
+    }
+
     /// Records one hook-installation failure so it can be reviewed later
     /// instead of only ever existing inside a game's own, ephemeral log
     /// file.

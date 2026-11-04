@@ -17,7 +17,7 @@ use crate::codec::{MAX_PAYLOAD_BYTES, read_frame, write_frame};
 use crate::error::Error;
 use crate::handlers::Connection;
 use crate::proto::pb::Header;
-use crate::source::{AchievementSource, ClientId};
+use crate::source::{ClientId, GameStore};
 
 /// The port every Galaxy SDK build dials; the SDK offers no way to choose another (plan 1.2).
 pub const DEFAULT_PORT: u16 = 9977;
@@ -52,7 +52,7 @@ pub(crate) struct Shared {
     pub account_id: u64,
     /// `account_id` as the SDK sees it, with the user tag.
     pub user_id: u64,
-    pub source: Arc<dyn AchievementSource>,
+    pub store: Arc<dyn GameStore>,
 }
 
 pub struct Service {
@@ -75,7 +75,7 @@ impl Service {
         reason = "listen() registers with tokio's reactor, which exists only inside the runtime: async keeps \
                   every caller there"
     )]
-    pub async fn bind(config: Config, source: Arc<dyn AchievementSource>) -> Result<Self, Error> {
+    pub async fn bind(config: Config, store: Arc<dyn GameStore>) -> Result<Self, Error> {
         let Config {
             port,
             client_id,
@@ -114,7 +114,7 @@ impl Service {
                 user_name: account.user_name,
                 account_id: account.user_id,
                 user_id: USER_ID_TAG | account.user_id,
-                source,
+                store,
             }),
         })
     }
