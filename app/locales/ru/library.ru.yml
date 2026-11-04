@@ -235,6 +235,7 @@ library.properties.compatibility.default_proton: 'Использовать по 
 library.properties.compatibility.reset: 'Сбросить префикс'
 library.properties.compatibility.resetting: 'Сброс...'
 library.properties.compatibility.reset_tooltip: 'Удаляет префикс. Он создаётся заново при запуске игры. Сохранения, лежащие внутри префикса, будут потеряны.'
+library.properties.compatibility.open_prefix: "Открыть префикс"
 library.properties.compatibility.native: 'Программа для Linux, запускается как есть, без Proton и без префикса.'
 library.properties.compatibility.prefix: 'Префикс'
 library.properties.compatibility.prefix_created: 'создан'

@@ -235,6 +235,7 @@ library.properties.compatibility.default_proton: Usar o padrão
 library.properties.compatibility.reset: Redefinir prefixo
 library.properties.compatibility.resetting: Redefinindo...
 library.properties.compatibility.reset_tooltip: Exclui o prefixo. Ele é recriado quando o jogo inicia. Saves guardados dentro do prefixo são perdidos.
+library.properties.compatibility.open_prefix: "Abrir prefixo"
 library.properties.compatibility.native: Um programa Linux, executado como está, sem Proton e sem prefixo.
 library.properties.compatibility.prefix: Prefixo
 library.properties.compatibility.prefix_created: criado

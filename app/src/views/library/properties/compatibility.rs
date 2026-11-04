@@ -154,6 +154,24 @@ impl Render for CompatibilityTab {
             b.on_click(cx.listener(|this, _, _, cx| this.reset_prefix(cx)))
         });
 
+        let open_prefix = crate::core::prefix_for(&self.target.account_id, &self.target.product_id)
+            .map(|prefix| prefix.path().to_path_buf())
+            .filter(|path| path.is_dir());
+        let open_disabled = open_prefix.is_none();
+        let open = button(
+            "open-prefix",
+            ButtonKind::Secondary,
+            t!("library.properties.compatibility.open_prefix"),
+            open_disabled,
+        )
+        .when_some(open_prefix, |b, path| {
+            b.on_click(move |_, _, _| {
+                if let Err(err) = crate::desktop::open(&path) {
+                    tracing::error!(path = %path.display(), %err, "could not open the prefix folder");
+                }
+            })
+        });
+
         pane()
             .child(rows().child(row(
                 t!("library.properties.compatibility.prefix"),
@@ -163,7 +181,7 @@ impl Render for CompatibilityTab {
                     t!("library.properties.compatibility.prefix_missing")
                 },
             )))
-            .child(field_row().child(proton).child(reset))
+            .child(field_row().child(proton).child(open).child(reset))
             .children(error_line(self.error.as_ref()))
             .child(self.tools.clone())
     }

@@ -235,6 +235,7 @@ library.properties.compatibility.default_proton: Usa il predefinito
 library.properties.compatibility.reset: Reimposta prefisso
 library.properties.compatibility.resetting: Reimpostazione...
 library.properties.compatibility.reset_tooltip: "Elimina il prefisso. Viene ricreato all'avvio del gioco. I salvataggi conservati dentro il prefisso vanno persi."
+library.properties.compatibility.open_prefix: "Apri prefisso"
 library.properties.compatibility.native: "Un programma Linux, eseguito così com'è, senza Proton e senza prefisso."
 library.properties.compatibility.prefix: Prefisso
 library.properties.compatibility.prefix_created: creato
