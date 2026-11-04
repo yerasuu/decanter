@@ -7,8 +7,9 @@
 //! show, not anything seen from a real SDK yet (docs/galaxy-local-service-plan.md, sections 0-2).
 //! It serves sign-in, achievements (list, unlock, clear), user stats (list, bounded update) and
 //! time played; every other request is answered `NOT_IMPLEMENTED` and counted. Nothing here
-//! reaches the network beyond the loopback listener. One [`Host`] serves every game decanter runs
-//! at once, each signed in only for as long as its [`Lease`] lives.
+//! reaches the network beyond the loopback listener, which serves only programs of the same user
+//! and holds every client to the caps and rates of plan 2.4. One [`Host`] serves every game
+//! decanter runs at once, each signed in only for as long as its [`Lease`] lives.
 
 #![expect(
     clippy::implicit_return,
@@ -55,6 +56,9 @@ mod error;
 mod handlers;
 mod header;
 mod host;
+mod limits;
+mod log_id;
+mod peer;
 pub mod proto;
 mod service;
 mod source;
@@ -65,5 +69,6 @@ pub use codec::{
 pub use error::Error;
 pub use header::ResponseHeader;
 pub use host::{Account, Host, Lease};
+pub use log_id::{LogId, log_id};
 pub use service::DEFAULT_PORT;
 pub use source::{Achievement, AchievementList, ClientId, GameStore, SourceError, Stat, StatKind, StatValue};

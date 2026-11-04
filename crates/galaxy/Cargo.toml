@@ -13,7 +13,11 @@ workspace = true
 # No HTTP client on purpose: the service answers from what decanter stores and never reaches GOG
 # (docs/galaxy-local-service-plan.md, security requirement 9).
 [dependencies]
+# The per-process key and the digest of log_id: identifiers in logs that cannot be traced back to
+# the account or the games played (plan, requirement 7). Both are already in the graph.
+getrandom.workspace = true
 prost.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "time", "macros"] }
 tracing.workspace = true

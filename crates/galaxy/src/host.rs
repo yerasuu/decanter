@@ -3,14 +3,18 @@
 //! host-wide singleton (plan 1.3): the first registration starts it, the last release stops it,
 //! and nothing listens while no registered game runs.
 
+use core::sync::atomic::{AtomicUsize, Ordering};
+use core::time::Duration;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 
 use tokio::sync::{Mutex as AsyncMutex, oneshot};
 use tokio::task::JoinHandle;
+use tokio::time::{Instant, sleep};
 
 use crate::error::Error;
+use crate::limits::{MAX_CONNECTIONS_PER_GAME, TokenBucket, WRITE_BURST, WRITES_PER_SECOND};
 use crate::service::Service;
 use crate::source::{ClientId, GameStore};
 
@@ -32,6 +36,59 @@ pub(crate) struct Registered {
     pub user_id: u64,
     pub user_name: String,
     pub store: Arc<dyn GameStore>,
+    /// Signed-in connections, held through [`GameSlot`].
+    pub connections: AtomicUsize,
+    /// Shared by the game's connections, so that opening more of them buys no more writes. A lock
+    /// because the bucket's count and time change together.
+    pub writes: Mutex<TokenBucket>,
+}
+
+impl Registered {
+    /// Waits once for the game's next write token, so that a burst over the budget is slowed
+    /// rather than lost; `Err` with the wait left when another connection of the game took it.
+    pub(crate) async fn write_budget(&self) -> Result<(), Duration> {
+        let Err(wait) = self.take_write() else {
+            return Ok(());
+        };
+        sleep(wait).await;
+        self.take_write()
+    }
+
+    fn take_write(&self) -> Result<(), Duration> {
+        self.writes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take(Instant::now())
+    }
+}
+
+/// One of a game's [`MAX_CONNECTIONS_PER_GAME`] signed-in connections, given back on drop.
+pub(crate) struct GameSlot {
+    game: Arc<Registered>,
+}
+
+impl GameSlot {
+    pub(crate) fn claim(game: &Arc<Registered>) -> Option<Self> {
+        game.connections
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+                (held < MAX_CONNECTIONS_PER_GAME).then(|| held.saturating_add(1))
+            })
+            .ok()
+            .map(|_held| Self { game: Arc::clone(game) })
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "pin_drop's default forwards to drop, which is all a slot needs"
+)]
+impl Drop for GameSlot {
+    fn drop(&mut self) {
+        let _released = self
+            .game
+            .connections
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| held.checked_sub(1));
+    }
 }
 
 /// Read on every request, written once per launch and exit.
@@ -141,6 +198,8 @@ impl Host {
                     user_id: USER_ID_TAG | account.user_id,
                     user_name: account.user_name,
                     store,
+                    connections: AtomicUsize::new(0),
+                    writes: Mutex::new(TokenBucket::new(WRITES_PER_SECOND, WRITE_BURST, Instant::now())),
                 },
             )?;
             if listener.is_serving() {

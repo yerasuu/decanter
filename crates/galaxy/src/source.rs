@@ -3,8 +3,10 @@ use core::error::Error;
 use core::fmt;
 use core::num::NonZeroU32;
 
+use crate::log_id::log_id;
+
 /// A game's Galaxy client id: the key the SDK signs in with and the service looks games up by.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ClientId(String);
 
 impl ClientId {
@@ -22,9 +24,19 @@ impl ClientId {
     }
 }
 
+/// The id's [`log_id`] stand-in, so that no log line or error message carries the id itself;
+/// [`ClientId::as_str`] is the id.
 impl fmt::Display for ClientId {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        fmt::Display::fmt(&log_id(&self.0), f)
+    }
+}
+
+impl fmt::Debug for ClientId {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ClientId({self})")
     }
 }
 

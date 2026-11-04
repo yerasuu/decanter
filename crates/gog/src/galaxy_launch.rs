@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
 use decanter_core::{Db, Storefront};
-use decanter_galaxy::{Account, DEFAULT_PORT, Error, Host, Lease};
+use decanter_galaxy::{Account, DEFAULT_PORT, Error, Host, Lease, log_id};
 use tokio::time::timeout;
 
 use crate::GalaxyStore;
@@ -35,24 +35,24 @@ pub async fn serve_galaxy(db_path: &Path, account_id: &str, product_id: &str, in
     let mut db = match Db::open(db_path) {
         Ok(db) => db,
         Err(err) => {
-            tracing::warn!(product_id, %err, "could not open the database, the game starts without the local Galaxy service");
+            tracing::warn!(product_id = %log_id(product_id), %err, "could not open the database, the game starts without the local Galaxy service");
             return None;
         }
     };
     match db.galaxy_service_enabled() {
         Ok(true) => {}
         Ok(false) => {
-            tracing::info!(product_id, "local Galaxy service turned off in settings, not started");
+            tracing::info!(product_id = %log_id(product_id), "local Galaxy service turned off in settings, not started");
             return None;
         }
         Err(err) => {
-            tracing::warn!(product_id, %err, "could not read the local Galaxy service setting, not started");
+            tracing::warn!(product_id = %log_id(product_id), %err, "could not read the local Galaxy service setting, not started");
             return None;
         }
     }
     let Some(client_id) = galaxy_client_id(install_root, product_id) else {
         tracing::debug!(
-            product_id,
+            product_id = %log_id(product_id),
             "no Galaxy client id in the install, local Galaxy service not applicable"
         );
         return None;
@@ -68,7 +68,7 @@ pub async fn serve_galaxy(db_path: &Path, account_id: &str, product_id: &str, in
         Ok(lease) => lease,
         Err(Error::PortInUse(addr)) => {
             tracing::warn!(
-                product_id,
+                product_id = %log_id(product_id),
                 %client_id,
                 %addr,
                 "another program (a Galaxy client, another decanter) holds the Galaxy port: local Galaxy service \
@@ -77,7 +77,7 @@ pub async fn serve_galaxy(db_path: &Path, account_id: &str, product_id: &str, in
             return None;
         }
         Err(err) => {
-            tracing::warn!(product_id, %client_id, %err, "local Galaxy service not started for this game");
+            tracing::warn!(product_id = %log_id(product_id), %client_id, %err, "local Galaxy service not started for this game");
             return None;
         }
     };
@@ -89,8 +89,8 @@ pub async fn serve_galaxy(db_path: &Path, account_id: &str, product_id: &str, in
 fn account(db: &Db, account_id: &str, product_id: &str) -> Option<Account> {
     let Ok(user_id) = account_id.parse::<u64>() else {
         tracing::warn!(
-            account_id,
-            product_id,
+            account_id = %log_id(account_id),
+            product_id = %log_id(product_id),
             "account id is not a GOG user id, local Galaxy service not started"
         );
         return None;
@@ -99,14 +99,14 @@ fn account(db: &Db, account_id: &str, product_id: &str) -> Option<Account> {
         Ok(Some(name)) => name,
         Ok(None) => {
             tracing::warn!(
-                account_id,
-                product_id,
+                account_id = %log_id(account_id),
+                product_id = %log_id(product_id),
                 "no stored name for the account, the SDK is told an empty one"
             );
             String::new()
         }
         Err(err) => {
-            tracing::warn!(account_id, product_id, %err, "could not read the account name, the SDK is told an empty one");
+            tracing::warn!(account_id = %log_id(account_id), product_id = %log_id(product_id), %err, "could not read the account name, the SDK is told an empty one");
             String::new()
         }
     };
@@ -119,16 +119,16 @@ async fn seed(db: &mut Db, account_id: &str, product_id: &str) {
     let seeding = async {
         if let Err(err) = crate::poll_achievements(db, account_id, product_id).await {
             tracing::warn!(
-                account_id,
-                product_id,
+                account_id = %log_id(account_id),
+                product_id = %log_id(product_id),
                 err = format!("{err:#}"),
                 "achievements not refreshed before launch"
             );
         }
         if let Err(err) = crate::seed_user_stats(db, account_id, product_id).await {
             tracing::warn!(
-                account_id,
-                product_id,
+                account_id = %log_id(account_id),
+                product_id = %log_id(product_id),
                 err = format!("{err:#}"),
                 "user stats not refreshed before launch"
             );
@@ -136,8 +136,8 @@ async fn seed(db: &mut Db, account_id: &str, product_id: &str) {
     };
     if timeout(SEED_TIMEOUT, seeding).await.is_err() {
         tracing::warn!(
-            account_id,
-            product_id,
+            account_id = %log_id(account_id),
+            product_id = %log_id(product_id),
             timeout_secs = SEED_TIMEOUT.as_secs(),
             "seeding from GOG took too long, the game starts with what is stored"
         );

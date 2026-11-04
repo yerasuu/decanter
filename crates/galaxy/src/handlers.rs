@@ -4,6 +4,7 @@
 
 use core::net::SocketAddr;
 use core::num::NonZeroU32;
+use core::time::Duration;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,7 +14,8 @@ use tokio::task::spawn_blocking;
 
 use crate::codec::Frame;
 use crate::header::ResponseHeader;
-use crate::host::{Registered, Registry};
+use crate::host::{GameSlot, Registered, Registry};
+use crate::limits::{MAX_CONNECTIONS_PER_GAME, MAX_DESCRIPTION_BYTES, Refusal, Refusals, retry_after_secs};
 use crate::proto::communication::{
     AuthInfoRequest, AuthInfoResponse, ClearUserAchievementRequest, EnvironmentType, GetUserAchievementsRequest,
     GetUserAchievementsResponse, GetUserStatsRequest, GetUserStatsResponse, GetUserTimePlayedRequest,
@@ -27,6 +29,11 @@ use crate::source::{AchievementList, ClientId, GameStore, SourceError, Stat, Sta
 
 const COMMUNICATION_SORT: u32 = 1;
 const WEBBROKER_SORT: u32 = 2;
+/// A client sending ever new `(sort, type)` pairs would otherwise grow a connection's counts
+/// without bound.
+const MAX_COUNTED_KINDS: usize = 64;
+/// The sort and type every pair past [`MAX_COUNTED_KINDS`] is counted under.
+pub(crate) const OTHER_KINDS: u32 = u32::MAX;
 /// decanter's own login client (`crates/gog/src/api/client/auth.rs`): never a game, so it never
 /// signs in here (plan 1.5).
 const GALAXY_CLIENT_ID: &str = "46899977096215655";
@@ -50,6 +57,7 @@ struct Reply {
     code: Status,
     description: Option<String>,
     payload: Vec<u8>,
+    retry_after: Option<u32>,
 }
 
 impl Reply {
@@ -58,6 +66,7 @@ impl Reply {
             code: Status::Ok,
             description: None,
             payload: message.encode_to_vec(),
+            retry_after: None,
         }
     }
 
@@ -67,6 +76,7 @@ impl Reply {
             code: Status::Ok,
             description: None,
             payload: Vec::new(),
+            retry_after: None,
         }
     }
 
@@ -75,6 +85,14 @@ impl Reply {
             code,
             description: Some(description.into()),
             payload: Vec::new(),
+            retry_after: None,
+        }
+    }
+
+    fn busy(wait: Duration, description: &str) -> Self {
+        Self {
+            retry_after: Some(retry_after_secs(wait)),
+            ..Self::refuse(Status::Unavailable, description)
         }
     }
 }
@@ -85,17 +103,23 @@ pub(crate) struct Connection {
     /// Bound by the first accepted `AUTH_INFO` and never rebound (comet does the same, gap 2).
     /// Looked up in the registry on every request, so that a game released at exit is refused.
     signed_in: Option<ClientId>,
+    /// Held from the first accepted `AUTH_INFO` to the end of the connection.
+    slot: Option<GameSlot>,
+    refusals: Arc<Refusals>,
     next_oseq: u32,
-    /// `(sort, type, status code)` to how many times, logged when the connection ends.
+    /// `(sort, type, status code)` to how many times, logged when the connection ends; at most
+    /// [`MAX_COUNTED_KINDS`] entries, the rest under [`OTHER_KINDS`].
     counts: BTreeMap<(u32, u32, i32), u32>,
 }
 
 impl Connection {
-    pub(crate) const fn new(peer: SocketAddr, registry: Arc<Registry>) -> Self {
+    pub(crate) const fn new(peer: SocketAddr, registry: Arc<Registry>, refusals: Arc<Refusals>) -> Self {
         Self {
             peer,
             registry,
             signed_in: None,
+            slot: None,
+            refusals,
             next_oseq: 1,
             counts: BTreeMap::new(),
         }
@@ -105,9 +129,12 @@ impl Connection {
         &self.counts
     }
 
+    pub(crate) const fn is_signed_in(&self) -> bool {
+        self.signed_in.is_some()
+    }
+
     pub(crate) async fn handle(&mut self, frame: &Frame<Header>) -> (ResponseHeader, Vec<u8>) {
-        let Header { sort, r#type, oseq, .. } = frame.header;
-        let message = sort_one(sort, r#type);
+        let message = sort_one(frame.header.sort, frame.header.r#type);
         let reply = match message {
             Some(MessageType::AuthInfoRequest) => self.auth_info(&frame.payload),
             Some(MessageType::GetUserAchievementsRequest) => self.user_achievements(&frame.payload).await,
@@ -121,15 +148,45 @@ impl Connection {
                 "not implemented by decanter's local Galaxy service",
             ),
         };
+        self.respond(&frame.header, message, reply)
+    }
+
+    /// The answer to a request over the connection's rate, left unhandled: it still gets its
+    /// answer in order, and the SDK is told when to try again.
+    pub(crate) fn rate_limited(&mut self, header: &Header, wait: Duration) -> (ResponseHeader, Vec<u8>) {
+        let message = sort_one(header.sort, header.r#type);
+        self.respond(
+            header,
+            message,
+            Reply::busy(wait, "too many requests on this connection"),
+        )
+    }
+
+    fn respond(&mut self, request: &Header, message: Option<MessageType>, reply: Reply) -> (ResponseHeader, Vec<u8>) {
+        let Header { sort, r#type, oseq, .. } = *request;
         let code = i32::from(reply.code);
-        let count = self.counts.entry((sort, r#type, code)).or_default();
+        let mut key = (sort, r#type, code);
+        if self.counts.len() >= MAX_COUNTED_KINDS && !self.counts.contains_key(&key) {
+            key = (OTHER_KINDS, OTHER_KINDS, code);
+        }
+        let count = self.counts.entry(key).or_default();
         *count = count.saturating_add(1);
-        if reply.code == Status::NotImplemented && *count == 1 {
-            let name = message.map_or_else(
-                || webbroker_type(sort, r#type).map_or("unknown", |known| known.as_str_name()),
-                |known| known.as_str_name(),
+        if reply.code == Status::NotImplemented {
+            let known = message.map_or_else(
+                || webbroker_type(sort, r#type).map(|webbroker| webbroker.as_str_name()),
+                |communication| Some(communication.as_str_name()),
             );
-            tracing::warn!(peer = %self.peer, sort, r#type, name, "Galaxy request not implemented, answered 501");
+            match known {
+                Some(name) if *count == 1 => {
+                    tracing::warn!(peer = %self.peer, sort, r#type, name, "Galaxy request not implemented, answered 501");
+                }
+                Some(_) => {}
+                None => {
+                    if let Some(total) = self.refusals.record(Refusal::UnknownRequest) {
+                        tracing::warn!(peer = %self.peer, sort, r#type, total, "unknown Galaxy request, answered 501");
+                    }
+                }
+            }
         }
         let header = ResponseHeader {
             sort,
@@ -138,8 +195,8 @@ impl Connection {
             oseq: Some(self.next_oseq),
             rseq: oseq,
             code: Some(code),
-            description: reply.description,
-            retry_after: None,
+            description: reply.description.map(bounded),
+            retry_after: reply.retry_after,
         };
         self.next_oseq = self.next_oseq.wrapping_add(1);
         (header, reply.payload)
@@ -151,6 +208,10 @@ impl Connection {
             Err(err) => return Reply::refuse(Status::BadRequest, format!("AuthInfoRequest: {err}")),
         };
         let Some(client_id) = request.client_id.as_deref().and_then(ClientId::parse) else {
+            if let Some(total) = self.refusals.record(Refusal::MalformedClientId) {
+                let length = request.client_id.as_ref().map(String::len);
+                tracing::warn!(peer = %self.peer, ?length, total, "Galaxy sign-in refused: malformed client id");
+            }
             return Reply::refuse(Status::BadRequest, "client_id must be 1 to 20 decimal digits");
         };
         if request
@@ -164,15 +225,35 @@ impl Connection {
         {
             return Reply::refuse(Status::BadRequest, "client_secret or steam_ticket is too long");
         }
-        let registered = (client_id.as_str() != GALAXY_CLIENT_ID)
-            .then(|| self.registry.get(&client_id))
-            .flatten();
-        let Some(game) = registered else {
-            tracing::warn!(peer = %self.peer, %client_id, "Galaxy sign-in refused: client id not registered");
+        if client_id.as_str() == GALAXY_CLIENT_ID {
+            if let Some(total) = self.refusals.record(Refusal::GalaxyClientId) {
+                tracing::warn!(peer = %self.peer, total, "Galaxy sign-in refused: Galaxy's own client id is never a game");
+            }
+            return Reply::refuse(Status::Forbidden, "this client id is not a game's");
+        }
+        let Some(game) = self.registry.get(&client_id) else {
+            if let Some(total) = self.refusals.record(Refusal::UnregisteredClient) {
+                tracing::warn!(peer = %self.peer, %client_id, total, "Galaxy sign-in refused: client id not registered");
+            }
             return Reply::refuse(Status::Forbidden, "this game is not registered with decanter's service");
         };
         if self.signed_in.as_ref().is_some_and(|bound| *bound != client_id) {
             return Reply::refuse(Status::Forbidden, "this connection is signed in as another game");
+        }
+        if self.slot.is_none() {
+            let Some(slot) = GameSlot::claim(&game) else {
+                if let Some(total) = self.refusals.record(Refusal::GameConnectionsFull) {
+                    tracing::warn!(
+                        peer = %self.peer,
+                        %client_id,
+                        total,
+                        cap = MAX_CONNECTIONS_PER_GAME,
+                        "Galaxy sign-in refused: the game holds its connection cap"
+                    );
+                }
+                return Reply::busy(Duration::from_secs(1), "this game has too many connections open");
+            };
+            self.slot = Some(slot);
         }
         tracing::info!(peer = %self.peer, %client_id, game_pid = request.game_pid, "Galaxy SDK signed in");
         self.signed_in = Some(client_id);
@@ -200,6 +281,15 @@ impl Connection {
             ));
         };
         Ok((client_id, game))
+    }
+
+    async fn write_budget(&self, game: &Registered, client_id: &ClientId) -> Result<(), Reply> {
+        game.write_budget().await.map_err(|wait| {
+            if let Some(total) = self.refusals.record(Refusal::WritesRateLimited) {
+                tracing::warn!(peer = %self.peer, %client_id, total, "Galaxy write refused: the game is over its write rate");
+            }
+            Reply::busy(wait, "too many writes for this game")
+        })
     }
 
     /// comet answers any user id with the signed-in user's data (gap, defects). The SDK echoes the
@@ -279,6 +369,9 @@ impl Connection {
         let Some(achievement_id) = request.achievement_id else {
             return Reply::refuse(Status::BadRequest, "achievement_id is required");
         };
+        if let Err(reply) = self.write_budget(&game, &client_id).await {
+            return reply;
+        }
         let Some(unlocked_at) = unlock_time(request.time) else {
             tracing::warn!(peer = %self.peer, %client_id, "the system clock is unreadable, unlock refused");
             return Reply::refuse(Status::InternalError, "no unlock time could be set");
@@ -308,6 +401,9 @@ impl Connection {
         let Some(achievement_id) = request.achievement_id else {
             return Reply::refuse(Status::BadRequest, "achievement_id is required");
         };
+        if let Err(reply) = self.write_budget(&game, &client_id).await {
+            return reply;
+        }
         let lookup = client_id.clone();
         if let Err(reply) = self
             .with_store(&game, &client_id, "clearing an achievement", move |store| {
@@ -367,6 +463,9 @@ impl Connection {
         let Some(stat_id) = request.stat_id else {
             return Reply::refuse(Status::BadRequest, "stat_id is required");
         };
+        if let Err(reply) = self.write_budget(&game, &client_id).await {
+            return reply;
+        }
         let stats = match self.stored_stats(&game, &client_id).await {
             Ok(stats) => stats,
             Err(reply) => return reply,
@@ -471,6 +570,18 @@ impl Connection {
             achievements_mode: list.mode,
         }
     }
+}
+
+/// Cut at a character boundary, so that the header never outgrows the codec's cap.
+fn bounded(mut description: String) -> String {
+    if description.len() > MAX_DESCRIPTION_BYTES {
+        let end = (0..=MAX_DESCRIPTION_BYTES)
+            .rev()
+            .find(|&end| description.is_char_boundary(end))
+            .unwrap_or(0);
+        description.truncate(end);
+    }
+    description
 }
 
 /// The SDK's time, unless it is unset (`0`) or a wrong clock far ahead: then now (plan 2.1, row 25).
