@@ -176,3 +176,8 @@ settings.credentials.forgotten: Credential forgotten.
 settings.credentials.forgotten_all: 'Credentials forgotten: %{count}.'
 settings.credentials.forgotten_some: 'Credentials forgotten: %{count}. %{failed} could not be removed and are still in the keyring.'
 settings.credentials.errors.forget: 'Couldn''t forget it: %{error}'
+settings.general.galaxy.title: 'Local Galaxy service'
+settings.general.galaxy.service: 'Track achievements and stats of GOG games locally'
+settings.general.galaxy.service_hint: 'Games built with GOG Galaxy talk to a small service Decanter runs on this computer only, while they are running, and it records their achievements, stats and time played. Turn it off if a game misbehaves with it or if you run the real GOG Galaxy client at the same time.'
+settings.general.galaxy.upload: 'Upload local achievements and stats to GOG'
+settings.general.galaxy.upload_hint: 'This has no effect yet: the upload does not exist. The setting is kept for when it does, and nothing is sent to GOG whatever its state.'

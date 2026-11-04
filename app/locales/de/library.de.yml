@@ -282,3 +282,8 @@ library.properties.language.fallback: 'Das Spiel ist in dieser Sprache nicht ver
 library.properties.language.freed: '%{size} freigegeben.'
 library.properties.language.downloading: 'Für das Spiel läuft ein Download unter Downloads; wechsle die Sprache oder entferne Sprachen, wenn er fertig oder abgebrochen ist.'
 library.properties.language.use: 'Diese Sprache verwenden'
+library.properties.general.galaxy: 'Lokaler Galaxy-Dienst'
+library.properties.general.galaxy_active: 'Lokale Erfassung aktiv'
+library.properties.general.galaxy_port_held: 'Port von einem anderen Programm belegt'
+library.properties.general.galaxy_not_available: 'Nicht verfügbar (kein Galaxy-Client in diesem Spiel)'
+library.properties.general.galaxy_turned_off: 'In den Einstellungen deaktiviert'

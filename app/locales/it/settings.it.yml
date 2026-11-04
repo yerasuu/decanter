@@ -176,3 +176,8 @@ settings.credentials.forgotten: Credenziale dimenticata.
 settings.credentials.forgotten_all: "Credenziali dimenticate: %{count}."
 settings.credentials.forgotten_some: "Credenziali dimenticate: %{count}. Non è stato possibile rimuoverne %{failed}, che sono ancora nel portachiavi."
 settings.credentials.errors.forget: "Impossibile dimenticarla: %{error}"
+settings.general.galaxy.title: 'Servizio Galaxy locale'
+settings.general.galaxy.service: 'Registra in locale obiettivi e statistiche dei giochi GOG'
+settings.general.galaxy.service_hint: 'I giochi creati con GOG Galaxy dialogano con un piccolo servizio che Decanter avvia solo su questo computer, finché sono in esecuzione, e che registra obiettivi, statistiche e tempo di gioco. Disattivalo se un gioco non funziona bene con esso o se usi contemporaneamente il vero client GOG Galaxy.'
+settings.general.galaxy.upload: 'Carica su GOG obiettivi e statistiche locali'
+settings.general.galaxy.upload_hint: 'Per ora non ha alcun effetto: il caricamento non esiste. L''impostazione viene conservata per quando esisterà e non viene inviato nulla a GOG, qualunque sia il suo stato.'

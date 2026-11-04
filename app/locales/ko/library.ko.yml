@@ -282,3 +282,8 @@ library.properties.language.fallback: '게임이 해당 언어를 지원하지 �
 library.properties.language.freed: '%{size}을(를) 확보했습니다.'
 library.properties.language.downloading: '이 게임은 다운로드에 진행 중인 다운로드가 있습니다. 완료되거나 취소된 후에 언어를 바꾸거나 언어를 삭제하세요.'
 library.properties.language.use: '이 언어 사용'
+library.properties.general.galaxy: '로컬 Galaxy 서비스'
+library.properties.general.galaxy_active: '로컬 추적 활성'
+library.properties.general.galaxy_port_held: '다른 프로그램이 포트를 사용 중'
+library.properties.general.galaxy_not_available: '사용할 수 없음(이 게임에는 Galaxy 클라이언트가 없음)'
+library.properties.general.galaxy_turned_off: '설정에서 꺼짐'

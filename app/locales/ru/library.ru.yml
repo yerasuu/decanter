@@ -282,3 +282,8 @@ library.properties.language.fallback: 'Игра недоступна на это
 library.properties.language.freed: 'Освобождено: %{size}.'
 library.properties.language.downloading: 'У игры есть загрузка в разделе «Загрузки»; смени язык или удали языки, когда она завершится или будет отменена.'
 library.properties.language.use: 'Использовать этот язык'
+library.properties.general.galaxy: 'Локальная служба Galaxy'
+library.properties.general.galaxy_active: 'Локальное отслеживание активно'
+library.properties.general.galaxy_port_held: 'Порт занят другой программой'
+library.properties.general.galaxy_not_available: 'Недоступно (в этой игре нет клиента Galaxy)'
+library.properties.general.galaxy_turned_off: 'Отключено в настройках'

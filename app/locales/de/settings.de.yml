@@ -176,3 +176,8 @@ settings.credentials.forgotten: Zugangsdaten vergessen.
 settings.credentials.forgotten_all: 'Zugangsdaten vergessen: %{count}.'
 settings.credentials.forgotten_some: 'Zugangsdaten vergessen: %{count}. %{failed} konnten nicht entfernt werden und sind noch im Keyring.'
 settings.credentials.errors.forget: 'Das Vergessen ist fehlgeschlagen: %{error}'
+settings.general.galaxy.title: 'Lokaler Galaxy-Dienst'
+settings.general.galaxy.service: 'Erfolge und Statistiken von GOG-Spielen lokal erfassen'
+settings.general.galaxy.service_hint: 'Spiele mit GOG Galaxy sprechen mit einem kleinen Dienst, den Decanter nur auf diesem Computer und nur während das Spiel läuft startet; er speichert Erfolge, Statistiken und Spielzeit. Schalte ihn aus, wenn ein Spiel damit Probleme hat oder du gleichzeitig den echten GOG-Galaxy-Client nutzt.'
+settings.general.galaxy.upload: 'Lokale Erfolge und Statistiken zu GOG hochladen'
+settings.general.galaxy.upload_hint: 'Das hat noch keine Wirkung: Den Upload gibt es noch nicht. Die Einstellung wird für später gespeichert, und es wird nichts an GOG gesendet, egal wie sie steht.'

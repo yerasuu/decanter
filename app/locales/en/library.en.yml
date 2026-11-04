@@ -282,3 +282,8 @@ library.mods.none: GOG offers no mods right now.
 library.mods.owned: In your library
 library.mods.view: View on GOG
 library.properties.language.use: Use this language
+library.properties.general.galaxy: 'Galaxy local service'
+library.properties.general.galaxy_active: 'Local tracking active'
+library.properties.general.galaxy_port_held: 'Port held by another program'
+library.properties.general.galaxy_not_available: 'Not available (no Galaxy client in this game)'
+library.properties.general.galaxy_turned_off: 'Turned off in settings'

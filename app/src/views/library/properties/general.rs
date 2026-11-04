@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use decanter_core::{InstalledGame, Storefront};
-use decanter_gog::PlayTask;
+use decanter_gog::{GalaxyStatus, PlayTask, galaxy_status};
 use gpui::{Context, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
@@ -20,6 +20,7 @@ pub(super) struct GeneralTab {
     path: Option<PathBuf>,
     /// The programs the game's `goggame-<id>.info` lists, primary first.
     tasks: Vec<PlayTask>,
+    galaxy: Option<GalaxyStatus>,
     error: Option<Text>,
 }
 
@@ -36,12 +37,20 @@ impl GeneralTab {
             }
             _ => Vec::new(),
         };
+        let galaxy = match (&installed, &path) {
+            (Some(game), Some(path)) if game.storefront == Storefront::Gog => crate::core::db()
+                .inspect_err(|err| tracing::warn!(error = %err, "failed to open db, no Galaxy status to show"))
+                .ok()
+                .map(|db| galaxy_status(&db, path, product_id)),
+            _ => None,
+        };
         Self {
             target,
             installed,
             seconds_played,
             path,
             tasks,
+            galaxy,
             error: None,
         }
     }
@@ -168,6 +177,18 @@ impl Render for GeneralTab {
                         )
                     }),
             );
+
+        table = table.children(self.galaxy.map(|status| {
+            row(
+                t!("library.properties.general.galaxy"),
+                match status {
+                    GalaxyStatus::Active => t!("library.properties.general.galaxy_active"),
+                    GalaxyStatus::PortHeld => t!("library.properties.general.galaxy_port_held"),
+                    GalaxyStatus::NotAvailable => t!("library.properties.general.galaxy_not_available"),
+                    GalaxyStatus::TurnedOff => t!("library.properties.general.galaxy_turned_off"),
+                },
+            )
+        }));
 
         pane()
             .child(table)

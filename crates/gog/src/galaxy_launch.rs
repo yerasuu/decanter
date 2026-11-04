@@ -3,6 +3,7 @@
 //! when the caller drops the lease (docs/galaxy-local-service-plan.md, sections 1.3, 1.4 and 3.1).
 
 use core::time::Duration;
+use std::net::{Ipv4Addr, TcpListener};
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
@@ -83,6 +84,49 @@ pub async fn serve_galaxy(db_path: &Path, account_id: &str, product_id: &str, in
     };
     seed(&mut db, account_id, product_id).await;
     Some(lease)
+}
+
+/// What the local Galaxy service does for a game, read without starting or changing anything.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GalaxyStatus {
+    /// The service is, or at the next launch will be, up for the game.
+    Active,
+    /// Something else, not this process, holds the Galaxy port, so a launch goes untracked.
+    PortHeld,
+    /// The install has no Galaxy client id: its build does not use the SDK.
+    NotAvailable,
+    TurnedOff,
+}
+
+/// The status a launch of `product_id`, installed at `install_root`, would find.
+///
+/// The port is probed with a bind that is dropped at once, the one thing that tells a free port
+/// from a held one before any game runs; a launch racing the probe can in theory see the port
+/// busy for that instant, and then goes untracked as it would for any other holder.
+#[must_use]
+#[inline]
+pub fn galaxy_status(db: &Db, install_root: &Path, product_id: &str) -> GalaxyStatus {
+    if galaxy_client_id(install_root, product_id).is_none() {
+        return GalaxyStatus::NotAvailable;
+    }
+    match db.galaxy_service_enabled() {
+        Ok(true) => {}
+        Ok(false) => return GalaxyStatus::TurnedOff,
+        Err(err) => {
+            tracing::warn!(product_id = %log_id(product_id), %err, "could not read the local Galaxy service setting");
+            return GalaxyStatus::TurnedOff;
+        }
+    }
+    if HOST.is_serving() {
+        return GalaxyStatus::Active;
+    }
+    match TcpListener::bind((Ipv4Addr::LOCALHOST, DEFAULT_PORT)) {
+        Ok(_free) => GalaxyStatus::Active,
+        Err(err) => {
+            tracing::debug!(product_id = %log_id(product_id), %err, "the Galaxy port cannot be bound");
+            GalaxyStatus::PortHeld
+        }
+    }
 }
 
 /// What the SDK is told about the signed-in user; `None` for an account id GOG did not issue.

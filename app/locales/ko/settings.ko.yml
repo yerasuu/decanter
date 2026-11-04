@@ -176,3 +176,8 @@ settings.credentials.forgotten: 자격 증명을 삭제했습니다.
 settings.credentials.forgotten_all: '삭제한 자격 증명: %{count}개'
 settings.credentials.forgotten_some: '삭제한 자격 증명: %{count}개. %{failed}개는 제거하지 못해 여전히 키링에 있습니다.'
 settings.credentials.errors.forget: '삭제할 수 없습니다: %{error}'
+settings.general.galaxy.title: '로컬 Galaxy 서비스'
+settings.general.galaxy.service: 'GOG 게임의 업적과 통계를 로컬에 기록'
+settings.general.galaxy.service_hint: 'GOG Galaxy로 만든 게임은 실행되는 동안에만 이 컴퓨터에서 Decanter가 실행하는 작은 서비스와 통신하며, 이 서비스가 업적, 통계, 플레이 시간을 기록합니다. 게임이 이 서비스와 문제를 일으키거나 실제 GOG Galaxy 클라이언트를 동시에 사용한다면 끄세요.'
+settings.general.galaxy.upload: '로컬 업적과 통계를 GOG에 업로드'
+settings.general.galaxy.upload_hint: '아직 아무 효과가 없습니다. 업로드 기능이 아직 없습니다. 이 설정은 나중을 위해 저장될 뿐이며, 어떤 상태든 GOG로는 아무것도 전송되지 않습니다.'

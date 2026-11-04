@@ -39,7 +39,7 @@ mod user_stats;
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
 pub use decanter_galaxy::Lease as GalaxyLease;
-pub use galaxy_launch::serve_galaxy;
+pub use galaxy_launch::{GalaxyStatus, galaxy_status, serve_galaxy};
 pub use galaxy_store::GalaxyStore;
 pub use install::{
     BrokenFile, BrokenReason, BuildSwitch, Cancelled, DownloadQueue, LanguageCleanup, NothingToResume, PauseReason,

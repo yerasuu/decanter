@@ -71,6 +71,19 @@ impl Db {
         self.set_setting("galaxy_service_enabled", if enabled { "1" } else { "0" })
     }
 
+    /// Whether local achievements and stats are meant to be uploaded to GOG — off by default,
+    /// since an unlock made public cannot be taken back. Nothing reads it yet (decision #1512):
+    /// the upload does not exist.
+    pub fn galaxy_upload_enabled(&self) -> Result<bool> {
+        let enabled = self.setting("galaxy_upload_enabled")?.as_deref() == Some("1");
+        tracing::debug!(enabled, "read galaxy_upload_enabled setting");
+        Ok(enabled)
+    }
+
+    pub fn set_galaxy_upload_enabled(&self, enabled: bool) -> Result<()> {
+        self.set_setting("galaxy_upload_enabled", if enabled { "1" } else { "0" })
+    }
+
     /// The Proton build to launch with when a game has no per-game choice
     /// of its own — a bare name from `decanter_runtime::runner::status`, or
     /// `None` for `decanter_runtime::Proton::Latest`.

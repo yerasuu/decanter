@@ -176,3 +176,8 @@ settings.credentials.forgotten: "認証情報を削除しました。"
 settings.credentials.forgotten_all: "削除した認証情報: %{count} 件。"
 settings.credentials.forgotten_some: "削除した認証情報: %{count} 件。%{failed} 件は削除できず、キーリングに残っています。"
 settings.credentials.errors.forget: "削除できませんでした: %{error}"
+settings.general.galaxy.title: 'ローカル Galaxy サービス'
+settings.general.galaxy.service: 'GOG ゲームの実績と統計をローカルで記録する'
+settings.general.galaxy.service_hint: 'GOG Galaxy 対応のゲームは、実行中のみこのコンピューター上で Decanter が起動する小さなサービスと通信し、実績・統計・プレイ時間が記録されます。ゲームの動作に問題がある場合や、本物の GOG Galaxy クライアントを同時に使う場合はオフにしてください。'
+settings.general.galaxy.upload: 'ローカルの実績と統計を GOG にアップロードする'
+settings.general.galaxy.upload_hint: '現時点では効果がありません。アップロード機能はまだ存在しません。設定は将来のために保存されるだけで、どちらの状態でも GOG には何も送信されません。'

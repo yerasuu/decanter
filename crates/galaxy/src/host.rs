@@ -230,6 +230,13 @@ impl Host {
         Ok(lease)
     }
 
+    /// Whether this process's listener holds the port right now.
+    #[must_use]
+    #[inline]
+    pub fn is_serving(&self) -> bool {
+        self.lock_listener().is_serving()
+    }
+
     fn lease(self: &Arc<Self>, client_id: ClientId) -> Lease {
         Lease {
             host: Arc::clone(self),

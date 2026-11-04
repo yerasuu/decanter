@@ -29,6 +29,8 @@ pub struct GeneralTab {
     close_game_shortcut: bool,
     steam_export_enabled: bool,
     resume_downloads: bool,
+    galaxy_service: bool,
+    galaxy_upload: bool,
     raven: bool,
     steam_pending: bool,
     restarting_steam: bool,
@@ -57,6 +59,8 @@ impl GeneralTab {
             close_game_shortcut: true,
             steam_export_enabled: true,
             resume_downloads: true,
+            galaxy_service: true,
+            galaxy_upload: false,
             raven: false,
             steam_pending: false,
             restarting_steam: false,
@@ -94,6 +98,18 @@ impl GeneralTab {
                 tracing::warn!(error = %err, "failed to read resume_downloads_on_start setting, defaulting to true");
             })
             .unwrap_or(true);
+        self.galaxy_service = crate::core::db()
+            .and_then(|db| db.galaxy_service_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(|err| {
+                tracing::warn!(error = %err, "failed to read galaxy_service_enabled setting, defaulting to true");
+            })
+            .unwrap_or(true);
+        self.galaxy_upload = crate::core::db()
+            .and_then(|db| db.galaxy_upload_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(|err| {
+                tracing::warn!(error = %err, "failed to read galaxy_upload_enabled setting, defaulting to false");
+            })
+            .unwrap_or(false);
         self.steam_pending = crate::core::steam_shortcuts_pending();
         self.raven = crate::core::db()
             .and_then(|db| db.raven_enabled().map_err(crate::core::StoreError::Query))
@@ -186,6 +202,34 @@ impl GeneralTab {
             return;
         }
         tracing::info!(enabled, "resume-downloads-on-start setting changed");
+        self.reload();
+        cx.notify();
+    }
+
+    fn set_galaxy_service(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved = crate::core::db().and_then(|db| {
+            db.set_galaxy_service_enabled(enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save galaxy_service_enabled setting");
+            return;
+        }
+        tracing::info!(enabled, "local Galaxy service setting changed");
+        self.reload();
+        cx.notify();
+    }
+
+    fn set_galaxy_upload(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved = crate::core::db().and_then(|db| {
+            db.set_galaxy_upload_enabled(enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save galaxy_upload_enabled setting");
+            return;
+        }
+        tracing::info!(enabled, "Galaxy upload setting changed");
         self.reload();
         cx.notify();
     }
@@ -439,6 +483,26 @@ impl GeneralTab {
             .child(theme::muted(t!("settings.general.downloads.resume_hint")))
     }
 
+    fn galaxy_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        column()
+            .child(Self::checkbox_row(
+                "galaxy-service",
+                self.galaxy_service,
+                t!("settings.general.galaxy.service"),
+                Self::set_galaxy_service,
+                cx,
+            ))
+            .child(theme::muted(t!("settings.general.galaxy.service_hint")))
+            .child(Self::checkbox_row(
+                "galaxy-upload",
+                self.galaxy_upload,
+                t!("settings.general.galaxy.upload"),
+                Self::set_galaxy_upload,
+                cx,
+            ))
+            .child(theme::muted(t!("settings.general.galaxy.upload_hint")))
+    }
+
     fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
         field_row().child(language_select(self.language, move |language, _, cx| {
@@ -530,6 +594,8 @@ impl Render for GeneralTab {
             ))
             .child(theme::h2(t!("settings.general.downloads.title")))
             .child(self.downloads_section(cx))
+            .child(theme::h2(t!("settings.general.galaxy.title")))
+            .child(self.galaxy_section(cx))
             .child(theme::h2(t!("settings.general.raven.title")))
             .child(offered(
                 Feature::Raven,

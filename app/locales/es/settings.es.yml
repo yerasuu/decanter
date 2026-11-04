@@ -176,3 +176,8 @@ settings.credentials.forgotten: Credencial olvidada.
 settings.credentials.forgotten_all: 'Credenciales olvidadas: %{count}.'
 settings.credentials.forgotten_some: 'Credenciales olvidadas: %{count}. %{failed} no se han podido quitar y siguen en el llavero.'
 settings.credentials.errors.forget: 'No se ha podido olvidar: %{error}'
+settings.general.galaxy.title: 'Servicio local de Galaxy'
+settings.general.galaxy.service: 'Seguir en local los logros y estadísticas de los juegos de GOG'
+settings.general.galaxy.service_hint: 'Los juegos hechos con GOG Galaxy hablan con un pequeño servicio que Decanter ejecuta solo en este equipo mientras están en marcha, y que guarda sus logros, estadísticas y tiempo de juego. Desactívalo si un juego falla con él o si usas a la vez el cliente real de GOG Galaxy.'
+settings.general.galaxy.upload: 'Subir a GOG los logros y estadísticas locales'
+settings.general.galaxy.upload_hint: 'Todavía no tiene ningún efecto: la subida no existe. El ajuste se guarda para cuando exista, y no se envía nada a GOG sea cual sea su estado.'

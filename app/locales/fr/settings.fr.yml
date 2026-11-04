@@ -176,3 +176,8 @@ settings.credentials.forgotten: Identifiant oublié.
 settings.credentials.forgotten_all: 'Identifiants oubliés : %{count}.'
 settings.credentials.forgotten_some: 'Identifiants oubliés : %{count}. %{failed} n’ont pas pu être supprimés et se trouvent toujours dans le trousseau.'
 settings.credentials.errors.forget: 'Impossible de l’oublier : %{error}'
+settings.general.galaxy.title: 'Service Galaxy local'
+settings.general.galaxy.service: 'Suivre localement les succès et statistiques des jeux GOG'
+settings.general.galaxy.service_hint: 'Les jeux conçus avec GOG Galaxy dialoguent avec un petit service que Decanter lance uniquement sur cet ordinateur, le temps de leur exécution, et qui enregistre leurs succès, statistiques et temps de jeu. Désactivez-le si un jeu se comporte mal avec lui ou si vous utilisez en même temps le vrai client GOG Galaxy.'
+settings.general.galaxy.upload: 'Envoyer à GOG les succès et statistiques locaux'
+settings.general.galaxy.upload_hint: 'Cela n’a encore aucun effet : l’envoi n’existe pas. Le réglage est conservé pour quand il existera, et rien n’est envoyé à GOG quel que soit son état.'

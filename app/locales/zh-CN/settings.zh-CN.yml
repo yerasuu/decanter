@@ -176,3 +176,8 @@ settings.credentials.forgotten: "凭据已忘记。"
 settings.credentials.forgotten_all: "已忘记的凭据：%{count}。"
 settings.credentials.forgotten_some: "已忘记的凭据：%{count}。有 %{failed} 项无法移除，仍在密钥环中。"
 settings.credentials.errors.forget: "无法忘记：%{error}"
+settings.general.galaxy.title: '本地 Galaxy 服务'
+settings.general.galaxy.service: '在本地记录 GOG 游戏的成就和统计数据'
+settings.general.galaxy.service_hint: '使用 GOG Galaxy 制作的游戏会与 Decanter 仅在本机、仅在游戏运行期间启动的小型服务通信，由它记录成就、统计数据和游戏时长。如果某个游戏与它不兼容，或您同时在使用真正的 GOG Galaxy 客户端，请将其关闭。'
+settings.general.galaxy.upload: '将本地成就和统计数据上传到 GOG'
+settings.general.galaxy.upload_hint: '目前不起任何作用：上传功能尚不存在。该设置会保留，供日后使用；无论其状态如何，都不会向 GOG 发送任何内容。'

@@ -282,3 +282,8 @@ library.properties.language.fallback: '游戏没有该语言版本；保留%{lan
 library.properties.language.freed: '已释放 %{size}。'
 library.properties.language.downloading: '该游戏在“下载”中有一个下载任务；请在其完成或取消后再切换语言或删除语言。'
 library.properties.language.use: '使用此语言'
+library.properties.general.galaxy: '本地 Galaxy 服务'
+library.properties.general.galaxy_active: '本地追踪已启用'
+library.properties.general.galaxy_port_held: '端口被其他程序占用'
+library.properties.general.galaxy_not_available: '不可用（此游戏不含 Galaxy 客户端）'
+library.properties.general.galaxy_turned_off: '已在设置中关闭'

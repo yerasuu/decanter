@@ -282,3 +282,8 @@ library.properties.language.fallback: 'ゲームはその言語に対応して�
 library.properties.language.freed: '%{size}を解放しました。'
 library.properties.language.downloading: 'このゲームはダウンロードにダウンロードがあります。完了またはキャンセルしてから、言語の切り替えや言語の削除を行ってください。'
 library.properties.language.use: 'この言語を使う'
+library.properties.general.galaxy: 'ローカル Galaxy サービス'
+library.properties.general.galaxy_active: 'ローカル記録が有効'
+library.properties.general.galaxy_port_held: '別のプログラムがポートを使用中'
+library.properties.general.galaxy_not_available: '利用不可（このゲームには Galaxy クライアントがありません）'
+library.properties.general.galaxy_turned_off: '設定で無効'
