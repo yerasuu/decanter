@@ -119,7 +119,7 @@
       ],
       "license": "LicenseRef-Cargo-Dependencies",
       "review": "generated",
-      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified. prost, prost-derive, prost-types and prost-build are Apache-2.0; protox, protox-parse and prost-reflect MIT OR Apache-2.0 (crates/galaxy, kb #1532). The gog crate is no longer a dependency: it is the api module of decanter-gog (crates/gog/src/api), listed as its own component."
+      "provenance": "python3 scripts/licenses.py inventory. Mostly MIT or Apache-2.0 (often both), with Unicode-3.0, BSD, ISC, Zlib and CC0; three MPL-2.0 crates (cbindgen, dwrote, option-ext) used unmodified. prost, prost-derive, prost-types and prost-build are Apache-2.0; protox, protox-parse and prost-reflect MIT OR Apache-2.0; their helpers logos (and -codegen, -derive), petgraph, fixedbitset, hashbrown, multimap, prettyplease, beef, unicode-width are MIT OR Apache-2.0, miette and miette-derive Apache-2.0, foldhash Zlib; sha2 and getrandom MIT OR Apache-2.0 (crates/galaxy, kb #1532, #1533). The gog crate is no longer a dependency: it is the api module of decanter-gog (crates/gog/src/api), listed as its own component."
     },
     {
       "name": "Rust dependencies of the report server",

@@ -40,8 +40,10 @@ similar permissive terms. Exceptions this review found:
   module's public items, which the specification documents. While the port remained, the binaries that linked it,
   v0.4.0 among them, carried GPL-3.0-only terms for the combined work; they can now be offered under GPL-3.0-or-later.
 - `crates/galaxy` adds prost, prost-derive, prost-types and prost-build (Apache-2.0), protox, protox-parse and
-  prost-reflect (MIT OR Apache-2.0) and their build-time helpers (logos, petgraph, multimap, prettyplease, beef:
-  MIT OR Apache-2.0; miette: Apache-2.0; foldhash: Zlib).
+  prost-reflect (MIT OR Apache-2.0) and their build-time helpers (logos, logos-codegen, logos-derive, petgraph,
+  fixedbitset, hashbrown, multimap, prettyplease, beef, unicode-width: MIT OR Apache-2.0; miette and miette-derive:
+  Apache-2.0; foldhash: Zlib), plus sha2 and getrandom (MIT OR Apache-2.0) for the service's digests and per-process
+  key. All are compatible with GPL-3.0-or-later (Apache-2.0 is one-way compatible with GPLv3).
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.

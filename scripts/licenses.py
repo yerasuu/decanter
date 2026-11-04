@@ -39,7 +39,7 @@ EXCEPTIONS = {"LLVM-exception"}
 ROOT_FILES = {
     ".gitignore", ".githooks", "CLAUDE.md", "Cargo.lock", "Cargo.toml", "LICENSE", "LICENSES", "LICENSES.json",
     "LICENSES.md", "clippy.toml", "rustfmt.toml", "keys", "README.md", "CHANGELOG.md", "shell.nix", "index.html",
-    "tag-changelog", ".github", "docs", "scripts", "tools",
+    "tag-changelog", ".github", "docs", "scripts", "tools", "SECURITY.md", "osv-scanner.toml",
 }
 
 TOKEN = re.compile(r"\(|\)|[A-Za-z0-9.+-]+")
