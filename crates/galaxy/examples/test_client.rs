@@ -49,8 +49,8 @@ use std::sync::{Arc, RwLock};
 use decanter_galaxy::proto::communication::{
     AuthInfoRequest, AuthInfoResponse, ClearUserAchievementRequest, GetUserAchievementsRequest,
     GetUserAchievementsResponse, GetUserStatsRequest, GetUserStatsResponse, GetUserTimePlayedRequest,
-    GetUserTimePlayedResponse, LibraryInfoRequest, MessageType, UnlockUserAchievementRequest, UpdateUserStatRequest,
-    ValueType,
+    GetUserTimePlayedResponse, LibraryInfoRequest, LibraryInfoResponse, MessageType, UnlockUserAchievementRequest,
+    UpdateUserStatRequest, ValueType,
 };
 use decanter_galaxy::proto::pb::Header;
 use decanter_galaxy::proto::webbroker::{self, SubscribeTopicRequest};
@@ -292,17 +292,8 @@ async fn signed_in_session(port: u16, user_id: u64) -> Probe<()> {
     let mut client = Client::connect(port).await?;
     let sort = 1;
 
-    println!("-> GET_USER_ACHIEVEMENTS before sign-in");
-    client
-        .call(
-            sort,
-            MessageType::GetUserAchievementsRequest.into(),
-            &GetUserAchievementsRequest { user_id: None },
-        )
-        .await?;
-
-    println!("-> LIBRARY_INFO (not implemented in S1)");
-    client
+    println!("-> LIBRARY_INFO first, as the SDK does, before sign-in");
+    let (_, payload) = client
         .call(
             sort,
             MessageType::LibraryInfoRequest.into(),
@@ -311,6 +302,45 @@ async fn signed_in_session(port: u16, user_id: u64) -> Probe<()> {
                 compiler_type: Some(3),
                 compiler_version: Some("19".to_owned()),
             },
+        )
+        .await?;
+    let library = LibraryInfoResponse::decode(payload.as_slice())?;
+    println!(
+        "  location {:?}, update_status {:?}",
+        library.location(),
+        library.update_status()
+    );
+
+    println!("-> LIBRARY_INFO with a 65-byte compiler_version");
+    client
+        .call(
+            sort,
+            MessageType::LibraryInfoRequest.into(),
+            &LibraryInfoRequest {
+                bitness: Some(2),
+                compiler_type: Some(3),
+                compiler_version: Some("9".repeat(65)),
+            },
+        )
+        .await?;
+
+    println!("-> sort 2 SUBSCRIBE_TOPIC before sign-in");
+    client
+        .call(
+            2,
+            webbroker::MessageType::SubscribeTopicRequest.into(),
+            &SubscribeTopicRequest {
+                topic: Some("friends".to_owned()),
+            },
+        )
+        .await?;
+
+    println!("-> GET_USER_ACHIEVEMENTS before sign-in");
+    client
+        .call(
+            sort,
+            MessageType::GetUserAchievementsRequest.into(),
+            &GetUserAchievementsRequest { user_id: None },
         )
         .await?;
 
@@ -374,13 +404,24 @@ async fn signed_in_session(port: u16, user_id: u64) -> Probe<()> {
         )
         .await?;
 
-    println!("-> sort 2 SUBSCRIBE_TOPIC (not implemented in S1)");
+    println!("-> sort 2 SUBSCRIBE_TOPIC after sign-in");
     client
         .call(
             2,
             webbroker::MessageType::SubscribeTopicRequest.into(),
             &SubscribeTopicRequest {
                 topic: Some("friends".to_owned()),
+            },
+        )
+        .await?;
+
+    println!("-> sort 2 SUBSCRIBE_TOPIC with a 129-byte topic");
+    client
+        .call(
+            2,
+            webbroker::MessageType::SubscribeTopicRequest.into(),
+            &SubscribeTopicRequest {
+                topic: Some("t".repeat(129)),
             },
         )
         .await?;

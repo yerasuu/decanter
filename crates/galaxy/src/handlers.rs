@@ -19,7 +19,8 @@ use crate::limits::{MAX_CONNECTIONS_PER_GAME, MAX_DESCRIPTION_BYTES, Refusal, Re
 use crate::proto::communication::{
     AuthInfoRequest, AuthInfoResponse, ClearUserAchievementRequest, EnvironmentType, GetUserAchievementsRequest,
     GetUserAchievementsResponse, GetUserStatsRequest, GetUserStatsResponse, GetUserTimePlayedRequest,
-    GetUserTimePlayedResponse, MessageType, Region, UnlockUserAchievementRequest, UpdateUserStatRequest, ValueType,
+    GetUserTimePlayedResponse, LibraryInfoRequest, LibraryInfoResponse, MessageType, Region,
+    UnlockUserAchievementRequest, UpdateStatus, UpdateUserStatRequest, ValueType,
     get_user_achievements_response::UserAchievement, get_user_stats_response::UserStat,
 };
 use crate::proto::pb::Header;
@@ -52,6 +53,16 @@ const MAX_CLOCK_AHEAD_SECONDS: u32 = 24 * 60 * 60;
 /// `time_sum`, whose unit neither comet nor GOG states (plan 2.1 row 43, section 9). The first
 /// real-game run checks the number the game shows; if GOG counts minutes this becomes 60.
 const TIME_PLAYED_SECONDS_PER_UNIT: u64 = 1;
+/// An MSVC toolset number or a Clang version; comet builds a path from it, decanter only logs it.
+const MAX_COMPILER_VERSION_BYTES: usize = 64;
+/// UNVERIFIED: what the SDK does with `LibraryInfoResponse.location`. comet names the `GalaxyPeer`
+/// it downloaded, `<data>/redist/peer/msvc-<version>` (gap G10). decanter downloads no peer, so it
+/// names no path at all rather than one where nothing is, and leaks no host path into the prefix.
+/// The next real run tells whether the SDK goes on to `AUTH_INFO` with it; if it does not, the
+/// alternatives are a peer fetched by decanter (G10) or `UPDATE_FAILED`.
+const LIBRARY_LOCATION: &str = "";
+/// Topics are short names (friends, chat); plan 2.2.
+const MAX_TOPIC_BYTES: usize = 128;
 
 struct Reply {
     code: Status,
@@ -136,6 +147,7 @@ impl Connection {
     pub(crate) async fn handle(&mut self, frame: &Frame<Header>) -> (ResponseHeader, Vec<u8>) {
         let message = sort_one(frame.header.sort, frame.header.r#type);
         let reply = match message {
+            Some(MessageType::LibraryInfoRequest) => self.library_info(&frame.payload),
             Some(MessageType::AuthInfoRequest) => self.auth_info(&frame.payload),
             Some(MessageType::GetUserAchievementsRequest) => self.user_achievements(&frame.payload).await,
             Some(MessageType::UnlockUserAchievementRequest) => self.unlock_achievement(&frame.payload).await,
@@ -143,6 +155,11 @@ impl Connection {
             Some(MessageType::GetUserStatsRequest) => self.user_stats(&frame.payload).await,
             Some(MessageType::UpdateUserStatRequest) => self.update_user_stat(&frame.payload).await,
             Some(MessageType::GetUserTimePlayedRequest) => self.time_played(&frame.payload).await,
+            None if webbroker_type(frame.header.sort, frame.header.r#type)
+                == Some(webbroker::MessageType::SubscribeTopicRequest) =>
+            {
+                self.subscribe_topic(&frame.payload)
+            }
             _ => Reply::refuse(
                 Status::NotImplemented,
                 "not implemented by decanter's local Galaxy service",
@@ -200,6 +217,52 @@ impl Connection {
         };
         self.next_oseq = self.next_oseq.wrapping_add(1);
         (header, reply.payload)
+    }
+
+    /// Served before sign-in because the SDK asks it first and waits for it: a real run sent it 63
+    /// times and never reached `AUTH_INFO` while it was refused with 501 (kb #1552). The
+    /// connection is still bound by the unauthenticated cap, deadline and rate.
+    fn library_info(&self, payload: &[u8]) -> Reply {
+        let request = match LibraryInfoRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("LibraryInfoRequest: {err}")),
+        };
+        let compiler_version = request.compiler_version.as_deref();
+        if compiler_version.is_some_and(|version| version.len() > MAX_COMPILER_VERSION_BYTES) {
+            return Reply::refuse(Status::BadRequest, "compiler_version is too long");
+        }
+        tracing::info!(
+            peer = %self.peer,
+            bitness = request.bitness,
+            compiler_type = request.compiler_type,
+            compiler_version,
+            "Galaxy SDK library info served"
+        );
+        Reply::ok(&LibraryInfoResponse {
+            location: Some(LIBRARY_LOCATION.to_owned()),
+            update_status: Some(UpdateStatus::UpdateComplete.into()),
+        })
+    }
+
+    /// Nothing is ever pushed on a topic here, so a subscription records nothing. It is answered
+    /// rather than refused in case the SDK waits on its listeners' subscriptions (plan 2.2).
+    fn subscribe_topic(&self, payload: &[u8]) -> Reply {
+        let (client_id, _game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
+            Err(reply) => return reply,
+        };
+        let request = match webbroker::SubscribeTopicRequest::decode(payload) {
+            Ok(request) => request,
+            Err(err) => return Reply::refuse(Status::BadRequest, format!("SubscribeTopicRequest: {err}")),
+        };
+        let Some(topic) = request.topic else {
+            return Reply::refuse(Status::BadRequest, "topic is required");
+        };
+        if topic.len() > MAX_TOPIC_BYTES {
+            return Reply::refuse(Status::BadRequest, "topic is too long");
+        }
+        tracing::info!(peer = %self.peer, %client_id, topic = topic.as_str(), "Galaxy topic subscription acknowledged");
+        Reply::ok(&webbroker::SubscribeTopicResponse { topic: Some(topic) })
     }
 
     fn auth_info(&mut self, payload: &[u8]) -> Reply {
