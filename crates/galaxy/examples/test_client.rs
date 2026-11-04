@@ -55,13 +55,12 @@ use decanter_galaxy::proto::communication::{
 use decanter_galaxy::proto::pb::Header;
 use decanter_galaxy::proto::webbroker::{self, SubscribeTopicRequest};
 use decanter_galaxy::{
-    Account, Achievement, AchievementList, ClientId, Config, DEFAULT_PORT, GameStore, ResponseHeader, Service,
-    SourceError, Stat, StatKind, StatValue, read_frame, write_frame,
+    Account, Achievement, AchievementList, ClientId, DEFAULT_PORT, GameStore, Host, ResponseHeader, SourceError, Stat,
+    StatKind, StatValue, read_frame, write_frame,
 };
 use prost::Message;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::TcpStream;
-use tokio::sync::oneshot;
 
 type Probe<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -664,20 +663,14 @@ async fn main() -> Probe<()> {
     header_round_trip()?;
 
     let client_id = ClientId::parse(CLIENT_ID).ok_or("the probe's client id is not valid")?;
-    let config = Config {
-        port,
-        client_id: client_id.clone(),
-        account: Account {
-            user_id: ACCOUNT_ID,
-            user_name: "probe".to_owned(),
-        },
+    let account = Account {
+        user_id: ACCOUNT_ID,
+        user_name: "probe".to_owned(),
     };
-    let service = Service::bind(config, Arc::new(seeded(&client_id))).await?;
-    println!("service on {}", service.local_addr());
-    let (stop, stopped) = oneshot::channel::<()>();
-    let running = tokio::spawn(service.run(async move {
-        let _closed = stopped.await;
-    }));
+    let store = Arc::new(seeded(&client_id));
+    let host = Host::new(port);
+    let lease = host.register(client_id, account, store).await?;
+    println!("service on 127.0.0.1:{port}");
 
     let tagged = (2_u64 << 56_u32) | ACCOUNT_ID;
     let result = match signed_in_session(port, tagged).await {
@@ -687,7 +680,6 @@ async fn main() -> Probe<()> {
         },
         Err(err) => Err(err),
     };
-    let _ignored = stop.send(());
-    running.await?;
+    drop(lease);
     result
 }

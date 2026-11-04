@@ -52,11 +52,10 @@ use decanter_galaxy::proto::communication::{
     UnlockUserAchievementRequest, UpdateUserStatRequest, ValueType,
 };
 use decanter_galaxy::proto::pb::Header;
-use decanter_galaxy::{Account, ClientId, Config, ResponseHeader, Service, read_frame, write_frame};
+use decanter_galaxy::{Account, ClientId, Host, ResponseHeader, read_frame, write_frame};
 use decanter_gog::GalaxyStore;
 use prost::Message;
 use tokio::net::TcpStream;
-use tokio::sync::oneshot;
 
 type Probe<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -320,23 +319,15 @@ async fn run(path: &Path, port: u16) -> Probe<()> {
         client_id.clone(),
         PRODUCT_ID.to_owned(),
     );
-    let config = Config {
-        port,
-        client_id,
-        account: Account {
-            user_id: ACCOUNT_ID,
-            user_name: "probe".to_owned(),
-        },
+    let account = Account {
+        user_id: ACCOUNT_ID,
+        user_name: "probe".to_owned(),
     };
-    let service = Service::bind(config, Arc::new(store)).await?;
-    println!("service on {}", service.local_addr());
-    let (stop, stopped) = oneshot::channel::<()>();
-    let running = tokio::spawn(service.run(async move {
-        let _closed = stopped.await;
-    }));
+    let host = Host::new(port);
+    let lease = host.register(client_id, account, Arc::new(store)).await?;
+    println!("service on 127.0.0.1:{port}");
     let result = session(port).await;
-    let _ignored = stop.send(());
-    running.await?;
+    drop(lease);
     result?;
     print_rows(path, "after the session")?;
     refresh_from_gog(path)?;

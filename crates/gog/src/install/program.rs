@@ -12,6 +12,7 @@ use std::path::Path;
 
 use anyhow::{Context as _, ensure};
 use decanter_core::{GameSystem, InstalledGame, platform};
+use decanter_galaxy::ClientId;
 
 /// Far above any real Info.plist, which runs to a few kilobytes.
 const INFO_PLIST_MAX_BYTES: u64 = 1024 * 1024;
@@ -158,24 +159,55 @@ const INFO_MAX_BYTES: u64 = 1024 * 1024;
 #[must_use]
 #[inline]
 pub fn play_tasks(install_root: &Path, product_id: &str) -> Vec<PlayTask> {
-    let name = format!("goggame-{product_id}.info");
-    let found = match std::fs::read_dir(install_root) {
-        Ok(entries) => entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.file_name())
-            .find(|file| file.to_str().is_some_and(|file| file.eq_ignore_ascii_case(&name))),
-        Err(err) => {
-            tracing::warn!(path = %install_root.display(), error = %err, "couldn't list the install directory for its info file");
-            return Vec::new();
-        }
-    };
-    let Some(file) = found else {
+    let Some(file) = root_info_file(install_root, product_id) else {
         tracing::debug!(product_id, path = %install_root.display(), "no goggame info file, no play tasks");
         return Vec::new();
     };
-    let mut tasks = read_play_tasks(install_root, &file.to_string_lossy());
+    let mut tasks = read_play_tasks(install_root, &file);
     tasks.sort_by_key(|task| !task.is_primary);
     tasks
+}
+
+/// The name of `goggame-<product_id>.info` at the root of `install_root`, in whatever case the
+/// depot wrote it.
+fn root_info_file(install_root: &Path, product_id: &str) -> Option<String> {
+    let name = format!("goggame-{product_id}.info");
+    match std::fs::read_dir(install_root) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .find(|file| file.to_str().is_some_and(|file| file.eq_ignore_ascii_case(&name)))
+            .map(|file| file.to_string_lossy().into_owned()),
+        Err(err) => {
+            tracing::warn!(path = %install_root.display(), error = %err, "couldn't list the install directory for its info file");
+            None
+        }
+    }
+}
+
+/// The Galaxy client id the game's `goggame-<product_id>.info` names, which is what its SDK signs
+/// in with; `None` for a game built without Galaxy, whose info file has none. Read from the
+/// install rather than from GOG's build manifest so that it is known offline.
+#[must_use]
+#[inline]
+pub fn galaxy_client_id(install_root: &Path, product_id: &str) -> Option<ClientId> {
+    let file = root_info_file(install_root, product_id)?;
+    let info_file = install_root.join(file);
+    let info: serde_json::Value = match read_info(&info_file)
+        .and_then(|contents| serde_json::from_slice(&contents).context("parsing it"))
+    {
+        Ok(info) => info,
+        Err(err) => {
+            tracing::warn!(path = %info_file.display(), error = %format_args!("{err:#}"), "couldn't read goggame info file");
+            return None;
+        }
+    };
+    let raw = info.get("clientId").and_then(serde_json::Value::as_str)?;
+    let client_id = ClientId::parse(raw);
+    if client_id.is_none() {
+        tracing::warn!(path = %info_file.display(), product_id, "goggame info file names a client id that is not a GOG one, ignored");
+    }
+    client_id
 }
 
 /// The `FileTask`s of the info file at `info_path` (relative to

@@ -236,6 +236,8 @@ pub async fn start(
 
     let cloud_save_checkpoint = sync_cloud_saves_before_launch(&account_id, saves_game).await;
     let achievement_log = planned.achievement_log.take();
+    // Held until the game exits; every return before that releases it.
+    let galaxy = galaxy_service(&account_id, &game).await;
 
     // Shown as running while the redistributables install, which can take a
     // minute, so the game reads as starting and can be stopped.
@@ -264,6 +266,7 @@ pub async fn start(
         Kind::LinuxNative | Kind::Raven => log,
     };
     crate::run_log::finish(log, exit, &game.game_id).await;
+    drop(galaxy);
     cx.update(|cx| crate::closing::ended(&target, cx));
     set_running(&background, &game.game_id, false, cx);
     let elapsed = started.elapsed();
@@ -278,6 +281,30 @@ pub async fn start(
     record_last_played(&account_id, &game, kind);
     apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)
+}
+
+/// The local Galaxy service for a GOG game built with Galaxy, which its SDK signs in to instead of a
+/// Galaxy client; read from the install, not from the play folder mods are mounted in.
+async fn galaxy_service(account_id: &str, game: &InstalledGame) -> Option<decanter_gog::GalaxyLease> {
+    if game.storefront != decanter_core::Storefront::Gog {
+        return None;
+    }
+    let Some(db_path) = decanter_core::bootstrap::active_db_path() else {
+        tracing::warn!(game_id = %game.game_id, "no active database, the game starts without the local Galaxy service");
+        return None;
+    };
+    let install_root = match crate::core::library_for_account(account_id) {
+        Ok(library) => library.install_dir(&game.install_dir),
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "no library, the game starts without the local Galaxy service");
+            return None;
+        }
+    };
+    let Some(install_root) = install_root else {
+        tracing::warn!(game_id = %game.game_id, install_dir = %game.install_dir, "unusable install directory, the game starts without the local Galaxy service");
+        return None;
+    };
+    decanter_gog::serve_galaxy(&db_path, account_id, &game.game_id, &install_root).await
 }
 
 /// Starts `launch` with its output followed into the game's run, which the

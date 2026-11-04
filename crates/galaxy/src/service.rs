@@ -16,8 +16,8 @@ use tokio::time::sleep;
 use crate::codec::{MAX_PAYLOAD_BYTES, read_frame, write_frame};
 use crate::error::Error;
 use crate::handlers::Connection;
+use crate::host::Registry;
 use crate::proto::pb::Header;
-use crate::source::{ClientId, GameStore};
 
 /// The port every Galaxy SDK build dials; the SDK offers no way to choose another (plan 1.2).
 pub const DEFAULT_PORT: u16 = 9977;
@@ -26,39 +26,11 @@ const MAX_CONNECTIONS: usize = 16;
 const BACKLOG: u32 = 16;
 /// Pause after a failed accept, so a full descriptor table does not turn the loop into a spin.
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
-/// `IDType` user tag in the top byte of an entity id (comet `api.rs:58-89`).
-const USER_ID_TAG: u64 = 2 << 56;
 
-/// The signed-in account the SDK is told about.
-#[derive(Debug, Clone)]
-pub struct Account {
-    /// GOG's numeric user id, untagged.
-    pub user_id: u64,
-    pub user_name: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct Config {
-    /// [`DEFAULT_PORT`] for games; any other only for a probe.
-    pub port: u16,
-    /// The one game allowed to sign in, in this stage (plan S1).
-    pub client_id: ClientId,
-    pub account: Account,
-}
-
-pub(crate) struct Shared {
-    pub client_id: ClientId,
-    pub user_name: String,
-    pub account_id: u64,
-    /// `account_id` as the SDK sees it, with the user tag.
-    pub user_id: u64,
-    pub store: Arc<dyn GameStore>,
-}
-
-pub struct Service {
+pub(crate) struct Service {
     listener: TcpListener,
     local_addr: SocketAddr,
-    shared: Arc<Shared>,
+    registry: Arc<Registry>,
 }
 
 impl Service {
@@ -67,23 +39,14 @@ impl Service {
     /// # Errors
     ///
     /// [`Error::PortInUse`] when another program holds the port, [`Error::Bind`] for any other
-    /// socket failure, [`Error::NotLoopback`] if the bound address is somehow not loopback, and
-    /// [`Error::UserIdTooLarge`] for an account id the user tag would corrupt.
+    /// socket failure, and [`Error::NotLoopback`] if the bound address is somehow not loopback.
     #[expect(
         clippy::unused_async,
         clippy::unused_async_trait_impl,
         reason = "listen() registers with tokio's reactor, which exists only inside the runtime: async keeps \
                   every caller there"
     )]
-    pub async fn bind(config: Config, store: Arc<dyn GameStore>) -> Result<Self, Error> {
-        let Config {
-            port,
-            client_id,
-            account,
-        } = config;
-        if account.user_id >= 1_u64 << 56_u32 {
-            return Err(Error::UserIdTooLarge(account.user_id));
-        }
+    pub(crate) async fn bind(port: u16, registry: Arc<Registry>) -> Result<Self, Error> {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
         let bind_error = |err: io::Error| {
             if err.kind() == io::ErrorKind::AddrInUse {
@@ -105,23 +68,12 @@ impl Service {
         if !local_addr.ip().is_loopback() {
             return Err(Error::NotLoopback(local_addr));
         }
-        tracing::info!(%local_addr, %client_id, "local Galaxy service listening");
+        tracing::info!(%local_addr, "local Galaxy service listening");
         Ok(Self {
             listener,
             local_addr,
-            shared: Arc::new(Shared {
-                client_id,
-                user_name: account.user_name,
-                account_id: account.user_id,
-                user_id: USER_ID_TAG | account.user_id,
-                store,
-            }),
+            registry,
         })
-    }
-
-    #[must_use]
-    pub const fn local_addr(&self) -> SocketAddr {
-        self.local_addr
     }
 
     /// Serves until `shutdown` completes, then closes the listener and every connection.
@@ -129,7 +81,7 @@ impl Service {
         clippy::integer_division_remainder_used,
         reason = "the `%` is inside tokio::select!'s expansion"
     )]
-    pub async fn run<F>(self, shutdown: F)
+    pub(crate) async fn run<F>(self, shutdown: F)
     where
         F: Future<Output = ()>,
     {
@@ -145,7 +97,7 @@ impl Service {
                 accepted = self.listener.accept() => match accepted {
                     Ok((stream, peer)) => match Arc::clone(&slots).try_acquire_owned() {
                         Ok(permit) => {
-                            connections.spawn(serve(stream, peer, Arc::clone(&self.shared), permit));
+                            connections.spawn(serve(stream, peer, Arc::clone(&self.registry), permit));
                         }
                         Err(_no_slot) => {
                             refused = refused.saturating_add(1);
@@ -164,10 +116,10 @@ impl Service {
     }
 }
 
-async fn serve(stream: TcpStream, peer: SocketAddr, shared: Arc<Shared>, _slot: OwnedSemaphorePermit) {
+async fn serve(stream: TcpStream, peer: SocketAddr, registry: Arc<Registry>, _slot: OwnedSemaphorePermit) {
     let (read_half, mut writer) = stream.into_split();
     let mut reader = BufReader::new(read_half);
-    let mut connection = Connection::new(peer, shared);
+    let mut connection = Connection::new(peer, registry);
     let mut ended = "closed by the peer";
     loop {
         let frame = match read_frame::<Header, _>(&mut reader, MAX_PAYLOAD_BYTES).await {

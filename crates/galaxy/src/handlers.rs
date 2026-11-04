@@ -13,6 +13,7 @@ use tokio::task::spawn_blocking;
 
 use crate::codec::Frame;
 use crate::header::ResponseHeader;
+use crate::host::{Registered, Registry};
 use crate::proto::communication::{
     AuthInfoRequest, AuthInfoResponse, ClearUserAchievementRequest, EnvironmentType, GetUserAchievementsRequest,
     GetUserAchievementsResponse, GetUserStatsRequest, GetUserStatsResponse, GetUserTimePlayedRequest,
@@ -22,7 +23,6 @@ use crate::proto::communication::{
 use crate::proto::pb::Header;
 use crate::proto::pb::response::Status;
 use crate::proto::webbroker;
-use crate::service::Shared;
 use crate::source::{AchievementList, ClientId, GameStore, SourceError, Stat, StatKind, StatValue};
 
 const COMMUNICATION_SORT: u32 = 1;
@@ -81,8 +81,9 @@ impl Reply {
 
 pub(crate) struct Connection {
     peer: SocketAddr,
-    shared: Arc<Shared>,
+    registry: Arc<Registry>,
     /// Bound by the first accepted `AUTH_INFO` and never rebound (comet does the same, gap 2).
+    /// Looked up in the registry on every request, so that a game released at exit is refused.
     signed_in: Option<ClientId>,
     next_oseq: u32,
     /// `(sort, type, status code)` to how many times, logged when the connection ends.
@@ -90,10 +91,10 @@ pub(crate) struct Connection {
 }
 
 impl Connection {
-    pub(crate) const fn new(peer: SocketAddr, shared: Arc<Shared>) -> Self {
+    pub(crate) const fn new(peer: SocketAddr, registry: Arc<Registry>) -> Self {
         Self {
             peer,
-            shared,
+            registry,
             signed_in: None,
             next_oseq: 1,
             counts: BTreeMap::new(),
@@ -163,10 +164,13 @@ impl Connection {
         {
             return Reply::refuse(Status::BadRequest, "client_secret or steam_ticket is too long");
         }
-        if client_id.as_str() == GALAXY_CLIENT_ID || client_id != self.shared.client_id {
+        let registered = (client_id.as_str() != GALAXY_CLIENT_ID)
+            .then(|| self.registry.get(&client_id))
+            .flatten();
+        let Some(game) = registered else {
             tracing::warn!(peer = %self.peer, %client_id, "Galaxy sign-in refused: client id not registered");
             return Reply::refuse(Status::Forbidden, "this game is not registered with decanter's service");
-        }
+        };
         if self.signed_in.as_ref().is_some_and(|bound| *bound != client_id) {
             return Reply::refuse(Status::Forbidden, "this connection is signed in as another game");
         }
@@ -177,32 +181,47 @@ impl Connection {
         Reply::ok(&AuthInfoResponse {
             refresh_token: Some(String::new()),
             environment_type: Some(EnvironmentType::EnvironmentProduction.into()),
-            user_id: Some(self.shared.user_id),
-            user_name: Some(self.shared.user_name.clone()),
+            user_id: Some(game.user_id),
+            user_name: Some(game.user_name.clone()),
             region: Some(Region::WorldWide.into()),
         })
     }
 
-    fn signed_in(&self) -> Result<ClientId, Reply> {
-        self.signed_in
+    fn signed_in(&self) -> Result<(ClientId, Arc<Registered>), Reply> {
+        let client_id = self
+            .signed_in
             .clone()
-            .ok_or_else(|| Reply::refuse(Status::Unauthorized, "sign in with AUTH_INFO first"))
+            .ok_or_else(|| Reply::refuse(Status::Unauthorized, "sign in with AUTH_INFO first"))?;
+        let Some(game) = self.registry.get(&client_id) else {
+            tracing::warn!(peer = %self.peer, %client_id, "Galaxy request refused: the game was released");
+            return Err(Reply::refuse(
+                Status::Forbidden,
+                "this game's session with decanter has ended",
+            ));
+        };
+        Ok((client_id, game))
     }
 
     /// comet answers any user id with the signed-in user's data (gap, defects). The SDK echoes the
     /// tagged id it was given; the untagged form names the same account.
-    fn is_other_user(&self, user_id: Option<u64>) -> bool {
-        user_id.is_some_and(|asked| asked != self.shared.user_id && asked != self.shared.account_id)
+    fn is_other_user(game: &Registered, user_id: Option<u64>) -> bool {
+        user_id.is_some_and(|asked| asked != game.user_id && asked != game.account_id)
     }
 
     /// Runs one store call on the blocking pool and turns its failure into the answer the SDK gets,
     /// logged with what was being done.
-    async fn with_store<T, F>(&self, client_id: &ClientId, what: &'static str, call: F) -> Result<T, Reply>
+    async fn with_store<T, F>(
+        &self,
+        game: &Registered,
+        client_id: &ClientId,
+        what: &'static str,
+        call: F,
+    ) -> Result<T, Reply>
     where
         T: Send + 'static,
         F: FnOnce(&dyn GameStore) -> Result<T, SourceError> + Send + 'static,
     {
-        let store = Arc::clone(&self.shared.store);
+        let store = Arc::clone(&game.store);
         match spawn_blocking(move || call(&*store)).await {
             Ok(Ok(value)) => Ok(value),
             Ok(Err(SourceError::Unavailable(reason))) => {
@@ -225,20 +244,20 @@ impl Connection {
     }
 
     async fn user_achievements(&self, payload: &[u8]) -> Reply {
-        let client_id = match self.signed_in() {
-            Ok(client_id) => client_id,
+        let (client_id, game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
             Err(reply) => return reply,
         };
         let request = match GetUserAchievementsRequest::decode(payload) {
             Ok(request) => request,
             Err(err) => return Reply::refuse(Status::BadRequest, format!("GetUserAchievementsRequest: {err}")),
         };
-        if self.is_other_user(request.user_id) {
+        if Self::is_other_user(&game, request.user_id) {
             return Reply::refuse(Status::Forbidden, "only the signed-in user's achievements are served");
         }
         let lookup = client_id.clone();
         match self
-            .with_store(&client_id, "reading achievements", move |store| {
+            .with_store(&game, &client_id, "reading achievements", move |store| {
                 store.achievements(&lookup)
             })
             .await
@@ -249,8 +268,8 @@ impl Connection {
     }
 
     async fn unlock_achievement(&self, payload: &[u8]) -> Reply {
-        let client_id = match self.signed_in() {
-            Ok(client_id) => client_id,
+        let (client_id, game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
             Err(reply) => return reply,
         };
         let request = match UnlockUserAchievementRequest::decode(payload) {
@@ -266,7 +285,7 @@ impl Connection {
         };
         let lookup = client_id.clone();
         if let Err(reply) = self
-            .with_store(&client_id, "unlocking an achievement", move |store| {
+            .with_store(&game, &client_id, "unlocking an achievement", move |store| {
                 store.unlock_achievement(&lookup, achievement_id, unlocked_at)
             })
             .await
@@ -278,8 +297,8 @@ impl Connection {
     }
 
     async fn clear_achievement(&self, payload: &[u8]) -> Reply {
-        let client_id = match self.signed_in() {
-            Ok(client_id) => client_id,
+        let (client_id, game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
             Err(reply) => return reply,
         };
         let request = match ClearUserAchievementRequest::decode(payload) {
@@ -291,7 +310,7 @@ impl Connection {
         };
         let lookup = client_id.clone();
         if let Err(reply) = self
-            .with_store(&client_id, "clearing an achievement", move |store| {
+            .with_store(&game, &client_id, "clearing an achievement", move |store| {
                 store.clear_achievement(&lookup, achievement_id)
             })
             .await
@@ -302,25 +321,27 @@ impl Connection {
         Reply::done()
     }
 
-    async fn stored_stats(&self, client_id: &ClientId) -> Result<Vec<Stat>, Reply> {
+    async fn stored_stats(&self, game: &Registered, client_id: &ClientId) -> Result<Vec<Stat>, Reply> {
         let lookup = client_id.clone();
-        self.with_store(client_id, "reading user stats", move |store| store.user_stats(&lookup))
-            .await
+        self.with_store(game, client_id, "reading user stats", move |store| {
+            store.user_stats(&lookup)
+        })
+        .await
     }
 
     async fn user_stats(&self, payload: &[u8]) -> Reply {
-        let client_id = match self.signed_in() {
-            Ok(client_id) => client_id,
+        let (client_id, game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
             Err(reply) => return reply,
         };
         let request = match GetUserStatsRequest::decode(payload) {
             Ok(request) => request,
             Err(err) => return Reply::refuse(Status::BadRequest, format!("GetUserStatsRequest: {err}")),
         };
-        if self.is_other_user(request.user_id) {
+        if Self::is_other_user(&game, request.user_id) {
             return Reply::refuse(Status::Forbidden, "only the signed-in user's stats are served");
         }
-        let mut stats = match self.stored_stats(&client_id).await {
+        let mut stats = match self.stored_stats(&game, &client_id).await {
             Ok(stats) => stats,
             Err(reply) => return reply,
         };
@@ -335,8 +356,8 @@ impl Connection {
     }
 
     async fn update_user_stat(&self, payload: &[u8]) -> Reply {
-        let client_id = match self.signed_in() {
-            Ok(client_id) => client_id,
+        let (client_id, game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
             Err(reply) => return reply,
         };
         let request = match UpdateUserStatRequest::decode(payload) {
@@ -346,7 +367,7 @@ impl Connection {
         let Some(stat_id) = request.stat_id else {
             return Reply::refuse(Status::BadRequest, "stat_id is required");
         };
-        let stats = match self.stored_stats(&client_id).await {
+        let stats = match self.stored_stats(&game, &client_id).await {
             Ok(stats) => stats,
             Err(reply) => return reply,
         };
@@ -370,7 +391,7 @@ impl Connection {
         let lookup = client_id.clone();
         let key = stat.key.clone();
         if let Err(reply) = self
-            .with_store(&client_id, "storing a stat", move |store| {
+            .with_store(&game, &client_id, "storing a stat", move |store| {
                 store.set_stat(&lookup, &key, value)
             })
             .await
@@ -382,20 +403,20 @@ impl Connection {
     }
 
     async fn time_played(&self, payload: &[u8]) -> Reply {
-        let client_id = match self.signed_in() {
-            Ok(client_id) => client_id,
+        let (client_id, game) = match self.signed_in() {
+            Ok(signed_in) => signed_in,
             Err(reply) => return reply,
         };
         let request = match GetUserTimePlayedRequest::decode(payload) {
             Ok(request) => request,
             Err(err) => return Reply::refuse(Status::BadRequest, format!("GetUserTimePlayedRequest: {err}")),
         };
-        if self.is_other_user(request.user_id) {
+        if Self::is_other_user(&game, request.user_id) {
             return Reply::refuse(Status::Forbidden, "only the signed-in user's time played is served");
         }
         let lookup = client_id.clone();
         let seconds = match self
-            .with_store(&client_id, "reading time played", move |store| {
+            .with_store(&game, &client_id, "reading time played", move |store| {
                 store.seconds_played(&lookup)
             })
             .await

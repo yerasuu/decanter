@@ -58,6 +58,19 @@ impl Db {
         self.set_setting("resume_downloads_on_start", if enabled { "1" } else { "0" })
     }
 
+    /// Whether a GOG game built with Galaxy gets decanter's local Galaxy service while it runs —
+    /// on by default, since it is what records its achievements and stats; off is the kill
+    /// switch for a game the service breaks, or for a real Galaxy client on the same machine.
+    pub fn galaxy_service_enabled(&self) -> Result<bool> {
+        let enabled = self.setting("galaxy_service_enabled")?.as_deref() != Some("0");
+        tracing::debug!(enabled, "read galaxy_service_enabled setting");
+        Ok(enabled)
+    }
+
+    pub fn set_galaxy_service_enabled(&self, enabled: bool) -> Result<()> {
+        self.set_setting("galaxy_service_enabled", if enabled { "1" } else { "0" })
+    }
+
     /// The Proton build to launch with when a game has no per-game choice
     /// of its own — a bare name from `decanter_runtime::runner::status`, or
     /// `None` for `decanter_runtime::Proton::Latest`.

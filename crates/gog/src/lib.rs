@@ -22,6 +22,7 @@ pub mod api;
 mod auth;
 pub mod cloud_saves;
 mod depot;
+mod galaxy_launch;
 mod galaxy_store;
 pub mod hook;
 mod install;
@@ -37,6 +38,8 @@ mod user_stats;
 
 pub use api::client::Build;
 pub use auth::{Account, auth_url, extract_code, log_in, log_out};
+pub use decanter_galaxy::Lease as GalaxyLease;
+pub use galaxy_launch::serve_galaxy;
 pub use galaxy_store::GalaxyStore;
 pub use install::{
     BrokenFile, BrokenReason, BuildSwitch, Cancelled, DownloadQueue, LanguageCleanup, NothingToResume, PauseReason,

@@ -107,6 +107,27 @@ impl Db {
         Ok(profile_id)
     }
 
+    /// The display name stored at login for `(id, storefront)`.
+    #[inline]
+    pub fn account_name(&self, id: &str, storefront: Storefront) -> Result<Option<String>> {
+        let name = self
+            .conn
+            .query_row(
+                "SELECT name FROM accounts WHERE id = ?1 AND storefront = ?2",
+                params![id, storefront as i32],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(crate::db::Error::from)?;
+        tracing::debug!(
+            account_id = id,
+            ?storefront,
+            found = name.is_some(),
+            "read account name"
+        );
+        Ok(name)
+    }
+
     /// Forgets the account itself (a logout). Its cached library,
     /// achievements and installs are left in place, keyed by the same id —
     /// re-adding the account brings them all back rather than starting the

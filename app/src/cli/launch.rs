@@ -10,7 +10,7 @@
 //! the tray/exit-on-signal machinery) — this is the headless CLI path,
 //! used for scripting and for observing a launch independent of the app.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use decanter_core::{InstalledGame, Library, Storefront};
@@ -40,6 +40,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
         bail!("{product_id} is installed but has no launch executable set");
     };
     let executable = install_dir.join(executable);
+    let galaxy = galaxy_service(account_id, product_id, &install_dir).await;
     let (session, achievement_log) = if crate::launch::in_prefixes() {
         start_in_prefix(db, &library, &game, executable).await?
     } else {
@@ -49,6 +50,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
 
     session.wait().await.context("running program")?;
     tracing::info!("program exited");
+    drop(galaxy);
 
     tracing::debug!(account_id, product_id, "polling achievements after launch");
     report_poll(decanter_gog::poll_achievements(db, account_id, product_id).await?);
@@ -60,6 +62,18 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
         }
     }
     Ok(())
+}
+
+/// Held by [`launch`] until the program exits, as the GUI's launch does.
+async fn galaxy_service(account_id: &str, product_id: &str, install_dir: &Path) -> Option<decanter_gog::GalaxyLease> {
+    let Some(db_path) = decanter_core::bootstrap::active_db_path() else {
+        tracing::warn!(
+            product_id,
+            "no active database, the game starts without the local Galaxy service"
+        );
+        return None;
+    };
+    decanter_gog::serve_galaxy(&db_path, account_id, product_id, install_dir).await
 }
 
 /// Starts `game` in its prefix, with decanter-hook told where to write;

@@ -42,7 +42,7 @@ pub use language::{
     LanguageCleanup, UnusedFile, add_language, offered_languages, remove_unused_languages, unused_language_files,
     use_language,
 };
-pub use program::{PlayTask, play_tasks};
+pub use program::{PlayTask, galaxy_client_id, play_tasks};
 pub use queue::{DownloadQueue, QueueMove, download_queue, move_queued, queue_changed, restore_queue};
 pub use redist::{RedistFailure, run_redist};
 pub use tracking::{cancel, download_slot_busy, pause, pause_for_quit};
