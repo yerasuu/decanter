@@ -208,6 +208,15 @@ impl LibraryView {
         cx.observe(&state.session, |_, _, cx| cx.notify()).detach();
         let model = cx.new(LibraryModel::new);
         cx.observe(&model, |_, _, cx| cx.notify()).detach();
+        // The game menu's Play/Stop reads what is running when it is drawn; watched only while a popup
+        // is open so that a download's progress doesn't redraw the whole library.
+        let popup_model = model.clone();
+        cx.observe(&state.background, move |_, _, cx| {
+            if popup_model.read(cx).popup.is_some() {
+                cx.notify();
+            }
+        })
+        .detach();
         let sidebar = cx.new(|cx| SidebarView::new(model.clone(), window, cx));
         // The filter panel is the sidebar's, but drawn here.
         cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
