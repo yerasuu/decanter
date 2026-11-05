@@ -83,6 +83,8 @@ library.browser.next: Next
 library.browser.nothing_yet: Nothing to show yet.
 library.browser.add_shelf: + Add shelf
 library.browser.favorite: Favorite
+library.browser.see_all: "See all"
+library.browser.back_to_shelves: "Shelves"
 library.properties.title: Properties
 library.detail.tabs.summary: Overview
 library.detail.tabs.achievements: Achievements

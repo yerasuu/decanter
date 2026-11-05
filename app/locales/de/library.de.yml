@@ -83,6 +83,8 @@ library.browser.next: Weiter
 library.browser.nothing_yet: Noch nichts anzuzeigen.
 library.browser.add_shelf: + Regal hinzufügen
 library.browser.favorite: Favorit
+library.browser.see_all: "Alle anzeigen"
+library.browser.back_to_shelves: "Regale"
 library.properties.title: Eigenschaften
 library.detail.tabs.summary: Übersicht
 library.detail.tabs.achievements: Erfolge

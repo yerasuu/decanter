@@ -13,6 +13,7 @@
 //! expects to hold everywhere, not just in one list.
 
 mod derived;
+mod page;
 mod shelf;
 mod slots;
 
@@ -34,6 +35,7 @@ use crate::state::{AppState, DownloadKey};
 use crate::theme;
 use crate::widgets::nav;
 use derived::derive;
+use page::Page;
 use shelf::{CARD_STRIDE, ROW_PADDING, visible_cards};
 use slots::{load_slots, save_slots};
 
@@ -140,6 +142,8 @@ struct RowState {
     /// Owned here rather than by each capsule, so the arrows can move the
     /// focus to a capsule in another row. Only the laid-out ones keep one.
     cards: HashMap<SharedString, FocusHandle>,
+    /// The shelf header's entry to its page, which is where the focus comes back to.
+    open_focus: Option<FocusHandle>,
 }
 
 impl RowState {
@@ -209,6 +213,10 @@ pub struct BrowserView {
     /// focused capsule is brought into view once rather than pulled back
     /// on every scroll of the wheel.
     revealed: Option<FocusHandle>,
+    /// The shelf opened as a page, in place of the shelves.
+    page: Option<Page>,
+    /// The shelf whose entry takes the focus back once the page is closed.
+    return_to: Option<u32>,
 }
 
 impl BrowserView {
@@ -220,7 +228,14 @@ impl BrowserView {
         })
         .detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
-        cx.observe(&state.session, |this, session, cx| {
+        let mut library_shelves = state.session.read(cx).library_shelves;
+        cx.observe(&state.session, move |this, session, cx| {
+            let shelves = session.read(cx).library_shelves;
+            if shelves != library_shelves {
+                library_shelves = shelves;
+                this.page = None;
+                cx.notify();
+            }
             let profile = session.read(cx).active_profile.clone();
             if profile != this.profile {
                 this.load_profile(profile);
@@ -243,6 +258,8 @@ impl BrowserView {
             dragging: None,
             scroll: ScrollHandle::new(),
             revealed: None,
+            page: None,
+            return_to: None,
         };
         view.load_profile(state.session.read(cx).active_profile.clone());
         view
@@ -254,6 +271,7 @@ impl BrowserView {
         self.profile = profile;
         self.rows.clear();
         self.dragging = None;
+        self.page = None;
         self.slots_epoch += 1;
     }
 
@@ -347,6 +365,17 @@ impl BrowserView {
         if let Some(opened_from) = self.model.update(cx, |model, _| model.opened_from.take()) {
             window.focus(&opened_from, cx);
         }
+        if self
+            .page
+            .as_ref()
+            .is_some_and(|page| !derived.shelves.iter().any(|shelf| shelf.key == page.slot))
+        {
+            self.page = None;
+        }
+        if self.page.is_some() {
+            self.layout_page(window, cx);
+            return;
+        }
         let mut revealed = None;
         for (position, shelf) in derived.shelves.iter().enumerate() {
             let Some(row) = self.rows.get_mut(&shelf.key) else {
@@ -361,6 +390,12 @@ impl BrowserView {
                 }
                 revealed = handle;
             }
+            let open_focus = row.open_focus.get_or_insert_with(|| cx.focus_handle().tab_stop(true));
+            if self.return_to == Some(shelf.key) {
+                window.focus(open_focus, cx);
+                self.scroll
+                    .scroll_to_item(position + usize::from(derived.library_empty));
+            }
             let viewport = row.scroll.bounds().size.width.as_f32();
             row.shown = visible_cards(shelf.capsules.len(), viewport, -row.scroll.offset().x.as_f32());
             let shown = &shelf.capsules[row.shown.0..row.shown.1];
@@ -372,6 +407,7 @@ impl BrowserView {
                     .or_insert_with(|| cx.focus_handle().tab_stop(true));
             }
         }
+        self.return_to = None;
         self.revealed = revealed;
     }
 
@@ -521,6 +557,19 @@ impl Render for BrowserView {
         self.refresh(cx);
         self.layout_rows(window, cx);
         let dragging = self.dragging.filter(|_| cx.has_active_drag());
+        let open = self.page.as_ref().and_then(|page| {
+            let shelf = self
+                .derived
+                .as_ref()?
+                .shelves
+                .iter()
+                .find(|shelf| shelf.key == page.slot)?;
+            Some((page, shelf))
+        });
+        if let Some((page, shelf)) = open {
+            let sources = self.derived.as_ref().map_or(&[][..], |derived| &derived.sources);
+            return self.render_page(page, shelf, sources, cx).into_any_element();
+        }
         let browser = div()
             .id("shelf-browser")
             .size_full()
@@ -530,7 +579,7 @@ impl Render for BrowserView {
             .pt(px(22.))
             .pb(px(56.));
         let Some(derived) = &self.derived else {
-            return browser;
+            return browser.into_any_element();
         };
 
         browser
@@ -566,5 +615,6 @@ impl Render for BrowserView {
                     .on_click(cx.listener(|this, _, _, cx| this.add_slot(cx)))
                     .child(t!("library.browser.add_shelf")),
             )
+            .into_any_element()
     }
 }

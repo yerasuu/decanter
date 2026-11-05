@@ -23,7 +23,7 @@ const HEAD_GROUP: &str = "browser-shelf-head";
 
 /// A capsule's width plus the row's gap: every card takes the same room,
 /// which is what lets a row lay out only the ones in view.
-const CARD_GAP: f32 = 13.;
+pub(super) const CARD_GAP: f32 = 13.;
 pub(super) const CARD_STRIDE: f32 = 136. + CARD_GAP;
 pub(super) const ROW_PADDING: f32 = 26.;
 
@@ -86,6 +86,7 @@ impl BrowserView {
             .map(|(_, label)| label.clone())
             .unwrap_or_default();
         let view = cx.entity();
+        let open_focus = self.rows.get(&key).and_then(|row| row.open_focus.as_ref());
 
         div()
             .id(("shelf-head", key))
@@ -146,6 +147,24 @@ impl BrowserView {
                         this.update_slot(key, |slot| slot.sort = Sort::from_value(value), cx);
                     })),
             )
+            .when(total > 0, |head| {
+                head.child(
+                    nav::focus_ring(div().id(("shelf-open", key)))
+                        .when_some(open_focus, InteractiveElement::track_focus)
+                        .flex_none()
+                        .px(px(8.))
+                        .py(px(4.))
+                        .rounded(px(theme::RADIUS_SM))
+                        .text_size(px(11.))
+                        .line_height(relative(1.))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .cursor_pointer()
+                        .hover(|button| button.text_color(rgb(theme::ACCENT_BLUE)).bg(rgb(theme::BG_PANEL_2)))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_page(key, window, cx)))
+                        .child(format!("{} ›", t!("library.browser.see_all"))),
+                )
+            })
             .child(
                 theme::mono()
                     .flex_none()
@@ -324,7 +343,7 @@ fn empty_shelf() -> Div {
         .child(t!("library.browser.empty_shelf"))
 }
 
-fn auto_badge() -> Div {
+pub(super) fn auto_badge() -> Div {
     div()
         .flex_none()
         .text_size(px(8.5))
@@ -349,7 +368,11 @@ pub(super) fn visible_cards(count: usize, viewport: f32, scrolled: f32) -> (usiz
     (first.min(last), last)
 }
 
-fn cover_card(capsule: &Capsule, focus: Option<&FocusHandle>, model: &Entity<LibraryModel>) -> impl IntoElement {
+pub(super) fn cover_card(
+    capsule: &Capsule,
+    focus: Option<&FocusHandle>,
+    model: &Entity<LibraryModel>,
+) -> impl IntoElement {
     let click_model = model.clone();
     let menu_model = model.clone();
     let click_id = capsule.id.clone();

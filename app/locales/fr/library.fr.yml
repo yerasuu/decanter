@@ -83,6 +83,8 @@ library.browser.next: Suivant
 library.browser.nothing_yet: Rien à afficher pour l’instant.
 library.browser.add_shelf: + Ajouter une étagère
 library.browser.favorite: Favori
+library.browser.see_all: "Tout voir"
+library.browser.back_to_shelves: "Étagères"
 library.properties.title: Propriétés
 library.detail.tabs.summary: Aperçu
 library.detail.tabs.achievements: Succès

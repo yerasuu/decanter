@@ -83,6 +83,8 @@ library.browser.next: 다음
 library.browser.nothing_yet: 아직 표시할 항목이 없습니다.
 library.browser.add_shelf: + 선반 추가
 library.browser.favorite: 즐겨찾기
+library.browser.see_all: "모두 보기"
+library.browser.back_to_shelves: "선반"
 library.properties.title: 속성
 library.detail.tabs.summary: 개요
 library.detail.tabs.achievements: 업적

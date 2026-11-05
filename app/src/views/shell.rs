@@ -159,7 +159,18 @@ impl Shell {
         })
     }
 
+    /// A click on a section of the topbar. Unlike `back`, it also closes a shelf opened as a page.
     fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
+        if page == Page::Library {
+            let session = AppState::get(cx).session.clone();
+            session.update(cx, |session, _| {
+                session.library_shelves = session.library_shelves.wrapping_add(1)
+            });
+        }
+        self.show(page, window, cx);
+    }
+
+    fn show(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         if page == Page::Library {
             // Even while already there: the click is how you get back from
             // a game's detail to the shelf browser.
@@ -209,7 +220,7 @@ impl Shell {
     /// Escape, or B on a pad mapped to keys: a game's page or the mods list goes back to the
     /// shelves, any other section back to Biblioteca.
     pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.navigate(Page::Library, window, cx);
+        self.show(Page::Library, window, cx);
     }
 
     /// Registers every program among `paths` as an external game of the

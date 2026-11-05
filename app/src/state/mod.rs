@@ -34,6 +34,9 @@ pub struct Session {
     /// while already on that page, so the library drops back to the shelf
     /// browser instead of leaving whatever game detail was open.
     pub library_home: u32,
+    /// Bumped by the same click but not by Escape, which goes back from a game to the page
+    /// it was opened from; the click goes all the way to the shelves.
+    pub library_shelves: u32,
     /// The same for the PS section: back from a game to its covers.
     pub ps_home: u32,
     /// Bumped to ask the shell for the "Juegos externos" page — from the
@@ -78,6 +81,7 @@ impl Session {
             core,
             active_profile,
             library_home: 0,
+            library_shelves: 0,
             ps_home: 0,
             external_request: 0,
             downloads_request: 0,

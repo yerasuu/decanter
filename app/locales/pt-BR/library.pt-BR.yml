@@ -83,6 +83,8 @@ library.browser.next: Próximo
 library.browser.nothing_yet: Ainda não há nada para mostrar.
 library.browser.add_shelf: + Adicionar prateleira
 library.browser.favorite: Favorito
+library.browser.see_all: "Ver tudo"
+library.browser.back_to_shelves: "Prateleiras"
 library.properties.title: Propriedades
 library.detail.tabs.summary: Visão geral
 library.detail.tabs.achievements: Conquistas

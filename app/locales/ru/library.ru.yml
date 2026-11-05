@@ -83,6 +83,8 @@ library.browser.next: 'Вперёд'
 library.browser.nothing_yet: 'Пока нечего показывать.'
 library.browser.add_shelf: '+ Добавить полку'
 library.browser.favorite: 'Избранное'
+library.browser.see_all: "Показать все"
+library.browser.back_to_shelves: "Полки"
 library.properties.title: 'Свойства'
 library.detail.tabs.summary: 'Обзор'
 library.detail.tabs.achievements: 'Достижения'

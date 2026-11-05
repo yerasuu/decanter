@@ -37,6 +37,8 @@ use crate::state::{AppState, LibraryState};
 use crate::theme;
 use crate::widgets::progress_bar;
 
+const SIDEBAR_WIDTH: f32 = 292.;
+
 /// The one menu-like popup the whole view can have open at a time — a
 /// game's context menu, a shelf's, or the "new collection" popup. Shared
 /// between the sidebar and the browser (both open a `GameMenu`) so that
@@ -282,7 +284,7 @@ impl Render for LibraryView {
             .child(
                 self.sidebar
                     .clone()
-                    .cached(StyleRefinement::default().w(px(292.)).h_full().flex_none()),
+                    .cached(StyleRefinement::default().w(px(SIDEBAR_WIDTH)).h_full().flex_none()),
             )
             .child(
                 div()
