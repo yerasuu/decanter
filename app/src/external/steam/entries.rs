@@ -9,7 +9,7 @@
 //! listed, so an entry outlives an uninstall in Steam and whatever lists
 //! the apps a user owns can feed the same entries.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use decanter_core::{InstalledGame, SteamMark, Storefront};
@@ -48,22 +48,46 @@ pub fn list(profile_id: &str) -> Vec<InstalledGame> {
     games
 }
 
-/// The library rows for `profile_id`'s Steam entries, installed or not as
-/// Steam has them right now.
+/// Whether `profile_id` shows Steam entries; an unreadable setting reads as on, its default.
+pub fn is_shown(profile_id: &str) -> bool {
+    crate::core::db()
+        .and_then(|db| {
+            db.steam_show_enabled(profile_id)
+                .map_err(crate::core::StoreError::Query)
+        })
+        .inspect_err(|err| tracing::warn!(profile_id, %err, "cannot read the steam_show setting, defaulting to on"))
+        .unwrap_or(true)
+}
+
+/// The library rows for `profile_id`'s Steam entries, installed or not, and with the art Steam
+/// has, as Steam has them right now; none while the profile hides them.
 pub fn rows(profile_id: &str) -> Vec<LibraryEntry> {
+    if !is_shown(profile_id) {
+        return Vec::new();
+    }
     let games = list(profile_id);
     if games.is_empty() {
         return Vec::new();
     }
-    let installed = super::installed_apps();
+    let installed: HashMap<AppId, _> = super::root()
+        .map(|root| super::installed(&root).collect())
+        .unwrap_or_default();
     games
         .iter()
         .map(|game| {
-            let is_installed = app_id(game).is_some_and(|id| installed.contains_key(&id));
+            let live = app_id(game).and_then(|id| installed.get(&id));
             let mut entry = crate::external::entry(game);
             entry.installable = false;
             if let Some(state) = entry.game.install_state.as_mut() {
-                state.installed = is_installed;
+                state.installed = live.is_some();
+            }
+            // Read from Steam's cache each time, since a manifest only holds the art found when
+            // the entry was added; the manifest's stays where Steam has none.
+            if let Some(app) = live {
+                let art = super::game_art(app.art.clone());
+                entry.game.icon_url = art.icon.or(entry.game.icon_url);
+                entry.game.cover_url = art.cover.or(entry.game.cover_url);
+                entry.game.background_url = art.hero.or(entry.game.background_url);
             }
             entry
         })
@@ -186,6 +210,33 @@ fn remember_dismissal(profile_id: &str, game_id: &str, dismissed: bool) {
     if let Err(err) = saved {
         tracing::warn!(profile_id, game_id, dismissed, %err, "could not record whether the steam entry was removed");
     }
+}
+
+/// Forgets every Steam entry of `profile_id` the way [`remove`] does, without remembering them as
+/// removed, so finding Steam's games starts from scratch. Returns how many it removed.
+pub fn remove_all(profile_id: &str) -> usize {
+    let Ok(library) = crate::core::library_for_profile(profile_id) else {
+        tracing::warn!(profile_id, "library unavailable, steam entries not removed");
+        return 0;
+    };
+    let mut removed = 0_usize;
+    for game in list(profile_id) {
+        let game_id = game.game_id;
+        if let Err(err) = library.remove_manifest(profile_id, Storefront::Steam, &game_id) {
+            tracing::error!(profile_id, game_id, %err, "failed to remove steam entry manifest");
+            continue;
+        }
+        if let Err(err) = crate::core::db().and_then(|db| {
+            db.forget_product(profile_id, Storefront::Steam, &game_id)
+                .map_err(crate::core::StoreError::Query)
+        }) {
+            tracing::warn!(profile_id, game_id, %err, "could not forget steam entry's favorites, playtime and collections");
+        }
+        crate::taskbar::remove(library.root(), &crate::taskbar::key(Storefront::Steam, &game_id));
+        removed = removed.saturating_add(1);
+    }
+    tracing::info!(profile_id, removed, "steam entries removed");
+    removed
 }
 
 /// Forgets a Steam entry (manifest, favorites, playtime, collections).

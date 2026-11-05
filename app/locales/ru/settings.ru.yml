@@ -18,9 +18,9 @@ settings.general.steam.compat: "Совместимость со Steam"
 settings.general.steam.compat_hint: "Если выключено, decanter сам ничего не меняет в Steam; «Добавить в Steam» и «Добавить через Steam» продолжают работать."
 settings.general.steam.register: "Показывать папки библиотеки decanter в хранилище Steam"
 settings.general.steam.register_hint: "Тогда Steam тоже сможет устанавливать в них игры. При выключении убираются только папки, добавленные decanter."
-settings.general.steam.add: 'Добавить все установленные игры в собственную библиотеку Steam с обложкой и баннером'
+settings.general.steam.add: "Показывать игры decanter в Steam: добавлять каждую установленную игру decanter в библиотеку Steam как ярлык с обложкой и баннером"
 settings.general.steam.restart_hint: 'Чтобы изменения появились, Steam нужно перезапустить: он читает свои ярлыки только при запуске.'
-settings.general.steam.discover: "Добавлять папки библиотеки и установленные игры Steam"
+settings.general.steam.discover: "Переносить игры Steam в decanter: добавлять папки библиотеки и установленные игры Steam в библиотеку decanter"
 settings.general.steam.discover_hint: "Проверяется при запуске decanter и при каждом открытии раздела «Хранилище», поэтому SD-карты и диски находятся, как только их подключают. Папка или игра, которую вы здесь убрали, больше не добавляется."
 settings.general.downloads.title: 'Загрузки'
 settings.general.downloads.resume_on_start: 'Продолжать загрузки при запуске Decanter'
@@ -44,6 +44,8 @@ settings.account.session.revoked: 'Сеанс был закрыт в GOG'
 settings.account.session.unreachable: 'GOG не отвечает; сеанс проверить не удалось'
 settings.account.renew: 'Обновить сеанс'
 settings.account.session.invalid: 'недействительный сеанс: %{error}'
+settings.account.steam.show: "Показывать игры Steam в этом профиле"
+settings.account.steam.hint: "Установленные в Steam игры и добавленные вами появляются в библиотеке. При выключении игры Steam удаляются из decanter вместе с их коллекциями и избранным; файлы игр не затрагиваются."
 settings.account.add.button: '+ Добавить учётную запись GOG'
 settings.account.add.hint: 'Откройте GOG, войдите и вставьте сюда адрес страницы, на которую попадёте.'
 settings.account.add.open: 'Открыть GOG'

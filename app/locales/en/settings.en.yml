@@ -18,9 +18,9 @@ settings.general.steam.compat: "Steam compatibility"
 settings.general.steam.compat_hint: "Off, decanter changes nothing in Steam by itself; Add to Steam and Add through Steam keep working."
 settings.general.steam.register: "List decanter's library folders in Steam's storage"
 settings.general.steam.register_hint: "So Steam can install into them too. Turned off, only the folders decanter added are taken out."
-settings.general.steam.add: Add every installed game to Steam's own library, with its cover and banner
+settings.general.steam.add: "Show decanter's games in Steam: add each installed decanter game to Steam's library as a shortcut, with its cover and banner"
 settings.general.steam.restart_hint: Steam has to be restarted to show the changes — it only reads its shortcuts at startup.
-settings.general.steam.discover: "Add Steam's library folders and installed games"
+settings.general.steam.discover: "Bring Steam's games into decanter: add Steam's library folders and installed games to decanter's library"
 settings.general.steam.discover_hint: "Checked when decanter starts and on every visit to Storage, so SD cards and drives are picked up once plugged in. A folder or game you remove here isn't added again."
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Resume downloads when Decanter opens
@@ -44,6 +44,8 @@ settings.account.session.revoked: The session was closed on GOG
 settings.account.session.unreachable: GOG isn't answering; the session couldn't be checked
 settings.account.renew: Renew session
 settings.account.session.invalid: 'invalid session: %{error}'
+settings.account.steam.show: "Show Steam games in this profile"
+settings.account.steam.hint: "Steam's installed games and the ones you added appear in the Library. Turning it off removes Steam games from decanter, with their Steam collections and favorites; no game files are touched."
 settings.account.add.button: + Add GOG account
 settings.account.add.hint: Open GOG, log in, and paste the address of the page you land on here.
 settings.account.add.open: Open GOG

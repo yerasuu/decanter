@@ -52,12 +52,44 @@ pub fn sync(profile_id: Option<&str>) -> bool {
     let mut is_changed = false;
     if automatic.discover
         && let Some(profile_id) = profile_id
+        && crate::external::steam::entries::is_shown(profile_id)
     {
         is_changed |= add_folders(&db, &steam_root, profile_id) > 0;
         is_changed |= crate::external::steam::entries::add_installed(profile_id) > 0;
     }
     register_folders(&db, &steam_root, automatic.register_folders);
     is_changed
+}
+
+/// Undoes what the switches added for `profile_id`: its Steam entries and the library folders
+/// found in Steam's list, then every mark, so the next [`sync`] starts from scratch. Nothing on
+/// disk or in Steam is touched. Blocking.
+pub fn reset(profile_id: &str) {
+    let _serialized = SYNC.lock().unwrap_or_else(PoisonError::into_inner);
+    crate::external::steam::entries::remove_all(profile_id);
+    let db = match crate::core::db() {
+        Ok(db) => db,
+        Err(err) => {
+            tracing::warn!(%err, "cannot open the database, steam folders and marks not reset");
+            return;
+        }
+    };
+    let extra = db.profile_extra_libraries(profile_id).unwrap_or_default();
+    let discovered = db
+        .steam_marked(profile_id, SteamMark::SteamFolder)
+        .inspect_err(|err| tracing::warn!(profile_id, %err, "cannot read steam's library folders, none removed"))
+        .unwrap_or_default();
+    for root in extra
+        .iter()
+        .filter(|root| discovered.contains(root.as_str()) && !has_decanter_layout(Path::new(root)))
+    {
+        if let Err(err) = crate::core::remove_library_folder(profile_id, Path::new(root)) {
+            tracing::warn!(profile_id, root, %err, "could not remove a library folder of steam's");
+        }
+    }
+    if let Err(err) = db.clear_steam_marks(profile_id) {
+        tracing::warn!(profile_id, %err, "could not clear the steam marks");
+    }
 }
 
 /// [`sync`] once at startup, on a background thread, then the library shown re-read if the active
@@ -166,19 +198,21 @@ fn add_folders(db: &Db, steam_root: &Path, profile_id: &str) -> usize {
             continue;
         }
         let root_canonical = canonical(&root);
-        if let Some(existing) = known
+        // Never marked as Steam's: it was the profile's before, and decanter lists its own folders in
+        // Steam, so Steam naming it says nothing about who added it. A mark would take it out of the
+        // profile when the switch is turned off and keep it out of Steam's list.
+        if known
             .iter()
-            .find(|existing| existing.starts_with(&root_canonical) || root_canonical.starts_with(existing))
+            .any(|existing| existing.starts_with(&root_canonical) || root_canonical.starts_with(existing))
         {
-            if *existing == root_canonical {
-                mark_steam_folder(db, profile_id, &item);
-            }
             continue;
         }
         match crate::core::add_library_folder(profile_id, &folder.path) {
             Ok(root) => {
                 tracing::info!(profile_id, root = %root.display(), "added a library folder of steam's");
-                mark_steam_folder(db, profile_id, &root.to_string_lossy());
+                if !has_decanter_layout(&root) {
+                    mark_steam_folder(db, profile_id, &root.to_string_lossy());
+                }
                 known.push(root_canonical);
                 added = added.saturating_add(1);
             }
@@ -195,6 +229,13 @@ fn add_folders(db: &Db, steam_root: &Path, profile_id: &str) -> usize {
         "checked steam's library folders"
     );
     added
+}
+
+/// A library root decanter itself laid out, told by its `decanter` and `psport` folders rather than
+/// by who added it: whatever Steam keeps inside it, it stays decanter's, and only Steam's own part
+/// is hidden or reset.
+fn has_decanter_layout(root: &Path) -> bool {
+    root.join("decanter").is_dir() || root.join("psport").is_dir()
 }
 
 fn mark_steam_folder(db: &Db, profile_id: &str, root: &str) {
@@ -222,7 +263,8 @@ fn decanter_folders(db: &Db) -> Vec<PathBuf> {
     };
     let mut folders: Vec<PathBuf> = Vec::new();
     for root in profiles.iter().flat_map(|profile| profile_roots(db, &profile.id)) {
-        if steams.contains(root.to_string_lossy().as_ref()) || root.file_name().is_none_or(|name| name != "steamapps") {
+        let is_steams = steams.contains(root.to_string_lossy().as_ref()) && !has_decanter_layout(&root);
+        if is_steams || root.file_name().is_none_or(|name| name != "steamapps") {
             continue;
         }
         if let Some(folder) = root

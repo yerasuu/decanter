@@ -18,9 +18,9 @@ settings.general.steam.compat: "Compatibilidade com a Steam"
 settings.general.steam.compat_hint: "Desativada, o decanter não muda nada na Steam por conta própria; Adicionar à Steam e Adicionar pela Steam continuam funcionando."
 settings.general.steam.register: "Mostrar as pastas de biblioteca do decanter no armazenamento da Steam"
 settings.general.steam.register_hint: "Assim a Steam também pode instalar nelas. Desativada, só as pastas que o decanter adicionou são retiradas."
-settings.general.steam.add: Adicionar todos os jogos instalados à biblioteca da própria Steam, com capa e banner
+settings.general.steam.add: "Mostrar os jogos do decanter no Steam: adicionar cada jogo instalado do decanter à biblioteca do Steam como atalho, com capa e banner"
 settings.general.steam.restart_hint: 'É preciso reiniciar a Steam para ver as alterações — ela só lê seus atalhos ao iniciar.'
-settings.general.steam.discover: "Adicionar as pastas de biblioteca e os jogos instalados da Steam"
+settings.general.steam.discover: "Trazer os jogos do Steam para o decanter: adicionar as pastas de biblioteca e os jogos instalados do Steam à biblioteca do decanter"
 settings.general.steam.discover_hint: "Verificado quando o decanter abre e a cada visita a Armazenamento, então cartões SD e discos são detectados assim que conectados. Uma pasta ou um jogo que você remover aqui não é adicionado de novo."
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Retomar downloads quando o Decanter abrir
@@ -44,6 +44,8 @@ settings.account.session.revoked: A sessão foi encerrada na GOG
 settings.account.session.unreachable: 'A GOG não está respondendo; não foi possível verificar a sessão'
 settings.account.renew: Renovar sessão
 settings.account.session.invalid: 'sessão inválida: %{error}'
+settings.account.steam.show: "Mostrar os jogos da Steam neste perfil"
+settings.account.steam.hint: "Os jogos instalados na Steam e os que você adicionou aparecem na Biblioteca. Ao desativar, os jogos da Steam são removidos do decanter, com suas coleções e favoritos da Steam; nenhum arquivo de jogo é tocado."
 settings.account.add.button: + Adicionar conta GOG
 settings.account.add.hint: Abra a GOG, faça login e cole aqui o endereço da página em que você cair.
 settings.account.add.open: Abrir a GOG

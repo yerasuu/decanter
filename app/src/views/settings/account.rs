@@ -17,7 +17,7 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use super::{column, field_row, inline, section, storefront_label};
+use super::{checkbox_field, column, field_row, inline, section, storefront_label};
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
@@ -60,6 +60,8 @@ pub struct AccountTab {
     switch_error: Option<Text>,
     new_profile: Option<(Entity<ProfileForm>, Subscription)>,
     rows: Vec<AccountRow>,
+    steam_installed: bool,
+    steam_shown: bool,
     adding: bool,
     login: Entity<GogLogin>,
 }
@@ -80,10 +82,13 @@ impl AccountTab {
             switch_error: None,
             new_profile: None,
             rows: Vec::new(),
+            steam_installed: decanter_core::steam::steam_root().is_some(),
+            steam_shown: true,
             adding: false,
             login,
         };
         this.reload_library_path();
+        this.reload_steam_shown();
         this.reload_accounts(cx);
         this
     }
@@ -92,6 +97,42 @@ impl AccountTab {
         self.library_path = crate::core::library_for_profile(&self.profile_id)
             .ok()
             .map(|library| library.root().display().to_string());
+    }
+
+    fn reload_steam_shown(&mut self) {
+        self.steam_shown = crate::external::steam::entries::is_shown(&self.profile_id);
+    }
+
+    /// Saves the switch, then off the UI thread resets the profile's Steam data when it went off
+    /// and re-runs the Steam sync, which finds the games again when it went on, and re-reads the
+    /// library shown either way.
+    fn set_steam_shown(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let profile_id = self.profile_id.clone();
+        let saved = crate::core::db().and_then(|db| {
+            db.set_steam_show_enabled(&profile_id, enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(profile_id, enabled, %err, "failed to save steam_show setting");
+            return;
+        }
+        tracing::info!(profile_id, enabled, "steam games shown setting changed");
+        self.steam_shown = enabled;
+        cx.notify();
+        let state = AppState::get(cx).clone();
+        let work = cx.background_spawn(async move {
+            if !enabled {
+                crate::steam_compat::reset(&profile_id);
+            }
+            crate::steam_compat::sync(Some(&profile_id))
+        });
+        cx.spawn(async move |_, cx| {
+            work.await;
+            state
+                .library
+                .update(cx, |library, cx| library.refresh_all_install_state(cx));
+        })
+        .detach();
     }
 
     /// Re-lists the profile's accounts, keeping each surviving row's state
@@ -576,6 +617,17 @@ impl AccountTab {
         }))
     }
 
+    fn steam_games(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let shown = self.steam_shown;
+        column()
+            .child(theme::h3("Steam"))
+            .child(
+                checkbox_field("steam-show", shown, t!("settings.account.steam.show"))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_steam_shown(!shown, cx))),
+            )
+            .child(theme::muted(t!("settings.account.steam.hint")))
+    }
+
     fn add_gog_account(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.adding {
             return inline(
@@ -676,6 +728,10 @@ impl Render for AccountTab {
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
             .child(section("add-gog-account", self.add_gog_account(cx)))
+            .children(
+                self.steam_installed
+                    .then(|| section("steam-games", self.steam_games(cx))),
+            )
             .child(section("people", self.people(cx)))
     }
 }

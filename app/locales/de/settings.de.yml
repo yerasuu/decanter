@@ -18,9 +18,9 @@ settings.general.steam.compat: "Steam-Kompatibilität"
 settings.general.steam.compat_hint: "Aus ändert Decanter von sich aus nichts an Steam; „Zu Steam hinzufügen“ und „Über Steam hinzufügen“ funktionieren weiterhin."
 settings.general.steam.register: "Decanters Bibliotheksordner in Steams Speicher anzeigen"
 settings.general.steam.register_hint: "Damit Steam auch in sie installieren kann. Ausgeschaltet werden nur die Ordner entfernt, die Decanter hinzugefügt hat."
-settings.general.steam.add: Alle installierten Spiele mit Cover und Banner zu Steams eigener Bibliothek hinzufügen
+settings.general.steam.add: "Decanter-Spiele in Steam anzeigen: jedes installierte Decanter-Spiel als Verknüpfung mit Cover und Banner in Steams Bibliothek aufnehmen"
 settings.general.steam.restart_hint: Steam muss neu gestartet werden, damit die Änderungen sichtbar werden — es liest seine Verknüpfungen nur beim Start.
-settings.general.steam.discover: "Steams Bibliotheksordner und installierte Spiele hinzufügen"
+settings.general.steam.discover: "Steam-Spiele in decanter übernehmen: Steams Bibliotheksordner und installierte Spiele in decanters Bibliothek aufnehmen"
 settings.general.steam.discover_hint: "Wird beim Start von Decanter und bei jedem Besuch von Speicher geprüft, sodass SD-Karten und Laufwerke erkannt werden, sobald sie angeschlossen sind. Ein Ordner oder Spiel, das du hier entfernst, wird nicht erneut hinzugefügt."
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Downloads beim Start von Decanter fortsetzen
@@ -44,6 +44,8 @@ settings.account.session.revoked: Die Sitzung wurde bei GOG beendet
 settings.account.session.unreachable: GOG antwortet nicht; die Sitzung konnte nicht geprüft werden
 settings.account.renew: Sitzung erneuern
 settings.account.session.invalid: 'ungültige Sitzung: %{error}'
+settings.account.steam.show: "Steam-Spiele in diesem Profil anzeigen"
+settings.account.steam.hint: "Die in Steam installierten und die von dir hinzugefügten Spiele erscheinen in der Bibliothek. Beim Ausschalten werden die Steam-Spiele samt ihren Steam-Sammlungen und Favoriten aus decanter entfernt; Spieldateien bleiben unberührt."
 settings.account.add.button: + GOG-Konto hinzufügen
 settings.account.add.hint: Öffne GOG, melde dich an und füge hier die Adresse der Seite ein, auf der du landest.
 settings.account.add.open: GOG öffnen

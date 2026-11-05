@@ -78,6 +78,18 @@ impl Db {
         self.set_setting("steam_discover", if enabled { "1" } else { "0" })
     }
 
+    /// Whether `profile_id` shows its Steam entries and has Steam's games found for it — on by
+    /// default. Off, the entries stay stored, only out of sight.
+    pub fn steam_show_enabled(&self, profile_id: &str) -> Result<bool> {
+        let enabled = self.setting(&format!("steam_show:{profile_id}"))?.as_deref() != Some("0");
+        tracing::debug!(profile_id, enabled, "read steam_show setting");
+        Ok(enabled)
+    }
+
+    pub fn set_steam_show_enabled(&self, profile_id: &str, enabled: bool) -> Result<()> {
+        self.set_setting(&format!("steam_show:{profile_id}"), if enabled { "1" } else { "0" })
+    }
+
     pub fn steam_automatic(&self) -> Result<SteamAutomatic> {
         let master = self.steam_compat_enabled()?;
         Ok(SteamAutomatic {
@@ -145,6 +157,15 @@ impl Db {
             "read marked steam items in every profile"
         );
         Ok(items)
+    }
+
+    /// Forgets every mark of `profile_id`, the user's removals included.
+    pub fn clear_steam_marks(&self, profile_id: &str) -> Result<()> {
+        let cleared = self
+            .conn
+            .execute("DELETE FROM steam_marks WHERE profile_id = ?1", params![profile_id])?;
+        tracing::debug!(profile_id, cleared, "cleared steam marks");
+        Ok(())
     }
 
     pub fn set_steam_marked(&self, profile_id: &str, mark: SteamMark, item: &str, marked: bool) -> Result<()> {

@@ -18,9 +18,9 @@ settings.general.steam.compat: "Compatibilità con Steam"
 settings.general.steam.compat_hint: "Disattivata, decanter non cambia nulla in Steam da solo; «Aggiungi a Steam» e «Aggiungi tramite Steam» continuano a funzionare."
 settings.general.steam.register: "Mostra le cartelle della libreria di decanter nell’archiviazione di Steam"
 settings.general.steam.register_hint: "Così Steam può installare anche lì. Disattivata, vengono tolte solo le cartelle aggiunte da decanter."
-settings.general.steam.add: Aggiungi ogni gioco installato alla libreria di Steam, con la sua copertina e il suo banner
+settings.general.steam.add: "Mostra i giochi di decanter in Steam: aggiungi ogni gioco decanter installato alla libreria di Steam come collegamento, con copertina e banner"
 settings.general.steam.restart_hint: "Steam deve essere riavviato per mostrare le modifiche: legge le sue scorciatoie solo all'avvio."
-settings.general.steam.discover: "Aggiungi le cartelle della libreria e i giochi installati di Steam"
+settings.general.steam.discover: "Porta i giochi di Steam in decanter: aggiungi le cartelle della libreria e i giochi installati di Steam alla libreria di decanter"
 settings.general.steam.discover_hint: "Controllato all’avvio di decanter e a ogni visita di Archiviazione, così le schede SD e i dischi vengono rilevati appena collegati. Una cartella o un gioco che togli qui non viene aggiunto di nuovo."
 settings.general.downloads.title: Download
 settings.general.downloads.resume_on_start: Riprendi i download all'apertura di Decanter
@@ -44,6 +44,8 @@ settings.account.session.revoked: La sessione è stata chiusa su GOG
 settings.account.session.unreachable: "GOG non risponde; non è stato possibile verificare la sessione"
 settings.account.renew: Rinnova la sessione
 settings.account.session.invalid: "sessione non valida: %{error}"
+settings.account.steam.show: "Mostra i giochi di Steam in questo profilo"
+settings.account.steam.hint: "I giochi installati in Steam e quelli che hai aggiunto compaiono nella Libreria. Disattivandolo, i giochi Steam vengono rimossi da decanter, con le loro raccolte e i preferiti Steam; nessun file di gioco viene toccato."
 settings.account.add.button: + Aggiungi account GOG
 settings.account.add.hint: "Apri GOG, accedi e incolla qui l'indirizzo della pagina in cui arrivi."
 settings.account.add.open: Apri GOG

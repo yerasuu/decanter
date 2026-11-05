@@ -18,9 +18,9 @@ settings.general.steam.compat: "Compatibilité avec Steam"
 settings.general.steam.compat_hint: "Désactivée, decanter ne change rien dans Steam de lui-même ; « Ajouter à Steam » et « Ajouter via Steam » fonctionnent toujours."
 settings.general.steam.register: "Afficher les dossiers de bibliothèque de decanter dans le stockage de Steam"
 settings.general.steam.register_hint: "Pour que Steam puisse aussi y installer des jeux. Désactivée, seuls les dossiers ajoutés par decanter sont retirés."
-settings.general.steam.add: Ajouter chaque jeu installé à la propre bibliothèque de Steam, avec sa jaquette et sa bannière
+settings.general.steam.add: "Afficher les jeux de decanter dans Steam : ajouter chaque jeu decanter installé à la bibliothèque de Steam comme raccourci, avec sa jaquette et sa bannière"
 settings.general.steam.restart_hint: Steam doit être redémarré pour afficher les changements — il ne lit ses raccourcis qu’au démarrage.
-settings.general.steam.discover: "Ajouter les dossiers de bibliothèque et les jeux installés de Steam"
+settings.general.steam.discover: "Importer les jeux de Steam dans decanter : ajouter les dossiers de bibliothèque et les jeux installés de Steam à la bibliothèque de decanter"
 settings.general.steam.discover_hint: "Vérifié au démarrage de decanter et à chaque visite de Stockage, pour que les cartes SD et les disques soient pris en compte dès qu’ils sont branchés. Un dossier ou un jeu que vous retirez ici n’est pas ajouté de nouveau."
 settings.general.downloads.title: Téléchargements
 settings.general.downloads.resume_on_start: Reprendre les téléchargements à l’ouverture de Decanter
@@ -44,6 +44,8 @@ settings.account.session.revoked: La session a été fermée sur GOG
 settings.account.session.unreachable: GOG ne répond pas ; la session n’a pas pu être vérifiée
 settings.account.renew: Renouveler la session
 settings.account.session.invalid: 'session invalide : %{error}'
+settings.account.steam.show: "Afficher les jeux Steam dans ce profil"
+settings.account.steam.hint: "Les jeux installés dans Steam et ceux que vous avez ajoutés apparaissent dans la Bibliothèque. Désactiver cette option retire les jeux Steam de decanter, avec leurs collections et favoris Steam ; aucun fichier de jeu n’est touché."
 settings.account.add.button: + Ajouter un compte GOG
 settings.account.add.hint: Ouvrez GOG, connectez-vous et collez ici l’adresse de la page sur laquelle vous arrivez.
 settings.account.add.open: Ouvrir GOG

@@ -18,9 +18,9 @@ settings.general.steam.compat: "Compatibilidad con Steam"
 settings.general.steam.compat_hint: "Desactivada, decanter no cambia nada en Steam por su cuenta; Añadir a Steam y Añadir a través de Steam siguen funcionando."
 settings.general.steam.register: "Mostrar las carpetas de biblioteca de decanter en el almacenamiento de Steam"
 settings.general.steam.register_hint: "Así Steam también puede instalar en ellas. Al desactivarla, solo se quitan las carpetas que añadió decanter."
-settings.general.steam.add: Añadir cada juego instalado a la biblioteca real de Steam, con su portada y su banner
+settings.general.steam.add: "Mostrar los juegos de decanter en Steam: añadir cada juego instalado de decanter a la biblioteca de Steam como acceso directo, con su portada y su banner"
 settings.general.steam.restart_hint: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.
-settings.general.steam.discover: "Añadir las carpetas de biblioteca y los juegos instalados de Steam"
+settings.general.steam.discover: "Traer los juegos de Steam a decanter: añadir las carpetas de biblioteca y los juegos instalados de Steam a la biblioteca de decanter"
 settings.general.steam.discover_hint: "Se comprueba al abrir decanter y cada vez que entras en Almacenamiento, así que las tarjetas SD y los discos se detectan en cuanto los conectas. Una carpeta o un juego que quites aquí no se vuelve a añadir."
 settings.general.downloads.title: Descargas
 settings.general.downloads.resume_on_start: Reanudar las descargas al abrir Decanter
@@ -44,6 +44,8 @@ settings.account.session.revoked: La sesión se cerró en GOG
 settings.account.session.unreachable: GOG no responde; no se ha podido comprobar la sesión
 settings.account.renew: Renovar sesión
 settings.account.session.invalid: 'sesión inválida: %{error}'
+settings.account.steam.show: "Mostrar los juegos de Steam en este perfil"
+settings.account.steam.hint: "Los juegos instalados en Steam y los que hayas añadido aparecen en la Biblioteca. Al desactivarlo, se quitan de decanter los juegos de Steam, con sus colecciones y favoritos de Steam; no se toca ningún archivo de juego."
 settings.account.add.button: + Añadir cuenta GOG
 settings.account.add.hint: Abre GOG, inicia sesión y pega aquí la dirección de la página a la que llegues.
 settings.account.add.open: Abrir GOG
