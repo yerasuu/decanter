@@ -357,7 +357,7 @@ async fn only_admins_read_the_audit() -> Test {
             vec![("authorization", viewer_bearer.as_str())],
         ] {
             let (status, body) = h.text(path, &credentials).await?;
-            assert_eq!(status, StatusCode::FORBIDDEN, "{path} {credentials:?}");
+            assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
             assert!(body.contains("\"role\""), "the 403 of every admin-only route: {body}");
         }
         for credentials in [vec![], vec![("authorization", wrong.as_str())]] {
@@ -555,7 +555,7 @@ async fn no_secret_in_any_record_or_on_the_page() -> Test {
     for secret in &secrets {
         assert!(!secret.is_empty(), "every secret checked is real");
         for (what, text) in [("records", &records), ("page", &page), ("json", &json)] {
-            assert!(!text.contains(secret.as_str()), "{secret} in the {what}");
+            assert!(!text.contains(secret.as_str()), "a secret in the {what}");
         }
     }
     Ok(())

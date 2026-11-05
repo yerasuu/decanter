@@ -555,7 +555,7 @@ async fn a_viewer_reads_everything_and_changes_nothing() -> Test {
             format!("/admin/logs/diff?a={id}&b={id}"),
         ] {
             let (status, ..) = h.send(Method::GET, &path, &credentials, "").await?;
-            assert_eq!(status, StatusCode::OK, "{path} {credentials:?}");
+            assert_eq!(status, StatusCode::OK, "{path}");
         }
     }
     let changes = [
@@ -881,7 +881,7 @@ async fn admin_log_lines_name_the_account_and_hold_no_secret() -> Test {
         hash.as_str(),
         "203.0.113.7",
     ] {
-        assert!(!secret.is_empty() && !text.contains(secret), "{secret} in {text}");
+        assert!(!secret.is_empty() && !text.contains(secret), "a secret in the text");
     }
     Ok(())
 }
