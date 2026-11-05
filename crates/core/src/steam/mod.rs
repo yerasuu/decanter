@@ -7,15 +7,17 @@
 //! Steam itself uses), [`paths`] (finding the real Steam installation and
 //! its logged-in user), and [`process`] (starting/stopping the real Steam
 //! client, needed because it holds its own in-memory copy of
-//! `shortcuts.vdf` while running). [`export`] ties them together into the
-//! actual merge-write, staging a change behind Steam's back when it's
-//! running rather than writing straight into a file it would just
-//! overwrite again. Nothing here touches the network — see
+//! `shortcuts.vdf` while running). [`library`] reads back what Steam
+//! already has installed and the user's own shortcuts. [`export`] ties
+//! the write side together into the actual merge-write, staging a change
+//! behind Steam's back when it's running rather than writing straight
+//! into a file it would just overwrite again. Nothing here touches the network — see
 //! `decanter_gog::steam_export` for the piece that downloads artwork.
 
 pub mod appid;
 pub mod binary_vdf;
 pub mod export;
+pub mod library;
 pub mod paths;
 pub mod process;
 
@@ -23,4 +25,5 @@ pub use appid::{grid_appid, legacy_appid};
 pub use export::{
     ApplyError, Artwork, ShortcutSpec, apply_pending_and_restart_steam, has_pending_changes, remove, sync,
 };
+pub use library::{InstalledApp, Shortcut, SteamArt, installed_apps, non_steam_shortcuts};
 pub use paths::{grid_dir, local_user_id, login_names, shortcuts_vdf_path, steam_root};

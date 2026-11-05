@@ -5,24 +5,12 @@
 //! image is downloaded.
 
 use std::collections::HashSet;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
-use decanter_core::{GameArt, platform, steam, vdf};
+use decanter_core::steam::{self, SteamArt};
+use decanter_core::{GameArt, platform};
 
 use crate::art::file_url;
-
-/// `StateFlags` bit Steam sets once an app is fully installed.
-const FULLY_INSTALLED: u64 = 4;
-
-/// Steam apps that are tooling, not games.
-const TOOL_PREFIXES: [&str; 4] = [
-    "Proton",
-    "Steam Linux Runtime",
-    "Steamworks Common",
-    "Steam Controller Configs",
-];
-
-const IMAGE_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
 
 #[derive(Clone)]
 pub struct SteamGame {
@@ -52,173 +40,36 @@ pub fn detect(added: &HashSet<PathBuf>) -> Vec<SteamGame> {
     found
 }
 
-/// Steam's library folders: its own, plus every one in `libraryfolders.vdf`
-/// (the SD card's among them). Each entry is checked before it is used as a
-/// path: absolute, and a directory with a `steamapps` in it.
-fn libraries(root: &Path) -> Vec<PathBuf> {
-    let listed = std::fs::read_to_string(root.join("steamapps/libraryfolders.vdf"))
-        .inspect_err(|err| tracing::debug!(%err, "no libraryfolders.vdf to read"))
-        .ok()
-        .and_then(|text| {
-            vdf::from_str(&text)
-                .inspect_err(|err| tracing::warn!(%err, "failed to parse libraryfolders.vdf"))
-                .ok()
+fn installed(root: &Path) -> Vec<SteamGame> {
+    steam::installed_apps(root)
+        .into_iter()
+        .map(|app| SteamGame {
+            name: app.name,
+            executable: super::launchers::main_executable(&app.folder),
+            art: game_art(app.art),
+            folder: app.folder,
         })
-        .and_then(|(_, folders)| {
-            folders.as_block().map(|block| {
-                block
-                    .values()
-                    .filter_map(|entry| entry.get("path"))
-                    .map(PathBuf::from)
-                    .collect::<Vec<_>>()
-            })
-        })
-        .unwrap_or_default();
-    let mut seen = HashSet::new();
-    std::iter::once(root.to_path_buf())
-        .chain(listed)
-        .filter(|path| path.is_absolute() && path.join("steamapps").is_dir())
-        .filter(|path| seen.insert(std::fs::canonicalize(path).unwrap_or_else(|_| path.clone())))
         .collect()
 }
 
-fn installed(root: &Path) -> Vec<SteamGame> {
-    let cache = root.join("appcache/librarycache");
-    let mut games = Vec::new();
-    for library in libraries(root) {
-        let steamapps = library.join("steamapps");
-        let Ok(entries) = std::fs::read_dir(&steamapps) else {
-            continue;
-        };
-        for path in entries.flatten().map(|entry| entry.path()) {
-            let Some(app_id) = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .and_then(|name| name.strip_prefix("appmanifest_")?.strip_suffix(".acf"))
-                .filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
-            else {
-                continue;
-            };
-            if let Some(game) = std::fs::read_to_string(&path)
-                .ok()
-                .and_then(|text| manifest(&text, app_id, &steamapps, &cache))
-            {
-                games.push(game);
-            }
-        }
-    }
-    games
-}
-
-/// One `appmanifest`, if it is a fully installed game whose folder is where
-/// it says. `installdir` is a name Steam writes, but the file sits where
-/// users edit it: it has to be a single plain component to be joined onto
-/// `steamapps/common`.
-fn manifest(text: &str, file_app_id: &str, steamapps: &Path, cache: &Path) -> Option<SteamGame> {
-    let (_, state) = vdf::from_str(text).ok()?;
-    if state.get("appid")? != file_app_id || state.get_u64("StateFlags")? & FULLY_INSTALLED == 0 {
-        return None;
-    }
-    let name = state.get("name")?.trim();
-    if name.is_empty() || TOOL_PREFIXES.iter().any(|prefix| name.starts_with(prefix)) {
-        return None;
-    }
-    let mut parts = Path::new(state.get("installdir")?).components();
-    let (Some(Component::Normal(dir)), None) = (parts.next(), parts.next()) else {
-        return None;
-    };
-    let folder = steamapps.join("common").join(dir);
-    if !folder.is_dir() {
-        return None;
-    }
-    Some(SteamGame {
-        name: name.to_owned(),
-        executable: super::launchers::main_executable(&folder),
-        art: library_art(cache, file_app_id),
-        folder,
-    })
-}
-
-/// Steam's `librarycache` has held an app's images two ways: flat as
-/// `<appid>_library_600x900.jpg`, and in `<appid>/`, directly or one hash
-/// folder down.
-fn library_art(cache: &Path, app_id: &str) -> GameArt {
-    let dir = cache.join(app_id);
-    let subfolders: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-        .collect();
-    let find = |name: &str| {
-        IMAGE_EXTENSIONS.iter().find_map(|extension| {
-            std::iter::once(cache.join(format!("{app_id}_{name}.{extension}")))
-                .chain(std::iter::once(dir.join(format!("{name}.{extension}"))))
-                .chain(
-                    subfolders
-                        .iter()
-                        .map(|folder| folder.join(format!("{name}.{extension}"))),
-                )
-                .find(|path| path.is_file())
-        })
-    };
-    let cover = find("library_600x900");
-    game_art(find("icon"), find("library_hero"), cover)
-}
-
-/// The user's non-Steam shortcuts that decanter didn't export itself: an
-/// absolute `Exe` that exists, with the grid art Steam keeps for it.
 fn shortcuts(root: &Path) -> Vec<SteamGame> {
-    let Some(user) = steam::local_user_id(root) else {
-        return Vec::new();
-    };
-    let path = steam::shortcuts_vdf_path(root, &user);
-    let Some((_, entries)) = std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| steam::binary_vdf::decode(&bytes).ok())
-    else {
-        return Vec::new();
-    };
-    let grid = steam::grid_dir(root, &user);
-    entries
-        .as_map()
+    steam::non_steam_shortcuts(root)
         .into_iter()
-        .flatten()
-        .filter_map(|(_, entry)| {
-            let name = entry.get("AppName")?.as_str()?.trim();
-            let executable = PathBuf::from(entry.get("Exe")?.as_str()?.trim_matches('"'));
-            let exported = entry
-                .get("tags")?
-                .as_map()
-                .is_some_and(|tags| tags.iter().any(|(_, tag)| tag.as_str() == Some(steam::export::TAG)));
-            if name.is_empty() || exported || !executable.is_absolute() || !executable.is_file() {
-                return None;
-            }
-            let id = steam::grid_appid(entry.get("appid")?.as_int()?);
-            let find = |suffix: &str| {
-                IMAGE_EXTENSIONS
-                    .iter()
-                    .map(|extension| grid.join(format!("{id}{suffix}.{extension}")))
-                    .find(|path| path.is_file())
-            };
-            let cover = find("p");
-            Some(SteamGame {
-                name: name.to_owned(),
-                folder: executable.parent()?.to_path_buf(),
-                art: game_art(find("_icon"), find("_hero"), cover),
-                executable: Some(executable),
-            })
+        .map(|shortcut| SteamGame {
+            name: shortcut.name,
+            folder: shortcut.start_dir,
+            art: game_art(shortcut.art),
+            executable: Some(shortcut.executable),
         })
         .collect()
 }
 
 /// The icon falls back to the cover when Steam keeps none.
-fn game_art(icon: Option<PathBuf>, hero: Option<PathBuf>, cover: Option<PathBuf>) -> GameArt {
+fn game_art(art: SteamArt) -> GameArt {
     let url = |path: PathBuf| file_url(&path);
     GameArt {
-        icon: icon.or_else(|| cover.clone()).map(url),
-        hero: hero.map(url),
-        cover: cover.map(url),
+        icon: art.icon.or_else(|| art.cover.clone()).map(url),
+        hero: art.hero.map(url),
+        cover: art.cover.map(url),
     }
 }

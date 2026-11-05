@@ -48,7 +48,7 @@ pub struct Artwork {
 
 /// Tag every decanter-written entry carries, so the user can tell
 /// decanter's own shortcuts apart from ones they added by hand.
-pub const TAG: &str = "Decanter";
+pub(super) const TAG: &str = "Decanter";
 
 /// Writes or updates this game's shortcut entry and places `artwork`
 /// under the grid dir, returning the legacy appid to persist.
