@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: "一時停止中の %{title} のダウ
 library.detail.install.button: "インストール"
 library.detail.install.unavailable: "GOG はこのエディションのダウンロードを提供していません"
 library.detail.install.failed: "インストールに失敗しました: %{error}"
+library.detail.move.waiting: '%{to} への移動を待機中'
+library.detail.move.failed: '移動に失敗しました: %{error}'
 library.detail.install.dismiss: "閉じる"
 library.detail.install.dialog_title: "インストール — %{title}"
 library.detail.install.folder: "フォルダー"

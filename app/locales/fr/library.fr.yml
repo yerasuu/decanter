@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: Le téléchargement en pause de %{titl
 library.detail.install.button: INSTALLER
 library.detail.install.unavailable: GOG ne propose aucun téléchargement pour cette édition
 library.detail.install.failed: 'Échec de l’installation : %{error}'
+library.detail.move.waiting: 'En attente du déplacement vers %{to}'
+library.detail.move.failed: 'Échec du déplacement : %{error}'
 library.detail.install.dismiss: Ignorer
 library.detail.install.dialog_title: Installation — %{title}
 library.detail.install.folder: Dossier

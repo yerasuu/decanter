@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: '일시 중지된 다운로드(%{title
 library.detail.install.button: 설치
 library.detail.install.unavailable: GOG에서 이 에디션의 다운로드를 제공하지 않습니다
 library.detail.install.failed: '설치 실패: %{error}'
+library.detail.move.waiting: '%{to}(으)로 이동 대기 중'
+library.detail.move.failed: '이동 실패: %{error}'
 library.detail.install.dismiss: 닫기
 library.detail.install.dialog_title: '설치 — %{title}'
 library.detail.install.folder: 폴더

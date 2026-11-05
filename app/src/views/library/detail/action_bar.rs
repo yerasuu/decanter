@@ -6,12 +6,12 @@ use rust_i18n::t;
 use super::install_dialog::install_dialog;
 use super::{BarState, DetailView};
 use crate::capabilities::Caps;
-use crate::state::{AppState, Download, InstallStatus};
+use crate::state::{AppState, Download, InstallStatus, MoveKey, MoveStatus, move_fraction, moving_text};
 use crate::theme;
 use crate::views::downloads::{download_actions, progress_lines};
 use crate::views::library::install::{self, InstallRequest};
 use crate::views::library::{actions, open_properties};
-use crate::widgets::{ButtonKind, button, tooltip};
+use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
 
 impl DetailView {
     pub(super) fn action_bar(&self, game: &Game, bar_state: BarState, window: &Window, cx: &Context<Self>) -> Div {
@@ -21,19 +21,28 @@ impl DetailView {
             return bar.children(self.install_action(game, bar_state, window, cx));
         }
         let properties_game = game.clone();
+        let relocation = relocation(game, cx);
+        let is_moving = relocation.as_ref().is_some_and(|(live, _)| *live);
         bar.child(play_action(
             game,
             bar_state.launch,
             bar_state.running,
+            is_moving,
             &self.primary,
             cx,
         ))
-        .children(self.uninstall_action(game, &bar_state.dlcs, cx))
+        .children(
+            (!is_moving)
+                .then(|| self.uninstall_action(game, &bar_state.dlcs, cx))
+                .into_iter()
+                .flatten(),
+        )
         .child(
             button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
                 .tooltip(tooltip(t!("library.properties.title")))
                 .on_click(move |_, _, cx| open_properties(&properties_game, cx)),
         )
+        .children(relocation.map(|(_, lines)| lines))
     }
 
     /// Always safe to call — uninstalling something that isn't installed is
@@ -270,6 +279,7 @@ fn play_action(
     game: &Game,
     launch: Option<InstalledGame>,
     running: bool,
+    is_moving: bool,
     primary: &FocusHandle,
     cx: &Context<DetailView>,
 ) -> AnyElement {
@@ -287,12 +297,72 @@ fn play_action(
                 actions::stop_game(account_id.clone(), product_id.clone(), cx);
             })
     } else {
-        button("play", ButtonKind::Play, t!("library.detail.play"), false)
+        button("play", ButtonKind::Play, t!("library.detail.play"), is_moving)
             .track_focus(primary)
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.show_log(cx);
-                actions::launch_game(account_id.clone(), installed.clone(), cx);
-            }))
+            .when(!is_moving, |play| {
+                play.on_click(cx.listener(move |this, _, _, cx| {
+                    this.show_log(cx);
+                    actions::launch_game(account_id.clone(), installed.clone(), cx);
+                }))
+            })
     };
     Caps::get(cx).gate_or(Feature::Play, action, t!("library.detail.play_unavailable"))
+}
+
+/// The game's move in the queue, as the bar and line shown under its actions,
+/// and whether it still holds the game's files: a queued or running move does,
+/// a failed one is only reported until the queue is cleared.
+fn relocation(game: &Game, cx: &Context<DetailView>) -> Option<(bool, AnyElement)> {
+    let key = MoveKey::Game {
+        account_id: game.account_id.clone(),
+        game_id: game.id.clone(),
+    };
+    let queue = AppState::get(cx).moves.read(cx);
+    let job = queue.jobs().iter().rev().find(|job| job.key == key)?;
+    let label = |text: String| {
+        div()
+            .text_size(px(11.))
+            .text_color(rgb(theme::TEXT_MUTED))
+            .truncate()
+            .child(text)
+            .into_any_element()
+    };
+    let bar_id = "move-bar";
+    let (live, lines) = match &job.status {
+        MoveStatus::Queued => (
+            true,
+            vec![
+                progress_bar(bar_id, None, 4.).into_any_element(),
+                label(t!("library.detail.move.waiting", to = job.to.display()).into_owned()),
+            ],
+        ),
+        MoveStatus::Moving(progress) => (
+            true,
+            vec![
+                progress_bar(
+                    bar_id,
+                    progress.snapshot().and_then(|(done, total)| move_fraction(done, total)),
+                    4.,
+                )
+                .into_any_element(),
+                label(moving_text(progress)),
+            ],
+        ),
+        MoveStatus::Failed(err) => (
+            false,
+            vec![theme::error(t!("library.detail.move.failed", error = err)).into_any_element()],
+        ),
+        MoveStatus::Skipped(reason) => (false, vec![label(reason.to_string())]),
+        MoveStatus::Moved => return None,
+    };
+    Some((
+        live,
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .min_w(px(220.))
+            .children(lines)
+            .into_any_element(),
+    ))
 }

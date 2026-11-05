@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: 'Приостановленная за
 library.detail.install.button: 'УСТАНОВИТЬ'
 library.detail.install.unavailable: 'GOG не предлагает загрузку этого издания'
 library.detail.install.failed: 'Не удалось установить: %{error}'
+library.detail.move.waiting: 'Ожидает перемещения в %{to}'
+library.detail.move.failed: 'Не удалось переместить: %{error}'
 library.detail.install.dismiss: 'Скрыть'
 library.detail.install.dialog_title: 'Установка — %{title}'
 library.detail.install.folder: 'Папка'

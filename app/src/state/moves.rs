@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use decanter_core::InstalledGame;
 use gpui::{Context, Entity, EventEmitter, Task};
+use rust_i18n::t;
 
 use super::{GogLibrary, Ps};
 use crate::external::transfer::Progress;
@@ -487,4 +488,28 @@ pub fn present_folders(profile_id: &str) -> Vec<PathBuf> {
         .into_iter()
         .map(PathBuf::from);
     primary.into_iter().chain(extra).filter(|root| root.is_dir()).collect()
+}
+
+/// `done` of `total` as the bar draws it, to a thousandth.
+pub fn fraction(done: u64, total: u64) -> Option<f64> {
+    let permille = done.saturating_mul(1000).checked_div(total)?.min(1000);
+    u32::try_from(permille)
+        .ok()
+        .map(|permille| f64::from(permille) / 1000.0)
+}
+
+pub fn moving_text(progress: &Progress) -> String {
+    progress
+        .snapshot()
+        .map_or_else(
+            || t!("storage.moving.started"),
+            |(done, total)| {
+                t!(
+                    "storage.moving.progress",
+                    done = crate::format::bytes(done),
+                    total = crate::format::bytes(total)
+                )
+            },
+        )
+        .into_owned()
 }

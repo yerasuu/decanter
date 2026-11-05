@@ -16,7 +16,10 @@ use crate::views::settings::Tab as SettingsTab;
 
 pub use background::{Background, Download, DownloadKey, DownloadKind, InstallStatus, VerifyOffer};
 pub use gog_library::{GogLibrary, LibraryState, ModsState};
-pub use moves::{Movable, MoveFinished, MoveJob, MoveKey, MoveQueue, MoveStatus, Step as MoveStep, present_folders};
+pub use moves::{
+    Movable, MoveFinished, MoveJob, MoveKey, MoveQueue, MoveStatus, Step as MoveStep, fraction as move_fraction,
+    moving_text, present_folders,
+};
 pub use ps::{
     Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
     folder_error as ps_folder_error, job_label, job_target, online_error, per_game_error, vk_layer_unavailable_text,

@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: "Verrà eliminato anche il download in
 library.detail.install.button: INSTALLA
 library.detail.install.unavailable: GOG non offre alcun download per questa edizione
 library.detail.install.failed: "Installazione non riuscita: %{error}"
+library.detail.move.waiting: 'In attesa di spostamento in %{to}'
+library.detail.move.failed: 'Spostamento non riuscito: %{error}'
 library.detail.install.dismiss: Ignora
 library.detail.install.dialog_title: Installa — %{title}
 library.detail.install.folder: Cartella

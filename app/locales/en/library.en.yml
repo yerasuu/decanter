@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: 'The paused download of %{title} (%{si
 library.detail.install.button: INSTALL
 library.detail.install.unavailable: GOG offers no download for this edition
 library.detail.install.failed: 'Install failed: %{error}'
+library.detail.move.waiting: 'Waiting to move to %{to}'
+library.detail.move.failed: 'Move failed: %{error}'
 library.detail.install.dismiss: Dismiss
 library.detail.install.dialog_title: Install — %{title}
 library.detail.install.folder: Folder

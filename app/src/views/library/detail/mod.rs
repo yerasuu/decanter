@@ -164,6 +164,7 @@ impl DetailView {
         cx.observe(&model, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.library, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
+        cx.observe(&state.moves, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.session, |_, _, cx| cx.notify()).detach();
         Self {
             model,

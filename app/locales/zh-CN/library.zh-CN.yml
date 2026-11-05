@@ -112,6 +112,8 @@ library.detail.uninstall.paused_download: "已暂停的 %{title} 下载（%{size
 library.detail.install.button: "安装"
 library.detail.install.unavailable: "GOG 未提供此版本的下载"
 library.detail.install.failed: "安装失败：%{error}"
+library.detail.move.waiting: '等待移动到 %{to}'
+library.detail.move.failed: '移动失败：%{error}'
 library.detail.install.dismiss: "关闭"
 library.detail.install.dialog_title: "安装 — %{title}"
 library.detail.install.folder: "文件夹"

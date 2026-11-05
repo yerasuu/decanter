@@ -8,9 +8,8 @@ use gpui::{AnyElement, Context, SharedString, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::{Dump, StorageView};
-use crate::external::transfer::Progress;
 use crate::i18n::Text;
-use crate::state::{Movable, MoveJob, MoveKey, MoveStatus, MoveStep as Step};
+use crate::state::{Movable, MoveJob, MoveKey, MoveStatus, MoveStep as Step, move_fraction, moving_text};
 use crate::theme;
 use crate::widgets::reveal::reveal;
 use crate::widgets::select::Select;
@@ -328,7 +327,7 @@ impl StorageView {
                 .gap_1()
                 .child(progress_bar(
                     ("storage-queue-bar", index),
-                    progress.snapshot().and_then(|(done, total)| fraction(done, total)),
+                    progress.snapshot().and_then(|(done, total)| move_fraction(done, total)),
                     4.,
                 ))
                 .child(theme::muted(moving_text(progress)).text_size(px(12.)))
@@ -412,28 +411,4 @@ impl StorageView {
                 .children(buttons),
         )
     }
-}
-
-/// `done` of `total` as the bar draws it, to a thousandth.
-fn fraction(done: u64, total: u64) -> Option<f64> {
-    let permille = done.saturating_mul(1000).checked_div(total)?.min(1000);
-    u32::try_from(permille)
-        .ok()
-        .map(|permille| f64::from(permille) / 1000.0)
-}
-
-fn moving_text(progress: &Progress) -> String {
-    progress
-        .snapshot()
-        .map_or_else(
-            || t!("storage.moving.started"),
-            |(done, total)| {
-                t!(
-                    "storage.moving.progress",
-                    done = crate::format::bytes(done),
-                    total = crate::format::bytes(total)
-                )
-            },
-        )
-        .into_owned()
 }
