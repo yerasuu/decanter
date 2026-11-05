@@ -17,6 +17,9 @@ pub const VULKAN_ONLY_EGL_VENDORS: &str = "/nonexistent/decanter-vulkan-only.jso
 /// have broken Steam's own runtime before; `GLIBC_TUNABLES` is the malloc
 /// arena cap AppRun sets, sized for a launcher, not a game; and a browser
 /// started without EGL drivers loses GPU acceleration for its whole life.
+/// `GIO_LAUNCHED_DESKTOP_FILE` names decanter's own desktop entry when the
+/// menu opened it; inherited by Steam and its games, the desktop took their
+/// windows for decanter's and showed decanter's icon on them.
 ///
 /// The dev shell also points Vulkan at nix's own Mesa (`shell.nix`), which
 /// only decanter's own nix-built binary can load. A game inside Steam's
@@ -29,7 +32,9 @@ pub fn strip_launcher_env(command: &mut Command) {
     command
         .env_remove("LD_LIBRARY_PATH")
         .env_remove("LD_PRELOAD")
-        .env_remove("GLIBC_TUNABLES");
+        .env_remove("GLIBC_TUNABLES")
+        .env_remove("GIO_LAUNCHED_DESKTOP_FILE")
+        .env_remove("GIO_LAUNCHED_DESKTOP_FILE_PID");
     if std::env::var_os("__EGL_VENDOR_LIBRARY_FILENAMES").as_deref() == Some(OsStr::new(VULKAN_ONLY_EGL_VENDORS)) {
         command.env_remove("__EGL_VENDOR_LIBRARY_FILENAMES");
     }
