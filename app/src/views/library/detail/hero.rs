@@ -49,10 +49,10 @@ pub(super) fn hero(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(if storefront == Storefront::Gog {
-                            theme::badge("GOG", true)
-                        } else {
-                            theme::badge(t!("library.detail.external"), false)
+                        .child(match storefront {
+                            Storefront::Gog => theme::badge("GOG", true),
+                            Storefront::Steam => theme::badge("Steam", true),
+                            _ => theme::badge(t!("library.detail.external"), false),
                         })
                         .when(is_mod, |badges| {
                             badges.child(theme::badge(t!("library.mods.badge"), true))

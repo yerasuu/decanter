@@ -54,6 +54,8 @@ pub struct ExternalView {
     found: HashMap<String, Vec<Detected>>,
     /// Steam's own games and shortcuts that aren't in the library yet.
     steam: Vec<SteamGame>,
+    /// Why the last Steam entry couldn't be added.
+    steam_error: Option<Text>,
     _scan: Option<Task<()>>,
     api_key: Entity<TextInput>,
     key_status: Option<Text>,
@@ -98,6 +100,7 @@ impl ExternalView {
             form: None,
             found: HashMap::new(),
             steam: Vec::new(),
+            steam_error: None,
             _scan: None,
             api_key,
             key_status: None,
@@ -174,6 +177,7 @@ impl ExternalView {
             return;
         };
         let added: HashSet<PathBuf> = self.games.iter().filter_map(crate::core::executable_for).collect();
+        let entries = crate::external::steam::entries::added(&profile_id);
         let hosts: Vec<(String, PathBuf)> = self
             .games
             .iter()
@@ -196,7 +200,7 @@ impl ExternalView {
                     })
                     .filter(|(_, new)| !new.is_empty())
                     .collect::<HashMap<_, _>>();
-                (found, crate::external::steam::detect(&added))
+                (found, crate::external::steam::detect(&added, &entries))
             })
             .await
             .unwrap_or_default();
@@ -206,6 +210,16 @@ impl ExternalView {
                 cx.notify();
             });
         }));
+    }
+
+    /// Files `found` as a Steam entry, which Steam launches, and shows it in
+    /// the list of games.
+    fn add_steam_entry(&mut self, found: &SteamGame, cx: &mut Context<Self>) {
+        let Some(profile_id) = self.profile_id.as_deref() else {
+            return;
+        };
+        self.steam_error = crate::external::steam::entries::add(profile_id, found).err();
+        self.reload(cx);
     }
 
     /// Re-reads the list here and the library's copy of it.
@@ -384,6 +398,24 @@ impl ExternalView {
             .enumerate()
             .map(|(index, game)| {
                 let found = game.clone();
+                let through_steam = game.app_id.is_some().then(|| {
+                    let found = game.clone();
+                    button(
+                        ("external-add-steam-entry", index),
+                        ButtonKind::Primary,
+                        t!("external.games.steam.add_entry"),
+                        false,
+                    )
+                    .tooltip(tooltip(t!("external.games.steam.add_entry_hint")))
+                    .on_click(cx.listener(move |this, _, _, cx| this.add_steam_entry(&found, cx)))
+                });
+                // Second beside a Steam entry, since by its executable the
+                // game runs without Steam.
+                let (by_executable, label) = if through_steam.is_some() {
+                    (ButtonKind::Secondary, t!("external.games.steam.add_executable"))
+                } else {
+                    (ButtonKind::Primary, t!("external.games.add_found"))
+                };
                 theme::list_row(("external-steam", index), false)
                     .child(icon(game.art.icon.as_deref()))
                     .child(
@@ -395,14 +427,10 @@ impl ExternalView {
                             .child(div().font_weight(FontWeight::SEMIBOLD).child(game.name.clone()))
                             .child(theme::muted(game.folder.display().to_string()).text_size(px(12.))),
                     )
+                    .children(through_steam)
                     .child(
-                        button(
-                            ("external-add-steam", index),
-                            ButtonKind::Primary,
-                            t!("external.games.add_found"),
-                            false,
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| this.start_steam(&found, cx))),
+                        button(("external-add-steam", index), by_executable, label, false)
+                            .on_click(cx.listener(move |this, _, _, cx| this.start_steam(&found, cx))),
                     )
                     .into_any_element()
             })
@@ -417,6 +445,7 @@ impl ExternalView {
                     .child(t!("external.games.steam.title")),
             )
             .child(theme::muted(t!("external.games.steam.hint")))
+            .when_some(self.steam_error.as_ref(), |column, err| column.child(theme::error(err)))
             .child(theme::card().children(rows))
     }
 

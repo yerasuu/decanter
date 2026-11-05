@@ -134,3 +134,6 @@ external.drop.edit: Bearbeiten
 external.drop.undo: Rückgängig
 external.drop.undo_running: Beende das Spiel, bevor du es rückgängig machst
 external.drop.close: Schließen
+external.games.steam.add_entry: 'Über Steam hinzufügen'
+external.games.steam.add_entry_hint: 'Steam startet das Spiel mit eigenem Proton und eigenen Einstellungen; die Spielzeit wird trotzdem hier gezählt.'
+external.games.steam.add_executable: 'Über die Programmdatei hinzufügen'

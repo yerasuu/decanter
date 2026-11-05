@@ -16,6 +16,9 @@ use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
 impl DetailView {
     pub(super) fn action_bar(&self, game: &Game, bar_state: BarState, window: &Window, cx: &Context<Self>) -> Div {
         let bar = div().pt(px(24.)).px(px(32.)).flex().items_center().gap(px(10.));
+        if game.storefront == Storefront::Steam {
+            return bar.children(self.steam_actions(game, bar_state, cx));
+        }
         let is_installed = game.install_state.as_ref().is_some_and(|state| state.installed);
         if !is_installed {
             return bar.children(self.install_action(game, bar_state, window, cx));
@@ -54,7 +57,7 @@ impl DetailView {
         }
         // An external game's own files aren't decanter's to delete; only
         // its entry and prefix go.
-        let (label, confirm) = if game.storefront == Storefront::Unspecified {
+        let (label, confirm) = if matches!(game.storefront, Storefront::Unspecified | Storefront::Steam) {
             (
                 t!("library.detail.uninstall.remove"),
                 t!("library.detail.uninstall.confirm_remove"),
@@ -111,6 +114,40 @@ impl DetailView {
         if let Some(err) = &uninstall.error {
             elements.push(theme::error(err).into_any_element());
         }
+        elements
+    }
+
+    /// A Steam entry: Steam starts it, and installs and uninstalls it, so
+    /// decanter offers JUGAR only while Steam has it installed, and only
+    /// ever removes the entry.
+    fn steam_actions(&self, game: &Game, bar_state: BarState, cx: &Context<Self>) -> Vec<AnyElement> {
+        let is_installed = game.install_state.as_ref().is_some_and(|state| state.installed);
+        let mut elements = Vec::with_capacity(5);
+        if is_installed {
+            elements.push(play_action(
+                game,
+                bar_state.launch,
+                bar_state.running,
+                false,
+                &self.primary,
+                cx,
+            ));
+            if bar_state.starting {
+                elements.push(theme::muted(t!("library.steam.starting")).into_any_element());
+            }
+        } else {
+            elements.push(theme::muted(t!("library.steam.not_installed")).into_any_element());
+        }
+        if !bar_state.running {
+            elements.extend(self.uninstall_action(game, &[], cx));
+        }
+        let properties_game = game.clone();
+        elements.push(
+            button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
+                .tooltip(tooltip(t!("library.properties.title")))
+                .on_click(move |_, _, cx| open_properties(&properties_game, cx))
+                .into_any_element(),
+        );
         elements
     }
 
@@ -229,13 +266,26 @@ impl DetailView {
     fn uninstall(&mut self, account_id: String, product_id: String, cx: &mut Context<Self>) {
         self.local.uninstall.busy = true;
         cx.notify();
-        let is_external = AppState::get(cx)
+        let storefront = AppState::get(cx)
             .library
             .read(cx)
             .games
             .iter()
-            .any(|entry| entry.game.id == product_id && entry.game.storefront == Storefront::Unspecified);
-        if is_external {
+            .find(|entry| entry.game.id == product_id)
+            .map(|entry| entry.game.storefront);
+        if storefront == Some(Storefront::Steam) {
+            let result = crate::external::steam::entries::remove(&account_id, &product_id);
+            AppState::get(cx)
+                .library
+                .clone()
+                .update(cx, |library, cx| library.refresh_external(cx));
+            let uninstall = &mut self.local.uninstall;
+            uninstall.error = result.err();
+            uninstall.busy = false;
+            uninstall.confirming = false;
+            return;
+        }
+        if storefront == Some(Storefront::Unspecified) {
             let result = crate::external::remove(&account_id, &product_id);
             AppState::get(cx)
                 .library

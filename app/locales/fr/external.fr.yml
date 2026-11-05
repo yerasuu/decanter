@@ -134,3 +134,6 @@ external.drop.edit: Modifier
 external.drop.undo: Annuler
 external.drop.undo_running: Arrêtez le jeu avant d’annuler
 external.drop.close: Fermer
+external.games.steam.add_entry: 'Ajouter via Steam'
+external.games.steam.add_entry_hint: 'Steam lance le jeu avec son propre Proton et ses réglages ; le temps de jeu reste compté ici.'
+external.games.steam.add_executable: 'Ajouter par l''exécutable'

@@ -119,6 +119,8 @@ fn member_of(profile_id: Option<&str>, product_id: &str) -> Vec<String> {
 struct BarState {
     launch: Option<InstalledGame>,
     running: bool,
+    /// A Steam entry Steam was asked to start, whose game hasn't shown up.
+    starting: bool,
     /// Not on `Game`: it's a fact about the product, and it lives on the
     /// library entry alongside `kind` and `parent_id`.
     installable: bool,
@@ -230,6 +232,7 @@ impl Render for DetailView {
         }
         let background = state.background.read(cx);
         let running = background.running.contains(&game.id);
+        let starting = background.starting.contains(&game.id);
         let download = background
             .installing
             .iter()
@@ -262,6 +265,7 @@ impl Render for DetailView {
         let bar = BarState {
             launch,
             running,
+            starting,
             installable,
             download,
             confirming_cancel,
@@ -273,7 +277,8 @@ impl Render for DetailView {
             window.focus(&self.primary, cx);
         }
 
-        let external = game.storefront == Storefront::Unspecified;
+        // Neither an external game nor a Steam entry has achievements of GOG's.
+        let external = game.storefront != Storefront::Gog;
         let hidden = (external && self.local.tab == DetailTab::Achievements)
             || (!is_installed && self.local.tab == DetailTab::Log);
         let active = if hidden { DetailTab::Summary } else { self.local.tab };

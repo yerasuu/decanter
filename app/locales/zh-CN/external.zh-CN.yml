@@ -134,3 +134,6 @@ external.drop.edit: "编辑"
 external.drop.undo: "撤销"
 external.drop.undo_running: "请先停止游戏再撤销"
 external.drop.close: "关闭"
+external.games.steam.add_entry: '通过 Steam 添加'
+external.games.steam.add_entry_hint: 'Steam 使用其自己的 Proton 和设置启动游戏；游戏时间仍会在此处统计。'
+external.games.steam.add_executable: '通过可执行文件添加'

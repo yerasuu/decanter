@@ -199,6 +199,17 @@ pub fn launch(steam_root: &Path) -> io::Result<()> {
     run_steam(steam_root, "")
 }
 
+/// Hands `url` to Steam the way Steam's desktop entry does (`steam %U`):
+/// to the running client, or starting it first.
+///
+/// # Errors
+/// Fails if neither `steam` on `PATH` nor `steam_root`'s own launcher
+/// script could be started at all.
+#[inline]
+pub fn open_url(steam_root: &Path, url: &str) -> io::Result<()> {
+    run_steam(steam_root, url)
+}
+
 /// Runs `steam <arg>` (skipping the arg if empty), falling back to
 /// `steam_root`'s own [`LAUNCHER`] when `steam` isn't on `PATH` —
 /// the same binary Steam Deck's own desktop entry resolves to, but not

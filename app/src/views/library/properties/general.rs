@@ -134,14 +134,15 @@ impl Render for GeneralTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let target = &self.target;
         let external = target.storefront == decanter_core::Storefront::Unspecified;
+        let is_gog = target.storefront == decanter_core::Storefront::Gog;
         let mut table = rows()
             .child(row(t!("library.properties.general.title"), target.title.clone()))
             .child(row(
                 t!("library.filters.store.title"),
-                if external {
-                    t!("library.detail.external")
-                } else {
-                    "GOG".into()
+                match target.storefront {
+                    decanter_core::Storefront::Unspecified => t!("library.detail.external"),
+                    decanter_core::Storefront::Steam => "Steam".into(),
+                    _ => "GOG".into(),
                 },
             ))
             .when(!external, |table| {
@@ -152,7 +153,7 @@ impl Render for GeneralTab {
             });
         if let Some(installed) = &self.installed {
             table = table
-                .when(!external, |table| {
+                .when(is_gog, |table| {
                     table.child(row(t!("library.properties.general.build"), installed.build_id.clone()))
                 })
                 .children(

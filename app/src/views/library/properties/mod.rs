@@ -99,6 +99,10 @@ const TABS: &[Tab] = &[
 /// DLC, cloud saves) applies to a file someone pointed at.
 const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 
+/// Steam keeps a Steam entry's files, Proton and settings: nothing but what
+/// decanter knows of it is decanter's to show.
+const STEAM_TABS: &[Tab] = &[Tab::General];
+
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
 /// later — the window manages its own lifetime, closed the same way any
@@ -167,10 +171,10 @@ impl PropertiesWindow {
     }
 
     fn tabs(&self) -> &'static [Tab] {
-        let tabs = if self.target.storefront == Storefront::Unspecified {
-            EXTERNAL_TABS
-        } else {
-            TABS
+        let tabs = match self.target.storefront {
+            Storefront::Unspecified => EXTERNAL_TABS,
+            Storefront::Steam => STEAM_TABS,
+            _ => TABS,
         };
         if crate::launch::in_prefixes() {
             tabs

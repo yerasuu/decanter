@@ -10,6 +10,7 @@
 //! functions: Proton in a prefix of its own (`umu`), a Linux program run as
 //! itself (`linux_native`), the system's own program on Windows and macOS
 //! (`native`), or a program of the Raven section run by Raven (`raven`).
+//! A Steam entry is none of them: Steam starts it (`steam`).
 //! Every kind is built on every system; which one a game takes is decided
 //! when it launches, from the system, where its manifest is filed and its file.
 
@@ -17,6 +18,7 @@ mod linux_native;
 mod native;
 mod pe;
 mod raven;
+mod steam;
 mod umu;
 
 use std::path::{Path, PathBuf};
@@ -191,6 +193,9 @@ pub async fn start(
     background: Entity<Background>,
     cx: &mut AsyncApp,
 ) -> Option<std::time::Duration> {
+    if crate::external::steam::entries::app_id(&game).is_some() {
+        return steam::start(&account_id, &game, &background, cx).await;
+    }
     let Some(executable) = crate::core::executable_for(&game) else {
         tracing::error!(game_id = %game.game_id, "no launch executable");
         return None;
@@ -539,6 +544,9 @@ pub async fn stop(account_id: String, game_id: String, background: Entity<Backgr
     if crate::raven::is_program(&account_id, &game_id) {
         return raven::stop(&game_id).await;
     }
+    if let Some(app_id) = steam::entry(&account_id, &game_id) {
+        return steam::stop(&game_id, app_id).await;
+    }
     match Kind::host() {
         Kind::Umu | Kind::LinuxNative => umu::stop(&account_id, &game_id).await,
         Kind::Native => native::stop(&account_id, &game_id).await,
@@ -551,6 +559,9 @@ pub async fn stop(account_id: String, game_id: String, background: Entity<Backgr
 pub fn is_running(account_id: &str, game_id: &str) -> bool {
     if crate::raven::is_program(account_id, game_id) {
         return raven::is_running(game_id);
+    }
+    if let Some(app_id) = steam::entry(account_id, game_id) {
+        return steam::is_running(app_id);
     }
     match Kind::host() {
         Kind::Umu | Kind::LinuxNative => umu::is_running(account_id, game_id),

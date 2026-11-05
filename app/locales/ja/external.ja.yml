@@ -134,3 +134,6 @@ external.drop.edit: "編集"
 external.drop.undo: "元に戻す"
 external.drop.undo_running: "元に戻す前にゲームを終了してください"
 external.drop.close: "閉じる"
+external.games.steam.add_entry: 'Steam 経由で追加'
+external.games.steam.add_entry_hint: 'Steam が独自の Proton と設定でゲームを起動します。プレイ時間はここで記録されます。'
+external.games.steam.add_executable: '実行ファイルで追加'

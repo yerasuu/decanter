@@ -51,7 +51,7 @@ minisign-verify.workspace = true
 # no use for either backend.
 gpui_platform = { workspace = true, features = ["wayland", "x11"] }
 ksni.workspace = true
-nix = { workspace = true, features = ["fs", "inotify", "user"] }
+nix = { workspace = true, features = ["fs", "inotify", "signal", "user"] }
 zbus.workspace = true
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]

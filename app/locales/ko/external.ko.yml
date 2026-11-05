@@ -134,3 +134,6 @@ external.drop.edit: 편집
 external.drop.undo: 실행 취소
 external.drop.undo_running: 실행 취소하기 전에 게임을 종료하세요
 external.drop.close: 닫기
+external.games.steam.add_entry: 'Steam을 통해 추가'
+external.games.steam.add_entry_hint: 'Steam이 자체 Proton과 설정으로 게임을 시작하며, 플레이 시간은 여기에서 계속 집계됩니다.'
+external.games.steam.add_executable: '실행 파일로 추가'

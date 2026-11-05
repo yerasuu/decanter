@@ -49,8 +49,8 @@ pub fn list(profile_id: &str) -> Vec<InstalledGame> {
     games
 }
 
-/// The library row for an external game, shaped like a GOG one so every
-/// shelf, filter and sort treats both alike.
+/// The library row for an external game or a Steam entry, shaped like a GOG
+/// one so every shelf, filter and sort treats them alike.
 pub fn entry(game: &InstalledGame) -> LibraryEntry {
     LibraryEntry {
         game: Game {
@@ -71,7 +71,7 @@ pub fn entry(game: &InstalledGame) -> LibraryEntry {
             publisher: None,
             rating: None,
             release_date: None,
-            storefront: Storefront::Unspecified,
+            storefront: game.storefront,
             title: game.name.clone(),
         },
         kind: GameKind::Game,

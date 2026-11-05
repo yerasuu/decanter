@@ -168,6 +168,9 @@ pub struct Background {
     /// external games window locks a running game's Eliminar with it. By game id, not prefix: a prefix belongs to exactly one
     /// (profile, game).
     pub running: HashSet<String>,
+    /// Of `running`, the Steam entries Steam was asked to start whose game
+    /// has not shown up yet.
+    pub starting: HashSet<String>,
     /// The latest run of each game, finished ones included, for its log.
     pub runs: HashMap<String, Entity<Job>>,
     /// Every GOG download in flight (installs, DLC, updates, branch and

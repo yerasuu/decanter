@@ -30,6 +30,10 @@ pub fn resolve_launch_target(account_id: &str, game: &Game) -> Option<InstalledG
         tracing::debug!(account_id, product_id, "no install manifest found, not launchable");
         return None;
     };
+    // Steam starts its own games, from no executable of decanter's.
+    if installed.storefront == decanter_core::Storefront::Steam {
+        return Some(installed);
+    }
     // No executable means installed-but-not-launchable, which the caller
     // renders differently from not installed at all.
     let Some(_) = installed.launch_executable.as_ref() else {
@@ -56,6 +60,10 @@ pub fn game_install_path(account_id: &str, product_id: &str) -> Option<std::path
     // executable it was pointed at lives.
     if installed.storefront == decanter_core::Storefront::Unspecified {
         return crate::core::executable_for(&installed).and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
+    }
+    // Wherever Steam has it now, if it still has it.
+    if installed.storefront == decanter_core::Storefront::Steam {
+        return crate::external::steam::entries::install_folder(&installed);
     }
     let Some(library) = crate::core::library_for_account(account_id)
         .inspect_err(|err| tracing::warn!(account_id, product_id, error = %err, "failed to resolve library root"))

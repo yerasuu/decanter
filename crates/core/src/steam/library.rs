@@ -47,6 +47,8 @@ pub struct SteamArt {
 /// A fully installed Steam app whose folder exists.
 #[derive(Clone)]
 pub struct InstalledApp {
+    /// The manifest's app id: decimal digits only, as its file name has it.
+    pub app_id: String,
     pub name: String,
     pub folder: PathBuf,
     pub art: SteamArt,
@@ -144,6 +146,7 @@ fn manifest(text: &str, file_app_id: &str, steamapps: &Path, cache: &Path) -> Op
         return None;
     }
     Some(InstalledApp {
+        app_id: file_app_id.to_owned(),
         name: name.to_owned(),
         art: library_art(cache, file_app_id),
         folder,

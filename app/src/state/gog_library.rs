@@ -420,6 +420,7 @@ fn external_entries(profile_id: &str) -> Vec<LibraryEntry> {
     crate::external::list(profile_id)
         .iter()
         .map(crate::external::entry)
+        .chain(crate::external::steam::entries::rows(profile_id))
         .collect()
 }
 

@@ -82,6 +82,8 @@ impl Folder {
         let mut games: Vec<InstalledGame> = owners
             .iter()
             .flat_map(|owner| library.scan(owner).into_values())
+            // Steam keeps a Steam entry's files, in its own library folders.
+            .filter(|game| game.storefront != Storefront::Steam)
             // An external game sharing a launcher's prefix is counted in the
             // launcher's size, not twice.
             .filter(|game| game.storefront != Storefront::Unspecified || game.prefix_of.is_none())
