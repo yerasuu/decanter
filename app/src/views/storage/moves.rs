@@ -11,6 +11,7 @@ use super::{Dump, StorageView};
 use crate::i18n::Text;
 use crate::state::{Movable, MoveJob, MoveKey, MoveStatus, MoveStep as Step, move_fraction, moving_text};
 use crate::theme;
+use crate::widgets::nav;
 use crate::widgets::reveal::reveal;
 use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
@@ -48,17 +49,24 @@ impl StorageView {
     fn select_box(&self, id: usize, key: MoveKey, cx: &Context<Self>) -> AnyElement {
         let queued = self.queue.read(cx).live(&key).is_some();
         let checked = !queued && self.selected.contains(&key);
-        checkbox(checked)
+        let hit_area = div()
             .id(("storage-select", id))
-            .when(queued, |b| b.opacity(0.4))
-            .when(!queued, |b| {
-                b.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
-                    if !this.selected.remove(&key) {
-                        this.selected.insert(key.clone());
-                    }
-                    cx.notify();
-                }))
-            })
+            .flex_none()
+            .p(px(12.))
+            // Cancels the padding in the row's layout so the larger target does not make rows taller.
+            .m(px(-12.))
+            .rounded(px(theme::RADIUS))
+            .child(checkbox(checked));
+        if queued {
+            return hit_area.opacity(0.4).into_any_element();
+        }
+        nav::tab_stop(hit_area.cursor_pointer())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if !this.selected.remove(&key) {
+                    this.selected.insert(key.clone());
+                }
+                cx.notify();
+            }))
             .into_any_element()
     }
 
