@@ -17,10 +17,11 @@
     reason = "several functions here cost more than the 512-byte threshold by design, same as crate::vdf"
 )]
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-use super::appid::{grid_appid, legacy_appid};
+use super::appid::{grid_appid, legacy_appid, legacy_grid_id};
 use super::binary_vdf::{self, Value};
 use super::process::SteamState;
 use super::{paths, process};
@@ -47,18 +48,20 @@ pub struct Own {
     pub launch_options: String,
 }
 
-/// Already-downloaded local image files, one per Steam artwork slot.
-/// `icon` becomes the entry's own `icon` field (the list-view icon); the
-/// rest land under the grid directory, keyed by the *grid* appid (see
-/// [`grid_appid`], distinct from the plain `appid` field). Absent fields
-/// are simply skipped — Steam shows no art for that slot rather than
-/// erroring.
+/// Already-downloaded local image files, one per Steam artwork slot, each copied into the grid
+/// directory under [`grid_appid`]. Steam reads a shortcut's icon from the entry's `icon` field
+/// rather than from the grid, so that field points at the copied `icon`. Only PNG and JPEG land,
+/// since Steam's library asks for `.jpg` and `.png` names alone; an absent or other file leaves
+/// that slot's art as it is.
 #[derive(Default)]
 pub struct Artwork {
     pub icon: Option<PathBuf>,
+    /// The wide capsule, 920x430 at Steam's size.
     pub capsule: Option<PathBuf>,
+    /// The vertical capsule, 600x900 at Steam's size.
     pub portrait: Option<PathBuf>,
     pub hero: Option<PathBuf>,
+    pub logo: Option<PathBuf>,
 }
 
 /// Tag every decanter-written entry carries, so the user can tell
@@ -68,9 +71,9 @@ pub(super) const TAG: &str = "Decanter";
 /// Writes or updates this game's shortcut entry and places `artwork`
 /// under the grid dir, returning the legacy appid to persist.
 ///
-/// An entry already present for this exact appid is replaced in place
-/// (same position in the file); otherwise a new one is appended. Entries
-/// this call didn't create are never touched.
+/// An entry already present for this exact appid is updated in place (same position in the file),
+/// keeping what Steam or the user set on it, such as when it was last played or whether it is
+/// hidden; otherwise a new one is appended. Entries this call didn't create are never touched.
 ///
 /// # Errors
 /// Fails if `shortcuts.vdf` exists but isn't valid binary VDF, or a file
@@ -80,14 +83,9 @@ pub fn sync(steam_root: &Path, user_id: &str, spec: &ShortcutSpec<'_>, artwork: 
     let exe_field = exe_field(spec.command);
     let start_dir_field = quote(&spec.command.start_dir.to_string_lossy());
     let appid = legacy_appid(&exe_field, spec.name);
-    let grid_id = grid_appid(appid);
 
-    let icon_dest = place_grid_image(steam_root, user_id, grid_id, "_icon", artwork.icon.as_deref())?;
-    place_grid_image(steam_root, user_id, grid_id, "", artwork.capsule.as_deref())?;
-    place_grid_image(steam_root, user_id, grid_id, "p", artwork.portrait.as_deref())?;
-    place_grid_image(steam_root, user_id, grid_id, "_hero", artwork.hero.as_deref())?;
-
-    let icon = icon_dest.map_or_else(String::new, |path| path.to_string_lossy().into_owned());
+    let icon = place_artwork(&paths::grid_dir(steam_root, user_id), appid, artwork)?
+        .map_or_else(String::new, |path| path.to_string_lossy().into_owned());
     let entry = Value::map([
         ("appid", appid.into()),
         ("AppName", spec.name.into()),
@@ -105,6 +103,7 @@ pub fn sync(steam_root: &Path, user_id: &str, spec: &ShortcutSpec<'_>, artwork: 
         ("DevkitOverrideAppID", 0.into()),
         ("LastPlayTime", 0.into()),
         ("FlatpakAppID", "".into()),
+        ("sortas", "".into()),
         ("tags", Value::map([("0", TAG.into())])),
     ]);
 
@@ -117,7 +116,7 @@ pub fn sync(steam_root: &Path, user_id: &str, spec: &ShortcutSpec<'_>, artwork: 
 }
 
 /// Removes the shortcut entry for `appid` (a no-op if it's already gone)
-/// and any grid artwork files under its [`grid_appid`], remaining entries
+/// and any grid artwork files under its [`grid_appid`] or [`legacy_grid_id`], remaining entries
 /// renumbered 0..N-1 the same way Steam's own UI leaves them after a
 /// manual removal.
 ///
@@ -133,7 +132,7 @@ pub fn remove(steam_root: &Path, user_id: &str, appid: i32) -> io::Result<()> {
         renumber(entries);
     }
     write_shortcuts(&path, &root)?;
-    remove_grid_art(steam_root, user_id, appid);
+    remove_grid_art(&paths::grid_dir(steam_root, user_id), appid);
     Ok(())
 }
 
@@ -157,13 +156,7 @@ pub fn find(steam_root: &Path, user_id: &str, matches: impl Fn(&str) -> bool) ->
 /// Fails if the file read exists but isn't valid binary VDF, or can't be read.
 #[inline]
 pub fn own_entries(steam_root: &Path, user_id: &str) -> io::Result<Vec<Own>> {
-    let pending = pending_path(steam_root, user_id);
-    let path = if pending.is_file() {
-        pending
-    } else {
-        paths::shortcuts_vdf_path(steam_root, user_id)
-    };
-    let root = read_shortcuts(&path)?;
+    let root = read_shortcuts(&read_target(steam_root, user_id))?;
     Ok(root
         .as_map()
         .into_iter()
@@ -211,26 +204,106 @@ pub fn retarget(steam_root: &Path, user_id: &str, appid: i32, command: &Command)
         && entries
             .iter()
             .any(|(_, entry)| entry.get("appid").and_then(Value::as_int) == Some(new_appid));
+    let dir = paths::grid_dir(steam_root, user_id);
     if is_taken {
         entries.remove(index);
         renumber(entries);
         write_shortcuts(&path, &root)?;
-        remove_grid_art(steam_root, user_id, appid);
+        remove_grid_art(&dir, appid);
         return Ok(Some(new_appid));
     }
-    let icon = move_grid_art(steam_root, user_id, appid, new_appid)?;
+    let icon = move_grid_art(&dir, appid, new_appid)?;
     if let Value::Map(fields) = &mut entries[index].1 {
         let start_dir = quote(&command.start_dir.to_string_lossy());
         set(fields, "appid", new_appid.into());
         set(fields, "Exe", exe.into());
         set(fields, "StartDir", start_dir.into());
         set(fields, "LaunchOptions", command.launch_options.as_str().into());
-        if let Some(icon) = icon {
+        if let Some(icon) = icon.filter(|_| is_own_icon(fields, &dir, appid)) {
             set(fields, "icon", icon.to_string_lossy().into_owned().into());
         }
     }
     write_shortcuts(&path, &root)?;
     Ok(Some(new_appid))
+}
+
+/// What a shortcut's grid holds, under the names Steam's library reads.
+pub struct GridArt {
+    pub icon: Option<PathBuf>,
+    pub portrait: Option<PathBuf>,
+}
+
+/// Brings the grid art of decanter's entry `appid` to the names Steam's library reads, places
+/// `artwork` beside it, and points the entry's `icon` field at the icon there. An icon the user
+/// picked in Steam is kept. The shortcuts file is only written when that field changes, so that an
+/// entry already in order stages nothing for a running Steam. `None` when there is no entry of
+/// decanter's under `appid`.
+///
+/// # Errors
+/// Fails if `shortcuts.vdf` exists but isn't valid binary VDF, a grid file can't be moved or
+/// written, or the rewritten file can't be written.
+#[inline]
+pub fn refresh_art(steam_root: &Path, user_id: &str, appid: i32, artwork: &Artwork) -> io::Result<Option<GridArt>> {
+    let current = read_shortcuts(&read_target(steam_root, user_id))?;
+    let Some(fields) = own_fields(&current, appid) else {
+        return Ok(None);
+    };
+    let dir = paths::grid_dir(steam_root, user_id);
+    let icon = place_artwork(&dir, appid, artwork)?;
+    let art = GridArt {
+        portrait: find_art(&dir, grid_appid(appid), "p"),
+        icon,
+    };
+    let Some(icon) = art.icon.as_ref().map(|icon| icon.to_string_lossy().into_owned()) else {
+        return Ok(Some(art));
+    };
+    let field = fields
+        .iter()
+        .find(|(key, _)| key == "icon")
+        .and_then(|(_, value)| value.as_str());
+    if field == Some(icon.as_str()) || !is_own_icon(fields, &dir, appid) {
+        return Ok(Some(art));
+    }
+    let path = resolve_write_target(steam_root, user_id)?;
+    let mut root = read_shortcuts(&path)?;
+    if let Value::Map(entries) = &mut root
+        && let Some((_, Value::Map(fields))) = entries
+            .iter_mut()
+            .find(|(_, entry)| is_own(entry) && entry.get("appid").and_then(Value::as_int) == Some(appid))
+    {
+        set(fields, "icon", icon.into());
+    }
+    write_shortcuts(&path, &root)?;
+    Ok(Some(art))
+}
+
+fn own_fields(root: &Value, appid: i32) -> Option<&[(String, Value)]> {
+    root.as_map()?
+        .iter()
+        .find(|(_, entry)| is_own(entry) && entry.get("appid").and_then(Value::as_int) == Some(appid))
+        .and_then(|(_, entry)| entry.as_map())
+}
+
+/// Whether the entry's `icon` field is empty or one of the icons decanter writes for `appid`, the
+/// only icon it may replace: any other path is one the user picked in Steam.
+fn is_own_icon(fields: &[(String, Value)], dir: &Path, appid: i32) -> bool {
+    let Some(icon) = fields
+        .iter()
+        .find(|(key, _)| key == "icon")
+        .and_then(|(_, value)| value.as_str())
+    else {
+        return true;
+    };
+    if icon.is_empty() {
+        return true;
+    }
+    let icon = Path::new(icon);
+    icon.parent() == Some(dir)
+        && icon.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+            grid_stems(appid)
+                .iter()
+                .any(|stem| art_extension(name, stem, "_icon").is_some())
+        })
 }
 
 fn is_own(entry: &Value) -> bool {
@@ -250,6 +323,16 @@ fn set(fields: &mut Vec<(String, Value)>, key: &str, value: Value) {
 /// The `Exe` field for `command`: the hash input of the appid, quotes included.
 fn exe_field(command: &Command) -> String {
     quote(&command.exe.to_string_lossy())
+}
+
+/// The staged change when one waits, since that is what Steam reads next; the real file otherwise.
+fn read_target(steam_root: &Path, user_id: &str) -> PathBuf {
+    let pending = pending_path(steam_root, user_id);
+    if pending.is_file() {
+        pending
+    } else {
+        paths::shortcuts_vdf_path(steam_root, user_id)
+    }
 }
 
 /// Where a staged change waits when Steam is running and can't be written
@@ -407,18 +490,38 @@ fn write_shortcuts(path: &Path, root: &Value) -> io::Result<()> {
     fs::rename(&tmp_path, path)
 }
 
+/// Fields of an entry that Steam or the user changes after decanter wrote it, which a new sync of
+/// the same entry keeps.
+const KEPT_FIELDS: [&str; 6] = [
+    "IsHidden",
+    "AllowDesktopConfig",
+    "AllowOverlay",
+    "OpenVR",
+    "LastPlayTime",
+    "sortas",
+];
+
 fn upsert_entry(root: &mut Value, appid: i32, entry: Value) {
     let Value::Map(entries) = root else {
         return;
     };
-    if let Some(slot) = entries
+    let Some(slot) = entries
         .iter_mut()
         .find(|(_, existing)| existing.get("appid").and_then(Value::as_int) == Some(appid))
-    {
-        slot.1 = entry;
-    } else {
+    else {
         let index = entries.len().to_string();
         entries.push((index, entry));
+        return;
+    };
+    let keeps_tags = is_own(&slot.1);
+    let (Value::Map(existing), Value::Map(fields)) = (&mut slot.1, entry) else {
+        return;
+    };
+    for (key, value) in fields {
+        let is_kept = KEPT_FIELDS.contains(&key.as_str()) || (keeps_tags && key == "tags");
+        if !is_kept || !existing.iter().any(|(existing, _)| *existing == key) {
+            set(existing, &key, value);
+        }
     }
 }
 
@@ -428,74 +531,137 @@ fn renumber(entries: &mut [(String, Value)]) {
     }
 }
 
-/// Copies `source` into the grid dir as `{grid_id}{suffix}.<ext>`, `<ext>`
-/// taken from `source`'s own extension (falls back to `jpg`, GOG's own
-/// predominant format). `None` in, `None` out — nothing to place.
-fn place_grid_image(
-    steam_root: &Path,
-    user_id: &str,
-    grid_id: u64,
-    suffix: &str,
-    source: Option<&Path>,
-) -> io::Result<Option<PathBuf>> {
+/// The grid names after a shortcut's id, one per artwork slot: the wide capsule, the vertical
+/// capsule, the hero, the logo, and the icon the entry's `icon` field points at.
+const GRID_SUFFIXES: [&str; 5] = ["", "p", "_hero", "_logo", "_icon"];
+
+/// The ids `appid`'s art may be named by, the one Steam's library reads first.
+fn grid_stems(appid: i32) -> [String; 2] {
+    [grid_appid(appid).to_string(), legacy_grid_id(appid).to_string()]
+}
+
+/// The extension of `name` when it is the image `{stem}{suffix}.<ext>` decanter writes; never a
+/// `{stem}.json`, which is Steam's own record of where the user moved the logo.
+fn art_extension<'name>(name: &'name str, stem: &str, suffix: &str) -> Option<&'name str> {
+    name.strip_prefix(stem)?
+        .strip_prefix(suffix)?
+        .strip_prefix('.')
+        .filter(|ext| {
+            ["png", "jpg", "jpeg"]
+                .iter()
+                .any(|known| ext.eq_ignore_ascii_case(known))
+        })
+}
+
+/// Moves `appid`'s art to the names Steam's library reads, then copies `artwork` over it, returning
+/// the icon now in the grid, if any.
+fn place_artwork(dir: &Path, appid: i32, artwork: &Artwork) -> io::Result<Option<PathBuf>> {
+    let icon = move_grid_art(dir, appid, appid)?;
+    let id = grid_appid(appid);
+    let placed = place_grid_image(dir, id, "_icon", artwork.icon.as_deref())?;
+    place_grid_image(dir, id, "", artwork.capsule.as_deref())?;
+    place_grid_image(dir, id, "p", artwork.portrait.as_deref())?;
+    place_grid_image(dir, id, "_hero", artwork.hero.as_deref())?;
+    place_grid_image(dir, id, "_logo", artwork.logo.as_deref())?;
+    Ok(placed.or(icon))
+}
+
+/// Copies `source` into `dir` as `{grid_id}{suffix}.<ext>`, `<ext>` from what the file holds rather
+/// than its name, since Steam asks for the art by name. `None` in, or a file that is neither PNG
+/// nor JPEG, places nothing.
+fn place_grid_image(dir: &Path, grid_id: u32, suffix: &str, source: Option<&Path>) -> io::Result<Option<PathBuf>> {
     let Some(source) = source else {
         return Ok(None);
     };
-    let dir = paths::grid_dir(steam_root, user_id);
-    fs::create_dir_all(&dir)?;
-    let ext = source.extension().and_then(|ext| ext.to_str()).unwrap_or("jpg");
-    let dest = dir.join(format!("{grid_id}{suffix}.{ext}"));
+    let Some(ext) = image_extension(source)? else {
+        tracing::warn!(
+            path = %source.display(),
+            slot = suffix,
+            "artwork is neither PNG nor JPEG, which Steam's library doesn't read; slot left as it is"
+        );
+        return Ok(None);
+    };
+    fs::create_dir_all(dir)?;
+    let stem = format!("{grid_id}{suffix}");
+    // Steam asks for `.jpg` before `.png`, so a copy of the other type left from an earlier sync
+    // would hide this one.
+    remove_art(dir, &stem, "");
+    let dest = dir.join(format!("{stem}.{ext}"));
     fs::copy(source, &dest)?;
     Ok(Some(dest))
 }
 
-/// The grid files Steam looks a shortcut's art up by, after its grid appid.
-const GRID_SUFFIXES: [&str; 4] = ["", "p", "_hero", "_icon"];
+fn find_art(dir: &Path, grid_id: u32, suffix: &str) -> Option<PathBuf> {
+    ["jpg", "png"]
+        .iter()
+        .map(|ext| dir.join(format!("{grid_id}{suffix}.{ext}")))
+        .find(|path| path.is_file())
+}
 
-fn remove_grid_art(steam_root: &Path, user_id: &str, appid: i32) {
-    let grid_id = grid_appid(appid);
-    let dir = paths::grid_dir(steam_root, user_id);
-    for suffix in GRID_SUFFIXES {
-        remove_any_extension(&dir, &format!("{grid_id}{suffix}"));
+fn image_extension(path: &Path) -> io::Result<Option<&'static str>> {
+    let mut head = Vec::with_capacity(8);
+    fs::File::open(path)?.take(8).read_to_end(&mut head)?;
+    Ok(if head.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if head.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else {
+        None
+    })
+}
+
+fn remove_grid_art(dir: &Path, appid: i32) {
+    for stem in grid_stems(appid) {
+        for suffix in GRID_SUFFIXES {
+            remove_art(dir, &stem, suffix);
+        }
     }
 }
 
-/// Renames the art of shortcut `from` to that of `to`, returning where its icon went, if it had one.
-fn move_grid_art(steam_root: &Path, user_id: &str, from: i32, to: i32) -> io::Result<Option<PathBuf>> {
-    let dir = paths::grid_dir(steam_root, user_id);
-    let (from, to) = (grid_appid(from), grid_appid(to));
-    let entries = match fs::read_dir(&dir) {
-        Ok(entries) => entries,
+/// Renames the art of shortcut `from`, under either id it may be named by, to the names Steam's
+/// library reads for `to`, returning where its icon went, if it had one. One file is kept per slot,
+/// the one already under the current name first, so that a legacy copy never shadows newer art.
+fn move_grid_art(dir: &Path, from: i32, to: i32) -> io::Result<Option<PathBuf>> {
+    let names: Vec<String> = match fs::read_dir(dir) {
+        Ok(entries) => entries
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .collect(),
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err),
     };
+    let stems = grid_stems(from);
+    let target = grid_appid(to);
     let mut icon = None;
-    for entry in entries.flatten() {
-        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
-            continue;
-        };
-        for suffix in GRID_SUFFIXES {
-            let Some(ext) = name
-                .strip_prefix(&format!("{from}{suffix}"))
-                .filter(|rest| rest.starts_with('.'))
-            else {
+    for suffix in GRID_SUFFIXES {
+        let mut kept = None;
+        let found = stems.iter().flat_map(|stem| {
+            names
+                .iter()
+                .filter_map(move |name| art_extension(name, stem, suffix).map(|ext| (name, ext)))
+        });
+        for (name, ext) in found {
+            let path = dir.join(name);
+            if kept.is_some() {
+                fs::remove_file(&path)?;
                 continue;
-            };
-            let dest = dir.join(format!("{to}{suffix}{ext}"));
-            fs::rename(entry.path(), &dest)?;
-            if suffix == "_icon" {
-                icon = Some(dest);
             }
-            break;
+            let ext = if ext.eq_ignore_ascii_case("jpeg") { "jpg" } else { ext };
+            let dest = dir.join(format!("{target}{suffix}.{}", ext.to_ascii_lowercase()));
+            if dest != path {
+                fs::rename(&path, &dest)?;
+            }
+            kept = Some(dest);
+        }
+        if suffix == "_icon" {
+            icon = kept;
         }
     }
     Ok(icon)
 }
 
-/// Removes every file in `dir` named `{stem}.<anything>` — the extension
-/// isn't known at removal time (whatever it was when placed), so this
-/// matches on the stem alone rather than guessing.
-fn remove_any_extension(dir: &Path, stem: &str) {
+/// Removes the art `{stem}{suffix}.<ext>` in `dir`, whichever image type it was placed as.
+fn remove_art(dir: &Path, stem: &str, suffix: &str) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -503,7 +669,7 @@ fn remove_any_extension(dir: &Path, stem: &str) {
         let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
-        if name.strip_prefix(stem).is_some_and(|rest| rest.starts_with('.')) {
+        if art_extension(&name, stem, suffix).is_some() {
             let _ = fs::remove_file(entry.path());
         }
     }

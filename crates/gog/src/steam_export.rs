@@ -65,9 +65,9 @@ pub async fn sync_steam_shortcut(
     let client = crate::http_client();
     let icon = download_artwork(&client, icon_url, &temp_dir, "icon").await;
     // `cover_url` is GOG's portrait crop (see `decanter_gog::library::enrich`)
-    // — there is no separate landscape capsule source, so only the
-    // portrait grid slot is filled; the legacy landscape slot is simply
-    // left blank rather than stretching a portrait image into it.
+    // — there is no separate landscape capsule or logo source, so only the
+    // portrait grid slot is filled; the wide capsule slot is simply left
+    // blank rather than stretching a portrait image into it.
     let portrait = download_artwork(&client, cover_url, &temp_dir, "portrait").await;
     let hero = download_artwork(&client, background_url, &temp_dir, "hero").await;
 
@@ -77,6 +77,7 @@ pub async fn sync_steam_shortcut(
         capsule: None,
         portrait,
         hero,
+        logo: None,
     };
 
     let appid = crate::achv_try!(

@@ -20,7 +20,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use super::{binary_vdf, export, grid_appid, grid_dir, local_user_id, shortcuts_vdf_path};
+use super::{binary_vdf, export, grid_appid, grid_dir, legacy_grid_id, local_user_id, shortcuts_vdf_path};
 use crate::vdf;
 
 /// `StateFlags` bit Steam sets once an app is fully installed.
@@ -207,11 +207,17 @@ pub fn non_steam_shortcuts(root: &Path) -> Vec<Shortcut> {
             if name.is_empty() || exported || !executable.is_absolute() || !executable.is_file() {
                 return None;
             }
-            let id = grid_appid(entry.get("appid")?.as_int()?);
+            let appid = entry.get("appid")?.as_int()?;
+            // Art an older Steam client set may still sit under the 64-bit id.
+            let ids = [grid_appid(appid).to_string(), legacy_grid_id(appid).to_string()];
+            let grid = &grid;
             let find = |suffix: &str| {
-                IMAGE_EXTENSIONS
-                    .iter()
-                    .map(|extension| grid.join(format!("{id}{suffix}.{extension}")))
+                ids.iter()
+                    .flat_map(|id| {
+                        IMAGE_EXTENSIONS
+                            .iter()
+                            .map(move |extension| grid.join(format!("{id}{suffix}.{extension}")))
+                    })
                     .find(|path| path.is_file())
             };
             Some(Shortcut {

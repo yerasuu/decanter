@@ -66,12 +66,7 @@ pub async fn export(game: Game) {
     };
     let name = crate::state::ps_display_title(&game);
     let art = |file: &str| regular_file(&game.dir.join("sce_sys").join(file));
-    let artwork = steam::Artwork {
-        icon: art("icon0.png"),
-        capsule: None,
-        portrait: None,
-        hero: art("pic1.png"),
-    };
+    let (icon, hero) = (art("icon0.png"), art("pic1.png"));
     let title = title_id.as_str().to_owned();
     let written = tokio::task::spawn_blocking(move || {
         let earlier = own_appid(&steam_root, &user_id, &title);
@@ -79,7 +74,17 @@ pub async fn export(game: Game) {
             name: &name,
             command: &command,
         };
-        let appid = steam::sync(&steam_root, &user_id, &spec, &artwork)?;
+        let Capsules { dir, portrait, wide } = icon.as_deref().map(Capsules::draw).unwrap_or_default();
+        let artwork = steam::Artwork {
+            icon,
+            capsule: wide,
+            portrait,
+            hero,
+            logo: None,
+        };
+        let appid = steam::sync(&steam_root, &user_id, &spec, &artwork);
+        Capsules::clean(dir);
+        let appid = appid?;
         // The appid hashes the program's path and the name, so a moved AppImage, an entry from
         // before shortcuts started the CLI through its loader, or a renamed dump would otherwise
         // leave the old entry beside the new one.
@@ -140,4 +145,101 @@ fn regular_file(path: &Path) -> Option<PathBuf> {
         .ok()
         .filter(std::fs::Metadata::is_file)
         .map(|_| path.to_owned())
+}
+
+/// Steam's sizes for the vertical and the wide capsule.
+const PORTRAIT_SIZE: (u32, u32) = (600, 900);
+const WIDE_SIZE: (u32, u32) = (920, 430);
+/// A dump's `icon0.png` is 512 px square; anything far larger is not one.
+const MAX_ICON_SIDE: u32 = 2048;
+const MAX_DECODE_ALLOC: u64 = 64 * 1024 * 1024;
+
+/// The capsules a dump has no art for, drawn from its square icon: the icon whole in the middle, on
+/// a blurred, darkened copy of itself filling the rest. They wait in a private temp dir until
+/// copied into Steam's grid.
+#[derive(Default)]
+pub struct Capsules {
+    pub dir: Option<PathBuf>,
+    pub portrait: Option<PathBuf>,
+    pub wide: Option<PathBuf>,
+}
+
+impl Capsules {
+    /// Whatever fails to decode or write leaves that capsule out, logged.
+    pub fn draw(icon: &Path) -> Self {
+        let Some(icon) = decode_icon(icon) else {
+            return Self::default();
+        };
+        let dir = match decanter_core::temp::private_temp_dir("steam-artwork") {
+            Ok(dir) => dir,
+            Err(err) => {
+                tracing::warn!(%err, "could not create a temp dir for the PS game's steam capsules");
+                return Self::default();
+            }
+        };
+        let draw = |(width, height), file: &str| {
+            let path = dir.join(file);
+            compose(&icon, width, height)
+                .save_with_format(&path, image::ImageFormat::Png)
+                .inspect_err(|err| tracing::warn!(path = %path.display(), %err, "could not write a steam capsule"))
+                .ok()
+                .map(|()| path)
+        };
+        Self {
+            portrait: draw(PORTRAIT_SIZE, "portrait.png"),
+            wide: draw(WIDE_SIZE, "wide.png"),
+            dir: Some(dir),
+        }
+    }
+
+    pub fn clean(dir: Option<PathBuf>) {
+        if let Some(dir) = dir
+            && let Err(err) = std::fs::remove_dir_all(&dir)
+        {
+            tracing::debug!(path = %dir.display(), %err, "could not clean up the steam capsules temp dir");
+        }
+    }
+}
+
+/// The icon as the dump holds it, which may be anything: decoded as a PNG under limits.
+fn decode_icon(path: &Path) -> Option<image::RgbaImage> {
+    let mut reader = image::ImageReader::open(path)
+        .inspect_err(|err| tracing::warn!(path = %path.display(), %err, "could not open the PS game's icon"))
+        .ok()?;
+    reader.set_format(image::ImageFormat::Png);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_ICON_SIDE);
+    limits.max_image_height = Some(MAX_ICON_SIDE);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    reader.limits(limits);
+    reader
+        .decode()
+        .inspect_err(|err| tracing::warn!(path = %path.display(), %err, "the PS game's icon did not decode"))
+        .ok()
+        .map(image::DynamicImage::into_rgba8)
+}
+
+fn compose(icon: &image::RgbaImage, width: u32, height: u32) -> image::RgbaImage {
+    use image::imageops::{self, FilterType};
+
+    let cover = width.max(height);
+    let background = imageops::resize(icon, cover, cover, FilterType::Triangle);
+    let background = imageops::crop_imm(
+        &background,
+        cover.saturating_sub(width) / 2,
+        cover.saturating_sub(height) / 2,
+        width,
+        height,
+    )
+    .to_image();
+    let mut canvas = imageops::brighten(&imageops::fast_blur(&background, 24.0), -60);
+    let side = width.min(height);
+    let front = imageops::resize(icon, side, side, FilterType::Lanczos3);
+    imageops::overlay(
+        &mut canvas,
+        &front,
+        i64::from(width.saturating_sub(side) / 2),
+        i64::from(height.saturating_sub(side) / 2),
+    );
+    canvas
 }

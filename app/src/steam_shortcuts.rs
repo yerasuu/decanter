@@ -7,7 +7,8 @@
 //! very `AppImage` with other options, which gets this decanter's options (an entry written before
 //! the `AppImage` was told to extract and run fails to start from Steam). Only decanter's own entries
 //! are touched, a GOG one only when its appid is recorded, so a game never exported stays out of
-//! Steam; and nothing is touched when this decanter has no command to write.
+//! Steam; and nothing is touched when this decanter has no command to write. Then the art of those
+//! same entries is brought to the names Steam reads.
 
 use std::path::Path;
 
@@ -30,12 +31,55 @@ pub async fn retarget() {
     let Some(user_id) = steam::local_user_id(&steam_root) else {
         return;
     };
-    match tokio::task::spawn_blocking(move || retarget_entries(&db, &steam_root, &user_id)).await {
-        Ok(Ok(0)) => {}
-        Ok(Ok(count)) => tracing::info!(count, "steam shortcuts pointed at decanter's command again"),
-        Ok(Err(err)) => tracing::warn!(%err, "could not read steam shortcuts to point them at decanter's command"),
-        Err(err) => tracing::warn!(%err, "steam shortcut retarget worker task panicked"),
+    let worked = tokio::task::spawn_blocking(move || {
+        match retarget_entries(&db, &steam_root, &user_id) {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "steam shortcuts pointed at decanter's command again"),
+            Err(err) => tracing::warn!(%err, "could not read steam shortcuts to point them at decanter's command"),
+        }
+        if let Err(err) = refresh_entries(&steam_root, &user_id) {
+            tracing::warn!(%err, "could not read steam shortcuts to bring their art up to date");
+        }
+    })
+    .await;
+    if let Err(err) = worked {
+        tracing::warn!(%err, "steam shortcut retarget worker task panicked");
     }
+}
+
+/// The art of every entry of decanter's under the names Steam's library reads, since earlier builds
+/// named it by the 64-bit id the current library never asks for; and a PS game's capsules, which
+/// earlier builds left out, drawn from the icon its entry already has.
+fn refresh_entries(steam_root: &Path, user_id: &str) -> std::io::Result<()> {
+    for own in steam::own_entries(steam_root, user_id)? {
+        let art = match steam::refresh_art(steam_root, user_id, own.appid, &steam::Artwork::default()) {
+            Ok(Some(art)) => art,
+            Ok(None) => continue,
+            Err(err) => {
+                tracing::warn!(appid = own.appid, %err, "could not bring a steam shortcut's art up to date");
+                continue;
+            }
+        };
+        let Some(icon) = art
+            .icon
+            .filter(|_| art.portrait.is_none() && crate::ps_steam::title_of(&own.launch_options).is_some())
+        else {
+            continue;
+        };
+        let crate::ps_steam::Capsules { dir, portrait, wide } = crate::ps_steam::Capsules::draw(&icon);
+        let artwork = steam::Artwork {
+            capsule: wide,
+            portrait,
+            ..steam::Artwork::default()
+        };
+        let drawn = steam::refresh_art(steam_root, user_id, own.appid, &artwork);
+        crate::ps_steam::Capsules::clean(dir);
+        match drawn {
+            Ok(_) => tracing::info!(appid = own.appid, "PS game steam shortcut got its capsules"),
+            Err(err) => tracing::warn!(appid = own.appid, %err, "could not write a PS game steam shortcut's capsules"),
+        }
+    }
+    Ok(())
 }
 
 /// How many entries were rewritten.

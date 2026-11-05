@@ -57,12 +57,18 @@ pub fn legacy_appid(exe: &str, name: &str) -> i32 {
     hash as i32
 }
 
-/// The wider id Steam's Library (post-2019 UI) looks artwork up by —
-/// distinct from [`legacy_appid`], which only still matters for the
-/// literal `appid` field in `shortcuts.vdf`. Grid image filenames use
-/// this one.
+/// The id Steam's library names a shortcut's grid art by (`<id>p`, `<id>`, `<id>_hero`,
+/// `<id>_logo`): the `appid` field read unsigned, as its own `customimages/` requests build it.
 #[must_use]
 #[inline]
-pub fn grid_appid(legacy: i32) -> u64 {
-    (u64::from(legacy as u32) << 32) | 0x0200_0000
+pub const fn grid_appid(appid: i32) -> u32 {
+    appid.cast_unsigned()
+}
+
+/// The 64-bit game id older Steam clients named grid art by; only read to move or remove art
+/// earlier decanter builds wrote under it, since the current library never asks for it.
+#[must_use]
+#[inline]
+pub fn legacy_grid_id(appid: i32) -> u64 {
+    (u64::from(grid_appid(appid)) << 32) | 0x0200_0000
 }

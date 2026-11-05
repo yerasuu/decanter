@@ -21,10 +21,10 @@ pub mod library;
 pub mod paths;
 pub mod process;
 
-pub use appid::{grid_appid, legacy_appid};
+pub use appid::{grid_appid, legacy_appid, legacy_grid_id};
 pub use export::{
-    ApplyError, Artwork, Command, Own, ShortcutSpec, apply_pending_and_restart_steam, find, has_pending_changes,
-    own_entries, remove, retarget, sync,
+    ApplyError, Artwork, Command, GridArt, Own, ShortcutSpec, apply_pending_and_restart_steam, find,
+    has_pending_changes, own_entries, refresh_art, remove, retarget, sync,
 };
 pub use library::{InstalledApp, Shortcut, SteamArt, installed_apps, non_steam_shortcuts};
 pub use paths::{grid_dir, local_user_id, login_names, shortcuts_vdf_path, steam_root};
