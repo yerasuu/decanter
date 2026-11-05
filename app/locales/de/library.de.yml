@@ -142,6 +142,8 @@ library.menu.install: Installieren
 library.menu.play: Spielen
 library.menu.stop: Stopp
 library.menu.open_folder: Spielordner öffnen
+library.menu.steam_add: "Zu Steam hinzufügen"
+library.menu.steam_remove: "Aus Steam entfernen"
 library.menu.edit_external: Externes Spiel bearbeiten…
 library.install.no_library: die Bibliothek konnte nicht ermittelt werden
 library.install.library_error: 'Bibliothek wird ermittelt: %{error}'

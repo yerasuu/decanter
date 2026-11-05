@@ -665,6 +665,17 @@ async fn sync_steam_shortcut_for(
         tracing::debug!(account_id, product_id, "steam export disabled in settings, skipping");
         return;
     }
+    export_steam_shortcut(&db, account_id, product_id, (cover_url, background_url, icon_url)).await;
+}
+
+/// The export itself, without the Ajustes toggle: the game menu's "Añadir
+/// a Steam" is an explicit request that the toggle's default shouldn't veto.
+pub(super) async fn export_steam_shortcut(
+    db: &decanter_core::Db,
+    account_id: &str,
+    product_id: &str,
+    (cover_url, background_url, icon_url): (Option<String>, Option<String>, Option<String>),
+) {
     let Ok(core_library) = crate::core::library_for_account(account_id) else {
         return;
     };
@@ -680,7 +691,7 @@ async fn sync_steam_shortcut_for(
         return;
     };
     if let Err(err) = decanter_gog::sync_steam_shortcut(
-        &db,
+        db,
         account_id,
         &game,
         &install_dir,
@@ -696,7 +707,7 @@ async fn sync_steam_shortcut_for(
 
 /// Best-effort counterpart for uninstall — same "never fail the caller
 /// over this" rule as [`sync_steam_shortcut_for`].
-async fn remove_steam_shortcut_for(account_id: &str, product_id: &str) {
+pub(super) async fn remove_steam_shortcut_for(account_id: &str, product_id: &str) {
     let Ok(db) = crate::core::db() else {
         return;
     };

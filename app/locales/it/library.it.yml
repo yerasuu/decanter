@@ -142,6 +142,8 @@ library.menu.install: Installa
 library.menu.play: Gioca
 library.menu.stop: Ferma
 library.menu.open_folder: Apri la cartella del gioco
+library.menu.steam_add: "Aggiungi a Steam"
+library.menu.steam_remove: "Rimuovi da Steam"
 library.menu.edit_external: Modifica gioco esterno…
 library.install.no_library: impossibile determinare la libreria
 library.install.library_error: "determinazione della libreria: %{error}"

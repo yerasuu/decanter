@@ -65,6 +65,10 @@ struct MenuData {
     /// files are. Both are manifest reads.
     launch_target: Option<decanter_core::InstalledGame>,
     install_path: Option<std::path::PathBuf>,
+    prefix_path: Option<std::path::PathBuf>,
+    /// `Some(exported)` when the menu can offer the Steam shortcut: a GOG
+    /// game, and either one already exported or a Steam to export into.
+    steam_exported: Option<bool>,
 }
 
 impl PopupState {
@@ -212,6 +216,8 @@ fn game_menu(
         collections,
         launch_target,
         install_path,
+        prefix_path,
+        steam_exported,
         ..
     }) = state.read(cx).data.as_ref().map(MenuData::clone)
     else {
@@ -224,8 +230,18 @@ fn game_menu(
             .child(game_action_item(&entry, launch_target, close, model, cx))
             .children(open_folder_item(install_path, close))
             .children(edit_external_item(&entry, close))
-            .child(properties_item(&entry, close))
-            .child(menu::separator());
+            .child(properties_item(&entry, close));
+        let manage = [
+            open_prefix_item(prefix_path, close),
+            steam_shortcut_item(&entry, steam_exported, close),
+        ]
+        .into_iter()
+        .flatten();
+        let manage: Vec<AnyElement> = manage.collect();
+        if !manage.is_empty() {
+            panel = panel.child(menu::separator()).children(manage);
+        }
+        panel = panel.child(menu::separator());
     }
 
     panel = panel
@@ -269,6 +285,7 @@ fn load_menu_data(
         .as_ref()
         .is_none_or(|data| data.organisation != organisation || data.revision != revision)
     {
+        let single_game = single_entry.filter(|entry| entry.kind == GameKind::Game);
         // "Every one of them already is" decides which way a toggle goes,
         // so a mixed selection moves to the same state rather than
         // inverting each game independently.
@@ -287,6 +304,20 @@ fn load_menu_data(
             install_path: single_entry
                 .filter(|entry| entry.kind == GameKind::Game)
                 .and_then(|entry| game_install_path(&entry.game.account_id, &entry.game.id)),
+            prefix_path: single_game
+                .and_then(|entry| crate::core::prefix_for(&entry.game.account_id, &entry.game.id))
+                .map(|prefix| prefix.path().to_path_buf())
+                .filter(|path| path.is_dir()),
+            steam_exported: single_game
+                .filter(|entry| entry.game.storefront == Storefront::Gog)
+                .and_then(|entry| {
+                    let exported = crate::core::db()
+                        .ok()?
+                        .steam_shortcut_appid(&entry.game.account_id, Storefront::Gog, &entry.game.id)
+                        .ok()?
+                        .is_some();
+                    (exported || decanter_core::steam::steam_root().is_some()).then_some(exported)
+                }),
             organisation,
             revision,
         };
@@ -602,4 +633,60 @@ fn properties_item(entry: &LibraryEntry, close: &menu::Dismiss) -> AnyElement {
         })
         .child(t!("library.properties.title"))
         .into_any_element()
+}
+
+/// The same folder Compatibilidad's "Abrir prefijo" opens; hidden until the
+/// prefix exists, since there is nothing to open before the first launch.
+fn open_prefix_item(prefix_path: Option<std::path::PathBuf>, close: &menu::Dismiss) -> Option<AnyElement> {
+    let path = prefix_path?;
+    let close = Rc::clone(close);
+    Some(
+        menu::item("menu-prefix", false)
+            .on_click(move |_, window, cx| {
+                if let Err(err) = crate::desktop::open(&path) {
+                    tracing::error!(path = %path.display(), %err, "could not open the prefix folder");
+                }
+                close(window, cx);
+            })
+            .child(t!("library.properties.compatibility.open_prefix"))
+            .into_any_element(),
+    )
+}
+
+/// Adds or removes the game's Steam shortcut with the same export an
+/// install runs, so it reads the same artwork and appid record.
+fn steam_shortcut_item(entry: &LibraryEntry, exported: Option<bool>, close: &menu::Dismiss) -> Option<AnyElement> {
+    let exported = exported?;
+    let account_id = entry.game.account_id.clone();
+    let product_id = entry.game.id.clone();
+    let art = (
+        entry.game.cover_url.clone(),
+        entry.game.background_url.clone(),
+        entry.game.icon_url.clone(),
+    );
+    let close = Rc::clone(close);
+    Some(
+        menu::item("menu-steam-shortcut", false)
+            .on_click(move |_, window, cx| {
+                let account_id = account_id.clone();
+                let product_id = product_id.clone();
+                let art = art.clone();
+                cx.spawn(async move |cx| {
+                    if exported {
+                        super::install::remove_steam_shortcut_for(&account_id, &product_id).await;
+                    } else if let Ok(db) = crate::core::db() {
+                        super::install::export_steam_shortcut(&db, &account_id, &product_id, art).await;
+                    }
+                    cx.update(bump_organisation);
+                })
+                .detach();
+                close(window, cx);
+            })
+            .child(if exported {
+                t!("library.menu.steam_remove")
+            } else {
+                t!("library.menu.steam_add")
+            })
+            .into_any_element(),
+    )
 }

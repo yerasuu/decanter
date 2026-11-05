@@ -142,6 +142,8 @@ library.menu.install: Instalar
 library.menu.play: Jogar
 library.menu.stop: Parar
 library.menu.open_folder: Abrir pasta do jogo
+library.menu.steam_add: "Adicionar à Steam"
+library.menu.steam_remove: "Remover da Steam"
 library.menu.edit_external: Editar jogo externo…
 library.install.no_library: não foi possível localizar a biblioteca
 library.install.library_error: 'localizando a biblioteca: %{error}'
