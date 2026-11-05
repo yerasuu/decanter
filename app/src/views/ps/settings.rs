@@ -19,7 +19,7 @@ use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, checkbox};
+use crate::widgets::{ButtonKind, button, checkbox_large, nav};
 
 /// A folder from the user's own console dump, kept under a `LauncherSettings` key that the
 /// port gets as an environment variable.
@@ -244,10 +244,10 @@ impl SettingsView {
                 t!("ps.settings.channel.testing.description"),
             ),
         };
-        theme::list_row(id, last)
+        nav::tab_stop(theme::list_row(id, last))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| this.set_channel(channel, cx)))
-            .child(checkbox(self.channel == Some(channel)))
+            .child(checkbox_large(self.channel == Some(channel)))
             .child(
                 div()
                     .flex()

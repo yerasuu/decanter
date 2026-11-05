@@ -18,7 +18,7 @@ use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{Ps, per_game_error};
 use crate::theme;
-use crate::widgets::{ButtonKind, Select, button, checkbox, confirm_panel, select::SelectStyle};
+use crate::widgets::{ButtonKind, Select, button, checkbox_large, confirm_panel, nav, select::SelectStyle};
 
 /// `(key, label, value when absent)`, as each game's Online tab reads them: absent, the plain-text
 /// login is allowed (#1303) and `online_upnp` is on.
@@ -176,17 +176,11 @@ impl DefaultsView {
         let count = SWITCHES.len();
         theme::card().children(SWITCHES.iter().zip(self.switches).enumerate().map(
             |(index, (&(_, label, _), is_on))| {
-                theme::compact_row(index + 1 == count).child(
-                    div()
-                        .id(("ps-defaults-switch", index))
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .cursor_pointer()
-                        .child(checkbox(is_on))
-                        .child(SharedString::from(t!(label)))
-                        .on_click(cx.listener(move |this, _, _, cx| this.set_switch(index, !is_on, cx))),
-                )
+                nav::tab_stop(theme::compact_row(index + 1 == count).id(("ps-defaults-switch", index)))
+                    .cursor_pointer()
+                    .child(checkbox_large(is_on))
+                    .child(SharedString::from(t!(label)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_switch(index, !is_on, cx)))
             },
         ))
     }

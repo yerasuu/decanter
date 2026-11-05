@@ -13,7 +13,7 @@ use rust_i18n::t;
 
 use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
-use super::{column, field_row, inline, section};
+use super::{checkbox_field, column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
 use crate::platform;
@@ -21,7 +21,7 @@ use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, checkbox, language_note, language_select};
+use crate::widgets::{ButtonKind, button, language_note, language_select};
 
 pub struct GeneralTab {
     language: Option<Language>,
@@ -448,7 +448,7 @@ impl GeneralTab {
                         )
                     })),
             )
-            .children(text.map(|text| div().child(text)))
+            .children(text.map(theme::muted))
             .children(newer.map(|release| self.install_section(release, cx)))
             .children(error.map(theme::error))
     }
@@ -462,13 +462,7 @@ impl GeneralTab {
         on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        field_row()
-            .id(id)
-            .items_center()
-            .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
-            .child(checkbox(checked))
-            .child(div().min_w_0().child(text.into()))
+        checkbox_field(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
     }
 
     fn downloads_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -517,7 +511,7 @@ impl Render for GeneralTab {
         let confirming = self.steam_needs_close_confirmation;
         let callout = self.steam_pending.then(|| {
             column()
-                .child(div().child(t!("settings.general.steam.pending")))
+                .child(theme::muted(t!("settings.general.steam.pending")))
                 .when(confirming, |c| {
                     c.child(div().child(t!("settings.general.steam.close_first")))
                 })

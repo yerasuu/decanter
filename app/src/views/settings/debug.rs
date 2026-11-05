@@ -6,10 +6,10 @@ use std::path::PathBuf;
 use gpui::{Context, IntoElement, Window, div, prelude::*};
 use rust_i18n::t;
 
-use super::{column, field_row};
+use super::{checkbox_field, column, field_row};
 use crate::i18n::Text;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, checkbox};
+use crate::widgets::{ButtonKind, button};
 
 pub struct DebugSection {
     enabled: bool,
@@ -160,13 +160,8 @@ impl Render for DebugSection {
         column()
             .child(theme::h2(t!("settings.general.debug.title")))
             .child(
-                field_row()
-                    .id("debug-mode")
-                    .items_center()
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_enabled(!enabled, cx)))
-                    .child(checkbox(enabled))
-                    .child(div().min_w_0().child(t!("settings.general.debug.enabled"))),
+                checkbox_field("debug-mode", enabled, t!("settings.general.debug.enabled"))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_enabled(!enabled, cx))),
             )
             .child(theme::muted(t!("settings.general.debug.hint")))
             .children(pending)

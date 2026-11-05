@@ -3,14 +3,13 @@
 
 use decanter_core::GameTool;
 use decanter_core::capabilities::Feature;
-use gpui::{Context, IntoElement, SharedString, Window, div, prelude::*};
+use gpui::{Context, IntoElement, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
-use super::{column, field_row};
+use super::{checkbox_field, column};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::theme;
-use crate::widgets::checkbox;
 
 pub struct GameToolDefaults {
     mangohud: bool,
@@ -95,13 +94,7 @@ impl GameToolDefaults {
         on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        field_row()
-            .id(id)
-            .items_center()
-            .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
-            .child(checkbox(checked))
-            .child(div().min_w_0().child(text.into()))
+        checkbox_field(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
     }
 }
 

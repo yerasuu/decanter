@@ -207,21 +207,30 @@ pub fn hero_stat(value: String, label: impl Into<SharedString>) -> Div {
 }
 
 /// A checkbox the way `accent-color: var(--accent-blue)` draws one: a
-/// 13px box, blue and ticked when on.
+/// 13px box, blue and ticked when on. Compact, for dense lists.
 pub fn checkbox(checked: bool) -> Div {
+    checkbox_sized(checked, 13., 10.)
+}
+
+/// The 20px box of a settings row, big enough to hit with a finger or find with the focus ring.
+pub fn checkbox_large(checked: bool) -> Div {
+    checkbox_sized(checked, 20., 15.)
+}
+
+fn checkbox_sized(checked: bool, size: f32, tick: f32) -> Div {
     div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .size(px(13.))
+        .size(px(size))
         .rounded(px(theme::RADIUS_SM))
         .border_1()
         .when(checked, |b| {
             b.bg(rgb(theme::ACCENT_BLUE))
                 .border_color(rgb(theme::ACCENT_BLUE))
                 .text_color(rgb(theme::TEXT_ON_BLUE))
-                .text_size(px(10.))
+                .text_size(px(tick))
                 .font_weight(FontWeight::BOLD)
                 .child("✓")
         })
