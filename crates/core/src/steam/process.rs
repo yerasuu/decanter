@@ -10,18 +10,23 @@
     reason = "directly contradicts needless_return from clippy::all, also enabled"
 )]
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as _;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use std::{io, thread};
+use std::{env, io, thread};
 
 #[cfg(not(windows))]
 use std::fs;
 
 /// What starts the client when `steam` isn't on `PATH`.
 const LAUNCHER: &str = if cfg!(windows) { "steam.exe" } else { "steam.sh" };
+
+/// The id of the desktop entry Steam installs (`steam.desktop`).
+const STEAM_APP_ID: &str = "steam";
 
 /// How long [`wait_for_exit`] waits for Steam's main process to disappear
 /// from `/proc` after asking it to shut down, before giving up. Measured
@@ -198,26 +203,64 @@ pub fn launch(steam_root: &Path) -> io::Result<()> {
 /// `steam_root`'s own [`LAUNCHER`] when `steam` isn't on `PATH` —
 /// the same binary Steam Deck's own desktop entry resolves to, but not
 /// guaranteed to be there in every environment this runs in.
+///
+/// In a transient scope named after `steam.desktop` when systemd can give
+/// it one, because xdg-desktop-portal names the application behind a host
+/// process by its systemd unit: left in decanter's `app-decanter@….service`,
+/// Steam's own screen-capture request at startup was put to the user as
+/// decanter asking to share the screen.
 fn run_steam(steam_root: &Path, arg: &str) -> io::Result<()> {
-    let mut command = Command::new("steam");
+    let launcher = steam_root.join(LAUNCHER);
+    if let Some(mut scoped) = crate::scope::app_scope(STEAM_APP_ID, "Steam") {
+        let on_path = steam_on_path();
+        let program = on_path.as_deref().unwrap_or(&launcher);
+        scoped.arg(program);
+        match start(scoped, arg) {
+            Ok(()) => {
+                tracing::info!(program = %program.display(), arg, "started steam in its own systemd scope");
+                return Ok(());
+            }
+            Err(err) => tracing::warn!(%err, "could not run systemd-run, starting steam as decanter's own child"),
+        }
+    }
+    if start(Command::new("steam"), arg).is_ok() {
+        tracing::info!(arg, "started steam as decanter's own child");
+        return Ok(());
+    }
+    start(Command::new(&launcher), arg)?;
+    tracing::info!(program = %launcher.display(), arg, "started steam as decanter's own child");
+    Ok(())
+}
+
+/// `steam` looked up on `PATH` here rather than by the spawn, since
+/// systemd-run starts whether or not the program it's given exists, so a
+/// failed spawn can't tell this to fall back to [`LAUNCHER`].
+fn steam_on_path() -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path)
+        .map(|dir| dir.join("steam"))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Spawns `command <arg>` with decanter's own environment stripped, in a
+/// process group of its own so a terminal's signals to decanter don't
+/// reach Steam. `-shutdown` signals and returns, a plain launch lives on;
+/// either way the child is reaped on a thread of its own, since this
+/// process doesn't own Steam's lifetime and only whether it started matters.
+fn start(mut command: Command, arg: &str) -> io::Result<()> {
     crate::strip_launcher_env(&mut command);
     if !arg.is_empty() {
         command.arg(arg);
     }
-    // `-shutdown` is meant to signal-and-return; a plain launch is
-    // fire-and-forget. Either way this process doesn't own Steam's
-    // lifetime, so the spawned `Child` is dropped unused — only whether
-    // the command could even start matters.
-    if command.spawn().is_ok() {
-        return Ok(());
-    }
-
-    let mut fallback = Command::new(steam_root.join(LAUNCHER));
-    crate::strip_launcher_env(&mut fallback);
-    if !arg.is_empty() {
-        fallback.arg(arg);
-    }
-    fallback.spawn().map(|_child| ())
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn()?;
+    thread::spawn(move || match child.wait() {
+        Ok(status) if !status.success() => tracing::warn!(%status, "steam exited with a failure status"),
+        Ok(_) => {}
+        Err(err) => tracing::debug!(%err, "could not wait for steam"),
+    });
+    Ok(())
 }
 
 /// Blocks until [`state`] reports Steam gone, or [`SHUTDOWN_TIMEOUT`]

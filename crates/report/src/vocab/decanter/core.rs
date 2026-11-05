@@ -67,4 +67,6 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.core.process.no_steam_pipe_found_cannot", "no steam.pipe found, cannot tell whether steam is running"),
     t("decanter.core.process.steam_pipe_is_not_a", "steam.pipe is not a fifo, cannot tell whether steam is running"),
     t("decanter.core.process.failed_to_probe_steam_pipe", "failed to probe steam.pipe, cannot tell whether steam is running"),
+    t("decanter.core.process.could_not_run_systemd_run", "could not run systemd-run, starting steam as decanter's own child"),
+    t("decanter.core.process.steam_exited_with_a_failure", "steam exited with a failure status"),
 ];

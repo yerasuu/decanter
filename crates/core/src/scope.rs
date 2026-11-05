@@ -41,6 +41,16 @@ pub fn application_id(key: &str) -> String {
 #[must_use]
 #[inline]
 pub fn own_scope(key: &str, description: &str) -> Option<Command> {
+    app_scope(&application_id(&game_key(key)), description)
+}
+
+/// [`own_scope`] for an application that isn't a game: `app_id` must be
+/// its desktop entry's id (the file name without `.desktop`) and valid in
+/// a unit name, since that is what xdg-desktop-portal and the desktop read
+/// back out of the scope's name to tell which application a process is.
+#[must_use]
+#[inline]
+pub fn app_scope(app_id: &str, description: &str) -> Option<Command> {
     if !platform::support(Feature::Scopes).is_offered() {
         return None;
     }
@@ -51,11 +61,7 @@ pub fn own_scope(key: &str, description: &str) -> Option<Command> {
     let mut command = Command::new(systemd_run);
     command
         .args(["--user", "--scope", "--quiet", "--collect", "--unit"])
-        .arg(format!(
-            "app-decanter-{}-{:x}{nonce:x}.scope",
-            application_id(&game_key(key)),
-            std::process::id()
-        ))
+        .arg(format!("app-decanter-{app_id}-{:x}{nonce:x}.scope", std::process::id()))
         .arg("--description")
         .arg(description)
         .arg("--");
