@@ -18,18 +18,22 @@ use decanter_ps::bbport::{Compat, CompatState, IniScope};
 use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::{Entry, Status};
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, Context, Entity, MouseButton, MouseDownEvent, ObjectFit, Pixels, Point, SharedString, StyleRefinement,
-    Window, div, img, prelude::*, px, rgb, uniform_list,
+    AnyElement, Context, Entity, FocusHandle, KeyDownEvent, MouseButton, MouseDownEvent, ObjectFit, Pixels, Point,
+    ScrollStrategy, SharedString, StyleRefinement, UniformListScrollHandle, Window, div, img, point, prelude::*, px,
+    rgb, uniform_list,
 };
 use rust_i18n::t;
 
 use crate::i18n::Text;
 use crate::state::{AppState, JobKey, Ps};
 use crate::theme;
+use crate::widgets::nav::{self, Step};
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, sidebar_title, tooltip};
 use browser::BrowserView;
 use context_menu::GameMenu;
@@ -56,6 +60,14 @@ pub struct GamesView {
     detail: Entity<DetailView>,
     browser: Entity<BrowserView>,
     menu: Option<GameMenu>,
+    /// Holds the keyboard inside the open menu.
+    menu_focus: FocusHandle,
+    /// What had the focus before the menu took it, given back when it closes.
+    menu_restore: Option<FocusHandle>,
+    list: UniformListScrollHandle,
+    /// One per sidebar row, kept here since the list lays out only the rows in view and an arrow
+    /// has to focus the next one before it exists.
+    row_focus: RefCell<HashMap<PathBuf, FocusHandle>>,
 }
 
 impl GamesView {
@@ -90,11 +102,30 @@ impl GamesView {
             detail,
             browser,
             menu: None,
+            menu_focus: cx.focus_handle(),
+            menu_restore: None,
+            list: UniformListScrollHandle::new(),
+            row_focus: RefCell::default(),
         }
     }
 
+    /// Escape on a game's page returns to the covers, with the focus on the cover it came from.
+    /// Returns whether there was a page to leave.
+    pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.detail.read(cx).selected().is_none() {
+            return false;
+        }
+        self.detail.update(cx, DetailView::clear);
+        if let Some(cover) = self.browser.update(cx, |browser, _| browser.take_opened_from()) {
+            window.focus(&cover, cx);
+        }
+        true
+    }
+
     /// The right-click menu of the game in `dir`, from its row or its cover.
-    pub fn open_menu(&mut self, dir: PathBuf, position: Point<Pixels>, cx: &mut Context<Self>) {
+    pub fn open_menu(&mut self, dir: PathBuf, position: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        self.menu_restore = window.focused(cx);
+        window.focus(&self.menu_focus, cx);
         self.menu = Some(GameMenu { dir, position });
         cx.notify();
     }
@@ -129,6 +160,9 @@ impl GamesView {
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let rows = self.rows(cx);
         let ps = self.ps.read(cx);
+        self.row_focus
+            .borrow_mut()
+            .retain(|dir, _| ps.entries().iter().any(|entry| entry.game.dir == *dir));
         let body = if rows.is_empty() {
             let message = if ps.scanning() {
                 t!("ps.games.scanning")
@@ -160,13 +194,14 @@ impl GamesView {
                 let this = view.read(cx);
                 let entries = this.ps.read(cx).entries();
                 range
-                    .filter_map(|index| rows.get(index))
-                    .filter_map(|row| match *row {
+                    .filter_map(|index| rows.get(index).map(|row| (index, row)))
+                    .filter_map(|(at, row)| match *row {
                         Row::Header(platform, count) => Some(header(platform, count)),
-                        Row::Game(index) => entries.get(index).map(|entry| this.row(entry, view.clone(), cx)),
+                        Row::Game(index) => entries.get(index).map(|entry| this.row(at, entry, view.clone(), cx)),
                     })
                     .collect()
             })
+            .track_scroll(&self.list)
             .flex_1()
             .into_any_element()
         };
@@ -224,14 +259,21 @@ impl GamesView {
             })
     }
 
-    fn row(&self, entry: &Entry, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
+    fn row(&self, at: usize, entry: &Entry, view: Entity<Self>, cx: &gpui::App) -> AnyElement {
         let game = &entry.game;
         let playable = entry.is_playable(self.ps.read(cx).compat());
         let active = self.detail.read(cx).selected() == Some(&game.dir);
         let running = self.ps.read(cx).is_running(&JobKey::Game(game.dir.clone()), cx);
         let dir = game.dir.clone();
-        div()
-            .id(SharedString::from(game.dir.to_string_lossy().into_owned()))
+        let focus = self.row_handle(&game.dir, cx);
+        nav::focus_ring(div().id(SharedString::from(game.dir.to_string_lossy().into_owned())))
+            .track_focus(&focus)
+            .on_key_down({
+                let (view, dir) = (view.clone(), dir.clone());
+                move |event, window, cx| {
+                    view.update(cx, |this, cx| this.row_key(at, &dir, event, window, cx));
+                }
+            })
             .h(px(ROW))
             .w_full()
             .flex()
@@ -258,8 +300,8 @@ impl GamesView {
                     });
                 }
             })
-            .on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _, cx| {
-                view.update(cx, |this, cx| this.open_menu(dir.clone(), event.position, cx));
+            .on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, window, cx| {
+                view.update(cx, |this, cx| this.open_menu(dir.clone(), event.position, window, cx));
             })
             .child(icon(game, ICON))
             .child(sidebar_title(display_title(game), running))
@@ -267,6 +309,60 @@ impl GamesView {
                 row.child(running_mark(format!("ps-running-{}", game.dir.display())))
             })
             .into_any_element()
+    }
+}
+
+impl GamesView {
+    fn row_handle(&self, dir: &PathBuf, cx: &gpui::App) -> FocusHandle {
+        self.row_focus
+            .borrow_mut()
+            .entry(dir.clone())
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone()
+    }
+
+    /// The menu key opens a game row's menu; the arrows and Tab focus the next game row, scrolling
+    /// it into view first, since the list lays out only the rows in view.
+    fn row_key(&mut self, at: usize, dir: &PathBuf, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if nav::is_menu_key(&event.keystroke) {
+            let bounds = self.list.0.borrow().base_handle.bounds();
+            let offset = self.list.0.borrow().base_handle.offset();
+            let position = point(
+                bounds.left() + px(80.),
+                bounds.top() + offset.y + px(ROW * (at as f32 + 0.5)),
+            );
+            self.open_menu(dir.clone(), position, window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        let Some(step) = Step::of(&event.keystroke) else {
+            return;
+        };
+        let rows = self.rows(cx);
+        let target = match step {
+            Step::Next => rows
+                .get(at + 1..)
+                .and_then(|after| after.iter().position(|row| matches!(row, Row::Game(_))))
+                .map(|next| at + 1 + next),
+            Step::Prev => rows
+                .get(..at)
+                .and_then(|before| before.iter().rposition(|row| matches!(row, Row::Game(_)))),
+        };
+        let Some((target, Row::Game(index))) = target.and_then(|target| Some((target, *rows.get(target)?))) else {
+            return;
+        };
+        let Some(next) = self
+            .ps
+            .read(cx)
+            .entries()
+            .get(index)
+            .map(|entry| entry.game.dir.clone())
+        else {
+            return;
+        };
+        self.list.scroll_to_item(target, ScrollStrategy::Nearest);
+        window.focus(&self.row_handle(&next, cx), cx);
+        cx.stop_propagation();
     }
 }
 
@@ -304,13 +400,17 @@ impl Render for GamesView {
         };
         let menu = self.menu.as_ref().and_then(|target| {
             let view = cx.entity().downgrade();
-            let dismiss: crate::widgets::menu::Dismiss = Rc::new(move |_, cx| {
+            let restore = self.menu_restore.clone();
+            let dismiss: crate::widgets::menu::Dismiss = Rc::new(move |window, cx| {
                 let _ = view.update(cx, |this, cx| {
                     this.menu = None;
                     cx.notify();
                 });
+                if let Some(restore) = &restore {
+                    window.focus(restore, cx);
+                }
             });
-            context_menu::render(target, &self.ps, &self.detail, window, dismiss, cx)
+            context_menu::render(target, &self.ps, &self.detail, &self.menu_focus, window, dismiss, cx)
         });
         if menu.is_none() {
             self.menu = None;

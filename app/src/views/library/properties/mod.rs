@@ -32,12 +32,16 @@ mod updates;
 use std::rc::Rc;
 
 use decanter_core::{Game, Storefront};
-use gpui::{AnyView, App, AppContext as _, Context, Div, FontWeight, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{
+    AnyView, App, AppContext as _, Context, Div, FocusHandle, FontWeight, KeyDownEvent, SharedString, Window, div,
+    prelude::*, px, rgb,
+};
 use rust_i18n::t;
 
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::chrome;
+use crate::widgets::nav;
 
 /// Which game the window is about, shared by every tab.
 struct Target {
@@ -133,16 +137,21 @@ struct PropertiesWindow {
     title: String,
     tab: Tab,
     pane: AnyView,
+    /// Holds the focus while no control has it, so Escape reaches the window.
+    focus: FocusHandle,
 }
 
 impl PropertiesWindow {
     fn new(target: Rc<Target>, title: String, tab: Tab, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let pane = build_pane(tab, &target, window, cx);
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
         Self {
             target,
             title,
             tab,
             pane,
+            focus,
         }
     }
 
@@ -186,8 +195,7 @@ impl PropertiesWindow {
             .py_2()
             .children(self.tabs().iter().enumerate().map(|(index, &tab)| {
                 let active = tab == self.tab;
-                div()
-                    .id(("properties-tab", index))
+                nav::tab_stop(div().id(("properties-tab", index)))
                     .flex()
                     .flex_none()
                     .items_center()
@@ -273,6 +281,12 @@ impl Render for PropertiesWindow {
         // Same root styling the main window's `Root` sets, since a second
         // window inherits none of it.
         theme::with_cjk_fallbacks(div())
+            .track_focus(&self.focus)
+            .on_key_down(|event: &KeyDownEvent, window, _| {
+                if nav::is_escape(&event.keystroke) {
+                    window.remove_window();
+                }
+            })
             .size_full()
             .relative()
             .flex()

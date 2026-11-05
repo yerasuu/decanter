@@ -218,8 +218,14 @@ impl Shell {
     }
 
     /// Escape, or B on a pad mapped to keys: a game's page or the mods list goes back to the
-    /// shelves, any other section back to Biblioteca.
+    /// shelves (and a PS game's page to the PS covers), any other section back to Biblioteca.
     pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page == Page::Ps
+            && let Some(ps) = self.ps.clone()
+            && ps.update(cx, |ps, cx| ps.back(window, cx))
+        {
+            return;
+        }
         self.show(Page::Library, window, cx);
     }
 

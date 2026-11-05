@@ -56,6 +56,11 @@ impl PsView {
         }
     }
 
+    /// Escape on a game's page goes back to the covers instead of leaving the section.
+    pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.tab == Tab::Games && self.games.update(cx, |games, cx| games.back(window, cx))
+    }
+
     fn select(&mut self, tab: Tab, cx: &mut Context<Self>) {
         let ps = Ps::get(cx);
         match tab {

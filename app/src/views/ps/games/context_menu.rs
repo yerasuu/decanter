@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use decanter_ps::status::Status;
-use gpui::{AnyElement, App, ClipboardItem, Entity, Pixels, Point, Window, prelude::*};
+use gpui::{AnyElement, App, ClipboardItem, Entity, FocusHandle, Pixels, Point, Window, prelude::*};
 use rust_i18n::t;
 
 use super::detail::DetailView;
@@ -24,6 +24,7 @@ pub fn render(
     target: &GameMenu,
     ps: &Entity<Ps>,
     detail: &Entity<DetailView>,
+    focus: &FocusHandle,
     window: &Window,
     dismiss: menu::Dismiss,
     cx: &App,
@@ -125,5 +126,6 @@ pub fn render(
         );
     }
 
+    let panel = menu::trap(focus, Rc::clone(&dismiss), panel);
     Some(menu::popup(target.position, panel, window, dismiss))
 }
