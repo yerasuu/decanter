@@ -16,6 +16,7 @@ pub mod import;
 pub mod launchers;
 pub mod probe;
 pub mod size;
+pub mod steam;
 pub mod transfer;
 pub mod umu;
 

@@ -11,6 +11,8 @@ external.games.edit: 편집
 external.games.in_host: '위치: %{host}'
 external.games.found: '%{host}에서 발견됨: %{game}'
 external.games.add_found: 추가
+external.games.steam.title: 'Steam에서 발견됨'
+external.games.steam.hint: 'Steam에 설치된 게임과 비 Steam 바로가기입니다. 추가해도 Steam에서 읽기만 하며 아무것도 변경되지 않습니다.'
 external.games.remove.button: 삭제
 external.games.remove.running: 삭제하기 전에 게임을 종료하세요
 external.games.remove.hosted: '게임을 삭제합니다. 프리픽스는 계속 %{host}에 속합니다'

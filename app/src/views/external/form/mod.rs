@@ -38,6 +38,9 @@ pub struct GameForm {
     prefix_of: Option<String>,
     /// That game's name, to say so on the form.
     host_name: Option<String>,
+    /// Where the executable picker opens when nothing else says: the folder
+    /// a game found in Steam lives in.
+    start_dir: Option<std::path::PathBuf>,
     /// The folder picked for a new game; `None` is the main one.
     library_root: Option<std::path::PathBuf>,
     name: Entity<TextInput>,
@@ -80,6 +83,7 @@ impl GameForm {
                 umu: None,
                 prefix_of: None,
                 host_name: None,
+                start_dir: None,
                 library_root: None,
                 name,
                 executable,
@@ -103,6 +107,7 @@ impl GameForm {
             editing: true,
             prefix_of: game.prefix_of,
             host_name: None,
+            start_dir: None,
             library_root: None,
             umu: game.umu_id.map(|id| crate::external::UmuEntry {
                 id,
@@ -145,6 +150,21 @@ impl GameForm {
         this
     }
 
+    /// A new game found in Steam: its name, executable (when Steam's folder
+    /// has an obvious one) and the art Steam already has on disk.
+    pub fn steam(profile_id: String, found: &crate::external::steam::SteamGame, cx: &mut Context<Self>) -> Self {
+        let mut this = Self::new(profile_id, None, cx);
+        this.start_dir = Some(found.folder.clone());
+        this.art = found.art.clone();
+        this.name.update(cx, |input, cx| input.set_text(found.name.clone(), cx));
+        if let Some(executable) = &found.executable {
+            this.executable.update(cx, |input, cx| {
+                input.set_text(executable.to_string_lossy().into_owned(), cx);
+            });
+        }
+        this
+    }
+
     pub fn is_editing(&self, id: &str) -> bool {
         self.editing && self.id == id
     }
@@ -158,7 +178,8 @@ impl GameForm {
             self.prefix_executable_start()
         } else {
             self.native_executable_start()
-        };
+        }
+        .or_else(|| self.start_dir.clone());
         cx.spawn(async move |this, cx| {
             let mut dialog = rfd::AsyncFileDialog::new()
                 .set_title(t!("external.form.pick_exe.title"))

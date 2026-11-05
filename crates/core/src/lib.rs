@@ -26,7 +26,7 @@ mod scope;
 pub mod secrets;
 pub mod steam;
 pub mod temp;
-mod vdf;
+pub mod vdf;
 
 pub use accounts::Account;
 pub use cache::{cache_group, default_cache_root, game_cache_dir, shader_cache_env};

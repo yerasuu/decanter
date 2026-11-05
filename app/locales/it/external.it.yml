@@ -11,6 +11,8 @@ external.games.edit: Modifica
 external.games.in_host: In %{host}
 external.games.found: "Trovato in %{host}: %{game}"
 external.games.add_found: Aggiungi
+external.games.steam.title: 'Trovati in Steam'
+external.games.steam.hint: 'Giochi installati da Steam e i tuoi collegamenti non Steam. L''aggiunta legge soltanto da Steam; non viene modificato nulla.'
 external.games.remove.button: Elimina
 external.games.remove.running: Chiudi il gioco prima di eliminarlo
 external.games.remove.hosted: "Rimuove il gioco; il prefisso appartiene ancora a %{host}"

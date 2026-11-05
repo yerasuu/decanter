@@ -11,6 +11,8 @@ external.games.edit: "编辑"
 external.games.in_host: "位于 %{host}"
 external.games.found: "在 %{host} 中发现：%{game}"
 external.games.add_found: "添加"
+external.games.steam.title: '在 Steam 中发现'
+external.games.steam.hint: 'Steam 已安装的游戏和你的非 Steam 快捷方式。添加时只读取 Steam，不会改动其中任何内容。'
 external.games.remove.button: "删除"
 external.games.remove.running: "请先停止游戏再删除"
 external.games.remove.hosted: "移除游戏；前缀仍属于 %{host}"

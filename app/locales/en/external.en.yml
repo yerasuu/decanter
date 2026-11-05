@@ -11,6 +11,8 @@ external.games.edit: Edit
 external.games.in_host: In %{host}
 external.games.found: 'Found in %{host}: %{game}'
 external.games.add_found: Add
+external.games.steam.title: 'Found in Steam'
+external.games.steam.hint: 'Games Steam has installed and your non-Steam shortcuts. Adding one only reads from Steam; nothing in it changes.'
 external.games.remove.button: Delete
 external.games.remove.running: Stop the game before deleting it
 external.games.remove.hosted: Removes the game; the prefix still belongs to %{host}

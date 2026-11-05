@@ -20,6 +20,7 @@ use rust_i18n::t;
 use crate::capabilities::Caps;
 use crate::external::art;
 use crate::external::launchers::Detected;
+use crate::external::steam::SteamGame;
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
@@ -51,6 +52,8 @@ pub struct ExternalView {
     /// Games a launcher installed in one of `games`' prefixes that aren't
     /// in the library yet, by the id of the game owning that prefix.
     found: HashMap<String, Vec<Detected>>,
+    /// Steam's own games and shortcuts that aren't in the library yet.
+    steam: Vec<SteamGame>,
     _scan: Option<Task<()>>,
     api_key: Entity<TextInput>,
     key_status: Option<Text>,
@@ -94,6 +97,7 @@ impl ExternalView {
             games: Vec::new(),
             form: None,
             found: HashMap::new(),
+            steam: Vec::new(),
             _scan: None,
             api_key,
             key_status: None,
@@ -137,6 +141,16 @@ impl ExternalView {
         cx.notify();
     }
 
+    /// A fresh form for a game found in Steam.
+    fn start_steam(&mut self, found: &SteamGame, cx: &mut Context<Self>) {
+        let Some(profile_id) = self.profile_id.clone() else {
+            return;
+        };
+        self.form = Some(Self::watch(cx.new(|cx| GameForm::steam(profile_id, found, cx)), cx));
+        self.tab = Tab::Form;
+        cx.notify();
+    }
+
     fn watch(form: Entity<GameForm>, cx: &mut Context<Self>) -> (Entity<GameForm>, Subscription) {
         let subscription = cx.subscribe(&form, |this, _, event, cx| match event {
             FormEvent::Saved => {
@@ -149,27 +163,29 @@ impl ExternalView {
     }
 
     /// Looks through each prefix the profile's external games own for games
-    /// a launcher there installed, off the UI thread: it reads every
-    /// prefix's registry. Nothing to look through where games run without
-    /// one.
+    /// a launcher there installed, and through Steam for games it has, off
+    /// the UI thread: it reads every prefix's registry and Steam's
+    /// manifests. Launchers have no prefixes to look through where games
+    /// run without one.
     fn scan(&mut self, cx: &mut Context<Self>) {
-        let Some(profile_id) = self.profile_id.clone().filter(|_| crate::launch::in_prefixes()) else {
+        let Some(profile_id) = self.profile_id.clone() else {
             self.found.clear();
+            self.steam.clear();
             return;
         };
         let added: HashSet<PathBuf> = self.games.iter().filter_map(crate::core::executable_for).collect();
         let hosts: Vec<(String, PathBuf)> = self
             .games
             .iter()
-            .filter(|game| game.prefix_of.is_none())
+            .filter(|game| game.prefix_of.is_none() && crate::launch::in_prefixes())
             .filter_map(|game| {
                 let prefix = crate::core::prefix_for(&profile_id, &game.game_id)?;
                 Some((game.game_id.clone(), prefix.path().to_path_buf()))
             })
             .collect();
         self._scan = Some(cx.spawn(async move |this, cx| {
-            let found = tokio::task::spawn_blocking(move || {
-                hosts
+            let (found, steam) = tokio::task::spawn_blocking(move || {
+                let found = hosts
                     .into_iter()
                     .map(|(host, root)| {
                         let new: Vec<Detected> = crate::external::launchers::detect(&root)
@@ -179,12 +195,14 @@ impl ExternalView {
                         (host, new)
                     })
                     .filter(|(_, new)| !new.is_empty())
-                    .collect::<HashMap<_, _>>()
+                    .collect::<HashMap<_, _>>();
+                (found, crate::external::steam::detect(&added))
             })
             .await
             .unwrap_or_default();
             let _ = this.update(cx, |this, cx| {
                 this.found = found;
+                this.steam = steam;
                 cx.notify();
             });
         }));
@@ -254,7 +272,7 @@ impl ExternalView {
     }
 
     fn game_list(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
-        if self.games.is_empty() {
+        if self.games.is_empty() && self.steam.is_empty() {
             return theme::empty(t!("external.games.empty")).into_any_element();
         }
         let running = AppState::get(cx).background.read(cx).running.clone();
@@ -349,7 +367,57 @@ impl ExternalView {
                 );
             }
         }
-        theme::card().children(rows).into_any_element()
+        let mut column = div().flex().flex_col().gap(px(16.));
+        if !rows.is_empty() {
+            column = column.child(theme::card().children(rows));
+        }
+        if !self.steam.is_empty() {
+            column = column.child(self.steam_list(cx));
+        }
+        column.into_any_element()
+    }
+
+    fn steam_list(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let rows: Vec<AnyElement> = self
+            .steam
+            .iter()
+            .enumerate()
+            .map(|(index, game)| {
+                let found = game.clone();
+                theme::list_row(("external-steam", index), false)
+                    .child(icon(game.art.icon.as_deref()))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child(game.name.clone()))
+                            .child(theme::muted(game.folder.display().to_string()).text_size(px(12.))),
+                    )
+                    .child(
+                        button(
+                            ("external-add-steam", index),
+                            ButtonKind::Primary,
+                            t!("external.games.add_found"),
+                            false,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| this.start_steam(&found, cx))),
+                    )
+                    .into_any_element()
+            })
+            .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(t!("external.games.steam.title")),
+            )
+            .child(theme::muted(t!("external.games.steam.hint")))
+            .child(theme::card().children(rows))
     }
 
     fn sources(&self, cx: &Context<Self>) -> impl IntoElement + use<> {

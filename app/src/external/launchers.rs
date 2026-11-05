@@ -125,7 +125,7 @@ fn gryphlink(registry: &Registry, prefix: &decanter_runtime::Prefix) -> Vec<Dete
 /// A known game executable at the top of `folder`, else the one there that
 /// isn't a helper, if there is exactly one — two leave it unclear which is
 /// the game.
-fn main_executable(folder: &Path) -> Option<PathBuf> {
+pub(super) fn main_executable(folder: &Path) -> Option<PathBuf> {
     if let Some(known) = KNOWN_EXECUTABLES
         .iter()
         .map(|exe| folder.join(exe))

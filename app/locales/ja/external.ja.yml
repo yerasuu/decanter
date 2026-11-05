@@ -11,6 +11,8 @@ external.games.edit: "編集"
 external.games.in_host: "%{host} 内"
 external.games.found: "%{host} で検出: %{game}"
 external.games.add_found: "追加"
+external.games.steam.title: 'Steam で検出'
+external.games.steam.hint: 'Steam にインストール済みのゲームと、Steam 外のショートカット。追加しても Steam からは読み取るだけで、何も変更されません。'
 external.games.remove.button: "削除"
 external.games.remove.running: "削除する前にゲームを終了してください"
 external.games.remove.hosted: "ゲームを削除します。プレフィックスは引き続き %{host} のものです"
