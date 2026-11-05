@@ -754,6 +754,7 @@ ps.online.password_unavailable: Trousseau indisponible
 ps.online.token: Jeton (facultatif)
 ps.online.token_placeholder: Uniquement si votre serveur vous en a donné un
 ps.online.account_description: Un compte shadNet enregistré sur ce serveur ; decanter ne crée pas de comptes. Le mot de passe et le jeton sont conservés dans le trousseau système, jamais dans la bibliothèque. Sans ID en ligne, le jeu fonctionne sans shadNet.
+ps.online.unencrypted_login: "Ce serveur ne chiffre pas la connexion : ton mot de passe et ton jeton circulent en clair. Utilise un mot de passe que tu ne réutilises nulle part ailleurs."
 ps.online.keyring_unavailable: 'Impossible de lire le trousseau système : %{error}. Sans lui, le jeu en ligne ne démarrera pas avec un compte.'
 ps.online.save: Enregistrer
 ps.online.saved: Enregistré. S’applique au prochain démarrage.

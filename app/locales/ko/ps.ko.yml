@@ -754,6 +754,7 @@ ps.online.password_unavailable: 키링을 사용할 수 없음
 ps.online.token: 토큰 (선택 사항)
 ps.online.token_placeholder: 서버에서 받은 경우에만 입력하세요
 ps.online.account_description: 해당 서버에 등록된 shadNet 계정입니다. decanter는 계정을 만들지 않습니다. 비밀번호와 토큰은 라이브러리가 아니라 시스템 키링에 보관됩니다. 온라인 ID가 없으면 shadNet 없이 게임을 플레이합니다.
+ps.online.unencrypted_login: "이 서버는 로그인을 암호화하지 않습니다. 비밀번호와 토큰이 평문으로 전송됩니다. 다른 곳에서 사용하지 않는 비밀번호를 사용하세요."
 ps.online.keyring_unavailable: '시스템 키링을 읽을 수 없습니다: %{error}. 키링이 없으면 계정으로 온라인 플레이를 시작할 수 없습니다.'
 ps.online.save: 저장
 ps.online.saved: 저장했습니다. 다음 시작 때 적용됩니다.

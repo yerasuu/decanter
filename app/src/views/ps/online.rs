@@ -39,6 +39,7 @@ pub struct OnlineView {
     stored: Result<Stored, String>,
     /// Also while the first read is under way, since saving needs [`Self::saved_npid`].
     is_busy: bool,
+    is_tls: bool,
     message: Option<(Text, bool)>,
     probes: Option<[Probe; 3]>,
 }
@@ -58,6 +59,7 @@ impl OnlineView {
             saved_npid: None,
             stored: Ok(Stored::default()),
             is_busy: true,
+            is_tls: false,
             message: None,
             probes: None,
         };
@@ -81,6 +83,7 @@ impl OnlineView {
                     field.update(cx, |field, cx| field.set_text(value, cx));
                 }
                 this.saved_npid = npid;
+                this.is_tls = settings.flag(online::TLS, false);
                 this.stored = stored;
                 this.is_busy = false;
                 this.refresh_password_placeholder(cx);
@@ -285,6 +288,13 @@ impl Render for OnlineView {
         let has_saved = matches!(self.stored, Ok(stored) if stored.password || stored.token);
         let keyring_error = self.stored.as_ref().err().cloned();
         let lacks_password = self.saved_npid.is_some() && matches!(self.stored, Ok(stored) if !stored.password);
+        let server = self.text(0, cx);
+        let server = if server.is_empty() {
+            online::SHADNET_SERVER
+        } else {
+            &server
+        };
+        let is_plaintext = !self.is_tls && !online::is_loopback_server(server);
         let mut fields = div().flex().flex_col();
         for (field, (_, label)) in self.fields.iter().zip(FIELDS) {
             fields = fields.child(Self::field_row(t!(label).into(), field.clone(), false));
@@ -334,6 +344,9 @@ impl Render for OnlineView {
                     .child(theme::muted(t!("ps.online.per_game")))
                     .child(theme::card().child(account))
                     .child(theme::muted(t!("ps.online.account_description")))
+                    .when(is_plaintext, |column| {
+                        column.child(theme::muted(t!("ps.online.unencrypted_login")))
+                    })
                     .when(lacks_password, |column| {
                         column.child(theme::error(t!("ps.online.no_password")))
                     })

@@ -754,6 +754,7 @@ ps.online.password_unavailable: Portachiavi non disponibile
 ps.online.token: Token (facoltativo)
 ps.online.token_placeholder: Solo se il tuo server te ne ha dato uno
 ps.online.account_description: "Un account shadNet registrato su quel server; decanter non crea account. La password e il token sono conservati nel portachiavi di sistema, mai nella libreria. Senza un ID online il gioco funziona senza shadNet."
+ps.online.unencrypted_login: "Questo server non cifra l'accesso: password e token viaggiano in chiaro. Usa una password che non riutilizzi altrove."
 ps.online.keyring_unavailable: "Impossibile leggere il portachiavi di sistema: %{error}. Senza di esso, il gioco online non partirà con un account."
 ps.online.save: Salva
 ps.online.saved: Salvato. Si applica al prossimo avvio.

@@ -754,6 +754,7 @@ ps.online.password_unavailable: Chaveiro indisponível
 ps.online.token: Token (opcional)
 ps.online.token_placeholder: Só se o seu servidor lhe deu um
 ps.online.account_description: Uma conta shadNet registrada nesse servidor; o decanter não cria contas. A senha e o token ficam no chaveiro do sistema, nunca na biblioteca. Sem um ID online, o jogo funciona sem o shadNet.
+ps.online.unencrypted_login: "Este servidor não criptografa o login: sua senha e seu token trafegam em texto puro. Use uma senha que você não reutiliza em nenhum outro lugar."
 ps.online.keyring_unavailable: 'Não é possível ler o chaveiro do sistema: %{error}. Sem ele, o jogo online não inicia com uma conta.'
 ps.online.save: Salvar
 ps.online.saved: Salvo. Vale a partir da próxima inicialização.

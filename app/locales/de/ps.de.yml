@@ -754,6 +754,7 @@ ps.online.password_unavailable: Keyring nicht verfügbar
 ps.online.token: Token (optional)
 ps.online.token_placeholder: Nur, wenn dein Server dir eines gegeben hat
 ps.online.account_description: Ein auf diesem Server registriertes shadNet-Konto; decanter erstellt keine Konten. Passwort und Token liegen im System-Keyring, nie in der Bibliothek. Ohne Online-ID spielt das Spiel ohne shadNet.
+ps.online.unencrypted_login: "Dieser Server verschlüsselt die Anmeldung nicht: Passwort und Token werden im Klartext übertragen. Verwende ein Passwort, das du nirgendwo sonst benutzt."
 ps.online.keyring_unavailable: 'Der System-Keyring lässt sich nicht lesen: %{error}. Ohne ihn startet das Online-Spiel nicht mit einem Konto.'
 ps.online.save: Speichern
 ps.online.saved: Gespeichert. Gilt ab dem nächsten Start.
