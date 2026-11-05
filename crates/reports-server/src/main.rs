@@ -226,8 +226,8 @@ async fn open_accounts(config: &Config, credentials: &StorageCredentials) -> Res
 /// The secrets are already validated; this makes one read-only round trip per partition and prints no secret.
 async fn check_config(config: &Config, credentials: &StorageCredentials) -> Result<(), String> {
     eprintln!("config ok: listening on {}", config.listen);
-    if let Some(warning) = check::env_secrets_warning(config, check::in_container()) {
-        eprintln!("warning: {warning}");
+    if check::env_secrets_warning(config, check::in_container()).is_some() {
+        eprintln!("warning: environment secret configuration issue detected");
     }
     if let Some(note) = check::proxy_note(config) {
         eprintln!("note: {note}");
