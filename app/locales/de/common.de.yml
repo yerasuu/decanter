@@ -4,6 +4,7 @@ common.cancel: Abbrechen
 common.loading: Wird geladen...
 common.queued: In Warteschlange…
 common.running: Läuft
+common.running_elsewhere: 'Läuft bereits, von einem anderen decanter gestartet (etwa einer Steam-Verknüpfung)'
 common.duration.hours_minutes: '%{hours} h %{minutes} min'
 common.duration.minutes: '%{minutes} min'
 common.duration.minutes_seconds: '%{minutes} min %{seconds} s'

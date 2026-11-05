@@ -28,8 +28,10 @@ use crate::ps_play::launch::{self, LaunchError, OnlinePlay, Surroundings};
 use crate::ps_play::run;
 
 impl Ps {
+    /// Another decanter process playing the game counts, so it is never offered to start twice.
     pub fn is_running(&self, key: &JobKey, cx: &gpui::App) -> bool {
         self.jobs.get(key).is_some_and(|job| job.read(cx).is_running())
+            || matches!(key, JobKey::Game(dir) if self.elsewhere.contains(dir))
     }
 
     pub fn play(&mut self, dir: &Path, cx: &mut Context<Self>) {
@@ -51,6 +53,10 @@ impl Ps {
         if !self.launching.insert(dir.to_owned()) {
             return;
         }
+        let claim = match crate::running::claim(crate::running::Game::ps(&entry.game.title_id, dir)) {
+            Ok(claim) => claim,
+            Err(busy) => return self.refuse_running(dir, &busy, cx),
+        };
         let game = entry.game.clone();
         let root = decanter_ps::paths::active();
         let folder = self
@@ -118,6 +124,7 @@ impl Ps {
                 cx,
             )
             .await;
+            drop(claim);
             cx.update(|cx| crate::closing::ended(&target, cx));
             let _ = this.update(cx, |this, _| this.launching.remove(&game.dir));
             if let Some(line) = finished.frame_overlap_off {
@@ -129,6 +136,14 @@ impl Ps {
             record_failures(&this, game.dir.clone(), failures_path, finished.failures, cx).await;
         });
         self.launch_tasks.insert(dir, task);
+    }
+
+    /// JUGAR on a game already running, from another decanter process or another dump of its title.
+    fn refuse_running(&mut self, dir: &Path, busy: &crate::running::Busy, cx: &mut Context<Self>) {
+        tracing::info!(dir = %dir.display(), pid = busy.pid, "not started, the game is already running");
+        self.launching.remove(dir);
+        self.notice = Some((Text::new("common.running_elsewhere"), true));
+        cx.notify();
     }
 
     /// Whether a launch is under way: preparing the port, building the command or starting the
@@ -162,6 +177,12 @@ impl Ps {
     }
 
     pub fn stop(&mut self, key: &JobKey, cx: &mut Context<Self>) {
+        if let JobKey::Game(dir) = key
+            && self.elsewhere.contains(dir)
+        {
+            self.stop_elsewhere(dir, cx);
+            return;
+        }
         #[cfg(windows)]
         if let JobKey::Game(dir) = key {
             super::direct::stop(self, dir, super::direct::Ending::Polite, cx);
@@ -179,6 +200,12 @@ impl Ps {
     /// DETENER: where `psport.exe` runs in a session of its own, it is asked through its stop file instead
     /// of its window, and the session ended if it hasn't after the grace; elsewhere the same as [`Ps::stop`].
     pub fn end(&mut self, key: &JobKey, cx: &mut Context<Self>) {
+        if let JobKey::Game(dir) = key
+            && self.elsewhere.contains(dir)
+        {
+            self.stop_elsewhere(dir, cx);
+            return;
+        }
         #[cfg(not(windows))]
         if let JobKey::Game(dir) = key
             && self.launching.contains(dir)
@@ -193,6 +220,19 @@ impl Ps {
             return;
         }
         self.stop(key, cx);
+    }
+
+    /// DETENER on a game another decanter process plays: that process is asked to stop it, and the
+    /// game reads as stopping until [`Ps::set_elsewhere`] sees it end.
+    fn stop_elsewhere(&mut self, dir: &Path, cx: &mut Context<Self>) {
+        let Some(entry) = self.entries.iter().find(|entry| entry.game.dir == dir) else {
+            return;
+        };
+        if !self.stopping.insert(dir.to_owned()) {
+            return;
+        }
+        crate::running::stop(&crate::running::Game::ps(&entry.game.title_id, dir));
+        cx.notify();
     }
 
     /// Builds `<base>-01.09` beside the base dump, then shows it.

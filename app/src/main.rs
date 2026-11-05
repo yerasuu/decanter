@@ -129,6 +129,7 @@ mod relocate;
 mod report;
 mod run_log;
 mod runners;
+mod running;
 mod self_update;
 mod state;
 mod steam_compat;

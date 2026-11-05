@@ -379,7 +379,7 @@ pub async fn sync_ps(library_root: &Path, game: &decanter_ps::library::Game) {
         title: &game.title,
         window_class: &window_class,
         icon: &icon,
-        exec: None,
+        exec: relaunch_ps(&game.title_id),
         source: &game.dir,
     };
     if write(library_root, &entry).await {
@@ -389,15 +389,22 @@ pub async fn sync_ps(library_root: &Path, game: &decanter_ps::library::Game) {
 
 /// `decanter launch` for a GOG game.
 fn relaunch(account_id: &str, product_id: &str) -> Option<String> {
-    let launcher = crate::launcher::Launcher::gog(account_id, product_id)?;
+    crate::launcher::Launcher::gog(account_id, product_id).map(|launcher| exec_line(&launcher))
+}
+
+/// `decanter ps play` for a PS game whose title id can name a command.
+fn relaunch_ps(title_id: &str) -> Option<String> {
+    let title_id = title_id.parse::<decanter_ps::title_id::TitleId>().ok()?;
+    crate::launcher::Launcher::ps(title_id.as_str()).map(|launcher| exec_line(&launcher))
+}
+
+fn exec_line(launcher: &crate::launcher::Launcher) -> String {
     let program = launcher.program.to_string_lossy();
-    Some(
-        std::iter::once(program.as_ref())
-            .chain(launcher.args.iter().map(String::as_str))
-            .map(exec_arg)
-            .collect::<Vec<_>>()
-            .join(" "),
-    )
+    std::iter::once(program.as_ref())
+        .chain(launcher.args.iter().map(String::as_str))
+        .map(exec_arg)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Removes a PC game's entry once it's uninstalled or removed.

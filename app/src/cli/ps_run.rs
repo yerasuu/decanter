@@ -1,10 +1,15 @@
-//! `decanter ps run`: one PS game played without a window, through the same launch, scan and failure
-//! record as the window's Play ([`crate::ps_play`]), so `decanter ps report` reads what it left.
+//! `decanter ps run` and `decanter ps play`: one PS game played without a window, through the same
+//! launch, scan and failure record as the window's Play ([`crate::ps_play`]), so `decanter ps report`
+//! reads what it left, with its session claimed ([`crate::running`]) so the window shows it running
+//! and a second start of it is refused.
 //!
 //! What differs from Play, because there is no window or app around it: the port must already be
-//! built (nothing is cloned, fetched, downloaded or built), a PS5 game must already be converted,
-//! online play stays off whatever the settings say, an automatic aspect ratio is left to the port,
-//! and a Vulkan validation layer is used only when a launch from the window already realised it.
+//! built (nothing is cloned, fetched, downloaded or built), a PS5 game must already be converted, a
+//! Vulkan validation layer is used only when a launch from the window already realised it, and an
+//! automatic aspect ratio is taken from the connected display rather than from the window's. `ps run`
+//! is the test: online play stays off whatever the settings say and the port keeps its own ratio.
+//! `ps play` is what shortcuts start: online play as the game's settings have it, with the shadNet
+//! secrets from the keyring; one that can't be read without asking fails the start with its reason.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -15,7 +20,7 @@ use decanter_core::capabilities::{Capabilities, Feature};
 use decanter_nix::Toolchain;
 use decanter_nix::validation;
 use decanter_ps::anyps5::AnyPs5;
-use decanter_ps::bbport::{self, Bbport, Names};
+use decanter_ps::bbport::{self, Bbport, LauncherSettings, Names, online};
 use decanter_ps::failures::{self, Kind, Scanner};
 use decanter_ps::library::{self, Game};
 use decanter_ps::paths::{self, Root};
@@ -59,6 +64,24 @@ const ONLINE_VARS: [&str; 12] = [
     "BBSC",
     "BBSC_LOCAL_SERVER",
 ];
+
+/// How the command plays the game.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// `ps run`: a test, never online.
+    Test,
+    /// `ps play`: as the window's Play, for a Steam shortcut or a task bar entry.
+    Play,
+}
+
+impl Mode {
+    const fn command(self) -> &'static str {
+        match self {
+            Self::Test => "decanter ps run",
+            Self::Play => "decanter ps play",
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum Outcome {
@@ -123,11 +146,11 @@ pub fn env_pair(value: &str) -> Result<(String, String), String> {
 }
 
 /// Never fails: whatever stops the game from starting is printed, and the outcome says it.
-pub async fn run(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, String)>) -> Outcome {
+pub async fn run(db: &Db, mode: Mode, title: &str, timeout: Option<u64>, env: Vec<(String, String)>) -> Outcome {
     if env.len() > MAX_ENV {
         return not_started(title, &Text::new("ps.run.errors.too_many_env").arg("max", MAX_ENV));
     }
-    match ready(db, title, timeout, env).await {
+    match ready(db, mode, title, timeout, env).await {
         Ok(ready) => play(ready, timeout).await,
         Err(why) => not_started(title, &why),
     }
@@ -141,13 +164,28 @@ struct Ready {
     profile_id: String,
     launcher: Launcher,
     facts: Vec<(&'static str, String)>,
+    /// Whether the game plays online, which the scanner then doesn't count offline calls against.
+    is_online: bool,
+    /// Held until the game ends.
+    claim: Option<crate::running::Claim>,
 }
 
-/// How the game starts, and the facts for its log's header.
-type Started = Result<(Launcher, Vec<(&'static str, String)>), Text>;
+/// How the game starts.
+struct Started {
+    launcher: Launcher,
+    /// For its log's header.
+    facts: Vec<(&'static str, String)>,
+    is_online: bool,
+}
 
 /// The title is looked up first, so an unknown one says so whatever else would stop it.
-async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, String)>) -> Result<Ready, Text> {
+async fn ready(
+    db: &Db,
+    mode: Mode,
+    title: &str,
+    timeout: Option<u64>,
+    env: Vec<(String, String)>,
+) -> Result<Ready, Text> {
     let profile = match db.active_profile() {
         Ok(Some(profile)) => profile,
         Ok(None) => return Err(Text::new("ps.report.errors.no_profile")),
@@ -168,6 +206,13 @@ async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, Str
         Err(err) => return Err(err),
     };
     let (game, port) = (entry.game, entry.port.unwrap_or(Port::Bbport));
+    let claim = match crate::running::claim(crate::running::Game::ps(&game.title_id, &game.dir)) {
+        Ok(claim) => claim,
+        Err(busy) => {
+            tracing::info!(title_id = %game.title_id, pid = busy.pid, "not started, the game is already running");
+            return Err(Text::new("common.running_elsewhere"));
+        }
+    };
     let folder = library_roots
         .iter()
         .find(|library_root| game.dir.starts_with(paths::games_in(library_root)))
@@ -177,17 +222,21 @@ async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, Str
     // As Play: where psport.exe runs directly, or without the checkouts' builds, no toolchain runs it.
     let is_built_here = !bbport::direct::IN_USE && Capabilities::detect().is_offered(Feature::PsBuilds);
     let started = match is_built_here.then_some(port) {
-        Some(port) => through_toolchain(&root, port, &game, &profile.id, cache_dir.as_deref(), env).await,
+        Some(port) => through_toolchain(&root, mode, port, &game, &profile.id, cache_dir.as_deref(), env).await,
         #[cfg(windows)]
-        None => directly(&root, port, &game, &profile.id, cache_dir.as_deref(), &env).await,
+        None => directly(&root, mode, port, &game, &profile.id, cache_dir.as_deref(), &env).await,
         #[cfg(not(windows))]
         None => Err(Text::new("ps.errors.builds_unavailable")),
     };
-    let (launcher, mut facts) = match started {
+    let Started {
+        launcher,
+        mut facts,
+        is_online,
+    } = match started {
         Ok(started) => started,
         Err(err) => return Err(err),
     };
-    facts.push(("run", "decanter ps run".to_owned()));
+    facts.push(("run", mode.command().to_owned()));
     facts.extend(timeout.map(|secs| ("timeout", format!("{secs}s"))));
     Ok(Ready {
         root,
@@ -196,32 +245,59 @@ async fn ready(db: &Db, title: &str, timeout: Option<u64>, env: Vec<(String, Str
         profile_id: profile.id,
         launcher,
         facts,
+        is_online,
+        claim,
     })
 }
 
 /// The port's built checkout in its toolchain, with what a run of the port adds around it.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the launch's own inputs plus how this command plays it and its test variables"
+)]
 async fn through_toolchain(
     root: &Root,
+    mode: Mode,
     port: Port,
     game: &Game,
     profile_id: &str,
     cache_dir: Option<&Path>,
     env: Vec<(String, String)>,
-) -> Started {
+) -> Result<Started, Text> {
     let Some(toolchain) = decanter_ps::os::linux::toolchain::ready(root, port).await else {
-        tracing::warn!(port = port.name(), "port not built; decanter ps run never prepares it");
+        tracing::warn!(
+            port = port.name(),
+            command = mode.command(),
+            "port not built; this command never prepares it"
+        );
         return Err(Text::new("ps.run.errors.port_not_ready").arg("port", port.name()));
     };
+    let mut secrets = None;
+    let mut is_online = false;
     let command = match port {
         Port::Bbport => {
-            let surroundings = Surroundings {
-                online: OnlinePlay::Off,
-                is_frame_gen_offered: is_frame_gen_offered(root, &toolchain).await,
-                display_ratio: no_display_ratio,
+            let features = port_features(root, &toolchain).await;
+            let online = match mode {
+                Mode::Test => OnlinePlay::Off,
+                Mode::Play => OnlinePlay::AsSet {
+                    is_offered: features.is_online_offered,
+                    is_handoff_listed: features.is_handoff_listed,
+                },
             };
-            launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings)
+            let surroundings = Surroundings {
+                online,
+                is_frame_gen_offered: features.is_frame_gen_offered,
+                display_ratio: move || display_ratio(mode),
+            };
+            let command = launch::bbport_command(root, &toolchain, game, profile_id, cache_dir, surroundings)
                 .await
-                .map(|(command, _)| command)
+                .map(|(command, handoff)| {
+                    secrets = handoff;
+                    command
+                });
+            // As Play tells the scanner: the game's own setting, where the build has online play.
+            is_online = mode == Mode::Play && features.is_online_offered && is_online_set(root, &game.title_id).await;
+            command
         }
         Port::AnyPs5 => {
             if !AnyPs5::new(root.clone()).is_converted(&game.title_id).await {
@@ -238,15 +314,18 @@ async fn through_toolchain(
         }
     };
     command.envs(env);
-    without_online(&mut command);
+    if mode == Mode::Test {
+        without_online(&mut command);
+    }
     let mut facts = run::port_facts(root, port, Some(&toolchain)).await;
     if let Some(fact) = validation_layer(root, &toolchain, &mut command).await {
         facts.push(("vk_validation_layer", fact));
     }
-    Ok((
-        Launcher::Command(launch::around_port(root, game, command).await, None),
+    Ok(Started {
+        launcher: Launcher::Command(launch::around_port(root, game, command).await, secrets),
         facts,
-    ))
+        is_online,
+    })
 }
 
 /// `psport.exe` as Play starts it here, from the folder picked in Ajustes or the build or package in
@@ -254,14 +333,18 @@ async fn through_toolchain(
 #[cfg(windows)]
 async fn directly(
     root: &Root,
+    mode: Mode,
     port: Port,
     game: &Game,
     profile_id: &str,
     cache_dir: Option<&Path>,
     env: &[(String, String)],
-) -> Started {
+) -> Result<Started, Text> {
     if let Err(err) = direct::check_port(port, game) {
         return Err(err);
+    }
+    if mode == Mode::Play {
+        tracing::warn!("where psport.exe runs directly, decanter ps play plays offline whatever the settings say");
     }
     let surroundings = Surroundings {
         online: OnlinePlay::Off,
@@ -286,12 +369,93 @@ async fn directly(
         Err(err) => return Err(err),
     };
     without_online(prepared.command_mut());
-    Ok((Launcher::Session(prepared, None), facts))
+    Ok(Started {
+        launcher: Launcher::Session(prepared, None),
+        facts,
+        is_online: false,
+    })
+}
+
+async fn is_online_set(root: &Root, title_id: &str) -> bool {
+    let (root, title_id) = (root.clone(), title_id.to_owned());
+    tokio::task::spawn_blocking(move || {
+        LauncherSettings::of_title(&root, &title_id).is_ok_and(|settings| settings.flag(online::ONLINE, false))
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// The ratio the port's automatic setting takes: the test keeps the port's own, a play takes the
+/// connected display's, since there is no window to open on.
+fn display_ratio(mode: Mode) -> Option<&'static str> {
+    if mode == Mode::Test {
+        return no_display_ratio();
+    }
+    let Some((width, height)) = display_size() else {
+        tracing::info!("no single connected display to take the aspect ratio from, the port keeps its own");
+        return None;
+    };
+    let ratio = bbport::nearest_aspect_ratio(width, height);
+    tracing::info!(width, height, ratio, "display aspect ratio for the port");
+    ratio
 }
 
 fn no_display_ratio() -> Option<&'static str> {
     tracing::info!("no window to take the display's aspect ratio from, the port keeps its own");
     None
+}
+
+/// The preferred mode of the display a game opens on, read from the kernel's DRM connectors
+/// (`status` and `modes`, [drm_sysfs.c](https://github.com/torvalds/linux/blob/v6.12/drivers/gpu/drm/drm_sysfs.c)):
+/// the one external display connected, else the one built-in panel, since a compositor such as
+/// gamescope moves to the external one when there is one. `None` when that isn't one display.
+#[cfg(target_os = "linux")]
+fn display_size() -> Option<(f32, f32)> {
+    let mut external = Vec::new();
+    let mut internal = Vec::new();
+    for entry in std::fs::read_dir("/sys/class/drm").ok()?.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let Some((_, connector)) = name.to_str().and_then(|name| name.split_once('-')) else {
+            continue;
+        };
+        let path = entry.path();
+        let is_connected =
+            std::fs::read_to_string(path.join("status")).is_ok_and(|status| status.trim() == "connected");
+        if !is_connected {
+            continue;
+        }
+        let Some(size) = std::fs::read_to_string(path.join("modes"))
+            .ok()
+            .and_then(|modes| modes.lines().next().and_then(mode_size))
+        else {
+            continue;
+        };
+        if ["eDP", "LVDS", "DSI"].iter().any(|panel| connector.starts_with(panel)) {
+            internal.push(size);
+        } else {
+            external.push(size);
+        }
+    }
+    match (external.as_slice(), internal.as_slice()) {
+        ([one], _) | ([], [one]) => Some(*one),
+        _ => None,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+const fn display_size() -> Option<(f32, f32)> {
+    None
+}
+
+/// `1280x800`, or `1920x1080i` for an interlaced mode.
+#[cfg(target_os = "linux")]
+fn mode_size(mode: &str) -> Option<(f32, f32)> {
+    let (width, height) = mode.trim().split_once('x')?;
+    let height = height.trim_end_matches(|ch: char| !ch.is_ascii_digit());
+    Some((
+        f32::from(width.parse::<u16>().ok()?),
+        f32::from(height.parse::<u16>().ok()?),
+    ))
 }
 
 /// Online play's variables gone from the game's environment, those the shell running this command
@@ -364,15 +528,26 @@ const fn rank(status: &Status) -> Option<u8> {
     }
 }
 
-/// As the window's capabilities have it once the port reported its features: frame generation
-/// only from a build that lists it.
-async fn is_frame_gen_offered(root: &Root, toolchain: &Toolchain) -> bool {
+/// What the port's build offers, as the window's capabilities have it once the port reported its
+/// features: none of these from a build that doesn't report them.
+#[derive(Clone, Copy, Default)]
+struct PortFeatures {
+    is_frame_gen_offered: bool,
+    is_online_offered: bool,
+    is_handoff_listed: bool,
+}
+
+async fn port_features(root: &Root, toolchain: &Toolchain) -> PortFeatures {
     let Some(report) = bbport::host_features(&Bbport::new(root.clone()), toolchain).await else {
-        return false;
+        return PortFeatures::default();
     };
     let mut capabilities = Capabilities::detect();
     report.merge_into(&mut capabilities);
-    capabilities.is_offered(Feature::PsFrameGen)
+    PortFeatures {
+        is_frame_gen_offered: capabilities.is_offered(Feature::PsFrameGen),
+        is_online_offered: capabilities.is_offered(Feature::PsOnline),
+        is_handoff_listed: capabilities.is_offered(Feature::PsSecretsHandoff),
+    }
 }
 
 /// The validation layer when the game's settings ask for it and a launch from the window realised
@@ -413,10 +588,13 @@ async fn play(ready: Ready, timeout: Option<u64>) -> Outcome {
         profile_id,
         mut launcher,
         mut facts,
+        is_online,
+        // Held until the run's failures are recorded, which a window that sees it end reads then.
+        claim: _claim,
     } = ready;
     crate::taskbar::sync_ps(root.library(), &game).await;
     let commit = failures::commit_of(&port.checkout(&root)).await;
-    let mut scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit, true);
+    let mut scanner = Scanner::new(&game.dir, &game.title_id, &game.version, commit, !is_online);
     let kind = JobKind::Game;
     let target = run::game_target(&game.dir);
     facts.extend(scanner.facts());

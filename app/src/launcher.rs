@@ -26,9 +26,9 @@ impl Launcher {
         Self::new(&["launch", "--account-id", account_id, "--product-id", product_id])
     }
 
-    /// `ps run` for a PS game: headless and never online, whatever its settings say.
+    /// `ps play` for a PS game: as the window's Play, with its own settings, online play included.
     pub fn ps(title_id: &str) -> Option<Self> {
-        Self::new(&["ps", "run", "--title", title_id])
+        Self::new(&["ps", "play", "--title", title_id])
     }
 
     fn new(command: &[&str]) -> Option<Self> {

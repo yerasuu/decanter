@@ -97,6 +97,9 @@ pub struct Ps {
     add_notice: Option<(Text, bool)>,
     /// Games whose session is being stopped, so DETENER can't start a second stop meanwhile.
     stopping: HashSet<PathBuf>,
+    /// Games another decanter process plays (a Steam shortcut's `ps play`), by folder; kept by
+    /// [`crate::running::watch`].
+    elsewhere: HashSet<PathBuf>,
     ports: HashMap<Port, PortState>,
     /// Where `psport.exe` runs directly ([`decanter_ps::bbport::direct::IN_USE`]).
     package: PackageState,
@@ -157,6 +160,32 @@ impl Ps {
         });
     }
 
+    /// The games other decanter processes play now. One that ended there recorded its failures and
+    /// what the run taught, so the views that read them read them again. Nothing is created where the PS section was never
+    /// opened.
+    pub fn set_elsewhere(elsewhere: HashSet<PathBuf>, cx: &mut App) {
+        let Some(global) = cx.try_global::<PsGlobal>() else {
+            return;
+        };
+        let ps = global.0.clone();
+        ps.update(cx, |ps, cx| {
+            if ps.elsewhere == elsewhere {
+                return;
+            }
+            let ended = ps.elsewhere.difference(&elsewhere).cloned().collect::<Vec<_>>();
+            for dir in &ended {
+                ps.stopping.remove(dir);
+            }
+            ps.elsewhere = elsewhere;
+            if ended.is_empty() {
+                cx.notify();
+            } else {
+                ps.learned_changed(cx);
+                ps.failures_changed(cx);
+            }
+        });
+    }
+
     pub fn get(cx: &mut App) -> Entity<Self> {
         if let Some(global) = cx.try_global::<PsGlobal>() {
             return global.0.clone();
@@ -187,6 +216,7 @@ impl Ps {
                 adding: None,
                 add_notice: None,
                 stopping: HashSet::new(),
+                elsewhere: HashSet::new(),
                 ports: HashMap::new(),
                 package: PackageState::default(),
                 branch: BranchState::default(),

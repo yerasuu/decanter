@@ -14,6 +14,7 @@
 //! Every kind is built on every system; which one a game takes is decided
 //! when it launches, from the system, where its manifest is filed and its file.
 
+mod headless;
 mod linux_native;
 mod native;
 mod pe;
@@ -23,6 +24,7 @@ mod umu;
 
 use std::path::{Path, PathBuf};
 
+pub use headless::play as play_headless;
 pub use umu::reset_prefix;
 
 use decanter_core::capabilities::Feature;
@@ -182,6 +184,82 @@ fn set_running(background: &Entity<Background>, game_id: &str, running: bool, cx
     });
 }
 
+/// Why a game can't be started: shown where its runs are, or only logged, as each check always
+/// did.
+enum Unready {
+    Shown(String),
+    Logged(&'static str),
+}
+
+impl Unready {
+    fn reason(&self) -> &str {
+        match self {
+            Self::Shown(reason) => reason,
+            Self::Logged(reason) => reason,
+        }
+    }
+}
+
+/// A game resolved for a launch: its mods' play tree up to date, the program it starts and its
+/// launch planned, what the window's Play and the CLI's `launch` both go on from.
+struct Ready {
+    kind: Kind,
+    planned: Planned,
+    /// Held until the session ends, since the launch starts from it.
+    play: Option<crate::mods::Play>,
+    /// The program asked for, for the hint after a failure.
+    hinted: PathBuf,
+}
+
+/// Logs why it fails; the caller decides where else that goes.
+async fn ready(account_id: &str, game: &InstalledGame) -> Result<Ready, Unready> {
+    let Some(executable) = crate::core::executable_for(game) else {
+        tracing::error!(game_id = %game.game_id, "no launch executable");
+        return Err(Unready::Logged("no launch executable"));
+    };
+    // A reconcile that fails stops the launch, since starting the game without the mods its
+    // player enabled would look like they work.
+    let play = match crate::mods::prepare(account_id, game).await {
+        Ok(play) => play,
+        Err(reason) => {
+            tracing::error!(game_id = %game.game_id, %reason, "launch failed");
+            return Err(Unready::Shown(reason));
+        }
+    };
+    let executable = match play.as_ref().map(|play| play.rebase(&executable)) {
+        Some(Some(in_play)) => in_play,
+        Some(None) => {
+            tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is outside the install");
+            return Err(Unready::Logged("launch executable is outside the install"));
+        }
+        None => executable,
+    };
+    if !executable.is_file() {
+        tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
+        return Err(Unready::Logged("launch executable is not on disk"));
+    }
+    let kind = Kind::of(game, &executable);
+    if kind == Kind::LinuxNative {
+        allowed_to_run(&game.game_id, &executable)?;
+    }
+    let hinted = executable.clone();
+    let Some(mut planned) = Planned::plan(kind, account_id, game, executable) else {
+        return Err(Unready::Logged("no launch planned, see the log"));
+    };
+    if let Some(play) = &play {
+        planned.facts.extend(play.facts());
+        if kind == Kind::Umu {
+            planned.launch.env.extend(play.share_env());
+        }
+    }
+    Ok(Ready {
+        kind,
+        planned,
+        play,
+        hinted,
+    })
+}
+
 /// Runs `game` to completion, holding it in `running` for as long as its
 /// session lasts.
 ///
@@ -193,49 +271,32 @@ pub async fn start(
     background: Entity<Background>,
     cx: &mut AsyncApp,
 ) -> Option<std::time::Duration> {
+    // Steam starts its entries and their session is Steam's, so no other decanter process can
+    // hold one and there is nothing to claim.
     if crate::external::steam::entries::app_id(&game).is_some() {
         return steam::start(&account_id, &game, &background, cx).await;
     }
-    let Some(executable) = crate::core::executable_for(&game) else {
-        tracing::error!(game_id = %game.game_id, "no launch executable");
-        return None;
+    let claim = match crate::running::claim(crate::running::Game::pc(&account_id, &game.game_id)) {
+        Ok(claim) => claim,
+        Err(busy) => {
+            tracing::info!(game_id = %game.game_id, pid = busy.pid, "not launched, the game is already running");
+            show_failure(&background, &game.game_id, &t!("common.running_elsewhere"), cx);
+            return None;
+        }
     };
-    // A reconcile that fails stops the launch, since starting the game without the mods its
-    // player enabled would look like they work.
-    let play = match crate::mods::prepare(&account_id, &game).await {
-        Ok(play) => play,
-        Err(reason) => {
-            tracing::error!(game_id = %game.game_id, %reason, "launch failed");
+    let Ready {
+        kind,
+        mut planned,
+        play,
+        hinted,
+    } = match ready(&account_id, &game).await {
+        Ok(ready) => ready,
+        Err(Unready::Shown(reason)) => {
             show_failure(&background, &game.game_id, &reason, cx);
             return None;
         }
+        Err(Unready::Logged(_)) => return None,
     };
-    let executable = match play.as_ref().map(|play| play.rebase(&executable)) {
-        Some(Some(in_play)) => in_play,
-        Some(None) => {
-            tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is outside the install");
-            return None;
-        }
-        None => executable,
-    };
-    if !executable.is_file() {
-        tracing::error!(game_id = %game.game_id, path = %executable.display(), "launch executable is not on disk");
-        return None;
-    }
-    let kind = Kind::of(&game, &executable);
-    if kind == Kind::LinuxNative && !allowed_to_run(&game.game_id, &executable, &background, cx) {
-        return None;
-    }
-    let hinted = executable.clone();
-    let Some(mut planned) = Planned::plan(kind, &account_id, &game, executable) else {
-        return None;
-    };
-    if let Some(play) = &play {
-        planned.facts.extend(play.facts());
-        if kind == Kind::Umu {
-            planned.launch.env.extend(play.share_env());
-        }
-    }
     let saves_view = play.as_ref().and_then(|play| play.saves_view(&game));
     let saves_game = saves_view.as_ref().unwrap_or(&game);
 
@@ -272,6 +333,7 @@ pub async fn start(
     };
     crate::run_log::finish(log, exit, &game.game_id).await;
     drop(galaxy);
+    drop(claim);
     cx.update(|cx| crate::closing::ended(&target, cx));
     set_running(&background, &game.game_id, false, cx);
     let elapsed = started.elapsed();
@@ -394,21 +456,18 @@ async fn spawn(
     Some((job, events, log))
 }
 
-/// [`linux_native::allow_to_run`], with why it couldn't shown where the game's runs are.
+/// [`linux_native::allow_to_run`], with why it couldn't for where the game's runs are.
 #[cfg(unix)]
-fn allowed_to_run(game_id: &str, executable: &Path, background: &Entity<Background>, cx: &mut AsyncApp) -> bool {
-    let Err(err) = linux_native::allow_to_run(executable) else {
-        return true;
-    };
-    tracing::error!(game_id, path = %executable.display(), %err, "could not give the program the permission to run");
-    let reason = t!("external.errors.exec_bit", path = executable.display(), error = err);
-    show_failure(background, game_id, &reason, cx);
-    false
+fn allowed_to_run(game_id: &str, executable: &Path) -> Result<(), Unready> {
+    linux_native::allow_to_run(executable).map_err(|err| {
+        tracing::error!(game_id, path = %executable.display(), %err, "could not give the program the permission to run");
+        Unready::Shown(t!("external.errors.exec_bit", path = executable.display(), error = err).into_owned())
+    })
 }
 
 #[cfg(not(unix))]
-const fn allowed_to_run(_: &str, _: &Path, _: &Entity<Background>, _: &mut AsyncApp) -> bool {
-    true
+const fn allowed_to_run(_: &str, _: &Path) -> Result<(), Unready> {
+    Ok(())
 }
 
 /// Puts why `game_id` never started where its runs show, since no run of it began.
@@ -538,19 +597,30 @@ pub async fn stop(account_id: String, game_id: String, background: Entity<Backgr
             job.update(cx, |job, _| job.stop_requested = true);
         }
     });
+    // A native session is this process's alone, so another decanter process's game is stopped by
+    // that process; a prefix's stop reaches whatever runs in it, whoever started it.
+    let is_elsewhere = background.read_with(cx, |background, _| background.elsewhere.contains(&game_id));
+    if is_elsewhere && Kind::host() == Kind::Native {
+        return crate::running::stop(&crate::running::Game::pc(&account_id, &game_id));
+    }
+    stop_session(&account_id, &game_id).await;
+}
+
+/// Ends a game's session however it runs, without the window's bookkeeping.
+async fn stop_session(account_id: &str, game_id: &str) {
     // By the system's kind, not the game's: a Linux program's session is named
     // after its prefix, so the prefix's stop reaches it too. A Raven program's
     // prefix is Raven's, not the one the system's kind would find.
-    if crate::raven::is_program(&account_id, &game_id) {
-        return raven::stop(&game_id).await;
+    if crate::raven::is_program(account_id, game_id) {
+        return raven::stop(game_id).await;
     }
-    if let Some(app_id) = steam::entry(&account_id, &game_id) {
-        return steam::stop(&game_id, app_id).await;
+    if let Some(app_id) = steam::entry(account_id, game_id) {
+        return steam::stop(game_id, app_id).await;
     }
     match Kind::host() {
-        Kind::Umu | Kind::LinuxNative => umu::stop(&account_id, &game_id).await,
-        Kind::Native => native::stop(&account_id, &game_id).await,
-        Kind::Raven => raven::stop(&game_id).await,
+        Kind::Umu | Kind::LinuxNative => umu::stop(account_id, game_id).await,
+        Kind::Native => native::stop(account_id, game_id).await,
+        Kind::Raven => raven::stop(game_id).await,
     }
 }
 

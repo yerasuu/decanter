@@ -4,6 +4,7 @@ common.cancel: "取消"
 common.loading: "加载中…"
 common.queued: "排队中…"
 common.running: "运行中"
+common.running_elsewhere: '已在运行，由另一个 decanter（例如 Steam 快捷方式）启动'
 common.duration.hours_minutes: "%{hours}小时%{minutes}分钟"
 common.duration.minutes: "%{minutes}分钟"
 common.duration.minutes_seconds: "%{minutes}分%{seconds}秒"

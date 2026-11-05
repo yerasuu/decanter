@@ -5,7 +5,8 @@
 //! An entry that starts some decanter binary is left as it is, even another one than this, since
 //! which decanter it starts is the user's to change by exporting again; except one that starts this
 //! very `AppImage` with other options, which gets this decanter's options (an entry written before
-//! the `AppImage` was told to extract and run fails to start from Steam). Only decanter's own entries
+//! the `AppImage` was told to extract and run fails to start from Steam), and a PS one that starts the
+//! headless test `ps run`, which gets `ps play` so the game plays as from the window. Only decanter's own entries
 //! are touched, a GOG one only when its appid is recorded, so a game never exported stays out of
 //! Steam; and nothing is touched when this decanter has no command to write. Then the art of those
 //! same entries is brought to the names Steam reads.
@@ -116,11 +117,13 @@ fn retarget_entries(db: &Db, steam_root: &Path, user_id: &str) -> std::io::Resul
 }
 
 /// Whether `own` starts this very `AppImage` with other options than it would now write, such as an
-/// entry from before shortcuts told the `AppImage` to extract and run, which Steam can't start.
+/// entry from before shortcuts told the `AppImage` to extract and run, which Steam can't start; or
+/// a PS game's headless test, which plays it offline and without the window seeing it.
 fn is_outdated(own: &steam::Own, command: &steam::Command) -> bool {
-    Path::new(own.exe.trim_matches('"')) == command.exe
+    let is_same_appimage = Path::new(own.exe.trim_matches('"')) == command.exe
         && crate::launcher::starts_appimage(command)
-        && own.launch_options != command.launch_options
+        && own.launch_options != command.launch_options;
+    is_same_appimage || crate::ps_steam::runs_test(&own.launch_options)
 }
 
 /// The command `own` should start, and the GOG game it belongs to when it is one.

@@ -4,6 +4,7 @@ common.cancel: "キャンセル"
 common.loading: "読み込み中..."
 common.queued: "待機中…"
 common.running: "実行中"
+common.running_elsewhere: '別の decanter（Steam のショートカットなど）から起動され、すでに実行中です'
 common.duration.hours_minutes: "%{hours}時間%{minutes}分"
 common.duration.minutes: "%{minutes}分"
 common.duration.minutes_seconds: "%{minutes}分%{seconds}秒"

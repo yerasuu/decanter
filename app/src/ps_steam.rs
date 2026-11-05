@@ -1,4 +1,4 @@
-//! A PS game as a Steam non-Steam shortcut that starts `decanter ps run` for its title, written
+//! A PS game as a Steam non-Steam shortcut that starts `decanter ps play` for its title, written
 //! through `decanter_core::steam` as a GOG game's is. The entry is found again by its launch
 //! options rather than a `steam_shortcuts` row, since a PS game has no account or storefront to key
 //! one by; a shortcut the user deleted in Steam then reads as gone, as it is.
@@ -12,6 +12,8 @@ use decanter_core::steam;
 use decanter_ps::library::Game;
 use decanter_ps::title_id::TitleId;
 
+const PLAY: &str = "ps play --title";
+/// What shortcuts started before `ps play`: the headless test, which never plays online.
 const RUN: &str = "ps run --title";
 
 /// `Some(exported)` when a menu can offer the shortcut: one is there already, or a Steam user to
@@ -131,11 +133,22 @@ fn own_appid(steam_root: &Path, user_id: &str, title_id: &str) -> Option<i32> {
         .flatten()
 }
 
-/// The title a shortcut's launch options run, `ps run --title <id>` at their end.
+/// The title a shortcut's launch options start, `ps play --title <id>` or the older
+/// `ps run --title <id>` at their end.
 pub fn title_of(options: &str) -> Option<&str> {
     let (rest, title) = options.rsplit_once(' ')?;
-    let before = rest.strip_suffix(RUN)?;
+    let before = rest.strip_suffix(PLAY).or_else(|| rest.strip_suffix(RUN))?;
     (before.is_empty() || before.ends_with(' ')).then_some(title)
+}
+
+/// Whether a shortcut's launch options start the headless test instead of `ps play`.
+pub fn runs_test(options: &str) -> bool {
+    title_of(options).is_some_and(|title| {
+        options
+            .strip_suffix(title)
+            .and_then(|rest| rest.strip_suffix(' '))
+            .is_some_and(|rest| rest.ends_with(RUN))
+    })
 }
 
 /// Art from the dump, which may hold anything: only a regular file there, never what a symlink

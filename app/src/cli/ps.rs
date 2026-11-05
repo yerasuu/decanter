@@ -36,6 +36,17 @@ pub enum PsCmd {
         #[arg(long = "env", value_name = "NAME=VALUE", value_parser = super::ps_run::env_pair)]
         env: Vec<(String, String)>,
     },
+    /// Plays a game as the window's Play does, for a Steam shortcut or a task bar entry: the game's own
+    /// settings, online play as they set it (the shadNet secrets from the keyring), its mods and
+    /// patches, its run log in the library and its failures for `decanter ps report`. The window, when
+    /// open, shows the game running and can stop it. Nothing is asked for: the port must be ready
+    /// (`decanter ps prepare`), a PS5 game converted from the window, and a keyring that can't be read
+    /// without asking fails the start with its reason. Exits as `decanter ps run` does.
+    Play {
+        /// The game's title id (`CUSA03173`), as the PS section lists it.
+        #[arg(long, value_parser = title_id)]
+        title: String,
+    },
     /// Gets a port ready to run, as the PS section does: clones it, or moves its checkout on as the
     /// section's update check does, on the channel chosen in its Ajustes, then runs its release bundle,
     /// fetches its CI build or builds it here, back on the last commit that built if the build fails.
@@ -160,7 +171,16 @@ pub async fn run(db: &Db, cmd: PsCmd) -> anyhow::Result<i32> {
     crate::i18n::init();
     match cmd {
         PsCmd::Report(args) => report_cmd(db, args).await.map(|()| 0),
-        PsCmd::Run { title, timeout, env } => Ok(super::ps_run::run(db, &title, timeout, env).await.code()),
+        PsCmd::Run { title, timeout, env } => {
+            Ok(super::ps_run::run(db, super::ps_run::Mode::Test, &title, timeout, env)
+                .await
+                .code())
+        }
+        PsCmd::Play { title } => Ok(
+            super::ps_run::run(db, super::ps_run::Mode::Play, &title, None, Vec::new())
+                .await
+                .code(),
+        ),
         PsCmd::Prepare { port, timeout } => Ok(super::ps_prepare::run(db, port.port(), timeout).await.code()),
         PsCmd::Settings { cmd } => Ok(super::ps_settings::run(db, cmd).await),
     }

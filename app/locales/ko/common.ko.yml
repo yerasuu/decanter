@@ -4,6 +4,7 @@ common.cancel: 취소
 common.loading: 불러오는 중...
 common.queued: 대기 중…
 common.running: 실행 중
+common.running_elsewhere: '다른 decanter(예: Steam 바로 가기)에서 시작되어 이미 실행 중입니다'
 common.duration.hours_minutes: '%{hours}시간 %{minutes}분'
 common.duration.minutes: '%{minutes}분'
 common.duration.minutes_seconds: '%{minutes}분 %{seconds}초'

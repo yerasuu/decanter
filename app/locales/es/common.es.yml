@@ -4,6 +4,7 @@ common.cancel: Cancelar
 common.loading: Cargando...
 common.queued: En cola…
 common.running: En ejecución
+common.running_elsewhere: 'Ya está en marcha, iniciado por otro decanter (un acceso directo de Steam, por ejemplo)'
 common.duration.hours_minutes: '%{hours} h %{minutes} min'
 common.duration.minutes: '%{minutes} min'
 common.duration.minutes_seconds: '%{minutes} min %{seconds} s'

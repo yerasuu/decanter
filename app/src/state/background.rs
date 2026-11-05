@@ -171,6 +171,9 @@ pub struct Background {
     /// Of `running`, the Steam entries Steam was asked to start whose game
     /// has not shown up yet.
     pub starting: HashSet<String>,
+    /// Those of [`Background::running`] another decanter process plays (a Steam shortcut's), which
+    /// [`crate::running::watch`] keeps.
+    pub elsewhere: HashSet<String>,
     /// The latest run of each game, finished ones included, for its log.
     pub runs: HashMap<String, Entity<Job>>,
     /// Every GOG download in flight (installs, DLC, updates, branch and
@@ -201,6 +204,25 @@ impl Background {
             .iter()
             .find(|(key, _)| key.is(account_id, product_id))
             .map(|(_, download)| &download.status)
+    }
+
+    /// The games other decanter processes play now. One that ended there wrote its playtime, so the
+    /// detail pane's stat reads it again.
+    pub fn set_elsewhere(&mut self, elsewhere: HashSet<String>, cx: &mut Context<Self>) {
+        if self.elsewhere == elsewhere {
+            return;
+        }
+        let mut has_ended = false;
+        for game_id in self.elsewhere.difference(&elsewhere) {
+            self.running.remove(game_id);
+            has_ended = true;
+        }
+        self.running.extend(elsewhere.iter().cloned());
+        if has_ended {
+            self.playtime_generation = self.playtime_generation.wrapping_add(1);
+        }
+        self.elsewhere = elsewhere;
+        cx.notify();
     }
 
     /// Nudges every view that groups by favourites or collections into

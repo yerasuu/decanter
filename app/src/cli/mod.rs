@@ -46,9 +46,9 @@ fn absolute_path(value: &str) -> Result<PathBuf, String> {
 
 #[derive(Subcommand)]
 pub enum Cmd {
-    /// Launches an account's installed GOG game — resolved live against
-    /// decanter's own library, no separate link step — waits for it to exit,
-    /// then polls achievements.
+    /// Launches an account's installed GOG game as the window's Play does — resolved live against
+    /// decanter's own library, no separate link step — waits for it to exit, then records its
+    /// playtime and polls achievements.
     Launch {
         #[arg(long)]
         account_id: String,
@@ -129,11 +129,11 @@ pub enum Cmd {
 /// runs — installing a second one here would panic (`tracing` only ever
 /// accepts one global default).
 pub fn run(cmd: Cmd) -> ! {
-    // `ps run` and `ps prepare` tell what could not start from what failed once started.
+    // `ps run`, `ps play` and `ps prepare` tell what could not start from what failed once started.
     let error_code = if matches!(
         cmd,
         Cmd::Ps {
-            cmd: ps::PsCmd::Run { .. } | ps::PsCmd::Prepare { .. }
+            cmd: ps::PsCmd::Run { .. } | ps::PsCmd::Play { .. } | ps::PsCmd::Prepare { .. }
         }
     ) {
         ps_run::NOT_STARTED
@@ -180,7 +180,7 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
             report_poll(decanter_gog::poll_achievements(&mut db, &account_id, &product_id).await?);
         }
         Cmd::Launch { account_id, product_id } => {
-            launch::launch(&mut db, &account_id, &product_id).await?;
+            launch::launch(&db, &account_id, &product_id).await?;
         }
         Cmd::Install {
             account_id,
@@ -230,7 +230,7 @@ fn note_steam_start(cmd: &Cmd) {
         cmd,
         Cmd::Launch { .. }
             | Cmd::Ps {
-                cmd: ps::PsCmd::Run { .. }
+                cmd: ps::PsCmd::Run { .. } | ps::PsCmd::Play { .. }
             }
     );
     let is_from_steam = ["SteamGameId", "SteamAppId"]
