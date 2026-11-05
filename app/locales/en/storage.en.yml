@@ -11,6 +11,8 @@ storage.folder.extra: Extra
 storage.folder.offline: Drive not connected
 storage.folder.used.one: '%{used} used by 1 game'
 storage.folder.used.other: '%{used} used by %{count} games'
+storage.folder.steam.one: 'Steam: %{size} · 1 game, kept by Steam, not counted above'
+storage.folder.steam.other: 'Steam: %{size} · %{count} games, kept by Steam, not counted above'
 storage.folder.free: '%{free} free of %{total}'
 storage.folder.remove: Remove
 storage.folder.remove_hint: Stops using this folder; whatever is on the drive stays there

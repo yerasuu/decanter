@@ -11,6 +11,8 @@ storage.folder.extra: 추가
 storage.folder.offline: 드라이브가 연결되지 않음
 storage.folder.used.one: '게임 1개에서 %{used} 사용 중'
 storage.folder.used.other: '게임 %{count}개에서 %{used} 사용 중'
+storage.folder.steam.one: 'Steam: %{size} · 게임 1개, Steam에서 관리하며 위 합계에 포함되지 않음'
+storage.folder.steam.other: 'Steam: %{size} · 게임 %{count}개, Steam에서 관리하며 위 합계에 포함되지 않음'
 storage.folder.free: '%{total} 중 %{free} 남음'
 storage.folder.remove: 제거
 storage.folder.remove_hint: 이 폴더를 더 이상 사용하지 않습니다. 드라이브에 있는 파일은 그대로 남습니다

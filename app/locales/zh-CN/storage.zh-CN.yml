@@ -11,6 +11,8 @@ storage.folder.extra: "额外"
 storage.folder.offline: "驱动器未连接"
 storage.folder.used.one: "1 个游戏占用 %{used}"
 storage.folder.used.other: "%{count} 个游戏占用 %{used}"
+storage.folder.steam.one: 'Steam:%{size} · 1 个游戏,由 Steam 管理,不计入上方'
+storage.folder.steam.other: 'Steam:%{size} · %{count} 个游戏,由 Steam 管理,不计入上方'
 storage.folder.free: "可用 %{free}，共 %{total}"
 storage.folder.remove: "移除"
 storage.folder.remove_hint: "不再使用此文件夹；驱动器上的内容会保留"

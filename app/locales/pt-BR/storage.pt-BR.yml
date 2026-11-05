@@ -11,6 +11,8 @@ storage.folder.extra: Extra
 storage.folder.offline: Disco não conectado
 storage.folder.used.one: '%{used} usados por 1 jogo'
 storage.folder.used.other: '%{used} usados por %{count} jogos'
+storage.folder.steam.one: 'Steam: %{size} · 1 jogo, gerenciado pela Steam, não incluído acima'
+storage.folder.steam.other: 'Steam: %{size} · %{count} jogos, gerenciados pela Steam, não incluídos acima'
 storage.folder.free: '%{free} livres de %{total}'
 storage.folder.remove: Remover
 storage.folder.remove_hint: Deixa de usar esta pasta; o que estiver no disco continua lá

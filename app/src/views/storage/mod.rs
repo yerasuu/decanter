@@ -29,6 +29,10 @@ struct Folder {
     /// folder of its library.
     dumps: Vec<Dump>,
     total: u64,
+    /// Steam's apps installed in this folder: not in `total`, since Steam
+    /// owns their files.
+    steam_games: usize,
+    steam_size: u64,
     disk: Option<(u64, u64)>,
     /// Where its games' shader caches go, whether the user picked it, and
     /// how much is in it (`None` before anything was written there).
@@ -105,6 +109,7 @@ impl Folder {
             .filter_map(|game| game.size_on_disk)
             .chain(dumps.iter().map(|dump| dump.size))
             .sum();
+        let (steam_games, steam_size) = if present { steam_part(&root) } else { (0, 0) };
         let disk = present.then(|| decanter_core::disk_usage(&root)).flatten();
         let (cache, cache_custom) = crate::cache::location(&root);
         let cache_size = cache.is_dir().then(|| {
@@ -134,6 +139,8 @@ impl Folder {
             games,
             dumps,
             total,
+            steam_games,
+            steam_size,
             disk,
             cache,
             cache_custom,
@@ -142,6 +149,32 @@ impl Folder {
             strays,
         }
     }
+}
+
+/// Count and size of the Steam apps whose library is this folder, which Steam
+/// registered in its `libraryfolders.vdf`.
+fn steam_part(root: &Path) -> (usize, u64) {
+    let Some(steam_root) = decanter_core::steam::steam_root() else {
+        return (0, 0);
+    };
+    let Ok(root) = root.canonicalize() else {
+        return (0, 0);
+    };
+    decanter_core::steam::installed_apps(&steam_root)
+        .into_iter()
+        .filter(|app| {
+            app.folder
+                .ancestors()
+                .nth(2)
+                .and_then(|steamapps| steamapps.canonicalize().ok())
+                .is_some_and(|steamapps| steamapps == root)
+        })
+        .fold((0, 0), |(games, size), app| {
+            let measured = decanter_core::directory_size(&app.folder)
+                .inspect_err(|err| tracing::warn!(dir = %app.folder.display(), %err, "could not measure a Steam app"))
+                .unwrap_or(0);
+            (games + 1, size + measured)
+        })
 }
 
 /// Reads every folder's manifests and free space — slow enough on a big
@@ -754,7 +787,20 @@ impl StorageView {
                             .flex_1()
                             .min_w_0()
                             .child(folder.root.display().to_string())
-                            .child(theme::muted(status).text_size(px(12.))),
+                            .child(theme::muted(status).text_size(px(12.)))
+                            .when(folder.steam_games > 0, |col| {
+                                let steam_size = crate::format::bytes(folder.steam_size);
+                                let steam = if folder.steam_games == 1 {
+                                    t!("storage.folder.steam.one", size = steam_size)
+                                } else {
+                                    t!(
+                                        "storage.folder.steam.other",
+                                        size = steam_size,
+                                        count = folder.steam_games
+                                    )
+                                };
+                                col.child(theme::muted(steam).text_size(px(12.)))
+                            }),
                     )
                     .when(!folder.primary, |row| {
                         row.child(

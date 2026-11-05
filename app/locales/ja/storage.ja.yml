@@ -11,6 +11,8 @@ storage.folder.extra: "追加"
 storage.folder.offline: "ドライブ未接続"
 storage.folder.used.one: "%{used} 使用(1 本のゲーム)"
 storage.folder.used.other: "%{used} 使用(%{count} 本のゲーム)"
+storage.folder.steam.one: 'Steam: %{size} · 1 本のゲーム(Steam が管理、上の合計には含まれません)'
+storage.folder.steam.other: 'Steam: %{size} · %{count} 本のゲーム(Steam が管理、上の合計には含まれません)'
 storage.folder.free: "%{total} 中 %{free} 空き"
 storage.folder.remove: "削除"
 storage.folder.remove_hint: "このフォルダーの使用をやめます。ドライブ上のデータはそのまま残ります"
