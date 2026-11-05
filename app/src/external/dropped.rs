@@ -174,7 +174,7 @@ fn store_art(root: &Path, id: &str, art: probe::Art) -> GameArt {
         std::fs::write(&path, &image.bytes)
             .inspect_err(|err| tracing::warn!(path = %path.display(), %err, "could not keep a dropped game's image"))
             .ok()?;
-        Some(format!("file://{}", path.display()))
+        Some(crate::art::file_url(&path))
     };
     GameArt {
         icon: write("icon", art.icon),

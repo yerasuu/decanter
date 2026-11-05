@@ -538,6 +538,9 @@ impl StorageView {
     /// "N juegos seleccionados" with "Mover los seleccionados a…": every
     /// folder that isn't where all of them already are.
     pub(super) fn selection_bar(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        if self.moves.selected.is_empty() {
+            return None;
+        }
         let items = self.selected_items();
         if items.is_empty() {
             return None;

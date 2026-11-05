@@ -46,9 +46,8 @@ pub fn reveal<E: InteractiveElement + Element>(element: E) -> Reveal<E> {
 /// [`reveal`] for a control that is itself a tab stop: it keeps being one.
 pub fn reveal_stop<E: InteractiveElement + Element>(element: E) -> Reveal<E> {
     Reveal {
-        id: Element::id(&element),
-        element: Some(element),
         tab_stop: true,
+        ..reveal(element)
     }
 }
 

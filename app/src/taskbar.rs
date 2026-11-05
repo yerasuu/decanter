@@ -373,7 +373,7 @@ pub async fn sync_pc(game: &InstalledGame) {
 pub async fn sync_ps(library_root: &Path, game: &decanter_ps::library::Game) {
     let key = game.key();
     let window_class = decanter_core::application_id(&key);
-    let icon = format!("file://{}", game.dir.join("sce_sys").join("icon0.png").display());
+    let icon = crate::art::file_url(&game.dir.join("sce_sys").join("icon0.png"));
     let entry = Entry {
         key: &key,
         title: &game.title,

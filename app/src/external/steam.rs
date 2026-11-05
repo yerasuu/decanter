@@ -9,6 +9,8 @@ use std::path::{Component, Path, PathBuf};
 
 use decanter_core::{GameArt, platform, steam, vdf};
 
+use crate::art::file_url;
+
 /// `StateFlags` bit Steam sets once an app is fully installed.
 const FULLY_INSTALLED: u64 = 4;
 
@@ -162,11 +164,7 @@ fn library_art(cache: &Path, app_id: &str) -> GameArt {
         })
     };
     let cover = find("library_600x900");
-    GameArt {
-        icon: find("icon").or_else(|| cover.clone()).map(url),
-        hero: find("library_hero").map(url),
-        cover: cover.map(url),
-    }
+    game_art(find("icon"), find("library_hero"), cover)
 }
 
 /// The user's non-Steam shortcuts that decanter didn't export itself: an
@@ -208,17 +206,19 @@ fn shortcuts(root: &Path) -> Vec<SteamGame> {
             Some(SteamGame {
                 name: name.to_owned(),
                 folder: executable.parent()?.to_path_buf(),
-                art: GameArt {
-                    icon: find("_icon").or_else(|| cover.clone()).map(url),
-                    hero: find("_hero").map(url),
-                    cover: cover.map(url),
-                },
+                art: game_art(find("_icon"), find("_hero"), cover),
                 executable: Some(executable),
             })
         })
         .collect()
 }
 
-fn url(path: PathBuf) -> String {
-    format!("file://{}", path.display())
+/// The icon falls back to the cover when Steam keeps none.
+fn game_art(icon: Option<PathBuf>, hero: Option<PathBuf>, cover: Option<PathBuf>) -> GameArt {
+    let url = |path: PathBuf| file_url(&path);
+    GameArt {
+        icon: icon.or_else(|| cover.clone()).map(url),
+        hero: hero.map(url),
+        cover: cover.map(url),
+    }
 }

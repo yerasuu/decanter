@@ -36,6 +36,16 @@ pub struct MenuTarget {
     pub position: Point<Pixels>,
 }
 
+impl MenuTarget {
+    pub fn single(id: &str, title: &str, position: Point<Pixels>) -> Self {
+        Self {
+            product_ids: vec![id.to_owned()],
+            title: title.to_owned(),
+            position,
+        }
+    }
+}
+
 type Callback = Rc<dyn Fn(&str, &mut App)>;
 
 /// Per-popup state that only lives while that popup is open: the name
@@ -235,15 +245,10 @@ fn game_menu(
             .children(open_folder_item(install_path, close))
             .children(edit_external_item(&entry, close))
             .child(properties_item(&entry, close));
-        let manage = [
-            open_prefix_item(prefix_path, close),
-            steam_shortcut_item(&entry, steam_exported, close),
-        ]
-        .into_iter()
-        .flatten();
-        let manage: Vec<AnyElement> = manage.collect();
-        if !manage.is_empty() {
-            panel = panel.child(menu::separator()).children(manage);
+        let prefix = open_prefix_item(prefix_path, close);
+        let shortcut = steam_shortcut_item(&entry, steam_exported, close);
+        if prefix.is_some() || shortcut.is_some() {
+            panel = panel.child(menu::separator()).children(prefix).children(shortcut);
         }
         panel = panel.child(menu::separator());
     }

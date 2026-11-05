@@ -2,7 +2,7 @@
 //! selected — Biblioteca's shelf browser for PS games.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -89,8 +89,8 @@ impl BrowserView {
             })
             .filter(|dirs| !dirs.is_empty())
             .collect();
-        self.cards
-            .retain(|dir, _| self.shelves.iter().flatten().any(|shown| shown == dir));
+        let shown: HashSet<&PathBuf> = self.shelves.iter().flatten().collect();
+        self.cards.retain(|dir, _| shown.contains(dir));
         for dir in self.shelves.iter().flatten() {
             self.cards.entry(dir.clone()).or_insert_with(|| {
                 let focus = cx.focus_handle().tab_stop(true);

@@ -24,7 +24,9 @@ const HEAD_GROUP: &str = "browser-shelf-head";
 /// A capsule's width plus the row's gap: every card takes the same room,
 /// which is what lets a row lay out only the ones in view.
 pub(super) const CARD_GAP: f32 = 13.;
-pub(super) const CARD_STRIDE: f32 = 136. + CARD_GAP;
+pub(super) const CARD_WIDTH: f32 = 136.;
+pub(super) const COVER_HEIGHT: f32 = 204.;
+pub(super) const CARD_STRIDE: f32 = CARD_WIDTH + CARD_GAP;
 pub(super) const ROW_PADDING: f32 = 26.;
 
 /// What a shelf header carries while it's dragged to a new place.
@@ -405,7 +407,7 @@ pub(super) fn cover_card(
         .group(CARD_GROUP)
         .relative()
         .flex_none()
-        .w(px(136.))
+        .w(px(CARD_WIDTH))
         .rounded(px(theme::RADIUS))
         .cursor_pointer()
         .tooltip(tooltip(capsule.title.clone()))
@@ -419,11 +421,7 @@ pub(super) fn cover_card(
         })
         .on_mouse_down(MouseButton::Right, move |event, _, cx| {
             cx.stop_propagation();
-            let target = MenuTarget {
-                product_ids: vec![menu_id.to_string()],
-                title: menu_title.to_string(),
-                position: event.position,
-            };
+            let target = MenuTarget::single(&menu_id, &menu_title, event.position);
             menu_model.update(cx, |model, cx| model.open_popup(LibraryPopup::GameMenu(target), cx));
         })
         .child(cover_art(capsule))
@@ -446,8 +444,8 @@ fn cover_art(capsule: &Capsule) -> Stateful<Div> {
     div()
         .id("cover-art")
         .relative()
-        .w(px(136.))
-        .h(px(204.))
+        .w(px(CARD_WIDTH))
+        .h(px(COVER_HEIGHT))
         .rounded(px(theme::RADIUS))
         .flex()
         .items_end()
@@ -483,7 +481,7 @@ fn cover_art(capsule: &Capsule) -> Stateful<Div> {
         .group_active(CARD_GROUP, |art| art.top(px(-1.)))
         .when_some(capsule.cover.as_deref(), |art, cover| {
             art.child(
-                img(art::source(cover, gpui::size(136., 204.)))
+                img(art::source(cover, gpui::size(CARD_WIDTH, COVER_HEIGHT)))
                     .absolute()
                     .top_0()
                     .left_0()

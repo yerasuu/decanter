@@ -100,7 +100,7 @@ impl GameForm {
             else {
                 return;
             };
-            let url = format!("file://{}", file.path().display());
+            let url = crate::art::file_url(file.path());
             let _ = this.update(cx, |this, cx| {
                 *kind.slot(&mut this.art) = Some(url);
                 cx.notify();

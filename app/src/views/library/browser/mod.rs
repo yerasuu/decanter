@@ -438,11 +438,11 @@ impl BrowserView {
         if nav::is_menu_key(keystroke) {
             let bounds = row.scroll.bounds();
             let left = (index as f32).mul_add(CARD_STRIDE, ROW_PADDING) + row.scroll.offset().x.as_f32();
-            let target = MenuTarget {
-                product_ids: vec![shelf.capsules[index].id.to_string()],
-                title: shelf.capsules[index].title.to_string(),
-                position: point(bounds.left() + px(left + 24.), bounds.top() + px(48.)),
-            };
+            let target = MenuTarget::single(
+                &shelf.capsules[index].id,
+                &shelf.capsules[index].title,
+                point(bounds.left() + px(left + 24.), bounds.top() + px(48.)),
+            );
             self.model
                 .update(cx, |model, cx| model.open_popup(LibraryPopup::GameMenu(target), cx));
             cx.stop_propagation();

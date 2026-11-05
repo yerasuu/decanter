@@ -58,10 +58,10 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
             let mut items: Vec<LibraryEntry> = match slot.source.as_str() {
                 "all" => entries.clone(),
                 "recent" => {
-                    let mut played: Vec<LibraryEntry> = pick(&|e| stats.last_played(&e.game.id) > 0);
+                    let mut played: Vec<&LibraryEntry> =
+                        entries.iter().filter(|e| stats.last_played(&e.game.id) > 0).collect();
                     played.sort_by_key(|entry| std::cmp::Reverse(stats.last_played(&entry.game.id)));
-                    played.truncate(RECENT_GAMES);
-                    played
+                    played.into_iter().take(RECENT_GAMES).cloned().collect()
                 }
                 "favorites" => pick(&|e| favorites.contains(&e.game.id)),
                 "uncategorized" => pick(&|e| collections.is_uncategorized(&e.game.id)),

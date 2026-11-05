@@ -19,7 +19,7 @@ use decanter_ps::library::{Game, Platform};
 use decanter_ps::status::{Entry, Status};
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -160,9 +160,8 @@ impl GamesView {
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let rows = self.rows(cx);
         let ps = self.ps.read(cx);
-        self.row_focus
-            .borrow_mut()
-            .retain(|dir, _| ps.entries().iter().any(|entry| entry.game.dir == *dir));
+        let dirs: HashSet<&PathBuf> = ps.entries().iter().map(|entry| &entry.game.dir).collect();
+        self.row_focus.borrow_mut().retain(|dir, _| dirs.contains(dir));
         let body = if rows.is_empty() {
             let message = if ps.scanning() {
                 t!("ps.games.scanning")
@@ -314,8 +313,11 @@ impl GamesView {
 
 impl GamesView {
     fn row_handle(&self, dir: &PathBuf, cx: &gpui::App) -> FocusHandle {
-        self.row_focus
-            .borrow_mut()
+        let mut handles = self.row_focus.borrow_mut();
+        if let Some(handle) = handles.get(dir) {
+            return handle.clone();
+        }
+        handles
             .entry(dir.clone())
             .or_insert_with(|| cx.focus_handle().tab_stop(true))
             .clone()
@@ -522,7 +524,7 @@ fn scope_note(scope: IniScope) -> Cow<'static, str> {
 
 /// A file of the dump's `sce_sys`, as the art cache takes it.
 fn art_url(game: &Game, file: &str) -> String {
-    format!("file://{}", game.dir.join("sce_sys").join(file).display())
+    crate::art::file_url(&game.dir.join("sce_sys").join(file))
 }
 
 /// `sce_sys/icon0.png` is 512 px; it goes through the art cache to be

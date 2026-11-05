@@ -141,6 +141,10 @@ async fn download(key: ArtKey, path: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn file_url(path: &Path) -> String {
+    format!("file://{}", path.display())
+}
+
 async fn read(url: &str) -> anyhow::Result<Vec<u8>> {
     match url.strip_prefix("file://") {
         Some(local) => tokio::fs::read(local)

@@ -8,8 +8,8 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use super::shelf::{CARD_GAP, CARD_STRIDE, ROW_PADDING, auto_badge, cover_card};
-use super::{BrowserView, Capsule, ShelfData};
+use super::shelf::{CARD_GAP, CARD_STRIDE, COVER_HEIGHT, ROW_PADDING, auto_badge, cover_card};
+use super::{BrowserView, Capsule, Derived, ShelfData};
 use crate::theme;
 use crate::views::library::context_menu::MenuTarget;
 use crate::views::library::{LibraryPopup, SIDEBAR_WIDTH};
@@ -17,7 +17,7 @@ use crate::widgets::nav;
 
 /// A cover's height plus the room under it, the same for every row so the rows in view follow from
 /// the scroll offset alone.
-const ROW_STRIDE: f32 = 250.;
+const ROW_STRIDE: f32 = COVER_HEIGHT + 46.;
 const GRID_TOP: f32 = 18.;
 const OVERSCAN_ROWS: isize = 2;
 
@@ -104,6 +104,13 @@ impl Page {
     }
 }
 
+/// Takes the fields, not `&mut self`, so the caller can keep using the rest of the view.
+fn open_shelf<'a>(page: &'a mut Option<Page>, derived: Option<&'a Derived>) -> Option<(&'a mut Page, &'a ShelfData)> {
+    let page = page.as_mut()?;
+    let shelf = derived?.shelves.iter().find(|shelf| shelf.key == page.slot)?;
+    Some((page, shelf))
+}
+
 impl BrowserView {
     pub(super) fn open_page(&mut self, slot: u32, window: &mut Window, cx: &mut Context<Self>) {
         let focus = cx.focus_handle();
@@ -119,10 +126,7 @@ impl BrowserView {
     }
 
     pub(super) fn layout_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(page), Some(derived)) = (&mut self.page, &self.derived) else {
-            return;
-        };
-        let Some(shelf) = derived.shelves.iter().find(|shelf| shelf.key == page.slot) else {
+        let Some((page, shelf)) = open_shelf(&mut self.page, self.derived.as_ref()) else {
             return;
         };
         // Escape and the arrows only reach the page through the focus, which a click on empty
@@ -158,10 +162,7 @@ impl BrowserView {
             cx.stop_propagation();
             return;
         }
-        let (Some(page), Some(derived)) = (&mut self.page, &self.derived) else {
-            return;
-        };
-        let Some(shelf) = derived.shelves.iter().find(|shelf| shelf.key == page.slot) else {
+        let Some((page, shelf)) = open_shelf(&mut self.page, self.derived.as_ref()) else {
             return;
         };
         let capsules = &shelf.capsules;
@@ -175,14 +176,14 @@ impl BrowserView {
             let Some(bounds) = page.scroll.bounds_for_item(row + usize::from(page.shown.0 > 0)) else {
                 return;
             };
-            let target = MenuTarget {
-                product_ids: vec![capsules[index].id.to_string()],
-                title: capsules[index].title.to_string(),
-                position: point(
+            let target = MenuTarget::single(
+                &capsules[index].id,
+                &capsules[index].title,
+                point(
                     bounds.left() + px(((index % page.columns) as f32).mul_add(CARD_STRIDE, 24.)),
                     bounds.top() + px(48.),
                 ),
-            };
+            );
             self.model
                 .update(cx, |model, cx| model.open_popup(LibraryPopup::GameMenu(target), cx));
             cx.stop_propagation();
