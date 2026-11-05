@@ -439,12 +439,12 @@ impl Config {
             return warnings;
         };
         if !self.listen.ip().is_loopback() {
-            warnings.push(format!(
-                "client_ip_header is set but listen is {}, not loopback: anything that can reach the port directly \
+            warnings.push(
+                "client_ip_header is set but listen is not loopback: anything that can reach the port directly \
                  and comes from a trusted proxy address picks its own client address; bind to loopback or make sure \
-                 only the tunnel reaches the port",
-                self.listen
-            ));
+                 only the tunnel reaches the port"
+                    .to_owned(),
+            );
         }
         if self
             .trusted_proxies
@@ -458,11 +458,12 @@ impl Config {
             );
         }
         if matches!(header.as_str(), "x-forwarded-for" | "forwarded" | "x-real-ip") {
-            warnings.push(format!(
-                "client_ip_header {header} is a header clients can send and proxies append to: prefer a \
-                 single-valued header the tunnel overwrites (for example cf-connecting-ip) and test it with a \
-                 forged value through the real tunnel (docs/deploy.md)"
-            ));
+            warnings.push(
+                "client_ip_header is a header clients can send and proxies append to: prefer a single-valued header \
+                 the tunnel overwrites (for example cf-connecting-ip) and test it with a forged value through the \
+                 real tunnel (docs/deploy.md)"
+                    .to_owned(),
+            );
         }
         warnings
     }
