@@ -509,3 +509,15 @@ fn refusal_text(refusal: &Refusal) -> Text {
         Refusal::NotListed(key) => Text::new("ps.per_game.refused.not_listed").arg("key", key),
     }
 }
+
+/// Without the ™ and ® dumps carry, falling back to the title id for a
+/// dump with no name.
+pub fn display_title(game: &library::Game) -> String {
+    let title = game.title.replace(['™', '®'], "");
+    let title = title.trim();
+    if title.is_empty() {
+        game.title_id.clone()
+    } else {
+        title.to_owned()
+    }
+}

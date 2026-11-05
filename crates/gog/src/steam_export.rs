@@ -15,7 +15,11 @@ use anyhow::Context;
 use decanter_core::{Db, InstalledGame, Storefront};
 
 /// Downloads whatever artwork URLs are `Some`, then writes or updates this
-/// game's Steam shortcut and persists the assigned appid.
+/// game's Steam shortcut to start `command` and persists the assigned appid.
+/// `command` must start this game through decanter: Steam can't run a
+/// Windows executable in its prefix by itself. A shortcut recorded under
+/// another appid (the command or the name changed, and the appid hashes
+/// both) is removed with its art.
 ///
 /// # Errors
 /// Fails if the appid can't be persisted to `db` after a successful
@@ -25,7 +29,7 @@ pub async fn sync_steam_shortcut(
     db: &Db,
     account_id: &str,
     game: &InstalledGame,
-    install_dir: &Path,
+    command: decanter_core::steam::Command,
     cover_url: Option<&str>,
     background_url: Option<&str>,
     icon_url: Option<&str>,
@@ -41,10 +45,14 @@ pub async fn sync_steam_shortcut(
         );
         return Ok(());
     };
-    let Some(executable) = game.launch_executable.as_deref() else {
+    if game.launch_executable.is_none() {
         tracing::debug!(product_id = %game.game_id, "no launch executable recorded, skipping Steam export");
         return Ok(());
-    };
+    }
+    let earlier = crate::achv_try!(
+        db.steam_shortcut_appid(account_id, Storefront::Gog, &game.game_id)
+            .context("reading steam shortcut appid")
+    );
 
     let temp_dir = match decanter_core::temp::private_temp_dir("steam-artwork") {
         Ok(dir) => dir,
@@ -63,8 +71,6 @@ pub async fn sync_steam_shortcut(
     let portrait = download_artwork(&client, cover_url, &temp_dir, "portrait").await;
     let hero = download_artwork(&client, background_url, &temp_dir, "hero").await;
 
-    let exe = install_dir.join(executable);
-    let start_dir = install_dir.to_path_buf();
     let name = game.name.clone();
     let artwork = decanter_core::steam::Artwork {
         icon,
@@ -78,10 +84,13 @@ pub async fn sync_steam_shortcut(
             tokio::task::spawn_blocking(move || {
                 let spec = decanter_core::steam::ShortcutSpec {
                     name: &name,
-                    exe: &exe,
-                    start_dir: &start_dir,
+                    command: &command,
                 };
-                decanter_core::steam::sync(&steam_root, &user_id, &spec, &artwork)
+                let appid = decanter_core::steam::sync(&steam_root, &user_id, &spec, &artwork)?;
+                if let Some(earlier) = earlier.filter(|earlier| *earlier != appid) {
+                    decanter_core::steam::remove(&steam_root, &user_id, earlier)?;
+                }
+                Ok::<_, std::io::Error>(appid)
             })
             .await
             .context("steam shortcut sync worker task panicked")

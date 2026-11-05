@@ -160,6 +160,7 @@ pub fn run(cmd: Cmd) -> ! {
 
 /// The process's exit code.
 async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
+    note_steam_start(&cmd);
     let mut db = Db::open_active().context("opening decanter cache db")?;
     tracing::debug!("opened db for cli command");
 
@@ -219,6 +220,54 @@ async fn dispatch(cmd: Cmd) -> anyhow::Result<i32> {
     }
 
     Ok(0)
+}
+
+/// One line in the day log when a Steam shortcut started this command, so a start that fails there
+/// can be told from one that never reached decanter. Variable names only, since Steam's carry the
+/// account's user name and the like.
+fn note_steam_start(cmd: &Cmd) {
+    let is_game_start = matches!(
+        cmd,
+        Cmd::Launch { .. }
+            | Cmd::Ps {
+                cmd: ps::PsCmd::Run { .. }
+            }
+    );
+    let is_from_steam = ["SteamGameId", "SteamAppId"]
+        .into_iter()
+        .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()));
+    if !is_game_start || !is_from_steam {
+        return;
+    }
+    let mut keys = std::env::vars_os()
+        .filter_map(|(key, _)| key.into_string().ok())
+        .filter(|key| {
+            [
+                "Steam",
+                "STEAM_",
+                "SRT_",
+                "PRESSURE_VESSEL_",
+                "APPIMAGE",
+                "APPDIR",
+                "ARGV0",
+                "LD_PRELOAD",
+                "TMPDIR",
+            ]
+            .into_iter()
+            .any(|prefix| key.starts_with(prefix))
+        })
+        .collect::<Vec<_>>();
+    keys.sort_unstable();
+    tracing::info!(keys = keys.join(","), "started from a Steam shortcut");
+}
+
+/// Resolves once this command is asked to stop (SIGTERM, SIGINT or SIGHUP; Ctrl+C on Windows), as
+/// Steam's Stop asks the command its shortcut started: the game is stopped then rather than left
+/// running without it. Never, when the signals can't be watched.
+async fn stop_signal() {
+    if !crate::platform::exit_signal().await {
+        core::future::pending::<()>().await;
+    }
 }
 
 pub(crate) fn report_poll(newly_unlocked: Vec<decanter_core::CachedAchievement>) {

@@ -31,6 +31,7 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::i18n::Text;
+pub(super) use crate::state::ps_display_title as display_title;
 use crate::state::{AppState, JobKey, Ps};
 use crate::theme;
 use crate::widgets::nav::{self, Step};
@@ -126,7 +127,14 @@ impl GamesView {
     pub fn open_menu(&mut self, dir: PathBuf, position: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         self.menu_restore = window.focused(cx);
         window.focus(&self.menu_focus, cx);
-        self.menu = Some(GameMenu { dir, position });
+        let steam = self
+            .ps
+            .read(cx)
+            .entries()
+            .iter()
+            .find(|entry| entry.game.dir == dir && !entry.game.is_update())
+            .and_then(|entry| crate::ps_steam::exported(&entry.game.title_id));
+        self.menu = Some(GameMenu { dir, position, steam });
         cx.notify();
     }
 
@@ -474,18 +482,6 @@ const fn platform_label(platform: Platform) -> &'static str {
     match platform {
         Platform::Ps4 => "PS4",
         Platform::Ps5 => "PS5",
-    }
-}
-
-/// Without the ™ and ® dumps carry, falling back to the title id for a
-/// dump with no name.
-pub(super) fn display_title(game: &Game) -> String {
-    let title = game.title.replace(['™', '®'], "");
-    let title = title.trim();
-    if title.is_empty() {
-        game.title_id.clone()
-    } else {
-        title.to_owned()
     }
 }
 

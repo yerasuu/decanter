@@ -61,8 +61,10 @@ pub fn replace_process(command: &mut Command) -> io::Error {
     command.exec()
 }
 
-/// Resolves once SIGTERM or SIGINT came, or `false` at once when they
-/// can't be watched.
+/// Resolves once SIGTERM, SIGINT or SIGHUP came, or `false` at once when
+/// they can't be watched. SIGHUP too because a terminal or a session
+/// closing sends it, and its default would end decanter with the games it
+/// started still running.
 pub async fn exit_signal() -> bool {
     let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
         Ok(signal) => signal,
@@ -78,10 +80,18 @@ pub async fn exit_signal() -> bool {
             return false;
         }
     };
+    let mut hangup = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup()) {
+        Ok(signal) => signal,
+        Err(err) => {
+            tracing::warn!(signal = "SIGHUP", %err, "cannot watch for the signal");
+            return false;
+        }
+    };
 
     tokio::select! {
         _ = term.recv() => tracing::info!("received sigterm, stopping games before exit"),
         _ = interrupt.recv() => tracing::info!("received sigint, stopping games before exit"),
+        _ = hangup.recv() => tracing::info!("received sighup, stopping games before exit"),
     }
     true
 }

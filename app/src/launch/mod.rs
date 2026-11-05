@@ -243,8 +243,7 @@ pub async fn start(
     // minute, so the game reads as starting and can be stopped.
     let notes = if kind == Kind::Umu && game.storefront == decanter_core::Storefront::Gog {
         set_running(&background, &game.game_id, true, cx);
-        umu::register_galaxy_service(&account_id, &game, &planned.launch).await;
-        umu::install_redist(&account_id, &game, &planned.launch).await
+        prepare_gog_prefix(&account_id, &game, &planned.launch).await
     } else {
         Vec::new()
     };
@@ -279,9 +278,17 @@ pub async fn start(
     );
 
     sync_cloud_saves_after_exit(&account_id, saves_game, cloud_save_checkpoint).await;
-    record_last_played(&account_id, &game, kind);
+    record_last_played(&account_id, &game);
     apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)
+}
+
+/// What a GOG game under Proton gets in its prefix before it starts, whichever way it is started:
+/// the stand-in Galaxy service registered and its redistributables installed. What failed, as lines
+/// for the run's log.
+pub(crate) async fn prepare_gog_prefix(account_id: &str, game: &InstalledGame, launch: &Launch) -> Vec<String> {
+    umu::register_galaxy_service(account_id, game, launch).await;
+    umu::install_redist(account_id, game, launch).await
 }
 
 /// The local Galaxy service for a GOG game built with Galaxy, which its SDK signs in to instead of a
@@ -453,7 +460,7 @@ async fn apply_hook_log(account_id: &str, game: &InstalledGame, achievement_log:
 /// reusing the stale value at exit would tell the classifier a session's
 /// worth of files "changed since" a timestamp cloud saves already knows
 /// about, and re-push them for nothing.
-async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) -> Option<i64> {
+pub(crate) async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) -> Option<i64> {
     let Some(local_root) = game.cloud_save_path.as_deref() else {
         return game.cloud_save_last_sync;
     };
@@ -490,7 +497,7 @@ async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) 
 /// Pushes local changes up once a session ends, mirroring
 /// [`sync_cloud_saves_before_launch`]. `checkpoint` is that call's return
 /// value, not `game.cloud_save_last_sync` — see its doc for why.
-async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, checkpoint: Option<i64>) {
+pub(crate) async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, checkpoint: Option<i64>) {
     let Some(local_root) = game.cloud_save_path.as_deref() else {
         return;
     };
@@ -606,11 +613,11 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
 
 /// Stamps the manifest with when the session ended. Best-effort: a failed
 /// write costs a sort order, not a game.
-fn record_last_played(account_id: &str, game: &InstalledGame, kind: Kind) {
+pub(crate) fn record_last_played(account_id: &str, game: &InstalledGame) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
-    if kind == Kind::Raven {
+    if crate::raven::is_program(&game.account_id, &game.game_id) {
         return crate::raven::record_last_played(game, now);
     }
     let Ok(library) = crate::core::library_for_account(account_id) else {

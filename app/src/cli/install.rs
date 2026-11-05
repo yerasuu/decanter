@@ -123,7 +123,8 @@ async fn sync_steam_shortcut_after_install(library: &decanter_core::Library, acc
     let Some(game) = library.read_manifest(account_id, decanter_core::Storefront::Gog, product_id) else {
         return;
     };
-    let Some(install_dir) = library.install_dir(&game.install_dir) else {
+    let Some(command) = crate::launcher::Launcher::gog(account_id, product_id).and_then(|launcher| launcher.steam())
+    else {
         return;
     };
     // No cached catalog data on this headless path — an extra fetch, but
@@ -137,7 +138,7 @@ async fn sync_steam_shortcut_after_install(library: &decanter_core::Library, acc
         &db,
         account_id,
         &game,
-        &install_dir,
+        command,
         cover_url.as_deref(),
         background_url.as_deref(),
         icon_url.as_deref(),

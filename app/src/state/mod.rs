@@ -21,8 +21,9 @@ pub use moves::{
     moving_text, present_folders,
 };
 pub use ps::{
-    Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
-    folder_error as ps_folder_error, job_label, job_target, online_error, per_game_error, vk_layer_unavailable_text,
+    Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track,
+    display_title as ps_display_title, failure_message, folder_error as ps_folder_error, job_label, job_target,
+    online_error, per_game_error, vk_layer_unavailable_text,
 };
 pub(crate) use ps::{PortHost, move_checkout as move_port_checkout, update_and_prepare as update_and_prepare_port};
 pub use raven::{Built as RavenBuilt, Raven};

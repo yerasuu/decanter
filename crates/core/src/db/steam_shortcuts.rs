@@ -35,6 +35,19 @@ impl Db {
         Ok(appid)
     }
 
+    /// The account and product whose shortcut decanter recorded under
+    /// `appid`, for an entry found in `shortcuts.vdf` rather than by game.
+    pub fn steam_shortcut_game(&self, storefront: Storefront, appid: i32) -> Result<Option<(String, String)>> {
+        self.conn
+            .query_row(
+                "SELECT account_id, product_id FROM steam_shortcuts WHERE storefront = ?1 AND appid = ?2",
+                params![storefront as i32, appid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(Error::from)
+    }
+
     pub fn set_steam_shortcut_appid(
         &self,
         account_id: &str,

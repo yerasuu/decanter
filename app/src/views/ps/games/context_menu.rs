@@ -17,6 +17,8 @@ use crate::widgets::menu;
 pub struct GameMenu {
     pub dir: PathBuf,
     pub position: Point<Pixels>,
+    /// `Some(exported)` when the menu offers the Steam shortcut, read once as the menu opens.
+    pub steam: Option<bool>,
 }
 
 /// `None` once the game left the list (a rescan while the menu was open).
@@ -109,6 +111,31 @@ pub fn render(
                     if let Err(err) = crate::desktop::open(&dir) {
                         tracing::warn!(dir = %dir.display(), %err, "could not open the folder");
                     }
+                    close(window, cx);
+                }),
+        );
+    }
+
+    if let Some(exported) = target.steam {
+        let (game, close) = (entry.game.clone(), Rc::clone(&dismiss));
+        let label = if exported {
+            t!("library.menu.steam_remove")
+        } else {
+            t!("library.menu.steam_add")
+        };
+        panel = panel.child(
+            menu::item("ps-menu-steam", false)
+                .child(label)
+                .on_click(move |_, window, cx| {
+                    let game = game.clone();
+                    cx.spawn(async move |_| {
+                        if exported {
+                            crate::ps_steam::remove(game.title_id).await;
+                        } else {
+                            crate::ps_steam::export(game).await;
+                        }
+                    })
+                    .detach();
                     close(window, cx);
                 }),
         );

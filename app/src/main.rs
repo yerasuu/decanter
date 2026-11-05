@@ -116,11 +116,13 @@ mod format;
 mod game_tools;
 mod i18n;
 mod launch;
+mod launcher;
 mod logs;
 mod memory;
 mod mods;
 mod platform;
 mod ps_play;
+mod ps_steam;
 mod raven;
 mod releases;
 mod relocate;
@@ -129,6 +131,7 @@ mod run_log;
 mod runners;
 mod self_update;
 mod state;
+mod steam_shortcuts;
 mod taskbar;
 mod theme;
 mod tray;
@@ -176,6 +179,7 @@ fn main() {
     runtime.spawn(async {
         taskbar::sweep().await;
         self_update::settle().await;
+        steam_shortcuts::retarget().await;
     });
 
     // Only where the capability table offers a tray (see `views::Lifecycle`):

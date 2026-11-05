@@ -7,10 +7,15 @@
 //! executable runs directly, from its own folder.
 //!
 //! Separate from the GUI's own `crate::launch` (which tracks a session for
-//! the tray/exit-on-signal machinery) — this is the headless CLI path,
-//! used for scripting and for observing a launch independent of the app.
+//! the window's views) — this is the headless path task bar entries and
+//! Steam shortcuts start, so it stays in the foreground until the game has
+//! ended, stops the game when it is asked to stop, and keeps the session's
+//! books as the window does: cloud saves, the Galaxy service, playtime,
+//! last played and achievements. Mods enabled for the game aren't mounted
+//! here.
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::{Context, bail};
 use decanter_core::{InstalledGame, Library, Storefront};
@@ -40,6 +45,7 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
         bail!("{product_id} is installed but has no launch executable set");
     };
     let executable = install_dir.join(executable);
+    let cloud_save_checkpoint = crate::launch::sync_cloud_saves_before_launch(account_id, &game).await;
     let galaxy = galaxy_service(account_id, product_id, &install_dir).await;
     let (session, achievement_log) = if crate::launch::in_prefixes() {
         start_in_prefix(db, &library, &game, executable).await?
@@ -48,9 +54,21 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
     };
     tracing::info!(pid = session.launcher_pid(), "launched");
 
-    session.wait().await.context("running program")?;
-    tracing::info!("program exited");
+    let started = Instant::now();
+    let ended = until_stopped(session, &session_key(account_id, product_id)).await;
+    let played = started.elapsed();
+    tracing::info!(seconds = played.as_secs(), "program exited");
     drop(galaxy);
+    if let Err(err) = db.add_playtime(
+        account_id,
+        Storefront::Gog,
+        product_id,
+        i64::try_from(played.as_secs()).unwrap_or(i64::MAX),
+    ) {
+        tracing::warn!(account_id, product_id, %err, "failed to record playtime");
+    }
+    crate::launch::sync_cloud_saves_after_exit(account_id, &game, cloud_save_checkpoint).await;
+    crate::launch::record_last_played(account_id, &game);
 
     tracing::debug!(account_id, product_id, "polling achievements after launch");
     report_poll(decanter_gog::poll_achievements(db, account_id, product_id).await?);
@@ -61,7 +79,27 @@ pub async fn launch(db: &mut decanter_core::Db, account_id: &str, product_id: &s
             tracing::info!(product_id, applied, "applied locally-witnessed achievement unlocks");
         }
     }
-    Ok(())
+    ended.context("running program")
+}
+
+/// The session's key, which [`decanter_runtime::stop`] finds it by.
+fn session_key(account_id: &str, product_id: &str) -> String {
+    format!("{account_id}/{product_id}")
+}
+
+/// Runs the session to its end. Asked to stop meanwhile, this stops the game as the window's Stop
+/// does and waits for it to end, since the game outlives this command otherwise: under Proton it
+/// runs on below `umu-run`, which is all a kill of this command's own process would reach.
+async fn until_stopped(session: Session, key: &str) -> anyhow::Result<()> {
+    let waited = session.wait();
+    tokio::pin!(waited);
+    tokio::select! {
+        ended = &mut waited => return ended,
+        () = super::stop_signal() => {}
+    }
+    tracing::info!(key, "asked to stop, stopping the game");
+    decanter_runtime::stop(key).await;
+    waited.await
 }
 
 /// Held by [`launch`] until the program exits, as the GUI's launch does.
@@ -96,7 +134,7 @@ async fn start_in_prefix(
     // over any builtin stub of the same name, which is what makes
     // decanter-hook's proxy (see `decanter_gog::hook::deploy`, run at
     // install time) the one that actually loads.
-    let mut launch = Launch::new(executable, format!("{account_id}/{product_id}"))
+    let mut launch = Launch::new(executable, session_key(account_id, product_id))
         .game_id(format!("umu-{product_id}"))
         .store("gog");
     launch.dll_overrides.push(("Galaxy64".to_owned(), "n".to_owned()));
@@ -130,6 +168,14 @@ async fn start_in_prefix(
     ));
 
     launch.prefix = Some(prefix);
+    let failed = crate::launch::prepare_gog_prefix(account_id, game, &launch).await.len();
+    if failed > 0 {
+        tracing::warn!(
+            product_id,
+            failed,
+            "redistributables failed to install, starting the game anyway"
+        );
+    }
     decanter_runtime::start(launch)
         .await
         .context("launching program")
@@ -144,7 +190,7 @@ async fn start_natively(
     executable: PathBuf,
 ) -> anyhow::Result<(Session, Option<PathBuf>)> {
     let (account_id, product_id) = (game.account_id.as_str(), game.game_id.as_str());
-    let mut launch = Launch::new(executable, format!("{account_id}/{product_id}"));
+    let mut launch = Launch::new(executable, session_key(account_id, product_id));
     let achievement_log = decanter_gog::hook::achievement_log_path(library, account_id, product_id);
     if let Some(path) = &achievement_log {
         launch

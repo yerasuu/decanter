@@ -354,7 +354,7 @@ pub async fn sync_pc(game: &InstalledGame) {
         }
         return;
     };
-    let exec = gog.then(|| relaunch(&game.account_id, &game.game_id));
+    let exec = gog.then(|| relaunch(&game.account_id, &game.game_id)).flatten();
     let entry = Entry {
         key: &key,
         title: &game.name,
@@ -387,27 +387,17 @@ pub async fn sync_ps(library_root: &Path, game: &decanter_ps::library::Game) {
     }
 }
 
-/// `decanter launch` for a GOG game, through the `AppImage` when decanter
-/// runs as one: the binary it runs from is inside a mount that moves. It
-/// names the library, so the game starts from it whichever one is active.
-fn relaunch(account_id: &str, product_id: &str) -> String {
-    let binary = std::env::var_os("APPIMAGE")
-        .or_else(|| std::env::var_os("DECANTER_LAUNCHER"))
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute() && path.is_file())
-        .or_else(|| std::env::current_exe().ok())
-        .unwrap_or_else(|| PathBuf::from("decanter"));
-    let binary = binary.to_string_lossy();
-    let library = match decanter_core::bootstrap::location() {
-        decanter_core::bootstrap::Location::Library(root) => Some(root.to_string_lossy().into_owned()),
-        decanter_core::bootstrap::Location::Legacy(_) | decanter_core::bootstrap::Location::Unconfigured => None,
-    };
-    std::iter::once(binary.as_ref())
-        .chain(library.iter().flat_map(|root| ["--library", root.as_str()]))
-        .chain(["launch", "--account-id", account_id, "--product-id", product_id])
-        .map(exec_arg)
-        .collect::<Vec<_>>()
-        .join(" ")
+/// `decanter launch` for a GOG game.
+fn relaunch(account_id: &str, product_id: &str) -> Option<String> {
+    let launcher = crate::launcher::Launcher::gog(account_id, product_id)?;
+    let program = launcher.program.to_string_lossy();
+    Some(
+        std::iter::once(program.as_ref())
+            .chain(launcher.args.iter().map(String::as_str))
+            .map(exec_arg)
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 /// Removes a PC game's entry once it's uninstalled or removed.

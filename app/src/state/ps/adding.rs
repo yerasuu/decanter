@@ -161,6 +161,14 @@ impl Ps {
                 } else {
                     &offer.game.title
                 };
+                if result.is_ok() && !offer.game.is_update() {
+                    let game = Game {
+                        dir: offer.target.clone(),
+                        ..offer.game.clone()
+                    };
+                    cx.spawn(async move |_, _| crate::ps_steam::export_if_enabled(game).await)
+                        .detach();
+                }
                 this.add_notice = Some(match result {
                     Ok(()) => (
                         Text::new("ps.add.done")

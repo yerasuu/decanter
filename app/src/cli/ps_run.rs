@@ -571,8 +571,9 @@ impl Ending {
     }
 }
 
-/// The game's output into its log and the scanner until it ends, and at the timeout a stop request,
-/// then a kill once [`STOP_GRACE`] is over. How it exited, and whether the timeout ended it.
+/// The game's output into its log and the scanner until it ends, and at the timeout, or when this
+/// command is asked to stop (Steam's Stop, a closed terminal), a stop request, then a kill once
+/// [`STOP_GRACE`] is over. How it exited, and whether the timeout ended it.
 async fn follow(
     running: &mut Running,
     events: &mut UnboundedReceiver<Event>,
@@ -583,8 +584,11 @@ async fn follow(
 ) -> (Option<ExitStatus>, bool) {
     let mut alarm = timeout.map(|secs| tokio::time::Instant::now() + Duration::from_secs(secs));
     let mut is_timed_out = false;
+    let mut is_stopping = false;
     let mut batch = Vec::with_capacity(BATCH);
     let mut exit = None;
+    let signal = super::stop_signal();
+    tokio::pin!(signal);
     loop {
         tokio::select! {
             received = events.recv_many(&mut batch, BATCH) => {
@@ -599,15 +603,24 @@ async fn follow(
                     }
                 }
             }
+            () = &mut signal, if !is_stopping => {
+                note(log, "# stop: decanter was asked to stop, it asked the game to stop", target).await;
+                tracing::info!(target, "asked to stop, asking the game to stop");
+                is_stopping = true;
+                running.stop();
+                alarm = Some(tokio::time::Instant::now() + STOP_GRACE);
+            }
             () = sleep_until(alarm), if alarm.is_some() => {
-                note(log, &timeout_line(timeout, is_timed_out.then_some(&running.ending)), target).await;
-                if is_timed_out {
+                if is_stopping {
+                    note(log, &kill_line(is_timed_out, &running.ending), target).await;
                     tracing::warn!(target, "game still running after the stop request, killing it");
                     running.kill();
                     alarm = None;
                 } else {
+                    note(log, &timeout_line(timeout), target).await;
                     tracing::info!(target, "timeout reached, asking the game to stop");
                     is_timed_out = true;
+                    is_stopping = true;
                     running.stop();
                     alarm = Some(tokio::time::Instant::now() + STOP_GRACE);
                 }
@@ -617,20 +630,21 @@ async fn follow(
     (exit, is_timed_out)
 }
 
-/// What the run's log says at the timeout, and again with what is killed once the grace after it ran
-/// out.
-fn timeout_line(timeout: Option<u64>, killing: Option<&Ending>) -> String {
-    match killing {
-        Some(ending) => format!(
-            "# timeout: still running {}s after the stop request, decanter killed {}",
-            STOP_GRACE.as_secs(),
-            ending.killed()
-        ),
-        None => format!(
-            "# timeout: {}s reached, decanter asked the game to stop",
-            timeout.unwrap_or_default()
-        ),
-    }
+fn timeout_line(timeout: Option<u64>) -> String {
+    format!(
+        "# timeout: {}s reached, decanter asked the game to stop",
+        timeout.unwrap_or_default()
+    )
+}
+
+/// What the run's log says once the grace after a stop request ran out.
+fn kill_line(is_timed_out: bool, ending: &Ending) -> String {
+    format!(
+        "# {}: still running {}s after the stop request, decanter killed {}",
+        if is_timed_out { "timeout" } else { "stop" },
+        STOP_GRACE.as_secs(),
+        ending.killed()
+    )
 }
 
 async fn sleep_until(at: Option<tokio::time::Instant>) {

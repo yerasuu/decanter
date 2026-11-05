@@ -687,14 +687,15 @@ pub(super) async fn export_steam_shortcut(
         );
         return;
     };
-    let Some(install_dir) = core_library.install_dir(&game.install_dir) else {
+    let Some(command) = crate::launcher::Launcher::gog(account_id, product_id).and_then(|launcher| launcher.steam())
+    else {
         return;
     };
     if let Err(err) = decanter_gog::sync_steam_shortcut(
         db,
         account_id,
         &game,
-        &install_dir,
+        command,
         cover_url.as_deref(),
         background_url.as_deref(),
         icon_url.as_deref(),
