@@ -184,6 +184,8 @@ fn scan(profile_id: &str) -> Vec<Folder> {
 pub struct StorageView {
     /// `None` until the first scan for this profile lands.
     folders: Option<Vec<Folder>>,
+    /// Mounted removable drives and SD cards, offered as places to add.
+    mounts: Vec<PathBuf>,
     error: Option<Text>,
     scan: Option<Task<()>>,
     /// Redraws the progress while a move runs: it runs on a blocking
@@ -208,6 +210,7 @@ impl StorageView {
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             folders: None,
+            mounts: Vec::new(),
             error: None,
             scan: None,
             _ticker: None,
@@ -231,11 +234,12 @@ impl StorageView {
             cx.notify();
             return;
         };
-        let scan = cx.background_spawn(async move { scan(&profile_id) });
+        let scan = cx.background_spawn(async move { (scan(&profile_id), decanter_core::removable_mounts()) });
         self.scan = Some(cx.spawn(async move |this, cx| {
-            let folders = scan.await;
+            let (folders, mounts) = scan.await;
             let _ = this.update(cx, |this, cx| {
                 this.folders = Some(folders);
+                this.mounts = mounts;
                 cx.notify();
             });
         }));
@@ -264,20 +268,48 @@ impl StorageView {
                 return;
             };
             let picked = folder.path().to_path_buf();
-            let result = crate::core::add_library_folder(&profile_id, &picked);
-            let _ = this.update(cx, |this, cx| {
-                match result {
-                    Ok(root) => {
-                        tracing::info!(profile_id, root = %root.display(), "library folder added");
-                        this.error = None;
-                        this.folders_changed(cx);
-                    }
-                    Err(err) => this.error = Some(err),
-                }
-                cx.notify();
-            });
+            let _ = this.update(cx, |this, cx| this.add_picked(&profile_id, &picked, cx));
         })
         .detach();
+    }
+
+    fn add_picked(&mut self, profile_id: &str, picked: &Path, cx: &mut Context<Self>) {
+        match crate::core::add_library_folder(profile_id, picked) {
+            Ok(root) => {
+                tracing::info!(profile_id, root = %root.display(), "library folder added");
+                self.error = None;
+                self.folders_changed(cx);
+            }
+            Err(err) => self.error = Some(err),
+        }
+        cx.notify();
+    }
+
+    fn mount_suggestions(&self, folders: &[Folder], cx: &Context<Self>) -> Vec<impl IntoElement + use<>> {
+        self.mounts
+            .iter()
+            .filter(|mount| {
+                !folders
+                    .iter()
+                    .any(|folder| folder.root.starts_with(mount) || mount.starts_with(&folder.root))
+            })
+            .enumerate()
+            .map(|(index, mount)| {
+                let picked = mount.clone();
+                button(
+                    ("storage-add-mount", index),
+                    ButtonKind::Secondary,
+                    t!("storage.add_mount", path = mount.display()),
+                    false,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+                        return;
+                    };
+                    this.add_picked(&profile_id, &picked, cx);
+                }))
+            })
+            .collect()
     }
 
     /// Lets the user pick where `folder`'s caches go, or without `pick` puts
@@ -811,10 +843,15 @@ impl Render for StorageView {
                         .map(|(index, folder)| self.folder_card(index, folder, cx)),
                 )
                 .child(
-                    div().flex().child(
-                        button("storage-add-folder", ButtonKind::Secondary, t!("storage.add"), false)
-                            .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
-                    ),
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap_3()
+                        .child(
+                            button("storage-add-folder", ButtonKind::Secondary, t!("storage.add"), false)
+                                .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
+                        )
+                        .children(self.mount_suggestions(folders, cx)),
                 )
                 .children(self.error.as_ref().map(|error| div().mt_3().child(theme::error(error))))
                 .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx))),

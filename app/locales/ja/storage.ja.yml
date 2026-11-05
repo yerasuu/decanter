@@ -1,6 +1,7 @@
 storage.title: "ストレージ"
 storage.add: "ライブラリフォルダーを追加"
 storage.add_title: "ゲームの保存場所を選択"
+storage.add_mount: "%{path} を追加"
 storage.stats.used.one: "1 本のゲームが使用"
 storage.stats.used.other: "%{count} 本のゲームが使用"
 storage.stats.folders.one: "ライブラリフォルダー"

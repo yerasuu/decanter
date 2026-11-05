@@ -1,6 +1,7 @@
 storage.title: "存储"
 storage.add: "添加游戏库文件夹"
 storage.add_title: "选择游戏的存放位置"
+storage.add_mount: "添加 %{path}"
 storage.stats.used.one: "1 个游戏占用"
 storage.stats.used.other: "%{count} 个游戏占用"
 storage.stats.folders.one: "个游戏库文件夹"

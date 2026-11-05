@@ -1,6 +1,7 @@
 storage.title: 저장 공간
 storage.add: 라이브러리 폴더 추가
 storage.add_title: 게임을 보관할 위치 선택
+storage.add_mount: "%{path} 추가"
 storage.stats.used.one: 게임 1개에서 사용 중
 storage.stats.used.other: '게임 %{count}개에서 사용 중'
 storage.stats.folders.one: 라이브러리 폴더

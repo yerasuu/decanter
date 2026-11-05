@@ -1,6 +1,7 @@
 storage.title: Almacenamiento
 storage.add: Añadir carpeta de biblioteca
 storage.add_title: Elige dónde guardar los juegos
+storage.add_mount: 'Añadir %{path}'
 storage.stats.used.one: usado por 1 juego
 storage.stats.used.other: usado por %{count} juegos
 storage.stats.folders.one: carpeta de biblioteca

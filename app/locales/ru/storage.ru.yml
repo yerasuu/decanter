@@ -1,6 +1,7 @@
 storage.title: 'Хранилище'
 storage.add: 'Добавить папку библиотеки'
 storage.add_title: 'Выберите, где хранить игры'
+storage.add_mount: "Добавить %{path}"
 storage.stats.used.one: 'используется 1 игрой'
 storage.stats.used.other: 'используется играми: %{count}'
 storage.stats.folders.one: 'папка библиотеки'

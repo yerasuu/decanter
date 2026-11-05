@@ -1,6 +1,7 @@
 storage.title: Storage
 storage.add: Add library folder
 storage.add_title: Choose where to keep games
+storage.add_mount: 'Add %{path}'
 storage.stats.used.one: used by 1 game
 storage.stats.used.other: used by %{count} games
 storage.stats.folders.one: library folder

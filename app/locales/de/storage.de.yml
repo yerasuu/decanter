@@ -1,6 +1,7 @@
 storage.title: Speicher
 storage.add: Bibliotheksordner hinzufügen
 storage.add_title: Wähle, wo Spiele gespeichert werden
+storage.add_mount: '%{path} hinzufügen'
 storage.stats.used.one: von 1 Spiel belegt
 storage.stats.used.other: von %{count} Spielen belegt
 storage.stats.folders.one: Bibliotheksordner
