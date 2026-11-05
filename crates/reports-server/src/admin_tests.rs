@@ -210,7 +210,7 @@ async fn login_sets_a_host_only_strict_cookie_and_opens_the_admin_page() -> Test
             "{flag} in {cookie}"
         );
     }
-    assert!(!cookie.to_ascii_lowercase().contains("domain"), "{cookie}");
+    assert!(!cookie.to_ascii_lowercase().contains("domain"));
     assert_eq!(h.login().await?.csrf.len(), 64);
     Ok(())
 }
@@ -776,7 +776,7 @@ async fn unknown_id_and_wrong_secret_are_the_same_404_and_both_count() -> Test {
         let answer = h
             .send(Method::GET, "/admin/reports", &[("authorization", &auth)], "")
             .await?;
-        assert_eq!(answer, uniform, "{key}");
+        assert_eq!(answer, uniform);
         let answer = h
             .send(
                 Method::POST,
@@ -785,7 +785,7 @@ async fn unknown_id_and_wrong_secret_are_the_same_404_and_both_count() -> Test {
                 &format!("key={key}"),
             )
             .await?;
-        assert_eq!(answer, uniform, "{key}");
+        assert_eq!(answer, uniform);
     }
     let (status, ..) = h.send(Method::GET, "/admin/login", &[], "").await?;
     assert_eq!(

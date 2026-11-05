@@ -276,7 +276,7 @@ mod tests {
             lines[2].contains("audit records, the oldest from 2025-02-19; warning: 1 account object cannot be read"),
             "{lines:?}"
         );
-        assert!(!lines[2].contains(&ana), "{lines:?}");
+        assert!(!lines[2].contains(&ana));
         std::fs::remove_dir_all(&dir)?;
         Ok(())
     }
@@ -300,7 +300,7 @@ mod tests {
         let mut config = Config::default();
         assert!(env_secrets_warning(&config, true).is_none());
         let warning = env_secrets_warning(&config, false).unwrap_or_default();
-        assert!(warning.contains("DECANTER_REPORTS_PASSPHRASE"), "{warning}");
+        assert!(warning.contains("DECANTER_REPORTS_PASSPHRASE"));
         config.storage.passphrase_file = Some("/etc/decanter-reports/passphrase".into());
         assert!(env_secrets_warning(&config, false).is_none());
     }

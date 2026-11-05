@@ -599,7 +599,7 @@ mod tests {
         assert!(crate::secrets::is_hex_token(&id, ID_HEX));
         let (key, hash) = key_for(&id, &random_hex_256()?);
         let secret = key.strip_prefix(&format!("{KEY_PREFIX}{id}_")).unwrap_or_default();
-        assert!(crate::secrets::is_hex_token(secret, 64), "{key}");
+        assert!(crate::secrets::is_hex_token(secret, 64));
         assert!(crate::secrets::matches_hex(&hash, key.as_bytes()));
         assert!(!hash.contains(secret));
         Ok(())
