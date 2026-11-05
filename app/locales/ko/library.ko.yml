@@ -85,6 +85,9 @@ library.browser.add_shelf: + 선반 추가
 library.browser.favorite: 즐겨찾기
 library.browser.see_all: "모두 보기"
 library.browser.back_to_shelves: "선반"
+library.browser.collapse_shelf: "선반 접기"
+library.browser.expand_shelf: "선반 펼치기"
+library.shelves.recent: "최근 게임"
 library.properties.title: 속성
 library.detail.tabs.summary: 개요
 library.detail.tabs.achievements: 업적

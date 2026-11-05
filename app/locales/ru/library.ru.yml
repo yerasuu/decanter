@@ -85,6 +85,9 @@ library.browser.add_shelf: '+ Добавить полку'
 library.browser.favorite: 'Избранное'
 library.browser.see_all: "Показать все"
 library.browser.back_to_shelves: "Полки"
+library.browser.collapse_shelf: "Свернуть полку"
+library.browser.expand_shelf: "Развернуть полку"
+library.shelves.recent: "Недавние игры"
 library.properties.title: 'Свойства'
 library.detail.tabs.summary: 'Обзор'
 library.detail.tabs.achievements: 'Достижения'

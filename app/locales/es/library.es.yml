@@ -85,6 +85,9 @@ library.browser.add_shelf: + Añadir estantería
 library.browser.favorite: Favorito
 library.browser.see_all: "Ver todo"
 library.browser.back_to_shelves: "Estanterías"
+library.browser.collapse_shelf: "Contraer estantería"
+library.browser.expand_shelf: "Expandir estantería"
+library.shelves.recent: "Juegos recientes"
 library.properties.title: Propiedades
 library.detail.tabs.summary: Resumen
 library.detail.tabs.achievements: Logros

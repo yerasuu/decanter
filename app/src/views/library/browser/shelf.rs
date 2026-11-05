@@ -58,17 +58,19 @@ impl BrowserView {
     ) -> impl IntoElement + use<> {
         let key = shelf.key;
         let head = self.shelf_head(shelf, sources, cx);
-        let body = if shelf.capsules.is_empty() {
-            empty_shelf().into_any_element()
+        let body = if shelf.collapsed {
+            None
+        } else if shelf.capsules.is_empty() {
+            Some(empty_shelf().into_any_element())
         } else {
-            self.render_row(shelf, cx).into_any_element()
+            Some(self.render_row(shelf, cx).into_any_element())
         };
 
         div()
-            .mb(px(30.))
+            .mb(px(if shelf.collapsed { 14. } else { 30. }))
             .when(dragging == Some(key), |shelf| shelf.opacity(0.45))
             .child(head)
-            .child(body)
+            .children(body)
     }
 
     fn shelf_head(
@@ -130,6 +132,26 @@ impl BrowserView {
                     .group_hover(HEAD_GROUP, |grip| grip.text_color(rgb(theme::TEXT_MUTED)))
                     .tooltip(tooltip(t!("library.browser.drag_to_reorder")))
                     .child("⠿"),
+            )
+            .child(
+                nav::tab_stop(div().id(("shelf-fold", key)))
+                    .flex_none()
+                    .w(px(18.))
+                    .text_size(px(11.))
+                    .line_height(relative(1.))
+                    .text_color(rgb(theme::TEXT_DIM))
+                    .cursor_pointer()
+                    .hover(|button| button.text_color(rgb(theme::TEXT_PRIMARY)))
+                    .tooltip(tooltip(if shelf.collapsed {
+                        t!("library.browser.expand_shelf")
+                    } else {
+                        t!("library.browser.collapse_shelf")
+                    }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.update_slot(key, |slot| slot.collapsed = !slot.collapsed, cx);
+                    }))
+                    .child(if shelf.collapsed { "▸" } else { "▾" }),
             )
             // The source picker *is* the shelf's title.
             .child(

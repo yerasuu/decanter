@@ -6,6 +6,9 @@ use super::{Capsule, Derived, Organisation, ShelfData, ShelvesKey, Slot};
 use crate::views::library::filters::{belongs_in_the_library, is_installed, sort_entries};
 use crate::views::library::shelves;
 
+/// How many games the "recent" shelf holds.
+const RECENT_GAMES: usize = 20;
+
 pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Organisation, slots: &[Slot]) -> Derived {
     let Organisation {
         collections,
@@ -35,6 +38,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
     // Instalados vanished as soon as a first collection retired the
     // install-state split. Either left the shelf blank with no way back.
     let mut sources: Vec<(SharedString, SharedString)> = vec![
+        ("recent".into(), t!("library.shelves.recent").into()),
         ("favorites".into(), t!("library.shelves.favorites").into()),
         ("all".into(), t!("library.browser.whole_library").into()),
         ("uncategorized".into(), t!("library.shelves.uncategorized").into()),
@@ -53,6 +57,12 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
             let pick = |keep: &dyn Fn(&LibraryEntry) -> bool| entries.iter().filter(|e| keep(e)).cloned().collect();
             let mut items: Vec<LibraryEntry> = match slot.source.as_str() {
                 "all" => entries.clone(),
+                "recent" => {
+                    let mut played: Vec<LibraryEntry> = pick(&|e| stats.last_played(&e.game.id) > 0);
+                    played.sort_by_key(|entry| std::cmp::Reverse(stats.last_played(&entry.game.id)));
+                    played.truncate(RECENT_GAMES);
+                    played
+                }
                 "favorites" => pick(&|e| favorites.contains(&e.game.id)),
                 "uncategorized" => pick(&|e| collections.is_uncategorized(&e.game.id)),
                 "installed" => pick(&|e| is_installed(&e.game, pending_installs)),
@@ -79,6 +89,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
                 })
                 .collect();
             ShelfData {
+                collapsed: slot.collapsed,
                 key: slot.key,
                 source: slot.source.clone().into(),
                 sort: slot.sort,
@@ -87,6 +98,8 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
                 dynamic: built.iter().any(|shelf| shelf.id == slot.source && shelf.dynamic),
             }
         })
+        // Nothing played yet is no reason for an empty "Recent games" shelf at the top.
+        .filter(|shelf| shelf.source != "recent" || !shelf.capsules.is_empty())
         .collect();
 
     Derived {

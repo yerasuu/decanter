@@ -85,6 +85,9 @@ library.browser.add_shelf: + Add shelf
 library.browser.favorite: Favorite
 library.browser.see_all: "See all"
 library.browser.back_to_shelves: "Shelves"
+library.browser.collapse_shelf: "Collapse shelf"
+library.browser.expand_shelf: "Expand shelf"
+library.shelves.recent: "Recent games"
 library.properties.title: Properties
 library.detail.tabs.summary: Overview
 library.detail.tabs.achievements: Achievements

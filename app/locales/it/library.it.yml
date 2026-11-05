@@ -85,6 +85,9 @@ library.browser.add_shelf: + Aggiungi scaffale
 library.browser.favorite: Preferito
 library.browser.see_all: "Mostra tutto"
 library.browser.back_to_shelves: "Scaffali"
+library.browser.collapse_shelf: "Comprimi scaffale"
+library.browser.expand_shelf: "Espandi scaffale"
+library.shelves.recent: "Giochi recenti"
 library.properties.title: Proprietà
 library.detail.tabs.summary: Panoramica
 library.detail.tabs.achievements: Obiettivi

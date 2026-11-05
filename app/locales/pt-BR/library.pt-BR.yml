@@ -85,6 +85,9 @@ library.browser.add_shelf: + Adicionar prateleira
 library.browser.favorite: Favorito
 library.browser.see_all: "Ver tudo"
 library.browser.back_to_shelves: "Prateleiras"
+library.browser.collapse_shelf: "Recolher prateleira"
+library.browser.expand_shelf: "Expandir prateleira"
+library.shelves.recent: "Jogos recentes"
 library.properties.title: Propriedades
 library.detail.tabs.summary: Visão geral
 library.detail.tabs.achievements: Conquistas

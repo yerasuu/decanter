@@ -4,7 +4,7 @@ use crate::views::library::filters::Sort;
 
 /// Sources that exist no matter what the user has made, so a saved shelf
 /// pointing at one is always valid.
-const BUILT_IN_SOURCES: [&str; 4] = ["all", "favorites", "uncategorized", "installed"];
+const BUILT_IN_SOURCES: [&str; 5] = ["all", "recent", "favorites", "uncategorized", "installed"];
 
 pub(super) fn load_slots(profile_id: &str) -> Vec<Slot> {
     let collection_ids: Vec<String> = data::load_collections(profile_id)
@@ -40,13 +40,15 @@ fn restore_slots(raw: Option<&str>, collection_ids: &[String]) -> Vec<Slot> {
         .collect();
     // Opens on the whole library: it's the one source that always exists,
     // where "favorites" is absent until something is starred and would
-    // leave the first shelf pointing at nothing.
+    // leave the first shelf pointing at nothing. The recent shelf above it
+    // hides itself until something has been played.
     if slots.is_empty() {
-        slots.push(Slot {
+        slots.extend(["recent", "all"].map(|source| Slot {
             key: 0,
-            source: "all".to_string(),
+            source: source.to_string(),
             sort: Sort::RecentlyPlayed,
-        });
+            collapsed: false,
+        }));
     }
     // Keys are handed out here, not restored: they only have to be unique
     // within this load, and `next_key` continues from the count.

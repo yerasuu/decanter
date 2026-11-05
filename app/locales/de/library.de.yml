@@ -85,6 +85,9 @@ library.browser.add_shelf: + Regal hinzufügen
 library.browser.favorite: Favorit
 library.browser.see_all: "Alle anzeigen"
 library.browser.back_to_shelves: "Regale"
+library.browser.collapse_shelf: "Regal einklappen"
+library.browser.expand_shelf: "Regal ausklappen"
+library.shelves.recent: "Zuletzt gespielt"
 library.properties.title: Eigenschaften
 library.detail.tabs.summary: Übersicht
 library.detail.tabs.achievements: Erfolge

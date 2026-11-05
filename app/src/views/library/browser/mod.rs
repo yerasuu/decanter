@@ -50,6 +50,9 @@ struct Slot {
     /// Shelf id from [`shelves::build`](super::shelves::build), or `"all"` for the whole library.
     source: String,
     sort: Sort,
+    /// Only the header is drawn, the way a sidebar shelf folds its list away.
+    #[serde(default)]
+    collapsed: bool,
 }
 
 /// What the sqlite-backed reads depend on. `render` runs on every artwork
@@ -115,6 +118,7 @@ struct Capsule {
 
 struct ShelfData {
     key: u32,
+    collapsed: bool,
     source: SharedString,
     sort: Sort,
     capsules: Vec<Capsule>,
@@ -302,6 +306,7 @@ impl BrowserView {
             key,
             source: "all".to_string(),
             sort: Sort::Title,
+            collapsed: false,
         });
         self.slots_changed(cx);
     }
@@ -451,7 +456,7 @@ impl BrowserView {
             "right" => (index + 1 < shelf.capsules.len()).then_some((position, index + 1)),
             "up" | "down" => {
                 let column = index.saturating_sub(row.first_in_view());
-                let filled = |shelf: &ShelfData| !shelf.capsules.is_empty();
+                let filled = |shelf: &ShelfData| !shelf.capsules.is_empty() && !shelf.collapsed;
                 let other = if keystroke.key == "up" {
                     shelves[..position].iter().rposition(filled)
                 } else {
