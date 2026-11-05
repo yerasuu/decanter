@@ -15,6 +15,7 @@ use crate::i18n::Text;
 use crate::state::{AppState, Download, DownloadKey};
 use crate::theme;
 use crate::views::downloads;
+use crate::widgets::reveal::reveal;
 use crate::widgets::{ButtonKind, button, stat_card, tooltip};
 
 /// One library folder as the last scan found it.
@@ -353,61 +354,64 @@ impl StorageView {
             .cache_size
             .map_or_else(|| t!("storage.cache.empty").into_owned(), crate::format::bytes);
         let (pick_root, reset_root) = (folder.root.clone(), folder.root.clone());
-        div()
-            .flex()
-            .items_center()
-            .gap_4()
-            .px(px(18.))
-            .py(px(10.))
-            .border_b_1()
-            .border_color(rgb(theme::LINE))
-            .child(
-                div()
-                    .w(px(70.))
-                    .flex_none()
-                    .text_color(rgb(theme::TEXT_MUTED))
-                    .child(t!("storage.cache.title")),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(theme::mono().truncate().child(folder.cache.display().to_string()))
-                    .child(
-                        theme::muted(if folder.cache_custom {
-                            t!("storage.cache.custom", size = size)
-                        } else {
-                            t!("storage.cache.default", size = size)
-                        })
-                        .text_size(px(12.)),
-                    ),
-            )
-            .when(folder.cache_custom, |row| {
-                row.child(
-                    button(
-                        ("storage-cache-reset", index),
-                        ButtonKind::Secondary,
-                        t!("storage.cache.reset"),
-                        false,
+        reveal(
+            div()
+                .id(("storage-cache", index))
+                .flex()
+                .items_center()
+                .gap_4()
+                .px(px(18.))
+                .py(px(10.))
+                .border_b_1()
+                .border_color(rgb(theme::LINE))
+                .child(
+                    div()
+                        .w(px(70.))
+                        .flex_none()
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child(t!("storage.cache.title")),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(theme::mono().truncate().child(folder.cache.display().to_string()))
+                        .child(
+                            theme::muted(if folder.cache_custom {
+                                t!("storage.cache.custom", size = size)
+                            } else {
+                                t!("storage.cache.default", size = size)
+                            })
+                            .text_size(px(12.)),
+                        ),
+                )
+                .when(folder.cache_custom, |row| {
+                    row.child(
+                        button(
+                            ("storage-cache-reset", index),
+                            ButtonKind::Secondary,
+                            t!("storage.cache.reset"),
+                            false,
+                        )
+                        .tooltip(tooltip(t!("storage.cache.reset_hint")))
+                        .on_click(cx.listener(move |_, _, _, cx| Self::change_cache(reset_root.clone(), false, cx))),
                     )
-                    .tooltip(tooltip(t!("storage.cache.reset_hint")))
-                    .on_click(cx.listener(move |_, _, _, cx| Self::change_cache(reset_root.clone(), false, cx))),
-                )
-            })
-            .child(
-                button(
-                    ("storage-cache-pick", index),
-                    ButtonKind::Secondary,
-                    t!("storage.cache.change"),
-                    !folder.present,
-                )
-                .tooltip(tooltip(t!("storage.cache.change_hint")))
-                .when(folder.present, |b| {
-                    b.on_click(cx.listener(move |_, _, _, cx| Self::change_cache(pick_root.clone(), true, cx)))
-                }),
-            )
+                })
+                .child(
+                    button(
+                        ("storage-cache-pick", index),
+                        ButtonKind::Secondary,
+                        t!("storage.cache.change"),
+                        !folder.present,
+                    )
+                    .tooltip(tooltip(t!("storage.cache.change_hint")))
+                    .when(folder.present, |b| {
+                        b.on_click(cx.listener(move |_, _, _, cx| Self::change_cache(pick_root.clone(), true, cx)))
+                    }),
+                ),
+        )
     }
 
     /// Descargas sin terminar: what the folder's `downloading/` holds, and
@@ -427,27 +431,30 @@ impl StorageView {
         let listed = rows.into_iter().enumerate().map(|(row, (key, download))| {
             let id = index * 1_000 + row;
             let confirming = background.cancel_confirm.as_ref() == Some(key);
-            div()
-                .flex()
-                .items_start()
-                .gap_4()
-                .pt_2()
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .child(download.title.clone())
-                        .children(downloads::progress_lines(key, download)),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_none()
-                        .gap_2()
-                        .children(downloads::download_actions(id, key, download, confirming)),
-                )
+            reveal(
+                div()
+                    .id(("storage-unfinished", id))
+                    .flex()
+                    .items_start()
+                    .gap_4()
+                    .pt_2()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .child(download.title.clone())
+                            .children(downloads::progress_lines(key, download)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_none()
+                            .gap_2()
+                            .children(downloads::download_actions(id, key, download, confirming)),
+                    ),
+            )
         });
         let strays = folder
             .strays
@@ -547,21 +554,24 @@ impl StorageView {
                 )),
             )
         };
-        div()
-            .flex()
-            .items_start()
-            .gap_4()
-            .pt_2()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(div().truncate().child(name))
-                    .child(theme::muted(t!("storage.stray.note", size = size.as_str())).text_size(px(11.))),
-            )
-            .child(actions)
+        reveal(
+            div()
+                .id(("storage-stray", id))
+                .flex()
+                .items_start()
+                .gap_4()
+                .pt_2()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(div().truncate().child(name))
+                        .child(theme::muted(t!("storage.stray.note", size = size.as_str())).text_size(px(11.))),
+                )
+                .child(actions),
+        )
     }
 
     fn remove_stray(&mut self, root: PathBuf, account_id: String, name: String, cx: &mut Context<Self>) {
@@ -647,8 +657,9 @@ impl StorageView {
         } else {
             t!("storage.legacy.remove")
         };
-        theme::card().mt_6().child(
+        theme::card().mt_6().child(reveal(
             div()
+                .id("storage-legacy")
                 .flex()
                 .items_center()
                 .gap_4()
@@ -675,7 +686,7 @@ impl StorageView {
                         },
                     )),
                 ),
-        )
+        ))
     }
 
     fn tick_while_moving(&mut self, cx: &Context<Self>) {
@@ -725,8 +736,9 @@ impl StorageView {
         let root = folder.root.clone();
         theme::card()
             .mb_4()
-            .child(
+            .child(reveal(
                 div()
+                    .id(("storage-folder", index))
                     .flex()
                     .items_center()
                     .gap_4()
@@ -762,34 +774,38 @@ impl StorageView {
                             }),
                         )
                     }),
-            )
+            ))
             .child(Self::cache_row(index, folder, cx))
             .children(self.unfinished_rows(index, folder, cx))
             .children(folder.games.iter().enumerate().map(|(row, game)| {
                 let id = index * 10_000 + row;
-                theme::list_row(("storage-row", id), row + 1 == count)
-                    .children(self.game_select_box(id, game, cx))
-                    .child(div().flex_1().child(game.name.clone()))
-                    .children(self.game_move_control(id, game, &folder.root, cx))
-                    .child(
-                        div()
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(crate::format::bytes(game.size_on_disk.unwrap_or(0))),
-                    )
+                reveal(
+                    theme::list_row(("storage-row", id), row + 1 == count)
+                        .children(self.game_select_box(id, game, cx))
+                        .child(div().flex_1().child(game.name.clone()))
+                        .children(self.game_move_control(id, game, &folder.root, cx))
+                        .child(
+                            div()
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(crate::format::bytes(game.size_on_disk.unwrap_or(0))),
+                        ),
+                )
             }))
             .children(folder.dumps.iter().enumerate().map(|(row, dump)| {
                 let row = folder.games.len() + row;
                 let id = index * 10_000 + row;
-                theme::list_row(("storage-row", id), row + 1 == count)
-                    .child(self.dump_select_box(id, dump, cx))
-                    .child(theme::badge("PS", false))
-                    .child(div().flex_1().min_w_0().truncate().child(dump.name.clone()))
-                    .children(self.dump_move_control(id, dump, &folder.root, cx))
-                    .child(
-                        div()
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(crate::format::bytes(dump.size)),
-                    )
+                reveal(
+                    theme::list_row(("storage-row", id), row + 1 == count)
+                        .child(self.dump_select_box(id, dump, cx))
+                        .child(theme::badge("PS", false))
+                        .child(div().flex_1().min_w_0().truncate().child(dump.name.clone()))
+                        .children(self.dump_move_control(id, dump, &folder.root, cx))
+                        .child(
+                            div()
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(crate::format::bytes(dump.size)),
+                        ),
+                )
             }))
     }
 }
@@ -842,8 +858,9 @@ impl Render for StorageView {
                         .enumerate()
                         .map(|(index, folder)| self.folder_card(index, folder, cx)),
                 )
-                .child(
+                .child(reveal(
                     div()
+                        .id("storage-add")
                         .flex()
                         .flex_wrap()
                         .gap_3()
@@ -852,7 +869,7 @@ impl Render for StorageView {
                                 .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
                         )
                         .children(self.mount_suggestions(folders, cx)),
-                )
+                ))
                 .children(self.error.as_ref().map(|error| div().mt_3().child(theme::error(error))))
                 .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx))),
         )

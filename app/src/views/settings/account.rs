@@ -17,13 +17,14 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use super::{column, field_row, inline, storefront_label};
+use super::{column, field_row, inline, section, storefront_label};
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::views::gog_login::{GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
 use crate::views::{session_renewal, shell};
+use crate::widgets::reveal::reveal;
 use crate::widgets::{ButtonKind, Select, button};
 
 #[derive(Clone, PartialEq)]
@@ -551,24 +552,26 @@ impl AccountTab {
             // The error line follows the row inside the card, so the row
             // only counts as `:last-child` when there's none.
             let last = index + 1 == count && failed.is_none();
-            let line = theme::list_row(("account-row", index), last)
-                .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
-                .child(div().flex_1().min_w_0().child(label))
-                .children(renew)
-                .child(
-                    button(
-                        ("log-out", index),
-                        ButtonKind::Secondary,
-                        t!("settings.account.log_out"),
-                        working,
-                    )
-                    .when(!working, |b| {
-                        b.on_click(cx.listener(move |this, _, _, cx| {
-                            this.log_out(account_id.clone(), storefront, cx);
-                        }))
-                    }),
-                )
-                .into_any_element();
+            let line = reveal(
+                theme::list_row(("account-row", index), last)
+                    .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
+                    .child(div().flex_1().min_w_0().child(label))
+                    .children(renew)
+                    .child(
+                        button(
+                            ("log-out", index),
+                            ButtonKind::Secondary,
+                            t!("settings.account.log_out"),
+                            working,
+                        )
+                        .when(!working, |b| {
+                            b.on_click(cx.listener(move |this, _, _, cx| {
+                                this.log_out(account_id.clone(), storefront, cx);
+                            }))
+                        }),
+                    ),
+            )
+            .into_any_element();
             std::iter::once(line).chain(failed.map(|message| theme::error(message).into_any_element()))
         }))
     }
@@ -665,11 +668,14 @@ impl Render for AccountTab {
             self.account_rows(cx).into_any_element()
         };
         column()
-            .child(self.library_location(cx))
-            .children(self.library_switcher(cx))
+            .child(section("library-location", self.library_location(cx)))
+            .children(
+                self.library_switcher(cx)
+                    .map(|switcher| section("library-switcher-section", switcher)),
+            )
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
-            .child(self.add_gog_account(cx))
-            .child(self.people(cx))
+            .child(section("add-gog-account", self.add_gog_account(cx)))
+            .child(section("people", self.people(cx)))
     }
 }

@@ -12,6 +12,7 @@ use crate::format;
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 use crate::theme;
 use crate::views::library::actions;
+use crate::widgets::reveal::reveal;
 use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
 
 /// A download paused this long gets a notice offering to resume or delete
@@ -591,48 +592,54 @@ impl Render for DownloadsView {
         let mut entries: Vec<(&DownloadKey, &Download)> = background.installing.iter().collect();
         entries.sort_by(|left, right| (&left.1.title, left.0).cmp(&(&right.1.title, right.0)));
 
-        let header = div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap_4()
-            .child(theme::h1(t!("downloads.title")))
-            .children(bulk_actions(&entries));
+        let header = reveal(
+            div()
+                .id("downloads-header")
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_4()
+                .child(theme::h1(t!("downloads.title")))
+                .children(bulk_actions(&entries)),
+        );
         let offers = background.verify_offers.iter().enumerate().map(|(index, offer)| {
             let verify_key = offer.key.clone();
             let dismiss_key = offer.key.clone();
-            div()
-                .flex()
-                .items_center()
-                .gap_4()
-                .px(px(18.))
-                .py(px(10.))
-                .border_b_1()
-                .border_color(rgb(theme::LINE))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(t!("downloads.verify_offer", title = offer.title.as_str())),
-                )
-                .child(
-                    button(
-                        ("verify-now", index),
-                        ButtonKind::Secondary,
-                        t!("downloads.verify_now"),
-                        false,
+            reveal(
+                div()
+                    .id(("verify-offer", index))
+                    .flex()
+                    .items_center()
+                    .gap_4()
+                    .px(px(18.))
+                    .py(px(10.))
+                    .border_b_1()
+                    .border_color(rgb(theme::LINE))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(t!("downloads.verify_offer", title = offer.title.as_str())),
                     )
-                    .on_click(move |_, _, cx| actions::verify_now(&verify_key, cx)),
-                )
-                .child(
-                    button(
-                        ("verify-dismiss", index),
-                        ButtonKind::Icon,
-                        t!("downloads.dismiss"),
-                        false,
+                    .child(
+                        button(
+                            ("verify-now", index),
+                            ButtonKind::Secondary,
+                            t!("downloads.verify_now"),
+                            false,
+                        )
+                        .on_click(move |_, _, cx| actions::verify_now(&verify_key, cx)),
                     )
-                    .on_click(move |_, _, cx| actions::dismiss_verify_offer(&dismiss_key, cx)),
-                )
+                    .child(
+                        button(
+                            ("verify-dismiss", index),
+                            ButtonKind::Icon,
+                            t!("downloads.dismiss"),
+                            false,
+                        )
+                        .on_click(move |_, _, cx| actions::dismiss_verify_offer(&dismiss_key, cx)),
+                    ),
+            )
         });
         let mut column = div()
             .flex()
@@ -667,7 +674,14 @@ impl Render for DownloadsView {
                     .flatten()
                     .map(|position| (position, waiting));
                 let confirming = background.cancel_confirm.as_ref() == Some(key);
-                card = card.child(row(index, offset + 1 == count, key, download, confirming, queued));
+                card = card.child(reveal(row(
+                    index,
+                    offset + 1 == count,
+                    key,
+                    download,
+                    confirming,
+                    queued,
+                )));
                 index += 1;
             }
             column = column.child(theme::h2(group.title())).child(card);

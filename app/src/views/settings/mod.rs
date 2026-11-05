@@ -21,6 +21,7 @@ use rust_i18n::t;
 
 use crate::state::AppState;
 use crate::theme;
+use crate::widgets::reveal::reveal;
 use account::AccountTab;
 use compatibility::CompatibilityTab;
 use general::GeneralTab;
@@ -170,6 +171,11 @@ fn field_row() -> Div {
 /// would otherwise stretch — the webview's buttons were inline-block.
 fn inline(element: impl IntoElement) -> Div {
     div().flex().child(element)
+}
+
+/// A block of controls that the keyboard focus scrolls into view.
+fn section(id: &'static str, content: impl IntoElement) -> impl IntoElement {
+    reveal(div().id(id).child(content))
 }
 
 /// A tab's own column, so its block-level children stretch the way a

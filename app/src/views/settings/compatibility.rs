@@ -13,11 +13,12 @@ use gpui::{Context, Div, Entity, IntoElement, SharedString, Window, div, prelude
 use rust_i18n::t;
 
 use super::game_tools::GameToolDefaults;
-use super::{column, field_row, inline};
+use super::{column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::releases::{self, Release, ReleaseError};
 use crate::runners;
 use crate::theme;
+use crate::widgets::reveal::reveal;
 use crate::widgets::{ButtonKind, Select, button, confirm_panel};
 
 type Latest = Result<Option<Release>, ReleaseError>;
@@ -255,7 +256,7 @@ impl CompatibilityTab {
                         }),
                     )
                 });
-                column().child(row).children(panel)
+                column().child(reveal(row.id(("ge-proton-row", index)))).children(panel)
             }))
             .children(self.ge_proton_error.clone().map(theme::error))
     }
@@ -391,20 +392,21 @@ impl Render for CompatibilityTab {
         column()
             .child(theme::muted(t!("settings.compatibility.intro")))
             .child(theme::h2(t!("settings.compatibility.default")))
-            .child(
+            .child(section(
+                "default-proton",
                 field_row().child(
                     Select::new("default-proton", options, selected).on_change(move |chosen, _, cx| {
                         entity.update(cx, |this, cx| this.set_default(chosen, cx));
                     }),
                 ),
-            )
+            ))
             .when(self.runners.is_empty(), |column| {
                 column.child(theme::muted(t!("settings.compatibility.none_installed")))
             })
-            .child(self.game_tools.clone())
+            .child(section("game-tools", self.game_tools.clone()))
             .when(!self.ge_proton.is_empty(), |column| {
                 column.child(self.ge_proton_section(cx))
             })
-            .child(self.tools_section(cx))
+            .child(section("tools", self.tools_section(cx)))
     }
 }

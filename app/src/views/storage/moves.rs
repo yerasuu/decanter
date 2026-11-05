@@ -19,6 +19,7 @@ use crate::external::transfer::Progress;
 use crate::i18n::Text;
 use crate::state::Ps;
 use crate::theme;
+use crate::widgets::reveal::reveal;
 use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
 
@@ -570,8 +571,9 @@ impl StorageView {
                 });
             });
         Some(
-            theme::card().mb_4().child(
+            theme::card().mb_4().child(reveal(
                 div()
+                    .id("storage-selection")
                     .flex()
                     .items_center()
                     .gap_4()
@@ -591,7 +593,7 @@ impl StorageView {
                             cx.notify();
                         })),
                     ),
-            ),
+            )),
         )
     }
 
@@ -621,52 +623,55 @@ impl StorageView {
             )
         };
         let waiting = count(|status| matches!(status, MoveStatus::Queued));
-        let header = div()
-            .flex()
-            .items_center()
-            .gap_4()
-            .px(px(18.))
-            .py(px(10.))
-            .border_b_1()
-            .border_color(gpui::rgb(theme::LINE))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .child(t!("storage.queue.title"))
-                    .child(theme::muted(summary).text_size(px(12.))),
-            )
-            .when(waiting > 0, |row| {
-                row.child(
-                    button(
-                        "storage-queue-stop",
-                        ButtonKind::Secondary,
-                        t!("storage.queue.stop"),
-                        false,
-                    )
-                    .tooltip(tooltip(t!("storage.queue.stop_hint")))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.moves
-                            .skip_queued(&Text::new("storage.queue.skipped.stopped"), "stopped");
-                        cx.notify();
-                    })),
+        let header = reveal(
+            div()
+                .id("storage-queue-head")
+                .flex()
+                .items_center()
+                .gap_4()
+                .px(px(18.))
+                .py(px(10.))
+                .border_b_1()
+                .border_color(gpui::rgb(theme::LINE))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .child(t!("storage.queue.title"))
+                        .child(theme::muted(summary).text_size(px(12.))),
                 )
-            })
-            .when(!self.moves.is_busy(), |row| {
-                row.child(
-                    button(
-                        "storage-queue-clear",
-                        ButtonKind::Secondary,
-                        t!("storage.queue.clear"),
-                        false,
+                .when(waiting > 0, |row| {
+                    row.child(
+                        button(
+                            "storage-queue-stop",
+                            ButtonKind::Secondary,
+                            t!("storage.queue.stop"),
+                            false,
+                        )
+                        .tooltip(tooltip(t!("storage.queue.stop_hint")))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.moves
+                                .skip_queued(&Text::new("storage.queue.skipped.stopped"), "stopped");
+                            cx.notify();
+                        })),
                     )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.moves.jobs.clear();
-                        cx.notify();
-                    })),
-                )
-            });
+                })
+                .when(!self.moves.is_busy(), |row| {
+                    row.child(
+                        button(
+                            "storage-queue-clear",
+                            ButtonKind::Secondary,
+                            t!("storage.queue.clear"),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.moves.jobs.clear();
+                            cx.notify();
+                        })),
+                    )
+                }),
+        );
         let total = jobs.len();
         let rows = jobs.iter().enumerate().map(|(index, job)| {
             let position = self.moves.queued_position(&job.key);
@@ -758,28 +763,30 @@ impl StorageView {
                     })),
                 )
         });
-        theme::list_row(("storage-queue-row", index), is_last)
-            .items_start()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_1()
-                    .child(job.title.clone())
-                    .child(
-                        theme::muted(t!(
-                            "storage.queue.route",
-                            from = job.from.display(),
-                            to = job.to.display()
-                        ))
-                        .text_size(px(11.))
-                        .truncate(),
-                    )
-                    .child(status),
-            )
-            .children(buttons)
+        reveal(
+            theme::list_row(("storage-queue-row", index), is_last)
+                .items_start()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1()
+                        .child(job.title.clone())
+                        .child(
+                            theme::muted(t!(
+                                "storage.queue.route",
+                                from = job.from.display(),
+                                to = job.to.display()
+                            ))
+                            .text_size(px(11.))
+                            .truncate(),
+                        )
+                        .child(status),
+                )
+                .children(buttons),
+        )
     }
 }
 

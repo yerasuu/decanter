@@ -36,6 +36,7 @@ use sidebar::SidebarView;
 use crate::state::{AppState, LibraryState};
 use crate::theme;
 use crate::widgets::progress_bar;
+use crate::widgets::reveal::scrolling;
 
 const SIDEBAR_WIDTH: f32 = 292.;
 
@@ -253,12 +254,14 @@ impl Render for LibraryView {
             .is_some_and(|id| state.library.read(cx).games.iter().any(|entry| entry.game.id == id));
         let mods_open = self.model.read(cx).mods_open;
         let pane = match (selected, has_profile) {
-            (true, true) => div()
-                .id("library-detail")
-                .size_full()
-                .overflow_y_scroll()
-                .child(div().pb(px(60.)).child(self.detail.clone()))
-                .into_any_element(),
+            (true, true) => scrolling(
+                div()
+                    .id("library-detail")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .child(div().pb(px(60.)).child(self.detail.clone())),
+            )
+            .into_any_element(),
             // Nothing selected: the shelf browser stands in for an empty
             // pane, so the default view is the library rather than a
             // prompt to go find it.

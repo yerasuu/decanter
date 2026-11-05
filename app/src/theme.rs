@@ -9,6 +9,8 @@ use std::borrow::Cow;
 
 use gpui::{App, BoxShadow, Div, FontFallbacks, FontWeight, Hsla, SharedString, div, point, prelude::*, px, rgb};
 
+use crate::widgets::reveal::{Scrolling, scrolling};
+
 pub const BG_DEEP: u32 = 0x0e141b;
 pub const BG_PANEL: u32 = 0x1b2838;
 pub const BG_PANEL_2: u32 = 0x16202c;
@@ -167,12 +169,14 @@ pub fn muted(text: impl Into<SharedString>) -> Div {
 }
 
 /// `.page`: a centred 960px column, padded 32/24/64, scrolling on its own.
-pub fn page(id: &'static str, column: Div) -> gpui::Stateful<Div> {
-    div()
-        .id(id)
-        .size_full()
-        .overflow_y_scroll()
-        .child(column.w_full().max_w(px(960.)).mx_auto().pt_8().px_6().pb(px(64.)))
+pub fn page(id: &'static str, column: Div) -> Scrolling<gpui::Stateful<Div>> {
+    scrolling(
+        div()
+            .id(id)
+            .size_full()
+            .overflow_y_scroll()
+            .child(column.w_full().max_w(px(960.)).mx_auto().pt_8().px_6().pb(px(64.))),
+    )
 }
 
 /// `.card`: the bordered panel lists sit in.

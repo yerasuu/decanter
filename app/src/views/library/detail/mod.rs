@@ -20,6 +20,7 @@ use super::{LibraryModel, actions, data};
 use crate::state::{AppState, Background, Download, DownloadKey};
 use crate::theme;
 use crate::views::ps::log::LogView;
+use crate::widgets::reveal::reveal;
 use crate::widgets::tabs;
 use hero::hero;
 use install_dialog::InstallDialog;
@@ -306,10 +307,12 @@ impl Render for DetailView {
         div()
             .flex()
             .flex_col()
-            .child(hero)
-            .child(action_bar)
+            .child(reveal(hero.id("detail-hero")))
+            .child(reveal(action_bar.id("detail-actions")))
             .children(collection_chips(collections))
-            .child(div().mx(px(32.)).mt(px(24.)).child(tab_row))
+            .child(reveal(
+                div().id("detail-tabs-row").mx(px(32.)).mt(px(24.)).child(tab_row),
+            ))
             .child(body)
             .into_any_element()
     }

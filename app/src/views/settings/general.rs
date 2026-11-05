@@ -13,7 +13,7 @@ use rust_i18n::t;
 
 use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
-use super::{column, field_row, inline};
+use super::{column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
 use crate::platform;
@@ -543,77 +543,89 @@ impl Render for GeneralTab {
 
         column()
             .child(theme::h2(t!("settings.general.language.title")))
-            .child(self.language_select(cx))
+            .child(section("language", self.language_select(cx)))
             .children(language_note(self.language).map(|note| note.mb(px(12.)).max_w(px(520.))))
             .child(theme::h2(t!("settings.general.close.title")))
-            .child(offered(
-                Feature::CloseToTray,
-                column()
-                    .child(Self::checkbox_row(
-                        "close-to-tray",
-                        self.close_to_tray,
-                        t!("settings.general.close.to_tray"),
-                        Self::set_close_to_tray,
-                        cx,
-                    ))
-                    .child(theme::muted(t!("settings.general.close.restart_hint"))),
-                cx,
+            .child(section(
+                "close-to-tray-section",
+                offered(
+                    Feature::CloseToTray,
+                    column()
+                        .child(Self::checkbox_row(
+                            "close-to-tray",
+                            self.close_to_tray,
+                            t!("settings.general.close.to_tray"),
+                            Self::set_close_to_tray,
+                            cx,
+                        ))
+                        .child(theme::muted(t!("settings.general.close.restart_hint"))),
+                    cx,
+                ),
             ))
             .child(theme::h2(t!("settings.general.close_game.title")))
-            .child(offered(
-                Feature::PadClose,
-                column()
-                    .child(Self::checkbox_row(
-                        "close-game-shortcut",
-                        self.close_game_shortcut,
-                        t!(platform::CLOSE_GAME_LABEL),
-                        Self::set_close_game_shortcut,
-                        cx,
-                    ))
-                    .child(theme::muted(t!(
-                        platform::CLOSE_GAME_HINT,
-                        hold = crate::closing::HOLD.as_secs(),
-                        grace = crate::closing::GRACE.as_secs()
-                    ))),
-                cx,
+            .child(section(
+                "close-game-section",
+                offered(
+                    Feature::PadClose,
+                    column()
+                        .child(Self::checkbox_row(
+                            "close-game-shortcut",
+                            self.close_game_shortcut,
+                            t!(platform::CLOSE_GAME_LABEL),
+                            Self::set_close_game_shortcut,
+                            cx,
+                        ))
+                        .child(theme::muted(t!(
+                            platform::CLOSE_GAME_HINT,
+                            hold = crate::closing::HOLD.as_secs(),
+                            grace = crate::closing::GRACE.as_secs()
+                        ))),
+                    cx,
+                ),
             ))
             .child(theme::h2(t!("settings.general.steam.title")))
-            .child(offered(
-                Feature::SteamExport,
-                column()
-                    .child(Self::checkbox_row(
-                        "steam-export",
-                        self.steam_export_enabled,
-                        t!("settings.general.steam.add"),
-                        Self::set_steam_export,
-                        cx,
-                    ))
-                    .child(theme::muted(t!("settings.general.steam.restart_hint")))
-                    .children(callout),
-                cx,
+            .child(section(
+                "steam-section",
+                offered(
+                    Feature::SteamExport,
+                    column()
+                        .child(Self::checkbox_row(
+                            "steam-export",
+                            self.steam_export_enabled,
+                            t!("settings.general.steam.add"),
+                            Self::set_steam_export,
+                            cx,
+                        ))
+                        .child(theme::muted(t!("settings.general.steam.restart_hint")))
+                        .children(callout),
+                    cx,
+                ),
             ))
             .child(theme::h2(t!("settings.general.downloads.title")))
-            .child(self.downloads_section(cx))
+            .child(section("downloads", self.downloads_section(cx)))
             .child(theme::h2(t!("settings.general.galaxy.title")))
-            .child(self.galaxy_section(cx))
+            .child(section("galaxy", self.galaxy_section(cx)))
             .child(theme::h2(t!("settings.general.raven.title")))
-            .child(offered(
-                Feature::Raven,
-                column()
-                    .child(Self::checkbox_row(
-                        "raven-section",
-                        self.raven,
-                        t!("settings.general.raven.enable"),
-                        Self::set_raven,
-                        cx,
-                    ))
-                    .child(theme::muted(t!("settings.general.raven.hint"))),
-                cx,
+            .child(section(
+                "raven-section-block",
+                offered(
+                    Feature::Raven,
+                    column()
+                        .child(Self::checkbox_row(
+                            "raven-section",
+                            self.raven,
+                            t!("settings.general.raven.enable"),
+                            Self::set_raven,
+                            cx,
+                        ))
+                        .child(theme::muted(t!("settings.general.raven.hint"))),
+                    cx,
+                ),
             ))
             .child(theme::h2(t!("settings.general.updates.title")))
-            .child(self.release_section(cx))
-            .child(self.credentials.clone())
-            .child(self.debug.clone())
+            .child(section("updates", self.release_section(cx)))
+            .child(section("credentials", self.credentials.clone()))
+            .child(section("debug", self.debug.clone()))
     }
 }
 

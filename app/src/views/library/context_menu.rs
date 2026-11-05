@@ -23,6 +23,7 @@ use super::{LibraryModel, LibraryPopup, LibraryView};
 use crate::capabilities::{Caps, testing_badge};
 use crate::i18n::Text;
 use crate::state::{AppState, DownloadKey, InstallStatus};
+use crate::widgets::reveal::{Scrolling, reveal_stop, scrolling};
 use crate::widgets::{InputEvent, TextInput, menu, tooltip};
 
 /// What the menu acts on, and where to draw it. A list rather than one id
@@ -390,7 +391,7 @@ fn collection_list(
     collections: &data::Collections,
     product_ids: &[String],
     members: &Rc<[(String, Storefront)]>,
-) -> Stateful<Div> {
+) -> Scrolling<Stateful<Div>> {
     let items = collections.list.iter().enumerate().map(|(index, collection)| {
         let member = product_ids.iter().all(|id| collections.contains(&collection.id, id));
         // A dynamic collection is defined by its filter; adding a game
@@ -398,7 +399,7 @@ fn collection_list(
         let dynamic = collection.filter.is_some();
         let members = Rc::clone(members);
         let collection_id = collection.id.clone();
-        menu::item(("menu-collection", index), dynamic)
+        let item = menu::item(("menu-collection", index), dynamic)
             .when(dynamic, |item| {
                 item.tooltip(tooltip(t!("library.menu.dynamic_collection")))
             })
@@ -412,13 +413,20 @@ fn collection_list(
             })
             .child(menu::check(member))
             .child(collection.name.clone())
-            .when(dynamic, |item| item.child(div().ml_auto().child(auto_tag("auto"))))
+            .when(dynamic, |item| item.child(div().ml_auto().child(auto_tag("auto"))));
+        if dynamic {
+            item.into_any_element()
+        } else {
+            reveal_stop(item).into_any_element()
+        }
     });
-    div()
-        .id("menu-collections")
-        .max_h(px(200.))
-        .overflow_y_scroll()
-        .children(items)
+    scrolling(
+        div()
+            .id("menu-collections")
+            .max_h(px(200.))
+            .overflow_y_scroll()
+            .children(items),
+    )
 }
 
 fn new_collection_entry(

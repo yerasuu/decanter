@@ -5,6 +5,7 @@
 pub mod input;
 pub mod menu;
 pub mod nav;
+pub mod reveal;
 pub mod select;
 
 use std::sync::{Arc, LazyLock};
