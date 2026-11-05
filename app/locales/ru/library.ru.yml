@@ -149,6 +149,7 @@ library.menu.stop: 'Остановить'
 library.menu.open_folder: 'Открыть папку игры'
 library.menu.steam_add: "Добавить в Steam"
 library.menu.steam_remove: "Удалить из Steam"
+library.menu.move_to: "Переместить в библиотеку"
 library.menu.edit_external: 'Изменить внешнюю игру…'
 library.install.no_library: 'не удалось определить библиотеку'
 library.install.library_error: 'определение библиотеки: %{error}'

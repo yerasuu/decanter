@@ -5,6 +5,7 @@
 pub mod background;
 mod cache;
 pub mod gog_library;
+mod moves;
 mod ps;
 mod raven;
 
@@ -15,6 +16,7 @@ use crate::views::settings::Tab as SettingsTab;
 
 pub use background::{Background, Download, DownloadKey, DownloadKind, InstallStatus, VerifyOffer};
 pub use gog_library::{GogLibrary, LibraryState, ModsState};
+pub use moves::{Movable, MoveFinished, MoveJob, MoveKey, MoveQueue, MoveStatus, Step as MoveStep, present_folders};
 pub use ps::{
     Adding as PsAdding, DllOutcome, Fallback, JobKey, Offer as PsOffer, PortState, Ps, Stage, Track, failure_message,
     folder_error as ps_folder_error, job_label, job_target, online_error, per_game_error, vk_layer_unavailable_text,
@@ -98,6 +100,7 @@ pub struct AppState {
     pub session: Entity<Session>,
     pub background: Entity<Background>,
     pub library: Entity<GogLibrary>,
+    pub moves: Entity<MoveQueue>,
 }
 
 impl Global for AppState {}
@@ -107,10 +110,12 @@ impl AppState {
         let session = cx.new(|_| Session::load());
         let background = cx.new(|_| Background::default());
         let library = cx.new(|cx| GogLibrary::new(&session, cx));
+        let moves = cx.new(|_| MoveQueue::new(library.clone()));
         let state = Self {
             session,
             background,
             library,
+            moves,
         };
         let watched = state.clone();
         cx.spawn(async move |cx| crate::views::library::unfinished::watch(watched, cx).await)

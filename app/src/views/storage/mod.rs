@@ -4,15 +4,15 @@
 
 mod moves;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use decanter_core::{InstalledGame, Library, Storefront};
-use gpui::{Context, Task, Window, div, prelude::*, px, rgb};
+use gpui::{Context, Entity, Task, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use crate::i18n::Text;
-use crate::state::{AppState, Download, DownloadKey};
+use crate::state::{AppState, Download, DownloadKey, MoveFinished, MoveKey, MoveQueue};
 use crate::theme;
 use crate::views::downloads;
 use crate::widgets::reveal::reveal;
@@ -189,12 +189,10 @@ pub struct StorageView {
     mounts: Vec<PathBuf>,
     error: Option<Text>,
     scan: Option<Task<()>>,
-    /// Redraws the progress while a move runs: it runs on a blocking
-    /// thread that can't notify this view itself.
-    _ticker: Option<Task<()>>,
-    /// Games and dumps moving one after another, and the ones picked to.
-    moves: moves::Moves,
-    _move_queue: Option<Task<()>>,
+    /// Games and dumps moving one after another; it outlives this page.
+    queue: Entity<MoveQueue>,
+    /// The games and dumps picked with their checkboxes to move together.
+    selected: HashSet<MoveKey>,
     /// The folder decanter kept everything in before it moved into the
     /// library, while it's still there.
     legacy: Option<PathBuf>,
@@ -209,14 +207,16 @@ impl StorageView {
         let state = AppState::get(cx).clone();
         cx.observe(&state.session, |this, _, cx| this.rescan(cx)).detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
+        cx.observe(&state.moves, |_, _, cx| cx.notify()).detach();
+        cx.subscribe(&state.moves, |this, _, _: &MoveFinished, cx| this.rescan(cx))
+            .detach();
         let mut this = Self {
             folders: None,
             mounts: Vec::new(),
             error: None,
             scan: None,
-            _ticker: None,
-            moves: moves::Moves::default(),
-            _move_queue: None,
+            queue: state.moves.clone(),
+            selected: HashSet::new(),
             legacy: None,
             confirm_legacy: false,
             confirm_stray: None,
@@ -229,6 +229,9 @@ impl StorageView {
     /// page: an install or uninstall elsewhere changes what's here.
     pub fn rescan(&mut self, cx: &mut Context<Self>) {
         self.legacy = decanter_core::migrate::legacy_leftover();
+        if let Some(refused) = self.queue.update(cx, |queue, _| queue.take_refused()) {
+            self.error = Some(refused);
+        }
         let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
             self.folders = None;
             self.scan = None;
@@ -687,21 +690,6 @@ impl StorageView {
                     )),
                 ),
         ))
-    }
-
-    fn tick_while_moving(&mut self, cx: &Context<Self>) {
-        self._ticker = Some(cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_millis(250)).await;
-                let still = this.update(cx, |this, cx| {
-                    cx.notify();
-                    this.moves_moving()
-                });
-                if !matches!(still, Ok(true)) {
-                    return;
-                }
-            }
-        }));
     }
 
     fn folder_card(&self, index: usize, folder: &Folder, cx: &Context<Self>) -> impl IntoElement + use<> {

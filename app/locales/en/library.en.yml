@@ -151,6 +151,7 @@ library.menu.stop: Stop
 library.menu.open_folder: Open game folder
 library.menu.steam_add: "Add to Steam"
 library.menu.steam_remove: "Remove from Steam"
+library.menu.move_to: "Move to library"
 library.menu.edit_external: Edit external game…
 library.install.no_library: couldn't resolve the library
 library.install.library_error: 'resolving the library: %{error}'

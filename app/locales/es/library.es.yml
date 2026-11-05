@@ -151,6 +151,7 @@ library.menu.stop: Detener
 library.menu.open_folder: Abrir carpeta del juego
 library.menu.steam_add: "Añadir a Steam"
 library.menu.steam_remove: "Quitar de Steam"
+library.menu.move_to: "Mover a la biblioteca"
 library.menu.edit_external: Editar juego externo…
 library.install.no_library: no se pudo resolver la biblioteca
 library.install.library_error: 'resolviendo la biblioteca: %{error}'

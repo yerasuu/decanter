@@ -22,7 +22,7 @@ use super::shelf_popups;
 use super::{LibraryModel, LibraryPopup, LibraryView};
 use crate::capabilities::{Caps, testing_badge};
 use crate::i18n::Text;
-use crate::state::{AppState, DownloadKey, InstallStatus};
+use crate::state::{AppState, DownloadKey, InstallStatus, Movable, present_folders};
 use crate::widgets::reveal::{Scrolling, reveal_stop, scrolling};
 use crate::widgets::{InputEvent, TextInput, menu, tooltip};
 
@@ -83,6 +83,9 @@ struct MenuData {
     /// `Some(exported)` when the menu can offer the Steam shortcut: a GOG
     /// game, and either one already exported or a Steam to export into.
     steam_exported: Option<bool>,
+    /// An installed GOG game and the other library folders on a disk it
+    /// could move to; `None` when there is nowhere to go.
+    move_offer: Option<(Movable, Vec<std::path::PathBuf>)>,
 }
 
 impl PopupState {
@@ -232,6 +235,7 @@ fn game_menu(
         install_path,
         prefix_path,
         steam_exported,
+        move_offer,
         ..
     }) = state.read(cx).data.as_ref().map(MenuData::clone)
     else {
@@ -247,8 +251,13 @@ fn game_menu(
             .child(properties_item(&entry, close));
         let prefix = open_prefix_item(prefix_path, close);
         let shortcut = steam_shortcut_item(&entry, steam_exported, close);
-        if prefix.is_some() || shortcut.is_some() {
-            panel = panel.child(menu::separator()).children(prefix).children(shortcut);
+        let moves = move_items(move_offer, close);
+        if prefix.is_some() || shortcut.is_some() || !moves.is_empty() {
+            panel = panel
+                .child(menu::separator())
+                .children(prefix)
+                .children(shortcut)
+                .children(moves);
         }
         panel = panel.child(menu::separator());
     }
@@ -327,6 +336,9 @@ fn load_menu_data(
                         .is_some();
                     (exported || decanter_core::steam::steam_root().is_some()).then_some(exported)
                 }),
+            move_offer: single_game
+                .filter(|entry| entry.game.storefront == Storefront::Gog)
+                .and_then(|entry| move_offer(&entry.game.account_id, &entry.game.id, profile_id)),
             organisation,
             revision,
         };
@@ -705,4 +717,45 @@ fn steam_shortcut_item(entry: &LibraryEntry, exported: Option<bool>, close: &men
             })
             .into_any_element(),
     )
+}
+
+/// The game as the moves queue takes it, and the library folders it isn't in.
+fn move_offer(account_id: &str, product_id: &str, profile_id: &str) -> Option<(Movable, Vec<std::path::PathBuf>)> {
+    game_install_path(account_id, product_id)?;
+    let installed = crate::core::installed_game(account_id, product_id)?;
+    let from = crate::core::library_for_account(account_id)
+        .ok()?
+        .root_of(account_id, product_id)?;
+    let item = Movable::game(&installed, &from)?;
+    let targets: Vec<_> = present_folders(profile_id)
+        .into_iter()
+        .filter(|root| *root != from)
+        .collect();
+    (!targets.is_empty()).then_some((item, targets))
+}
+
+/// "Mover a la biblioteca" with one entry per folder to move to; the move
+/// is queued where Almacenamiento shows it.
+fn move_items(offer: Option<(Movable, Vec<std::path::PathBuf>)>, close: &menu::Dismiss) -> Vec<AnyElement> {
+    let Some((item, targets)) = offer else {
+        return Vec::new();
+    };
+    let label = menu::label(&t!("library.menu.move_to")).into_any_element();
+    let entries = targets.into_iter().enumerate().map(|(index, to)| {
+        let (item, close) = (item.clone(), Rc::clone(close));
+        menu::item(("menu-move", index), false)
+            .on_click({
+                let to = to.clone();
+                move |_, window, cx| {
+                    let queue = AppState::get(cx).moves.clone();
+                    queue.update(cx, |queue, cx| {
+                        queue.enqueue_quietly(std::slice::from_ref(&item), &to, cx)
+                    });
+                    close(window, cx);
+                }
+            })
+            .child(to.display().to_string())
+            .into_any_element()
+    });
+    std::iter::once(label).chain(entries).collect()
 }
