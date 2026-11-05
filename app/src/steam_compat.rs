@@ -97,9 +97,14 @@ pub fn reset(profile_id: &str) {
 pub fn on_start(cx: &App) {
     let state = AppState::get(cx).clone();
     let profile_id = state.session.read(cx).active_profile.clone();
+    let taskbar_profile = profile_id.clone();
     let work = cx.background_spawn(async move { sync(profile_id.as_deref()) });
     cx.spawn(async move |cx| {
-        if work.await {
+        let is_changed = work.await;
+        if let Some(profile_id) = taskbar_profile {
+            tokio::spawn(async move { crate::external::steam::entries::sync_taskbar(&profile_id).await });
+        }
+        if is_changed {
             state
                 .library
                 .update(cx, |library, cx| library.refresh_all_install_state(cx));

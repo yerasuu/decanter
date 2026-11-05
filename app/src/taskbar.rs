@@ -323,15 +323,20 @@ pub async fn refresh() {
 
 /// Writes or updates a PC game's entry, before it launches and once it's
 /// installed or added. A game whose window can't be told apart from
-/// another's (see [`umu_window_class`]) has its entry removed instead.
+/// another's (see [`umu_window_class`]) has its entry removed instead. A Steam
+/// entry's window is `steam_app_<appid>` and Steam starts it, so the desktop
+/// shows its own icon on it rather than Steam's.
 pub async fn sync_pc(game: &InstalledGame) {
     let Ok(library) = crate::core::library_for_account(&game.account_id) else {
         return;
     };
     let key = key(game.storefront, &game.game_id);
     let gog = game.storefront == Storefront::Gog;
+    let steam_app = crate::external::steam::entries::app_id(game);
     let umu_id = if gog {
         Some(format!("umu-{}", game.game_id))
+    } else if let Some(app_id) = steam_app {
+        Some(format!("umu-{app_id}"))
     } else {
         game.umu_id.clone()
     };
@@ -342,7 +347,7 @@ pub async fn sync_pc(game: &InstalledGame) {
             .and_then(|games| games.into_iter().find(|cached| cached.product_id == game.game_id))
             .and_then(|cached| cached.icon_url)
     } else {
-        game.art.icon.clone()
+        game.art.icon.clone().or_else(|| game.art.cover.clone())
     };
     let (Some(window_class), Some(icon), Some(source)) = (
         umu_id.as_deref().and_then(umu_window_class),
@@ -354,7 +359,11 @@ pub async fn sync_pc(game: &InstalledGame) {
         }
         return;
     };
-    let exec = gog.then(|| relaunch(&game.account_id, &game.game_id)).flatten();
+    let exec = if let Some(app_id) = steam_app {
+        Some(format!("steam steam://rungameid/{app_id}"))
+    } else {
+        gog.then(|| relaunch(&game.account_id, &game.game_id)).flatten()
+    };
     let entry = Entry {
         key: &key,
         title: &game.name,

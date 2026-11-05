@@ -94,6 +94,25 @@ pub fn rows(profile_id: &str) -> Vec<LibraryEntry> {
         .collect()
 }
 
+/// Writes the desktop entry that gives each Steam entry's window its own icon, with the art Steam
+/// has now rather than the manifest's.
+pub async fn sync_taskbar(profile_id: &str) {
+    if !is_shown(profile_id) {
+        return;
+    }
+    let installed: HashMap<AppId, _> = super::root()
+        .map(|root| super::installed(&root).collect())
+        .unwrap_or_default();
+    for mut game in list(profile_id) {
+        if let Some(app) = app_id(&game).and_then(|id| installed.get(&id)) {
+            let art = super::game_art(app.art.clone());
+            game.art.icon = art.icon.or(game.art.icon);
+            game.art.cover = art.cover.or(game.art.cover);
+        }
+        crate::taskbar::sync_pc(&game).await;
+    }
+}
+
 /// Where Steam has `game` installed, if it has it installed.
 pub fn install_folder(game: &InstalledGame) -> Option<PathBuf> {
     let id = app_id(game)?;
