@@ -498,6 +498,11 @@ impl Library {
     /// Where a game's files go. `None` for an install directory that isn't
     /// a single, ordinary path component — these come from a storefront's
     /// manifest, i.e. from the network.
+    ///
+    /// A folder Steam installed a game of its own into is never handed out, since a library folder
+    /// can be one of Steam's and its `common/` is shared: a game of another store with the same
+    /// directory name would otherwise install over Steam's files, and uninstalling it delete them.
+    /// `None` then, when the primary root's folder is that one.
     #[must_use]
     #[inline]
     pub fn install_dir(&self, install_dir: &str) -> Option<PathBuf> {
@@ -507,9 +512,20 @@ impl Library {
         };
         let existing = self
             .all_roots()
-            .map(|root| root.join("common").join(component))
-            .find(|dir| dir.is_dir());
-        Some(existing.unwrap_or_else(|| self.common().join(component)))
+            .map(|root| (root, root.join("common").join(component)))
+            .filter(|(_, dir)| dir.is_dir())
+            .find(|(root, dir)| {
+                let is_steams = steam_installs_into(root, install_dir);
+                if is_steams {
+                    tracing::warn!(dir = %dir.display(), "folder belongs to a steam game, not used for this one");
+                }
+                !is_steams
+            });
+        if let Some((_, dir)) = existing {
+            return Some(dir);
+        }
+        let new = self.common().join(component);
+        (!new.is_dir()).then_some(new)
     }
 
     /// Whether anyone other than `(account_id, game_id)` still has files
@@ -708,7 +724,10 @@ impl Library {
         Ok(())
     }
 
-    /// Lists every root in Steam's own format, in the primary root.
+    /// Lists every root in Steam's own format, in the primary root. A primary root that is one of
+    /// Steam's `steamapps` may hold Steam's own list (its install's lists every library folder it
+    /// has), which is left as it is: only a file of decanter's (`path` and `label` alone) is
+    /// rewritten.
     ///
     /// # Errors
     ///
@@ -722,6 +741,11 @@ impl Library {
                 return Err(err);
             }
         }
+        let path = self.root.join("libraryfolders.vdf");
+        if is_steams_folder_list(&path) {
+            tracing::debug!(path = %path.display(), "libraryfolders.vdf here is steam's own, left as it is");
+            return Ok(());
+        }
         let mut root = Value::block();
         for (index, folder) in self.all_roots().enumerate() {
             let mut entry = Value::block();
@@ -729,7 +753,6 @@ impl Library {
             entry.insert("label", "");
             root.insert(index.to_string(), entry);
         }
-        let path = self.root.join("libraryfolders.vdf");
         match fs::write(&path, vdf::to_string("libraryfolders", &root)) {
             Ok(()) => {
                 tracing::debug!(path = %path.display(), "wrote libraryfolders.vdf");
@@ -800,6 +823,40 @@ fn manifest_path_in(root: &Path, account_id: &str, storefront: Storefront, game_
     let account = safe_component(account_id)?;
     let file_name = InstalledGame::manifest_file_name(storefront, game_id)?;
     Some(root.join("manifests").join(account).join(file_name))
+}
+
+/// Whether a Steam `appmanifest_*.acf` directly in `root` (a `steamapps` folder of Steam's) names
+/// `install_dir` as the folder under `common/` its game is in.
+fn steam_installs_into(root: &Path, install_dir: &str) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            entry.file_name().to_str().is_some_and(|name| {
+                name.starts_with("appmanifest_")
+                    && Path::new(name)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("acf"))
+            })
+        })
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .filter_map(|text| vdf::from_str(&text).ok())
+        .any(|(_, state)| state.get("installdir") == Some(install_dir))
+}
+
+/// Whether `path` is a library folder list Steam wrote: an entry that isn't a block of `path` and
+/// `label` alone, which is all decanter writes. A missing or unreadable file is not.
+fn is_steams_folder_list(path: &Path) -> bool {
+    let Some((_, root)) = fs::read_to_string(path).ok().and_then(|text| vdf::from_str(&text).ok()) else {
+        return false;
+    };
+    root.as_block().into_iter().flatten().any(|(_, entry)| {
+        entry
+            .as_block()
+            .is_none_or(|fields| fields.keys().any(|key| key != "path" && key != "label"))
+    })
 }
 
 /// Every manifest in one root, across every account.

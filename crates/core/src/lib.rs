@@ -34,7 +34,7 @@ pub use catalog::{Game, GameSystem, InstallState, Storefront, UnknownStorefront}
 pub use collections::Collection;
 pub use db::{
     CachedAchievement, CachedGame, Db, Error, HookDiagnostic, Playtime, Result, StatDefinition, StatKind, StatValue,
-    UserStat,
+    SteamAutomatic, SteamMark, UserStat,
 };
 pub use disk::disk_usage;
 pub use fingerprint::install_fingerprint;

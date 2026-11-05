@@ -661,7 +661,7 @@ async fn sync_steam_shortcut_for(
     };
     // Writes into the real Steam user's own config files, so it's worth
     // an easy way to turn off — see the Steam export toggle in Ajustes.
-    if !db.steam_export_enabled().unwrap_or(true) {
+    if !db.steam_automatic().is_ok_and(|automatic| automatic.export_shortcuts) {
         tracing::debug!(account_id, product_id, "steam export disabled in settings, skipping");
         return;
     }

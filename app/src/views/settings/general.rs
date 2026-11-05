@@ -1,7 +1,7 @@
 //! The UI language, window behaviour that isn't tied to any profile or
-//! game, closing a game from the controller or keyboard, the Steam export
-//! toggle and its pending-restart callout, whether downloads carry on by
-//! themselves at the next start, whether GitHub has a newer
+//! game, closing a game from the controller or keyboard, the Steam
+//! compatibility switches and their pending-restart callout, whether
+//! downloads carry on by themselves at the next start, whether GitHub has a newer
 //! decanter, which an AppImage can install over itself or into decanter's
 //! own copy, and debug mode.
 
@@ -21,13 +21,16 @@ use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, language_note, language_select};
+use crate::widgets::{ButtonKind, button, checkbox_large, language_note, language_select};
 
 pub struct GeneralTab {
     language: Option<Language>,
     close_to_tray: bool,
     close_game_shortcut: bool,
+    steam_compat: bool,
+    steam_register_folders: bool,
     steam_export_enabled: bool,
+    steam_discover: bool,
     resume_downloads: bool,
     galaxy_service: bool,
     galaxy_upload: bool,
@@ -57,7 +60,10 @@ impl GeneralTab {
             language: None,
             close_to_tray: false,
             close_game_shortcut: true,
+            steam_compat: true,
+            steam_register_folders: true,
             steam_export_enabled: true,
+            steam_discover: true,
             resume_downloads: true,
             galaxy_service: true,
             galaxy_upload: false,
@@ -86,6 +92,27 @@ impl GeneralTab {
             )
             .unwrap_or(false);
         self.close_game_shortcut = crate::closing::enabled();
+        self.steam_compat = crate::core::db()
+            .and_then(|db| db.steam_compat_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(
+                |err| tracing::warn!(error = %err, "failed to read steam_compat_enabled setting, defaulting to true"),
+            )
+            .unwrap_or(true);
+        self.steam_register_folders = crate::core::db()
+            .and_then(|db| {
+                db.steam_register_folders_enabled()
+                    .map_err(crate::core::StoreError::Query)
+            })
+            .inspect_err(
+                |err| tracing::warn!(error = %err, "failed to read steam_register_folders setting, defaulting to true"),
+            )
+            .unwrap_or(true);
+        self.steam_discover = crate::core::db()
+            .and_then(|db| db.steam_discover_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(
+                |err| tracing::warn!(error = %err, "failed to read steam_discover setting, defaulting to true"),
+            )
+            .unwrap_or(true);
         self.steam_export_enabled = crate::core::db()
             .and_then(|db| db.steam_export_enabled().map_err(crate::core::StoreError::Query))
             .inspect_err(
@@ -190,6 +217,68 @@ impl GeneralTab {
                 tracing::warn!(enabled, error = %err, "failed to open db, steam_export_enabled setting not saved");
             }
         }
+    }
+
+    fn set_steam_compat(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved = crate::core::db().and_then(|db| {
+            db.set_steam_compat_enabled(enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save steam_compat_enabled setting");
+            return;
+        }
+        tracing::info!(enabled, "steam compatibility setting changed");
+        self.steam_compat_changed(cx);
+    }
+
+    fn set_steam_register_folders(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved = crate::core::db().and_then(|db| {
+            db.set_steam_register_folders_enabled(enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save steam_register_folders setting");
+            return;
+        }
+        tracing::info!(enabled, "steam library folder listing setting changed");
+        self.steam_compat_changed(cx);
+    }
+
+    fn set_steam_discover(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved = crate::core::db().and_then(|db| {
+            db.set_steam_discover_enabled(enabled)
+                .map_err(crate::core::StoreError::Query)
+        });
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save steam_discover setting");
+            return;
+        }
+        tracing::info!(enabled, "steam discovery setting changed");
+        self.steam_compat_changed(cx);
+    }
+
+    /// Applies the switches now rather than at the next start, off the UI thread, then shows
+    /// whether that left a change waiting for Steam to restart.
+    fn steam_compat_changed(&mut self, cx: &mut Context<Self>) {
+        self.reload();
+        cx.notify();
+        let state = AppState::get(cx).clone();
+        let profile_id = state.session.read(cx).active_profile.clone();
+        let work = cx.background_spawn(async move { crate::steam_compat::sync(profile_id.as_deref()) });
+        cx.spawn(async move |this, cx| {
+            let is_changed = work.await;
+            if is_changed {
+                state
+                    .library
+                    .update(cx, |library, cx| library.refresh_all_install_state(cx));
+            }
+            let _ = this.update(cx, |this, cx| {
+                this.reload();
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn set_resume_downloads(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -465,6 +554,79 @@ impl GeneralTab {
         checkbox_field(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
     }
 
+    /// A switch under another, indented; while `is_offered` is false (the switch above is off) it
+    /// shows its value dimmed and doesn't toggle.
+    fn sub_checkbox_row(
+        id: &'static str,
+        checked: bool,
+        is_offered: bool,
+        text: impl Into<SharedString>,
+        on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if is_offered {
+            return checkbox_field(id, checked, text)
+                .ml(px(23.))
+                .on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
+                .into_any_element();
+        }
+        // Not a tab stop while it can't toggle, so Tab and the d-pad skip it.
+        field_row()
+            .id(id)
+            .ml(px(23.))
+            .items_center()
+            .min_h(px(36.))
+            .opacity(0.4)
+            .child(checkbox_large(checked))
+            .child(div().min_w_0().child(text.into()))
+            .into_any_element()
+    }
+
+    fn steam_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_offered = self.steam_compat;
+        let hint = |text: SharedString| {
+            theme::muted(text)
+                .ml(px(23.))
+                .when(!is_offered, |hint| hint.opacity(0.4))
+        };
+        column()
+            .child(Self::checkbox_row(
+                "steam-compat",
+                self.steam_compat,
+                t!("settings.general.steam.compat"),
+                Self::set_steam_compat,
+                cx,
+            ))
+            .child(theme::muted(t!("settings.general.steam.compat_hint")))
+            .child(Self::sub_checkbox_row(
+                "steam-register-folders",
+                self.steam_register_folders,
+                is_offered,
+                t!("settings.general.steam.register"),
+                Self::set_steam_register_folders,
+                cx,
+            ))
+            .child(hint(t!("settings.general.steam.register_hint").into()))
+            .child(Self::sub_checkbox_row(
+                "steam-export",
+                self.steam_export_enabled,
+                is_offered,
+                t!("settings.general.steam.add"),
+                Self::set_steam_export,
+                cx,
+            ))
+            .child(hint(t!("settings.general.steam.restart_hint").into()))
+            .child(Self::sub_checkbox_row(
+                "steam-discover",
+                self.steam_discover,
+                is_offered,
+                t!("settings.general.steam.discover"),
+                Self::set_steam_discover,
+                cx,
+            ))
+            .child(hint(t!("settings.general.steam.discover_hint").into()))
+    }
+
     fn downloads_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
         column()
             .child(Self::checkbox_row(
@@ -582,16 +744,7 @@ impl Render for GeneralTab {
                 "steam-section",
                 offered(
                     Feature::SteamExport,
-                    column()
-                        .child(Self::checkbox_row(
-                            "steam-export",
-                            self.steam_export_enabled,
-                            t!("settings.general.steam.add"),
-                            Self::set_steam_export,
-                            cx,
-                        ))
-                        .child(theme::muted(t!("settings.general.steam.restart_hint")))
-                        .children(callout),
+                    column().child(self.steam_section(cx)).children(callout),
                     cx,
                 ),
             ))

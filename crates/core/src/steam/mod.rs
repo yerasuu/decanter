@@ -8,7 +8,8 @@
 //! its logged-in user), and [`process`] (starting/stopping the real Steam
 //! client, needed because it holds its own in-memory copy of
 //! `shortcuts.vdf` while running). [`library`] reads back what Steam
-//! already has installed and the user's own shortcuts. [`export`] ties
+//! already has installed and the user's own shortcuts. [`folders`] reads
+//! and merges Steam's list of library folders. [`export`] ties
 //! the write side together into the actual merge-write, staging a change
 //! behind Steam's back when it's running rather than writing straight
 //! into a file it would just overwrite again. Nothing here touches the network — see
@@ -17,6 +18,7 @@
 pub mod appid;
 pub mod binary_vdf;
 pub mod export;
+pub mod folders;
 pub mod library;
 pub mod paths;
 pub mod process;
@@ -26,5 +28,6 @@ pub use export::{
     ApplyError, Artwork, Command, GridArt, Own, ShortcutSpec, apply_pending_and_restart_steam, find,
     has_pending_changes, own_entries, refresh_art, remove, retarget, sync,
 };
+pub use folders::{LibraryFolder, Registration, library_folders, register};
 pub use library::{InstalledApp, Shortcut, SteamArt, installed_apps, non_steam_shortcuts};
 pub use paths::{grid_dir, local_user_id, login_names, shortcuts_vdf_path, steam_root};

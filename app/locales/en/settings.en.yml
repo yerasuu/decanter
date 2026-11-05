@@ -13,16 +13,22 @@ settings.general.close_game.enabled: Close the running game from the controller 
 settings.general.close_game.hint: Hold Select + Start for %{hold} seconds on any controller, or press Ctrl+Shift+F4 on Plasma (change it in System Settings > Shortcuts > Decanter). Decanter warns before closing it; repeating the combination within the next %{grace} seconds cancels it. In PS4 games, the Guide button also opens the game's own close prompt.
 settings.general.close_game.enabled_keyboard: Close the running game with a keyboard shortcut
 settings.general.close_game.hint_keyboard: Press Ctrl+Shift+F4 while playing. Decanter closes the game %{grace} seconds later; pressing it again before then cancels it.
-settings.general.steam.title: Export to Steam
+settings.general.steam.title: "Steam"
+settings.general.steam.compat: "Steam compatibility"
+settings.general.steam.compat_hint: "Off, decanter changes nothing in Steam by itself; Add to Steam and Add through Steam keep working."
+settings.general.steam.register: "List decanter's library folders in Steam's storage"
+settings.general.steam.register_hint: "So Steam can install into them too. Turned off, only the folders decanter added are taken out."
 settings.general.steam.add: Add every installed game to Steam's own library, with its cover and banner
 settings.general.steam.restart_hint: Steam has to be restarted to show the changes — it only reads its shortcuts at startup.
+settings.general.steam.discover: "Add Steam's library folders and installed games"
+settings.general.steam.discover_hint: "Checked when decanter starts and on every visit to Storage, so SD cards and drives are picked up once plugged in. A folder or game you remove here isn't added again."
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Resume downloads when Decanter opens
 settings.general.downloads.resume_hint: 'The ones stopped by closing Decanter or by an unexpected exit. The ones you paused wait for you to resume them, and the ones stopped by the network or an unplugged disk resume on their own when it is back.'
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Show the Raven section
 settings.general.raven.hint: 'Raven is an early-stage Windows runtime. With the section on you can build it in your library and try Windows programs with it; nothing is downloaded and GitHub is not contacted until you press Build or Check for updates in the section.'
-settings.general.steam.pending: Some games exported to Steam are waiting for it to restart — Steam was open when they were added, so they're held back until then to keep its in-memory copy from overwriting them.
+settings.general.steam.pending: "Some changes for Steam (exported games or library folders) are waiting for it to restart — Steam was open when they were made, so they're held back until then to keep its in-memory copy from overwriting them."
 settings.general.steam.restarting: Restarting Steam...
 settings.general.steam.restart_now: Restart Steam now
 settings.general.steam.close_first: decanter can't tell from here whether Steam is open. Close Steam and confirm it to apply the changes; decanter will start it again afterwards.

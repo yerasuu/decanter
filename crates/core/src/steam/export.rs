@@ -24,7 +24,7 @@ use std::{fs, io};
 use super::appid::{grid_appid, legacy_appid, legacy_grid_id};
 use super::binary_vdf::{self, Value};
 use super::process::SteamState;
-use super::{paths, process};
+use super::{folders, paths, process};
 
 /// What a shortcut starts. Steam runs `exe` from `start_dir` with `launch_options` after it, the
 /// whole line through `/bin/sh -c` on Linux, so the options must hold nothing a shell expands.
@@ -371,34 +371,35 @@ fn resolve_write_target(steam_root: &Path, user_id: &str) -> io::Result<PathBuf>
     Ok(pending)
 }
 
-/// Applies whatever is staged in the pending file to the real
-/// `shortcuts.vdf`, restarting Steam around the swap so it reads the
-/// result fresh instead of clobbering it again. A no-op if nothing is
-/// pending.
+/// Applies whatever is staged to the real files, `shortcuts.vdf` (for `user_id`, when there is
+/// one) and `libraryfolders.vdf` alike, restarting Steam around the swap so it reads the result
+/// fresh instead of clobbering it again. A no-op if nothing is pending.
 ///
 /// Steam is asked to shut down cleanly (`steam -shutdown`) rather than
 /// killed outright, and this call blocks until it's confirmed gone before
 /// touching the file — writing while it's still tearing down would be the
 /// same race this exists to avoid.
 ///
-/// `user_confirmed_closed` is the user's word that Steam is closed, the
-/// only answer left when [`process::state`] can't tell.
+/// `own_folders` are the library folders decanter added to Steam's list, the only entries of it
+/// the staged copy may add or take out (see [`super::folders`]). `user_confirmed_closed` is the
+/// user's word that Steam is closed, the only answer left when [`process::state`] can't tell.
 ///
 /// # Errors
 /// [`ApplyError::SteamStateUnknown`] when whether Steam runs can't be
 /// told from here and the user hasn't confirmed it closed; nothing is
 /// touched then. Otherwise fails if Steam doesn't exit within the
-/// shutdown timeout (nothing is overwritten in that case), if the pending
+/// shutdown timeout (nothing is overwritten in that case), if a pending
 /// file can't be moved into place, or if Steam can't be relaunched
 /// afterward.
 #[inline]
 pub fn apply_pending_and_restart_steam(
     steam_root: &Path,
-    user_id: &str,
+    user_id: Option<&str>,
+    own_folders: &[PathBuf],
     user_confirmed_closed: bool,
 ) -> Result<(), ApplyError> {
-    let pending = pending_path(steam_root, user_id);
-    if !pending.is_file() {
+    let shortcuts = user_id.filter(|user| pending_path(steam_root, user).is_file());
+    if shortcuts.is_none() && !folders::has_pending(steam_root) {
         return Ok(());
     }
 
@@ -414,15 +415,23 @@ pub fn apply_pending_and_restart_steam(
         SteamState::Unknown => return Err(ApplyError::SteamStateUnknown),
     }
 
-    let real = paths::shortcuts_vdf_path(steam_root, user_id);
-    // Steam goes back up even when the swap failed, since this shut it down.
-    let applied = read_shortcuts(&real)
-        .and_then(|saved| Ok((saved, read_shortcuts(&pending)?)))
-        .and_then(|(saved, staged)| write_shortcuts(&real, &merge(saved, staged)))
-        .and_then(|()| fs::remove_file(&pending));
+    // Steam goes back up even when a swap failed, since this shut it down; one failing doesn't
+    // keep the other from landing.
+    let applied_shortcuts = shortcuts.map_or(Ok(()), |user| apply_shortcuts(steam_root, user));
+    let applied_folders = folders::apply_pending(steam_root, own_folders);
     let launched = process::launch(steam_root);
-    applied?;
+    applied_shortcuts?;
+    applied_folders?;
     Ok(launched?)
+}
+
+fn apply_shortcuts(steam_root: &Path, user_id: &str) -> io::Result<()> {
+    let pending = pending_path(steam_root, user_id);
+    let real = paths::shortcuts_vdf_path(steam_root, user_id);
+    let saved = read_shortcuts(&real)?;
+    let staged = read_shortcuts(&pending)?;
+    write_shortcuts(&real, &merge(saved, staged))?;
+    fs::remove_file(&pending)
 }
 
 /// The entries Steam saved on its way out that aren't decanter's, then decanter's as staged: the

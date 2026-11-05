@@ -30,7 +30,7 @@ pub async fn export_if_enabled(game: Game) {
     };
     // Writes into the real Steam user's own config files, so the Ajustes toggle that turns the GOG
     // export off turns this one off too.
-    if !db.steam_export_enabled().unwrap_or(true) {
+    if !db.steam_automatic().is_ok_and(|automatic| automatic.export_shortcuts) {
         tracing::debug!(title_id = game.title_id, "steam export disabled in settings, skipping");
         return;
     }

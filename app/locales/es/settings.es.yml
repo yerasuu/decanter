@@ -13,16 +13,22 @@ settings.general.close_game.enabled: Cerrar el juego en marcha desde el mando o 
 settings.general.close_game.hint: Mantén Select + Start %{hold} segundos en cualquier mando, o pulsa Ctrl+Mayús+F4 en Plasma (se cambia en Preferencias del sistema > Atajos > Decanter). Decanter avisa antes de cerrarlo; si repites la combinación en los %{grace} segundos siguientes, lo cancela. En los juegos de PS4, el botón Guide abre además el aviso de cierre del propio juego.
 settings.general.close_game.enabled_keyboard: Cerrar el juego en marcha con un atajo de teclado
 settings.general.close_game.hint_keyboard: Pulsa Ctrl+Mayús+F4 mientras juegas. Decanter cierra el juego %{grace} segundos después; si vuelves a pulsarlo antes, lo cancela.
-settings.general.steam.title: Exportar a Steam
+settings.general.steam.title: "Steam"
+settings.general.steam.compat: "Compatibilidad con Steam"
+settings.general.steam.compat_hint: "Desactivada, decanter no cambia nada en Steam por su cuenta; Añadir a Steam y Añadir a través de Steam siguen funcionando."
+settings.general.steam.register: "Mostrar las carpetas de biblioteca de decanter en el almacenamiento de Steam"
+settings.general.steam.register_hint: "Así Steam también puede instalar en ellas. Al desactivarla, solo se quitan las carpetas que añadió decanter."
 settings.general.steam.add: Añadir cada juego instalado a la biblioteca real de Steam, con su portada y su banner
 settings.general.steam.restart_hint: Hay que reiniciar Steam para ver los cambios — Steam solo lee sus accesos directos al arrancar.
+settings.general.steam.discover: "Añadir las carpetas de biblioteca y los juegos instalados de Steam"
+settings.general.steam.discover_hint: "Se comprueba al abrir decanter y cada vez que entras en Almacenamiento, así que las tarjetas SD y los discos se detectan en cuanto los conectas. Una carpeta o un juego que quites aquí no se vuelve a añadir."
 settings.general.downloads.title: Descargas
 settings.general.downloads.resume_on_start: Reanudar las descargas al abrir Decanter
 settings.general.downloads.resume_hint: 'Las que se pararon al cerrar Decanter o por un cierre inesperado. Las que pausaste tú esperan a que las reanudes, y las que paró la red o un disco desconectado se reanudan solas cuando vuelven.'
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Mostrar la sección Raven
 settings.general.raven.hint: 'Raven es un runtime de Windows en fase temprana. Con la sección activada puedes construirlo en tu biblioteca y probar con él programas de Windows; no se descarga nada ni se consulta GitHub hasta que pulses Construir o Buscar actualizaciones en la sección.'
-settings.general.steam.pending: Hay juegos exportados a Steam esperando a que se reinicie — Steam estaba abierto cuando se añadieron, así que su propia copia en memoria todavía no los ha sobrescrito.
+settings.general.steam.pending: "Hay cambios para Steam (juegos exportados o carpetas de biblioteca) esperando a que se reinicie — Steam estaba abierto cuando se hicieron, así que se retienen hasta entonces para que su copia en memoria no los sobrescriba."
 settings.general.steam.restarting: Reiniciando Steam...
 settings.general.steam.restart_now: Reiniciar Steam ahora
 settings.general.steam.close_first: decanter no puede saber desde aquí si Steam está abierto. Cierra Steam y confírmalo para aplicar los cambios; decanter lo volverá a abrir después.

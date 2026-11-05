@@ -131,6 +131,7 @@ mod run_log;
 mod runners;
 mod self_update;
 mod state;
+mod steam_compat;
 mod steam_shortcuts;
 mod taskbar;
 mod theme;
@@ -201,6 +202,7 @@ fn main() {
             capabilities::Caps::init(cx);
             views::Lifecycle::init(close_to_tray, cx);
             memory::start(cx);
+            steam_compat::on_start(cx);
 
             // Once, at the root: a game keeps running after decanter is
             // gone unless something goes and stops it.

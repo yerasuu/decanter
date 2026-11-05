@@ -22,7 +22,7 @@ pub async fn retarget() {
         return;
     };
     // Writes into the real Steam user's own config files, which the Ajustes toggle turns off.
-    if !db.steam_export_enabled().unwrap_or(true) {
+    if !db.steam_automatic().is_ok_and(|automatic| automatic.export_shortcuts) {
         return;
     }
     let Some(steam_root) = steam::steam_root() else {

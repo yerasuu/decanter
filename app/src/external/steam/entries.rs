@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use decanter_core::{InstalledGame, Storefront};
+use decanter_core::{InstalledGame, SteamMark, Storefront};
 use decanter_gog::LibraryEntry;
 
 use super::{AppId, SteamGame};
@@ -82,7 +82,8 @@ pub fn added(profile_id: &str) -> HashSet<AppId> {
     list(profile_id).iter().filter_map(app_id).collect()
 }
 
-/// Files `found`, a Steam app, as a Steam entry of `profile_id`.
+/// Files `found`, a Steam app, as a Steam entry of `profile_id`, which
+/// finding Steam's games may add again from then on if it is removed.
 pub fn add(profile_id: &str, found: &SteamGame) -> Result<(), Text> {
     let Some(id) = found.app_id else {
         return Err(Text::new("external.errors.save").arg("error", "not a steam app"));
@@ -113,15 +114,83 @@ pub fn add(profile_id: &str, found: &SteamGame) -> Result<(), Text> {
         prefix_of: None,
         art: found.art.clone(),
     };
-    library
-        .write_manifest(&game)
-        .inspect(|()| tracing::info!(profile_id, app_id = %id, name = %game.name, "steam entry added"))
-        .inspect_err(|err| tracing::error!(profile_id, app_id = %id, %err, "failed to add steam entry"))
-        .map_err(|err| Text::new("external.errors.save").arg("error", err))
+    crate::achv_try!(
+        library
+            .write_manifest(&game)
+            .inspect(|()| tracing::info!(profile_id, app_id = %id, name = %game.name, "steam entry added"))
+            .inspect_err(|err| tracing::error!(profile_id, app_id = %id, %err, "failed to add steam entry"))
+            .map_err(|err| Text::new("external.errors.save").arg("error", err))
+    );
+    remember_dismissal(profile_id, &game.game_id, false);
+    Ok(())
+}
+
+/// Files every game Steam has fully installed that `profile_id` shows no entry for yet, except the
+/// ones the user removed, and returns how many it added. Blocking: reads Steam's manifests.
+pub fn add_installed(profile_id: &str) -> usize {
+    let Some(root) = super::root() else {
+        return 0;
+    };
+    let dismissed = crate::core::db()
+        .and_then(|db| {
+            db.steam_marked(profile_id, SteamMark::RemovedApp)
+                .map_err(crate::core::StoreError::Query)
+        })
+        .inspect_err(|err| tracing::warn!(profile_id, %err, "could not read removed steam entries, adding none"));
+    let Ok(dismissed) = dismissed else {
+        return 0;
+    };
+    let present = added(profile_id);
+    let (mut count, mut failed, mut skipped) = (0_usize, 0_usize, 0_usize);
+    for (app_id, app) in super::installed(&root) {
+        if present.contains(&app_id) {
+            continue;
+        }
+        if dismissed.contains(&app_id.to_string()) {
+            skipped = skipped.saturating_add(1);
+            continue;
+        }
+        let found = SteamGame {
+            app_id: Some(app_id),
+            name: app.name,
+            folder: app.folder,
+            executable: None,
+            art: super::game_art(app.art),
+        };
+        // `add` has logged why one failed.
+        if add(profile_id, &found).is_ok() {
+            count = count.saturating_add(1);
+        } else {
+            failed = failed.saturating_add(1);
+        }
+    }
+    if count > 0 || failed > 0 {
+        tracing::info!(
+            profile_id,
+            added = count,
+            failed,
+            removed_by_user = skipped,
+            "added steam's installed games"
+        );
+    } else {
+        tracing::debug!(profile_id, removed_by_user = skipped, "no new steam games to add");
+    }
+    count
+}
+
+fn remember_dismissal(profile_id: &str, game_id: &str, dismissed: bool) {
+    let saved = crate::core::db().and_then(|db| {
+        db.set_steam_marked(profile_id, SteamMark::RemovedApp, game_id, dismissed)
+            .map_err(crate::core::StoreError::Query)
+    });
+    if let Err(err) = saved {
+        tracing::warn!(profile_id, game_id, dismissed, %err, "could not record whether the steam entry was removed");
+    }
 }
 
 /// Forgets a Steam entry (manifest, favorites, playtime, collections).
-/// Nothing of Steam's is touched: the game stays installed there.
+/// Nothing of Steam's is touched: the game stays installed there. Remembered,
+/// so that finding Steam's games doesn't add it back.
 pub fn remove(profile_id: &str, game_id: &str) -> Result<(), Text> {
     let library = crate::achv_try!(crate::core::library_for_profile(profile_id));
     crate::achv_try!(
@@ -138,6 +207,7 @@ pub fn remove(profile_id: &str, game_id: &str) -> Result<(), Text> {
     }) {
         tracing::warn!(profile_id, game_id, %err, "could not forget steam entry's favorites, playtime and collections");
     }
+    remember_dismissal(profile_id, game_id, true);
     tracing::info!(profile_id, game_id, "steam entry removed");
     Ok(())
 }

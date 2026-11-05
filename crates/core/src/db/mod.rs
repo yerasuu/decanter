@@ -15,6 +15,7 @@ mod games;
 mod library_caches;
 mod playtime;
 mod settings;
+mod steam_compat;
 mod steam_shortcuts;
 mod user_stats;
 
@@ -26,6 +27,7 @@ pub use self::{
     achievements::{CachedAchievement, HookDiagnostic},
     games::CachedGame,
     playtime::Playtime,
+    steam_compat::{SteamAutomatic, SteamMark},
     user_stats::{StatDefinition, StatKind, StatValue, UserStat},
 };
 
@@ -169,6 +171,17 @@ CREATE TABLE IF NOT EXISTS steam_shortcuts (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS steam_library_folders (
+    path  TEXT PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS steam_marks (
+    profile_id  TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    item        TEXT NOT NULL,
+    PRIMARY KEY (profile_id, kind, item)
+);
+
 CREATE TABLE IF NOT EXISTS game_options (
     game_key  TEXT NOT NULL,
     option    TEXT NOT NULL,
@@ -202,7 +215,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 pub struct Db {
     pub(crate) conn: Connection,

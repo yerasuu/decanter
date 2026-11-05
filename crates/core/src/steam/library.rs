@@ -20,7 +20,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use super::{binary_vdf, export, grid_appid, grid_dir, legacy_grid_id, local_user_id, shortcuts_vdf_path};
+use super::{
+    binary_vdf, export, grid_appid, grid_dir, legacy_grid_id, library_folders, local_user_id, shortcuts_vdf_path,
+};
 use crate::vdf;
 
 /// `StateFlags` bit Steam sets once an app is fully installed.
@@ -63,31 +65,12 @@ pub struct Shortcut {
     pub art: SteamArt,
 }
 
-/// Steam's library folders: its own, plus every one in `libraryfolders.vdf`
-/// (the SD card's among them). Each entry is checked before it is used as a
-/// path: absolute, and a directory with a `steamapps` in it.
+/// Steam's library folders that are there: its own, plus every one in `libraryfolders.vdf` (the SD
+/// card's among them) whose `steamapps` is a directory.
 fn libraries(root: &Path) -> Vec<PathBuf> {
-    let listed = fs::read_to_string(root.join("steamapps/libraryfolders.vdf"))
-        .inspect_err(|err| tracing::debug!(%err, "no libraryfolders.vdf to read"))
-        .ok()
-        .and_then(|text| {
-            vdf::from_str(&text)
-                .inspect_err(|err| tracing::warn!(%err, "failed to parse libraryfolders.vdf"))
-                .ok()
-        })
-        .and_then(|(_, folders)| {
-            folders.as_block().map(|block| {
-                block
-                    .values()
-                    .filter_map(|entry| entry.get("path"))
-                    .map(PathBuf::from)
-                    .collect::<Vec<_>>()
-            })
-        })
-        .unwrap_or_default();
     let mut seen = HashSet::new();
     std::iter::once(root.to_path_buf())
-        .chain(listed)
+        .chain(library_folders(root).into_iter().map(|folder| folder.path))
         .filter(|path| path.is_absolute() && path.join("steamapps").is_dir())
         .filter(|path| seen.insert(fs::canonicalize(path).unwrap_or_else(|_| path.clone())))
         .collect()
@@ -178,10 +161,30 @@ fn library_art(cache: &Path, app_id: &str) -> SteamArt {
         })
     };
     SteamArt {
-        icon: find("icon"),
+        icon: find("icon").or_else(|| client_icon(&dir)),
         hero: find("library_hero"),
-        cover: find("library_600x900"),
+        cover: find("library_600x900")
+            .or_else(|| find("library_capsule"))
+            .or_else(|| find("library_header"))
+            .or_else(|| find("header")),
     }
+}
+
+/// The small icon Steam keeps in an app's folder under its 40-hex hash, with no name saying what it
+/// is, which is why the lookups by name never find it.
+fn client_icon(dir: &Path) -> Option<PathBuf> {
+    fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.is_file()
+                && path.extension().is_some_and(|extension| extension == "jpg")
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem.len() == 40 && stem.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        })
 }
 
 /// The user's non-Steam shortcuts that decanter didn't export itself: an

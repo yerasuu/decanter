@@ -21,7 +21,8 @@ impl Db {
     /// Whether an install/uninstall should also write a real Steam
     /// `shortcuts.vdf` entry for the game — on by default, since that's
     /// the whole point of the feature, but this writes into the actual
-    /// Steam user's own config files, so it stays easy to turn off.
+    /// Steam user's own config files, so it stays easy to turn off. The stored sub-switch alone:
+    /// what is automatic also needs the Steam compatibility one, see [`Db::steam_automatic`].
     pub fn steam_export_enabled(&self) -> Result<bool> {
         let enabled = self.setting("steam_export_enabled")?.as_deref() != Some("0");
         tracing::debug!(enabled, "read steam_export_enabled setting");

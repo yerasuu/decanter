@@ -240,12 +240,22 @@ impl StorageView {
             cx.notify();
             return;
         };
-        let scan = cx.background_spawn(async move { (scan(&profile_id), decanter_core::removable_mounts()) });
+        // Steam's library folders first, so a card mounted since the last visit lists with the rest.
+        let scan = cx.background_spawn(async move {
+            let is_changed = crate::steam_compat::sync(Some(&profile_id));
+            (scan(&profile_id), decanter_core::removable_mounts(), is_changed)
+        });
         self.scan = Some(cx.spawn(async move |this, cx| {
-            let (folders, mounts) = scan.await;
+            let (folders, mounts, is_changed) = scan.await;
             let _ = this.update(cx, |this, cx| {
                 this.folders = Some(folders);
                 this.mounts = mounts;
+                if is_changed {
+                    AppState::get(cx)
+                        .library
+                        .clone()
+                        .update(cx, |library, cx| library.refresh_all_install_state(cx));
+                }
                 cx.notify();
             });
         }));

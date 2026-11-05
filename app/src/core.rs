@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use decanter_core::{Db, InstalledGame, Library, Profile, Storefront};
+use decanter_core::{Db, InstalledGame, Library, Profile, SteamMark, Storefront};
 
 use crate::i18n::Text;
 
@@ -297,11 +297,14 @@ pub fn add_library_folder(profile_id: &str, picked: &std::path::Path) -> Result<
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64);
+    let db = db()?;
     crate::achv_try!(
-        db()?
-            .add_profile_library(profile_id, &root.to_string_lossy(), now)
+        db.add_profile_library(profile_id, &root.to_string_lossy(), now)
             .map_err(|err| Text::new("storage.errors.add").arg("error", err))
     );
+    if let Err(err) = db.set_steam_marked(profile_id, SteamMark::RemovedFolder, &root.to_string_lossy(), false) {
+        tracing::warn!(profile_id, root = %root.display(), %err, "could not forget that the folder was removed");
+    }
     if let Err(err) = library_for_profile(profile_id)
         .map_err(|err| err.to_string())
         .and_then(|library| library.write_libraryfolders().map_err(|err| err.to_string()))
@@ -325,18 +328,19 @@ pub fn offline_library_folders(profile_id: &str) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// Stops keeping games in `root`. Whatever is on that disk stays there.
+/// Stops keeping games in `root`. Whatever is on that disk stays there. Remembered, so that finding
+/// Steam's library folders doesn't bring it back.
 pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result<(), Text> {
+    let db = db()?;
     crate::achv_try!(
-        db()?
-            .remove_profile_library(profile_id, &root.to_string_lossy())
+        db.remove_profile_library(profile_id, &root.to_string_lossy())
             .map_err(|err| Text::new("storage.errors.remove").arg("error", err))
     );
+    if let Err(err) = db.set_steam_marked(profile_id, SteamMark::RemovedFolder, &root.to_string_lossy(), true) {
+        tracing::warn!(profile_id, root = %root.display(), %err, "could not remember that the folder was removed");
+    }
     // Re-adding the folder later starts from its default cache again.
-    if let Err(err) = db()
-        .map_err(|err| err.to_string())
-        .and_then(|db| db.set_library_cache(root, None).map_err(|err| err.to_string()))
-    {
+    if let Err(err) = db.set_library_cache(root, None) {
         tracing::warn!(profile_id, root = %root.display(), %err, "could not forget the folder's cache location");
     }
     if let Err(err) = library_for_profile(profile_id)
@@ -594,20 +598,19 @@ pub fn proton_or_default(pin: Option<String>) -> decanter_runtime::Proton {
     }
 }
 
-/// Whether a Steam shortcut export is staged and waiting for Steam to be
-/// restarted to take effect — see `decanter_core::steam::export`'s own
-/// doc for why a write can't always go straight to `shortcuts.vdf`.
-/// `false` for anything that can't be resolved (no Steam install, no
-/// local user) — nothing pending is exactly what that looks like too.
+/// Whether a change to Steam's shortcuts or library folders is staged and
+/// waiting for Steam to be restarted to take effect — see
+/// `decanter_core::steam::export`'s own doc for why a write can't always go
+/// straight to Steam's files. `false` without a Steam install, which is
+/// exactly what nothing pending looks like too.
 #[must_use]
 pub fn steam_shortcuts_pending() -> bool {
     let Some(steam_root) = decanter_core::steam::steam_root() else {
         return false;
     };
-    let Some(user_id) = decanter_core::steam::local_user_id(&steam_root) else {
-        return false;
-    };
-    decanter_core::steam::has_pending_changes(&steam_root, &user_id)
+    decanter_core::steam::folders::has_pending(&steam_root)
+        || decanter_core::steam::local_user_id(&steam_root)
+            .is_some_and(|user_id| decanter_core::steam::has_pending_changes(&steam_root, &user_id))
 }
 
 /// Why [`restart_steam_to_apply_pending`] didn't apply the staged change.
@@ -618,7 +621,7 @@ pub enum RestartSteamError {
     Failed(Text),
 }
 
-/// Shuts Steam down, swaps the staged `shortcuts.vdf` into place, and
+/// Shuts Steam down, swaps the staged `shortcuts.vdf` and `libraryfolders.vdf` into place, and
 /// starts it back up — the button behind [`steam_shortcuts_pending`]'s
 /// banner. Runs on a blocking worker since it waits (synchronously, with
 /// its own timeout) for the real Steam process to exit.
@@ -627,9 +630,11 @@ pub async fn restart_steam_to_apply_pending(user_confirmed_closed: bool) -> Resu
         tokio::task::spawn_blocking(move || {
             let steam_root = decanter_core::steam::steam_root()
                 .ok_or_else(|| RestartSteamError::Failed(Text::new("settings.general.steam.no_install")))?;
-            let user_id = decanter_core::steam::local_user_id(&steam_root)
-                .ok_or_else(|| RestartSteamError::Failed(Text::new("settings.general.steam.no_user")))?;
-            decanter_core::steam::apply_pending_and_restart_steam(&steam_root, &user_id, user_confirmed_closed)
+            let user_id = decanter_core::steam::local_user_id(&steam_root);
+            if user_id.is_none() && !decanter_core::steam::folders::has_pending(&steam_root) {
+                return Err(RestartSteamError::Failed(Text::new("settings.general.steam.no_user")));
+            }
+            crate::steam_compat::apply_pending_and_restart(&steam_root, user_id.as_deref(), user_confirmed_closed)
                 .inspect_err(|err| tracing::error!(%err, "failed to restart steam to apply pending shortcuts"))
                 .map_err(|err| match err {
                     decanter_core::steam::ApplyError::SteamStateUnknown => RestartSteamError::NeedsCloseConfirmation,
