@@ -102,6 +102,10 @@ done | sort > "$notices/BUNDLED-LIBRARIES.txt"
 # expands here.
 sed -e "s|@LOADER@|$loader_name|g" -e "s|@ARCH@|$arch|g" > "$app_dir/AppRun" <<'APPRUN'
 #!/bin/sh
+# Steam starts a shortcut with its overlay in LD_PRELOAD, and the host's dirname and readlink
+# below then die looking for libGL.so.1 before decanter ever runs. Decanter has no use for the
+# overlay, and what it starts gets the preload stripped again.
+unset LD_PRELOAD
 here="$(dirname "$(readlink -f "$0")")"
 # Desktop entries decanter writes must start it through here: the inner binary
 # alone runs against the host's glibc, older than the bundled one.
