@@ -50,3 +50,22 @@ storage.stray.delete: "削除"
 storage.stray.keep: "残す"
 storage.stray.confirm: "未完了のダウンロード %{name}(%{size})を削除しますか?ジャーナルがないため、再開できません。"
 storage.errors.stray: "未完了のダウンロードを削除中: %{error}"
+storage.select.count.one: '1 本のゲームを選択中'
+storage.select.count.other: '%{count} 本のゲームを選択中'
+storage.select.move_to: '選択したゲームの移動先…'
+storage.select.clear: '選択を解除'
+storage.queue.title: '移動'
+storage.queue.running: '移動中 %{current} / %{total} · スキップ %{skipped}'
+storage.queue.over: '移動済み %{moved} · 失敗 %{failed} · スキップ %{skipped}'
+storage.queue.position: '待機 %{position} 番目'
+storage.queue.route: '%{from} → %{to}'
+storage.queue.moved: '移動済み'
+storage.queue.stop: 'このゲームの後で停止'
+storage.queue.stop_hint: '移動中のゲームは最後まで移動し、待機中のゲームはそのまま残ります。'
+storage.queue.clear: 'クリア'
+storage.queue.skipped.already_there: 'すでにそのフォルダーにあります'
+storage.queue.skipped.stopped: '未開始: キューを停止しました'
+storage.queue.skipped.halted: '未開始: %{reason}'
+storage.queue.errors.missing: '%{path} を利用できません。'
+storage.queue.errors.full: '%{path} の空き容量が足りません: 必要 %{needed}、空き %{free}。'
+storage.queue.errors.no_room: '選択したゲームには %{path} に %{needed} が必要ですが、空きは %{free} です。'

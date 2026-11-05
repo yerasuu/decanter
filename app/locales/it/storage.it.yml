@@ -50,3 +50,22 @@ storage.stray.delete: Elimina
 storage.stray.keep: Conserva
 storage.stray.confirm: "Eliminare il download incompleto %{name} (%{size})? Non ha un giornale, quindi non può essere ripreso."
 storage.errors.stray: "eliminazione del download incompleto: %{error}"
+storage.select.count.one: '1 gioco selezionato'
+storage.select.count.other: '%{count} giochi selezionati'
+storage.select.move_to: 'Sposta i selezionati in…'
+storage.select.clear: 'Annulla selezione'
+storage.queue.title: 'Spostamenti'
+storage.queue.running: 'Spostamento %{current} di %{total} · %{skipped} saltati'
+storage.queue.over: '%{moved} spostati · %{failed} non riusciti · %{skipped} saltati'
+storage.queue.position: 'N. %{position} in coda'
+storage.queue.route: '%{from} → %{to}'
+storage.queue.moved: 'Spostato'
+storage.queue.stop: 'Ferma dopo questo gioco'
+storage.queue.stop_hint: 'Il gioco in spostamento finisce; quelli in attesa restano dove sono.'
+storage.queue.clear: 'Svuota'
+storage.queue.skipped.already_there: 'Già in quella cartella'
+storage.queue.skipped.stopped: 'Non iniziato: hai fermato la coda'
+storage.queue.skipped.halted: 'Non iniziato: %{reason}'
+storage.queue.errors.missing: '%{path} non è disponibile.'
+storage.queue.errors.full: 'Spazio insufficiente in %{path}: servono %{needed}, liberi %{free}.'
+storage.queue.errors.no_room: 'I giochi selezionati richiedono %{needed} in %{path}, che ha %{free} liberi.'

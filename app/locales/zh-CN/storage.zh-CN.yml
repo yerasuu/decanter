@@ -50,3 +50,22 @@ storage.stray.delete: "删除"
 storage.stray.keep: "保留"
 storage.stray.confirm: "删除未完成的下载 %{name}（%{size}）？它没有日志，无法继续。"
 storage.errors.stray: "删除未完成的下载：%{error}"
+storage.select.count.one: '已选择 1 个游戏'
+storage.select.count.other: '已选择 %{count} 个游戏'
+storage.select.move_to: '将所选游戏移动到…'
+storage.select.clear: '清除选择'
+storage.queue.title: '移动'
+storage.queue.running: '正在移动第 %{current} 个，共 %{total} 个 · 已跳过 %{skipped} 个'
+storage.queue.over: '已移动 %{moved} 个 · 失败 %{failed} 个 · 已跳过 %{skipped} 个'
+storage.queue.position: '队列中第 %{position} 位'
+storage.queue.route: '%{from} → %{to}'
+storage.queue.moved: '已移动'
+storage.queue.stop: '此游戏完成后停止'
+storage.queue.stop_hint: '正在移动的游戏会完成；等待中的游戏保持原位。'
+storage.queue.clear: '清除'
+storage.queue.skipped.already_there: '已在该文件夹中'
+storage.queue.skipped.stopped: '未开始：你已停止队列'
+storage.queue.skipped.halted: '未开始：%{reason}'
+storage.queue.errors.missing: '%{path} 不可用。'
+storage.queue.errors.full: '%{path} 空间不足：需要 %{needed}，可用 %{free}。'
+storage.queue.errors.no_room: '所选游戏在 %{path} 中需要 %{needed}，但只有 %{free} 可用。'

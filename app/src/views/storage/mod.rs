@@ -2,20 +2,19 @@
 //! folder, the way Steam's Storage settings list a drive per folder, since
 //! a profile's games can be spread over several disks.
 
+mod moves;
+
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use decanter_core::{InstalledGame, Library, Storefront};
-use gpui::{AnyElement, Context, SharedString, Task, Window, div, prelude::*, px, rgb};
+use gpui::{Context, Task, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
-use crate::external::transfer::Progress;
 use crate::i18n::Text;
-use crate::state::{AppState, Download, DownloadKey, Ps};
+use crate::state::{AppState, Download, DownloadKey};
 use crate::theme;
 use crate::views::downloads;
-use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, stat_card, tooltip};
 
 /// One library folder as the last scan found it.
@@ -187,13 +186,12 @@ pub struct StorageView {
     folders: Option<Vec<Folder>>,
     error: Option<Text>,
     scan: Option<Task<()>>,
-    /// The game being moved between folders (a GOG or external game's id,
-    /// or a PS dump's folder), and how far it's got.
-    moving: Option<(String, Arc<Progress>)>,
-    _move: Option<Task<()>>,
-    /// Redraws the progress while `moving`: the move runs on a blocking
+    /// Redraws the progress while a move runs: it runs on a blocking
     /// thread that can't notify this view itself.
     _ticker: Option<Task<()>>,
+    /// Games and dumps moving one after another, and the ones picked to.
+    moves: moves::Moves,
+    _move_queue: Option<Task<()>>,
     /// The folder decanter kept everything in before it moved into the
     /// library, while it's still there.
     legacy: Option<PathBuf>,
@@ -212,9 +210,9 @@ impl StorageView {
             folders: None,
             error: None,
             scan: None,
-            moving: None,
-            _move: None,
             _ticker: None,
+            moves: moves::Moves::default(),
+            _move_queue: None,
             legacy: None,
             confirm_legacy: false,
             confirm_stray: None,
@@ -648,157 +646,19 @@ impl StorageView {
         )
     }
 
-    fn move_game(&mut self, game: &InstalledGame, to: PathBuf, cx: &mut Context<Self>) {
-        if self.moving.is_some() {
-            return;
-        }
-        let progress = Arc::new(Progress::default());
-        let (account_id, game_id) = (game.account_id.clone(), game.game_id.clone());
-        let work = {
-            let progress = Arc::clone(&progress);
-            async move {
-                tokio::task::spawn_blocking(move || crate::relocate::move_game(&account_id, &game_id, &to, &progress))
-                    .await
-                    .unwrap_or_else(|err| Err(Text::verbatim(err)))
-            }
-        };
-        self.track_move(game.game_id.clone(), progress, work, cx);
-    }
-
-    fn move_dump(&mut self, dir: PathBuf, to: PathBuf, cx: &mut Context<Self>) {
-        if self.moving.is_some() {
-            return;
-        }
-        let progress = Arc::new(Progress::default());
-        let key = dir.to_string_lossy().into_owned();
-        let work = Ps::get(cx).update(cx, |ps, cx| ps.move_dump(dir, to, Arc::clone(&progress), cx));
-        self.track_move(key, progress, work, cx);
-    }
-
-    /// Shows `work`'s progress under `key` until it ends, then reads the
-    /// folders again.
-    fn track_move(
-        &mut self,
-        key: String,
-        progress: Arc<Progress>,
-        work: impl Future<Output = Result<(), Text>> + 'static,
-        cx: &mut Context<Self>,
-    ) {
-        self.moving = Some((key, progress));
-        self.error = None;
+    fn tick_while_moving(&mut self, cx: &Context<Self>) {
         self._ticker = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(250)).await;
                 let still = this.update(cx, |this, cx| {
                     cx.notify();
-                    this.moving.is_some()
+                    this.moves_moving()
                 });
                 if !matches!(still, Ok(true)) {
                     return;
                 }
             }
         }));
-        self._move = Some(cx.spawn(async move |this, cx| {
-            let result = work.await;
-            let _ = this.update(cx, |this, cx| {
-                this.moving = None;
-                if let Err(err) = result {
-                    this.error = Some(err);
-                }
-                this.folders_changed(cx);
-            });
-        }));
-        cx.notify();
-    }
-
-    /// "Mover a…" for a game or dump, or how far its move has got. `start`
-    /// moves it into the library folder picked.
-    fn move_control(
-        &self,
-        id: usize,
-        key: &str,
-        from: &Path,
-        start: impl Fn(&mut Self, PathBuf, &mut Context<Self>) + 'static,
-        cx: &Context<Self>,
-    ) -> Option<AnyElement> {
-        if let Some((moving, progress)) = &self.moving
-            && moving == key
-        {
-            let text = progress.snapshot().map_or_else(
-                || t!("storage.moving.started"),
-                |(done, total)| {
-                    t!(
-                        "storage.moving.progress",
-                        done = crate::format::bytes(done),
-                        total = crate::format::bytes(total)
-                    )
-                },
-            );
-            return Some(theme::muted(text).text_size(px(12.)).into_any_element());
-        }
-        if self.moving.is_some() {
-            return None;
-        }
-        let targets: Vec<PathBuf> = self
-            .folders
-            .iter()
-            .flatten()
-            .filter(|folder| folder.present && folder.root != from)
-            .map(|folder| folder.root.clone())
-            .collect();
-        if targets.is_empty() {
-            return None;
-        }
-        let options = std::iter::once((SharedString::default(), t!("storage.move_to").into())).chain(
-            targets.iter().map(|root| {
-                let path = SharedString::from(root.to_string_lossy().into_owned());
-                (path.clone(), path)
-            }),
-        );
-        let this = cx.entity().downgrade();
-        Some(
-            Select::new(("storage-move", id), options, SharedString::default())
-                .on_change(move |value, _, cx| {
-                    if value.is_empty() {
-                        return;
-                    }
-                    let to = PathBuf::from(value.as_ref());
-                    let _ = this.update(cx, |this, cx| start(this, to, cx));
-                })
-                .into_any_element(),
-        )
-    }
-
-    fn game_move_control(
-        &self,
-        id: usize,
-        game: &InstalledGame,
-        from: &Path,
-        cx: &Context<Self>,
-    ) -> Option<AnyElement> {
-        // A game a launcher installed moves with its launcher.
-        if game.prefix_of.is_some() {
-            return None;
-        }
-        let owned = game.clone();
-        self.move_control(
-            id,
-            &game.game_id,
-            from,
-            move |this, to, cx| this.move_game(&owned, to, cx),
-            cx,
-        )
-    }
-
-    fn dump_move_control(&self, id: usize, dump: &Dump, from: &Path, cx: &Context<Self>) -> Option<AnyElement> {
-        let dir = dump.dir.clone();
-        self.move_control(
-            id,
-            &dump.dir.to_string_lossy(),
-            from,
-            move |this, to, cx| this.move_dump(dir.clone(), to, cx),
-            cx,
-        )
     }
 
     fn folder_card(&self, index: usize, folder: &Folder, cx: &Context<Self>) -> impl IntoElement + use<> {
@@ -876,6 +736,7 @@ impl StorageView {
             .children(folder.games.iter().enumerate().map(|(row, game)| {
                 let id = index * 10_000 + row;
                 theme::list_row(("storage-row", id), row + 1 == count)
+                    .children(self.game_select_box(id, game, cx))
                     .child(div().flex_1().child(game.name.clone()))
                     .children(self.game_move_control(id, game, &folder.root, cx))
                     .child(
@@ -888,6 +749,7 @@ impl StorageView {
                 let row = folder.games.len() + row;
                 let id = index * 10_000 + row;
                 theme::list_row(("storage-row", id), row + 1 == count)
+                    .child(self.dump_select_box(id, dump, cx))
                     .child(theme::badge("PS", false))
                     .child(div().flex_1().min_w_0().truncate().child(dump.name.clone()))
                     .children(self.dump_move_control(id, dump, &folder.root, cx))
@@ -940,6 +802,8 @@ impl Render for StorageView {
             "storage",
             column
                 .child(stats)
+                .children(self.selection_bar(cx))
+                .children(self.queue_card(cx))
                 .children(
                     folders
                         .iter()
