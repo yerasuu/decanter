@@ -13,7 +13,7 @@ mod summary;
 
 use decanter_core::{Game, InstallState, InstalledGame, Playtime, Storefront};
 use decanter_gog::LibraryEntry;
-use gpui::{Context, Div, Entity, Pixels, Window, div, prelude::*, px, rgb};
+use gpui::{Context, Div, Entity, FocusHandle, Pixels, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::{LibraryModel, actions, data};
@@ -143,6 +143,7 @@ struct Local {
     dialog: Option<InstallDialog>,
     /// Follows the game's latest run, which a new one replaces.
     log: Option<Entity<LogView>>,
+    took_focus: bool,
 }
 
 pub struct DetailView {
@@ -152,6 +153,8 @@ pub struct DetailView {
     /// Width the achievement grid last laid out at, so the column count
     /// can follow `auto-fill`; zero until the first measurement lands.
     grid_width: Pixels,
+    /// Jugar, Detener or Instalar, whichever the bar leads with.
+    primary: FocusHandle,
 }
 
 impl DetailView {
@@ -166,6 +169,7 @@ impl DetailView {
             loaded: None,
             local: Local::default(),
             grid_width: px(0.),
+            primary: cx.focus_handle().tab_stop(true),
         }
     }
 
@@ -262,6 +266,10 @@ impl Render for DetailView {
             dlcs,
         };
         let action_bar = self.action_bar(&game, bar, window, cx);
+        if !self.local.took_focus && self.model.read(cx).opened_from.is_some() {
+            self.local.took_focus = true;
+            window.focus(&self.primary, cx);
+        }
 
         let external = game.storefront == Storefront::Unspecified;
         let hidden = (external && self.local.tab == DetailTab::Achievements)

@@ -8,10 +8,11 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Div, ElementId, FontWeight, MouseButton, Pixels, Point, SharedString, Stateful, Window, anchored,
-    deferred, div, point, prelude::*, px, rgb, rgba,
+    AnyElement, App, Div, ElementId, FocusHandle, FontWeight, KeyDownEvent, MouseButton, Pixels, Point, SharedString,
+    Stateful, Window, anchored, deferred, div, point, prelude::*, px, rgb, rgba,
 };
 
+use super::nav::{self, Step};
 use crate::theme;
 
 pub type Dismiss = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -76,6 +77,31 @@ pub fn modal(content: impl IntoElement, window: &Window, dismiss: Dismiss) -> An
     .into_any_element()
 }
 
+/// Holds the keyboard inside a popup that took the focus: Tab and the arrows walk its items and
+/// stop at either end instead of moving on to the page behind the backdrop, and Escape dismisses
+/// it. The popup is painted last, so its items sit at the end of the window's tab order.
+pub fn trap(focus: &FocusHandle, dismiss: Dismiss, content: impl IntoElement) -> Div {
+    let inside = focus.clone();
+    div()
+        .track_focus(focus)
+        .on_key_down(move |event: &KeyDownEvent, window, cx| {
+            if let Some(step) = Step::of(&event.keystroke) {
+                let from = window.focused(cx);
+                step.apply(window, cx);
+                if !inside.contains_focused(window, cx)
+                    && let Some(from) = from
+                {
+                    window.focus(&from, cx);
+                }
+                cx.stop_propagation();
+            } else if nav::is_escape(&event.keystroke) {
+                dismiss(window, cx);
+                cx.stop_propagation();
+            }
+        })
+        .child(content)
+}
+
 /// `.context-menu`: the panel a menu's items sit in.
 pub fn panel() -> Div {
     div()
@@ -120,7 +146,7 @@ pub fn item(id: impl Into<ElementId>, disabled: bool) -> Stateful<Div> {
         .text_color(rgb(theme::TEXT_PRIMARY))
         .when(disabled, |item| item.opacity(0.4).cursor_not_allowed())
         .when(!disabled, |item| {
-            item.cursor_pointer().hover(|item| item.bg(rgb(theme::BG_PANEL_LIGHT)))
+            nav::tab_stop(item.cursor_pointer().hover(|item| item.bg(rgb(theme::BG_PANEL_LIGHT))))
         })
 }
 

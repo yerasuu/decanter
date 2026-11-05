@@ -21,7 +21,9 @@ mod shelves;
 mod sidebar;
 pub mod unfinished;
 
-use gpui::{Context, Entity, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb};
+use gpui::{
+    Context, Entity, FocusHandle, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb,
+};
 use rust_i18n::t;
 
 use browser::BrowserView;
@@ -70,6 +72,10 @@ struct LibraryModel {
     /// An install asked for from outside the detail pane (the context menu), handed to the
     /// detail so it opens the install dialog for it.
     pub(crate) install_request: Option<install::InstallRequest>,
+    /// The cover a game was opened from with the keyboard: its page then
+    /// takes the focus for its first action, and the shelves give it back to
+    /// that cover once they show again.
+    pub(crate) opened_from: Option<FocusHandle>,
     poll: Option<Task<()>>,
 }
 
@@ -102,6 +108,7 @@ impl LibraryModel {
             mods_open: false,
             achievements: None,
             install_request: None,
+            opened_from: None,
             poll: None,
         }
     }

@@ -19,16 +19,22 @@ mod slots;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use gpui::{Context, Entity, ScrollHandle, SharedString, Task, Window, div, point, prelude::*, px, rgb};
+use gpui::{
+    Context, Entity, FocusHandle, KeyDownEvent, ScrollHandle, SharedString, Task, Window, div, point, prelude::*, px,
+    rgb,
+};
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
-use super::LibraryModel;
+use super::context_menu::MenuTarget;
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{PlayState, Sort, pending_install_ids};
+use super::{LibraryModel, LibraryPopup};
 use crate::state::{AppState, DownloadKey};
 use crate::theme;
+use crate::widgets::nav;
 use derived::derive;
+use shelf::{CARD_STRIDE, ROW_PADDING, visible_cards};
 use slots::{load_slots, save_slots};
 
 /// One row of the home layout. A shelf is a slot the user points at a
@@ -129,6 +135,50 @@ struct RowState {
     /// The running page animation; replacing it cancels the previous one so
     /// two quick clicks don't fight over the offset.
     paging: Option<Task<()>>,
+    /// The capsules laid out this frame, as a range of the shelf's.
+    shown: (usize, usize),
+    /// Owned here rather than by each capsule, so the arrows can move the
+    /// focus to a capsule in another row. Only the laid-out ones keep one.
+    cards: HashMap<SharedString, FocusHandle>,
+}
+
+impl RowState {
+    fn focused(&self, capsules: &[Capsule], window: &Window) -> Option<usize> {
+        let (first, last) = self.shown;
+        capsules
+            .get(first..last)?
+            .iter()
+            .position(|capsule| {
+                self.cards
+                    .get(&capsule.id)
+                    .is_some_and(|handle| handle.is_focused(window))
+            })
+            .map(|index| first + index)
+    }
+
+    /// The first capsule wholly in view, which is where the arrows land
+    /// coming from another row.
+    fn first_in_view(&self) -> usize {
+        (-self.scroll.offset().x.as_f32() / CARD_STRIDE).ceil().max(0.) as usize
+    }
+
+    /// Scrolls just far enough to show capsule `index` whole.
+    fn reveal(&self, index: usize) {
+        let offset = self.scroll.offset();
+        let width = self.scroll.bounds().size.width.as_f32();
+        let left = index as f32 * CARD_STRIDE;
+        let right = ROW_PADDING.mul_add(2., left + CARD_STRIDE);
+        let shown = -offset.x.as_f32();
+        let target = if left < shown {
+            left
+        } else if right > shown + width {
+            right - width
+        } else {
+            return;
+        };
+        let target = target.min(self.scroll.max_offset().x.as_f32()).max(0.);
+        self.scroll.set_offset(point(px(-target), offset.y));
+    }
 }
 
 pub struct BrowserView {
@@ -154,6 +204,11 @@ pub struct BrowserView {
     /// uses. Only trusted while GPUI still has a drag active, since a drag
     /// dropped outside any header never reports back.
     dragging: Option<u32>,
+    scroll: ScrollHandle,
+    /// The capsule last scrolled into view for having the focus, so a
+    /// focused capsule is brought into view once rather than pulled back
+    /// on every scroll of the wheel.
+    revealed: Option<FocusHandle>,
 }
 
 impl BrowserView {
@@ -186,6 +241,8 @@ impl BrowserView {
             deriving: None,
             rows: HashMap::new(),
             dragging: None,
+            scroll: ScrollHandle::new(),
+            revealed: None,
         };
         view.load_profile(state.session.read(cx).active_profile.clone());
         view
@@ -281,6 +338,119 @@ impl BrowserView {
         }));
     }
 
+    /// Works out which capsules each row lays out this frame and gives each
+    /// a focus handle, after scrolling a newly focused one into view.
+    fn layout_rows(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(derived) = &self.derived else {
+            return;
+        };
+        if let Some(opened_from) = self.model.update(cx, |model, _| model.opened_from.take()) {
+            window.focus(&opened_from, cx);
+        }
+        let mut revealed = None;
+        for (position, shelf) in derived.shelves.iter().enumerate() {
+            let Some(row) = self.rows.get_mut(&shelf.key) else {
+                continue;
+            };
+            if let Some(index) = row.focused(&shelf.capsules, window) {
+                let handle = row.cards.get(&shelf.capsules[index].id).cloned();
+                if handle != self.revealed {
+                    row.reveal(index);
+                    self.scroll
+                        .scroll_to_item(position + usize::from(derived.library_empty));
+                }
+                revealed = handle;
+            }
+            let viewport = row.scroll.bounds().size.width.as_f32();
+            row.shown = visible_cards(shelf.capsules.len(), viewport, -row.scroll.offset().x.as_f32());
+            let shown = &shelf.capsules[row.shown.0..row.shown.1];
+            row.cards
+                .retain(|id, handle| handle.is_focused(window) || shown.iter().any(|capsule| capsule.id == *id));
+            for capsule in shown {
+                row.cards
+                    .entry(capsule.id.clone())
+                    .or_insert_with(|| cx.focus_handle().tab_stop(true));
+            }
+        }
+        self.revealed = revealed;
+    }
+
+    /// The arrows between capsules: sideways along a row, and up or down to
+    /// the capsule in the same column of the next row that has any. Past the
+    /// ends they're left to the window's own tab order.
+    fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(derived) = &self.derived else {
+            return;
+        };
+        let shelves = &derived.shelves;
+        let Some((position, index)) = shelves.iter().enumerate().find_map(|(position, shelf)| {
+            let row = self.rows.get(&shelf.key)?;
+            row.focused(&shelf.capsules, window).map(|index| (position, index))
+        }) else {
+            return;
+        };
+        let shelf = &shelves[position];
+        let Some(row) = self.rows.get(&shelf.key) else {
+            return;
+        };
+        let keystroke = &event.keystroke;
+        if nav::is_menu_key(keystroke) {
+            let bounds = row.scroll.bounds();
+            let left = (index as f32).mul_add(CARD_STRIDE, ROW_PADDING) + row.scroll.offset().x.as_f32();
+            let target = MenuTarget {
+                product_ids: vec![shelf.capsules[index].id.to_string()],
+                title: shelf.capsules[index].title.to_string(),
+                position: point(bounds.left() + px(left + 24.), bounds.top() + px(48.)),
+            };
+            self.model
+                .update(cx, |model, cx| model.open_popup(LibraryPopup::GameMenu(target), cx));
+            cx.stop_propagation();
+            return;
+        }
+        if keystroke.modifiers.modified() {
+            return;
+        }
+        let target = match keystroke.key.as_str() {
+            "left" => index.checked_sub(1).map(|index| (position, index)),
+            "right" => (index + 1 < shelf.capsules.len()).then_some((position, index + 1)),
+            "up" | "down" => {
+                let column = index.saturating_sub(row.first_in_view());
+                let filled = |shelf: &ShelfData| !shelf.capsules.is_empty();
+                let other = if keystroke.key == "up" {
+                    shelves[..position].iter().rposition(filled)
+                } else {
+                    shelves[position + 1..]
+                        .iter()
+                        .position(filled)
+                        .map(|other| other + position + 1)
+                };
+                other.map(|other| {
+                    let shelf = &shelves[other];
+                    let first = self.rows.get(&shelf.key).map_or(0, RowState::first_in_view);
+                    (other, (first + column).min(shelf.capsules.len() - 1))
+                })
+            }
+            _ => return,
+        };
+        let Some((position, index)) = target else {
+            if matches!(keystroke.key.as_str(), "left" | "right") {
+                cx.stop_propagation();
+            }
+            return;
+        };
+        let shelf = &shelves[position];
+        let Some(row) = self.rows.get_mut(&shelf.key) else {
+            return;
+        };
+        let handle = row
+            .cards
+            .entry(shelf.capsules[index].id.clone())
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone();
+        window.focus(&handle, cx);
+        cx.stop_propagation();
+    }
+
     /// Re-reads sqlite and rebuilds the shelves only when something they
     /// depend on moved; a no-op on most renders.
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -347,13 +517,16 @@ impl BrowserView {
 }
 
 impl Render for BrowserView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.refresh(cx);
+        self.layout_rows(window, cx);
         let dragging = self.dragging.filter(|_| cx.has_active_drag());
         let browser = div()
             .id("shelf-browser")
             .size_full()
             .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .on_key_down(cx.listener(Self::on_key))
             .pt(px(22.))
             .pb(px(56.));
         let Some(derived) = &self.derived else {
@@ -371,8 +544,7 @@ impl Render for BrowserView {
                     .map(|shelf| self.render_shelf(shelf, &derived.sources, dragging, cx)),
             )
             .child(
-                div()
-                    .id("add-shelf")
+                nav::tab_stop(div().id("add-shelf"))
                     .mt(px(4.))
                     .mx(px(26.))
                     .px(px(14.))

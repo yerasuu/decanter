@@ -113,6 +113,16 @@ impl Render for Root {
     }
 }
 
+/// What Escape does in the main window, once nothing inside it took the key.
+pub fn back(window: &mut Window, cx: &mut App) {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return;
+    };
+    if let Some(shell) = root.read(cx).shell.clone() {
+        shell.update(cx, |shell, cx| shell.back(window, cx));
+    }
+}
+
 /// How the process ends: read once at startup from the database, since
 /// toggling it in Ajustes only takes effect on the next launch.
 pub struct Lifecycle {

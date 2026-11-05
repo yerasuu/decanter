@@ -8,8 +8,8 @@ use decanter_core::Storefront;
 use decanter_core::capabilities::{Feature, Support};
 use decanter_gog::{GameKind, LibraryEntry};
 use gpui::{
-    AnyElement, App, Context, Div, Entity, FocusHandle, Focusable as _, KeyDownEvent, Pixels, Point, SharedString,
-    Stateful, Window, div, prelude::*, px,
+    AnyElement, App, Context, Div, Entity, FocusHandle, Focusable as _, Pixels, Point, SharedString, Stateful, Window,
+    div, prelude::*, px,
 };
 use rust_i18n::t;
 
@@ -39,9 +39,12 @@ type Callback = Rc<dyn Fn(&str, &mut App)>;
 
 /// Per-popup state that only lives while that popup is open: the name
 /// field ("Nueva coleccion…", the new-collection popup) and the focus that
-/// catches Escape.
+/// keeps the keyboard inside it.
 pub struct PopupState {
     pub(crate) focus: FocusHandle,
+    /// What had the focus before the popup took it, given back on close so a
+    /// menu opened from the keyboard returns to the game it was opened on.
+    restore: Option<FocusHandle>,
     pub(crate) naming: bool,
     pub(crate) name: Entity<TextInput>,
     /// Set on every render, since what Enter does depends on the popup's
@@ -73,6 +76,7 @@ struct MenuData {
 
 impl PopupState {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let restore = window.focused(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let name = cx.new(|cx| TextInput::new(Text::new("library.menu.name_placeholder"), cx).text_size(12.));
@@ -96,6 +100,7 @@ impl PopupState {
         .detach();
         Self {
             focus,
+            restore,
             naming: false,
             name,
             on_submit: None,
@@ -133,7 +138,13 @@ pub fn render_popup(
         }));
     });
     let close_model = model.clone();
-    let close: menu::Dismiss = Rc::new(move |_, cx| close_model.update(cx, |model, cx| model.close_popup(cx)));
+    let restore = state.read(cx).restore.clone();
+    let close: menu::Dismiss = Rc::new(move |window, cx| {
+        close_model.update(cx, LibraryModel::close_popup);
+        if let Some(restore) = &restore {
+            window.focus(restore, cx);
+        }
+    });
     let escape = Rc::clone(&close);
     let (position, content) = match popup {
         LibraryPopup::GameMenu(target) => {
@@ -149,15 +160,7 @@ pub fn render_popup(
             shelf_popups::new_collection(&profile_id, &state, &close, window, cx),
         ),
     };
-    let focus = state.read(cx).focus.clone();
-    let content = div()
-        .track_focus(&focus)
-        .on_key_down(move |event: &KeyDownEvent, window, cx| {
-            if event.keystroke.key == "escape" {
-                escape(window, cx);
-            }
-        })
-        .child(content);
+    let content = menu::trap(&state.read(cx).focus, escape, content);
     Some(menu::popup(position, content, window, close))
 }
 
@@ -511,7 +514,7 @@ fn game_action_item(
     if launch_target.is_none()
         && let Some(reason) = super::actions::missing_build(&entry.game)
     {
-        return menu::item("menu-action", false)
+        return menu::item("menu-action", true)
             .opacity(0.5)
             .cursor_default()
             .hover(|item| item)
@@ -544,7 +547,7 @@ fn game_action_item(
     }
 
     let Some(installed) = launch_target else {
-        return menu::item("menu-action", false)
+        return menu::item("menu-action", true)
             .opacity(0.5)
             .cursor_default()
             .hover(|item| item)
@@ -553,7 +556,7 @@ fn game_action_item(
     };
     let testing = match Caps::get(cx).support(Feature::Play) {
         Support::Unavailable(_) => {
-            return menu::item("menu-action", false)
+            return menu::item("menu-action", true)
                 .opacity(0.5)
                 .cursor_default()
                 .hover(|item| item)

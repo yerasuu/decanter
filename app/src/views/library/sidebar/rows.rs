@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use decanter_core::Game;
 use decanter_gog::LibraryEntry;
 use gpui::{
-    AnyElement, App, BoxShadow, ClickEvent, Context, FontWeight, MouseButton, MouseDownEvent, ObjectFit, SharedString,
-    Stateful, Window, div, img, point, prelude::*, px, rgb,
+    AnyElement, App, BoxShadow, ClickEvent, Context, FontWeight, KeyDownEvent, MouseButton, MouseDownEvent, ObjectFit,
+    Pixels, Point, SharedString, Stateful, Window, div, img, point, prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
@@ -15,6 +15,7 @@ use crate::views::library::context_menu::{MenuTarget, auto_tag};
 use crate::views::library::filters::{Filters, KindSelection, is_installed, pending_install_ids, sort_entries};
 use crate::views::library::shelf_popups::ShelfMenuTarget;
 use crate::views::library::{LibraryPopup, actions, data, shelves};
+use crate::widgets::nav::{self, Step};
 use crate::widgets::{running_mark, sidebar_title};
 
 /// Everything the list's rows are derived from; the rows are rebuilt only
@@ -244,13 +245,13 @@ impl SidebarView {
             },
             Row::Head(head) => {
                 let dragging = dims(&head.collection_id);
-                self.shelf_head(head, cx)
+                self.shelf_head(index, head, cx)
                     .when(dragging, |head| head.opacity(0.45))
                     .into_any_element()
             }
             Row::Item { game, installed, shelf } => {
                 let selected = self.model.read(cx).selected.clone();
-                self.item(game, *installed, selected.as_deref(), cx)
+                self.item(index, game, *installed, selected.as_deref(), cx)
                     .when(dims(shelf), |item| item.opacity(0.45))
                     .into_any_element()
             }
@@ -271,7 +272,7 @@ impl SidebarView {
         }
     }
 
-    fn shelf_head(&self, shelf: &ShelfHead, cx: &mut Context<Self>) -> Stateful<gpui::Div> {
+    fn shelf_head(&self, index: usize, shelf: &ShelfHead, cx: &mut Context<Self>) -> Stateful<gpui::Div> {
         let shelf_id = shelf.shelf_id.clone();
         let is_collapsed = shelf.collapsed;
         // Games can be dropped only on a collection whose members are a
@@ -280,8 +281,8 @@ impl SidebarView {
         let installed = shelf.installed;
         let total = shelf.total;
 
-        let mut head = div()
-            .id(SharedString::from(format!("shelf-head-{shelf_id}")))
+        let mut head = nav::tab_stop(div().id(SharedString::from(format!("shelf-head-{shelf_id}"))))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| this.row_key(index, None, event, cx)))
             .flex()
             .items_center()
             .gap(px(7.))
@@ -425,6 +426,7 @@ impl SidebarView {
 
     fn item(
         &self,
+        index: usize,
         game: &Game,
         installed: bool,
         selected: Option<&str>,
@@ -438,8 +440,11 @@ impl SidebarView {
         let click_id = game.id.clone();
         let menu_id = game.id.clone();
         let menu_title = game.title.clone();
-        div()
-            .id(SharedString::from(format!("sidebar-item-{}", game.id)))
+        let key_menu = (game.id.clone(), game.title.clone());
+        nav::tab_stop(div().id(SharedString::from(format!("sidebar-item-{}", game.id))))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                this.row_key(index, Some(&key_menu), event, cx);
+            }))
             // Otherwise the row is as wide as its title, which ran a long
             // one past the panel's edge instead of truncating it.
             .w_full()
@@ -481,7 +486,7 @@ impl SidebarView {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                    this.open_game_menu(&menu_id, &menu_title, event, cx);
+                    this.open_game_menu(&menu_id, &menu_title, event.position, cx);
                 }),
             )
     }
@@ -501,7 +506,35 @@ impl SidebarView {
         self.model.update(cx, |model, cx| model.select(Some(id), cx));
     }
 
-    fn open_game_menu(&self, menu_id: &str, menu_title: &str, event: &MouseDownEvent, cx: &mut Context<Self>) {
+    /// The menu key opens a game row's menu; the arrows and Tab bring the row they move to into
+    /// view first. The list lays out only what's on screen and a margin past it, so that row is
+    /// already a tab stop for the window's tab order to focus once nothing here took the key.
+    fn row_key(&self, index: usize, game: Option<&(String, String)>, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        if nav::is_menu_key(&event.keystroke) {
+            if let (Some((id, title)), Some(bounds)) = (game, self.list.bounds_for_item(index)) {
+                self.open_game_menu(id, title, bounds.center(), cx);
+                cx.stop_propagation();
+            }
+            return;
+        }
+        let Some(step) = Step::of(&event.keystroke) else {
+            return;
+        };
+        let is_stop = |row: &Row| matches!(row, Row::Head(_) | Row::Item { .. } | Row::Rename);
+        let next = match step {
+            Step::Next => self
+                .rows
+                .get(index + 1..)
+                .and_then(|rows| rows.iter().position(is_stop))
+                .map(|next| index + 1 + next),
+            Step::Prev => self.rows.get(..index).and_then(|rows| rows.iter().rposition(is_stop)),
+        };
+        if let Some(next) = next {
+            self.list.scroll_to_reveal_item(next);
+        }
+    }
+
+    fn open_game_menu(&self, menu_id: &str, menu_title: &str, position: Point<Pixels>, cx: &mut Context<Self>) {
         // Right-clicking a marked game targets the whole marked
         // set; right-clicking anything else targets just it.
         let (product_ids, title) = if self.marked.contains(menu_id) && self.marked.len() > 1 {
@@ -515,7 +548,7 @@ impl SidebarView {
         let target = MenuTarget {
             product_ids,
             title,
-            position: event.position,
+            position,
         };
         self.model.update(cx, |model, cx| {
             model.open_popup(LibraryPopup::GameMenu(target), cx);

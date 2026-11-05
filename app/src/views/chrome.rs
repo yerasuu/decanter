@@ -6,8 +6,9 @@ use std::rc::Rc;
 use std::sync::{Arc, LazyLock};
 
 use gpui::{
-    App, CursorStyle, Div, Image, ImageFormat, MouseButton, ObjectFit, ResizeEdge, SharedString, Stateful, Window,
-    WindowBounds, WindowControlArea, WindowDecorations, WindowOptions, div, img, prelude::*, px, rgb, size,
+    App, CursorStyle, Div, Image, ImageFormat, MouseButton, ObjectFit, Pixels, ResizeEdge, SharedString, Size,
+    Stateful, Window, WindowBounds, WindowControlArea, WindowDecorations, WindowOptions, div, img, prelude::*, px, rgb,
+    size,
 };
 use rust_i18n::t;
 
@@ -25,7 +26,7 @@ pub fn window_options(
     min_height: f32,
     cx: &App,
 ) -> WindowOptions {
-    let bounds = gpui::Bounds::centered(None, size(px(width), px(height)), cx);
+    let bounds = gpui::Bounds::centered(None, fitted(size(px(width), px(height)), cx), cx);
     crate::platform::with_window_icon(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(gpui::TitlebarOptions {
@@ -39,6 +40,18 @@ pub fn window_options(
         is_resizable: true,
         ..Default::default()
     })
+}
+
+/// `Bounds::centered` shrinks a window to the primary display, which GPUI only knows on X11. On
+/// Wayland it is fitted to the smallest output instead, since the compositor may put it on any of
+/// them; otherwise a Steam Deck's 1280x800 screen cuts the bottom off the main window.
+fn fitted(wanted: Size<Pixels>, cx: &App) -> Size<Pixels> {
+    if cx.primary_display().is_some() {
+        return wanted;
+    }
+    cx.displays()
+        .iter()
+        .fold(wanted, |fit, display| fit.min(&display.bounds().size))
 }
 
 /// Starts the move a native title bar would start on mousedown.

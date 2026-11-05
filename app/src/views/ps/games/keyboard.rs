@@ -457,7 +457,11 @@ impl KeyboardView {
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if self.capturing.is_none() || event.is_held {
+        if self.capturing.is_none() {
+            return;
+        }
+        cx.stop_propagation();
+        if event.is_held {
             return;
         }
         match sdl_key_name(&event.keystroke.key) {

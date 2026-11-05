@@ -135,6 +135,7 @@ impl SidebarView {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
                     this.set_panel(false, window, cx);
+                    cx.stop_propagation();
                 }
             }))
             .absolute()

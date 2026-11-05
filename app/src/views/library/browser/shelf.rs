@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt as _, BoxShadow, Context, Div, Entity, FontWeight, MouseButton, ObjectFit, ScrollHandle,
-    SharedString, Stateful, Window, div, img, linear_color_stop, linear_gradient, point, prelude::*, px, relative, rgb,
+    Animation, AnimationExt as _, BoxShadow, Context, Div, Entity, FocusHandle, FontWeight, MouseButton, ObjectFit,
+    ScrollHandle, SharedString, Stateful, Window, div, img, linear_color_stop, linear_gradient, point, prelude::*, px,
+    relative, rgb,
 };
 use rust_i18n::t;
 
@@ -11,7 +12,7 @@ use crate::views::library::context_menu::MenuTarget;
 use crate::views::library::filters::Sort;
 use crate::views::library::{LibraryModel, LibraryPopup};
 use crate::widgets::select::SelectStyle;
-use crate::widgets::{Select, tooltip};
+use crate::widgets::{Select, nav, tooltip};
 use crate::{art, theme};
 
 /// `rgba(10, 22, 32, .88)`, the dark chip behind a capsule's pips.
@@ -23,8 +24,8 @@ const HEAD_GROUP: &str = "browser-shelf-head";
 /// A capsule's width plus the row's gap: every card takes the same room,
 /// which is what lets a row lay out only the ones in view.
 const CARD_GAP: f32 = 13.;
-const CARD_STRIDE: f32 = 136. + CARD_GAP;
-const ROW_PADDING: f32 = 26.;
+pub(super) const CARD_STRIDE: f32 = 136. + CARD_GAP;
+pub(super) const ROW_PADDING: f32 = 26.;
 
 /// What a shelf header carries while it's dragged to a new place.
 struct ShelfDrag {
@@ -197,10 +198,9 @@ impl BrowserView {
     /// is paged by the edge arrows (or a sideways wheel) instead.
     fn render_row(&self, shelf: &ShelfData, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let key = shelf.key;
-        let (scroll, hovered) = match self.rows.get(&key) {
-            Some(row) => (row.scroll.clone(), row.hovered),
-            None => (ScrollHandle::new(), false),
-        };
+        let row = self.rows.get(&key);
+        let (scroll, hovered) =
+            row.map_or_else(|| (ScrollHandle::new(), false), |row| (row.scroll.clone(), row.hovered));
         // A pixel of slack either way: an eased scroll lands a hair off the
         // exact end often enough that comparing outright leaves the arrow
         // lit. A row not laid out yet reports a zero max offset, so it reads
@@ -214,7 +214,10 @@ impl BrowserView {
         // all of them out on every hover or progress tick was the slowdown.
         // Spacers stand in for the rest so the scroll range stays whole.
         let count = shelf.capsules.len();
-        let (first, last) = visible_cards(count, scroll.bounds().size.width.as_f32(), -offset.as_f32());
+        let (first, last) = row.map_or_else(
+            || visible_cards(count, scroll.bounds().size.width.as_f32(), -offset.as_f32()),
+            |row| row.shown,
+        );
         let spacer = |cards: usize| div().flex_none().w(px(cards as f32 * CARD_STRIDE - CARD_GAP));
 
         let model = self.model.clone();
@@ -244,11 +247,10 @@ impl BrowserView {
                     // has to re-render the row, not just repaint it.
                     .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
                     .when(first > 0, |row| row.child(spacer(first)))
-                    .children(
-                        shelf.capsules[first..last]
-                            .iter()
-                            .map(|capsule| cover_card(capsule, &model)),
-                    )
+                    .children(shelf.capsules[first..last].iter().map(|capsule| {
+                        let focus = row.and_then(|row| row.cards.get(&capsule.id));
+                        cover_card(capsule, focus, &model)
+                    }))
                     .when(last < count, |row| row.child(spacer(count - last))),
             )
             // An arrow with nothing left behind it is taken out entirely
@@ -335,7 +337,7 @@ fn auto_badge() -> Div {
         .child(t!("library.shelves.auto"))
 }
 
-fn visible_cards(count: usize, viewport: f32, scrolled: f32) -> (usize, usize) {
+pub(super) fn visible_cards(count: usize, viewport: f32, scrolled: f32) -> (usize, usize) {
     // Not laid out yet on the first frame; a wide guess beats a blank row.
     let viewport = if viewport > 0. { viewport } else { 2560. };
     // A full page laid out past either edge: a page arrow moves the row
@@ -347,23 +349,28 @@ fn visible_cards(count: usize, viewport: f32, scrolled: f32) -> (usize, usize) {
     (first.min(last), last)
 }
 
-fn cover_card(capsule: &Capsule, model: &Entity<LibraryModel>) -> impl IntoElement {
+fn cover_card(capsule: &Capsule, focus: Option<&FocusHandle>, model: &Entity<LibraryModel>) -> impl IntoElement {
     let click_model = model.clone();
     let menu_model = model.clone();
     let click_id = capsule.id.clone();
     let menu_id = capsule.id.clone();
     let menu_title = capsule.title.clone();
-    div()
-        .id(capsule.id.clone())
+    nav::focus_ring(div().id(capsule.id.clone()))
+        .when_some(focus, InteractiveElement::track_focus)
         .group(CARD_GROUP)
         .relative()
         .flex_none()
         .w(px(136.))
+        .rounded(px(theme::RADIUS))
         .cursor_pointer()
         .tooltip(tooltip(capsule.title.clone()))
-        .on_click(move |_, _, cx| {
+        .on_click(move |_, window, cx| {
             let id = click_id.to_string();
-            click_model.update(cx, |model, cx| model.select(Some(id), cx));
+            let opened_from = window.last_input_was_keyboard().then(|| window.focused(cx)).flatten();
+            click_model.update(cx, |model, cx| {
+                model.opened_from = opened_from;
+                model.select(Some(id), cx);
+            });
         })
         .on_mouse_down(MouseButton::Right, move |event, _, cx| {
             cx.stop_propagation();

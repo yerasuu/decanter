@@ -8,11 +8,11 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, Div, ElementId, FontWeight, IntoElement, Pixels, RenderOnce, SharedString, Stateful, Window, canvas,
-    div, point, prelude::*, px, rgb,
+    App, Bounds, Context, Div, ElementId, FocusHandle, FontWeight, IntoElement, Pixels, RenderOnce, SharedString,
+    Stateful, Window, canvas, div, point, prelude::*, px, rgb,
 };
 
-use super::menu;
+use super::{menu, nav};
 use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -32,10 +32,23 @@ pub enum SelectStyle {
     Group,
 }
 
-#[derive(Default)]
 struct State {
     open: bool,
     bounds: Option<Bounds<Pixels>>,
+    /// The trigger's, so closing the list gives the keyboard back to it.
+    trigger: FocusHandle,
+    options: FocusHandle,
+}
+
+impl State {
+    fn new(cx: &mut Context<Self>) -> Self {
+        Self {
+            open: false,
+            bounds: None,
+            trigger: cx.focus_handle().tab_stop(true),
+            options: cx.focus_handle(),
+        }
+    }
 }
 
 type OnChange = Rc<dyn Fn(&SharedString, &mut Window, &mut App)>;
@@ -106,8 +119,7 @@ impl Select {
                 let current = value == self.selected;
                 let on_change = self.on_change.clone();
                 let close = Rc::clone(close);
-                div()
-                    .id(("option", index))
+                nav::tab_stop(div().id(("option", index)))
                     .px_2()
                     .py(px(5.))
                     .rounded(px(theme::RADIUS_SM))
@@ -133,10 +145,10 @@ impl Select {
 
 impl RenderOnce for Select {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| State::default());
-        let (open, bounds) = {
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| State::new(cx));
+        let (open, bounds, trigger_focus, options_focus) = {
             let state = state.read(cx);
-            (state.open, state.bounds)
+            (state.open, state.bounds, state.trigger.clone(), state.options.clone())
         };
         let label = self
             .options
@@ -181,6 +193,7 @@ impl RenderOnce for Select {
         let state_for_click = state.clone();
         let trigger = div()
             .id(self.id.clone())
+            .track_focus(&trigger_focus)
             .relative()
             .flex()
             .flex_col()
@@ -199,23 +212,31 @@ impl RenderOnce for Select {
                 .absolute()
                 .size_full(),
             )
-            .on_click(move |_, _, cx| {
+            .on_click(move |_, window, cx| {
                 state_for_click.update(cx, |state, cx| {
                     state.open = !state.open;
+                    if state.open {
+                        window.focus(&state.options, cx);
+                    }
                     cx.notify();
                 });
             });
-        let trigger = style_trigger(trigger, style, chevron);
+        let trigger = nav::focus_ring(style_trigger(trigger, style, chevron));
 
         let popup = bounds.filter(|_| open).map(|bounds| {
             let close_state = state.clone();
-            let close: menu::Dismiss = Rc::new(move |_, cx| {
+            let close: menu::Dismiss = Rc::new(move |window, cx| {
                 close_state.update(cx, |state, cx| {
                     state.open = false;
+                    window.focus(&state.trigger, cx);
                     cx.notify();
                 });
             });
-            let list = self.options_list(bounds.size.width, &close);
+            let list = menu::trap(
+                &options_focus,
+                Rc::clone(&close),
+                self.options_list(bounds.size.width, &close),
+            );
             menu::popup(point(bounds.left(), bounds.bottom() + px(2.)), list, window, close)
         });
 

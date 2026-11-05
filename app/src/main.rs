@@ -192,6 +192,7 @@ fn main() {
                 tracing::error!(%err, "cannot load bundled fonts");
             }
             widgets::input::bind_keys(cx);
+            widgets::nav::observe(cx, views::back);
             state::AppState::init(cx);
             capabilities::Caps::init(cx);
             views::Lifecycle::init(close_to_tray, cx);

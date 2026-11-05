@@ -1,6 +1,6 @@
 use decanter_core::capabilities::Feature;
 use decanter_core::{Game, InstalledGame, Storefront};
-use gpui::{AnyElement, Context, Div, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Div, FocusHandle, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::install_dialog::install_dialog;
@@ -21,13 +21,19 @@ impl DetailView {
             return bar.children(self.install_action(game, bar_state, window, cx));
         }
         let properties_game = game.clone();
-        bar.child(play_action(game, bar_state.launch, bar_state.running, cx))
-            .children(self.uninstall_action(game, &bar_state.dlcs, cx))
-            .child(
-                button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
-                    .tooltip(tooltip(t!("library.properties.title")))
-                    .on_click(move |_, _, cx| open_properties(&properties_game, cx)),
-            )
+        bar.child(play_action(
+            game,
+            bar_state.launch,
+            bar_state.running,
+            &self.primary,
+            cx,
+        ))
+        .children(self.uninstall_action(game, &bar_state.dlcs, cx))
+        .child(
+            button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
+                .tooltip(tooltip(t!("library.properties.title")))
+                .on_click(move |_, _, cx| open_properties(&properties_game, cx)),
+        )
     }
 
     /// Always safe to call — uninstalling something that isn't installed is
@@ -179,6 +185,7 @@ impl DetailView {
                         t!("library.detail.install.button"),
                         false,
                     )
+                    .track_focus(&self.primary)
                     .on_click(cx.listener({
                         let title = game.title.clone();
                         move |this, _, _, cx| {
@@ -259,7 +266,13 @@ impl DetailView {
     }
 }
 
-fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool, cx: &Context<DetailView>) -> AnyElement {
+fn play_action(
+    game: &Game,
+    launch: Option<InstalledGame>,
+    running: bool,
+    primary: &FocusHandle,
+    cx: &Context<DetailView>,
+) -> AnyElement {
     let Some(installed) = launch else {
         let reason = actions::missing_build(game).unwrap_or_else(|| t!("library.detail.no_executable"));
         return theme::muted(reason).into_any_element();
@@ -267,17 +280,19 @@ fn play_action(game: &Game, launch: Option<InstalledGame>, running: bool, cx: &C
     let account_id = game.account_id.clone();
     let product_id = game.id.clone();
     let action = if running {
-        button("stop", ButtonKind::PlaySecondary, t!("library.detail.stop"), false).on_click(move |_, _, cx| {
-            tracing::info!(account_id, product_id, "stopping game");
-            actions::stop_game(account_id.clone(), product_id.clone(), cx);
-        })
+        button("stop", ButtonKind::PlaySecondary, t!("library.detail.stop"), false)
+            .track_focus(primary)
+            .on_click(move |_, _, cx| {
+                tracing::info!(account_id, product_id, "stopping game");
+                actions::stop_game(account_id.clone(), product_id.clone(), cx);
+            })
     } else {
-        button("play", ButtonKind::Play, t!("library.detail.play"), false).on_click(cx.listener(
-            move |this, _, _, cx| {
+        button("play", ButtonKind::Play, t!("library.detail.play"), false)
+            .track_focus(primary)
+            .on_click(cx.listener(move |this, _, _, cx| {
                 this.show_log(cx);
                 actions::launch_game(account_id.clone(), installed.clone(), cx);
-            },
-        ))
+            }))
     };
     Caps::get(cx).gate_or(Feature::Play, action, t!("library.detail.play_unavailable"))
 }

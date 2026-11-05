@@ -28,7 +28,7 @@ use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::select::SelectStyle;
-use crate::widgets::{Emoji, InputEvent, Select, TextInput, emoji, tooltip};
+use crate::widgets::{Emoji, InputEvent, Select, TextInput, emoji, nav, tooltip};
 use rows::{Row, RowsKey};
 
 const SIDEBAR_WIDTH: f32 = 292.;
@@ -444,8 +444,7 @@ impl SidebarView {
 /// `.icon-btn.quick-toggle`: a 13px glyph that fills on hover and keeps a
 /// blue border while its setting is on.
 fn quick_toggle(id: &'static str, glyph: impl IntoElement, active: bool) -> Stateful<gpui::Div> {
-    div()
-        .id(id)
+    nav::tab_stop(div().id(id))
         .flex_none()
         .px_2()
         .py(px(5.))
@@ -468,8 +467,7 @@ fn quick_toggle(id: &'static str, glyph: impl IntoElement, active: bool) -> Stat
 /// `.search-clear` / `.filter-toggle`: same family as the quick toggles,
 /// but the active state colours the glyph instead of filling.
 fn search_button(id: &'static str, active: bool) -> Stateful<gpui::Div> {
-    div()
-        .id(id)
+    nav::tab_stop(div().id(id))
         .flex()
         .flex_none()
         .items_center()
@@ -550,8 +548,7 @@ fn add_game_footer() -> impl IntoElement {
 }
 
 fn footer_row(id: &'static str) -> Stateful<gpui::Div> {
-    div()
-        .id(id)
+    nav::tab_stop(div().id(id))
         .flex()
         .flex_none()
         .items_center()

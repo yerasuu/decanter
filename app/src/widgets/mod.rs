@@ -4,6 +4,7 @@
 
 pub mod input;
 pub mod menu;
+pub mod nav;
 pub mod select;
 
 use std::sync::{Arc, LazyLock};
@@ -92,7 +93,7 @@ pub fn button(
     if disabled {
         base.opacity(0.4).cursor_not_allowed()
     } else {
-        base.cursor_pointer().active(|b| b.mt(px(1.)).mb(px(-1.)))
+        nav::tab_stop(base.cursor_pointer().active(|b| b.mt(px(1.)).mb(px(-1.))))
     }
 }
 
@@ -283,8 +284,7 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
             let tab = *item;
             let selected = tab == active;
             let on_select = on_select.clone();
-            div()
-                .id((id, index))
+            nav::tab_stop(div().id((id, index)))
                 .pb_3()
                 .mb(px(-1.))
                 .border_b_2()

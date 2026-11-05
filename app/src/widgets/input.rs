@@ -122,7 +122,7 @@ impl EventEmitter<InputEvent> for TextInput {}
 impl TextInput {
     pub fn new(placeholder: impl Into<Placeholder>, cx: &mut Context<Self>) -> Self {
         Self {
-            focus_handle: cx.focus_handle(),
+            focus_handle: cx.focus_handle().tab_stop(true),
             content: SharedString::default(),
             placeholder: placeholder.into(),
             read_only: false,

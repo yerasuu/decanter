@@ -206,6 +206,12 @@ impl Shell {
         cx.notify();
     }
 
+    /// Escape, or B on a pad mapped to keys: a game's page or the mods list goes back to the
+    /// shelves, any other section back to Biblioteca.
+    pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate(Page::Library, window, cx);
+    }
+
     /// Registers every program among `paths` as an external game of the
     /// active profile, and offers the first PS dump folder among them to the
     /// PS section. Each file is read, never run.
@@ -380,8 +386,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let active = self.page == page;
-        div()
-            .id(id)
+        crate::widgets::nav::tab_stop(div().id(id))
             .flex()
             .items_center()
             .gap(px(6.))
