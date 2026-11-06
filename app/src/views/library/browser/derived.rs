@@ -25,7 +25,10 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
             entry.kind == decanter_gog::GameKind::Game && entry.parent_id.is_none() && belongs_in_the_library(entry)
         })
         .filter(|entry| !hidden.contains(&entry.game.id))
-        .filter(|entry| !key.installed_only || is_installed(&entry.game, pending_installs))
+        .filter(|entry| {
+            key.filters
+                .accepts(entry, favorites, stats, collections, pending_installs)
+        })
         .cloned()
         .collect();
     let built = shelves::build(&entries, collections, favorites, stats, pending_installs);

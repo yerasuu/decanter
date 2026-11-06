@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use super::context_menu::MenuTarget;
 use super::data::{self, Collections, LibraryStats};
-use super::filters::{PlayState, Sort, pending_install_ids};
+use super::filters::{Filters, Sort, pending_install_ids};
 use super::{LibraryModel, LibraryPopup};
 use crate::state::{AppState, DownloadKey};
 use crate::theme;
@@ -96,7 +96,7 @@ struct ShelvesKey {
     /// The library's own revision: a fetch batch reshapes the shelves but
     /// leaves the sqlite reads above as they were.
     games: u64,
-    installed_only: bool,
+    filters: Filters,
     pending_installs: HashSet<DownloadKey>,
     slots: u64,
     /// The source names and capsule lines are translated.
@@ -509,7 +509,7 @@ impl BrowserView {
         let key = ShelvesKey {
             organisation: organisation_key,
             games: self.games_epoch,
-            installed_only: self.model.read(cx).filters.states.contains(&PlayState::Installed),
+            filters: self.model.read(cx).filters.clone(),
             // A queued or downloading game should already read as installed
             // here, not just once the manifest scan catches up.
             pending_installs: pending_install_ids(&background.installing),
