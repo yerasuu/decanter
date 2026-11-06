@@ -28,12 +28,17 @@ fn component(value: &str, what: &str) -> anyhow::Result<PathBuf> {
         .with_context(|| format!("the {what} {value:?} cannot be a folder name"))
 }
 
+/// Every account's staged downloads in `root`, apart from GOG's `downloading/` so neither store's
+/// scan reads the other's folders.
+pub(super) fn downloading_dir(root: &Path) -> PathBuf {
+    amazon_dir(root).join("downloading")
+}
+
 /// Where `account_id`'s download of `product_id` is staged in `root`: outside `common/`, so a
 /// stopped download never leaves partial files where the game lives, and on its disk, so the
 /// finished files move in by rename.
 pub(super) fn staging_dir(root: &Path, account_id: &str, product_id: &str) -> anyhow::Result<PathBuf> {
-    Ok(amazon_dir(root)
-        .join("downloading")
+    Ok(downloading_dir(root)
         .join(component(account_id, "account id")?)
         .join(component(product_id, "product id")?))
 }

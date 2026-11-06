@@ -3,47 +3,14 @@
 //! library folder's `downloading/`, the only place they are recorded.
 
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
-use decanter_core::Library;
+use decanter_core::{Library, Storefront};
 
-use super::journal::{self, Kind, PauseReason, Paused, Phase, Room};
+pub use decanter_runtime::install::UnfinishedDownload;
+
+use super::journal::{self, Kind, PauseReason, Paused, Phase};
 use super::staging::{DOWNLOADING, staging_in};
 use super::{BrokenFile, BrokenReason, Cancelled, Progress};
-
-/// A download whose journal says it hasn't finished.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct UnfinishedDownload {
-    pub account_id: String,
-    pub product_id: String,
-    /// The base game, for a DLC.
-    pub parent_id: Option<String>,
-    pub title: String,
-    /// Carried on through [`resume_repair`] rather than [`resume`].
-    pub is_repair: bool,
-    /// Another language's files added to a game already installed.
-    pub is_language: bool,
-    /// A pinned build (a rollback), which a resume keeps.
-    pub build_id: Option<String>,
-    /// The journal's last pause, or [`PauseReason::ClosedUnexpectedly`] when
-    /// it ends without one.
-    pub reason: PauseReason,
-    /// For a full disk, how much it needed.
-    pub room: Option<Room>,
-    pub bytes_done: u64,
-    /// `None` for a download queued and never planned.
-    pub total_bytes: Option<u64>,
-    /// The library folder it downloads into.
-    pub root: PathBuf,
-    /// Another decanter process (the CLI, say) is running it right now.
-    pub in_use: bool,
-    /// When its journal last recorded anything, which for a paused download
-    /// is when it paused.
-    pub paused_since: Option<SystemTime>,
-    /// A DLC ticked with its game and never planned, which takes the game's reason.
-    pub is_queued_behind_game: bool,
-}
 
 /// Where every download of the library folder `root` is staged, for sizing what they hold.
 #[must_use]
@@ -196,6 +163,7 @@ async fn unfinished(root: &Path, staging: &Path) -> Option<UnfinishedDownload> {
         .and_then(|stopped| stopped.room)
         .filter(|_| stop.is_none());
     Some(UnfinishedDownload {
+        storefront: Storefront::Gog,
         account_id: request.account_id.clone(),
         product_id: request.product_id.clone(),
         parent_id: request.parent_id.clone(),

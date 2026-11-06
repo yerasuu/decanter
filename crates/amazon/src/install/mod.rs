@@ -11,6 +11,7 @@
 //! ```text
 //! <root>/decanter/amazon/downloading/<account>/<product>/
 //!   lock            held while a run owns the download
+//!   download.json   title, kind, size and how it stopped, to list it after a restart
 //!   progress.log    one record per finished file
 //!   files/<path>    a finished file; `<path>.part` one in flight
 //! <root>/decanter/amazon/manifests/<product>.raw
@@ -23,6 +24,7 @@ mod fuel;
 mod import;
 mod sdk;
 mod stop;
+mod unfinished;
 
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use core::time::Duration;
@@ -41,6 +43,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use self::distribution::{Asked, GameDownload, ManifestFetch};
 use self::fetch::{Failure, Job, Run};
 use self::stop::{Stop, StopFlag};
+use self::unfinished::Record;
 use crate::library::is_id;
 use crate::manifest::{Manifest, ManifestPath, parse_signed_manifest, plan};
 
@@ -48,6 +51,7 @@ pub use fuel::{FuelLaunch, read_fuel};
 pub use import::{Differences, Imported, import};
 pub use sdk::{SdkDirs, ensure_sdk};
 pub use stop::{cancel, pause, pause_for_quit};
+pub use unfinished::unfinished_downloads;
 
 const LOG: &str = "progress.log";
 const FILES: &str = "files";
@@ -191,87 +195,99 @@ async fn run(
         .with_context(|| format!("creating {}", staging.display()))?;
     let held = lock_staging(&staging).await?;
     tracing::info!(account_id, product_id, ?kind, dest = %dest.display(), "amazon download started");
+    let mut staged = Record::new(target.title, kind == Kind::Repair);
+    staged.save(&staging).await;
 
-    let slot = tokio::select! {
-        slot = decanter_runtime::install::take_slot(library) => slot,
-        () = flag.stopped() => return Err(ended(flag, &staging, &root, 0).await),
-    };
-    let (download, raw) = locate(flag, target, &staging, &root).await?;
-    let manifest = Arc::new(parse_signed_manifest(&raw).context("Amazon's manifest for this game was refused")?);
-    let saved = saved_manifest(&root, product_id, installed.is_some()).await;
-    let (log, done) = open_log(&staging).await?;
-    let files_dir = staging.join(FILES);
-    let checked = check(
-        Arc::clone(&manifest),
-        saved.as_ref().map(Arc::clone),
-        kind,
-        &dest,
-        &files_dir,
-        done,
-    )
-    .await?;
-    let removed: Vec<ManifestPath> = saved
-        .as_deref()
-        .map(|old| plan(&manifest, Some(old)).remove.into_iter().cloned().collect())
-        .unwrap_or_default();
-    tracing::info!(
-        account_id,
-        product_id,
-        version_id = download.version_id,
-        files = manifest.files().len(),
-        fetch = checked.fetch.len(),
-        staged = checked.staged.len(),
-        present = checked.present,
-        removed = removed.len(),
-        "amazon download planned"
-    );
-    let transfer = Transfer {
-        download: &download,
-        manifest: &manifest,
-        checked: &checked,
-        flag,
-        staging: &staging,
-        root: &root,
-    };
-    transfer.fetch(log, on_progress).await?;
-    drop(slot);
+    let landed: anyhow::Result<String> = async {
+        let slot = tokio::select! {
+            slot = decanter_runtime::install::take_slot(library) => slot,
+            () = flag.stopped() => return Err(ended(flag, &staging, &root, 0).await),
+        };
+        let (download, raw) = locate(flag, target, &staging, &root).await?;
+        let manifest = Arc::new(parse_signed_manifest(&raw).context("Amazon's manifest for this game was refused")?);
+        let saved = saved_manifest(&root, product_id, installed.is_some()).await;
+        let (log, done) = open_log(&staging).await?;
+        let files_dir = staging.join(FILES);
+        let checked = check(
+            Arc::clone(&manifest),
+            saved.as_ref().map(Arc::clone),
+            kind,
+            &dest,
+            &files_dir,
+            done,
+        )
+        .await?;
+        staged.planned(checked.total_bytes(&manifest));
+        staged.save(&staging).await;
+        let removed: Vec<ManifestPath> = saved
+            .as_deref()
+            .map(|old| plan(&manifest, Some(old)).remove.into_iter().cloned().collect())
+            .unwrap_or_default();
+        tracing::info!(
+            account_id,
+            product_id,
+            version_id = download.version_id,
+            files = manifest.files().len(),
+            fetch = checked.fetch.len(),
+            staged = checked.staged.len(),
+            present = checked.present,
+            removed = removed.len(),
+            "amazon download planned"
+        );
+        let transfer = Transfer {
+            download: &download,
+            manifest: &manifest,
+            checked: &checked,
+            flag,
+            staging: &staging,
+            root: &root,
+        };
+        transfer.fetch(log, on_progress).await?;
+        drop(slot);
 
-    let moved: Vec<usize> = checked.staged.iter().chain(&checked.fetch).copied().collect();
-    let landing = {
-        let manifest = Arc::clone(&manifest);
-        let dest = dest.clone();
-        tokio::task::spawn_blocking(move || land(&manifest, &moved, &removed, &dest, &files_dir))
+        let moved: Vec<usize> = checked.staged.iter().chain(&checked.fetch).copied().collect();
+        let landing = {
+            let manifest = Arc::clone(&manifest);
+            let dest = dest.clone();
+            tokio::task::spawn_blocking(move || land(&manifest, &moved, &removed, &dest, &files_dir))
+        };
+        landing
+            .await
+            .context("the move into the library stopped")?
+            .with_context(|| format!("moving the game into {}", dest.display()))?;
+        let previous_program = installed.as_ref().and_then(|game| game.launch_executable.as_deref());
+        let launch_executable = launch_program(&dest, previous_program).await;
+        let record = match installed {
+            Some(game) => InstalledGame {
+                build_id: download.version_id.clone(),
+                size_on_disk: Some(manifest.total_size()),
+                launch_executable,
+                ..game
+            },
+            None => InstalledGame {
+                launch_executable,
+                ..new_record(target, install_dir, &download, manifest.total_size())
+            },
+        };
+        save_record(library, &root, &record, &raw).await?;
+        Ok(download.version_id)
+    }
+    .await;
+    let version_id = match landed {
+        Ok(version_id) => version_id,
+        Err(err) => {
+            if let Some(paused) = err.downcast_ref::<Paused>() {
+                staged.stopped(paused);
+                staged.save(&staging).await;
+            }
+            return Err(err);
+        }
     };
-    landing
-        .await
-        .context("the move into the library stopped")?
-        .with_context(|| format!("moving the game into {}", dest.display()))?;
-    let previous_program = installed.as_ref().and_then(|game| game.launch_executable.as_deref());
-    let launch_executable = launch_program(&dest, previous_program).await;
-    let record = match installed {
-        Some(game) => InstalledGame {
-            build_id: download.version_id.clone(),
-            size_on_disk: Some(manifest.total_size()),
-            launch_executable,
-            ..game
-        },
-        None => InstalledGame {
-            launch_executable,
-            ..new_record(target, install_dir, &download, manifest.total_size())
-        },
-    };
-    save_record(library, &root, &record, &raw).await?;
     drop(held);
     if let Err(err) = tokio::fs::remove_dir_all(&staging).await {
         tracing::warn!(staging = %staging.display(), error = %err, "couldn't remove the finished amazon staging");
     }
-    tracing::info!(
-        account_id,
-        product_id,
-        version_id = download.version_id,
-        ?kind,
-        "amazon download finished"
-    );
+    tracing::info!(account_id, product_id, version_id, ?kind, "amazon download finished");
     Ok(())
 }
 
@@ -353,9 +369,7 @@ impl Transfer<'_> {
             })
             .collect();
         let staged_bytes = self.checked.staged_bytes(self.manifest);
-        let total = jobs
-            .iter()
-            .fold(staged_bytes, |sum, job| sum.saturating_add(job.file.size()));
+        let total = self.checked.total_bytes(self.manifest);
         let on_disk: Vec<AtomicU64> = jobs.iter().map(|job| AtomicU64::new(part_len(&job.part()))).collect();
         let bytes_done = || {
             on_disk.iter().fold(staged_bytes, |sum, bytes| {
@@ -574,6 +588,13 @@ struct Checked {
 }
 
 impl Checked {
+    fn total_bytes(&self, manifest: &Manifest) -> u64 {
+        self.fetch
+            .iter()
+            .filter_map(|&index| manifest.files().get(index))
+            .fold(self.staged_bytes(manifest), |sum, file| sum.saturating_add(file.size()))
+    }
+
     fn staged_bytes(&self, manifest: &Manifest) -> u64 {
         self.staged
             .iter()

@@ -2,9 +2,9 @@
 //! the same way, and the download slot they share so only one of them downloads at a time.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
-use decanter_core::Library;
+use decanter_core::{Library, Storefront};
 use serde::{Deserialize, Serialize};
 
 use crate::journal::{LockError, StagingLock};
@@ -77,6 +77,41 @@ pub struct Paused {
 #[derive(Debug, thiserror::Error)]
 #[error("download cancelled")]
 pub struct Cancelled;
+
+/// A download a run left unfinished, as each store finds it in its own staging, so the app lists
+/// a GOG and an Amazon one as the same paused row.
+#[derive(Debug, Clone)]
+pub struct UnfinishedDownload {
+    /// Whose install records and resume it goes through.
+    pub storefront: Storefront,
+    pub account_id: String,
+    pub product_id: String,
+    /// The base game, for a DLC.
+    pub parent_id: Option<String>,
+    pub title: String,
+    /// Carried on as a repair rather than an install.
+    pub is_repair: bool,
+    /// Another language's files added to a game already installed.
+    pub is_language: bool,
+    /// A pinned build (a rollback), which a resume keeps.
+    pub build_id: Option<String>,
+    /// The last pause its staging recorded, or [`PauseReason::ClosedUnexpectedly`] when it
+    /// recorded none.
+    pub reason: PauseReason,
+    /// For a full disk, how much it needed.
+    pub room: Option<Room>,
+    pub bytes_done: u64,
+    /// `None` for a download queued and never planned.
+    pub total_bytes: Option<u64>,
+    /// The library folder it downloads into.
+    pub root: PathBuf,
+    /// Another decanter process (the CLI, say) is running it right now.
+    pub in_use: bool,
+    /// When its staging last recorded anything, which for a paused download is when it paused.
+    pub paused_since: Option<SystemTime>,
+    /// A DLC ticked with its game and never planned, which takes the game's reason.
+    pub is_queued_behind_game: bool,
+}
 
 /// What a download switched build kept: the store published another build while it was stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

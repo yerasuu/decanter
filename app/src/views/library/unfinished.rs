@@ -156,6 +156,10 @@ async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> (Vec<Do
         .inspect_err(|err| tracing::warn!(%err, "could not read the resume-on-start setting, resuming"))
         .unwrap_or(true);
     let found = decanter_gog::unfinished_downloads(library).await;
+    #[cfg(target_os = "linux")]
+    let found = found
+        .into_iter()
+        .chain(decanter_amazon::unfinished_downloads(library).await);
     let (resume, gone, listed) = state.background.update(cx, |background, cx| {
         let mut resume = Vec::new();
         let mut listed = HashSet::new();
@@ -171,7 +175,7 @@ async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> (Vec<Do
                     // A DLC whose game isn't in yet follows the game, once that lands.
                     let waits_for_game = download.parent_id.as_ref().is_some_and(|parent_id| {
                         library
-                            .read_manifest(&download.account_id, decanter_core::Storefront::Gog, parent_id)
+                            .read_manifest(&download.account_id, download.storefront, parent_id)
                             .is_none()
                     });
                     if !download.in_use
@@ -251,11 +255,7 @@ fn kind_of(library: &Library, download: &UnfinishedDownload) -> DownloadKind {
     } else if download.parent_id.is_some() {
         DownloadKind::Dlc
     } else if library
-        .read_manifest(
-            &download.account_id,
-            decanter_core::Storefront::Gog,
-            &download.product_id,
-        )
+        .read_manifest(&download.account_id, download.storefront, &download.product_id)
         .is_none()
     {
         DownloadKind::Install
