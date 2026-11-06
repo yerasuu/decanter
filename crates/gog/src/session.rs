@@ -124,13 +124,16 @@ pub(crate) async fn live_token(account_id: &str) -> anyhow::Result<Token> {
 /// The session is stored again after every call, failed ones included: GOG
 /// rotates the refresh token on use, and a renewal can succeed before the
 /// request that then fails, so skipping the store would leave only a spent
-/// refresh token in the keyring. Load, call and store all run under the
-/// account's [`crate::session_lock`], so that no two callers start from the
-/// same stored refresh token; the [`Client`]'s own renewal lock
-/// then covers whatever `call` runs concurrently on it.
+/// refresh token in the keyring. No two callers may start from the same
+/// stored refresh token, so loading, the renewal due at the start and each
+/// store run under the account's [`crate::session_lock`]; `call` itself runs
+/// without it, since a long pass (the order history, the library listing)
+/// would otherwise keep a game launch waiting for its session. The final store
+/// replaces only the session this call stored at the start: if another caller
+/// stored a newer one meanwhile, that one stays.
 async fn locked<T>(account_id: &str, call: impl AsyncFnOnce(&Client) -> T) -> anyhow::Result<Option<T>> {
     let lock = crate::session_lock(account_id);
-    let _guard = lock.lock().await;
+    let guard = lock.lock().await;
 
     let Some(stored) = crate::achv_try!(crate::read_session(account_id).await) else {
         tracing::debug!(account_id, "no GOG session stored for this account");
@@ -146,16 +149,37 @@ async fn locked<T>(account_id: &str, call: impl AsyncFnOnce(&Client) -> T) -> an
     )));
     let client = crate::achv_try!(Client::new(token).context("building the GOG HTTP client"));
 
-    let answer = call(&client).await;
-
-    let ended = Secret::from(crate::achv_try!(
-        serde_json::to_string(&client.token().await).context("serializing the GOG session")
-    ));
-    if ended.expose() != stored.expose() {
-        crate::achv_try!(crate::write_session(account_id, ended).await);
+    // A refusal here is reported by `call`'s own request, which meets the same stored session.
+    if let Err(err) = client.fresh_token().await {
+        tracing::debug!(account_id, error = %err, "GOG session renewal at the start of a call failed");
+    }
+    let started = crate::achv_try!(serialize(&client).await);
+    if started.expose() != stored.expose() {
+        crate::achv_try!(crate::write_session(account_id, Secret::from(started.expose().to_owned())).await);
         tracing::info!(account_id, "stored the renewed GOG session");
     }
+    drop(guard);
+
+    let answer = call(&client).await;
+
+    let ended = crate::achv_try!(serialize(&client).await);
+    if ended.expose() != started.expose() {
+        let _guard = lock.lock().await;
+        let current = crate::achv_try!(crate::read_session(account_id).await);
+        if current.is_some_and(|stored_now| stored_now.expose() == started.expose()) {
+            crate::achv_try!(crate::write_session(account_id, ended).await);
+            tracing::info!(account_id, "stored the renewed GOG session");
+        } else {
+            tracing::debug!(account_id, "another caller stored a newer GOG session, keeping it");
+        }
+    }
     Ok(Some(answer))
+}
+
+async fn serialize(client: &Client) -> anyhow::Result<Secret> {
+    serde_json::to_string(&client.token().await)
+        .map(Secret::from)
+        .context("serializing the GOG session")
 }
 
 /// One message with the whole cause chain, since callers show only the
