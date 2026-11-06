@@ -104,8 +104,8 @@ const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 const STEAM_TABS: &[Tab] = &[Tab::General];
 
 /// Amazon has no branches, languages, DLC or cloud saves decanter reads yet;
-/// its files are verified like any store's.
-const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::LocalFiles];
+/// its files are verified and updated like any store's.
+const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close

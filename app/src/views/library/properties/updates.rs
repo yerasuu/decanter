@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use decanter_core::InstalledGame;
+use decanter_core::{InstalledGame, Storefront};
 use gpui::{Context, Window, prelude::*};
 use rust_i18n::t;
 
@@ -49,7 +49,7 @@ impl UpdatesTab {
         tracing::debug!(account_id, product_id = %installed.game_id, "checking gog for a newer build");
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let outcome = decanter_gog::check_update(&account_id, &installed).await;
+            let outcome = check_build(&account_id, &installed).await;
             let _ = this.update(cx, |this, cx| {
                 match outcome {
                     Ok(update) => this.result = Some(update),
@@ -68,6 +68,7 @@ impl UpdatesTab {
 
     fn install_update(&mut self, cx: &mut Context<Self>) {
         let target = Rc::clone(&self.target);
+        let latest = self.result.clone().flatten();
         self.updating = true;
         self.error = None;
         tracing::info!(
@@ -93,6 +94,34 @@ impl UpdatesTab {
                 });
                 return;
             };
+            #[cfg(target_os = "linux")]
+            if target.storefront == Storefront::AmazonGames {
+                let key = DownloadKey::new(account_id, product_id);
+                crate::views::library::amazon_install::download(
+                    key,
+                    target.title.clone(),
+                    DownloadKind::Update,
+                    None,
+                    &state,
+                    cx,
+                )
+                .await;
+                let _ = this.update(cx, |this, cx| {
+                    this.updating = false;
+                    this.reload();
+                    // The row in Descargas carries a failure or a pause; the tab only learns
+                    // whether the record moved to the version the check found.
+                    let is_current = this
+                        .installed
+                        .as_ref()
+                        .is_some_and(|installed| Some(&installed.build_id) == latest.as_ref());
+                    if is_current {
+                        this.result = Some(None);
+                    }
+                    cx.notify();
+                });
+                return;
+            }
             let (on_progress, progress) = install::progress_channel();
             let update = decanter_gog::install(
                 &core_library,
@@ -175,12 +204,23 @@ impl Render for UpdatesTab {
                         t!("library.properties.updates.installed_build"),
                         installed.build_id.clone(),
                     ))
-                    .child(row(
-                        t!("library.detail.install.branch"),
-                        installed.branch.clone().unwrap_or_else(|| "mainline".to_string()),
-                    )),
+                    .children((installed.storefront != Storefront::AmazonGames).then(|| {
+                        row(
+                            t!("library.detail.install.branch"),
+                            installed.branch.clone().unwrap_or_else(|| "mainline".to_string()),
+                        )
+                    })),
             )
             .child(actions)
             .children(error_line(self.error.as_ref()))
     }
+}
+
+/// The newer build's id for `installed`, from its own store.
+async fn check_build(account_id: &str, installed: &InstalledGame) -> anyhow::Result<Option<String>> {
+    #[cfg(target_os = "linux")]
+    if installed.storefront == Storefront::AmazonGames {
+        return decanter_amazon::check_update(account_id, installed).await;
+    }
+    decanter_gog::check_update(account_id, installed).await
 }

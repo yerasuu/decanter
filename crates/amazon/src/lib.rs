@@ -69,6 +69,7 @@ mod login;
 mod manifest;
 mod pkce;
 mod session;
+mod updates;
 
 pub use install::{
     BrokenFile, BrokenReason, FuelLaunch, SdkDirs, Target, VerifyReport, cancel, discard, ensure_sdk, install, pause,
@@ -82,3 +83,4 @@ pub use manifest::{
 pub use session::{
     Account, Deregistration, Live, LiveSession, SessionState, given_name, live_session, log_out, session_state,
 };
+pub use updates::check_update;
