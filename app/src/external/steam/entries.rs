@@ -95,7 +95,8 @@ pub fn rows(profile_id: &str) -> Vec<LibraryEntry> {
 }
 
 /// Writes the desktop entry that gives each Steam entry's window its own icon, with the art Steam
-/// has now rather than the manifest's.
+/// has now rather than the manifest's. A game Steam doesn't have installed has no window to give
+/// one to, so it has none.
 pub async fn sync_taskbar(profile_id: &str) {
     if !is_shown(profile_id) {
         return;
@@ -104,11 +105,13 @@ pub async fn sync_taskbar(profile_id: &str) {
         .map(|root| super::installed(&root).collect())
         .unwrap_or_default();
     for mut game in list(profile_id) {
-        if let Some(app) = app_id(&game).and_then(|id| installed.get(&id)) {
-            let art = super::game_art(app.art.clone());
-            game.art.icon = art.icon.or(game.art.icon);
-            game.art.cover = art.cover.or(game.art.cover);
-        }
+        let Some(app) = app_id(&game).and_then(|id| installed.get(&id)) else {
+            crate::taskbar::remove_pc(&game.account_id, game.storefront, &game.game_id).await;
+            continue;
+        };
+        let art = super::game_art(app.art.clone());
+        game.art.icon = art.icon.or(game.art.icon);
+        game.art.cover = art.cover.or(game.art.cover);
         crate::taskbar::sync_pc(&game).await;
     }
 }

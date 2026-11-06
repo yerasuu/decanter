@@ -345,7 +345,7 @@ pub async fn sync_pc(game: &InstalledGame) {
             .ok()
             .and_then(|db| db.list_games(&game.account_id).ok())
             .and_then(|games| games.into_iter().find(|cached| cached.product_id == game.game_id))
-            .and_then(|cached| cached.icon_url)
+            .and_then(|cached| cached.icon_url.or(cached.cover_url))
     } else {
         game.art.icon.clone().or_else(|| game.art.cover.clone())
     };
