@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "게임의 fuel.json을 사용할 수 없어 인수 �
 amazon.install.no_entitlement: "이 게임의 Amazon 사용 권한이 아직 캐시되지 않았습니다. Amazon Games 라이브러리가 새로 고쳐진 후 다시 시도하세요."
 amazon.credentials.kind: "Amazon Games 세션"
 amazon.credentials.confirm: '대상: %{subject}. Amazon Games 세션이 키링에서 제거됩니다. 계정은 로그아웃되지만 기기는 Amazon 계정에서 제거되지 않으며, 사용하려면 다시 로그인해야 합니다.'
+amazon.import.button: "기존 설치 가져오기"
+amazon.import.pick_title: "게임 폴더 선택"
+amazon.import.working: "Amazon과 폴더를 대조하는 중…"
+amazon.import.differs: "폴더의 파일 %{total}개 중 %{differing}개가 Amazon의 현재 버전과 일치하지 않습니다."
+amazon.import.register_repair: "등록 후 복구"

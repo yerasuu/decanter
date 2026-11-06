@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "The game's fuel.json could not be used, its program 
 amazon.install.no_entitlement: "This game's Amazon entitlement isn't cached yet. Try again once the Amazon Games library has refreshed."
 amazon.credentials.kind: "Amazon Games session"
 amazon.credentials.confirm: "The Amazon Games session of %{subject} will be removed from the keyring. That logs the account out without removing the device from your Amazon account: you will have to log in again to use it."
+amazon.import.button: "Import existing install"
+amazon.import.pick_title: "Choose the game's folder"
+amazon.import.working: "Checking the folder against Amazon…"
+amazon.import.differs: "%{differing} of %{total} files in the folder do not match Amazon's current version."
+amazon.import.register_repair: "Register and repair"

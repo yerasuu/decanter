@@ -109,6 +109,53 @@ pub async fn download(
     refresh_install_state(state, account_id, product_id, cx);
 }
 
+/// What importing a folder ended in, when it did not fail.
+pub enum Imported {
+    Recorded,
+    /// Nothing was recorded: `differing` of the folder's `total` files are not Amazon's.
+    Differs {
+        differing: usize,
+        total: usize,
+    },
+}
+
+/// Registers `folder` as the installed game, or says how far it is from Amazon's files.
+pub async fn import(
+    key: &DownloadKey,
+    title: &str,
+    folder: &std::path::Path,
+    differences: decanter_amazon::Differences,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) -> Result<Imported, Text> {
+    let DownloadKey { account_id, product_id } = key;
+    let entitlement_id = entitlement_id(account_id, product_id).ok_or_else(|| {
+        tracing::error!(
+            account_id,
+            product_id,
+            "no cached entitlement id, the amazon import can't start"
+        );
+        Text::new("amazon.install.no_entitlement")
+    })?;
+    let library = crate::core::library_for_account(account_id)
+        .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))?;
+    let target = decanter_amazon::Target::new(account_id, product_id, &entitlement_id, title);
+    let found = decanter_amazon::import(&library, target, folder, differences)
+        .await
+        .inspect_err(|err| {
+            tracing::error!(account_id, product_id, error = %format_args!("{err:#}"), "amazon import failed");
+        })
+        .map_err(|err| Text::verbatim(format!("{err:#}")))?;
+    if found.is_recorded {
+        refresh_install_state(state, account_id, product_id, cx);
+        return Ok(Imported::Recorded);
+    }
+    Ok(Imported::Differs {
+        differing: found.broken.len(),
+        total: found.files_checked,
+    })
+}
+
 /// Deletes the stopped download of `key`'s game, the confirmed cancel of a paused row.
 pub async fn discard(library: &Library, key: &DownloadKey) -> Result<(), Text> {
     decanter_amazon::discard(library, &key.account_id, &key.product_id)

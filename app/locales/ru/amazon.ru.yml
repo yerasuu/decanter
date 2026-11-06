@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "Не удалось использовать fuel.js
 amazon.install.no_entitlement: "Право Amazon на эту игру ещё не сохранено. Повторите попытку после обновления библиотеки Amazon Games."
 amazon.credentials.kind: "Сеанс Amazon Games"
 amazon.credentials.confirm: "Сеанс Amazon Games пользователя %{subject} будет удалён из связки ключей. Учётная запись выйдет из системы, но устройство не будет удалено из вашей учётной записи Amazon: чтобы пользоваться ею, придётся снова войти."
+amazon.import.button: "Импортировать существующую установку"
+amazon.import.pick_title: "Выберите папку с игрой"
+amazon.import.working: "Сверка папки с Amazon…"
+amazon.import.differs: "%{differing} из %{total} файлов в папке не совпадают с текущей версией Amazon."
+amazon.import.register_repair: "Зарегистрировать и восстановить"

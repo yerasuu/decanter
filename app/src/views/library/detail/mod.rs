@@ -7,6 +7,7 @@
 
 mod achievements;
 mod action_bar;
+mod amazon_import;
 mod hero;
 mod install_dialog;
 mod summary;
@@ -143,6 +144,7 @@ struct Uninstall {
 struct Local {
     tab: DetailTab,
     uninstall: Uninstall,
+    import: amazon_import::Import,
     dialog: Option<InstallDialog>,
     /// Follows the game's latest run, which a new one replaces.
     log: Option<Entity<LogView>>,

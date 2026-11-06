@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "无法使用游戏的 fuel.json，其程序将不带
 amazon.install.no_entitlement: "尚未缓存此游戏的 Amazon 授权。请在 Amazon Games 库刷新后重试。"
 amazon.credentials.kind: "Amazon Games 会话"
 amazon.credentials.confirm: "%{subject} 的 Amazon Games 会话将从密钥环中移除。这会使该账户退出登录，但不会从你的 Amazon 账户中移除该设备：要继续使用，需要重新登录。"
+amazon.import.button: "导入现有安装"
+amazon.import.pick_title: "选择游戏文件夹"
+amazon.import.working: "正在与 Amazon 核对文件夹…"
+amazon.import.differs: "文件夹中 %{total} 个文件里有 %{differing} 个与 Amazon 当前版本不一致。"
+amazon.import.register_repair: "注册并修复"

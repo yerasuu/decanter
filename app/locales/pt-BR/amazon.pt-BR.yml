@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "Não foi possível usar o fuel.json do jogo, o progr
 amazon.install.no_entitlement: "O direito de uso da Amazon deste jogo ainda não está em cache. Tente de novo quando a biblioteca da Amazon Games for atualizada."
 amazon.credentials.kind: "Sessão da Amazon Games"
 amazon.credentials.confirm: "A sessão da Amazon Games de %{subject} será removida do chaveiro. Isso desconecta a conta sem remover o dispositivo da sua conta da Amazon: você terá que fazer login de novo para usá-la."
+amazon.import.button: "Importar instalação existente"
+amazon.import.pick_title: "Escolha a pasta do jogo"
+amazon.import.working: "Verificando a pasta com a Amazon…"
+amazon.import.differs: "%{differing} de %{total} arquivos da pasta não correspondem à versão atual da Amazon."
+amazon.import.register_repair: "Registrar e reparar"

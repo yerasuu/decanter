@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "Die fuel.json des Spiels war nicht nutzbar, sein Pro
 amazon.install.no_entitlement: "Die Amazon-Berechtigung dieses Spiels ist noch nicht zwischengespeichert. Versuche es erneut, sobald die Amazon-Games-Bibliothek aktualisiert wurde."
 amazon.credentials.kind: "Amazon-Games-Sitzung"
 amazon.credentials.confirm: "Die Amazon-Games-Sitzung von %{subject} wird aus dem Keyring entfernt. Dadurch wird das Konto abgemeldet, ohne das Gerät aus deinem Amazon-Konto zu entfernen: Du musst dich erneut anmelden, um es zu nutzen."
+amazon.import.button: "Vorhandene Installation importieren"
+amazon.import.pick_title: "Spielordner auswählen"
+amazon.import.working: "Ordner wird mit Amazon abgeglichen…"
+amazon.import.differs: "%{differing} von %{total} Dateien im Ordner stimmen nicht mit der aktuellen Version von Amazon überein."
+amazon.import.register_repair: "Registrieren und reparieren"

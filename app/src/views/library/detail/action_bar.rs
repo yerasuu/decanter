@@ -257,6 +257,10 @@ impl DetailView {
                     }))
                     .into_any_element(),
                 ];
+                #[cfg(target_os = "linux")]
+                if game.storefront == Storefront::AmazonGames {
+                    elements.extend(self.import_action(game, cx));
+                }
                 elements.extend(
                     self.local
                         .dialog

@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "Le fuel.json du jeu est inutilisable, son programme 
 amazon.install.no_entitlement: "Le droit Amazon de ce jeu n’est pas encore en cache. Réessayez une fois la bibliothèque Amazon Games actualisée."
 amazon.credentials.kind: "Session Amazon Games"
 amazon.credentials.confirm: "La session Amazon Games de %{subject} sera supprimée du trousseau. Cela déconnecte le compte sans supprimer l’appareil de votre compte Amazon : vous devrez vous reconnecter pour l’utiliser."
+amazon.import.button: "Importer une installation existante"
+amazon.import.pick_title: "Choisir le dossier du jeu"
+amazon.import.working: "Vérification du dossier auprès d'Amazon…"
+amazon.import.differs: "%{differing} fichiers sur %{total} du dossier ne correspondent pas à la version actuelle d'Amazon."
+amazon.import.register_repair: "Enregistrer et réparer"

@@ -20,6 +20,7 @@ mod disk;
 mod distribution;
 mod fetch;
 mod fuel;
+mod import;
 mod sdk;
 mod stop;
 
@@ -44,6 +45,7 @@ use crate::library::is_id;
 use crate::manifest::{Manifest, ManifestPath, parse_signed_manifest, plan};
 
 pub use fuel::{FuelLaunch, read_fuel};
+pub use import::{Differences, Imported, import};
 pub use sdk::{SdkDirs, ensure_sdk};
 pub use stop::{cancel, pause, pause_for_quit};
 
@@ -781,6 +783,31 @@ fn installed_files(
     Ok(Some((game, dest, saved)))
 }
 
+/// Hashes every file of `manifest` under `dest`.
+fn hash_files(manifest: &Manifest, dest: &Path) -> VerifyReport {
+    let mut report = VerifyReport {
+        files_checked: manifest.files().len(),
+        broken: Vec::new(),
+    };
+    for file in manifest.files() {
+        // A folder on the way that is a link, or a file that can't be read, is as broken as a
+        // wrong hash: a repair puts the game's own file there.
+        let reason = disk::inside(dest, file.path()).map_or(Some(BrokenReason::Mismatched), |path| {
+            match std::fs::symlink_metadata(&path) {
+                Err(err) if err.kind() == io::ErrorKind::NotFound => Some(BrokenReason::Missing),
+                _ => (!disk::matches(&path, file).unwrap_or(false)).then_some(BrokenReason::Mismatched),
+            }
+        });
+        if let Some(reason) = reason {
+            report.broken.push(BrokenFile {
+                path: file.path().as_str().to_owned(),
+                reason,
+            });
+        }
+    }
+    report
+}
+
 /// Hashes every file of the installed game against the manifest it was installed from, without
 /// asking Amazon.
 ///
@@ -792,31 +819,9 @@ pub async fn verify(library: &Library, account_id: &str, product_id: &str) -> an
     let (_, dest, saved) =
         installed_files(library, account_id, product_id)?.context("the Amazon game is not installed")?;
     let manifest = read_saved(&saved).await?;
-    let report = tokio::task::spawn_blocking(move || {
-        let mut report = VerifyReport {
-            files_checked: manifest.files().len(),
-            broken: Vec::new(),
-        };
-        for file in manifest.files() {
-            // A folder on the way that is a link, or a file that can't be read, is as broken as a
-            // wrong hash: a repair puts the game's own file there.
-            let reason = disk::inside(&dest, file.path()).map_or(Some(BrokenReason::Mismatched), |path| {
-                match std::fs::symlink_metadata(&path) {
-                    Err(err) if err.kind() == io::ErrorKind::NotFound => Some(BrokenReason::Missing),
-                    _ => (!disk::matches(&path, file).unwrap_or(false)).then_some(BrokenReason::Mismatched),
-                }
-            });
-            if let Some(reason) = reason {
-                report.broken.push(BrokenFile {
-                    path: file.path().as_str().to_owned(),
-                    reason,
-                });
-            }
-        }
-        report
-    })
-    .await
-    .context("verifying the files stopped")?;
+    let report = tokio::task::spawn_blocking(move || hash_files(&manifest, &dest))
+        .await
+        .context("verifying the files stopped")?;
     tracing::info!(
         account_id,
         product_id,

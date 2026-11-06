@@ -72,8 +72,8 @@ mod session;
 mod updates;
 
 pub use install::{
-    BrokenFile, BrokenReason, FuelLaunch, SdkDirs, Target, VerifyReport, cancel, discard, ensure_sdk, install, pause,
-    pause_for_quit, read_fuel, repair, uninstall, verify,
+    BrokenFile, BrokenReason, Differences, FuelLaunch, Imported, SdkDirs, Target, VerifyReport, cancel, discard,
+    ensure_sdk, import, install, pause, pause_for_quit, read_fuel, repair, uninstall, verify,
 };
 pub use library::{AmazonGame, Library, Listing, list_games};
 pub use login::{PendingLogin, complete_login, extract_code};

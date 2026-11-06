@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "No se ha podido usar el fuel.json del juego, su prog
 amazon.install.no_entitlement: "Todavía no se conoce la licencia de este juego en Amazon. Vuelve a intentarlo cuando se actualice la biblioteca de Amazon Games."
 amazon.credentials.kind: "Sesión de Amazon Games"
 amazon.credentials.confirm: "La sesión de Amazon Games de %{subject} se quitará del llavero. Eso cierra la sesión de la cuenta sin quitar el dispositivo de tu cuenta de Amazon: tendrás que iniciar sesión de nuevo para usarla."
+amazon.import.button: "Importar instalación existente"
+amazon.import.pick_title: "Elige la carpeta del juego"
+amazon.import.working: "Comprobando la carpeta con Amazon…"
+amazon.import.differs: "%{differing} de %{total} archivos de la carpeta no coinciden con la versión actual de Amazon."
+amazon.import.register_repair: "Registrar y reparar"

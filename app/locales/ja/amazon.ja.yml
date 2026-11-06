@@ -18,3 +18,8 @@ amazon.launch.fuel_failed: "ゲームの fuel.json を使用できないため�
 amazon.install.no_entitlement: "このゲームの Amazon の権利情報がまだキャッシュされていません。Amazon Games のライブラリが更新されてから、もう一度お試しください。"
 amazon.credentials.kind: "Amazon Games セッション"
 amazon.credentials.confirm: "%{subject} の Amazon Games セッションをキーリングから削除します。アカウントはログアウトされますが、デバイスは Amazon アカウントから削除されません。使用するには再度ログインする必要があります。"
+amazon.import.button: "既存のインストールをインポート"
+amazon.import.pick_title: "ゲームのフォルダーを選択"
+amazon.import.working: "Amazon でフォルダーを確認しています…"
+amazon.import.differs: "フォルダー内の %{total} 個中 %{differing} 個のファイルが Amazon の現在のバージョンと一致しません。"
+amazon.import.register_repair: "登録して修復"
