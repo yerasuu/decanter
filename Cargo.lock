@@ -1414,6 +1414,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "decanter-amazon"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "decanter-core",
+ "getrandom 0.4.3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "decanter-core"
 version = "0.4.0"
 dependencies = [

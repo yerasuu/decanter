@@ -13,6 +13,7 @@
       "name": "decanter application, libraries and build tooling",
       "paths": [
         "app",
+        "crates/amazon",
         "crates/core",
         "crates/galaxy",
         "crates/gog",

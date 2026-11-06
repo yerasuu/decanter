@@ -1,0 +1,26 @@
+[package]
+name = "decanter-amazon"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# Written from the protocol facts of docs/amazon-nile-integration-analysis.md, never from nile's code
+# (decision #1518, D1).
+[dependencies]
+decanter-core.workspace = true
+anyhow.workspace = true
+getrandom.workspace = true
+reqwest = { workspace = true, features = ["json", "system-proxy"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+tracing.workspace = true
+url.workspace = true
+uuid = { workspace = true, features = ["v4"] }

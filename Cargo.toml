@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/amazon",
     "crates/core",
     "crates/galaxy",
     "crates/gog",
@@ -35,6 +36,7 @@ license = "GPL-3.0-or-later"
 # features they need on top.
 [workspace.dependencies]
 # --- Workspace crates ---
+decanter-amazon = { path = "crates/amazon" }
 decanter-core = { path = "crates/core" }
 decanter-galaxy = { path = "crates/galaxy" }
 decanter-gog = { path = "crates/gog" }

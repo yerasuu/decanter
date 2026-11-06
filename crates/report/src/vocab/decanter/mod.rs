@@ -2,6 +2,7 @@
 //! one table per area. What the log appends after the message is read by [`super::pattern`]
 //! (` job=`, ` exit=`, written into the first entries) or [`super::cause`] (`: <error>`).
 
+mod amazon;
 mod app;
 mod core;
 mod gog;
@@ -22,6 +23,7 @@ const JOBS: &[Template] = &[
 
 pub const TABLES: &[&[Template]] = &[
     JOBS,
+    amazon::TEMPLATES,
     app::TEMPLATES,
     core::TEMPLATES,
     gog::TEMPLATES,

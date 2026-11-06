@@ -2,7 +2,7 @@ use core::fmt;
 
 use zeroize::Zeroizing;
 
-/// A credential's value: a GOG session, a shadNet password or token, an API key.
+/// A credential's value: a GOG or Amazon session, a shadNet password or token, an API key.
 ///
 /// Zeroed when dropped. Its `Debug` prints no part of it, and it has no `Display`, `Clone` or
 /// `Serialize`, so a struct holding one can derive `Debug` without a log ever carrying the value;
