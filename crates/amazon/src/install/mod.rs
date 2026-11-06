@@ -199,9 +199,12 @@ async fn run(
     staged.save(&staging).await;
 
     let landed: anyhow::Result<String> = async {
+        // Biased, so a stop already asked for (before the run registered, or while it waited for the
+        // staging) ends it here, before Amazon is asked anything, even when the slot is free.
         let slot = tokio::select! {
-            slot = decanter_runtime::install::take_slot(library) => slot,
+            biased;
             () = flag.stopped() => return Err(ended(flag, &staging, &root, 0).await),
+            slot = decanter_runtime::install::take_slot(library) => slot,
         };
         let (download, raw) = locate(flag, target, &staging, &root).await?;
         let manifest = Arc::new(parse_signed_manifest(&raw).context("Amazon's manifest for this game was refused")?);

@@ -86,14 +86,28 @@ impl StopFlag {
     }
 }
 
-fn active() -> &'static Mutex<HashMap<Key, StopFlag>> {
-    static ACTIVE: OnceLock<Mutex<HashMap<Key, StopFlag>>> = OnceLock::new();
-    ACTIVE.get_or_init(Mutex::default)
+/// How long a cancel that found no download running waits for one to register. The app shows
+/// Cancelar as soon as it queues a download, before the download's task has run far enough to
+/// register; past this, the cancel was for a download that had already ended, and must not land on
+/// the next one.
+const CANCEL_WAITS: Duration = Duration::from_secs(10);
+
+#[derive(Default)]
+struct Registry {
+    running: HashMap<Key, StopFlag>,
+    /// Cancels that came before their download registered, and when.
+    cancelled: HashMap<Key, Instant>,
 }
 
-/// A map of flags stays consistent whatever panicked while holding it, so a poisoned lock is used.
-fn lock_active() -> std::sync::MutexGuard<'static, HashMap<Key, StopFlag>> {
-    active().lock().unwrap_or_else(PoisonError::into_inner)
+/// One lock for both maps, so a cancel and the registration it races can't both miss each other.
+fn registry() -> &'static Mutex<Registry> {
+    static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
+    REGISTRY.get_or_init(Mutex::default)
+}
+
+/// The maps stay consistent whatever panicked while holding them, so a poisoned lock is used.
+fn lock_registry() -> std::sync::MutexGuard<'static, Registry> {
+    registry().lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
@@ -107,25 +121,49 @@ pub(super) struct Registration {
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        let mut active = lock_active();
-        if active
+        let mut registry = lock_registry();
+        if registry
+            .running
             .get(&self.key)
             .is_some_and(|flag| Arc::ptr_eq(&flag.0, &self.flag.0))
         {
-            active.remove(&self.key);
+            registry.running.remove(&self.key);
         }
     }
 }
 
 /// Registers a fresh run of `(account_id, product_id)`. One already running for it is paused,
-/// since two runs would write the same staging; the new one carries on from what it kept.
+/// since two runs would write the same staging; the new one carries on from what it kept. A cancel
+/// that came before it registered stops it as soon as it checks its flag.
 pub(super) fn register(account_id: &str, product_id: &str) -> Registration {
     let key = (account_id.to_owned(), product_id.to_owned());
     let flag = StopFlag::default();
     if QUITTING.load(Ordering::Acquire) {
         flag.set(QUIT);
     }
-    let previous = lock_active().insert(key.clone(), flag.clone());
+    let (previous, cancelled_at) = {
+        let mut registry = lock_registry();
+        let cancelled_at = registry.cancelled.remove(&key);
+        (registry.running.insert(key.clone(), flag.clone()), cancelled_at)
+    };
+    match cancelled_at.map(|at| at.elapsed()) {
+        Some(waited) if waited <= CANCEL_WAITS => {
+            tracing::info!(
+                account_id,
+                product_id,
+                waited_ms = waited.as_millis(),
+                "an amazon download cancelled before it registered, stopping it"
+            );
+            flag.set(CANCEL);
+        }
+        Some(waited) => tracing::info!(
+            account_id,
+            product_id,
+            waited_ms = waited.as_millis(),
+            "an earlier cancel of this amazon download came too long ago, ignoring it"
+        ),
+        None => {}
+    }
     if let Some(previous) = previous {
         tracing::info!(
             account_id,
@@ -138,12 +176,24 @@ pub(super) fn register(account_id: &str, product_id: &str) -> Registration {
 }
 
 /// Cancels the Amazon download of `(account_id, product_id)`, which then deletes what it fetched.
-/// Nothing happens when none runs: a paused one is deleted with [`super::discard`].
+///
+/// One that has not registered yet is cancelled when it does, within [`CANCEL_WAITS`]; a paused one,
+/// which nothing runs, is deleted with [`super::discard`].
 #[inline]
 pub fn cancel(account_id: &str, product_id: &str) {
-    let flag = lock_active()
-        .get(&(account_id.to_owned(), product_id.to_owned()))
-        .cloned();
+    let key = (account_id.to_owned(), product_id.to_owned());
+    let flag = {
+        let mut registry = lock_registry();
+        let now = Instant::now();
+        registry
+            .cancelled
+            .retain(|_, at| now.duration_since(*at) <= CANCEL_WAITS);
+        let flag = registry.running.get(&key).cloned();
+        if flag.is_none() {
+            registry.cancelled.insert(key, now);
+        }
+        flag
+    };
     tracing::debug!(
         account_id,
         product_id,
@@ -159,7 +209,8 @@ pub fn cancel(account_id: &str, product_id: &str) {
 /// install of the game to carry on from. Nothing happens when none runs.
 #[inline]
 pub fn pause(account_id: &str, product_id: &str) {
-    let flag = lock_active()
+    let flag = lock_registry()
+        .running
         .get(&(account_id.to_owned(), product_id.to_owned()))
         .cloned();
     tracing::debug!(
@@ -179,13 +230,13 @@ pub fn pause(account_id: &str, product_id: &str) {
 #[inline]
 pub async fn pause_for_quit(wait: Duration) -> bool {
     QUITTING.store(true, Ordering::Release);
-    let running: Vec<StopFlag> = lock_active().values().cloned().collect();
+    let running: Vec<StopFlag> = lock_registry().running.values().cloned().collect();
     for flag in &running {
         flag.set(QUIT);
     }
     let deadline = Instant::now() + wait;
     loop {
-        let left = lock_active().len();
+        let left = lock_registry().running.len();
         if left == 0 {
             tracing::info!(paused = running.len(), "amazon downloads paused for quit");
             return true;
