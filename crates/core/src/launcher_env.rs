@@ -11,6 +11,19 @@ use std::process::Command;
 /// user set themselves still reaches them.
 pub const VULKAN_ONLY_EGL_VENDORS: &str = "/nonexistent/decanter-vulkan-only.json";
 
+/// Keeps `command`'s windows from being taken for decanter's: the desktop names
+/// the launching entry through `GIO_LAUNCHED_DESKTOP_FILE`, and pairs the first
+/// window with the startup notification in `XDG_ACTIVATION_TOKEN` and
+/// `DESKTOP_STARTUP_ID`, which the menu gave decanter for its own window.
+#[inline]
+pub fn strip_window_identity(command: &mut Command) {
+    command
+        .env_remove("GIO_LAUNCHED_DESKTOP_FILE")
+        .env_remove("GIO_LAUNCHED_DESKTOP_FILE_PID")
+        .env_remove("XDG_ACTIVATION_TOKEN")
+        .env_remove("DESKTOP_STARTUP_ID");
+}
+
 /// Strips that environment from `command`.
 ///
 /// `LD_LIBRARY_PATH`/`LD_PRELOAD` from a dev shell or another launcher
@@ -32,9 +45,8 @@ pub fn strip_launcher_env(command: &mut Command) {
     command
         .env_remove("LD_LIBRARY_PATH")
         .env_remove("LD_PRELOAD")
-        .env_remove("GLIBC_TUNABLES")
-        .env_remove("GIO_LAUNCHED_DESKTOP_FILE")
-        .env_remove("GIO_LAUNCHED_DESKTOP_FILE_PID");
+        .env_remove("GLIBC_TUNABLES");
+    strip_window_identity(command);
     if std::env::var_os("__EGL_VENDOR_LIBRARY_FILENAMES").as_deref() == Some(OsStr::new(VULKAN_ONLY_EGL_VENDORS)) {
         command.env_remove("__EGL_VENDOR_LIBRARY_FILENAMES");
     }

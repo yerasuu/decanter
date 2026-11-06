@@ -149,7 +149,8 @@ async fn forward(stream: impl AsyncRead + Unpin, sender: UnboundedSender<Event>)
 /// See [`decanter_core::own_scope`]; without a systemd user manager it is
 /// `command` as it was. For a game only: a build or a conversion is
 /// decanter's own work.
-pub fn in_own_scope(command: Command, key: &str, title: &str) -> Command {
+pub fn in_own_scope(mut command: Command, key: &str, title: &str) -> Command {
+    decanter_core::strip_window_identity(command.as_std_mut());
     match decanter_core::own_scope(key, title) {
         Some(scoped) => wrapped(scoped, &command),
         None => command,
