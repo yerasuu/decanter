@@ -85,6 +85,21 @@ impl Db {
         self.set_setting("galaxy_upload_enabled", if enabled { "1" } else { "0" })
     }
 
+    /// Whether the person behind `profile_id` accepted the risk notice that comes before the first
+    /// Amazon Games login. Per profile because the login that would give an account id comes after it.
+    pub fn amazon_consent(&self, profile_id: &str) -> Result<bool> {
+        Ok(self.setting(&amazon_consent_key(profile_id))?.as_deref() == Some("1"))
+    }
+
+    pub fn set_amazon_consent(&self, profile_id: &str, accepted: bool) -> Result<()> {
+        let key = amazon_consent_key(profile_id);
+        if accepted {
+            self.set_setting(&key, "1")
+        } else {
+            self.delete_setting(&key)
+        }
+    }
+
     /// The Proton build to launch with when a game has no per-game choice
     /// of its own — a bare name from `decanter_runtime::runner::status`, or
     /// `None` for `decanter_runtime::Proton::Latest`.
@@ -205,4 +220,8 @@ impl Db {
         tracing::debug!(key, "deleted setting");
         Ok(())
     }
+}
+
+fn amazon_consent_key(profile_id: &str) -> String {
+    format!("amazon_consent:{profile_id}")
 }

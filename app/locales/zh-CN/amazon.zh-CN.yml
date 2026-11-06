@@ -1,0 +1,7 @@
+amazon.consent.title: "登录 Amazon Games 之前"
+amazon.consent.device: "登录时，会在你的 Amazon 账户中注册一台冒充官方 Amazon Games 应用的设备。"
+amazon.consent.storage: "Decanter 只会把会话保存在系统的密钥存储中，不保存其他内容。"
+amazon.consent.risk: "Amazon 并未公开允许这种做法，因此你的账户可能被限制或封禁。"
+amazon.consent.affiliation: "Decanter 与 Amazon 没有任何关联。"
+amazon.consent.removal: "你之后可以移除该设备。"
+amazon.consent.accept: "接受并继续"

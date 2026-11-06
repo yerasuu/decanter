@@ -1,0 +1,7 @@
+amazon.consent.title: Before you log in to Amazon Games
+amazon.consent.device: Logging in registers a device on your Amazon account that presents itself as the official Amazon Games app.
+amazon.consent.storage: Decanter keeps the session in your system's secrets store and nothing else.
+amazon.consent.risk: Amazon has published no permission for this, so it could limit or block your account.
+amazon.consent.affiliation: Decanter is not affiliated with Amazon.
+amazon.consent.removal: You can remove the device later.
+amazon.consent.accept: Accept and continue

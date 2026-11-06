@@ -1,0 +1,7 @@
+amazon.consent.title: "Amazon Gamesにログインする前に"
+amazon.consent.device: "ログインすると、公式のAmazon GamesアプリになりすましたデバイスがあなたのAmazonアカウントに登録されます。"
+amazon.consent.storage: "Decanterはセッションをシステムのシークレットストアに保存し、それ以外は何も保存しません。"
+amazon.consent.risk: "Amazonはこの利用を許可していないため、アカウントが制限またはブロックされる可能性があります。"
+amazon.consent.affiliation: "DecanterはAmazonとは無関係です。"
+amazon.consent.removal: "デバイスは後から削除できます。"
+amazon.consent.accept: "同意して続行"

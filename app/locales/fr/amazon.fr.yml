@@ -1,0 +1,7 @@
+amazon.consent.title: Avant de vous connecter à Amazon Games
+amazon.consent.device: La connexion enregistre sur votre compte Amazon un appareil qui se présente comme l'application officielle Amazon Games.
+amazon.consent.storage: Decanter conserve la session dans le magasin de secrets de votre système, et rien d'autre.
+amazon.consent.risk: Amazon n'a publié aucune autorisation pour cela, votre compte pourrait donc être limité ou bloqué.
+amazon.consent.affiliation: Decanter n'est pas affilié à Amazon.
+amazon.consent.removal: Vous pourrez supprimer l'appareil plus tard.
+amazon.consent.accept: Accepter et continuer

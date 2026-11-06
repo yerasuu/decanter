@@ -1,0 +1,7 @@
+amazon.consent.title: 'Перед входом в Amazon Games'
+amazon.consent.device: 'При входе в вашей учётной записи Amazon регистрируется устройство, которое выдаёт себя за официальное приложение Amazon Games.'
+amazon.consent.storage: 'Decanter хранит сессию в хранилище секретов вашей системы и больше ничего.'
+amazon.consent.risk: 'Amazon не публиковала разрешения на это, поэтому ваша учётная запись может быть ограничена или заблокирована.'
+amazon.consent.affiliation: 'Decanter не связан с Amazon.'
+amazon.consent.removal: 'Позже вы сможете удалить устройство.'
+amazon.consent.accept: 'Принять и продолжить'

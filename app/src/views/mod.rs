@@ -1,5 +1,6 @@
 //! Every screen, and the main window that hosts them.
 
+pub mod amazon_consent;
 mod chrome;
 mod downloads;
 mod dropped;
