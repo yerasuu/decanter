@@ -52,6 +52,8 @@ pub struct AmazonGame {
     pub product_id: String,
     /// The entitlement's own `id`: what the download request of a later stage takes.
     pub entitlement_id: String,
+    /// `product.sku`, which a launched game is told as `AMAZON_GAMES_FUEL_PRODUCT_SKU`.
+    pub sku: Option<String>,
     pub title: String,
     /// `product.productDetail.details.genres`, as Amazon spells them. Empty when it gives none.
     pub genres: Vec<String>,
@@ -108,6 +110,8 @@ struct Entitlement {
 #[derive(Deserialize)]
 struct Product {
     id: String,
+    #[serde(default)]
+    sku: Option<String>,
     title: Option<String>,
     #[serde(default, rename = "productDetail")]
     detail: Option<ProductDetail>,
@@ -258,6 +262,7 @@ fn game(raw: Value) -> Option<AmazonGame> {
     let entitlement: Entitlement = serde_json::from_value(raw).ok()?;
     let Product {
         id,
+        sku,
         title: raw_title,
         detail,
     } = entitlement.product;
@@ -284,6 +289,7 @@ fn game(raw: Value) -> Option<AmazonGame> {
     (is_id(&id) && is_id(&entitlement.id)).then_some(AmazonGame {
         product_id: id,
         entitlement_id: entitlement.id,
+        sku: sku.as_deref().and_then(|sku| printable(sku, ID_MAX_LEN)),
         title,
         genres,
         icon_url,

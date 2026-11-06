@@ -165,6 +165,21 @@ pub async fn session_state(account_id: &str) -> anyhow::Result<SessionState> {
         .map_or(SessionState::LoggedOut, |session| session.state()))
 }
 
+/// The account's `given_name` as Amazon gave it at login, which nile hands games as
+/// `AMAZON_GAMES_FUEL_DISPLAY_NAME`; `None` when it gave none, or no session is stored.
+///
+/// # Errors
+///
+/// The keyring failing, or a stored session that does not parse.
+#[inline]
+pub async fn given_name(account_id: &str) -> anyhow::Result<Option<String>> {
+    Ok(load(account_id).await?.and_then(|session| {
+        // Login stores the account id in its place when Amazon gives no name.
+        (session.display_name != session.account_id && !session.display_name.chars().any(char::is_control))
+            .then_some(session.display_name)
+    }))
+}
+
 /// The account's session with an access token good for a few more minutes, renewed first when it
 /// is not.
 ///

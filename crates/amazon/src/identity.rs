@@ -54,3 +54,8 @@ pub(crate) const DISTRIBUTION_PATH: &str = "/api/distribution/v2/public";
 /// The `X-Amz-Target` that asks for one entitlement's download location and version.
 pub(crate) const DOWNLOAD_TARGET: &str =
     "com.amazon.animusdistributionservice.external.AnimusDistributionService.GetGameDownload";
+
+/// The Amazon Games launcher's own update channel, whose manifest lists the SDK DLLs games load
+/// (analysis, section 5.2). nile asks it without a token.
+pub(crate) const SDK_CHANNEL_PATH: &str =
+    "/api/distribution/v2/public/download/channel/87d38116-4cbf-4af0-a371-a5b498975346";

@@ -50,8 +50,8 @@ pub async fn play(
     let checkpoint = super::sync_cloud_saves_before_launch(account_id, saves_game).await;
     let achievement_log = planned.achievement_log.take();
     let galaxy = super::galaxy_service(account_id, game).await;
-    let notes = if kind == Kind::Umu && game.storefront == decanter_core::Storefront::Gog {
-        super::prepare_gog_prefix(account_id, game, &planned.launch).await
+    let notes = if kind == Kind::Umu {
+        super::prepare_store_prefix(account_id, game, &mut planned.launch).await
     } else {
         Vec::new()
     };

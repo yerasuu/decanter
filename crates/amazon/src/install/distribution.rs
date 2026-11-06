@@ -17,7 +17,7 @@ use url::{Host, Url};
 
 use crate::error::CallError;
 use crate::http::{self, Call};
-use crate::identity::{DISTRIBUTION_PATH, DISTRIBUTION_USER_AGENT, DOWNLOAD_TARGET, GAMING_HOST};
+use crate::identity::{DISTRIBUTION_PATH, DISTRIBUTION_USER_AGENT, DOWNLOAD_TARGET, GAMING_HOST, SDK_CHANNEL_PATH};
 use crate::library::is_id;
 use crate::manifest::{MAX_RAW_LEN, Sha256Digest};
 use crate::session::{self, Live, LiveSession};
@@ -25,6 +25,12 @@ use crate::session::{self, Live, LiveSession};
 const DOWNLOAD: Call = Call {
     name: "game download",
     refused: &[StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN],
+    max_body: 64 << 10,
+};
+
+const SDK_CHANNEL: Call = Call {
+    name: "sdk channel",
+    refused: &[],
     max_body: 64 << 10,
 };
 
@@ -165,6 +171,40 @@ async fn ask(http: &reqwest::Client, session: &LiveSession, entitlement_id: &str
         version_id: answer.version_id,
         base,
     })
+}
+
+#[derive(Deserialize)]
+struct ChannelAnswer {
+    #[serde(default, rename = "versionId")]
+    version_id: Option<String>,
+    #[serde(rename = "downloadUrl")]
+    download_url: String,
+}
+
+/// Where the launcher's current version is, whose manifest lists the SDK. Asked without a token, so
+/// it needs no session.
+///
+/// # Errors
+///
+/// Amazon not answering, or answering with a URL off its download hosts.
+pub(super) async fn sdk_download() -> anyhow::Result<GameDownload> {
+    let http = http::client_for(GAMING_HOST, DISTRIBUTION_USER_AGENT)?;
+    let request = http.get(format!("https://{GAMING_HOST}{SDK_CHANNEL_PATH}"));
+    let answer: ChannelAnswer = http::send(request, &SDK_CHANNEL)
+        .await
+        .map_err(|err| anyhow::anyhow!("asking Amazon for its SDK: {}", session::reason(err)))?;
+    let base =
+        download_base(&answer.download_url).map_err(|reason| anyhow::anyhow!("Amazon's SDK channel: {reason}"))?;
+    let download = GameDownload {
+        version_id: answer.version_id.filter(|id| is_id(id)).unwrap_or_default(),
+        base,
+    };
+    tracing::info!(
+        version_id = download.version_id,
+        host = download.host(),
+        "amazon answered the sdk channel"
+    );
+    Ok(download)
 }
 
 /// The answer's `downloadUrl`, refused unless it is HTTPS to one of [`DOWNLOAD_DOMAINS`] by name,

@@ -14,6 +14,8 @@
 //! Every kind is built on every system; which one a game takes is decided
 //! when it launches, from the system, where its manifest is filed and its file.
 
+#[cfg(target_os = "linux")]
+mod amazon;
 mod headless;
 mod linux_native;
 mod native;
@@ -305,11 +307,15 @@ pub async fn start(
     // Held until the game exits; every return before that releases it.
     let galaxy = galaxy_service(&account_id, &game).await;
 
-    // Shown as running while the Galaxy service and the redistributables install, which can take a
-    // minute, so the game reads as starting and can be stopped.
-    let notes = if kind == Kind::Umu && game.storefront == decanter_core::Storefront::Gog {
+    // Shown as running while the Galaxy service and the redistributables install, or Amazon's SDK
+    // downloads, which can take a minute, so the game reads as starting and can be stopped.
+    let notes = if kind == Kind::Umu
+        && matches!(
+            game.storefront,
+            decanter_core::Storefront::Gog | decanter_core::Storefront::AmazonGames
+        ) {
         set_running(&background, &game.game_id, true, cx);
-        prepare_gog_prefix(&account_id, &game, &planned.launch).await
+        prepare_store_prefix(&account_id, &game, &mut planned.launch).await
     } else {
         Vec::new()
     };
@@ -348,6 +354,17 @@ pub async fn start(
     record_last_played(&account_id, &game);
     apply_hook_log(&account_id, &game, achievement_log.as_deref()).await;
     Some(elapsed)
+}
+
+/// What a game under Proton gets from its store before it starts, whichever way it is started; what
+/// failed, as lines for the run's log.
+pub(crate) async fn prepare_store_prefix(account_id: &str, game: &InstalledGame, launch: &mut Launch) -> Vec<String> {
+    match game.storefront {
+        decanter_core::Storefront::Gog => prepare_gog_prefix(account_id, game, launch).await,
+        #[cfg(target_os = "linux")]
+        decanter_core::Storefront::AmazonGames => amazon::prepare(account_id, game, launch).await,
+        _ => Vec::new(),
+    }
 }
 
 /// What a GOG game under Proton gets in its prefix before it starts, whichever way it is started:

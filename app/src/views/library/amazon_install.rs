@@ -1,7 +1,7 @@
 //! Amazon Games titles through the same Descargas rows, pause, cancel and properties as GOG's
-//! (kb #1613); the download itself is `decanter_amazon`'s. No launch yet: that is stage S5.
+//! (kb #1613); the download itself is `decanter_amazon`'s.
 
-use decanter_core::{Library, Storefront};
+use decanter_core::{CachedGame, InstalledGame, Library, Storefront};
 use gpui::AsyncApp;
 
 use super::install::{DownloadJob, Ended, progress_channel, refresh_install_state, track};
@@ -22,9 +22,9 @@ pub fn is_amazon_account(account_id: &str) -> bool {
         .is_some()
 }
 
-/// The entitlement id the library listing cached beside the product, which Amazon's download
-/// request takes instead of the product id.
-fn entitlement_id(account_id: &str, product_id: &str) -> Option<String> {
+/// What the library listing cached for the product: its entitlement id, which Amazon's download
+/// request takes instead of the product id, and the ids a launched game is told.
+pub fn cached_game(account_id: &str, product_id: &str) -> Option<CachedGame> {
     crate::core::db()
         .ok()?
         .list_games(account_id)
@@ -32,7 +32,10 @@ fn entitlement_id(account_id: &str, product_id: &str) -> Option<String> {
         .ok()?
         .into_iter()
         .find(|game| game.storefront == Storefront::AmazonGames && game.product_id == product_id)
-        .and_then(|game| game.entitlement_id)
+}
+
+fn entitlement_id(account_id: &str, product_id: &str) -> Option<String> {
+    cached_game(account_id, product_id).and_then(|game| game.entitlement_id)
 }
 
 fn fail_row(state: &AppState, key: &DownloadKey, title: &str, kind: DownloadKind, text: Text, cx: &mut AsyncApp) {
@@ -187,4 +190,38 @@ pub async fn repair(
         .ok_or_else(|| anyhow::anyhow!("no Amazon entitlement is cached for this game yet"))?;
     let target = decanter_amazon::Target::new(account_id, product_id, &entitlement_id, title);
     decanter_amazon::repair(library, target, on_progress).await
+}
+
+/// `game` with the program its `fuel.json` names, saved to its record, when an install recorded
+/// before decanter read `fuel.json` has none; as it was when that can't be read.
+pub fn with_fuel_program(account_id: &str, mut game: InstalledGame) -> InstalledGame {
+    let product_id = game.game_id.as_str();
+    let library = match crate::core::library_for_account(account_id) {
+        Ok(library) => library,
+        Err(err) => {
+            tracing::warn!(account_id, product_id, %err, "no library to read the amazon game's fuel.json in");
+            return game;
+        }
+    };
+    let Some(install_dir) = library.install_dir(&game.install_dir) else {
+        return game;
+    };
+    let fuel = match decanter_amazon::read_fuel(&install_dir) {
+        Ok(fuel) => fuel,
+        Err(err) => {
+            tracing::warn!(account_id, product_id, error = %format_args!("{err:#}"), "no program from the amazon game's fuel.json");
+            return game;
+        }
+    };
+    game.launch_executable = Some(fuel.command.as_str().to_owned());
+    match library.write_manifest(&game) {
+        Ok(()) => tracing::info!(
+            account_id,
+            product_id,
+            program = fuel.command.as_str(),
+            "amazon game's program taken from its fuel.json"
+        ),
+        Err(err) => tracing::warn!(account_id, product_id, %err, "could not save the amazon game's program"),
+    }
+    game
 }

@@ -19,6 +19,8 @@
 mod disk;
 mod distribution;
 mod fetch;
+mod fuel;
+mod sdk;
 mod stop;
 
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -41,6 +43,8 @@ use self::stop::{Stop, StopFlag};
 use crate::library::is_id;
 use crate::manifest::{Manifest, ManifestPath, parse_signed_manifest, plan};
 
+pub use fuel::{FuelLaunch, read_fuel};
+pub use sdk::{SdkDirs, ensure_sdk};
 pub use stop::{cancel, pause, pause_for_quit};
 
 const LOG: &str = "progress.log";
@@ -240,13 +244,19 @@ async fn run(
         .await
         .context("the move into the library stopped")?
         .with_context(|| format!("moving the game into {}", dest.display()))?;
+    let previous_program = installed.as_ref().and_then(|game| game.launch_executable.as_deref());
+    let launch_executable = launch_program(&dest, previous_program).await;
     let record = match installed {
         Some(game) => InstalledGame {
             build_id: download.version_id.clone(),
             size_on_disk: Some(manifest.total_size()),
+            launch_executable,
             ..game
         },
-        None => new_record(target, install_dir, &download, manifest.total_size()),
+        None => InstalledGame {
+            launch_executable,
+            ..new_record(target, install_dir, &download, manifest.total_size())
+        },
     };
     save_record(library, &root, &record, &raw).await?;
     drop(held);
@@ -400,6 +410,33 @@ impl Transfer<'_> {
             Err(Failure::Io { path, source }) => {
                 Err(anyhow::Error::new(source).context(format!("writing {path} into staging")))
             }
+        }
+    }
+}
+
+/// The program the record starts: the one it had while that is still in the game's folder, so a
+/// program picked in the properties survives an update, else the one `fuel.json` names. A game whose
+/// `fuel.json` can't be read installs all the same, without one, which the library says.
+async fn launch_program(dest: &Path, previous: Option<&str>) -> Option<String> {
+    let kept = previous.filter(|program| {
+        decanter_runtime::sanitize_relative_path(program).is_some_and(|relative| {
+            std::fs::symlink_metadata(dest.join(relative)).is_ok_and(|meta| meta.file_type().is_file())
+        })
+    });
+    if let Some(program) = kept {
+        return Some(program.to_owned());
+    }
+    let dest = dest.to_path_buf();
+    let read = tokio::task::spawn_blocking(move || fuel::read_fuel(&dest)).await;
+    match read {
+        Ok(Ok(fuel)) => Some(fuel.command.as_str().to_owned()),
+        Ok(Err(err)) => {
+            tracing::warn!(error = %format_args!("{err:#}"), "no program from the amazon game's fuel.json");
+            None
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "reading the amazon game's fuel.json stopped");
+            None
         }
     }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Amazon Games: the account session, the library listing, a game's file manifest and installing
-//! it, for now (kb #1520, #1521, #1611 and #1613, stages S1 to S4 of
+//! Amazon Games: the account session, the library listing, a game's file manifest, installing it
+//! and what launching it needs (kb #1520, #1521, #1611 and #1613, stages S1 to S5 of
 //! docs/amazon-nile-integration-analysis.md).
 //!
 //! Amazon documents none of this. The wire protocol is the one
@@ -9,7 +9,7 @@
 //! describes, taken as facts only: no code of nile's is here (decision #1518, D1), and every fact
 //! is UNVERIFIED against Amazon until the owner's spike (kb #1519). Linux and amazon.com only
 //! (D10, D11). Tokens live in the OS keyring (D4); the caller caches what [`list_games`] returns,
-//! and only [`install`] and [`uninstall`] write to the library.
+//! and only [`install`], [`uninstall`] and [`ensure_sdk`] write to the library.
 
 #![expect(
     clippy::implicit_return,
@@ -71,12 +71,14 @@ mod pkce;
 mod session;
 
 pub use install::{
-    BrokenFile, BrokenReason, Target, VerifyReport, cancel, discard, install, pause, pause_for_quit, repair, uninstall,
-    verify,
+    BrokenFile, BrokenReason, FuelLaunch, SdkDirs, Target, VerifyReport, cancel, discard, ensure_sdk, install, pause,
+    pause_for_quit, read_fuel, repair, uninstall, verify,
 };
 pub use library::{AmazonGame, Library, Listing, list_games};
 pub use login::{PendingLogin, complete_login, extract_code};
 pub use manifest::{
     Manifest, ManifestError, ManifestFile, ManifestPath, PathFault, Plan, Sha256Digest, parse_signed_manifest, plan,
 };
-pub use session::{Account, Deregistration, Live, LiveSession, SessionState, live_session, log_out, session_state};
+pub use session::{
+    Account, Deregistration, Live, LiveSession, SessionState, given_name, live_session, log_out, session_state,
+};

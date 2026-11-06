@@ -45,6 +45,11 @@ impl DetailView {
                 .tooltip(tooltip(t!("library.properties.title")))
                 .on_click(move |_, _, cx| open_properties(&properties_game, cx)),
         )
+        // Games that ask Amazon for an online session through the SDK (FuelPump) may need Amazon's
+        // own launcher running, which nothing here stands in for (analysis, section 5.4).
+        .when(game.storefront == Storefront::AmazonGames, |bar| {
+            bar.child(theme::muted(t!("amazon.detail.online_unknown")))
+        })
         .children(relocation.map(|(_, lines)| lines))
     }
 

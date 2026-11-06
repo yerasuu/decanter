@@ -8,7 +8,7 @@
 
 pub mod actions;
 #[cfg(target_os = "linux")]
-mod amazon_install;
+pub mod amazon_install;
 mod browser;
 mod context_menu;
 mod data;

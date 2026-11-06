@@ -15,12 +15,8 @@ use super::install::{self, InstallRequest};
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
-/// build of it or its store can't launch yet: shown in place of Instalar and Jugar.
+/// build of it: shown in place of Instalar and Jugar.
 pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
-    if game.storefront == decanter_core::Storefront::AmazonGames {
-        let is_installed = game.install_state.as_ref().is_some_and(|state| state.installed);
-        return is_installed.then(|| t!("amazon.detail.launch_later"));
-    }
     let system = platform::game_system();
     (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
 }
@@ -38,6 +34,13 @@ pub fn resolve_launch_target(account_id: &str, game: &Game) -> Option<InstalledG
     if installed.storefront == decanter_core::Storefront::Steam {
         return Some(installed);
     }
+    #[cfg(target_os = "linux")]
+    let installed =
+        if installed.storefront == decanter_core::Storefront::AmazonGames && installed.launch_executable.is_none() {
+            super::amazon_install::with_fuel_program(account_id, installed)
+        } else {
+            installed
+        };
     // No executable means installed-but-not-launchable, which the caller
     // renders differently from not installed at all.
     let Some(_) = installed.launch_executable.as_ref() else {

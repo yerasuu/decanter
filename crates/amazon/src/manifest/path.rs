@@ -50,7 +50,7 @@ impl fmt::Display for PathFault {
 
 impl ManifestPath {
     /// The manifest separates with `\` and sometimes `/`; both become `/`.
-    pub(super) fn parse(raw: &str) -> Result<Self, PathFault> {
+    pub(crate) fn parse(raw: &str) -> Result<Self, PathFault> {
         if raw.is_empty() {
             return Err(PathFault::Empty);
         }

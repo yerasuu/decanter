@@ -38,6 +38,21 @@ pub(super) fn staging_dir(root: &Path, account_id: &str, product_id: &str) -> an
         .join(component(product_id, "product id")?))
 }
 
+/// Amazon's SDK DLLs, laid out as the launcher's manifest names them and shared by every Amazon game
+/// of the library folder.
+pub(super) fn sdk_dir(root: &Path) -> PathBuf {
+    amazon_dir(root).join("sdk")
+}
+
+pub(super) fn sdk_staging(root: &Path) -> PathBuf {
+    amazon_dir(root).join("sdk-downloading")
+}
+
+/// Written once every SDK file is in place, with the launcher version they came from.
+pub(super) fn sdk_marker(root: &Path) -> PathBuf {
+    amazon_dir(root).join("sdk.version")
+}
+
 /// The manifest an install was made from, kept raw as nile keeps it, to plan the next update and
 /// to verify and uninstall without asking Amazon.
 pub(super) fn saved_manifest(root: &Path, product_id: &str) -> anyhow::Result<PathBuf> {

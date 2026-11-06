@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS games_cache (
     installable     INTEGER NOT NULL DEFAULT 1,
     has_macos_build INTEGER,
     entitlement_id  TEXT,
+    product_sku     TEXT,
     first_seen      INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
@@ -216,7 +217,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -339,6 +340,10 @@ impl Db {
         if !has_column(&conn, "games_cache", "entitlement_id")? {
             tracing::info!(table = "games_cache", "adding entitlement_id column");
             conn.execute_batch("ALTER TABLE games_cache ADD COLUMN entitlement_id TEXT;")?;
+        }
+        if !has_column(&conn, "games_cache", "product_sku")? {
+            tracing::info!(table = "games_cache", "adding product_sku column");
+            conn.execute_batch("ALTER TABLE games_cache ADD COLUMN product_sku TEXT;")?;
         }
 
         // Additive: rows an older decanter wrote stay readable and get filled by the next

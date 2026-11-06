@@ -33,6 +33,8 @@ pub struct CachedGame {
     /// Amazon's entitlement id, which its download request takes instead of the product id the
     /// game is keyed by. `None` for every other storefront, and where a fetch did not carry it.
     pub entitlement_id: Option<String>,
+    /// Amazon's product SKU, which a launched game is told; `None` as for `entitlement_id`.
+    pub product_sku: Option<String>,
 }
 
 /// Unit separator, not a comma: a genre name is free text from the store
@@ -75,9 +77,9 @@ impl Db {
                 "INSERT INTO games_cache (
                     account_id, storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable, has_macos_build, entitlement_id, first_seen, updated_at
+                    parent_id, installable, has_macos_build, entitlement_id, product_sku, first_seen, updated_at
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, {first_seen_if_new}, strftime('%s','now'))
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, {first_seen_if_new}, strftime('%s','now'))
                  ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
                     title = excluded.title,
                     icon_url = excluded.icon_url,
@@ -93,6 +95,7 @@ impl Db {
                     installable = excluded.installable,
                     has_macos_build = COALESCE(excluded.has_macos_build, has_macos_build),
                     entitlement_id = COALESCE(excluded.entitlement_id, entitlement_id),
+                    product_sku = COALESCE(excluded.product_sku, product_sku),
                     updated_at = excluded.updated_at"
             ),
             params![
@@ -113,6 +116,7 @@ impl Db {
                 game.installable,
                 game.has_macos_build,
                 game.entitlement_id,
+                game.product_sku,
             ],
         )?;
         tracing::debug!(
@@ -185,7 +189,7 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable, has_macos_build, entitlement_id
+                    parent_id, installable, has_macos_build, entitlement_id, product_sku
              FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
         )?;
         let rows = stmt.query_map(params![account_id], |row| {
@@ -214,6 +218,7 @@ impl Db {
                 installable: row.get(13)?,
                 has_macos_build: row.get(14)?,
                 entitlement_id: row.get(15)?,
+                product_sku: row.get(16)?,
             })
         })?;
         let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;

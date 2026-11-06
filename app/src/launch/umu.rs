@@ -111,6 +111,11 @@ pub(super) async fn register_galaxy_service(account_id: &str, game: &InstalledGa
 /// it fixes a game like Arknights: Endfield can't start without.
 /// One picked from the UMU database by name goes in as that entry, store
 /// and all, which works with any Proton carrying protonfixes.
+/// An Amazon game goes in as an external one: protonfixes has an `amazon`
+/// store, but its database keys those rows by Steam-derived `umu-<app id>`
+/// ids rather than Amazon's product id, and GE-Proton11-9 ships no fix
+/// module for that store, so `umu-<product id>` with `STORE=amazon` would
+/// match nothing and lose the default fixes `umu-default` gets.
 pub(super) fn identified(launch: Launch, game: &InstalledGame) -> Launch {
     match (game.storefront, &game.umu_id) {
         (decanter_core::Storefront::Gog, _) => launch.game_id(format!("umu-{}", game.game_id)).store("gog"),

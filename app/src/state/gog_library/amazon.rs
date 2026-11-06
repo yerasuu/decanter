@@ -253,6 +253,7 @@ fn cache(account_id: &str, games: &[AmazonGame], complete: bool) {
             installable: true,
             has_macos_build: None,
             entitlement_id: Some(game.entitlement_id.clone()),
+            product_sku: game.sku.clone(),
         };
         if let Err(err) = db.upsert_game(account_id, &cached, confirmed_new) {
             tracing::warn!(account_id, product_id = %game.product_id, %err, "failed to cache amazon game");
