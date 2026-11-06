@@ -45,6 +45,10 @@ similar permissive terms. Exceptions this review found:
   fixedbitset, hashbrown, multimap, prettyplease, beef, unicode-width: MIT OR Apache-2.0; miette and miette-derive:
   Apache-2.0; foldhash: Zlib), plus sha2 and getrandom (MIT OR Apache-2.0) for the service's digests and per-process
   key. All are compatible with GPL-3.0-or-later (Apache-2.0 is one-way compatible with GPLv3).
+- `crates/amazon` adds rsa (MIT OR Apache-2.0) and its RustCrypto helpers (pkcs1, pkcs8, spki, der, const-oid,
+  pem-rfc7468, signature: Apache-2.0 OR MIT; num-bigint-dig 0.8: MIT OR Apache-2.0) to verify the Amazon Games
+  manifest's signature, and lzma-rust2 (Apache-2.0) to decompress it (kb #1611). Both are pure Rust and compatible
+  with GPL-3.0-or-later.
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.

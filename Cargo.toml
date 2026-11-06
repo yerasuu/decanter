@@ -66,6 +66,8 @@ futures-util = "0.3.34"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
 url = "2.5.8"
 flate2 = "1.1.10"
+# The LZMA body of an Amazon Games manifest; pure Rust, with `optimization` (its only unsafe code) left off.
+lzma-rust2 = { version = "=0.25.0", default-features = false }
 
 # --- Data, files and the command line ---
 serde = "1.0.229"
@@ -107,6 +109,10 @@ md5 = "0.8.1"
 # Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
 # exactly so a new release of what decides which binary runs gets read first.
 minisign-verify = "=0.3.0"
+# Verifies the signature of an Amazon Games manifest (crates/amazon/src/manifest), pinned exactly as
+# minisign-verify is. Only the public-key PKCS#1 v1.5 verify is used: RUSTSEC-2023-0071 (Marvin)
+# concerns private-key decryption, which nothing here does.
+rsa = { version = "=0.9.10", default-features = false }
 # The OS keyring as decanter_core::secrets uses it: keyring-core with the store crate of each
 # platform, which `keyring`'s own docs advise for applications that choose their stores.
 keyring-core = "1.0.1"

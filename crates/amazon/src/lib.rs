@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Amazon Games: the account session and the library listing, for now (kb #1520 and #1521,
-//! stages S1 and S2 of docs/amazon-nile-integration-analysis.md).
+//! Amazon Games: the account session, the library listing and a game's file manifest, for now
+//! (kb #1520, #1521 and #1611, stages S1 to S3 of docs/amazon-nile-integration-analysis.md).
 //!
 //! Amazon documents none of this. The wire protocol is the one
 //! [nile](https://github.com/imLinguin/nile) speaks and the
@@ -48,6 +48,10 @@
     clippy::separated_literal_suffix,
     reason = "`0_u8` is the workspace's spelling; unseparated_literal_suffix asks the opposite"
 )]
+#![expect(
+    clippy::mod_module_files,
+    reason = "directory modules are `mod.rs` across the workspace; self_named_module_files asks the opposite"
+)]
 #![allow(
     clippy::missing_docs_in_private_items,
     reason = "private items get a doc comment when the WHY isn't obvious from the signature, \
@@ -60,9 +64,13 @@ mod http;
 mod identity;
 mod library;
 mod login;
+mod manifest;
 mod pkce;
 mod session;
 
 pub use library::{AmazonGame, Library, Listing, list_games};
 pub use login::{PendingLogin, complete_login, extract_code};
+pub use manifest::{
+    Manifest, ManifestError, ManifestFile, ManifestPath, PathFault, Plan, Sha256Digest, parse_signed_manifest, plan,
+};
 pub use session::{Account, Deregistration, Live, LiveSession, SessionState, live_session, log_out, session_state};
