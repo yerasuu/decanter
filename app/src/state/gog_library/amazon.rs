@@ -1,8 +1,8 @@
 //! The Amazon Games half of the library (kb #1521): one listing loop per Amazon account of the
 //! profile, started with the account list and repeated on the GOG loops' interval.
 //!
-//! Read-only: the games are shown as not installed, and the entitlement id each one needs for a
-//! later download is kept in the cache beside it.
+//! Each game shows whether it is installed from its install record, and the entitlement id its
+//! download needs is kept in the cache beside it.
 
 use std::collections::HashSet;
 
@@ -89,6 +89,30 @@ impl GogLibrary {
         cx.notify();
     }
 
+    /// [`GogLibrary::refresh_install_state`] for an Amazon account's game; `false` when the account
+    /// is not one of the profile's Amazon accounts.
+    pub(super) fn refresh_amazon_install_state(&mut self, account_id: &str, product_id: &str) -> bool {
+        let Some(account_games) = self.amazon_by_account.get_mut(account_id) else {
+            return false;
+        };
+        if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
+            entry.game.install_state = super::local_install_state(account_id, product_id);
+        }
+        self.amazon = flatten(&self.amazon_wanted, &self.amazon_by_account);
+        true
+    }
+
+    /// [`GogLibrary::refresh_all_install_state`] for the Amazon accounts' games.
+    pub(super) fn refresh_all_amazon_install_state(&mut self) {
+        for (account_id, games) in &mut self.amazon_by_account {
+            let library = crate::core::library_for_account(account_id).ok();
+            for entry in games.iter_mut() {
+                entry.game.install_state = super::local_install_state_in(library.as_ref(), account_id, &entry.game.id);
+            }
+        }
+        self.amazon = flatten(&self.amazon_wanted, &self.amazon_by_account);
+    }
+
     fn amazon_listed(&mut self, account_id: &str, cycle: Cycle, cx: &mut Context<Self>) -> bool {
         let Some(account_games) = self.amazon_by_account.get_mut(account_id) else {
             return false;
@@ -163,7 +187,12 @@ async fn sync_account(account_id: String) -> Cycle {
 
 async fn cached(account_id: String, listing: Listing) -> Cycle {
     tokio::task::spawn_blocking(move || {
-        let entries = listing.games.iter().map(|game| entry(&account_id, game)).collect();
+        let library = crate::core::library_for_account(&account_id).ok();
+        let entries = listing
+            .games
+            .iter()
+            .map(|game| entry(library.as_ref(), &account_id, game))
+            .collect();
         cache(&account_id, &listing.games, listing.complete);
         entries
     })
@@ -172,9 +201,10 @@ async fn cached(account_id: String, listing: Listing) -> Cycle {
     .map_or(Cycle::Failed, Cycle::Listed)
 }
 
-fn entry(account_id: &str, game: &AmazonGame) -> LibraryEntry {
+fn entry(library: Option<&decanter_core::Library>, account_id: &str, game: &AmazonGame) -> LibraryEntry {
     LibraryEntry {
         game: Game {
+            install_state: super::local_install_state_in(library, account_id, &game.product_id),
             account_id: account_id.to_owned(),
             id: game.product_id.clone(),
             title: game.title.clone(),

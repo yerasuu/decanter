@@ -287,12 +287,14 @@ impl InstalledGame {
     /// can't be used in a path.
     fn manifest_file_name(storefront: Storefront, game_id: &str) -> Option<String> {
         // The id lands in a filename, so the same rule as an install root
-        // applies: ids are digits or a short slug, anything else is a
-        // malformed response rather than a name needing quoting.
+        // applies: ids are digits or a short slug (Amazon's are dotted,
+        // `amzn1.adg.product.<uuid>`), anything else is a malformed response
+        // rather than a name needing quoting. The `appmanifest_` prefix keeps
+        // a dot from ever making it `.` or `..`.
         if game_id.is_empty()
             || !game_id
                 .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '.')
         {
             return None;
         }

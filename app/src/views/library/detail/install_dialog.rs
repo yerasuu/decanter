@@ -67,6 +67,13 @@ fn fetch_languages(
 
 impl DetailView {
     pub(super) fn open_install_dialog(&mut self, request: InstallRequest, cx: &mut Context<Self>) {
+        // Amazon has no branches or languages to pick, so its install starts in the main library
+        // folder without asking.
+        #[cfg(target_os = "linux")]
+        if crate::views::library::amazon_install::is_amazon_account(&request.account_id) {
+            actions::start_install(request, cx);
+            return;
+        }
         let (account_id, product_id) = (request.account_id.clone(), request.product_id.clone());
         let folders = crate::core::library_for_account(&account_id)
             .inspect_err(

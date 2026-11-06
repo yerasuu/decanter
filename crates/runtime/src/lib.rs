@@ -36,6 +36,7 @@
 )]
 
 pub mod download;
+pub mod install;
 pub mod journal;
 mod launch;
 mod os;

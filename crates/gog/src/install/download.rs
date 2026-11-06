@@ -29,6 +29,8 @@ use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::sync::mpsc;
 use url::Url;
 
+pub use decanter_runtime::install::Cancelled;
+
 use super::journal::{COMMIT_BYTES, Journal, Start, part_path};
 use super::tracking::Stop;
 
@@ -110,13 +112,6 @@ pub(super) struct CorruptChunk {
 #[derive(Debug, thiserror::Error)]
 #[error("GOG's CDN could not be reached")]
 pub(super) struct Unreachable;
-
-/// What a download stopped by [`Cancel`] fails with, so a caller can tell
-/// the user's own cancel from a failure worth reporting.
-#[derive(Debug, thiserror::Error)]
-#[error("download cancelled")]
-#[non_exhaustive]
-pub struct Cancelled;
 
 const RUNNING: u8 = 0;
 const CANCEL: u8 = 1;

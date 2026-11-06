@@ -48,3 +48,9 @@ pub(crate) const DISTRIBUTION_USER_AGENT: &str = "com.amazon.agslauncher.win/3.0
 /// The `clientId` and `keyId` the launcher names itself with in an entitlements request body.
 pub(crate) const ENTITLEMENTS_CLIENT_ID: &str = "Sonic";
 pub(crate) const ENTITLEMENTS_KEY_ID: &str = "d5dc8b8b-86c8-4fc4-ae93-18c0def5314d";
+
+/// The distribution service's public endpoint, where a game's download is asked for.
+pub(crate) const DISTRIBUTION_PATH: &str = "/api/distribution/v2/public";
+/// The `X-Amz-Target` that asks for one entitlement's download location and version.
+pub(crate) const DOWNLOAD_TARGET: &str =
+    "com.amazon.animusdistributionservice.external.AnimusDistributionService.GetGameDownload";

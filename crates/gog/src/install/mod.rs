@@ -14,13 +14,13 @@
 //! [`tracking`] is the process-wide bookkeeping [`cancel`] and [`pause`] need,
 //! [`queue`] the order downloads take their turn in,
 //! [`program`] guesses which file launches the game once it's all in
-//! place, [`redist`] fetches the redistributables the build names, and
-//! [`rate`] smooths the transfer rate reported back.
+//! place, and [`redist`] fetches the redistributables the build names.
 
 use std::path::Path;
 
 use anyhow::Context;
 use decanter_core::{GameArt, InstalledDlc, InstalledGame, Library, Storefront, platform};
+use decanter_runtime::install::RateTracker;
 
 mod download;
 mod journal;
@@ -29,13 +29,13 @@ mod pending;
 mod plan;
 mod program;
 mod queue;
-mod rate;
 mod redist;
 mod staging;
 mod tracking;
 mod unfinished;
 mod verify;
 
+pub use decanter_runtime::install::Progress;
 pub use download::Cancelled;
 pub use journal::{BuildSwitch, PauseReason, Paused, Room};
 pub use language::{
@@ -56,31 +56,12 @@ use download::{Cancel, PlannedDownload, ProgressUpdate, Unreachable, download_al
 use journal::{Header, Journal, Kind, Opened, Request, Start};
 use pending::{Entered, Pending};
 use plan::{Languages, Plan};
-use rate::RateTracker;
 use staging::{move_into_library, staging_in, staging_root};
 use tracking::{InstallKey, Settling, Stop, active, claim};
 
 /// Kept free beyond what a download still needs, at least: the disk is never filled to its last
 /// byte, which other programs (and the move into the library) need too.
 const MIN_MARGIN: u64 = 1024 * 1024 * 1024;
-
-/// Progress for the install as a whole, not for one file: several files
-/// transfer at once, so per-file numbers jump around and never add up to
-/// something a progress bar can use. `bytes_downloaded` and
-/// `bytes_per_second` are summed across every file in flight.
-#[derive(Debug, Clone)]
-pub struct Progress {
-    /// Whichever file most recently reported — a liveness hint, not a
-    /// position in the install.
-    pub current_file: String,
-    pub bytes_downloaded: u64,
-    /// The install's full size, known upfront from the depot manifest.
-    pub total_bytes: Option<u64>,
-    pub bytes_per_second: f64,
-    /// Set when GOG published another build while the download was stopped, on every report of
-    /// the resumed run.
-    pub build_switch: Option<BuildSwitch>,
-}
 
 /// Downloads and installs `product_id` for `account_id`, reporting
 /// transfer progress through `on_progress` as it goes.
@@ -723,7 +704,7 @@ async fn fetch_into_staging(
     // latest per file and sums them, so what reaches the caller is the
     // install's overall position rather than one arbitrary file's. Only
     // bytes travel through this channel, not each file's own rate -- see
-    // `rate::RateTracker` for why that's measured at the install level
+    // `decanter_runtime::install::RateTracker` for why that's measured at the install level
     // instead of summed from what each file reports.
     let mut per_file_bytes: Vec<u64> = starts
         .iter()

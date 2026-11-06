@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Amazon Games: the account session, the library listing and a game's file manifest, for now
-//! (kb #1520, #1521 and #1611, stages S1 to S3 of docs/amazon-nile-integration-analysis.md).
+//! Amazon Games: the account session, the library listing, a game's file manifest and installing
+//! it, for now (kb #1520, #1521, #1611 and #1613, stages S1 to S4 of
+//! docs/amazon-nile-integration-analysis.md).
 //!
 //! Amazon documents none of this. The wire protocol is the one
 //! [nile](https://github.com/imLinguin/nile) speaks and the
 //! [community research wiki](https://github.com/Lariaa/GameLauncherResearch/wiki/Amazon-Games)
 //! describes, taken as facts only: no code of nile's is here (decision #1518, D1), and every fact
 //! is UNVERIFIED against Amazon until the owner's spike (kb #1519). Linux and amazon.com only
-//! (D10, D11). Tokens live in the OS keyring (D4); nothing here writes to the library: the caller
-//! caches what [`list_games`] returns.
+//! (D10, D11). Tokens live in the OS keyring (D4); the caller caches what [`list_games`] returns,
+//! and only [`install`] and [`uninstall`] write to the library.
 
 #![expect(
     clippy::implicit_return,
@@ -62,12 +63,17 @@ mod device;
 mod error;
 mod http;
 mod identity;
+mod install;
 mod library;
 mod login;
 mod manifest;
 mod pkce;
 mod session;
 
+pub use install::{
+    BrokenFile, BrokenReason, Target, VerifyReport, cancel, discard, install, pause, pause_for_quit, repair, uninstall,
+    verify,
+};
 pub use library::{AmazonGame, Library, Listing, list_games};
 pub use login::{PendingLogin, complete_login, extract_code};
 pub use manifest::{

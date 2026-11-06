@@ -24,7 +24,7 @@ pub use path::{ManifestPath, PathFault};
 pub use plan::{Plan, plan};
 
 /// The whole answer, so that a body which is not compressed cannot be larger than a decompressed one.
-const MAX_RAW_LEN: usize = MAX_HEADER_LEN + MAX_MANIFEST_LEN + 4;
+pub(crate) const MAX_RAW_LEN: usize = MAX_HEADER_LEN + MAX_MANIFEST_LEN + 4;
 /// A header holds two enums, a hash and a 256-byte signature: a few hundred bytes.
 const MAX_HEADER_LEN: usize = 64 << 10;
 /// The decompressed body. A game of 100,000 files with 200-byte paths takes about 30 mebibytes.

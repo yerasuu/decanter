@@ -13,7 +13,9 @@ workspace = true
 # (decision #1518, D1).
 [dependencies]
 decanter-core.workspace = true
+decanter-runtime.workspace = true
 anyhow.workspace = true
+futures-util.workspace = true
 getrandom.workspace = true
 lzma-rust2 = { workspace = true, features = ["std", "xz"] }
 reqwest = { workspace = true, features = ["json", "system-proxy"] }
@@ -22,7 +24,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "fs", "io-util", "macros", "time"] }
 tracing.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["v4"] }

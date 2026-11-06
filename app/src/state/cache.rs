@@ -58,7 +58,7 @@ fn to_entry(library: Option<&decanter_core::Library>, account_id: &str, cached: 
         is_mod: false,
         game: Game {
             account_id: account_id.to_owned(),
-            install_state: (cached.storefront == Storefront::Gog)
+            install_state: matches!(cached.storefront, Storefront::Gog | Storefront::AmazonGames)
                 .then(|| super::gog_library::local_install_state_in(library, account_id, &cached.product_id))
                 .flatten(),
             id: cached.product_id,

@@ -7,6 +7,8 @@
 //! right-click in the browser, a click in the sidebar) shows in the others.
 
 pub mod actions;
+#[cfg(target_os = "linux")]
+mod amazon_install;
 mod browser;
 mod context_menu;
 mod data;

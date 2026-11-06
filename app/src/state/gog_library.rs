@@ -252,16 +252,17 @@ impl GogLibrary {
             installed = install_state.is_some(),
             "refreshing local install state for one game"
         );
-        let Some(account_games) = self.by_account.get_mut(account_id) else {
+        if let Some(account_games) = self.by_account.get_mut(account_id) {
+            if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
+                entry.game.install_state = install_state;
+            }
+        } else if !self.refresh_amazon_install_state(account_id, product_id) {
             tracing::warn!(
                 account_id,
                 product_id,
                 "no active fetch loop for this account, install state not refreshed"
             );
             return;
-        };
-        if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
-            entry.game.install_state = install_state;
         }
         self.games = merge(
             &self.by_account,
@@ -304,6 +305,7 @@ impl GogLibrary {
                 entry.game.install_state = local_install_state_in(library.as_ref(), account_id, &entry.game.id);
             }
         }
+        self.refresh_all_amazon_install_state();
         self.refresh_external(cx);
     }
 
@@ -480,6 +482,12 @@ impl GogLibrary {
 #[cfg(not(target_os = "linux"))]
 impl GogLibrary {
     fn reconcile_amazon(&mut self, _cx: &Context<Self>) {}
+
+    const fn refresh_amazon_install_state(&mut self, _account_id: &str, _product_id: &str) -> bool {
+        false
+    }
+
+    const fn refresh_all_amazon_install_state(&mut self) {}
 }
 
 fn external_entries(profile_id: &str) -> Vec<LibraryEntry> {

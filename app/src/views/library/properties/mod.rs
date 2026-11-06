@@ -103,6 +103,10 @@ const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 /// decanter knows of it is decanter's to show.
 const STEAM_TABS: &[Tab] = &[Tab::General];
 
+/// Amazon has no branches, languages, DLC or cloud saves decanter reads yet;
+/// its files are verified like any store's.
+const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::LocalFiles];
+
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
 /// later — the window manages its own lifetime, closed the same way any
@@ -174,6 +178,7 @@ impl PropertiesWindow {
         let tabs = match self.target.storefront {
             Storefront::Unspecified => EXTERNAL_TABS,
             Storefront::Steam => STEAM_TABS,
+            Storefront::AmazonGames => AMAZON_TABS,
             _ => TABS,
         };
         if crate::launch::in_prefixes() {

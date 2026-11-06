@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+#[cfg(target_os = "linux")]
+use decanter_core::Storefront;
 use decanter_gog::VerifyReport;
 use gpui::{Context, Window, prelude::*};
 use rust_i18n::t;
@@ -64,7 +66,7 @@ impl LocalFilesTab {
                 });
                 return;
             };
-            let outcome = decanter_gog::verify(&core_library, account_id, product_id).await;
+            let outcome = verify_files(&core_library, &target).await;
             let _ = this.update(cx, |this, cx| {
                 match outcome {
                     Ok(outcome) => {
@@ -121,7 +123,20 @@ impl LocalFilesTab {
                 return;
             };
             let (on_progress, progress) = install::progress_channel();
-            let repair = decanter_gog::repair(&core_library, account_id, product_id, &broken, on_progress);
+            let repair = async {
+                #[cfg(target_os = "linux")]
+                if target.storefront == Storefront::AmazonGames {
+                    return crate::views::library::amazon_install::repair(
+                        &core_library,
+                        account_id,
+                        product_id,
+                        &target.title,
+                        on_progress,
+                    )
+                    .await;
+                }
+                decanter_gog::repair(&core_library, account_id, product_id, &broken, on_progress).await
+            };
             let job = DownloadJob {
                 key: DownloadKey::new(account_id, product_id),
                 title: target.title.clone(),
@@ -141,7 +156,7 @@ impl LocalFilesTab {
                     return;
                 }
             }
-            let outcome = decanter_gog::verify(&core_library, account_id, product_id).await;
+            let outcome = verify_files(&core_library, &target).await;
             let _ = this.update(cx, |this, cx| {
                 match outcome {
                     Ok(outcome) => this.report = Some(outcome),
@@ -157,6 +172,17 @@ impl LocalFilesTab {
         })
         .detach();
     }
+}
+
+/// Every file of the game against its store's manifest: GOG's as it is now, Amazon's as it was
+/// installed.
+async fn verify_files(core_library: &decanter_core::Library, target: &Target) -> anyhow::Result<VerifyReport> {
+    #[cfg(target_os = "linux")]
+    if target.storefront == Storefront::AmazonGames {
+        return crate::views::library::amazon_install::verify(core_library, &target.account_id, &target.product_id)
+            .await;
+    }
+    decanter_gog::verify(core_library, &target.account_id, &target.product_id).await
 }
 
 impl Render for LocalFilesTab {

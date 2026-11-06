@@ -5,7 +5,6 @@
 
 use core::future::Future;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -15,7 +14,6 @@ use tokio::sync::{Mutex, Notify};
 
 use super::download::Cancel;
 use super::queue::{Place, take_turn};
-use super::staging::DOWNLOADING;
 
 pub(super) type InstallKey = (String, String);
 
@@ -65,10 +63,6 @@ pub(super) async fn claim(account_id: &str, product_id: &str) {
 /// Wakes the downloads waiting for their turn so they see a stop asked of them.
 static STOPS: Notify = Notify::const_new();
 
-/// How often a download waiting on another decanter process looks at the slot
-/// again: file locks wake no one when they are let go.
-const SLOT_POLL: Duration = Duration::from_secs(1);
-
 /// The turn to download, held until dropped: this process's own and the slot
 /// shared with every other decanter process using the library.
 pub(super) struct Turn {
@@ -106,7 +100,7 @@ pub(super) async fn wait_turn(library: &Library, key: &InstallKey) -> Option<Tur
     let Some(place) = until_stopped(key, take_turn(key)).await else {
         return None;
     };
-    let Some(slot) = until_stopped(key, take_slot(library)).await else {
+    let Some(slot) = until_stopped(key, decanter_runtime::install::take_slot(library)).await else {
         return None;
     };
     Some(Turn {
@@ -115,57 +109,13 @@ pub(super) async fn wait_turn(library: &Library, key: &InstallKey) -> Option<Tur
     })
 }
 
-/// The folder whose lock is the slot: the library folder every process using
-/// `library` agrees on whichever one it targets, the first present in order.
-pub(super) fn slot_dir(library: &Library) -> Option<PathBuf> {
-    library
-        .roots()
-        .into_iter()
-        .filter(|root| root.is_dir())
-        .min()
-        .map(|root| root.join(DOWNLOADING))
-}
-
-/// `None` when the slot can't be locked at all (a read-only disk, say): the
-/// download then goes on without it rather than never.
-async fn take_slot(library: &Library) -> Option<StagingLock> {
-    let Some(dir) = slot_dir(library) else {
-        return None;
-    };
-    if let Err(err) = tokio::fs::create_dir_all(&dir).await {
-        tracing::warn!(dir = %dir.display(), error = %err, "couldn't create the shared download slot, downloading without it");
-        return None;
-    }
-    let mut is_waiting = false;
-    loop {
-        match decanter_runtime::journal::lock(&dir) {
-            Ok(slot) => {
-                if is_waiting {
-                    tracing::info!(dir = %dir.display(), "the other decanter process's download ended, taking the slot");
-                }
-                return Some(slot);
-            }
-            Err(LockError::Busy(_)) => {
-                if !is_waiting {
-                    tracing::info!(dir = %dir.display(), "another decanter process is downloading, waiting for its turn");
-                    is_waiting = true;
-                }
-                tokio::time::sleep(SLOT_POLL).await;
-            }
-            Err(err) => {
-                tracing::warn!(error = %err, "couldn't lock the shared download slot, downloading without it");
-                return None;
-            }
-        }
-    }
-}
-
 /// Whether another decanter process holds `library`'s download slot right now,
 /// so a download started here would wait for it.
 #[must_use]
 #[inline]
 pub fn download_slot_busy(library: &Library) -> bool {
-    slot_dir(library).is_some_and(|dir| matches!(decanter_runtime::journal::lock(&dir), Err(LockError::Busy(_))))
+    decanter_runtime::install::slot_dir(library)
+        .is_some_and(|dir| matches!(decanter_runtime::journal::lock(&dir), Err(LockError::Busy(_))))
 }
 
 /// The stop asked for while `key` was still being planned, before any

@@ -272,6 +272,12 @@ fn kind_of(library: &Library, download: &UnfinishedDownload) -> DownloadKind {
 pub fn quit(cx: &mut App) {
     cx.spawn(async move |cx| {
         crate::launch::stop_everything(cx).await;
+        #[cfg(target_os = "linux")]
+        tokio::join!(
+            decanter_gog::pause_for_quit(QUIT_WAIT),
+            decanter_amazon::pause_for_quit(QUIT_WAIT)
+        );
+        #[cfg(not(target_os = "linux"))]
         decanter_gog::pause_for_quit(QUIT_WAIT).await;
         cx.update(|cx| cx.quit());
     })

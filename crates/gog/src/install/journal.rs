@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use decanter_runtime::download::hex_digest;
+pub use decanter_runtime::install::{BuildSwitch, PauseReason, Paused, Room};
 use decanter_runtime::journal::{LineLog, LockError, StagingLock};
 use decanter_runtime::sanitize_relative_path;
 use serde::{Deserialize, Serialize};
@@ -44,62 +45,6 @@ pub(super) const COMMIT_BYTES: u64 = 64 * 1024 * 1024;
 
 /// A run this one takes over from lets go within one chunk; past this, another process owns it.
 const LOCK_WAIT: Duration = Duration::from_secs(15);
-
-/// Why a download stopped before finishing. Its data stays in staging until the user cancels it.
-///
-/// Exhaustive on purpose: the app words each reason, so a new one has to reach it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PauseReason {
-    User,
-    /// No answer from GOG for the whole retry window, or a refused chunk URL, which the next
-    /// plan signs again.
-    Network,
-    /// decanter quit cleanly while it ran.
-    AppClosed,
-    /// decanter stopped without pausing it: a crash, a kill, a power cut.
-    ClosedUnexpectedly,
-    DiskFull,
-    /// The library folder it downloads into went away (an unplugged disk).
-    LibraryUnavailable,
-}
-
-/// The free space a download needed on its library's disk, against what that disk had, when it
-/// stopped for it.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct Room {
-    /// What was left to download, plus a margin so the disk is never filled to the last byte.
-    pub needed: u64,
-    pub free: u64,
-}
-
-impl Room {
-    pub(super) const fn new(needed: u64, free: u64) -> Self {
-        Self { needed, free }
-    }
-
-    /// How much more has to be freed.
-    #[must_use]
-    #[inline]
-    pub const fn short(&self) -> u64 {
-        self.needed.saturating_sub(self.free)
-    }
-}
-
-/// What a download fails with when it stopped and kept what it had: resuming it carries on from
-/// `bytes_done`.
-#[derive(Debug, thiserror::Error)]
-#[error("download paused ({reason:?}) with {bytes_done} bytes kept")]
-#[non_exhaustive]
-pub struct Paused {
-    pub reason: PauseReason,
-    pub bytes_done: u64,
-    /// The library folder it downloads into, so the app can tell when an unplugged one is back.
-    pub root: Option<PathBuf>,
-    /// For a full disk, how much it needed.
-    pub room: Option<Room>,
-}
 
 /// How to plan this download again: the caller's own request, not what it resolved to.
 #[derive(Clone, Serialize, Deserialize)]
@@ -324,15 +269,6 @@ fn fold(header: &Header, lines: &[Vec<u8>]) -> Option<Folded> {
 pub(super) enum Start {
     Done,
     At { chunk: usize, bytes: u64 },
-}
-
-/// What a build switch kept of the download: GOG published another build while it was stopped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BuildSwitch {
-    /// Bytes the new build shares with the earlier one, and so still has.
-    pub kept_bytes: u64,
-    /// Bytes the earlier build had downloaded.
-    pub had_bytes: u64,
 }
 
 pub(super) enum Opened {

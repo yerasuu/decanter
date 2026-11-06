@@ -276,6 +276,10 @@ fn report(state: &AppState, key: &DownloadKey, run: u64, progress: decanter_gog:
 /// delete its data and drop its row, so this does.
 pub async fn discard_paused(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
     let outcome = match crate::core::library_for_account(&key.account_id) {
+        #[cfg(target_os = "linux")]
+        Ok(library) if super::amazon_install::is_amazon_account(&key.account_id) => {
+            super::amazon_install::discard(&library, &key).await
+        }
         Ok(library) => decanter_gog::discard(&library, &key.account_id, &key.product_id)
             .await
             .inspect_err(|err| {
@@ -337,6 +341,11 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
     } else {
         DownloadKind::Install
     };
+    #[cfg(target_os = "linux")]
+    if super::amazon_install::is_amazon_account(&account_id) {
+        super::amazon_install::download(key, title, kind, library_root, &state, cx).await;
+        return;
+    }
 
     let Ok(core_library) = crate::core::library_for_account(&account_id).map(|library| match &library_root {
         Some(root) => library.targeting(root),
@@ -482,6 +491,11 @@ pub async fn resume(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
     }) else {
         return;
     };
+    #[cfg(target_os = "linux")]
+    if super::amazon_install::is_amazon_account(&key.account_id) {
+        super::amazon_install::download(key, title, kind, None, &state, cx).await;
+        return;
+    }
     let DownloadKey { account_id, product_id } = key.clone();
     let library = match crate::core::library_for_account(&account_id) {
         Ok(library) => library,
@@ -584,6 +598,10 @@ async fn install_dlcs(
 /// say) and of its DLC, which the confirmation the user answered named each
 /// with its size (#1316).
 pub async fn uninstall(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) -> Result<(), Text> {
+    #[cfg(target_os = "linux")]
+    if super::amazon_install::is_amazon_account(&account_id) {
+        return super::amazon_install::uninstall(&account_id, &product_id, &state, cx).await;
+    }
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(
         crate::core::library_for_account(&account_id)

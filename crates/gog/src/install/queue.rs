@@ -317,7 +317,7 @@ pub async fn queue_changed() {
 /// unreadable one is logged and replaced, and the downloads start in arrival order.
 #[inline]
 pub async fn restore_queue(library: &Library, listed: &[(String, String)], resuming: &[(String, String)]) {
-    let Some(dir) = super::tracking::slot_dir(library) else {
+    let Some(dir) = decanter_runtime::install::slot_dir(library) else {
         return;
     };
     let path = dir.join(QUEUE_FILE);

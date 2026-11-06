@@ -15,10 +15,11 @@ use super::install::{self, InstallRequest};
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
-/// build of it or its store can't install yet: shown in place of Instalar and Jugar.
+/// build of it or its store can't launch yet: shown in place of Instalar and Jugar.
 pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
     if game.storefront == decanter_core::Storefront::AmazonGames {
-        return Some(t!("amazon.detail.install_later"));
+        let is_installed = game.install_state.as_ref().is_some_and(|state| state.installed);
+        return is_installed.then(|| t!("amazon.detail.launch_later"));
     }
     let system = platform::game_system();
     (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
@@ -187,8 +188,12 @@ pub fn confirm_cancel(key: DownloadKey, cx: &mut App) {
         cx.spawn(async move |cx| install::discard_paused(key, state, cx).await)
             .detach();
     } else {
-        cx.spawn(async move |_| decanter_gog::cancel(&key.account_id, &key.product_id).await)
-            .detach();
+        cx.spawn(async move |_| {
+            #[cfg(target_os = "linux")]
+            decanter_amazon::cancel(&key.account_id, &key.product_id);
+            decanter_gog::cancel(&key.account_id, &key.product_id).await;
+        })
+        .detach();
     }
 }
 
@@ -201,8 +206,12 @@ pub fn pause_download(key: DownloadKey, cx: &App) {
         product_id = key.product_id,
         "download pause requested"
     );
-    cx.spawn(async move |_| decanter_gog::pause(&key.account_id, &key.product_id).await)
-        .detach();
+    cx.spawn(async move |_| {
+        #[cfg(target_os = "linux")]
+        decanter_amazon::pause(&key.account_id, &key.product_id);
+        decanter_gog::pause(&key.account_id, &key.product_id).await;
+    })
+    .detach();
 }
 
 /// Reanudar, also what carries a download on by itself. Only a paused row;

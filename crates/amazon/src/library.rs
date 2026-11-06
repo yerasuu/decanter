@@ -302,7 +302,7 @@ fn image(url: Option<&str>) -> Option<String> {
 }
 
 /// Ids become a database key and, in later stages, a folder name and a request field.
-fn is_id(id: &str) -> bool {
+pub(crate) fn is_id(id: &str) -> bool {
     (1..=ID_MAX_LEN).contains(&id.len())
         && id
             .bytes()

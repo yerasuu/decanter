@@ -364,6 +364,10 @@ pub fn library_for_account(account_id: &str) -> Result<Library, StoreError> {
     let db = db()?;
     let profile_id = crate::achv_try!(
         db.profile_id_for_account(account_id, Storefront::Gog)
+            .and_then(|found| match found {
+                Some(profile_id) => Ok(Some(profile_id)),
+                None => db.profile_id_for_account(account_id, Storefront::AmazonGames),
+            })
             .inspect_err(|err| tracing::warn!(account_id, %err, "failed to resolve profile for account, using default"))
             .map_err(StoreError::Query)
     );
@@ -445,11 +449,12 @@ pub fn installed_game(account_id: &str, game_id: &str) -> Option<InstalledGame> 
 /// [`installed_game`] against a `library` the caller already resolved, so a pass over many games
 /// reads the profile's library settings once instead of once per game.
 pub fn installed_game_in(library: &Library, account_id: &str, game_id: &str) -> Option<InstalledGame> {
-    // An external game's id is a uuid, never a GOG product id, so trying
-    // both storefronts can't pick up the wrong game. A Steam entry is filed
+    // An external game's id is a uuid, never a GOG or Amazon product id, so
+    // trying every storefront can't pick up the wrong game. A Steam entry is filed
     // under the profile, which no GOG account ever is.
     library
         .read_manifest(account_id, Storefront::Gog, game_id)
+        .or_else(|| library.read_manifest(account_id, Storefront::AmazonGames, game_id))
         .or_else(|| library.read_manifest(account_id, Storefront::Unspecified, game_id))
         .or_else(|| library.read_manifest(account_id, Storefront::Steam, game_id))
 }
