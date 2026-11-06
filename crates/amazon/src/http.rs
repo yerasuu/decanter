@@ -23,22 +23,27 @@ pub(crate) fn url(path: &str) -> String {
     format!("https://{API_HOST}{path}")
 }
 
-/// reqwest's own default has no timeout, so an answer Amazon stalls on would hang the caller
-/// forever; every call here is a small JSON round trip. Redirects may only stay on
-/// [`API_HOST`] over HTTPS, since tokens ride along in the body and the bearer header.
+/// The client of the auth service.
 pub(crate) fn client() -> Result<reqwest::Client, CallError> {
+    client_for(API_HOST, USER_AGENT)
+}
+
+/// reqwest's own default has no timeout, so an answer Amazon stalls on would hang the caller
+/// forever; every call here is a small JSON round trip. Redirects may only stay on `host` over
+/// HTTPS, since tokens ride along in the body and the bearer header.
+pub(crate) fn client_for(host: &'static str, user_agent: &'static str) -> Result<reqwest::Client, CallError> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .https_only(true)
-        .user_agent(USER_AGENT)
-        .redirect(redirect::Policy::custom(|attempt| {
-            let is_api = attempt.url().scheme() == "https" && attempt.url().host_str() == Some(API_HOST);
+        .user_agent(user_agent)
+        .redirect(redirect::Policy::custom(move |attempt| {
+            let is_host = attempt.url().scheme() == "https" && attempt.url().host_str() == Some(host);
             if attempt.previous().len() >= 5 {
                 attempt.error("too many redirects")
-            } else if is_api {
+            } else if is_host {
                 attempt.follow()
             } else {
-                attempt.error("redirected off Amazon's auth service")
+                attempt.error("redirected off the Amazon host asked")
             }
         }))
         .build()

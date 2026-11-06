@@ -50,6 +50,7 @@ minisign-verify.workspace = true
 # Without `wayland`/`x11`, gpui_platform silently runs headless; Windows and macOS have
 # no use for either backend.
 gpui_platform = { workspace = true, features = ["wayland", "x11"] }
+decanter-amazon.workspace = true
 ksni.workspace = true
 nix = { workspace = true, features = ["fs", "inotify", "signal", "user"] }
 zbus.workspace = true

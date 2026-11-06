@@ -5,3 +5,13 @@ amazon.consent.risk: Amazon hat dafür keine Erlaubnis veröffentlicht, daher k�
 amazon.consent.affiliation: Decanter ist nicht mit Amazon verbunden.
 amazon.consent.removal: Du kannst das Gerät später wieder entfernen.
 amazon.consent.accept: Akzeptieren und fortfahren
+amazon.login.button: "Bei Amazon Games anmelden"
+amazon.login.hint: "Öffne Amazon, melde dich an und füge hier die Adresse der Seite ein, auf der du landest."
+amazon.login.open: "Amazon öffnen"
+amazon.login.connect: "Verbinden"
+amazon.session.closed: "Die Sitzung wurde bei Amazon beendet. Melde dich erneut an."
+amazon.logout.refused: "Du bist hier abgemeldet, aber Amazon hat sich geweigert, das Gerät zu entfernen. Entferne es auf der Geräteseite deines Amazon-Kontos."
+amazon.logout.unreachable: "Du bist hier abgemeldet, aber Amazon war nicht erreichbar, um das Gerät zu entfernen. Es ist daher weiterhin in deinem Konto registriert."
+amazon.detail.install_later: "Das Installieren von Amazon-Games-Titeln ist noch nicht verfügbar"
+amazon.credentials.kind: "Amazon-Games-Sitzung"
+amazon.credentials.confirm: "Die Amazon-Games-Sitzung von %{subject} wird aus dem Keyring entfernt. Dadurch wird das Konto abgemeldet, ohne das Gerät aus deinem Amazon-Konto zu entfernen: Du musst dich erneut anmelden, um es zu nutzen."

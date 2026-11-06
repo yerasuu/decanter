@@ -21,11 +21,16 @@ use super::{checkbox_field, column, field_row, inline, section, storefront_label
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
+#[cfg(target_os = "linux")]
+use crate::views::amazon_login::AmazonLogin;
 use crate::views::gog_login::{GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
 use crate::views::{session_renewal, shell};
 use crate::widgets::reveal::reveal;
 use crate::widgets::{ButtonKind, Select, button};
+
+#[cfg(target_os = "linux")]
+mod amazon;
 
 #[derive(Clone, PartialEq)]
 enum AccountStatus {
@@ -64,6 +69,11 @@ pub struct AccountTab {
     steam_shown: bool,
     adding: bool,
     login: Entity<GogLogin>,
+    #[cfg(target_os = "linux")]
+    amazon_login: Entity<AmazonLogin>,
+    /// What logging out of Amazon left undone, shown until the next login.
+    #[cfg(target_os = "linux")]
+    amazon_notice: Option<Text>,
 }
 
 impl AccountTab {
@@ -71,6 +81,21 @@ impl AccountTab {
         let login = cx.new(GogLogin::new);
         cx.subscribe(&login, |this, _, LoggedIn(account), cx| this.connect(account, cx))
             .detach();
+        #[cfg(target_os = "linux")]
+        let amazon_login = {
+            let amazon_login = cx.new({
+                let profile_id = profile_id.clone();
+                |cx| AmazonLogin::new(profile_id, cx)
+            });
+            cx.subscribe(
+                &amazon_login,
+                |this, _, crate::views::amazon_login::LoggedIn(account), cx| {
+                    this.connect_amazon(account, cx);
+                },
+            )
+            .detach();
+            amazon_login
+        };
         let mut this = Self {
             profile_id,
             library_path: None,
@@ -86,6 +111,10 @@ impl AccountTab {
             steam_shown: true,
             adding: false,
             login,
+            #[cfg(target_os = "linux")]
+            amazon_login,
+            #[cfg(target_os = "linux")]
+            amazon_notice: None,
         };
         this.reload_library_path();
         this.reload_steam_shown();
@@ -185,6 +214,10 @@ impl AccountTab {
     /// Re-checked when the row first appears, so a session GOG has since
     /// closed shows as such instead of a dead "connected" state.
     fn check_session(account: &Account, cx: &mut Context<Self>) {
+        #[cfg(target_os = "linux")]
+        if account.storefront == Storefront::AmazonGames {
+            return Self::check_amazon_session(account, cx);
+        }
         let account_id = account.id.clone();
         let storefront = account.storefront;
         cx.spawn(async move |this, cx| {
@@ -230,6 +263,10 @@ impl AccountTab {
     }
 
     fn log_out(&mut self, account_id: String, storefront: Storefront, cx: &mut Context<Self>) {
+        #[cfg(target_os = "linux")]
+        if storefront == Storefront::AmazonGames {
+            return self.log_out_amazon(account_id, cx);
+        }
         if let Some(row) = self.row_mut(&account_id, storefront) {
             row.status = AccountStatus::Working;
         }
@@ -572,11 +609,17 @@ impl AccountTab {
             let label = match &row.session {
                 SessionCheck::Pending => theme::muted(t!("settings.account.session.checking")),
                 SessionCheck::Valid(name) => div().font_weight(FontWeight::BOLD).child(name.clone()),
+                SessionCheck::Closed if row.account.storefront == Storefront::AmazonGames => {
+                    theme::error(t!("amazon.session.closed"))
+                }
                 SessionCheck::Closed => theme::error(t!("settings.account.session.revoked")),
                 SessionCheck::Unreachable => theme::muted(t!("settings.account.session.unreachable")),
                 SessionCheck::Failed(err) => theme::error(t!("settings.account.session.invalid", error = err)),
             };
+            // Renewing is GOG's window; an Amazon session that closed is logged in again from
+            // the Amazon login below.
             let renew_kind = match row.session {
+                _ if row.account.storefront != Storefront::Gog => None,
                 SessionCheck::Closed => Some(ButtonKind::Primary),
                 SessionCheck::Unreachable => Some(ButtonKind::Secondary),
                 SessionCheck::Pending | SessionCheck::Valid(_) | SessionCheck::Failed(_) => None,
@@ -640,6 +683,13 @@ impl AccountTab {
             );
         }
         div().child(self.login.clone())
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+impl AccountTab {
+    fn amazon_section(&self) -> gpui::AnyElement {
+        div().into_any_element()
     }
 }
 
@@ -732,6 +782,7 @@ impl Render for AccountTab {
                 self.steam_installed
                     .then(|| section("steam-games", self.steam_games(cx))),
             )
+            .child(section("amazon-games", self.amazon_section()))
             .child(section("people", self.people(cx)))
     }
 }

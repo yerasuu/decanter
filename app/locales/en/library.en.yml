@@ -9,7 +9,7 @@ library.played.minutes: '%{minutes} min'
 library.played.hours: '%{hours} h'
 library.shelves.favorites: Favorites
 library.shelves.installed: Installed
-library.shelves.gog_library: GOG library
+library.shelves.library: Library
 library.shelves.uncategorized: Uncategorized
 library.shelves.auto: AUTO
 library.sidebar.search: Search...

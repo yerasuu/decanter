@@ -29,6 +29,9 @@ use gpui::{AsyncApp, Context, Entity, Task, WeakEntity};
 use super::Session;
 use super::cache::{has_synced_before, load_cached_games, save_entries};
 
+#[cfg(target_os = "linux")]
+mod amazon;
+
 /// Raised by `main` once GPUI has returned and before the tokio runtime is
 /// dropped. Each loop drives its own `block_on` on a blocking-pool thread,
 /// and dropping the runtime waits for those threads — so they have to be
@@ -142,6 +145,12 @@ pub struct GogLibrary {
     /// per closing rather than on every failed listing after it — renewed
     /// or put off with "Más tarde" alike. Cleared once a listing works again.
     closed_sessions: HashSet<String>,
+    /// Every Amazon account's games, merged and deduped, shown after the GOG ones. Empty where
+    /// Amazon Games is not supported.
+    amazon: Vec<LibraryEntry>,
+    amazon_wanted: Vec<String>,
+    amazon_by_account: HashMap<String, Vec<LibraryEntry>>,
+    amazon_tasks: HashMap<String, Task<()>>,
 }
 
 impl GogLibrary {
@@ -168,6 +177,10 @@ impl GogLibrary {
             tasks: HashMap::new(),
             external: Vec::new(),
             closed_sessions: HashSet::new(),
+            amazon: Vec::new(),
+            amazon_wanted: Vec::new(),
+            amazon_by_account: HashMap::new(),
+            amazon_tasks: HashMap::new(),
         };
         this.reconcile(cx);
         cx.spawn(async move |this, cx| watch_library_folders(this, cx).await)
@@ -250,7 +263,13 @@ impl GogLibrary {
         if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
             entry.game.install_state = install_state;
         }
-        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.games = merge(
+            &self.by_account,
+            &self.wanted,
+            &self.amazon,
+            &self.external,
+            &self.mod_ids,
+        );
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -259,7 +278,13 @@ impl GogLibrary {
     /// or removed — nothing about them needs the network.
     pub fn refresh_external(&mut self, cx: &mut Context<Self>) {
         self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
-        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.games = merge(
+            &self.by_account,
+            &self.wanted,
+            &self.amazon,
+            &self.external,
+            &self.mod_ids,
+        );
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -298,7 +323,13 @@ impl GogLibrary {
         self.by_account.remove(account_id);
         self.closed_sessions.remove(account_id);
         self.wanted.retain(|wanted| wanted != account_id);
-        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.games = merge(
+            &self.by_account,
+            &self.wanted,
+            &self.amazon,
+            &self.external,
+            &self.mod_ids,
+        );
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -343,10 +374,22 @@ impl GogLibrary {
             .unwrap_or_default();
         self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
 
+        self.reconcile_amazon(cx);
+
         if self.wanted.is_empty() {
-            self.games.clone_from(&self.external);
+            self.games = merge(
+                &self.by_account,
+                &self.wanted,
+                &self.amazon,
+                &self.external,
+                &self.mod_ids,
+            );
             self.revision = self.revision.wrapping_add(1);
-            self.state = LibraryState::Idle;
+            self.state = if self.amazon_wanted.is_empty() {
+                LibraryState::Idle
+            } else {
+                LibraryState::Loaded
+            };
             self.enrich_progress = None;
             cx.notify();
             return;
@@ -382,7 +425,13 @@ impl GogLibrary {
             });
             self.tasks.insert(account_id, task);
         }
-        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.games = merge(
+            &self.by_account,
+            &self.wanted,
+            &self.amazon,
+            &self.external,
+            &self.mod_ids,
+        );
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -397,7 +446,13 @@ impl GogLibrary {
             ModsState::Loading | ModsState::Unavailable => HashSet::new(),
         };
         self.mods = mods;
-        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.games = merge(
+            &self.by_account,
+            &self.wanted,
+            &self.amazon,
+            &self.external,
+            &self.mod_ids,
+        );
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
     }
@@ -409,11 +464,22 @@ impl GogLibrary {
             return false;
         };
         *account_games = shown;
-        self.games = merge(&self.by_account, &self.wanted, &self.external, &self.mod_ids);
+        self.games = merge(
+            &self.by_account,
+            &self.wanted,
+            &self.amazon,
+            &self.external,
+            &self.mod_ids,
+        );
         self.revision = self.revision.wrapping_add(1);
         cx.notify();
         true
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+impl GogLibrary {
+    fn reconcile_amazon(&mut self, _cx: &Context<Self>) {}
 }
 
 fn external_entries(profile_id: &str) -> Vec<LibraryEntry> {
@@ -477,11 +543,13 @@ async fn watch_mods(this: WeakEntity<GogLibrary>, cx: &mut AsyncApp) {
 /// copy of a product a given account owns — two accounts with the same
 /// game would otherwise show it twice. `order` decides which account's
 /// copy wins a duplicate (oldest account first, the order
-/// `decanter_core::Db::accounts_in_profile` returns). External games go
-/// last; they never duplicate anything, and are never GOG mods.
+/// `decanter_core::Db::accounts_in_profile` returns). Amazon games follow
+/// the GOG ones, already deduped, and external games go last; they never
+/// duplicate anything, and are never GOG mods.
 fn merge(
     by_account: &HashMap<String, Vec<LibraryEntry>>,
     order: &[String],
+    amazon: &[LibraryEntry],
     external: &[LibraryEntry],
     mod_ids: &HashSet<String>,
 ) -> Vec<LibraryEntry> {
@@ -500,6 +568,7 @@ fn merge(
             }
         }
     }
+    merged.extend_from_slice(amazon);
     merged.extend_from_slice(external);
     merged
 }

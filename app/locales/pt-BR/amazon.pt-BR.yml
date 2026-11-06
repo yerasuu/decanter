@@ -5,3 +5,13 @@ amazon.consent.risk: A Amazon não publicou nenhuma permissão para isso, então
 amazon.consent.affiliation: O Decanter não é afiliado à Amazon.
 amazon.consent.removal: Você poderá remover o dispositivo depois.
 amazon.consent.accept: Aceitar e continuar
+amazon.login.button: "Entrar na Amazon Games"
+amazon.login.hint: "Abra a Amazon, faça login e cole aqui o endereço da página em que você cair."
+amazon.login.open: "Abrir a Amazon"
+amazon.login.connect: "Conectar"
+amazon.session.closed: "A sessão foi encerrada na Amazon. Faça login de novo."
+amazon.logout.refused: "Você saiu daqui, mas a Amazon recusou remover o dispositivo. Remova-o na página de dispositivos da sua conta da Amazon."
+amazon.logout.unreachable: "Você saiu daqui, mas não foi possível falar com a Amazon para remover o dispositivo, que continua registrado na sua conta."
+amazon.detail.install_later: "A instalação de jogos da Amazon Games ainda não está disponível"
+amazon.credentials.kind: "Sessão da Amazon Games"
+amazon.credentials.confirm: "A sessão da Amazon Games de %{subject} será removida do chaveiro. Isso desconecta a conta sem remover o dispositivo da sua conta da Amazon: você terá que fazer login de novo para usá-la."

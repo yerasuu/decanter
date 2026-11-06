@@ -52,6 +52,7 @@ pub(super) fn hero(
                         .child(match storefront {
                             Storefront::Gog => theme::badge("GOG", true),
                             Storefront::Steam => theme::badge("Steam", true),
+                            Storefront::AmazonGames => theme::badge("Amazon Games", true),
                             _ => theme::badge(t!("library.detail.external"), false),
                         })
                         .when(is_mod, |badges| {

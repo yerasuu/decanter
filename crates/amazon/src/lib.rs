@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Amazon Games: the account session, for now (kb #1520, stage S1 of
-//! docs/amazon-nile-integration-analysis.md).
+//! Amazon Games: the account session and the library listing, for now (kb #1520 and #1521,
+//! stages S1 and S2 of docs/amazon-nile-integration-analysis.md).
 //!
 //! Amazon documents none of this. The wire protocol is the one
 //! [nile](https://github.com/imLinguin/nile) speaks and the
 //! [community research wiki](https://github.com/Lariaa/GameLauncherResearch/wiki/Amazon-Games)
 //! describes, taken as facts only: no code of nile's is here (decision #1518, D1), and every fact
 //! is UNVERIFIED against Amazon until the owner's spike (kb #1519). Linux and amazon.com only
-//! (D10, D11). Tokens live in the OS keyring (D4); nothing of this stage writes to the library.
+//! (D10, D11). Tokens live in the OS keyring (D4); nothing here writes to the library: the caller
+//! caches what [`list_games`] returns.
 
 #![expect(
     clippy::implicit_return,
@@ -57,9 +58,11 @@ mod device;
 mod error;
 mod http;
 mod identity;
+mod library;
 mod login;
 mod pkce;
 mod session;
 
+pub use library::{AmazonGame, Library, Listing, list_games};
 pub use login::{PendingLogin, complete_login, extract_code};
 pub use session::{Account, Deregistration, Live, LiveSession, SessionState, live_session, log_out, session_state};

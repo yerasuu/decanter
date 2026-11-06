@@ -1379,6 +1379,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "decanter-amazon",
  "decanter-core",
  "decanter-gog",
  "decanter-mods",

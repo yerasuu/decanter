@@ -36,3 +36,15 @@ pub(crate) const DEVICE_MODEL: &str = "Windows";
 pub(crate) const OS_VERSION: &str = "10.0.19044.0";
 /// The User-Agent of the launcher's calls to [`API_HOST`].
 pub(crate) const USER_AGENT: &str = "AGSLauncher/1.0.0";
+
+/// The entitlements service, on the store's gaming host rather than [`API_HOST`].
+pub(crate) const GAMING_HOST: &str = "gaming.amazon.com";
+pub(crate) const ENTITLEMENTS_PATH: &str = "/api/distribution/entitlements";
+/// The `X-Amz-Target` that selects the listing operation of the entitlements service.
+pub(crate) const ENTITLEMENTS_TARGET: &str =
+    "com.amazon.animusdistributionservice.entitlement.AnimusEntitlementsService.GetEntitlements";
+/// The User-Agent of the launcher's distribution calls, which differs from [`USER_AGENT`].
+pub(crate) const DISTRIBUTION_USER_AGENT: &str = "com.amazon.agslauncher.win/3.0.9202.1";
+/// The `clientId` and `keyId` the launcher names itself with in an entitlements request body.
+pub(crate) const ENTITLEMENTS_CLIENT_ID: &str = "Sonic";
+pub(crate) const ENTITLEMENTS_KEY_ID: &str = "d5dc8b8b-86c8-4fc4-ae93-18c0def5314d";

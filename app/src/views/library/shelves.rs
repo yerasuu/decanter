@@ -89,7 +89,7 @@ pub(super) fn build(
                 },
                 Shelf {
                     id: "all".to_string(),
-                    title: t!("library.shelves.gog_library").into_owned(),
+                    title: t!("library.shelves.library").into_owned(),
                     entries: rest,
                     collection_id: None,
                     dynamic: false,

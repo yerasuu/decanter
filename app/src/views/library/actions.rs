@@ -15,8 +15,11 @@ use super::install::{self, InstallRequest};
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
-/// build of it: shown in place of Instalar and Jugar.
+/// build of it or its store can't install yet: shown in place of Instalar and Jugar.
 pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
+    if game.storefront == decanter_core::Storefront::AmazonGames {
+        return Some(t!("amazon.detail.install_later"));
+    }
     let system = platform::game_system();
     (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
 }

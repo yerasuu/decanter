@@ -5,3 +5,13 @@ amazon.consent.risk: "Amazon은 이를 허용한다고 발표한 적이 없으�
 amazon.consent.affiliation: "Decanter는 Amazon과 제휴 관계가 아닙니다."
 amazon.consent.removal: "나중에 기기를 삭제할 수 있습니다."
 amazon.consent.accept: "동의하고 계속"
+amazon.login.button: "Amazon Games에 로그인"
+amazon.login.hint: "Amazon을 열고 로그인한 다음, 이동한 페이지의 주소를 여기에 붙여 넣으세요."
+amazon.login.open: "Amazon 열기"
+amazon.login.connect: "연결"
+amazon.session.closed: "Amazon에서 세션이 종료되었습니다. 다시 로그인하세요."
+amazon.logout.refused: "여기서는 로그아웃했지만 Amazon이 기기 제거를 거부했습니다. Amazon 계정의 기기 페이지에서 직접 제거하세요."
+amazon.logout.unreachable: "여기서는 로그아웃했지만 Amazon에 연결할 수 없어 기기를 제거하지 못했습니다. 기기는 계정에 계속 등록되어 있습니다."
+amazon.detail.install_later: "Amazon Games 게임 설치는 아직 지원되지 않습니다"
+amazon.credentials.kind: "Amazon Games 세션"
+amazon.credentials.confirm: '대상: %{subject}. Amazon Games 세션이 키링에서 제거됩니다. 계정은 로그아웃되지만 기기는 Amazon 계정에서 제거되지 않으며, 사용하려면 다시 로그인해야 합니다.'

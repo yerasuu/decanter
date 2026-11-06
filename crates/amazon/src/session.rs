@@ -295,7 +295,7 @@ pub(crate) fn failed(what: &str, err: CallError) -> anyhow::Error {
     anyhow::anyhow!("{what}: {}", reason(err))
 }
 
-fn reason(err: CallError) -> String {
+pub(crate) fn reason(err: CallError) -> String {
     format!("{:#}", anyhow::Error::new(err))
 }
 

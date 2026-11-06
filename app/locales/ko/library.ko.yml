@@ -9,7 +9,7 @@ library.played.minutes: '%{minutes}분'
 library.played.hours: '%{hours}시간'
 library.shelves.favorites: 즐겨찾기
 library.shelves.installed: 설치됨
-library.shelves.gog_library: GOG 라이브러리
+library.shelves.library: 라이브러리
 library.shelves.uncategorized: 미분류
 library.shelves.auto: 자동
 library.sidebar.search: 검색...

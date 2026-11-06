@@ -5,3 +5,13 @@ amazon.consent.risk: Amazon n'a publié aucune autorisation pour cela, votre com
 amazon.consent.affiliation: Decanter n'est pas affilié à Amazon.
 amazon.consent.removal: Vous pourrez supprimer l'appareil plus tard.
 amazon.consent.accept: Accepter et continuer
+amazon.login.button: "Se connecter à Amazon Games"
+amazon.login.hint: "Ouvrez Amazon, connectez-vous et collez ici l’adresse de la page sur laquelle vous arrivez."
+amazon.login.open: "Ouvrir Amazon"
+amazon.login.connect: "Connecter"
+amazon.session.closed: "La session a été fermée sur Amazon. Reconnectez-vous."
+amazon.logout.refused: "Vous êtes déconnecté ici, mais Amazon a refusé de supprimer l’appareil. Supprimez-le depuis la page des appareils de votre compte Amazon."
+amazon.logout.unreachable: "Vous êtes déconnecté ici, mais Amazon n’a pas pu être joint pour supprimer l’appareil, qui reste donc enregistré sur votre compte."
+amazon.detail.install_later: "L’installation des jeux Amazon Games n’est pas encore disponible"
+amazon.credentials.kind: "Session Amazon Games"
+amazon.credentials.confirm: "La session Amazon Games de %{subject} sera supprimée du trousseau. Cela déconnecte le compte sans supprimer l’appareil de votre compte Amazon : vous devrez vous reconnecter pour l’utiliser."

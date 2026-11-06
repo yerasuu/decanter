@@ -3,7 +3,7 @@
 //! plain sqlite, no UI state, so the fetch loop can call it from a spawned
 //! task without touching UI concerns.
 
-use decanter_core::{CachedGame, Db, Game};
+use decanter_core::{CachedGame, Db, Game, Storefront};
 use decanter_gog::{GameKind, LibraryEntry};
 
 /// The cache stores the kind as text so decanter-core doesn't have to know
@@ -41,6 +41,7 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
         parent_id: entry.parent_id.clone(),
         installable: entry.installable,
         has_macos_build: entry.game.has_macos_build,
+        entitlement_id: None,
     }
 }
 
@@ -57,7 +58,9 @@ fn to_entry(library: Option<&decanter_core::Library>, account_id: &str, cached: 
         is_mod: false,
         game: Game {
             account_id: account_id.to_owned(),
-            install_state: super::gog_library::local_install_state_in(library, account_id, &cached.product_id),
+            install_state: (cached.storefront == Storefront::Gog)
+                .then(|| super::gog_library::local_install_state_in(library, account_id, &cached.product_id))
+                .flatten(),
             id: cached.product_id,
             title: cached.title,
             storefront: cached.storefront,

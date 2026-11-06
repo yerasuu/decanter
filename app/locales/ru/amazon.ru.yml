@@ -5,3 +5,13 @@ amazon.consent.risk: 'Amazon не публиковала разрешения н
 amazon.consent.affiliation: 'Decanter не связан с Amazon.'
 amazon.consent.removal: 'Позже вы сможете удалить устройство.'
 amazon.consent.accept: 'Принять и продолжить'
+amazon.login.button: "Войти в Amazon Games"
+amazon.login.hint: "Откройте Amazon, войдите и вставьте сюда адрес страницы, на которую попадёте."
+amazon.login.open: "Открыть Amazon"
+amazon.login.connect: "Подключить"
+amazon.session.closed: "Сеанс был завершён на стороне Amazon. Войдите снова."
+amazon.logout.refused: "Здесь вы вышли, но Amazon отказалась удалить устройство. Удалите его на странице устройств вашей учётной записи Amazon."
+amazon.logout.unreachable: "Здесь вы вышли, но связаться с Amazon для удаления устройства не удалось, поэтому оно остаётся зарегистрированным в вашей учётной записи."
+amazon.detail.install_later: "Установка игр Amazon Games пока недоступна"
+amazon.credentials.kind: "Сеанс Amazon Games"
+amazon.credentials.confirm: "Сеанс Amazon Games пользователя %{subject} будет удалён из связки ключей. Учётная запись выйдет из системы, но устройство не будет удалено из вашей учётной записи Amazon: чтобы пользоваться ею, придётся снова войти."

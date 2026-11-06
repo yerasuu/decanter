@@ -137,6 +137,7 @@ impl CredentialsSection {
                     .map_or_else(|| key.subject().unwrap_or_default().to_owned(), subject_label);
                 let key = key.clone();
                 let body = match key.kind() {
+                    SecretKind::AmazonSession => t!("amazon.credentials.confirm", subject = subject),
                     SecretKind::GogSession => t!("settings.credentials.confirm.gog_session", subject = subject),
                     SecretKind::ShadnetPassword => {
                         t!("settings.credentials.confirm.shadnet_password", subject = subject)
@@ -259,6 +260,7 @@ impl Render for CredentialsSection {
 
 fn kind_label(kind: SecretKind) -> String {
     match kind {
+        SecretKind::AmazonSession => t!("amazon.credentials.kind"),
         SecretKind::GogSession => t!("settings.credentials.kind.gog_session"),
         SecretKind::ShadnetPassword => t!("settings.credentials.kind.shadnet_password"),
         SecretKind::ShadnetToken => t!("settings.credentials.kind.shadnet_token"),
@@ -294,8 +296,11 @@ fn accounts() -> Vec<decanter_core::Account> {
 fn known_keys(accounts: &[decanter_core::Account]) -> Vec<SecretKey> {
     accounts
         .iter()
-        .filter(|account| account.storefront == Storefront::Gog)
-        .filter_map(|account| SecretKey::gog_session(&account.id).ok())
+        .filter_map(|account| match account.storefront {
+            Storefront::Gog => SecretKey::gog_session(&account.id).ok(),
+            Storefront::AmazonGames => SecretKey::amazon_session(&account.id).ok(),
+            _ => None,
+        })
         .chain([SecretKey::STEAMGRIDDB])
         .collect()
 }
@@ -313,15 +318,18 @@ fn load_rows() -> Result<Vec<Row>, decanter_core::secrets::StoreError> {
         .keys
         .into_iter()
         .map(|key| {
-            let account = (key.kind() == SecretKind::GogSession)
-                .then(|| {
-                    accounts.iter().find(|account| {
-                        account.storefront == Storefront::Gog && Some(account.id.as_str()) == key.subject()
-                    })
-                })
-                .flatten();
+            let storefront = match key.kind() {
+                SecretKind::GogSession => Some(Storefront::Gog),
+                SecretKind::AmazonSession => Some(Storefront::AmazonGames),
+                _ => None,
+            };
+            let account = storefront.and_then(|storefront| {
+                accounts
+                    .iter()
+                    .find(|account| account.storefront == storefront && Some(account.id.as_str()) == key.subject())
+            });
             Row {
-                orphan: key.kind() == SecretKind::GogSession && account.is_none(),
+                orphan: storefront.is_some() && account.is_none(),
                 account_name: account.map(|account| account.name.clone()),
                 key,
             }

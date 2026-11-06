@@ -1,6 +1,8 @@
 //! Every screen, and the main window that hosts them.
 
 pub mod amazon_consent;
+#[cfg(target_os = "linux")]
+pub mod amazon_login;
 mod chrome;
 mod downloads;
 mod dropped;

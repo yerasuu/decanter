@@ -109,12 +109,15 @@ impl Db {
         };
         let kept = accounts
             .iter()
-            .filter(|account| account.storefront == Storefront::Gog)
-            .filter(|account| {
-                SecretKey::gog_session(&account.id)
-                    .and_then(|key| secrets::store().delete(&key))
-                    .is_err()
+            .filter_map(|account| {
+                let key = match account.storefront {
+                    Storefront::Gog => SecretKey::gog_session(&account.id),
+                    Storefront::AmazonGames => SecretKey::amazon_session(&account.id),
+                    _ => return None,
+                };
+                Some(key.and_then(|key| secrets::store().delete(&key)).is_err())
             })
+            .filter(|failed| *failed)
             .count();
         if kept > 0 {
             tracing::warn!(profile_id, kept, "sessions of the deleted profile left in the keyring");
