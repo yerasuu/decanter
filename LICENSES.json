@@ -15,6 +15,7 @@
         "app",
         "crates/amazon",
         "crates/core",
+        "crates/epic",
         "crates/galaxy",
         "crates/gog",
         "crates/mods",

@@ -1,0 +1,19 @@
+[package]
+name = "decanter-epic"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# Written from the protocol facts of docs/epic-api-behaviour-spec.md, never from legendary's code
+# (decisions #1225, #1541 and #1617).
+[dependencies]
+reqwest = { workspace = true, features = ["system-proxy"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

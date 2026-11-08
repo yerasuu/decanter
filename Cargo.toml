@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/amazon",
     "crates/core",
+    "crates/epic",
     "crates/galaxy",
     "crates/gog",
     "crates/mods",
@@ -38,6 +39,7 @@ license = "GPL-3.0-or-later"
 # --- Workspace crates ---
 decanter-amazon = { path = "crates/amazon" }
 decanter-core = { path = "crates/core" }
+decanter-epic = { path = "crates/epic" }
 decanter-galaxy = { path = "crates/galaxy" }
 decanter-gog = { path = "crates/gog" }
 decanter-mods = { path = "crates/mods" }

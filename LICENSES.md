@@ -9,7 +9,7 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 
 | Component | Terms and source |
 | --- | --- |
-| decanter application and its crates (`app`, `crates/amazon`, `crates/core`, `crates/galaxy`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
+| decanter application and its crates (`app`, `crates/amazon`, `crates/core`, `crates/epic`, `crates/galaxy`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
 | Galaxy64.dll achievement proxy (`crates/hook`) | GPL-3.0-or-later; `crates/hook/Cargo.toml`. A Windows DLL built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a GOG game |
 | GalaxyCommunication stand-in service (`crates/galaxy-service`) | GPL-3.0-or-later; `crates/galaxy-service/Cargo.toml`. A dependency-free Windows executable built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a game that uses the Galaxy SDK |
 | Report server (`crates/reports-server`) | AGPL-3.0-or-later; `crates/reports-server/LICENSE`. A separate binary with its own workspace; it links s3db (AGPL-3.0-or-later) and `decanter-report` |
@@ -49,6 +49,10 @@ similar permissive terms. Exceptions this review found:
   pem-rfc7468, signature: Apache-2.0 OR MIT; num-bigint-dig 0.8: MIT OR Apache-2.0) to verify the Amazon Games
   manifest's signature, and lzma-rust2 (Apache-2.0) to decompress it (kb #1611). Both are pure Rust and compatible
   with GPL-3.0-or-later.
+- `crates/epic` is written clean-room from the protocol facts of `docs/epic-api-behaviour-spec.md`, with no code of
+  legendary-gl (GPL-3.0-or-later). The only values copied from legendary-gl 0.21.1 (`legendary/api/egs.py`) are the
+  official Epic Games Launcher's OAuth client id and secret, Epic's own identifiers, pinned as constants (decision
+  D3 of `docs/epic-legendary-integration-analysis.md`). It adds no dependency.
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.

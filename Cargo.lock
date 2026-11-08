@@ -1467,6 +1467,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "decanter-epic"
+version = "0.4.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "decanter-galaxy"
 version = "0.4.0"
 dependencies = [
