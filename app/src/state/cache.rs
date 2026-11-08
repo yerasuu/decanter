@@ -43,6 +43,8 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
         has_macos_build: entry.game.has_macos_build,
         entitlement_id: None,
         product_sku: None,
+        namespace: None,
+        catalog_item_id: None,
     }
 }
 

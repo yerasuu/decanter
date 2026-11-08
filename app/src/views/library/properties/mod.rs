@@ -107,6 +107,10 @@ const STEAM_TABS: &[Tab] = &[Tab::General];
 /// its files are verified and updated like any store's.
 const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles];
 
+/// Epic's library is listed read only: nothing is installed to show files,
+/// updates or DLC of.
+const EPIC_TABS: &[Tab] = &[Tab::General];
+
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
 /// later — the window manages its own lifetime, closed the same way any
@@ -179,6 +183,7 @@ impl PropertiesWindow {
             Storefront::Unspecified => EXTERNAL_TABS,
             Storefront::Steam => STEAM_TABS,
             Storefront::AmazonGames => AMAZON_TABS,
+            Storefront::EpicGames => EPIC_TABS,
             _ => TABS,
         };
         if crate::launch::in_prefixes() {

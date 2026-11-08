@@ -99,6 +99,9 @@ impl AccountTab {
             .detach();
             amazon_login
         };
+        // The Epic rows show where their library listing stands, which the library entity holds.
+        cx.observe(&AppState::get(cx).library.clone(), |_, _, cx| cx.notify())
+            .detach();
         let epic_login = cx.new({
             let profile_id = profile_id.clone();
             |cx| EpicLogin::new(profile_id, cx)
@@ -651,6 +654,9 @@ impl AccountTab {
             let working = row.status == AccountStatus::Working;
             let account_id = row.account.id.clone();
             let storefront = row.account.storefront;
+            let library_line = (storefront == Storefront::EpicGames)
+                .then(|| Self::epic_library_line(index, &account_id, index + 1 == count && failed.is_none(), cx))
+                .flatten();
             let renew = renew_kind.map(|kind| {
                 let account_id = account_id.clone();
                 button(("renew", index), kind, t!("settings.account.renew"), working).when(!working, |b| {
@@ -659,7 +665,7 @@ impl AccountTab {
             });
             // The error line follows the row inside the card, so the row
             // only counts as `:last-child` when there's none.
-            let last = index + 1 == count && failed.is_none();
+            let last = index + 1 == count && failed.is_none() && library_line.is_none();
             let line = reveal(
                 theme::list_row(("account-row", index), last)
                     .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
@@ -680,7 +686,9 @@ impl AccountTab {
                     ),
             )
             .into_any_element();
-            std::iter::once(line).chain(failed.map(|message| theme::error(message).into_any_element()))
+            std::iter::once(line)
+                .chain(library_line)
+                .chain(failed.map(|message| theme::error(message).into_any_element()))
         }))
     }
 

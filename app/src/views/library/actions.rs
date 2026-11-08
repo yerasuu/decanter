@@ -15,8 +15,13 @@ use super::install::{self, InstallRequest};
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
-/// build of it: shown in place of Instalar and Jugar.
+/// build of it or its store's installs aren't in decanter yet: shown in
+/// place of Instalar and Jugar.
 pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
+    // Epic's library is listed read only (#1546) until its installs land in a later stage.
+    if game.storefront == decanter_core::Storefront::EpicGames {
+        return Some(t!("epic.detail.install_later"));
+    }
     let system = platform::game_system();
     (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
 }

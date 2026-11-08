@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Epic Games: the client of the official launcher's web services, which decanter speaks as that
 //! launcher (docs/epic-legendary-integration-analysis.md, option R of D4). So far it signs an
-//! account in from the browser and keeps its session in the OS keyring.
+//! account in from the browser, keeps its session in the OS keyring and lists its library.
 //!
 //! Epic documents none of this. The protocol is the one docs/epic-api-behaviour-spec.md describes,
 //! written from legendary-gl 0.21.1 as facts only: no code of legendary's is here (decisions #1225,
@@ -53,11 +53,13 @@ mod error;
 mod hosts;
 mod http;
 mod identity;
+mod library;
 mod login;
 mod session;
 mod token;
 
 pub use error::CallError;
 pub use hosts::Host;
+pub use library::{AssetList, CatalogRegion, EpicGame, Library, Listing, list_games};
 pub use login::{complete_login, login_url};
 pub use session::{Account, SessionState, check_session, log_out};

@@ -124,12 +124,14 @@ pub(super) fn load_collections(profile_id: &str) -> Collections {
             .list_collections(profile_id)
             .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list collections"))
             .unwrap_or_default(),
-        // GOG ids, Amazon's `amzn1…` ids, external games' uuids and Steam
-        // app ids don't collide (GOG's run in the billions, Steam's in the
-        // millions), so one map keyed by product id holds them all.
+        // GOG ids, Amazon's `amzn1…` ids, Epic's appNames, external games'
+        // uuids and Steam app ids don't collide (GOG's run in the billions,
+        // Steam's in the millions, an appName is not all digits), so one map
+        // keyed by product id holds them all.
         members: [
             Storefront::Gog,
             Storefront::AmazonGames,
+            Storefront::EpicGames,
             Storefront::Unspecified,
             Storefront::Steam,
         ]
@@ -337,24 +339,28 @@ pub(super) fn set_favorite(account_id: &str, storefront: Storefront, product_id:
     }
 }
 
-/// Every GOG account in `profile_id`, oldest first, then the Amazon ones — the merge order every
+/// Every GOG account in `profile_id`, oldest first, then the Amazon and Epic ones — the merge order every
 /// aggregate function below uses, so a product two accounts both own
 /// consistently prefers the same one's data everywhere in the UI, not just
 /// in which row `gog_library` happens to show — then the profile itself,
 /// which external games and Steam entries are filed under (see
 /// `crate::external`).
 fn owners(profile_id: &str) -> Vec<(String, Storefront)> {
-    let amazon = Db::open_active()
+    let accounts = Db::open_active()
         .and_then(|db| db.accounts_in_profile(profile_id))
         .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to list accounts in profile"))
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|account| account.storefront == Storefront::AmazonGames)
-        .map(|account| (account.id, Storefront::AmazonGames));
+        .unwrap_or_default();
+    let of = |storefront: Storefront| {
+        accounts
+            .iter()
+            .filter(move |account| account.storefront == storefront)
+            .map(move |account| (account.id.clone(), storefront))
+    };
     gog_accounts_with_names(profile_id)
         .into_iter()
         .map(|(id, _name)| (id, Storefront::Gog))
-        .chain(amazon)
+        .chain(of(Storefront::AmazonGames))
+        .chain(of(Storefront::EpicGames))
         .chain([
             (profile_id.to_owned(), Storefront::Unspecified),
             (profile_id.to_owned(), Storefront::Steam),

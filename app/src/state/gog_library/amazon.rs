@@ -82,6 +82,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -126,6 +127,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -254,6 +256,8 @@ fn cache(account_id: &str, games: &[AmazonGame], complete: bool) {
             has_macos_build: None,
             entitlement_id: Some(game.entitlement_id.clone()),
             product_sku: game.sku.clone(),
+            namespace: None,
+            catalog_item_id: None,
         };
         if let Err(err) = db.upsert_game(account_id, &cached, confirmed_new) {
             tracing::warn!(account_id, product_id = %game.product_id, %err, "failed to cache amazon game");

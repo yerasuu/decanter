@@ -35,6 +35,11 @@ pub struct CachedGame {
     pub entitlement_id: Option<String>,
     /// Amazon's product SKU, which a launched game is told; `None` as for `entitlement_id`.
     pub product_sku: Option<String>,
+    /// Epic's sandbox id, which its achievements and launch ask by while the game is keyed by its
+    /// `appName`; `None` as for `entitlement_id`.
+    pub namespace: Option<String>,
+    /// Epic's catalog item id, the key of its metadata; `None` as for `entitlement_id`.
+    pub catalog_item_id: Option<String>,
 }
 
 /// Unit separator, not a comma: a genre name is free text from the store
@@ -77,9 +82,10 @@ impl Db {
                 "INSERT INTO games_cache (
                     account_id, storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable, has_macos_build, entitlement_id, product_sku, first_seen, updated_at
+                    parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id,
+                    first_seen, updated_at
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, {first_seen_if_new}, strftime('%s','now'))
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, {first_seen_if_new}, strftime('%s','now'))
                  ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
                     title = excluded.title,
                     icon_url = excluded.icon_url,
@@ -96,6 +102,8 @@ impl Db {
                     has_macos_build = COALESCE(excluded.has_macos_build, has_macos_build),
                     entitlement_id = COALESCE(excluded.entitlement_id, entitlement_id),
                     product_sku = COALESCE(excluded.product_sku, product_sku),
+                    namespace = COALESCE(excluded.namespace, namespace),
+                    catalog_item_id = COALESCE(excluded.catalog_item_id, catalog_item_id),
                     updated_at = excluded.updated_at"
             ),
             params![
@@ -117,6 +125,8 @@ impl Db {
                 game.has_macos_build,
                 game.entitlement_id,
                 game.product_sku,
+                game.namespace,
+                game.catalog_item_id,
             ],
         )?;
         tracing::debug!(
@@ -182,6 +192,18 @@ impl Db {
         Ok(dropped)
     }
 
+    /// When a listing last wrote one of the account's games of `storefront`, in Unix seconds;
+    /// `None` when none is cached.
+    pub fn last_cached_at(&self, account_id: &str, storefront: Storefront) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT MAX(updated_at) FROM games_cache WHERE account_id = ?1 AND storefront = ?2",
+                params![account_id, storefront as i32],
+                |row| row.get(0),
+            )
+            .map_err(Error::from)
+    }
+
     /// Whatever the last `WatchGames` session cached for this account —
     /// shown immediately on startup so the sidebar isn't empty while a
     /// fresh stream reconnects and re-scans the GOG account.
@@ -189,7 +211,7 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable, has_macos_build, entitlement_id, product_sku
+                    parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id
              FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
         )?;
         let rows = stmt.query_map(params![account_id], |row| {
@@ -219,6 +241,8 @@ impl Db {
                 has_macos_build: row.get(14)?,
                 entitlement_id: row.get(15)?,
                 product_sku: row.get(16)?,
+                namespace: row.get(17)?,
+                catalog_item_id: row.get(18)?,
             })
         })?;
         let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;

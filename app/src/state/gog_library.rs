@@ -31,6 +31,9 @@ use super::cache::{has_synced_before, load_cached_games, save_entries};
 
 #[cfg(target_os = "linux")]
 mod amazon;
+mod epic;
+
+pub use epic::{EpicPhase, EpicStatus};
 
 /// Raised by `main` once GPUI has returned and before the tokio runtime is
 /// dropped. Each loop drives its own `block_on` on a blocking-pool thread,
@@ -151,6 +154,12 @@ pub struct GogLibrary {
     amazon_wanted: Vec<String>,
     amazon_by_account: HashMap<String, Vec<LibraryEntry>>,
     amazon_tasks: HashMap<String, Task<()>>,
+    /// Every Epic account's games, merged and deduped, shown after the Amazon ones.
+    epic: Vec<LibraryEntry>,
+    epic_wanted: Vec<String>,
+    epic_by_account: HashMap<String, Vec<LibraryEntry>>,
+    epic_tasks: HashMap<String, Task<()>>,
+    epic_status: HashMap<String, EpicStatus>,
 }
 
 impl GogLibrary {
@@ -181,6 +190,11 @@ impl GogLibrary {
             amazon_wanted: Vec::new(),
             amazon_by_account: HashMap::new(),
             amazon_tasks: HashMap::new(),
+            epic: Vec::new(),
+            epic_wanted: Vec::new(),
+            epic_by_account: HashMap::new(),
+            epic_tasks: HashMap::new(),
+            epic_status: HashMap::new(),
         };
         this.reconcile(cx);
         cx.spawn(async move |this, cx| watch_library_folders(this, cx).await)
@@ -268,6 +282,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -283,6 +298,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -329,6 +345,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -377,17 +394,19 @@ impl GogLibrary {
         self.external = self.profile.as_deref().map(external_entries).unwrap_or_default();
 
         self.reconcile_amazon(cx);
+        self.reconcile_epic(cx);
 
         if self.wanted.is_empty() {
             self.games = merge(
                 &self.by_account,
                 &self.wanted,
                 &self.amazon,
+                &self.epic,
                 &self.external,
                 &self.mod_ids,
             );
             self.revision = self.revision.wrapping_add(1);
-            self.state = if self.amazon_wanted.is_empty() {
+            self.state = if self.amazon_wanted.is_empty() && self.epic_wanted.is_empty() {
                 LibraryState::Idle
             } else {
                 LibraryState::Loaded
@@ -431,6 +450,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -452,6 +472,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -470,6 +491,7 @@ impl GogLibrary {
             &self.by_account,
             &self.wanted,
             &self.amazon,
+            &self.epic,
             &self.external,
             &self.mod_ids,
         );
@@ -552,12 +574,13 @@ async fn watch_mods(this: WeakEntity<GogLibrary>, cx: &mut AsyncApp) {
 /// game would otherwise show it twice. `order` decides which account's
 /// copy wins a duplicate (oldest account first, the order
 /// `decanter_core::Db::accounts_in_profile` returns). Amazon games follow
-/// the GOG ones, already deduped, and external games go last; they never
-/// duplicate anything, and are never GOG mods.
+/// the GOG ones, then Epic's, each already deduped, and external games go
+/// last; they never duplicate anything, and are never GOG mods.
 fn merge(
     by_account: &HashMap<String, Vec<LibraryEntry>>,
     order: &[String],
     amazon: &[LibraryEntry],
+    epic: &[LibraryEntry],
     external: &[LibraryEntry],
     mod_ids: &HashSet<String>,
 ) -> Vec<LibraryEntry> {
@@ -577,6 +600,7 @@ fn merge(
         }
     }
     merged.extend_from_slice(amazon);
+    merged.extend_from_slice(epic);
     merged.extend_from_slice(external);
     merged
 }

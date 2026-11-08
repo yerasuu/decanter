@@ -14,7 +14,7 @@ mod context_menu;
 mod data;
 mod detail;
 mod filters;
-mod fmt;
+pub(crate) mod fmt;
 pub mod install;
 mod mods;
 pub mod properties;

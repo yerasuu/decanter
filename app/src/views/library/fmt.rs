@@ -29,7 +29,7 @@ pub(super) fn utc_date(seconds: i64) -> Option<String> {
     DateTime::from_timestamp(seconds, 0).map(|dt| date(dt.date_naive()))
 }
 
-pub(super) fn date_time(at: DateTime<Local>) -> String {
+pub(crate) fn date_time(at: DateTime<Local>) -> String {
     let (is_pm, hour12) = at.hour12();
     let time = t!(
         "common.date.time",

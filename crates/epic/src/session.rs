@@ -76,6 +76,10 @@ impl Session {
         }
     }
 
+    pub(crate) const fn access_token(&self) -> &Secret {
+        &self.access_token
+    }
+
     fn is_reusable(&self) -> bool {
         self.expires_at > unix_now().saturating_add(REUSE_MARGIN_SECS)
     }
@@ -110,7 +114,40 @@ pub async fn check_session(account_id: &str) -> anyhow::Result<SessionState> {
             Err(err) => tracing::debug!(account_id, error = %err, "epic token verify failed, renewing the session"),
         }
     }
-    renewed(&http, &stored).await
+    Ok(match renewed(&http, &stored).await? {
+        Live::Ready(session) => SessionState::Valid(session.account()),
+        Live::Closed => SessionState::Closed,
+        Live::Unreachable(reason) => SessionState::Unreachable(reason),
+    })
+}
+
+/// A session to call Epic with, or why there is none; [`SessionState`]'s cases with the session
+/// itself kept.
+pub(crate) enum Live {
+    Ready(Session),
+    Closed,
+    Unreachable(String),
+}
+
+/// The account's session with more than the reuse margin left on its access token, renewed first
+/// when it has less. Epic is not asked to verify a token that has the time: the call it is wanted
+/// for answers that as well.
+pub(crate) async fn live(account_id: &str) -> anyhow::Result<Live> {
+    let Some(stored) = load(account_id).await? else {
+        tracing::debug!(account_id, "no epic session stored, session closed");
+        return Ok(Live::Closed);
+    };
+    if stored.is_reusable() {
+        return Ok(Live::Ready(stored));
+    }
+    renewed(&http::client()?, &stored).await
+}
+
+/// One renewal after Epic refused `refused`'s access token on a call, which the token can do
+/// before its time when Epic ends it early (spec, 13.4). The caller retries once with what this
+/// gives, never in a loop.
+pub(crate) async fn renew_refused(refused: &Session) -> anyhow::Result<Live> {
+    renewed(&http::client()?, refused).await
 }
 
 /// Drops the stored session. Epic is not asked to end it: the launcher never does, and decanter
@@ -139,22 +176,22 @@ pub(crate) async fn replace(fresh: &Session) -> anyhow::Result<()> {
 /// Renews the session `started` was read as, under the account's lock so that only one renewal
 /// spends a refresh token at a time (spec, 3.6). The lock is held across the token call alone,
 /// which the client's time limit bounds.
-async fn renewed(http: &reqwest::Client, started: &Session) -> anyhow::Result<SessionState> {
+async fn renewed(http: &reqwest::Client, started: &Session) -> anyhow::Result<Live> {
     let account_id = started.account_id.as_str();
     let lock = session_lock(account_id);
     let _guard = lock.lock().await;
     let Some(current) = load(account_id).await? else {
-        return Ok(SessionState::Closed);
+        return Ok(Live::Closed);
     };
     if !current.is_same_grant(started) && current.is_reusable() {
         tracing::debug!(account_id, "another caller renewed the epic session meanwhile");
-        return Ok(SessionState::Valid(current.account()));
+        return Ok(Live::Ready(current));
     }
     let failure = match token::refresh(http, &current.refresh_token).await {
         Ok(grant) if grant.account_id == account_id => {
             let renewed = Session::granted(grant);
             swap(&current, &renewed).await?;
-            return Ok(SessionState::Valid(renewed.account()));
+            return Ok(Live::Ready(renewed));
         }
         Ok(_) => CallError::Malformed {
             call: "token refresh",
@@ -173,7 +210,7 @@ async fn renewed(http: &reqwest::Client, started: &Session) -> anyhow::Result<Se
             {
                 clear(account_id).await?;
             }
-            Ok(SessionState::Closed)
+            Ok(Live::Closed)
         }
         CallError::TimedOut { .. }
         | CallError::Unreachable { .. }
@@ -182,7 +219,7 @@ async fn renewed(http: &reqwest::Client, started: &Session) -> anyhow::Result<Se
         | CallError::Malformed { .. } => {
             let reason = reason(failure);
             tracing::warn!(account_id, reason, "epic did not answer the token refresh");
-            Ok(SessionState::Unreachable(reason))
+            Ok(Live::Unreachable(reason))
         }
         CallError::Setup(_) => Err(anyhow::Error::new(failure)),
     }
@@ -210,7 +247,7 @@ pub(crate) fn failed(what: &str, err: CallError) -> anyhow::Error {
     anyhow::anyhow!("{what}: {}", reason(err))
 }
 
-fn reason(err: CallError) -> String {
+pub(crate) fn reason(err: CallError) -> String {
     format!("{:#}", anyhow::Error::new(err))
 }
 

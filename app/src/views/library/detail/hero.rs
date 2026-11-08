@@ -53,6 +53,7 @@ pub(super) fn hero(
                             Storefront::Gog => theme::badge("GOG", true),
                             Storefront::Steam => theme::badge("Steam", true),
                             Storefront::AmazonGames => theme::badge("Amazon Games", true),
+                            Storefront::EpicGames => theme::badge("Epic Games", true),
                             _ => theme::badge(t!("library.detail.external"), false),
                         })
                         .when(is_mod, |badges| {
