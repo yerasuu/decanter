@@ -5,6 +5,7 @@
 mod amazon;
 mod app;
 mod core;
+mod epic;
 mod gog;
 mod ps;
 mod runtime;
@@ -26,6 +27,7 @@ pub const TABLES: &[&[Template]] = &[
     amazon::TEMPLATES,
     app::TEMPLATES,
     core::TEMPLATES,
+    epic::TEMPLATES,
     gog::TEMPLATES,
     ps::TEMPLATES,
     runtime::TEMPLATES,

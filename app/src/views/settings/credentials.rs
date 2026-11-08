@@ -138,6 +138,7 @@ impl CredentialsSection {
                 let key = key.clone();
                 let body = match key.kind() {
                     SecretKind::AmazonSession => t!("amazon.credentials.confirm", subject = subject),
+                    SecretKind::EpicSession => t!("epic.credentials.confirm", subject = subject),
                     SecretKind::GogSession => t!("settings.credentials.confirm.gog_session", subject = subject),
                     SecretKind::ShadnetPassword => {
                         t!("settings.credentials.confirm.shadnet_password", subject = subject)
@@ -261,6 +262,7 @@ impl Render for CredentialsSection {
 fn kind_label(kind: SecretKind) -> String {
     match kind {
         SecretKind::AmazonSession => t!("amazon.credentials.kind"),
+        SecretKind::EpicSession => t!("epic.credentials.kind"),
         SecretKind::GogSession => t!("settings.credentials.kind.gog_session"),
         SecretKind::ShadnetPassword => t!("settings.credentials.kind.shadnet_password"),
         SecretKind::ShadnetToken => t!("settings.credentials.kind.shadnet_token"),
@@ -299,6 +301,7 @@ fn known_keys(accounts: &[decanter_core::Account]) -> Vec<SecretKey> {
         .filter_map(|account| match account.storefront {
             Storefront::Gog => SecretKey::gog_session(&account.id).ok(),
             Storefront::AmazonGames => SecretKey::amazon_session(&account.id).ok(),
+            Storefront::EpicGames => SecretKey::epic_session(&account.id).ok(),
             _ => None,
         })
         .chain([SecretKey::STEAMGRIDDB])
@@ -321,6 +324,7 @@ fn load_rows() -> Result<Vec<Row>, decanter_core::secrets::StoreError> {
             let storefront = match key.kind() {
                 SecretKind::GogSession => Some(Storefront::Gog),
                 SecretKind::AmazonSession => Some(Storefront::AmazonGames),
+                SecretKind::EpicSession => Some(Storefront::EpicGames),
                 _ => None,
             };
             let account = storefront.and_then(|storefront| {

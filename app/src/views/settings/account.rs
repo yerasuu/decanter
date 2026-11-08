@@ -23,6 +23,7 @@ use crate::state::AppState;
 use crate::theme;
 #[cfg(target_os = "linux")]
 use crate::views::amazon_login::AmazonLogin;
+use crate::views::epic_login::EpicLogin;
 use crate::views::gog_login::{GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
 use crate::views::{session_renewal, shell};
@@ -31,6 +32,7 @@ use crate::widgets::{ButtonKind, Select, button};
 
 #[cfg(target_os = "linux")]
 mod amazon;
+mod epic;
 
 #[derive(Clone, PartialEq)]
 enum AccountStatus {
@@ -74,6 +76,7 @@ pub struct AccountTab {
     /// What logging out of Amazon left undone, shown until the next login.
     #[cfg(target_os = "linux")]
     amazon_notice: Option<Text>,
+    epic_login: Entity<EpicLogin>,
 }
 
 impl AccountTab {
@@ -96,6 +99,17 @@ impl AccountTab {
             .detach();
             amazon_login
         };
+        let epic_login = cx.new({
+            let profile_id = profile_id.clone();
+            |cx| EpicLogin::new(profile_id, cx)
+        });
+        cx.subscribe(
+            &epic_login,
+            |this, _, crate::views::epic_login::LoggedIn(account), cx| {
+                this.connect_epic(account, cx);
+            },
+        )
+        .detach();
         let mut this = Self {
             profile_id,
             library_path: None,
@@ -115,6 +129,7 @@ impl AccountTab {
             amazon_login,
             #[cfg(target_os = "linux")]
             amazon_notice: None,
+            epic_login,
         };
         this.reload_library_path();
         this.reload_steam_shown();
@@ -218,6 +233,9 @@ impl AccountTab {
         if account.storefront == Storefront::AmazonGames {
             return Self::check_amazon_session(account, cx);
         }
+        if account.storefront == Storefront::EpicGames {
+            return Self::check_epic_session(account, cx);
+        }
         let account_id = account.id.clone();
         let storefront = account.storefront;
         cx.spawn(async move |this, cx| {
@@ -266,6 +284,9 @@ impl AccountTab {
         #[cfg(target_os = "linux")]
         if storefront == Storefront::AmazonGames {
             return self.log_out_amazon(account_id, cx);
+        }
+        if storefront == Storefront::EpicGames {
+            return self.log_out_epic(account_id, cx);
         }
         if let Some(row) = self.row_mut(&account_id, storefront) {
             row.status = AccountStatus::Working;
@@ -612,12 +633,15 @@ impl AccountTab {
                 SessionCheck::Closed if row.account.storefront == Storefront::AmazonGames => {
                     theme::error(t!("amazon.session.closed"))
                 }
+                SessionCheck::Closed if row.account.storefront == Storefront::EpicGames => {
+                    theme::error(t!("epic.session.closed"))
+                }
                 SessionCheck::Closed => theme::error(t!("settings.account.session.revoked")),
                 SessionCheck::Unreachable => theme::muted(t!("settings.account.session.unreachable")),
                 SessionCheck::Failed(err) => theme::error(t!("settings.account.session.invalid", error = err)),
             };
-            // Renewing is GOG's window; an Amazon session that closed is logged in again from
-            // the Amazon login below.
+            // Renewing is GOG's window; an Amazon or Epic session that closed is logged in again
+            // from that store's login below.
             let renew_kind = match row.session {
                 _ if row.account.storefront != Storefront::Gog => None,
                 SessionCheck::Closed => Some(ButtonKind::Primary),
@@ -783,6 +807,7 @@ impl Render for AccountTab {
                     .then(|| section("steam-games", self.steam_games(cx))),
             )
             .child(section("amazon-games", self.amazon_section()))
+            .child(section("epic-games", self.epic_section()))
             .child(section("people", self.people(cx)))
     }
 }

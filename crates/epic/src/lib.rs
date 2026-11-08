@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Epic Games: the client of the official launcher's web services, which decanter speaks as that
-//! launcher (docs/epic-legendary-integration-analysis.md, option R of D4).
+//! launcher (docs/epic-legendary-integration-analysis.md, option R of D4). So far it signs an
+//! account in from the browser and keeps its session in the OS keyring.
 //!
 //! Epic documents none of this. The protocol is the one docs/epic-api-behaviour-spec.md describes,
 //! written from legendary-gl 0.21.1 as facts only: no code of legendary's is here (decisions #1225,
@@ -23,6 +24,14 @@
     reason = "this crate uses the pub(crate) shorthand and re-exports its modules' types, as the others do"
 )]
 #![expect(
+    clippy::std_instead_of_alloc,
+    reason = "a desktop crate on std, with no no_std target to justify alloc::"
+)]
+#![expect(
+    clippy::absolute_paths,
+    reason = "one-off calls read clearer qualified at the call site than imported for a single use"
+)]
+#![expect(
     clippy::arbitrary_source_item_ordering,
     reason = "items are ordered by what makes sense to read together, not alphabetically"
 )]
@@ -34,10 +43,6 @@
     clippy::large_stack_frames,
     reason = "serde's derived visitors and reqwest's builders and futures cost more than the 512-byte threshold"
 )]
-#![expect(
-    dead_code,
-    reason = "the HTTP layer and the launcher's login client are first called by the sign-in, which comes next"
-)]
 #![allow(
     clippy::missing_docs_in_private_items,
     reason = "private items get a doc comment when the WHY isn't obvious from the signature, \
@@ -48,6 +53,11 @@ mod error;
 mod hosts;
 mod http;
 mod identity;
+mod login;
+mod session;
+mod token;
 
 pub use error::CallError;
 pub use hosts::Host;
+pub use login::{complete_login, login_url};
+pub use session::{Account, SessionState, check_session, log_out};

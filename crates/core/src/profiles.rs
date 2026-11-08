@@ -113,6 +113,7 @@ impl Db {
                 let key = match account.storefront {
                     Storefront::Gog => SecretKey::gog_session(&account.id),
                     Storefront::AmazonGames => SecretKey::amazon_session(&account.id),
+                    Storefront::EpicGames => SecretKey::epic_session(&account.id),
                     _ => return None,
                 };
                 Some(key.and_then(|key| secrets::store().delete(&key)).is_err())

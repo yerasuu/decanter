@@ -100,6 +100,21 @@ impl Db {
         }
     }
 
+    /// Whether the person behind `profile_id` accepted the risk notice that comes before the first
+    /// Epic Games login, per profile for the same reason as [`Db::amazon_consent`].
+    pub fn epic_consent(&self, profile_id: &str) -> Result<bool> {
+        Ok(self.setting(&epic_consent_key(profile_id))?.as_deref() == Some("1"))
+    }
+
+    pub fn set_epic_consent(&self, profile_id: &str, accepted: bool) -> Result<()> {
+        let key = epic_consent_key(profile_id);
+        if accepted {
+            self.set_setting(&key, "1")
+        } else {
+            self.delete_setting(&key)
+        }
+    }
+
     /// The Proton build to launch with when a game has no per-game choice
     /// of its own — a bare name from `decanter_runtime::runner::status`, or
     /// `None` for `decanter_runtime::Proton::Latest`.
@@ -224,4 +239,8 @@ impl Db {
 
 fn amazon_consent_key(profile_id: &str) -> String {
     format!("amazon_consent:{profile_id}")
+}
+
+fn epic_consent_key(profile_id: &str) -> String {
+    format!("epic_consent:{profile_id}")
 }

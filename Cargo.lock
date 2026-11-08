@@ -1387,6 +1387,7 @@ dependencies = [
  "clap",
  "decanter-amazon",
  "decanter-core",
+ "decanter-epic",
  "decanter-gog",
  "decanter-mods",
  "decanter-nix",
@@ -1470,11 +1471,16 @@ dependencies = [
 name = "decanter-epic"
 version = "0.4.0"
 dependencies = [
+ "anyhow",
+ "chrono",
+ "decanter-core",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

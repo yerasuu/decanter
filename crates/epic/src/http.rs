@@ -142,7 +142,7 @@ fn refusal(status: StatusCode, body: &[u8], call: &Call) -> CallError {
 }
 
 /// An identifier from Epic's error answer, kept only when it looks like one.
-fn shown(value: Option<&str>) -> Option<String> {
+pub(crate) fn shown(value: Option<&str>) -> Option<String> {
     value
         .filter(|text| {
             (1..=CODE_MAX_LEN).contains(&text.len())

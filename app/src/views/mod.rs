@@ -6,6 +6,8 @@ pub mod amazon_login;
 mod chrome;
 mod downloads;
 mod dropped;
+mod epic_consent;
+mod epic_login;
 pub mod external;
 mod game_tools;
 mod gog_login;

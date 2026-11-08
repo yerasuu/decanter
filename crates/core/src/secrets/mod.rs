@@ -1,5 +1,5 @@
-//! Every secret decanter keeps: GOG and Amazon sessions, shadNet passwords and tokens, the `SteamGridDB`
-//! key (design: `docs/secure-credential-storage-design.md`, decision #1299).
+//! Every secret decanter keeps: GOG, Amazon and Epic sessions, shadNet passwords and tokens, the
+//! `SteamGridDB` key (design: `docs/secure-credential-storage-design.md`, decision #1299).
 //!
 //! Kept in the OS keyring, never in the library: these are live credentials to someone's game
 //! library and payment account, and the library travels with backups and syncs. A value only

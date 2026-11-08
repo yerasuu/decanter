@@ -13,6 +13,7 @@ workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 decanter-core.workspace = true
+decanter-epic.workspace = true
 decanter-gog.workspace = true
 decanter-mods.workspace = true
 decanter-nix.workspace = true

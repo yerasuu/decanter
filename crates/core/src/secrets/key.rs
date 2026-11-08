@@ -8,12 +8,15 @@ const ACCOUNT_ID_MAX_LEN: usize = 20;
 /// Amazon publishes no format for the `user_id` its device registration answers with, so the cap
 /// is generous and only the characters a keyring entry name can carry safely pass.
 const AMAZON_ID_MAX_LEN: usize = 128;
+/// Epic's account ids are 32 hex digits as far as anyone has seen (UNVERIFIED), so the cap leaves
+/// room and only the characters a keyring entry name can carry safely pass.
+const EPIC_ID_MAX_LEN: usize = 64;
 const NPID_LEN: core::ops::RangeInclusive<usize> = 3..=16;
 /// psport refuses longer shadNet secrets, and so does the launch environment they travel in.
 const SHADNET_MAX_LEN: usize = 1024;
 const API_KEY_MAX_LEN: usize = 1024;
-/// A serialized GOG `Token` or Amazon session is a few hundred bytes to a few kilobytes; anything
-/// near this is not one.
+/// A serialized GOG `Token`, Amazon or Epic session is a few hundred bytes to a few kilobytes;
+/// anything near this is not one.
 const SESSION_MAX_LEN: usize = 16 << 10;
 
 /// What a secret is, for logs and errors: never its value.
@@ -21,6 +24,7 @@ const SESSION_MAX_LEN: usize = 16 << 10;
 #[non_exhaustive]
 pub enum SecretKind {
     AmazonSession,
+    EpicSession,
     GogSession,
     ShadnetPassword,
     ShadnetToken,
@@ -33,6 +37,7 @@ impl fmt::Display for SecretKind {
         f.write_str(match self {
             Self::GogSession => "GOG session",
             Self::AmazonSession => "Amazon session",
+            Self::EpicSession => "Epic session",
             Self::ShadnetPassword => "shadNet password",
             Self::ShadnetToken => "shadNet token",
             Self::SteamGridDbKey => "SteamGridDB key",
@@ -60,6 +65,7 @@ impl ShadnetSecret {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Name {
     AmazonSession(String),
+    EpicSession(String),
     GogSession(String),
     Shadnet(String, ShadnetSecret),
     SteamGridDb,
@@ -90,6 +96,25 @@ impl SecretKey {
         } else {
             Err(StoreError::InvalidKey {
                 kind: SecretKind::AmazonSession,
+            })
+        }
+    }
+
+    /// # Errors
+    ///
+    /// [`StoreError::InvalidKey`] unless `account_id` is 1 to 64 ASCII letters, digits, `-` or
+    /// `_`: the id names a keyring entry, where a `/` would split it.
+    #[inline]
+    pub fn epic_session(account_id: &str) -> Result<Self, StoreError> {
+        let is_id = (1..=EPIC_ID_MAX_LEN).contains(&account_id.len())
+            && account_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+        if is_id {
+            Ok(Self(Name::EpicSession(account_id.to_owned())))
+        } else {
+            Err(StoreError::InvalidKey {
+                kind: SecretKind::EpicSession,
             })
         }
     }
@@ -142,6 +167,7 @@ impl SecretKey {
         match &self.0 {
             Name::GogSession(_) => SecretKind::GogSession,
             Name::AmazonSession(_) => SecretKind::AmazonSession,
+            Name::EpicSession(_) => SecretKind::EpicSession,
             Name::Shadnet(_, secret) => Self::shadnet_kind(*secret),
             Name::SteamGridDb => SecretKind::SteamGridDbKey,
         }
@@ -152,7 +178,7 @@ impl SecretKey {
     #[must_use]
     pub fn subject(&self) -> Option<&str> {
         match &self.0 {
-            Name::GogSession(id) | Name::AmazonSession(id) => Some(id),
+            Name::GogSession(id) | Name::AmazonSession(id) | Name::EpicSession(id) => Some(id),
             Name::Shadnet(npid, _) => Some(npid),
             Name::SteamGridDb => None,
         }
@@ -163,6 +189,7 @@ impl SecretKey {
         match &self.0 {
             Name::GogSession(id) => format!("{id}/{}", Storefront::Gog.as_str_name()),
             Name::AmazonSession(id) => format!("{id}/{}", Storefront::AmazonGames.as_str_name()),
+            Name::EpicSession(id) => format!("{id}/{}", Storefront::EpicGames.as_str_name()),
             Name::Shadnet(npid, secret) => format!("shadnet/{npid}/{}", secret.name()),
             Name::SteamGridDb => "steamgriddb/api_key".to_owned(),
         }
@@ -179,6 +206,7 @@ impl SecretKey {
             ["shadnet", npid, "token"] => Self::shadnet(npid, ShadnetSecret::Token).ok(),
             [id, storefront] if *storefront == Storefront::Gog.as_str_name() => Self::gog_session(id).ok(),
             [id, storefront] if *storefront == Storefront::AmazonGames.as_str_name() => Self::amazon_session(id).ok(),
+            [id, storefront] if *storefront == Storefront::EpicGames.as_str_name() => Self::epic_session(id).ok(),
             _ => None,
         }
     }
@@ -188,14 +216,14 @@ impl SecretKey {
     pub(super) fn legacy_entry(&self) -> Option<String> {
         match &self.0 {
             Name::SteamGridDb => Some(format!("steamgriddb/{}", Storefront::Unspecified.as_str_name())),
-            Name::GogSession(_) | Name::AmazonSession(_) | Name::Shadnet(..) => None,
+            Name::GogSession(_) | Name::AmazonSession(_) | Name::EpicSession(_) | Name::Shadnet(..) => None,
         }
     }
 
     /// Refuses what the stores would take but nothing that reads it back could use.
     pub(super) fn check(&self, secret: &Secret) -> Result<(), StoreError> {
         let max = match &self.0 {
-            Name::GogSession(_) | Name::AmazonSession(_) => SESSION_MAX_LEN,
+            Name::GogSession(_) | Name::AmazonSession(_) | Name::EpicSession(_) => SESSION_MAX_LEN,
             Name::Shadnet(..) => SHADNET_MAX_LEN,
             Name::SteamGridDb => API_KEY_MAX_LEN,
         };
