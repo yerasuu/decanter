@@ -13,12 +13,16 @@ workspace = true
 # (decisions #1225, #1541 and #1617).
 [dependencies]
 decanter-core.workspace = true
+decanter-runtime.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
+flate2.workspace = true
+futures-util.workspace = true
 reqwest = { workspace = true, features = ["form", "system-proxy"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+sha1_smol.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "fs", "io-util", "macros", "time"] }
 tracing.workspace = true
 url.workspace = true

@@ -455,6 +455,7 @@ pub fn installed_game_in(library: &Library, account_id: &str, game_id: &str) -> 
     library
         .read_manifest(account_id, Storefront::Gog, game_id)
         .or_else(|| library.read_manifest(account_id, Storefront::AmazonGames, game_id))
+        .or_else(|| library.read_manifest(account_id, Storefront::EpicGames, game_id))
         .or_else(|| library.read_manifest(account_id, Storefront::Unspecified, game_id))
         .or_else(|| library.read_manifest(account_id, Storefront::Steam, game_id))
 }

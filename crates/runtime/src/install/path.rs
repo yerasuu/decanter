@@ -1,12 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-//! The one place a manifest's path is checked. nile joins them under the install directory as they
-//! come (docs/amazon-nile-integration-analysis.md, section 4.2), so a signed manifest naming
-//! `..\..\.bashrc` would write outside it; here such a path refuses the manifest instead.
+//! The one place a store manifest's path is checked, for every store: nile and legendary join them
+//! under the install directory as they come, so a manifest naming `..\..\.bashrc` would write
+//! outside it; here such a path refuses the manifest instead.
 
 use core::fmt;
 use std::path::Path;
 
-/// Longer than Windows' classic `MAX_PATH` (260), which the launcher's games are built against.
+/// Longer than Windows' classic `MAX_PATH` (260), which the stores' games are built against.
 const MAX_PATH_LEN: usize = 1024;
 /// `NAME_MAX` of the file systems a library lives on.
 const MAX_COMPONENT_LEN: usize = 255;
@@ -49,8 +48,13 @@ impl fmt::Display for PathFault {
 }
 
 impl ManifestPath {
-    /// The manifest separates with `\` and sometimes `/`; both become `/`.
-    pub(crate) fn parse(raw: &str) -> Result<Self, PathFault> {
+    /// The manifests separate with `\` and sometimes `/`; both become `/`.
+    ///
+    /// # Errors
+    ///
+    /// The first [`PathFault`] found; the caller refuses its whole manifest for it.
+    #[inline]
+    pub fn parse(raw: &str) -> Result<Self, PathFault> {
         if raw.is_empty() {
             return Err(PathFault::Empty);
         }
@@ -95,13 +99,16 @@ impl ManifestPath {
     }
 
     /// The path folded for comparisons that ignore case, since Windows games open files by any case.
-    pub(super) fn folded(&self) -> String {
+    #[inline]
+    #[must_use]
+    pub fn folded(&self) -> String {
         self.0.to_lowercase()
     }
 }
 
 /// The directories a folded path sits in, deepest last: `a/b/c` gives `a` and `a/b`. Lowercasing
 /// maps `/` to itself, so these are also the folded forms of the original's ancestors.
-pub(super) fn ancestors(folded: &str) -> impl Iterator<Item = &str> {
+#[inline]
+pub fn ancestors(folded: &str) -> impl Iterator<Item = &str> {
     folded.match_indices('/').filter_map(|(end, _)| folded.get(..end))
 }

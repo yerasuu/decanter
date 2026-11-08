@@ -18,11 +18,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context as _;
+use decanter_runtime::install::stop::StopFlag;
 use tokio::sync::Mutex as AsyncMutex;
 
 use super::distribution::{self, ManifestFetch};
 use super::fetch::{self, Failure, Job, Run};
-use super::stop::StopFlag;
 use super::{FILES, disk};
 use crate::manifest::{Manifest, parse_signed_manifest};
 

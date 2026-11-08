@@ -698,10 +698,14 @@ pub async fn exit_with_games_on_signal(cx: &mut AsyncApp) {
     #[cfg(target_os = "linux")]
     tokio::join!(
         decanter_gog::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT),
-        decanter_amazon::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT)
+        decanter_amazon::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT),
+        decanter_epic::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT)
     );
     #[cfg(not(target_os = "linux"))]
-    decanter_gog::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT).await;
+    tokio::join!(
+        decanter_gog::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT),
+        decanter_epic::pause_for_quit(crate::views::library::unfinished::QUIT_WAIT)
+    );
 
     // Not `std::process::exit` -- that tears the process down while other
     // tokio worker threads (a still-in-flight GOG library fetch, say) may

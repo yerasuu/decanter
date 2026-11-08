@@ -121,6 +121,30 @@ impl GogLibrary {
         self.remerge(cx);
     }
 
+    /// [`GogLibrary::refresh_install_state`] for an Epic account's game; `false` when the account is
+    /// not one of the profile's Epic accounts.
+    pub(super) fn refresh_epic_install_state(&mut self, account_id: &str, product_id: &str) -> bool {
+        let Some(account_games) = self.epic_by_account.get_mut(account_id) else {
+            return false;
+        };
+        if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
+            entry.game.install_state = super::local_install_state(account_id, product_id);
+        }
+        self.epic = flatten(&self.epic_wanted, &self.epic_by_account);
+        true
+    }
+
+    /// [`GogLibrary::refresh_all_install_state`] for the Epic accounts' games.
+    pub(super) fn refresh_all_epic_install_state(&mut self) {
+        for (account_id, games) in &mut self.epic_by_account {
+            let library = crate::core::library_for_account(account_id).ok();
+            for entry in games.iter_mut() {
+                entry.game.install_state = super::local_install_state_in(library.as_ref(), account_id, &entry.game.id);
+            }
+        }
+        self.epic = flatten(&self.epic_wanted, &self.epic_by_account);
+    }
+
     pub fn epic_status(&self, account_id: &str) -> Option<EpicStatus> {
         self.epic_status.get(account_id).copied()
     }
@@ -300,18 +324,24 @@ fn region() -> CatalogRegion {
 
 fn cached(account_id: &str, listing: Listing) -> Update {
     let synced_at = cache(account_id, &listing.games, listing.complete);
+    let library = crate::core::library_for_account(account_id).ok();
     Update::Listed {
-        entries: listing.games.iter().map(|game| entry(account_id, game)).collect(),
+        entries: listing
+            .games
+            .iter()
+            .map(|game| entry(library.as_ref(), account_id, game))
+            .collect(),
         assets: listing.assets,
         complete: listing.complete,
         synced_at,
     }
 }
 
-fn entry(account_id: &str, game: &EpicGame) -> LibraryEntry {
+fn entry(library: Option<&decanter_core::Library>, account_id: &str, game: &EpicGame) -> LibraryEntry {
     LibraryEntry {
         game: Game {
             account_id: account_id.to_owned(),
+            install_state: super::local_install_state_in(library, account_id, &game.app_name),
             id: game.app_name.clone(),
             title: game.title.clone(),
             storefront: Storefront::EpicGames,

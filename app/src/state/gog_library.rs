@@ -270,7 +270,9 @@ impl GogLibrary {
             if let Some(entry) = account_games.iter_mut().find(|entry| entry.game.id == product_id) {
                 entry.game.install_state = install_state;
             }
-        } else if !self.refresh_amazon_install_state(account_id, product_id) {
+        } else if !self.refresh_amazon_install_state(account_id, product_id)
+            && !self.refresh_epic_install_state(account_id, product_id)
+        {
             tracing::warn!(
                 account_id,
                 product_id,
@@ -322,6 +324,7 @@ impl GogLibrary {
             }
         }
         self.refresh_all_amazon_install_state();
+        self.refresh_all_epic_install_state();
         self.refresh_external(cx);
     }
 

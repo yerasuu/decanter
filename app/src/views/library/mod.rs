@@ -13,6 +13,7 @@ mod browser;
 mod context_menu;
 mod data;
 mod detail;
+pub mod epic_install;
 mod filters;
 pub(crate) mod fmt;
 pub mod install;

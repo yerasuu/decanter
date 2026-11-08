@@ -10,7 +10,7 @@
 //! Every count of what was skipped, and of how each catalog call failed, is logged at the end of a
 //! listing, with no URL and no token.
 
-mod assets;
+pub(crate) mod assets;
 mod catalog;
 mod entitlements;
 
@@ -558,7 +558,7 @@ fn is_unreal(namespace: &str) -> bool {
 
 /// Ids go into request paths and become database keys, so only these characters pass, and the
 /// first is a letter or digit so that no id reads as `.` or `..`.
-fn is_id(id: &str) -> bool {
+pub(crate) fn is_id(id: &str) -> bool {
     (1..=ID_MAX_LEN).contains(&id.len())
         && id.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
         && id

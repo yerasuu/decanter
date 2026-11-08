@@ -10,7 +10,7 @@
 //! the consent notice tells the user about before the first login.
 //!
 //! Downloads from the CDN carry the launcher's `EpicGamesLauncher/…` user agent instead of these
-//! (spec, section 2.2); the downloader brings that value with it.
+//! (spec, section 2.2).
 
 /// The launcher's login client id. Not a secret: the browser login sends it in the clear.
 pub(crate) const CLIENT_ID: &str = "34a02cf8f4414e29b15921876da36f9a";
@@ -22,3 +22,6 @@ pub(crate) const LAUNCHER_USER_AGENT: &str =
     "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
 /// The User-Agent of the launcher's calls to the store's `/graphql` endpoint.
 pub(crate) const STORE_USER_AGENT: &str = "EpicGamesLauncher/14.0.8-22004686+++Portal+Release-Live";
+/// The User-Agent of the launcher's anonymous manifest and chunk downloads from the CDN.
+pub(crate) const CDN_USER_AGENT: &str =
+    "EpicGamesLauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";

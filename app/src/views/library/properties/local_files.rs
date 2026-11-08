@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-#[cfg(target_os = "linux")]
 use decanter_core::Storefront;
 use decanter_gog::VerifyReport;
 use gpui::{Context, Window, prelude::*};
@@ -135,6 +134,16 @@ impl LocalFilesTab {
                     )
                     .await;
                 }
+                if target.storefront == Storefront::EpicGames {
+                    return crate::views::library::epic_install::repair(
+                        &core_library,
+                        account_id,
+                        product_id,
+                        &target.title,
+                        on_progress,
+                    )
+                    .await;
+                }
                 decanter_gog::repair(&core_library, account_id, product_id, &broken, on_progress).await
             };
             let job = DownloadJob {
@@ -174,13 +183,16 @@ impl LocalFilesTab {
     }
 }
 
-/// Every file of the game against its store's manifest: GOG's as it is now, Amazon's as it was
-/// installed.
+/// Every file of the game against its store's manifest: GOG's as it is now, Amazon's and Epic's as
+/// it was installed.
 async fn verify_files(core_library: &decanter_core::Library, target: &Target) -> anyhow::Result<VerifyReport> {
     #[cfg(target_os = "linux")]
     if target.storefront == Storefront::AmazonGames {
         return crate::views::library::amazon_install::verify(core_library, &target.account_id, &target.product_id)
             .await;
+    }
+    if target.storefront == Storefront::EpicGames {
+        return crate::views::library::epic_install::verify(core_library, &target.account_id, &target.product_id).await;
     }
     decanter_gog::verify(core_library, &target.account_id, &target.product_id).await
 }

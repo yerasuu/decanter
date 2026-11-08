@@ -74,6 +74,11 @@ impl DetailView {
             actions::start_install(request, cx);
             return;
         }
+        // Nor has Epic, as decanter installs it so far: the base game in the main library folder.
+        if crate::views::library::epic_install::is_epic_account(&request.account_id) {
+            actions::start_install(request, cx);
+            return;
+        }
         let (account_id, product_id) = (request.account_id.clone(), request.product_id.clone());
         let folders = crate::core::library_for_account(&account_id)
             .inspect_err(

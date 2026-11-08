@@ -14,13 +14,12 @@
 
 mod body;
 mod envelope;
-mod path;
 mod plan;
 mod wire;
 
 use core::fmt;
 
-pub use path::{ManifestPath, PathFault};
+pub use decanter_runtime::install::{ManifestPath, PathFault};
 pub use plan::{Plan, plan};
 
 /// The whole answer, so that a body which is not compressed cannot be larger than a decompressed one.

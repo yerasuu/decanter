@@ -8,7 +8,8 @@
 
 use std::collections::HashSet;
 
-use super::path::{self, ManifestPath};
+use decanter_runtime::install::{ManifestPath, path};
+
 use super::wire::Fields;
 use super::{MAX_DIRS, MAX_FILES, Manifest, ManifestError, ManifestFile, Sha256Digest, shown};
 

@@ -155,11 +155,12 @@ async fn scan(library: &Library, state: &AppState, cx: &mut AsyncApp) -> (Vec<Do
         .and_then(|db| db.resume_downloads_on_start().map_err(crate::core::StoreError::Query))
         .inspect_err(|err| tracing::warn!(%err, "could not read the resume-on-start setting, resuming"))
         .unwrap_or(true);
-    let found = decanter_gog::unfinished_downloads(library).await;
-    #[cfg(target_os = "linux")]
-    let found = found
+    let found = decanter_gog::unfinished_downloads(library)
+        .await
         .into_iter()
-        .chain(decanter_amazon::unfinished_downloads(library).await);
+        .chain(decanter_epic::unfinished_downloads(library).await);
+    #[cfg(target_os = "linux")]
+    let found = found.chain(decanter_amazon::unfinished_downloads(library).await);
     let (resume, gone, listed) = state.background.update(cx, |background, cx| {
         let mut resume = Vec::new();
         let mut listed = HashSet::new();
@@ -275,10 +276,14 @@ pub fn quit(cx: &mut App) {
         #[cfg(target_os = "linux")]
         tokio::join!(
             decanter_gog::pause_for_quit(QUIT_WAIT),
-            decanter_amazon::pause_for_quit(QUIT_WAIT)
+            decanter_amazon::pause_for_quit(QUIT_WAIT),
+            decanter_epic::pause_for_quit(QUIT_WAIT)
         );
         #[cfg(not(target_os = "linux"))]
-        decanter_gog::pause_for_quit(QUIT_WAIT).await;
+        tokio::join!(
+            decanter_gog::pause_for_quit(QUIT_WAIT),
+            decanter_epic::pause_for_quit(QUIT_WAIT)
+        );
         cx.update(|cx| cx.quit());
     })
     .detach();

@@ -94,18 +94,18 @@ impl UpdatesTab {
                 });
                 return;
             };
-            #[cfg(target_os = "linux")]
-            if target.storefront == Storefront::AmazonGames {
+            let is_amazon = cfg!(target_os = "linux") && target.storefront == Storefront::AmazonGames;
+            if is_amazon || target.storefront == Storefront::EpicGames {
                 let key = DownloadKey::new(account_id, product_id);
-                crate::views::library::amazon_install::download(
-                    key,
-                    target.title.clone(),
-                    DownloadKind::Update,
-                    None,
-                    &state,
-                    cx,
-                )
-                .await;
+                let title = target.title.clone();
+                if target.storefront == Storefront::EpicGames {
+                    crate::views::library::epic_install::download(key, title, DownloadKind::Update, None, &state, cx)
+                        .await;
+                } else {
+                    #[cfg(target_os = "linux")]
+                    crate::views::library::amazon_install::download(key, title, DownloadKind::Update, None, &state, cx)
+                        .await;
+                }
                 let _ = this.update(cx, |this, cx| {
                     this.updating = false;
                     this.reload();
@@ -204,12 +204,14 @@ impl Render for UpdatesTab {
                         t!("library.properties.updates.installed_build"),
                         installed.build_id.clone(),
                     ))
-                    .children((installed.storefront != Storefront::AmazonGames).then(|| {
-                        row(
-                            t!("library.detail.install.branch"),
-                            installed.branch.clone().unwrap_or_else(|| "mainline".to_string()),
-                        )
-                    })),
+                    .children(
+                        (!matches!(installed.storefront, Storefront::AmazonGames | Storefront::EpicGames)).then(|| {
+                            row(
+                                t!("library.detail.install.branch"),
+                                installed.branch.clone().unwrap_or_else(|| "mainline".to_string()),
+                            )
+                        }),
+                    ),
             )
             .child(actions)
             .children(error_line(self.error.as_ref()))
@@ -221,6 +223,9 @@ async fn check_build(account_id: &str, installed: &InstalledGame) -> anyhow::Res
     #[cfg(target_os = "linux")]
     if installed.storefront == Storefront::AmazonGames {
         return decanter_amazon::check_update(account_id, installed).await;
+    }
+    if installed.storefront == Storefront::EpicGames {
+        return decanter_epic::check_update(account_id, installed).await;
     }
     decanter_gog::check_update(account_id, installed).await
 }

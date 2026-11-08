@@ -15,7 +15,7 @@ use reqwest::Method;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{is_id, is_unreal};
+use super::{is_id, is_unreal, printable};
 use crate::error::CallError;
 use crate::hosts::Host;
 use crate::http::{self, Call, Kind};
@@ -35,16 +35,19 @@ const ASSETS: Call = Call {
 pub(crate) const TIMEOUT: Duration = Duration::from_mins(2);
 
 const MAX_ASSETS: usize = 20_000;
+const BUILD_VERSION_MAX_CHARS: usize = 128;
 
-/// One installable title. `buildVersion`, `labelName`, `metadata` and `sidecarRvn` matter only to
-/// installs and updates, which no stage reads yet.
-pub(super) struct Asset {
+/// One installable title. `labelName`, `metadata` and `sidecarRvn` matter only to launches and
+/// sidecars, which no stage reads yet.
+pub(crate) struct Asset {
     pub app_name: String,
     pub namespace: String,
     pub catalog_item_id: String,
+    /// The build's version label, compared with the installed one for updates (spec, 4.1).
+    pub build_version: Option<String>,
 }
 
-pub(super) struct Assets {
+pub(crate) struct Assets {
     pub list: Vec<Asset>,
     /// Entries without three usable ids, repeated, or past the cap.
     pub skipped: usize,
@@ -60,6 +63,8 @@ struct Entry {
     namespace: Option<String>,
     #[serde(rename = "catalogItemId", default)]
     catalog_item_id: Option<String>,
+    #[serde(rename = "buildVersion", default)]
+    build_version: Option<String>,
 }
 
 /// The asset list and how long Epic took to give it, or to fail to.
@@ -69,7 +74,7 @@ pub(super) async fn timed(http: reqwest::Client, token: Arc<Secret>) -> (Result<
     (listed, started.elapsed())
 }
 
-async fn list(http: &reqwest::Client, token: &Secret) -> Result<Assets, CallError> {
+pub(crate) async fn list(http: &reqwest::Client, token: &Secret) -> Result<Assets, CallError> {
     let request = http::request(http, Method::GET, &ASSETS, PATH)
         .bearer_auth(token.expose())
         .timeout(TIMEOUT);
@@ -101,9 +106,13 @@ fn asset(raw: Value) -> Option<Asset> {
     let app_name = entry.app_name.filter(|id| is_id(id))?;
     let namespace = entry.namespace.filter(|id| is_id(id))?;
     let catalog_item_id = entry.catalog_item_id.filter(|id| is_id(id))?;
+    let build_version = entry
+        .build_version
+        .and_then(|version| printable(&version, BUILD_VERSION_MAX_CHARS));
     Some(Asset {
         app_name,
         namespace,
         catalog_item_id,
+        build_version,
     })
 }

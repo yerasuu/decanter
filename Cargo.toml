@@ -107,6 +107,9 @@ zeroize = "1.9.1"
 # Already in the graph through the TLS stack; listed for the nix-portable
 # checksum in crates/ps.
 sha2 = "0.11.1"
+# The SHA-1 of every Epic Games manifest, chunk and file (crates/epic); pure Rust and already locked
+# through uuid, where the sha2 family has no SHA-1.
+sha1_smol = "1.0.1"
 md5 = "0.8.1"
 # Verifies decanter's own AppImage updates (app/src/self_update.rs); pinned
 # exactly so a new release of what decides which binary runs gets read first.

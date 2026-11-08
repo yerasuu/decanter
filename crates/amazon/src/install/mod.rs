@@ -23,69 +23,72 @@ mod fetch;
 mod fuel;
 mod import;
 mod sdk;
-mod stop;
-mod unfinished;
 
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use core::time::Duration;
 use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::Context as _;
 use decanter_core::{GameArt, InstalledGame, Library, Storefront};
-use decanter_runtime::install::{Cancelled, PauseReason, Paused, Progress, RateTracker, Room};
-use decanter_runtime::journal::{LineLog, LockError, StagingLock};
+use decanter_runtime::install::staging::{Layout, Record};
+use decanter_runtime::install::stop::{Downloads, Stop, StopFlag};
+pub use decanter_runtime::install::{BrokenFile, BrokenReason, VerifyReport};
+use decanter_runtime::install::{
+    Cancelled, PauseReason, Paused, Progress, RateTracker, Room, UnfinishedDownload, lacking_room,
+};
+use decanter_runtime::journal::{LineLog, StagingLock};
 use tokio::sync::Mutex as AsyncMutex;
 
 use self::distribution::{Asked, GameDownload, ManifestFetch};
 use self::fetch::{Failure, Job, Run};
-use self::stop::{Stop, StopFlag};
-use self::unfinished::Record;
 use crate::library::is_id;
 use crate::manifest::{Manifest, ManifestPath, parse_signed_manifest, plan};
 
 pub use fuel::{FuelLaunch, read_fuel};
 pub use import::{Differences, Imported, import};
 pub use sdk::{SdkDirs, ensure_sdk};
-pub use stop::{cancel, pause, pause_for_quit};
-pub use unfinished::unfinished_downloads;
 
 const LOG: &str = "progress.log";
 const FILES: &str = "files";
 const LOG_FIRST: &[u8] = b"amazon staging 1";
 
-/// Kept free beyond what a download still needs, at least, as for GOG's.
-const MIN_MARGIN: u64 = 1024 * 1024 * 1024;
+static DOWNLOADS: Downloads = Downloads::new("amazon");
 
-/// A run this one takes over from lets go within one read; past this, another process owns it.
-const LOCK_WAIT: Duration = Duration::from_secs(15);
+static LAYOUT: Layout = Layout {
+    storefront: Storefront::AmazonGames,
+    store: "amazon",
+    downloading: disk::downloading_dir,
+    is_id,
+    log: LOG,
+    files: FILES,
+};
 
-/// One file that does not match the saved manifest.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct BrokenFile {
-    /// `/`-separated, relative to the game's folder.
-    pub path: String,
-    pub reason: BrokenReason,
+/// Cancels the Amazon download of `(account_id, product_id)`, which then deletes what it fetched; a
+/// paused one, which nothing runs, is deleted with [`discard`].
+#[inline]
+pub fn cancel(account_id: &str, product_id: &str) {
+    DOWNLOADS.cancel(account_id, product_id);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum BrokenReason {
-    Missing,
-    /// Another size or hash, or a symbolic link where the game has a file.
-    Mismatched,
+/// Pauses the Amazon download of `(account_id, product_id)`, keeping what it fetched.
+#[inline]
+pub fn pause(account_id: &str, product_id: &str) {
+    DOWNLOADS.pause(account_id, product_id);
 }
 
-/// What verifying an installed game found.
-#[derive(Debug, Clone, Default)]
-#[non_exhaustive]
-pub struct VerifyReport {
-    pub files_checked: usize,
-    pub broken: Vec<BrokenFile>,
+/// Pauses every Amazon download because decanter is quitting, waiting up to `wait` for each to
+/// record it; whether all of them did.
+#[inline]
+pub async fn pause_for_quit(wait: core::time::Duration) -> bool {
+    DOWNLOADS.pause_for_quit(wait).await
+}
+
+/// Every unfinished Amazon download in `library`'s folders, for the app to list when it starts.
+#[inline]
+pub async fn unfinished_downloads(library: &Library) -> Vec<UnfinishedDownload> {
+    decanter_runtime::install::staging::unfinished_downloads(library, &LAYOUT).await
 }
 
 /// What a run is for: a repair hashes every file of the game, an install or update only those the
@@ -176,8 +179,8 @@ async fn run(
         is_id(product_id) && is_id(entitlement_id),
         "the Amazon product or entitlement id is not usable"
     );
-    let registration = stop::register(account_id, product_id);
-    let flag = &registration.flag;
+    let registration = DOWNLOADS.register(account_id, product_id);
+    let flag = registration.flag();
     let installed = library.read_manifest(account_id, Storefront::AmazonGames, product_id);
     anyhow::ensure!(
         kind == Kind::Install || installed.is_some(),
@@ -514,18 +517,9 @@ fn staged_root(library: &Library, account_id: &str, product_id: &str) -> Option<
 
 /// Locks the staging folder, waiting for a run this one replaced to let go of it.
 async fn lock_staging(staging: &Path) -> anyhow::Result<StagingLock> {
-    let deadline = Instant::now() + LOCK_WAIT;
-    loop {
-        match decanter_runtime::journal::lock(staging) {
-            Ok(held) => return Ok(held),
-            Err(LockError::Busy(_)) if Instant::now() < deadline => {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-            Err(err) => {
-                return Err(anyhow::Error::new(err).context("another decanter process is downloading this game"));
-            }
-        }
-    }
+    decanter_runtime::install::lock_staging(staging)
+        .await
+        .context("another decanter process is downloading this game")
 }
 
 /// The manifest saved at the last install, when there is one that still reads.
@@ -672,16 +666,6 @@ fn part_len(part: &Path) -> u64 {
         .map_or(0, |meta| meta.len())
 }
 
-/// The room the download lacks on `staging`'s disk: what is left of it, plus the larger of
-/// [`MIN_MARGIN`] and 2 % of it, as for GOG's (#1277). `None` when there is room, or when the free
-/// space can't be read.
-fn lacking_room(staging: &Path, total: u64, done: u64) -> Option<Room> {
-    let (free, _) = decanter_core::disk_usage(staging)?;
-    let margin = total.div_ceil(50).max(MIN_MARGIN);
-    let room = Room::new(total.saturating_sub(done).saturating_add(margin), free);
-    (room.short() > 0).then_some(room)
-}
-
 /// Deletes the files the new version dropped, then moves every finished file into the game's
 /// folder; deleting first, since a file renamed only in case would otherwise be deleted after it
 /// lands on a case-insensitive disk.
@@ -809,10 +793,7 @@ fn installed_files(
 
 /// Hashes every file of `manifest` under `dest`.
 fn hash_files(manifest: &Manifest, dest: &Path) -> VerifyReport {
-    let mut report = VerifyReport {
-        files_checked: manifest.files().len(),
-        broken: Vec::new(),
-    };
+    let mut report = VerifyReport::new(manifest.files().len());
     for file in manifest.files() {
         // A folder on the way that is a link, or a file that can't be read, is as broken as a
         // wrong hash: a repair puts the game's own file there.
@@ -823,10 +804,9 @@ fn hash_files(manifest: &Manifest, dest: &Path) -> VerifyReport {
             }
         });
         if let Some(reason) = reason {
-            report.broken.push(BrokenFile {
-                path: file.path().as_str().to_owned(),
-                reason,
-            });
+            report
+                .broken
+                .push(BrokenFile::new(file.path().as_str().to_owned(), reason));
         }
     }
     report

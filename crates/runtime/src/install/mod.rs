@@ -1,12 +1,19 @@
-//! What every store's install reports and stops with, so the app shows a GOG and an Amazon download
-//! the same way, and the download slot they share so only one of them downloads at a time.
+//! What every store's install reports and stops with, so the app shows a GOG, an Amazon and an Epic
+//! download the same way, the download slot they share so only one of them downloads at a time, and
+//! the staging, stop and file steps the Amazon and Epic installs share.
 
-use std::path::PathBuf;
+pub mod files;
+pub mod path;
+pub mod staging;
+pub mod stop;
+
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use decanter_core::{Library, Storefront};
 use serde::{Deserialize, Serialize};
 
+pub use self::path::{ManifestPath, PathFault};
 use crate::journal::{LockError, StagingLock};
 
 /// The folder under a library root that holds the shared slot's lock.
@@ -15,6 +22,12 @@ const SLOT_FOLDER: &str = "downloading";
 /// How often a download waiting on another decanter process looks at the slot
 /// again: file locks wake no one when they are let go.
 const SLOT_POLL: Duration = Duration::from_secs(1);
+
+/// Kept free beyond what a download still needs, at least, as for GOG's.
+const MIN_MARGIN: u64 = 1024 * 1024 * 1024;
+
+/// A run this one takes over from lets go within one read; past this, another process owns it.
+const LOCK_WAIT: Duration = Duration::from_secs(15);
 
 /// Why a download stopped before finishing. Its data stays in staging until the user cancels it.
 ///
@@ -111,6 +124,50 @@ pub struct UnfinishedDownload {
     pub paused_since: Option<SystemTime>,
     /// A DLC ticked with its game and never planned, which takes the game's reason.
     pub is_queued_behind_game: bool,
+}
+
+/// One file of an installed game that does not match the manifest it was installed from.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct BrokenFile {
+    /// `/`-separated, relative to the game's folder.
+    pub path: String,
+    pub reason: BrokenReason,
+}
+
+impl BrokenFile {
+    #[must_use]
+    #[inline]
+    pub const fn new(path: String, reason: BrokenReason) -> Self {
+        Self { path, reason }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum BrokenReason {
+    Missing,
+    /// Another size or hash, or a symbolic link where the game has a file.
+    Mismatched,
+}
+
+/// What verifying an installed game against its saved manifest found.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct VerifyReport {
+    pub files_checked: usize,
+    pub broken: Vec<BrokenFile>,
+}
+
+impl VerifyReport {
+    #[must_use]
+    #[inline]
+    pub const fn new(files_checked: usize) -> Self {
+        Self {
+            files_checked,
+            broken: Vec::new(),
+        }
+    }
 }
 
 /// What a download switched build kept: the store published another build while it was stopped.
@@ -247,6 +304,36 @@ pub async fn take_slot(library: &Library) -> Option<StagingLock> {
                 tracing::warn!(error = %err, "couldn't lock the shared download slot, downloading without it");
                 return None;
             }
+        }
+    }
+}
+
+/// The room a download lacks on `staging`'s disk: what is left of it, plus the larger of
+/// [`MIN_MARGIN`] and 2 % of it, as for GOG's (#1277). `None` when there is room, or when the free
+/// space can't be read.
+#[must_use]
+#[inline]
+pub fn lacking_room(staging: &Path, total: u64, done: u64) -> Option<Room> {
+    let (free, _) = decanter_core::disk_usage(staging)?;
+    let margin = total.div_ceil(50).max(MIN_MARGIN);
+    let room = Room::new(total.saturating_sub(done).saturating_add(margin), free);
+    (room.short() > 0).then_some(room)
+}
+
+/// Locks a download's staging folder, waiting for a run this one replaced to let go of it.
+///
+/// # Errors
+///
+/// Another decanter process still holds it after [`LOCK_WAIT`], or it can't be locked at all.
+#[inline]
+pub async fn lock_staging(staging: &Path) -> Result<StagingLock, LockError> {
+    let deadline = Instant::now() + LOCK_WAIT;
+    loop {
+        match crate::journal::lock(staging) {
+            Err(LockError::Busy(_)) if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            locked => return locked,
         }
     }
 }

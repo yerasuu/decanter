@@ -280,6 +280,9 @@ pub async fn discard_paused(key: DownloadKey, state: AppState, cx: &mut AsyncApp
         Ok(library) if super::amazon_install::is_amazon_account(&key.account_id) => {
             super::amazon_install::discard(&library, &key).await
         }
+        Ok(library) if super::epic_install::is_epic_account(&key.account_id) => {
+            super::epic_install::discard(&library, &key).await
+        }
         Ok(library) => decanter_gog::discard(&library, &key.account_id, &key.product_id)
             .await
             .inspect_err(|err| {
@@ -344,6 +347,10 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
     #[cfg(target_os = "linux")]
     if super::amazon_install::is_amazon_account(&account_id) {
         super::amazon_install::download(key, title, kind, library_root, &state, cx).await;
+        return;
+    }
+    if super::epic_install::is_epic_account(&account_id) {
+        super::epic_install::download(key, title, kind, library_root, &state, cx).await;
         return;
     }
 
@@ -496,6 +503,10 @@ pub async fn resume(key: DownloadKey, state: AppState, cx: &mut AsyncApp) {
         super::amazon_install::download(key, title, kind, None, &state, cx).await;
         return;
     }
+    if super::epic_install::is_epic_account(&key.account_id) {
+        super::epic_install::download(key, title, kind, None, &state, cx).await;
+        return;
+    }
     let DownloadKey { account_id, product_id } = key.clone();
     let library = match crate::core::library_for_account(&account_id) {
         Ok(library) => library,
@@ -601,6 +612,9 @@ pub async fn uninstall(account_id: String, product_id: String, state: AppState, 
     #[cfg(target_os = "linux")]
     if super::amazon_install::is_amazon_account(&account_id) {
         return super::amazon_install::uninstall(&account_id, &product_id, &state, cx).await;
+    }
+    if super::epic_install::is_epic_account(&account_id) {
+        return super::epic_install::uninstall(&account_id, &product_id, &state, cx).await;
     }
     tracing::info!(account_id, product_id, "uninstall started");
     let core_library = crate::achv_try!(

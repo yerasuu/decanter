@@ -18,9 +18,11 @@ use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus}
 /// build of it or its store's installs aren't in decanter yet: shown in
 /// place of Instalar and Jugar.
 pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
-    // Epic's library is listed read only (#1546) until its installs land in a later stage.
+    // Epic games install (#1619) but launch only in the next stage, so an installed one has a note
+    // where Jugar would be.
     if game.storefront == decanter_core::Storefront::EpicGames {
-        return Some(t!("epic.detail.install_later"));
+        let is_installed = game.install_state.as_ref().is_some_and(|state| state.installed);
+        return is_installed.then(|| t!("epic.detail.launch_later"));
     }
     let system = platform::game_system();
     (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
@@ -38,6 +40,10 @@ pub fn resolve_launch_target(account_id: &str, game: &Game) -> Option<InstalledG
     // Steam starts its own games, from no executable of decanter's.
     if installed.storefront == decanter_core::Storefront::Steam {
         return Some(installed);
+    }
+    // Launching an Epic game needs its exchange code and arguments, which come in the next stage.
+    if installed.storefront == decanter_core::Storefront::EpicGames {
+        return None;
     }
     #[cfg(target_os = "linux")]
     let installed =
@@ -199,6 +205,7 @@ pub fn confirm_cancel(key: DownloadKey, cx: &mut App) {
         cx.spawn(async move |_| {
             #[cfg(target_os = "linux")]
             decanter_amazon::cancel(&key.account_id, &key.product_id);
+            decanter_epic::cancel(&key.account_id, &key.product_id);
             decanter_gog::cancel(&key.account_id, &key.product_id).await;
         })
         .detach();
@@ -217,6 +224,7 @@ pub fn pause_download(key: DownloadKey, cx: &App) {
     cx.spawn(async move |_| {
         #[cfg(target_os = "linux")]
         decanter_amazon::pause(&key.account_id, &key.product_id);
+        decanter_epic::pause(&key.account_id, &key.product_id);
         decanter_gog::pause(&key.account_id, &key.product_id).await;
     })
     .detach();

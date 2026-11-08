@@ -11,6 +11,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use decanter_runtime::install::stop::StopFlag;
 use decanter_runtime::journal::LineLog;
 use futures_util::StreamExt as _;
 use reqwest::StatusCode;
@@ -21,7 +22,6 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use super::disk;
 use super::distribution::GameDownload;
-use super::stop::StopFlag;
 use crate::manifest::ManifestFile;
 
 /// How many files transfer at once.
@@ -49,14 +49,8 @@ pub(super) struct Job<'manifest> {
 
 impl Job<'_> {
     pub(super) fn part(&self) -> PathBuf {
-        part_path(&self.done)
+        decanter_runtime::install::files::part_path(&self.done)
     }
-}
-
-pub(super) fn part_path(done: &Path) -> PathBuf {
-    let mut part = done.as_os_str().to_owned();
-    part.push(".part");
-    PathBuf::from(part)
 }
 
 /// Why fetching the files stopped.
