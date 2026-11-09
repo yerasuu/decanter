@@ -353,7 +353,7 @@ fn entry(library: Option<&decanter_core::Library>, account_id: &str, game: &Epic
         kind: GameKind::Game,
         purchased_at: None,
         library_rank: None,
-        installable: true,
+        installable: game.is_installable,
         parent_id: game.parent_app_name.clone(),
         is_mod: false,
     }
@@ -387,7 +387,7 @@ fn cache(account_id: &str, games: &[EpicGame], complete: bool) -> Option<i64> {
             genres: Vec::new(),
             library_rank: None,
             parent_id: game.parent_app_name.clone(),
-            installable: true,
+            installable: game.is_installable,
             has_macos_build: None,
             entitlement_id: None,
             product_sku: None,

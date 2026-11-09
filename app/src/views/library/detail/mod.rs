@@ -8,9 +8,12 @@
 mod achievements;
 mod action_bar;
 mod amazon_import;
+mod epic_dlc;
 mod hero;
 mod install_dialog;
 mod summary;
+
+use std::collections::BTreeSet;
 
 use decanter_core::{Game, InstallState, InstalledGame, Playtime, Storefront};
 use decanter_gog::LibraryEntry;
@@ -52,6 +55,8 @@ struct Loaded {
     launch: Option<InstalledGame>,
     /// The Epic catalog said the game needs the online session, which its offline launch lacks.
     needs_epic_online: bool,
+    /// The DLC recorded on the installed Epic game.
+    epic_dlcs: BTreeSet<String>,
 }
 
 impl Loaded {
@@ -68,6 +73,7 @@ impl Loaded {
             collections: member_of(profile_id, &game.id),
             launch: launch_target(game),
             needs_epic_online: needs_epic_online(game),
+            epic_dlcs: epic_dlc::installed_dlcs(game),
         }
     }
 
@@ -90,6 +96,7 @@ impl Loaded {
             self.install_state.clone_from(&game.install_state);
             self.launch = launch_target(game);
             self.needs_epic_online = needs_epic_online(game);
+            self.epic_dlcs = epic_dlc::installed_dlcs(game);
         }
     }
 }
@@ -155,6 +162,7 @@ struct Local {
     tab: DetailTab,
     uninstall: Uninstall,
     import: amazon_import::Import,
+    epic_dlc: epic_dlc::DlcActions,
     dialog: Option<InstallDialog>,
     /// Follows the game's latest run, which a new one replaces.
     log: Option<Entity<LogView>>,
@@ -229,6 +237,19 @@ impl Render for DetailView {
         let installable = entry.installable;
         let is_mod = entry.is_mod;
         let dlcs: Vec<(String, String)> = dlcs_of(games, &game.id).collect();
+        let epic_dlcs: Vec<epic_dlc::Dlc> = if game.storefront == Storefront::EpicGames {
+            games
+                .iter()
+                .filter(|entry| entry.parent_id.as_deref() == Some(game.id.as_str()))
+                .map(|entry| epic_dlc::Dlc {
+                    id: entry.game.id.clone(),
+                    title: entry.game.title.clone(),
+                    is_installable: entry.installable,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let profile_id = state.session.read(cx).active_profile.clone();
         let background = state.background.read(cx);
         self.sync(&game, profile_id.as_deref(), background);
@@ -286,6 +307,7 @@ impl Render for DetailView {
             needs_epic_online,
         };
         let action_bar = self.action_bar(&game, bar, window, cx);
+        let epic_dlc_list = self.epic_dlc_list(&game, epic_dlcs, cx);
         if !self.local.took_focus && self.model.read(cx).opened_from.is_some() {
             self.local.took_focus = true;
             window.focus(&self.primary, cx);
@@ -329,6 +351,7 @@ impl Render for DetailView {
             .flex_col()
             .child(reveal(hero.id("detail-hero")))
             .child(reveal(action_bar.id("detail-actions")))
+            .children(epic_dlc_list)
             .children(collection_chips(collections))
             .child(reveal(
                 div().id("detail-tabs-row").mx(px(32.)).mt(px(24.)).child(tab_row),

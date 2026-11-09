@@ -82,6 +82,10 @@ pub struct EpicGame {
     pub title: String,
     /// The game's `appName`, for a DLC.
     pub parent_app_name: Option<String>,
+    /// Whether the title has a build of its own to install: a game always, a DLC when the asset
+    /// list names it (spec, 4.6 rule 5), or while the asset list has not answered, so a slow one
+    /// hides nothing.
+    pub is_installable: bool,
     pub icon_url: Option<String>,
     pub cover_url: Option<String>,
     pub background_url: Option<String>,
@@ -374,6 +378,7 @@ impl Found {
     /// The titles as they stand, by spec 4.6: mods out, DLC under the game its `mainGameItem`
     /// names, and an item without an `appName` out, since nothing could install or launch it.
     fn listing(&self, assets: AssetList, complete: bool, tally: &mut Tally) -> Listing {
+        let is_asset_list_known = matches!(assets, AssetList::Listed);
         let app_names: HashMap<&str, &str> = self
             .candidates
             .iter()
@@ -418,6 +423,9 @@ impl Found {
                         continue;
                     };
                     counts.dlc = counts.dlc.saturating_add(1);
+                    if is_asset_list_known && candidate.app_name.is_none() {
+                        counts.dlc_without_build = counts.dlc_without_build.saturating_add(1);
+                    }
                     Some((*parent).to_owned())
                 }
                 None => None,
@@ -427,6 +435,7 @@ impl Found {
                 continue;
             }
             let art = meta.map(|meta| &meta.art);
+            let is_installable = parent_app_name.is_none() || !is_asset_list_known || candidate.app_name.is_some();
             games.push(EpicGame {
                 app_name: (*app_name).to_owned(),
                 namespace: candidate.namespace.clone(),
@@ -435,6 +444,7 @@ impl Found {
                     .and_then(|meta| meta.title.clone())
                     .unwrap_or_else(|| (*app_name).to_owned()),
                 parent_app_name,
+                is_installable,
                 icon_url: art.and_then(|art| art.icon.clone()),
                 cover_url: art.and_then(|art| art.cover.clone()),
                 background_url: art.and_then(|art| art.background.clone()),
@@ -457,6 +467,8 @@ struct Counts {
     marketplace_namespace: usize,
     non_game_category: usize,
     dlc: usize,
+    /// DLC the asset list does not name: owned, with nothing of their own to install.
+    dlc_without_build: usize,
     orphan_dlc: usize,
     no_app_name: usize,
     repeated: usize,

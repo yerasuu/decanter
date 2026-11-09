@@ -108,6 +108,10 @@ impl DetailView {
                 _ => None,
             })
             .collect();
+        // Uninstalling an Epic game deletes the DLC installed into its folder with it.
+        if self.loaded.as_ref().is_some_and(|loaded| !loaded.epic_dlcs.is_empty()) {
+            elements.push(theme::muted(t!("epic.dlc.uninstall_with_game")).into_any_element());
+        }
         elements.extend([
             button("uninstall-confirm", ButtonKind::Icon, confirm, false)
                 .on_click(cx.listener(move |this, _, _, cx| {

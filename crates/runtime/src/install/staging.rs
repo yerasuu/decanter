@@ -52,6 +52,9 @@ impl Layout {
 pub struct Record {
     title: String,
     is_repair: bool,
+    /// The game a DLC goes into, so a restart lists it as that game's DLC.
+    #[serde(default)]
+    parent_id: Option<String>,
     #[serde(default)]
     total_bytes: Option<u64>,
     /// `None` while a run owns it, so a crash reads as one.
@@ -73,9 +76,17 @@ impl Record {
         Self {
             title: title.to_owned(),
             is_repair,
+            parent_id: None,
             total_bytes: None,
             stopped: None,
         }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn with_parent(mut self, parent_id: Option<&str>) -> Self {
+        self.parent_id = parent_id.map(str::to_owned);
+        self
     }
 
     #[inline]
@@ -189,7 +200,7 @@ fn unfinished(
         storefront: layout.storefront,
         account_id: account_id.to_owned(),
         product_id: product_id.to_owned(),
-        parent_id: None,
+        parent_id: record.parent_id,
         title: record.title,
         is_repair: record.is_repair,
         is_language: false,

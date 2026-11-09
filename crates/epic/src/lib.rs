@@ -75,8 +75,8 @@ mod updates;
 pub use error::CallError;
 pub use hosts::Host;
 pub use install::{
-    BrokenFile, BrokenReason, Target, VerifyReport, cancel, discard, install, installed_manifest, pause,
-    pause_for_quit, repair, unfinished_downloads, uninstall, verify,
+    BrokenFile, BrokenReason, DlcError, Target, VerifyReport, cancel, discard, install, installed_manifest, pause,
+    pause_for_quit, repair, unfinished_downloads, uninstall, uninstall_dlc, verify,
 };
 pub use launch::{OfflineLaunch, offline_arguments};
 pub use library::{AssetList, CatalogRegion, EpicGame, LaunchAttributes, Library, Listing, list_games};

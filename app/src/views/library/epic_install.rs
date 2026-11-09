@@ -109,8 +109,9 @@ fn fail_row(state: &AppState, key: &DownloadKey, title: &str, kind: DownloadKind
     });
 }
 
-/// Installs, carries on, updates or repairs the game under `key` as a tracked row. `library_root`
-/// picks the library folder of a new install; an existing one stays where it is.
+/// Installs, carries on, updates or repairs the game under `key` as a tracked row, a DLC into the
+/// game the library lists it under; whether it finished. `library_root` picks the library folder of
+/// a new install; an existing one, and a DLC, stay where the game is.
 pub async fn download(
     key: DownloadKey,
     title: String,
@@ -118,40 +119,64 @@ pub async fn download(
     library_root: Option<std::path::PathBuf>,
     state: &AppState,
     cx: &mut AsyncApp,
-) {
+) -> bool {
     let DownloadKey { account_id, product_id } = &key;
     let is_repair = kind == DownloadKind::Repair;
     tracing::info!(account_id, product_id, title, is_repair, "epic download requested");
-    if kind == DownloadKind::Dlc {
-        tracing::warn!(account_id, product_id, "epic DLC installs are not supported yet");
-        fail_row(state, &key, &title, kind, Text::new("epic.install.dlc_later"), cx);
-        return;
-    }
-    let Some(ids) = cached_ids(account_id, product_id) else {
+    let cached = cached_game(account_id, product_id);
+    // The listing, not the row's kind, says whether it is a DLC: a download listed again after a
+    // restart from an older staging record carries no parent.
+    let parent_id = cached.as_ref().and_then(|game| game.parent_id.clone());
+    let Some(ids) = cached.and_then(|game| {
+        Some(Ids {
+            namespace: game.namespace?,
+            catalog_item_id: game.catalog_item_id?,
+        })
+    }) else {
         tracing::error!(
             account_id,
             product_id,
             "no cached namespace or catalog item, the epic download can't start"
         );
         fail_row(state, &key, &title, kind, Text::new("epic.install.no_ids"), cx);
-        return;
+        return false;
     };
+    if let Some(parent_id) = parent_id.as_deref()
+        && crate::core::installed_game(account_id, parent_id).is_none()
+    {
+        tracing::warn!(
+            account_id,
+            product_id,
+            parent_id,
+            "the epic dlc's game is not installed, the download can't start"
+        );
+        fail_row(state, &key, &title, kind, Text::new("epic.install.needs_game"), cx);
+        return false;
+    }
     let library = match crate::core::library_for_account(account_id) {
-        Ok(library) => match library_root.as_deref() {
+        Ok(library) => match library_root.as_deref().filter(|_| parent_id.is_none()) {
             Some(root) => library.targeting(root),
             None => library,
         },
         Err(err) => {
             tracing::error!(account_id, product_id, %err, "could not resolve the library, epic download aborted");
             fail_row(state, &key, &title, kind, Text::new("library.install.no_library"), cx);
-            return;
+            return false;
         }
     };
+    let dlcs = match (is_repair, parent_id.as_deref()) {
+        (true, None) => installed_dlcs(account_id, product_id),
+        _ => Vec::new(),
+    };
     let (on_progress, progress) = progress_channel();
-    let target = decanter_epic::Target::new(account_id, product_id, &ids.namespace, &ids.catalog_item_id, &title);
+    let mut target = decanter_epic::Target::new(account_id, product_id, &ids.namespace, &ids.catalog_item_id, &title);
+    if let Some(parent_id) = parent_id.as_deref() {
+        target = target.dlc_of(parent_id);
+    }
+    let dlc_targets: Vec<_> = dlcs.iter().map(|dlc| dlc.target(account_id, product_id)).collect();
     let work = async {
         if is_repair {
-            decanter_epic::repair(&library, target, on_progress).await
+            decanter_epic::repair(&library, target, &dlc_targets, on_progress).await
         } else {
             decanter_epic::install(&library, target, on_progress).await
         }
@@ -161,10 +186,94 @@ pub async fn download(
         title: title.clone(),
         kind,
     };
-    if matches!(track(state, job, progress, work, cx).await, Ended::Done(())) {
+    let is_done = matches!(track(state, job, progress, work, cx).await, Ended::Done(()));
+    if is_done {
         tracing::info!(account_id, product_id, is_repair, "epic download finished");
     }
     refresh_install_state(state, account_id, product_id, cx);
+    if let Some(parent_id) = parent_id.as_deref() {
+        refresh_install_state(state, account_id, parent_id, cx);
+    }
+    is_done
+}
+
+/// Installs, one after the other into the game just installed, the DLC picked with it that have a
+/// build of their own; each reports on its own row, and one that fails leaves the game as it is.
+pub async fn install_dlcs(
+    account_id: &str,
+    product_id: &str,
+    dlcs: Vec<(String, String)>,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) {
+    for (dlc_id, dlc_title) in dlcs {
+        if cached_game(account_id, &dlc_id).is_none_or(|dlc| !dlc.installable) {
+            tracing::info!(
+                account_id,
+                product_id,
+                dlc_id,
+                "epic dlc without a build of its own, not installed"
+            );
+            continue;
+        }
+        tracing::info!(account_id, product_id, dlc_id, "epic dlc install started");
+        download(
+            DownloadKey::new(account_id, &dlc_id),
+            dlc_title,
+            DownloadKind::Dlc,
+            None,
+            state,
+            cx,
+        )
+        .await;
+    }
+}
+
+/// An installed DLC of a game, with the ids its repair asks Epic by.
+struct InstalledDlc {
+    app_name: String,
+    title: String,
+    ids: Ids,
+}
+
+impl InstalledDlc {
+    fn target<'dlc>(&'dlc self, account_id: &'dlc str, parent_id: &'dlc str) -> decanter_epic::Target<'dlc> {
+        decanter_epic::Target::new(
+            account_id,
+            &self.app_name,
+            &self.ids.namespace,
+            &self.ids.catalog_item_id,
+            &self.title,
+        )
+        .dlc_of(parent_id)
+    }
+}
+
+/// The DLC recorded on the installed game; one the cache names no ids for is left out of a repair,
+/// and logged.
+fn installed_dlcs(account_id: &str, product_id: &str) -> Vec<InstalledDlc> {
+    let Some(game) = crate::core::installed_game(account_id, product_id) else {
+        return Vec::new();
+    };
+    game.dlcs
+        .into_iter()
+        .filter_map(|(app_name, dlc)| {
+            let Some(ids) = cached_ids(account_id, &app_name) else {
+                tracing::warn!(
+                    account_id,
+                    product_id,
+                    dlc_id = app_name,
+                    "no cached ids for an installed epic dlc, left out of the repair"
+                );
+                return None;
+            };
+            Some(InstalledDlc {
+                app_name,
+                title: dlc.title,
+                ids,
+            })
+        })
+        .collect()
 }
 
 /// Deletes the stopped download of `key`'s game, the confirmed cancel of a paused row.
@@ -182,31 +291,92 @@ pub async fn discard(library: &Library, key: &DownloadKey) -> Result<(), Text> {
         .map_err(Text::verbatim)
 }
 
-/// Uninstalls the game, and its paused download with it.
+/// Uninstalls the game with the DLC installed into it, and the paused downloads of both, which the
+/// confirmation named.
 pub async fn uninstall(account_id: &str, product_id: &str, state: &AppState, cx: &mut AsyncApp) -> Result<(), Text> {
     tracing::info!(account_id, product_id, "epic uninstall started");
     let library = crate::core::library_for_account(account_id)
         .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))?;
+    let dlc_ids: Vec<String> = state.library.read_with(cx, |library, _| {
+        library
+            .games
+            .iter()
+            .filter(|entry| entry.parent_id.as_deref() == Some(product_id))
+            .map(|entry| entry.game.id.clone())
+            .collect()
+    });
+    for dlc_id in &dlc_ids {
+        decanter_epic::discard(&library, account_id, dlc_id)
+            .await
+            .inspect_err(|err| {
+                tracing::error!(account_id, dlc_id, error = %format_args!("{err:#}"), "deleting a paused epic dlc download failed");
+            })
+            .map_err(Text::verbatim)?;
+    }
     decanter_epic::uninstall(&library, account_id, product_id)
         .await
         .inspect_err(|err| {
             tracing::error!(account_id, product_id, error = %format_args!("{err:#}"), "epic uninstall failed");
         })
         .map_err(Text::verbatim)?;
-    let key = DownloadKey::new(account_id, product_id);
-    state.background.update(cx, |background, cx| {
-        if background
-            .installing
-            .get(&key)
-            .is_some_and(|row| matches!(row.status, InstallStatus::Paused { .. }))
-        {
-            background.installing.remove(&key);
-            cx.notify();
-        }
-    });
+    drop_paused_rows(
+        state,
+        account_id,
+        dlc_ids.iter().map(String::as_str).chain([product_id]),
+        cx,
+    );
+    for dlc_id in &dlc_ids {
+        refresh_install_state(state, account_id, dlc_id, cx);
+    }
     refresh_install_state(state, account_id, product_id, cx);
-    tracing::info!(account_id, product_id, "epic uninstall finished");
+    tracing::info!(account_id, product_id, dlcs = dlc_ids.len(), "epic uninstall finished");
     Ok(())
+}
+
+/// Uninstalls one DLC from its game, and its paused download with it.
+pub async fn uninstall_dlc(
+    account_id: &str,
+    dlc_id: &str,
+    parent_id: &str,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) -> Result<(), Text> {
+    tracing::info!(account_id, dlc_id, parent_id, "epic dlc uninstall started");
+    let library = crate::core::library_for_account(account_id)
+        .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))?;
+    decanter_epic::uninstall_dlc(&library, account_id, dlc_id, parent_id)
+        .await
+        .inspect_err(|err| {
+            tracing::error!(account_id, dlc_id, parent_id, error = %format_args!("{err:#}"), "epic dlc uninstall failed");
+        })
+        .map_err(Text::verbatim)?;
+    drop_paused_rows(state, account_id, [dlc_id], cx);
+    refresh_install_state(state, account_id, dlc_id, cx);
+    refresh_install_state(state, account_id, parent_id, cx);
+    tracing::info!(account_id, dlc_id, parent_id, "epic dlc uninstall finished");
+    Ok(())
+}
+
+/// Drops the paused rows of downloads an uninstall deleted.
+fn drop_paused_rows<'id>(
+    state: &AppState,
+    account_id: &str,
+    product_ids: impl IntoIterator<Item = &'id str>,
+    cx: &mut AsyncApp,
+) {
+    state.background.update(cx, |background, cx| {
+        for product_id in product_ids {
+            let key = DownloadKey::new(account_id, product_id);
+            if background
+                .installing
+                .get(&key)
+                .is_some_and(|row| matches!(row.status, InstallStatus::Paused { .. }))
+            {
+                background.installing.remove(&key);
+            }
+        }
+        cx.notify();
+    });
 }
 
 /// Verifies the game against the manifest it was installed from, in the shape Archivos locales
@@ -236,7 +406,7 @@ pub async fn verify(
     })
 }
 
-/// Fetches again what is missing or wrong in the installed game, as a tracked row's work.
+/// Fetches again what is missing or wrong in the installed game and its DLC, as a tracked row's work.
 pub async fn repair(
     library: &Library,
     account_id: &str,
@@ -247,5 +417,7 @@ pub async fn repair(
     let ids = cached_ids(account_id, product_id)
         .ok_or_else(|| anyhow::anyhow!("no Epic namespace or catalog item is cached for this game yet"))?;
     let target = decanter_epic::Target::new(account_id, product_id, &ids.namespace, &ids.catalog_item_id, title);
-    decanter_epic::repair(library, target, on_progress).await
+    let dlcs = installed_dlcs(account_id, product_id);
+    let dlc_targets: Vec<_> = dlcs.iter().map(|dlc| dlc.target(account_id, product_id)).collect();
+    decanter_epic::repair(library, target, &dlc_targets, on_progress).await
 }

@@ -350,7 +350,10 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         return;
     }
     if super::epic_install::is_epic_account(&account_id) {
-        super::epic_install::download(key, title, kind, library_root, &state, cx).await;
+        let is_done = super::epic_install::download(key, title, kind, library_root, &state, cx).await;
+        if is_done && parent_id.is_none() {
+            super::epic_install::install_dlcs(&account_id, &product_id, dlcs, &state, cx).await;
+        }
         return;
     }
 

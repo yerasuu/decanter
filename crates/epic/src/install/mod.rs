@@ -15,15 +15,16 @@
 //! <root>/decanter/epic/manifests/<app name>.manifest
 //! ```
 //!
-//! Only the base game is installed: DLC, install tags, delta manifests (spec, 5.5), prerequisites
-//! and encrypted builds are left for later.
+//! A DLC goes into its game's folder and onto its game's record ([`dlc`]). Install tags, delta
+//! manifests (spec, 5.5), prerequisites and encrypted builds are left for later.
 
 mod chunk;
 mod disk;
 mod distribution;
+mod dlc;
 mod fetch;
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -41,7 +42,8 @@ use decanter_runtime::journal::{LineLog, StagingLock};
 use self::distribution::{Asked, GameDownload, ManifestFetch};
 use self::fetch::{Failure, Job, Run};
 use crate::library::is_id;
-use crate::manifest::{self, Guid, Manifest, ManifestError, Sha1Digest, parse_manifest};
+use crate::manifest::{self, Guid, Manifest, ManifestError, ManifestFile, Sha1Digest, parse_manifest};
+pub use dlc::{DlcError, uninstall_dlc};
 
 const LOG: &str = "progress.log";
 const FILES: &str = "files";
@@ -115,6 +117,8 @@ pub struct Target<'target> {
     pub catalog_item_id: &'target str,
     /// The title the folder under `common/` is named after, on a first install.
     pub title: &'target str,
+    /// The game's `appName`, for a DLC: its files go into that game's folder.
+    pub parent_app_name: Option<&'target str>,
 }
 
 impl<'target> Target<'target> {
@@ -133,65 +137,137 @@ impl<'target> Target<'target> {
             namespace,
             catalog_item_id,
             title,
+            parent_app_name: None,
+        }
+    }
+
+    /// The same target as a DLC of the game `parent_app_name`.
+    #[inline]
+    #[must_use]
+    pub const fn dlc_of(self, parent_app_name: &'target str) -> Self {
+        Self {
+            parent_app_name: Some(parent_app_name),
+            ..self
+        }
+    }
+}
+
+/// Whose record a run writes: the game's own, or, for a DLC, the record of the game it goes into.
+enum Owner {
+    Game(Option<InstalledGame>),
+    Dlc { game: InstalledGame, is_installed: bool },
+}
+
+impl Owner {
+    fn of(library: &Library, target: Target<'_>) -> Result<Self, DlcError> {
+        let Some(parent) = target.parent_app_name else {
+            return Ok(Self::Game(library.read_manifest(
+                target.account_id,
+                Storefront::EpicGames,
+                target.app_name,
+            )));
+        };
+        let game = library
+            .read_manifest(target.account_id, Storefront::EpicGames, parent)
+            .ok_or(DlcError::GameNotInstalled)?;
+        Ok(Self::Dlc {
+            is_installed: game.dlcs.contains_key(target.app_name),
+            game,
+        })
+    }
+
+    const fn is_installed(&self) -> bool {
+        match self {
+            Self::Game(installed) => installed.is_some(),
+            Self::Dlc { is_installed, .. } => *is_installed,
+        }
+    }
+
+    /// The record whose folder the files go into, once there is one.
+    const fn folder_owner(&self) -> Option<&InstalledGame> {
+        match self {
+            Self::Game(installed) => installed.as_ref(),
+            Self::Dlc { game, .. } => Some(game),
         }
     }
 }
 
 /// Installs `target`'s current build, or updates it to that build, reporting progress through
 /// `on_progress`. Running it again after a pause, a lost network or a crash carries on from what
-/// was done; files already in the game's folder with the right SHA-1 are kept.
+/// was done; files already in the game's folder with the right SHA-1 are kept. A DLC goes into its
+/// game's folder, which must be installed first.
 ///
 /// # Errors
 ///
 /// [`Cancelled`] after [`cancel`], which deletes what was fetched; [`Paused`] after [`pause`], a
-/// quit, a full disk or a network that stayed down, keeping it; anything else is a failure: a closed
-/// session, a manifest that fails its checks, a chunk or file that kept arriving corrupted, a disk
-/// error.
+/// quit, a full disk or a network that stayed down, keeping it; [`DlcError`] for a DLC whose game
+/// is not installed or whose manifest is not a DLC's; anything else is a failure: a closed session,
+/// a manifest that fails its checks, a chunk or file that kept arriving corrupted, a disk error.
 #[inline]
 pub async fn install(
     library: &Library,
     target: Target<'_>,
-    on_progress: impl FnMut(Progress) + Send + 'static,
+    mut on_progress: impl FnMut(Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
-    run(library, target, Kind::Install, on_progress).await
+    let registration = DOWNLOADS.register(target.account_id, target.app_name);
+    run(library, target, Kind::Install, registration.flag(), &mut on_progress).await
 }
 
 /// Hashes every file of the installed `target` and fetches again what is missing or wrong, from
-/// the current build (an update, when Epic has published one since).
+/// the current build (an update, when Epic has published one since); then the same for each of
+/// `dlcs`, the installed DLC of `target`, in order, since a DLC's file lands over its game's. The
+/// DLC run under the game's stop, so pausing or cancelling the repair stops them too.
 ///
 /// # Errors
 ///
-/// As [`install`]; also when the game is not installed.
+/// As [`install`]; also when the game or one of `dlcs` is not installed, or one of `dlcs` is not a
+/// DLC of `target`.
 #[inline]
 pub async fn repair(
     library: &Library,
     target: Target<'_>,
-    on_progress: impl FnMut(Progress) + Send + 'static,
+    dlcs: &[Target<'_>],
+    mut on_progress: impl FnMut(Progress) + Send + 'static,
 ) -> anyhow::Result<()> {
-    run(library, target, Kind::Repair, on_progress).await
+    let registration = DOWNLOADS.register(target.account_id, target.app_name);
+    let flag = registration.flag();
+    run(library, target, Kind::Repair, flag, &mut on_progress).await?;
+    for dlc in dlcs {
+        anyhow::ensure!(
+            dlc.account_id == target.account_id && dlc.parent_app_name == Some(target.app_name),
+            "a DLC to repair is not one of this game's"
+        );
+        run(library, *dlc, Kind::Repair, flag, &mut on_progress).await?;
+    }
+    Ok(())
 }
 
 async fn run(
     library: &Library,
     target: Target<'_>,
     kind: Kind,
-    on_progress: impl FnMut(Progress) + Send + 'static,
+    flag: &StopFlag,
+    on_progress: &mut (impl FnMut(Progress) + Send),
 ) -> anyhow::Result<()> {
     let Target {
-        account_id, app_name, ..
+        account_id,
+        app_name,
+        parent_app_name,
+        ..
     } = target;
     anyhow::ensure!(
-        is_app_name(app_name) && is_id(target.namespace) && is_id(target.catalog_item_id),
+        is_app_name(app_name)
+            && parent_app_name.is_none_or(is_app_name)
+            && is_id(target.namespace)
+            && is_id(target.catalog_item_id),
         "the Epic game's ids are not usable"
     );
-    let registration = DOWNLOADS.register(account_id, app_name);
-    let flag = registration.flag();
-    let installed = library.read_manifest(account_id, Storefront::EpicGames, app_name);
+    let owner = Owner::of(library, target)?;
     anyhow::ensure!(
-        kind == Kind::Install || installed.is_some(),
+        kind == Kind::Install || owner.is_installed(),
         "the Epic game is not installed, so there is nothing to repair"
     );
-    let (dest, install_dir) = destination(library, target, installed.as_ref())?;
+    let (dest, install_dir) = destination(library, target, owner.folder_owner())?;
     let root = dest
         .parent()
         .and_then(Path::parent)
@@ -202,8 +278,8 @@ async fn run(
         .await
         .with_context(|| format!("creating {}", staging.display()))?;
     let held = lock_staging(&staging).await?;
-    tracing::info!(account_id, app_name, ?kind, dest = %dest.display(), "epic download started");
-    let mut staged = Record::new(target.title, kind == Kind::Repair);
+    tracing::info!(account_id, app_name, parent_app_name, ?kind, dest = %dest.display(), "epic download started");
+    let mut staged = Record::new(target.title, kind == Kind::Repair).with_parent(parent_app_name);
     staged.save(&staging).await;
 
     let landed: anyhow::Result<String> = async {
@@ -215,14 +291,16 @@ async fn run(
         };
         let (download, raw) = locate(flag, target, &staging, &root).await?;
         let (manifest, manifest_id, raw) = read_downloaded(raw).await?;
-        if manifest.app_name() != app_name {
+        if let Owner::Dlc { game, .. } = &owner {
+            dlc::check_shape(&manifest, target, &root, game).await?;
+        } else if manifest.app_name() != app_name {
             tracing::info!(
                 app_name,
                 manifest_app = manifest.app_name(),
                 "epic manifest names the game otherwise"
             );
         }
-        let saved = saved_manifest(&root, app_name, installed.is_some()).await;
+        let saved = saved_manifest(&root, app_name, owner.is_installed()).await;
         let journal = open_log(&staging, &manifest_id).await?;
         let files_dir = staging.join(FILES);
         let checked = check(
@@ -236,10 +314,13 @@ async fn run(
         .await?;
         staged.planned(checked.total_bytes(&manifest));
         staged.save(&staging).await;
-        let removed: Vec<ManifestPath> = saved
+        let mut removed: Vec<ManifestPath> = saved
             .as_deref()
             .map(|old| manifest::dropped(&manifest, old).into_iter().cloned().collect())
             .unwrap_or_default();
+        if let Some(game) = owner.folder_owner().filter(|_| !removed.is_empty()) {
+            dlc::spare_shared(&root, game, app_name, &mut removed).await;
+        }
         tracing::info!(
             account_id,
             app_name,
@@ -263,7 +344,7 @@ async fn run(
             staging: &staging,
             root: &root,
         };
-        transfer.fetch(journal, on_progress).await?;
+        transfer.fetch(journal, &mut *on_progress).await?;
         drop(slot);
 
         let moved: Vec<usize> = checked.staged.iter().chain(&checked.fetch).copied().collect();
@@ -276,13 +357,25 @@ async fn run(
             .await
             .context("the move into the library stopped")?
             .with_context(|| format!("moving the game into {}", dest.display()))?;
+        let build_version = manifest.build_version().to_owned();
+        let installed = match owner {
+            Owner::Game(installed) => installed,
+            Owner::Dlc { .. } => {
+                let previous_size = saved.as_deref().map(Manifest::total_size);
+                dlc::record(library, &root, target, &manifest, previous_size, &raw).await?;
+                return Ok(build_version);
+            }
+        };
         let previous_program = installed.as_ref().and_then(|game| game.launch_executable.as_deref());
         let launch_executable = launch_program(&dest, previous_program, manifest.launch_exe()).await;
-        let build_version = manifest.build_version().to_owned();
         let record = match installed {
             Some(game) => InstalledGame {
                 build_id: build_version.clone(),
-                size_on_disk: Some(manifest.total_size()),
+                size_on_disk: Some(
+                    manifest
+                        .total_size()
+                        .saturating_add(dlc::recorded_size(&root, &game).await),
+                ),
                 launch_executable,
                 ..game
             },
@@ -489,7 +582,16 @@ async fn launch_program(dest: &Path, previous: Option<&str>, launch_exe: &str) -
 /// Saves the manifest, then the install record: a record never names a manifest that is not there
 /// to uninstall by.
 async fn save_record(library: &Library, root: &Path, record: &InstalledGame, raw: &[u8]) -> anyhow::Result<()> {
-    let saved_path = disk::saved_manifest(root, &record.game_id)?;
+    keep_manifest(root, &record.game_id, raw).await?;
+    library
+        .clone()
+        .targeting(root)
+        .write_manifest(record)
+        .context("writing the install record")
+}
+
+async fn keep_manifest(root: &Path, app_name: &str, raw: &[u8]) -> anyhow::Result<()> {
+    let saved_path = disk::saved_manifest(root, app_name)?;
     if let Some(parent) = saved_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -497,12 +599,7 @@ async fn save_record(library: &Library, root: &Path, record: &InstalledGame, raw
     }
     decanter_runtime::journal::write_atomic(&saved_path, raw)
         .await
-        .with_context(|| format!("saving the manifest to {}", saved_path.display()))?;
-    library
-        .clone()
-        .targeting(root)
-        .write_manifest(record)
-        .context("writing the install record")
+        .with_context(|| format!("saving the manifest to {}", saved_path.display()))
 }
 
 /// The game's folder under `common/` and its name: the installed one, else one named after the
@@ -571,10 +668,10 @@ pub async fn installed_manifest(
     account_id: &str,
     app_name: &str,
 ) -> anyhow::Result<Option<Manifest>> {
-    let Some((_, _, saved)) = installed_files(library, account_id, app_name)? else {
+    let Some((_, _, root)) = installed_files(library, account_id, app_name)? else {
         return Ok(None);
     };
-    read_saved(&saved).await.map(Some)
+    read_saved(&disk::saved_manifest(&root, app_name)?).await.map(Some)
 }
 
 async fn read_saved(path: &Path) -> anyhow::Result<Manifest> {
@@ -846,7 +943,8 @@ pub async fn discard(library: &Library, account_id: &str, app_name: &str) -> any
     Ok(())
 }
 
-/// The installed game's folder and its saved manifest.
+/// The installed game's record, its folder and the library folder its record and saved manifests
+/// are in.
 fn installed_files(
     library: &Library,
     account_id: &str,
@@ -861,14 +959,19 @@ fn installed_files(
     let root = library
         .root_of(account_id, app_name)
         .context("the install record's library folder is gone")?;
-    let saved = disk::saved_manifest(&root, app_name)?;
-    Ok(Some((game, dest, saved)))
+    Ok(Some((game, dest, root)))
 }
 
-/// Hashes every file of `manifest` under `dest`.
-fn hash_files(manifest: &Manifest, dest: &Path) -> VerifyReport {
-    let mut report = VerifyReport::new(manifest.files().len());
-    for file in manifest.files() {
+/// Hashes every file of `manifests` under `dest`. A path two of them list is checked against the
+/// later one, since a DLC's file lands over its game's.
+fn hash_files(manifests: &[Manifest], dest: &Path) -> VerifyReport {
+    let wanted: BTreeMap<String, &ManifestFile> = manifests
+        .iter()
+        .flat_map(Manifest::files)
+        .map(|file| (file.path().folded(), file))
+        .collect();
+    let mut report = VerifyReport::new(wanted.len());
+    for file in wanted.into_values() {
         // A folder on the way that is a link, or a file that can't be read, is as broken as a
         // wrong hash: a repair puts the game's own file there.
         let reason = disk::inside(dest, file.path()).map_or(Some(BrokenReason::Mismatched), |path| {
@@ -886,22 +989,29 @@ fn hash_files(manifest: &Manifest, dest: &Path) -> VerifyReport {
     report
 }
 
-/// Hashes every file of the installed game against the manifest it was installed from, without
-/// asking Epic.
+/// Hashes every file of the installed game, and of the DLC installed into it, against the
+/// manifests they were installed from, without asking Epic. A DLC whose saved manifest is unusable
+/// is left out, and logged.
 ///
 /// # Errors
 ///
 /// When the game is not installed, or its saved manifest is missing or refused.
 #[inline]
 pub async fn verify(library: &Library, account_id: &str, app_name: &str) -> anyhow::Result<VerifyReport> {
-    let (_, dest, saved) = installed_files(library, account_id, app_name)?.context("the Epic game is not installed")?;
-    let manifest = read_saved(&saved).await?;
-    let report = tokio::task::spawn_blocking(move || hash_files(&manifest, &dest))
+    let (game, dest, root) =
+        installed_files(library, account_id, app_name)?.context("the Epic game is not installed")?;
+    let mut manifests = vec![read_saved(&disk::saved_manifest(&root, app_name)?).await?];
+    let dlcs = dlc::manifests(&root, &game).await;
+    let dlc_unusable = dlcs.unusable;
+    manifests.extend(dlcs.read.into_iter().map(|(_, manifest)| manifest));
+    let report = tokio::task::spawn_blocking(move || hash_files(&manifests, &dest))
         .await
         .context("verifying the files stopped")?;
     tracing::info!(
         account_id,
         app_name,
+        dlcs = game.dlcs.len(),
+        dlc_unusable,
         files_checked = report.files_checked,
         broken = report.broken.len(),
         "verified an epic game"
@@ -909,10 +1019,11 @@ pub async fn verify(library: &Library, account_id: &str, app_name: &str) -> anyh
     Ok(report)
 }
 
-/// Uninstalls the game: the files its manifest lists, then the folders they leave empty, then the
-/// game's folder if nothing else is in it. What the user or the game added (saves, mods) stays. A
-/// folder another install shares keeps its files, and a missing saved manifest leaves them all,
-/// since decanter then can't tell its files from anyone else's.
+/// Uninstalls the game and the DLC installed into it: the files their manifests list, then the
+/// folders they leave empty, then the game's folder if nothing else is in it. What the user or the
+/// game added (saves, mods) stays. A folder another install shares keeps its files, and a missing
+/// saved manifest of the game leaves them all, since decanter then can't tell its files from anyone
+/// else's; a DLC's missing one leaves that DLC's.
 ///
 /// # Errors
 ///
@@ -921,18 +1032,28 @@ pub async fn verify(library: &Library, account_id: &str, app_name: &str) -> anyh
 #[inline]
 pub async fn uninstall(library: &Library, account_id: &str, app_name: &str) -> anyhow::Result<()> {
     discard(library, account_id, app_name).await?;
-    let Some((game, dest, saved)) = installed_files(library, account_id, app_name)? else {
+    let Some((game, dest, root)) = installed_files(library, account_id, app_name)? else {
         tracing::info!(account_id, app_name, "epic game not installed, nothing to uninstall");
         return Ok(());
     };
+    for dlc in game.dlcs.keys() {
+        discard(library, account_id, dlc).await?;
+    }
+    let saved = disk::saved_manifest(&root, app_name)?;
     if library.install_dir_is_shared(&game.install_dir, account_id, app_name) {
         tracing::info!(account_id, app_name, dest = %dest.display(), "epic game folder shared with another install, files kept");
     } else {
         match read_saved(&saved).await {
             Ok(manifest) => {
+                let dlcs = dlc::manifests(&root, &game).await;
+                let (dlc_count, dlc_unusable) = (dlcs.read.len(), dlcs.unusable);
                 let folder = dest.clone();
                 let removal = tokio::task::spawn_blocking(move || {
-                    let paths = manifest.files().iter().map(crate::manifest::ManifestFile::path);
+                    let paths = manifest
+                        .files()
+                        .iter()
+                        .chain(dlcs.read.iter().flat_map(|(_, dlc)| dlc.files()))
+                        .map(ManifestFile::path);
                     let removal = disk::remove_files(&folder, paths.clone());
                     let pruned = disk::prune_dirs(&folder, paths, &[]);
                     let is_folder_gone = std::fs::remove_dir(&folder).is_ok();
@@ -944,6 +1065,8 @@ pub async fn uninstall(library: &Library, account_id: &str, app_name: &str) -> a
                 tracing::info!(
                     account_id,
                     app_name,
+                    dlcs = dlc_count,
+                    dlc_unusable,
                     removed = removal.removed,
                     missing = removal.missing,
                     failed = removal.failed,
@@ -970,11 +1093,9 @@ pub async fn uninstall(library: &Library, account_id: &str, app_name: &str) -> a
     library
         .remove_manifest(account_id, Storefront::EpicGames, app_name)
         .context("removing the install record")?;
-    if let Err(err) = tokio::fs::remove_file(&saved).await
-        && err.kind() != io::ErrorKind::NotFound
-    {
-        tracing::warn!(path = %saved.display(), error = %err, "couldn't delete the saved epic manifest");
+    for name in core::iter::once(app_name).chain(game.dlcs.keys().map(String::as_str)) {
+        dlc::forget_manifest(&root, name).await;
     }
-    tracing::info!(account_id, app_name, "epic game uninstalled");
+    tracing::info!(account_id, app_name, dlcs = game.dlcs.len(), "epic game uninstalled");
     Ok(())
 }
