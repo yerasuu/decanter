@@ -33,3 +33,8 @@ epic.library.assets_failed: "Epic이 설치 가능한 게임 목록을 보내지
 epic.library.failed: "Epic 라이브러리를 읽을 수 없습니다. 마지막으로 저장된 것을 표시합니다."
 epic.library.refresh: "라이브러리 새로 고침"
 epic.library.retry: "다시 시도"
+epic.import.button: "기존 설치 가져오기"
+epic.import.pick_title: "게임 폴더 선택"
+epic.import.working: "Epic과 폴더를 대조하는 중…"
+epic.import.differs: "폴더의 파일 %{total}개 중 %{differing}개가 Epic의 현재 버전과 일치하지 않습니다."
+epic.import.register_repair: "등록 후 복구"

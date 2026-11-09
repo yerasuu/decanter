@@ -7,9 +7,9 @@
 
 mod achievements;
 mod action_bar;
-mod amazon_import;
 mod epic_dlc;
 mod hero;
+mod import;
 mod install_dialog;
 mod summary;
 
@@ -161,7 +161,7 @@ struct Uninstall {
 struct Local {
     tab: DetailTab,
     uninstall: Uninstall,
-    import: amazon_import::Import,
+    import: import::Import,
     epic_dlc: epic_dlc::DlcActions,
     dialog: Option<InstallDialog>,
     /// Follows the game's latest run, which a new one replaces.

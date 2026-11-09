@@ -33,3 +33,8 @@ epic.library.assets_failed: "Epic no envió la lista de juegos instalables. Se m
 epic.library.failed: "No se pudo leer la biblioteca de Epic. Se muestra la última guardada."
 epic.library.refresh: "Actualizar biblioteca"
 epic.library.retry: "Reintentar"
+epic.import.button: "Importar instalación existente"
+epic.import.pick_title: "Elige la carpeta del juego"
+epic.import.working: "Comprobando la carpeta con Epic…"
+epic.import.differs: "%{differing} de %{total} archivos de la carpeta no coinciden con la versión actual de Epic."
+epic.import.register_repair: "Registrar y reparar"

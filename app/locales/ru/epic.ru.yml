@@ -33,3 +33,8 @@ epic.library.assets_failed: "Epic не прислал список устана�
 epic.library.failed: "Не удалось прочитать библиотеку Epic. Показана последняя сохранённая."
 epic.library.refresh: "Обновить библиотеку"
 epic.library.retry: "Повторить"
+epic.import.button: "Импортировать существующую установку"
+epic.import.pick_title: "Выберите папку с игрой"
+epic.import.working: "Сверка папки с Epic…"
+epic.import.differs: "%{differing} из %{total} файлов в папке не совпадают с текущей версией Epic."
+epic.import.register_repair: "Зарегистрировать и восстановить"

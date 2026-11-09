@@ -4,7 +4,7 @@
 use decanter_core::{CachedGame, InstalledGame, Library, Storefront};
 use gpui::AsyncApp;
 
-use super::install::{DownloadJob, Ended, progress_channel, refresh_install_state, track};
+use super::install::{DownloadJob, Ended, Imported, progress_channel, refresh_install_state, track};
 use crate::i18n::Text;
 use crate::state::{AppState, DownloadKey, DownloadKind, InstallStatus};
 
@@ -109,22 +109,12 @@ pub async fn download(
     refresh_install_state(state, account_id, product_id, cx);
 }
 
-/// What importing a folder ended in, when it did not fail.
-pub enum Imported {
-    Recorded,
-    /// Nothing was recorded: `differing` of the folder's `total` files are not Amazon's.
-    Differs {
-        differing: usize,
-        total: usize,
-    },
-}
-
 /// Registers `folder` as the installed game, or says how far it is from Amazon's files.
 pub async fn import(
     key: &DownloadKey,
     title: &str,
     folder: &std::path::Path,
-    differences: decanter_amazon::Differences,
+    differences: decanter_runtime::install::import::Differences,
     state: &AppState,
     cx: &mut AsyncApp,
 ) -> Result<Imported, Text> {
@@ -148,12 +138,8 @@ pub async fn import(
         .map_err(|err| Text::verbatim(format!("{err:#}")))?;
     if found.is_recorded {
         refresh_install_state(state, account_id, product_id, cx);
-        return Ok(Imported::Recorded);
     }
-    Ok(Imported::Differs {
-        differing: found.broken.len(),
-        total: found.files_checked,
-    })
+    Ok(Imported::from(&found))
 }
 
 /// Deletes the stopped download of `key`'s game, the confirmed cancel of a paused row.

@@ -42,6 +42,29 @@ pub struct InstallRequest {
     pub language: Option<String>,
 }
 
+/// What importing a folder ended in, when it did not fail.
+pub enum Imported {
+    Recorded,
+    /// Nothing was recorded: `differing` of the folder's `total` files are not the store's.
+    Differs {
+        differing: usize,
+        total: usize,
+    },
+}
+
+impl From<&decanter_runtime::install::import::Imported> for Imported {
+    fn from(found: &decanter_runtime::install::import::Imported) -> Self {
+        if found.is_recorded {
+            Self::Recorded
+        } else {
+            Self::Differs {
+                differing: found.broken.len(),
+                total: found.files_checked,
+            }
+        }
+    }
+}
+
 /// The row a tracked download shows in Descargas.
 pub struct DownloadJob {
     pub key: DownloadKey,

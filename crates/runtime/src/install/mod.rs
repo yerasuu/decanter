@@ -1,8 +1,9 @@
 //! What every store's install reports and stops with, so the app shows a GOG, an Amazon and an Epic
 //! download the same way, the download slot they share so only one of them downloads at a time, and
-//! the staging, stop and file steps the Amazon and Epic installs share.
+//! the staging, stop, file and import steps the Amazon and Epic installs share.
 
 pub mod files;
+pub mod import;
 pub mod path;
 pub mod staging;
 pub mod stop;

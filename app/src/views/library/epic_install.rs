@@ -4,7 +4,7 @@
 use decanter_core::{CachedGame, InstalledGame, Library, Storefront};
 use gpui::AsyncApp;
 
-use super::install::{DownloadJob, Ended, progress_channel, refresh_install_state, track};
+use super::install::{DownloadJob, Ended, Imported, progress_channel, refresh_install_state, track};
 use crate::i18n::Text;
 use crate::state::{AppState, DownloadKey, DownloadKind, InstallStatus};
 
@@ -274,6 +274,39 @@ fn installed_dlcs(account_id: &str, product_id: &str) -> Vec<InstalledDlc> {
             })
         })
         .collect()
+}
+
+/// Registers `folder` as the installed game, or says how far it is from Epic's files.
+pub async fn import(
+    key: &DownloadKey,
+    title: &str,
+    folder: &std::path::Path,
+    differences: decanter_epic::Differences,
+    state: &AppState,
+    cx: &mut AsyncApp,
+) -> Result<Imported, Text> {
+    let DownloadKey { account_id, product_id } = key;
+    let ids = cached_ids(account_id, product_id).ok_or_else(|| {
+        tracing::error!(
+            account_id,
+            product_id,
+            "no cached namespace or catalog item, the epic import can't start"
+        );
+        Text::new("epic.install.no_ids")
+    })?;
+    let library = crate::core::library_for_account(account_id)
+        .map_err(|err| Text::new("library.install.library_error").text("error", err.localized()))?;
+    let target = decanter_epic::Target::new(account_id, product_id, &ids.namespace, &ids.catalog_item_id, title);
+    let found = decanter_epic::import(&library, target, folder, differences)
+        .await
+        .inspect_err(|err| {
+            tracing::error!(account_id, product_id, error = %format_args!("{err:#}"), "epic import failed");
+        })
+        .map_err(|err| Text::verbatim(format!("{err:#}")))?;
+    if found.is_recorded {
+        refresh_install_state(state, account_id, product_id, cx);
+    }
+    Ok(Imported::from(&found))
 }
 
 /// Deletes the stopped download of `key`'s game, the confirmed cancel of a paused row.

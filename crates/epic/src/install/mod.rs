@@ -23,6 +23,7 @@ mod disk;
 mod distribution;
 mod dlc;
 mod fetch;
+mod import;
 
 use std::collections::{BTreeMap, HashSet};
 use std::io;
@@ -44,6 +45,7 @@ use self::fetch::{Failure, Job, Run};
 use crate::library::is_id;
 use crate::manifest::{self, Guid, Manifest, ManifestError, ManifestFile, Sha1Digest, parse_manifest};
 pub use dlc::{DlcError, uninstall_dlc};
+pub use import::{Differences, Imported, import};
 
 const LOG: &str = "progress.log";
 const FILES: &str = "files";
@@ -964,9 +966,9 @@ fn installed_files(
 
 /// Hashes every file of `manifests` under `dest`. A path two of them list is checked against the
 /// later one, since a DLC's file lands over its game's.
-fn hash_files(manifests: &[Manifest], dest: &Path) -> VerifyReport {
+fn hash_files<'manifest>(manifests: impl IntoIterator<Item = &'manifest Manifest>, dest: &Path) -> VerifyReport {
     let wanted: BTreeMap<String, &ManifestFile> = manifests
-        .iter()
+        .into_iter()
         .flat_map(Manifest::files)
         .map(|file| (file.path().folded(), file))
         .collect();

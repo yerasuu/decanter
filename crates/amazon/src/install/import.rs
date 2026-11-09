@@ -4,36 +4,17 @@
 //! as the install without moving or copying a file. The folder is untrusted, so it is held to the
 //! shape a record needs and every file is reached through `disk::inside`, which refuses links.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context as _;
 use decanter_core::Library;
+pub use decanter_runtime::install::import::{Differences, Imported};
+use decanter_runtime::install::import::{ImportFolder, resolve_folder};
 
 use super::distribution::{self, Asked, ManifestFetch};
-use super::{BrokenFile, Target, hash_files, launch_program, new_record, save_record, staged_root};
+use super::{Target, hash_files, launch_program, new_record, save_record, staged_root};
 use crate::library::is_id;
 use crate::manifest::parse_signed_manifest;
-
-/// What to do with a folder whose files differ from Amazon's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Differences {
-    /// Report them and record nothing.
-    Refuse,
-    /// Record the install anyway, for a repair to fetch what differs. Still refused when no file of
-    /// the folder matches, since that is another game's folder or an empty one.
-    Accept,
-}
-
-/// What an import found.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct Imported {
-    pub files_checked: usize,
-    pub broken: Vec<BrokenFile>,
-    /// Whether the install was recorded.
-    pub is_recorded: bool,
-}
 
 /// Verifies `folder` against the live manifest of `target` and, when it matches (or `differences`
 /// accepts that it does not), records it as the game's install where it stands.
@@ -73,7 +54,12 @@ pub async fn import(
         staged_root(library, account_id, product_id).is_none(),
         "this Amazon game has a stopped download: resume or cancel it first"
     );
-    let (root, install_dir, dest) = resolve(library, folder)?;
+    let ImportFolder {
+        root,
+        install_dir,
+        dest,
+        ..
+    } = resolve_folder(library, folder)?;
     anyhow::ensure!(
         !library.install_dir_is_shared(&install_dir, account_id, product_id),
         "another game already uses the folder {install_dir:?}"
@@ -106,11 +92,7 @@ pub async fn import(
         broken = report.broken.len(),
         "verified a folder to import as an amazon game"
     );
-    let mut imported = Imported {
-        files_checked: report.files_checked,
-        broken: report.broken,
-        is_recorded: false,
-    };
+    let mut imported = Imported::new(report);
     if !imported.broken.is_empty() {
         anyhow::ensure!(
             imported.broken.len() < imported.files_checked,
@@ -130,29 +112,4 @@ pub async fn import(
     imported.is_recorded = true;
     tracing::info!(account_id, product_id, dest = %dest.display(), "imported an existing amazon install");
     Ok(imported)
-}
-
-/// The library folder, the folder's name under its `common/` and its canonical path.
-fn resolve(library: &Library, folder: &Path) -> anyhow::Result<(PathBuf, String, PathBuf)> {
-    let dest = std::fs::canonicalize(folder).with_context(|| format!("reading {}", folder.display()))?;
-    anyhow::ensure!(dest.is_dir(), "{} is not a folder", dest.display());
-    let parent = dest.parent().context("the folder has no parent")?;
-    let name = dest
-        .file_name()
-        .and_then(|name| name.to_str())
-        .context("the folder's name is not valid text")?
-        .to_owned();
-    let root = library
-        .roots()
-        .into_iter()
-        .find(|root| std::fs::canonicalize(root.join("common")).is_ok_and(|common| common == parent))
-        .with_context(|| format!("{} is not directly inside a library folder's common/", dest.display()))?;
-    let usable = library
-        .install_dir(&name)
-        .and_then(|found| std::fs::canonicalize(found).ok());
-    anyhow::ensure!(
-        usable.as_deref() == Some(dest.as_path()),
-        "the folder {name:?} cannot be used for an Amazon game"
-    );
-    Ok((root, name, dest))
 }

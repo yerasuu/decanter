@@ -33,3 +33,8 @@ epic.library.assets_failed: "Epic 未发送可安装游戏列表。显示的是�
 epic.library.failed: "无法读取 Epic 库。显示的是上次保存的库。"
 epic.library.refresh: "刷新库"
 epic.library.retry: "重试"
+epic.import.button: "导入现有安装"
+epic.import.pick_title: "选择游戏文件夹"
+epic.import.working: "正在与 Epic 核对文件夹…"
+epic.import.differs: "文件夹中 %{total} 个文件里有 %{differing} 个与 Epic 当前版本不一致。"
+epic.import.register_repair: "注册并修复"
