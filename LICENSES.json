@@ -24,6 +24,7 @@
         "crates/runtime",
         "crates/report",
         "crates/thunderstore",
+        "crates/nexus",
         "scripts",
         "tools",
         "shell.nix",

@@ -3,7 +3,7 @@
 //! compatibility switches and their pending-restart callout, whether
 //! downloads carry on by themselves at the next start, whether GitHub has a newer
 //! decanter, which an AppImage can install over itself or into decanter's
-//! own copy, and debug mode.
+//! own copy, the user's Nexus Mods key, and debug mode.
 
 use std::path::{Path, PathBuf};
 
@@ -13,6 +13,7 @@ use rust_i18n::t;
 
 use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
+use super::nexus::NexusSection;
 use super::{checkbox_field, column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
@@ -44,6 +45,7 @@ pub struct GeneralTab {
     release: Option<Result<Standing, ReleaseError>>,
     availability: Availability,
     install: Option<Install>,
+    nexus: Entity<NexusSection>,
     credentials: Entity<CredentialsSection>,
     debug: Entity<DebugSection>,
 }
@@ -76,6 +78,7 @@ impl GeneralTab {
             release: None,
             availability: self_update::availability(),
             install: None,
+            nexus: cx.new(NexusSection::new),
             credentials: cx.new(CredentialsSection::new),
             debug: cx.new(DebugSection::new),
         };
@@ -771,6 +774,7 @@ impl Render for GeneralTab {
             ))
             .child(theme::h2(t!("settings.general.updates.title")))
             .child(section("updates", self.release_section(cx)))
+            .child(section("nexus", self.nexus.clone()))
             .child(section("credentials", self.credentials.clone()))
             .child(section("debug", self.debug.clone()))
     }

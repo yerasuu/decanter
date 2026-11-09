@@ -74,6 +74,38 @@ the user acts, requests are paced to one a second and name decanter in the User-
 - `mod.toml` gets `[origin]` (`platform = "thunderstore"`, `package`, `version`, `host`). Such a mod shows it with
   *Buscar actualizaciones*, which compares it with the latest version in the community's listing.
 
+## Nexus Mods
+
+*Añadir desde Nexus Mods…* opens a browser in the tab (`crates/nexus`, `mods/nexus/` in the app;
+[mod-platforms-analysis.md](mod-platforms-analysis.md) section 1). decanter registers no application and ships no key
+(decision #1629): each user pastes a personal API key in Ajustes › General, kept in the OS keyring
+(`SecretKey::NEXUS`, `nexusmods/api_key`) and sent only to `api.nexusmods.com` in the `apikey` header. *Probar clave*
+asks `/v1/users/validate.json` and shows the account and whether it is Premium. No `nxm://` handler is registered.
+
+- Requests: only on a user action (no polling; *Buscar actualizaciones* only on its button), HTTPS only, one a
+  second, `Application-Name: decanter` and `Application-Version` as the acceptable use policy asks. The API client
+  follows redirects only on `api.nexusmods.com` and is the only one carrying the key; downloads go through a client
+  without it, redirected only within `*.nexusmods.com` and `*.nexus-cdn.com`. The `X-RL-Daily-Remaining` and
+  `X-RL-Hourly-Remaining` counts are shown; once both are 0, or on a 429, nothing is sent until the next full hour.
+- Game: the first time, the game's title is matched against `/v1/games.json` (cached a week in
+  `<root>/decanter/nexus/games.json`); the user confirms the match or picks one, kept in
+  `mods/<store>/<game>/nexus.toml`. *Cambiar* picks again.
+- Mods: the latest added, trending and latest updated lists, filtered locally by name; v1 has no search by name, so
+  any other mod is opened by its number or the address of its page. The detail lists the files with category
+  (main, update, optional, …), version, size, date and whether Nexus gives an MD5.
+- Premium accounts: *Descargar* asks the file's `download_link.json`, takes the first HTTPS mirror on Nexus' hosts and
+  downloads into `mods/<store>/<game>/incoming/nexus-<pid>-<n>/` with progress and *Cancelar*, matched against the
+  listed size in bytes and MD5 when they are given, then the archive import above reads it; nothing is added before
+  *Añadir*. Free accounts get a 403 there, so the detail says Nexus only gives download links to Premium users
+  through the key and offers the mod's page; the file then comes in through *Añadir archivo comprimido…*.
+- `mod.toml` gets `[origin]` with `platform = "nexus"`, `package = "<domain>-<mod>-<file>"`, the file's version and
+  the download host. *Buscar actualizaciones* reads the mod's file list and follows the author's `file_updates`
+  links from that file, or offers the newest main file once it is no longer current.
+- Unverified (the v1 reference was unreachable for the analysis): every endpoint and field name, the rate-limit
+  header names, the premium flag's spelling, the download link's shape and CDN hosts, and whether `files.json`
+  carries `md5` and `size_in_bytes`. Each is optional when read; a mod or file that does not parse is skipped and
+  counted in the log, an answer that does not parse at all is a retryable error.
+
 ## Where things are
 
 Under the library root that holds the install (`<root>/common/<InstallDir>`):
@@ -122,4 +154,5 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-RAR, external games, renaming a mod once added, a target folder for a loose folder, and Nexus Mods or mod.io.
+RAR, external games, renaming a mod once added, a target folder for a loose folder, mod.io, and Nexus' `nxm://`
+links for free accounts.

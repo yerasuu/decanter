@@ -144,6 +144,7 @@ impl CredentialsSection {
                         t!("settings.credentials.confirm.shadnet_password", subject = subject)
                     }
                     SecretKind::ShadnetToken => t!("settings.credentials.confirm.shadnet_token", subject = subject),
+                    SecretKind::NexusKey => t!("mods.nexus.credentials.confirm"),
                     _ => t!("settings.credentials.confirm.steamgriddb_key"),
                 };
                 confirm_panel(
@@ -266,6 +267,7 @@ fn kind_label(kind: SecretKind) -> String {
         SecretKind::GogSession => t!("settings.credentials.kind.gog_session"),
         SecretKind::ShadnetPassword => t!("settings.credentials.kind.shadnet_password"),
         SecretKind::ShadnetToken => t!("settings.credentials.kind.shadnet_token"),
+        SecretKind::NexusKey => t!("mods.nexus.credentials.kind"),
         _ => t!("settings.credentials.kind.steamgriddb_key"),
     }
     .into_owned()
@@ -304,7 +306,7 @@ fn known_keys(accounts: &[decanter_core::Account]) -> Vec<SecretKey> {
             Storefront::EpicGames => SecretKey::epic_session(&account.id).ok(),
             _ => None,
         })
-        .chain([SecretKey::STEAMGRIDDB])
+        .chain([SecretKey::STEAMGRIDDB, SecretKey::NEXUS])
         .collect()
 }
 

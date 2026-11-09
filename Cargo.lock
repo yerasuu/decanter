@@ -1390,6 +1390,7 @@ dependencies = [
  "decanter-epic",
  "decanter-gog",
  "decanter-mods",
+ "decanter-nexus",
  "decanter-nix",
  "decanter-ps",
  "decanter-report",
@@ -1543,6 +1544,24 @@ dependencies = [
  "tracing",
  "uuid",
  "zip",
+]
+
+[[package]]
+name = "decanter-nexus"
+version = "0.4.0"
+dependencies = [
+ "decanter-core",
+ "decanter-mods",
+ "md5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml 1.1.8+spec-1.1.0",
+ "tracing",
+ "url",
 ]
 
 [[package]]

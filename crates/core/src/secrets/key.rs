@@ -26,6 +26,7 @@ pub enum SecretKind {
     AmazonSession,
     EpicSession,
     GogSession,
+    NexusKey,
     ShadnetPassword,
     ShadnetToken,
     SteamGridDbKey,
@@ -38,6 +39,7 @@ impl fmt::Display for SecretKind {
             Self::GogSession => "GOG session",
             Self::AmazonSession => "Amazon session",
             Self::EpicSession => "Epic session",
+            Self::NexusKey => "Nexus Mods API key",
             Self::ShadnetPassword => "shadNet password",
             Self::ShadnetToken => "shadNet token",
             Self::SteamGridDbKey => "SteamGridDB key",
@@ -67,6 +69,7 @@ enum Name {
     AmazonSession(String),
     EpicSession(String),
     GogSession(String),
+    Nexus,
     Shadnet(String, ShadnetSecret),
     SteamGridDb,
 }
@@ -80,6 +83,8 @@ pub struct SecretKey(Name);
 
 impl SecretKey {
     pub const STEAMGRIDDB: Self = Self(Name::SteamGridDb);
+    /// The user's own personal Nexus Mods API key: decanter ships none (decision #1629).
+    pub const NEXUS: Self = Self(Name::Nexus);
 
     /// # Errors
     ///
@@ -170,6 +175,7 @@ impl SecretKey {
             Name::EpicSession(_) => SecretKind::EpicSession,
             Name::Shadnet(_, secret) => Self::shadnet_kind(*secret),
             Name::SteamGridDb => SecretKind::SteamGridDbKey,
+            Name::Nexus => SecretKind::NexusKey,
         }
     }
 
@@ -180,7 +186,7 @@ impl SecretKey {
         match &self.0 {
             Name::GogSession(id) | Name::AmazonSession(id) | Name::EpicSession(id) => Some(id),
             Name::Shadnet(npid, _) => Some(npid),
-            Name::SteamGridDb => None,
+            Name::SteamGridDb | Name::Nexus => None,
         }
     }
 
@@ -192,6 +198,7 @@ impl SecretKey {
             Name::EpicSession(id) => format!("{id}/{}", Storefront::EpicGames.as_str_name()),
             Name::Shadnet(npid, secret) => format!("shadnet/{npid}/{}", secret.name()),
             Name::SteamGridDb => "steamgriddb/api_key".to_owned(),
+            Name::Nexus => "nexusmods/api_key".to_owned(),
         }
     }
 
@@ -201,6 +208,7 @@ impl SecretKey {
         let parts: Vec<&str> = entry.split('/').collect();
         match parts.as_slice() {
             ["steamgriddb", "api_key"] => Some(Self::STEAMGRIDDB),
+            ["nexusmods", "api_key"] => Some(Self::NEXUS),
             ["steamgriddb", legacy] if *legacy == Storefront::Unspecified.as_str_name() => Some(Self::STEAMGRIDDB),
             ["shadnet", npid, "password"] => Self::shadnet(npid, ShadnetSecret::Password).ok(),
             ["shadnet", npid, "token"] => Self::shadnet(npid, ShadnetSecret::Token).ok(),
@@ -216,7 +224,9 @@ impl SecretKey {
     pub(super) fn legacy_entry(&self) -> Option<String> {
         match &self.0 {
             Name::SteamGridDb => Some(format!("steamgriddb/{}", Storefront::Unspecified.as_str_name())),
-            Name::GogSession(_) | Name::AmazonSession(_) | Name::EpicSession(_) | Name::Shadnet(..) => None,
+            Name::GogSession(_) | Name::AmazonSession(_) | Name::EpicSession(_) | Name::Shadnet(..) | Name::Nexus => {
+                None
+            }
         }
     }
 
@@ -225,7 +235,7 @@ impl SecretKey {
         let max = match &self.0 {
             Name::GogSession(_) | Name::AmazonSession(_) | Name::EpicSession(_) => SESSION_MAX_LEN,
             Name::Shadnet(..) => SHADNET_MAX_LEN,
-            Name::SteamGridDb => API_KEY_MAX_LEN,
+            Name::SteamGridDb | Name::Nexus => API_KEY_MAX_LEN,
         };
         let value = secret.expose();
         if value.len() > max {

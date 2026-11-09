@@ -121,6 +121,7 @@ mod launcher;
 mod logs;
 mod memory;
 mod mods;
+mod nexus;
 mod platform;
 mod ps_play;
 mod ps_steam;

@@ -12,6 +12,7 @@ mod credentials;
 mod debug;
 mod game_tools;
 mod general;
+mod nexus;
 
 use std::borrow::Cow;
 
