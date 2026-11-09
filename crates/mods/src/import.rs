@@ -8,8 +8,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest as _, Sha256};
 
+use crate::dll;
 use crate::game::{GameMods, INCOMING};
 use crate::manifest::{FILES, ModFile, ModManifest, check_paths, display_name};
+use crate::merge::walk_install;
 use crate::path::{ModId, ModPath};
 use crate::{Error, FREE_SPACE_MARGIN, MAX_MOD_BYTES, MAX_MOD_FILES, Result};
 
@@ -46,6 +48,8 @@ pub(crate) fn folder(game: &GameMods, source: &Path) -> Result<ModManifest> {
         None => tracing::warn!(path = %game.dir.display(), "free space unknown, importing the mod anyway"),
     }
 
+    let program_dirs = dll::program_dirs(&walk_install(&game.install)?);
+    let dll_overrides = dll::suggest(found.iter().map(|file| &file.path), &program_dirs);
     let incoming = make_incoming(&game.dir.join(INCOMING))?;
     let id = ModId::new();
     let copied = copy_in(&found, &incoming).and_then(|files| {
@@ -60,6 +64,7 @@ pub(crate) fn folder(game: &GameMods, source: &Path) -> Result<ModManifest> {
                 .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX)),
             target: None,
             files,
+            dll_overrides,
         };
         manifest.write(&incoming)?;
         let destination = game.mod_dir(&id);
@@ -73,6 +78,7 @@ pub(crate) fn folder(game: &GameMods, source: &Path) -> Result<ModManifest> {
                 name = manifest.name,
                 files = manifest.files.len(),
                 bytes = total,
+                dll_overrides = manifest.dll_overrides.len(),
                 "mod imported from a folder"
             );
             Ok(manifest)

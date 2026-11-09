@@ -30,6 +30,42 @@ pub fn for_game(game: &InstalledGame) -> Option<GameMods> {
         .ok()
 }
 
+/// The DLL overrides the account's enabled mods give Wine, as `dll=mode (mod)` for Compatibilidad,
+/// which shows everything that changes how Wine loads the game; `None` when there are none.
+pub async fn override_summary(account_id: &str, game: &InstalledGame) -> Option<String> {
+    let mods = for_game(game)?;
+    let account = account_id.to_owned();
+    let read = tokio::task::spawn_blocking(move || {
+        let names = mods.list()?;
+        let overrides = mods.dll_overrides(&account)?;
+        Ok::<_, decanter_mods::Error>(
+            overrides
+                .iter()
+                .map(|wanted| {
+                    let name = names
+                        .iter()
+                        .find(|manifest| manifest.id == wanted.from)
+                        .map_or_else(|| wanted.from.to_string(), |manifest| manifest.name.clone());
+                    format!("{}={} ({name})", wanted.dll, wanted.mode)
+                })
+                .collect::<Vec<_>>(),
+        )
+    })
+    .await;
+    match read {
+        Ok(Ok(lines)) if lines.is_empty() => None,
+        Ok(Ok(lines)) => Some(lines.join(", ")),
+        Ok(Err(err)) => {
+            tracing::warn!(game_id = %game.game_id, %err, "the mods' dll overrides could not be read");
+            None
+        }
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "reading the mods' dll overrides stopped");
+            None
+        }
+    }
+}
+
 /// A launch from a play tree instead of the install.
 pub struct Play {
     install: PathBuf,
@@ -59,7 +95,7 @@ impl Play {
             .map(|relative| self.prepared.root.join(relative))
     }
 
-    pub fn facts(&self) -> [(&'static str, String); 2] {
+    pub fn facts(&self) -> [(&'static str, String); 3] {
         let names = self
             .prepared
             .mods
@@ -67,10 +103,34 @@ impl Play {
             .map(|(id, name)| format!("{name} ({id})"))
             .collect::<Vec<_>>()
             .join(", ");
+        let overrides = self
+            .prepared
+            .dll_overrides
+            .iter()
+            .map(|wanted| format!("{}={}", wanted.dll, wanted.mode))
+            .collect::<Vec<_>>()
+            .join(";");
         [
             ("mods", if names.is_empty() { "none".to_owned() } else { names }),
             ("play_root", self.prepared.root.display().to_string()),
+            (
+                "mod_dll_overrides",
+                if overrides.is_empty() {
+                    "none".to_owned()
+                } else {
+                    overrides
+                },
+            ),
         ]
+    }
+
+    /// The enabled mods' DLL overrides as `Launch::dll_overrides` takes them, after the launch's own
+    /// so that a mod's proxy wins.
+    pub fn dll_overrides(&self) -> impl Iterator<Item = (String, String)> + '_ {
+        self.prepared
+            .dll_overrides
+            .iter()
+            .map(|wanted| (wanted.dll.clone(), wanted.mode.as_str().to_owned()))
     }
 
     /// `game` with its cloud save folder moved into the play tree when it was inside the install,

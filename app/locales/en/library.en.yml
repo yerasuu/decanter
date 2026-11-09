@@ -253,7 +253,6 @@ library.properties.mods.overridden_by: '%{name} wins over it in %{count} files'
 library.properties.mods.show_files: 'Show files'
 library.properties.mods.hide_files: 'Hide files'
 library.properties.mods.more: '...and %{count} more'
-library.properties.mods.later_wins: 'When two mods have the same file, the one turned on last wins.'
 library.properties.mods.written_by_game: '%{count} files written by the game in the folder it starts from are kept and take priority over the game''s and the mods'' files:'
 library.properties.releases.current: CURRENT
 library.properties.betas.switch: Switch

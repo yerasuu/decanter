@@ -27,6 +27,8 @@ pub(super) struct CompatibilityTab {
     busy: bool,
     error: Option<Text>,
     tools: Entity<GameToolsPanel>,
+    /// The DLL overrides the enabled mods add, read-only here: they are changed in Mods.
+    mod_overrides: Option<String>,
 }
 
 impl CompatibilityTab {
@@ -41,8 +43,20 @@ impl CompatibilityTab {
             created: false,
             busy: false,
             error: None,
+            mod_overrides: None,
         };
         this.reload();
+        if let Some(game) = this.installed.clone() {
+            let account_id = this.target.account_id.clone();
+            cx.spawn(async move |this, cx| {
+                let summary = crate::mods::override_summary(&account_id, &game).await;
+                let _ = this.update(cx, |this, cx| {
+                    this.mod_overrides = summary;
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         this
     }
 
@@ -173,14 +187,22 @@ impl Render for CompatibilityTab {
         });
 
         pane()
-            .child(rows().child(row(
-                t!("library.properties.compatibility.prefix"),
-                if self.created {
-                    t!("library.properties.compatibility.prefix_created")
-                } else {
-                    t!("library.properties.compatibility.prefix_missing")
-                },
-            )))
+            .child(
+                rows()
+                    .child(row(
+                        t!("library.properties.compatibility.prefix"),
+                        if self.created {
+                            t!("library.properties.compatibility.prefix_created")
+                        } else {
+                            t!("library.properties.compatibility.prefix_missing")
+                        },
+                    ))
+                    .children(
+                        self.mod_overrides
+                            .clone()
+                            .map(|summary| row(t!("mods.dll.compat_label"), summary)),
+                    ),
+            )
             .child(field_row().child(proton).child(open).child(reset))
             .children(error_line(self.error.as_ref()))
             .child(self.tools.clone())

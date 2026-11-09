@@ -1,7 +1,7 @@
 # Third-party mods
 
-What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 and 2, loose folders and zip or 7z
-archives for GOG games. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
+What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 3, loose folders and zip or 7z
+archives for GOG games, DLL overrides and load order. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
 the Mods tab is `app/src/views/library/properties/mods/`.
 
 ## Using it
@@ -16,7 +16,14 @@ the Mods tab is `app/src/views/library/properties/mods/`.
   it carries an installer (FOMOD or setup program), which is never run. Nothing is written before *Añadir*; the
   same archive added twice points at the mod it already is. RAR is refused with a line saying so.
 - The checkbox turns a mod on or off for this account. A mod turned on goes last and wins a file over the ones
-  already on. Changes apply at the next launch; nothing can be changed while the game runs.
+  already on; ↑ and ↓ move an enabled mod in the load order (`profiles/<account>.toml` `mods`), where the lower one
+  wins. Changes apply at the next launch; nothing can be changed while the game runs.
+- DLL proxies: a mod file named after a system DLL Wine has a builtin for (`dinput8`, `version`, `winmm`, `dxgi`,
+  `d3d9`, `d3d11`, `dsound`, `xinput1_3`, `winhttp`) in a folder of the game that holds a `.exe` gets the override
+  `n,b` at import, stored in its `mod.toml` (`[[dll_overrides]]`). The Mods tab lists each with a selector for its
+  mode (`n,b`, `b,n`, `n`, `b`, not loaded) and says which enabled mod wins a DLL two of them ask for (the later
+  one). Under Proton the enabled mods' overrides are appended to the launch's `WINEDLLOVERRIDES`, and the run's log
+  header names them (`mod_dll_overrides`); Compatibilidad shows them read-only. On a Windows host they are ignored.
 - Each enabled mod lists the game's files it replaces and the files it wins or loses against other mods.
 - *Quitar* asks first, with the mod's size and how many accounts use it, then deletes it for every account.
 
@@ -66,5 +73,5 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-RAR, DLL overrides and reordering (phase 3), update checks and the uninstall dialog (phase 4),
+RAR, update checks and the uninstall dialog (phase 4),
 external games, renaming a mod once added, and a target folder for a loose folder.

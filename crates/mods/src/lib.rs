@@ -60,6 +60,7 @@
 )]
 
 mod archive;
+mod dll;
 mod error;
 mod files;
 mod game;
@@ -72,11 +73,13 @@ mod set;
 mod tree;
 
 pub use archive::{ArchiveFormat, ArchivePreview};
+pub use dll::{DllMode, DllOverride, EffectiveOverride};
 pub use error::Error;
 pub use game::{GameMods, ModConflicts, Store};
 pub use manifest::{ModFile, ModManifest};
 pub use path::{ModId, ModPath};
 pub use progress::Progress;
+pub use set::Shift;
 pub use tree::Prepared;
 
 /// The owner's cap (design, open question 8), since a texture pack can be larger than 20 gigabytes.

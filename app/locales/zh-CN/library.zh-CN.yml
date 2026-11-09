@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: "在 %{count} 个文件上 %{name} 优先
 library.properties.mods.show_files: "显示文件"
 library.properties.mods.hide_files: "隐藏文件"
 library.properties.mods.more: "…以及另外 %{count} 个"
-library.properties.mods.later_wins: "两个模组含有同一文件时，后启用的优先。"
 library.properties.mods.written_by_game: "游戏在其启动文件夹中写入了 %{count} 个文件，这些文件会被保留，并优先于游戏和模组的文件："
 library.properties.releases.current: "当前"
 library.properties.betas.switch: "切换"

@@ -60,6 +60,8 @@ pub enum Error {
     SourceChanged,
     #[error("cancelled")]
     Cancelled,
+    #[error("{0:?} is not a DLL override decanter writes")]
+    InvalidOverride(String),
 }
 
 impl Error {

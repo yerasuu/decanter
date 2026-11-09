@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: '%{name} prend le dessus sur lui pour %{c
 library.properties.mods.show_files: Afficher les fichiers
 library.properties.mods.hide_files: Masquer les fichiers
 library.properties.mods.more: …et %{count} de plus
-library.properties.mods.later_wins: Quand deux mods ont le même fichier, celui activé en dernier l’emporte.
 library.properties.mods.written_by_game: '%{count} fichiers écrits par le jeu dans le dossier d’où il démarre sont conservés et ont priorité sur les fichiers du jeu et des mods :'
 library.properties.releases.current: ACTUELLE
 library.properties.betas.switch: Passer à cette branche

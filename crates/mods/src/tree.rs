@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::dll::{self, EffectiveOverride};
 use crate::game::GameMods;
 use crate::manifest::{FILES, ModManifest};
 use crate::merge::{Owner, Wanted, merge};
@@ -29,6 +30,8 @@ pub struct Prepared {
     pub root: PathBuf,
     /// The enabled mods, in load order.
     pub mods: Vec<(ModId, String)>,
+    /// What the enabled mods ask `WINEDLLOVERRIDES` for.
+    pub dll_overrides: Vec<EffectiveOverride>,
     pub links: usize,
     /// Files the game wrote into the play tree, which stay as they are.
     pub written_by_game: usize,
@@ -103,6 +106,7 @@ pub(crate) fn reconcile(game: &GameMods, account: &str, mods: &[ModManifest]) ->
             .iter()
             .map(|manifest| (manifest.id.clone(), manifest.name.clone()))
             .collect(),
+        dll_overrides: dll::effective(mods),
         links: placed.len(),
         written_by_game,
     })

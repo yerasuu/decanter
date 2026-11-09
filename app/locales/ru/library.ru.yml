@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: '%{name} приоритетнее его 
 library.properties.mods.show_files: 'Показать файлы'
 library.properties.mods.hide_files: 'Скрыть файлы'
 library.properties.mods.more: '...и ещё: %{count}'
-library.properties.mods.later_wins: 'Если у двух модов совпадает файл, действует тот, что включён позже.'
 library.properties.mods.written_by_game: 'Файлы, записанные игрой в папку, из которой она запускается (%{count}), сохраняются и имеют приоритет над файлами игры и модов:'
 library.properties.releases.current: 'ТЕКУЩАЯ'
 library.properties.betas.switch: 'Переключить'

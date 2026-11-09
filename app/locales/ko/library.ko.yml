@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: '파일 %{count}개에서 %{name}이(가)
 library.properties.mods.show_files: '파일 표시'
 library.properties.mods.hide_files: '파일 숨기기'
 library.properties.mods.more: '...외 %{count}개'
-library.properties.mods.later_wins: '두 모드에 같은 파일이 있으면 나중에 켠 모드가 우선합니다.'
 library.properties.mods.written_by_game: '게임이 시작되는 폴더에 게임이 쓴 파일 %{count}개는 유지되며 게임 및 모드 파일보다 우선합니다:'
 library.properties.releases.current: 현재
 library.properties.betas.switch: 전환

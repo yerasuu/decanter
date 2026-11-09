@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: '%{name} hat in %{count} Dateien Vorrang'
 library.properties.mods.show_files: 'Dateien anzeigen'
 library.properties.mods.hide_files: 'Dateien ausblenden'
 library.properties.mods.more: '...und %{count} weitere'
-library.properties.mods.later_wins: 'Haben zwei Mods dieselbe Datei, gewinnt der zuletzt aktivierte.'
 library.properties.mods.written_by_game: '%{count} vom Spiel in den Startordner geschriebene Dateien bleiben erhalten und haben Vorrang vor den Dateien des Spiels und der Mods:'
 library.properties.releases.current: AKTUELL
 library.properties.betas.switch: Wechseln

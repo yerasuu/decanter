@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: "%{count} 個のファイルで %{name} �
 library.properties.mods.show_files: "ファイルを表示"
 library.properties.mods.hide_files: "ファイルを非表示"
 library.properties.mods.more: "...ほか %{count} 個"
-library.properties.mods.later_wins: "2 つの Mod に同じファイルがある場合は、あとで有効にしたほうが優先されます。"
 library.properties.mods.written_by_game: "ゲームが起動元のフォルダーに書き込んだ %{count} 個のファイルは保持され、ゲームと Mod のファイルより優先されます:"
 library.properties.releases.current: "現在"
 library.properties.betas.switch: "切り替え"

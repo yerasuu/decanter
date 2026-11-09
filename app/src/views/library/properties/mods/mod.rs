@@ -3,12 +3,13 @@
 //! Changes apply at the next launch, never while the game runs (docs/third-party-mods-design.md).
 
 mod archive;
+mod dll;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use decanter_mods::{GameMods, ModConflicts, ModId, ModManifest, ModPath};
+use decanter_mods::{EffectiveOverride, GameMods, ModConflicts, ModId, ModManifest, ModPath, Shift};
 use gpui::{Context, Entity, ExternalPaths, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
@@ -16,7 +17,7 @@ use super::{Target, error_line, field_row, not_installed, pane};
 use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::input::TextInput;
-use crate::widgets::{ButtonKind, button, checkbox, confirm_panel};
+use crate::widgets::{ButtonKind, button, checkbox, confirm_panel, tooltip};
 use archive::Importing;
 
 /// How many paths an expanded conflict lists before summing up the rest.
@@ -27,6 +28,8 @@ const SHOWN_WRITTEN: usize = 5;
 struct Row {
     manifest: ModManifest,
     enabled: bool,
+    /// Its place in this account's load order, when enabled.
+    position: Option<usize>,
     /// Accounts whose set has it enabled.
     users: usize,
     conflicts: Option<ModConflicts>,
@@ -37,6 +40,9 @@ struct Loaded {
     rows: Vec<Row>,
     names: HashMap<ModId, String>,
     written_by_game: Vec<ModPath>,
+    enabled_count: usize,
+    /// What the enabled mods ask Wine for, the later one winning a DLL.
+    dll: Vec<EffectiveOverride>,
 }
 
 pub(super) struct ModsTab {
@@ -149,6 +155,14 @@ impl ModsTab {
         );
     }
 
+    fn shift(&mut self, id: ModId, step: Shift, cx: &mut Context<Self>) {
+        self.run(
+            Text::new("library.properties.mods.applying"),
+            move |mods, account| mods.shift(account, &id, step),
+            cx,
+        );
+    }
+
     fn add(cx: &Context<Self>) {
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new()
@@ -195,7 +209,7 @@ impl ModsTab {
         }
     }
 
-    fn is_locked(&self) -> bool {
+    const fn is_locked(&self) -> bool {
         self.running || self.busy.is_some() || self.importing.is_some()
     }
 
@@ -240,6 +254,10 @@ impl ModsTab {
                             .on_click(cx.listener(move |this, _, _, cx| this.toggle(toggle_id.clone(), !enabled, cx)))
                     })
                     .child(checkbox(enabled).when(locked, |b| b.opacity(0.4))),
+            )
+            .children(
+                row.position
+                    .map(|position| self.order_buttons(index, &id, position, locked, cx)),
             )
             .child(div().flex_1().child(row.manifest.name.clone()))
             .child(theme::muted(summary))
@@ -307,6 +325,32 @@ impl ModsTab {
             .when(!last, |item| item.border_b_1().border_color(gpui::rgb(theme::LINE)))
             .child(header)
             .children(details)
+            .children(self.dll_block(index, row, locked, cx))
+    }
+
+    /// Up and down in the load order, where the later mod wins a file and a DLL.
+    fn order_buttons(&self, index: usize, id: &ModId, position: usize, locked: bool, cx: &Context<Self>) -> gpui::Div {
+        let count = self.loaded.as_ref().map_or(0, |loaded| loaded.enabled_count);
+        let first = position == 0 || locked;
+        let last = position.saturating_add(1) >= count || locked;
+        let (earlier, later) = (id.clone(), id.clone());
+        div()
+            .flex()
+            .gap_1()
+            .child(
+                button(("mod-earlier", index), ButtonKind::Icon, "↑", first)
+                    .tooltip(tooltip(t!("mods.order.earlier")))
+                    .when(!first, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| this.shift(earlier.clone(), Shift::Earlier, cx)))
+                    }),
+            )
+            .child(
+                button(("mod-later", index), ButtonKind::Icon, "↓", last)
+                    .tooltip(tooltip(t!("mods.order.later")))
+                    .when(!last, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| this.shift(later.clone(), Shift::Later, cx)))
+                    }),
+            )
     }
 
     fn confirmation(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
@@ -337,6 +381,7 @@ fn snapshot(mods: &GameMods, account_id: &str) -> decanter_mods::Result<Loaded> 
     let all = mods.list()?;
     let enabled = mods.enabled(account_id)?;
     let mut conflicts = mods.conflicts(account_id)?;
+    let dll = mods.dll_overrides(account_id)?;
     let written_by_game = mods.written_by_game(account_id)?;
     let names = all
         .iter()
@@ -348,6 +393,7 @@ fn snapshot(mods: &GameMods, account_id: &str) -> decanter_mods::Result<Loaded> 
         let users = mods.users(&manifest.id)?.len();
         rows.push(Row {
             enabled: order.contains_key(&manifest.id),
+            position: order.get(&manifest.id).copied(),
             users,
             conflicts: conflicts.remove(&manifest.id),
             manifest,
@@ -358,6 +404,8 @@ fn snapshot(mods: &GameMods, account_id: &str) -> decanter_mods::Result<Loaded> 
         rows,
         names,
         written_by_game,
+        enabled_count: enabled.len(),
+        dll,
     })
 }
 
@@ -492,7 +540,7 @@ impl Render for ModsTab {
             .children(self.notice.as_ref().map(theme::muted))
             .children(self.confirmation(cx))
             .child(list)
-            .child(theme::muted(t!("library.properties.mods.later_wins")))
+            .child(theme::muted(t!("mods.order.later_wins")))
             .children(written)
             .children(error_line(self.error.as_ref()))
     }

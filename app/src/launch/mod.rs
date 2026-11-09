@@ -253,6 +253,7 @@ async fn ready(account_id: &str, game: &InstalledGame) -> Result<Ready, Unready>
         planned.facts.extend(play.facts());
         if kind == Kind::Umu {
             planned.launch.env.extend(play.share_env());
+            planned.launch.dll_overrides.extend(play.dll_overrides());
         }
     }
     Ok(Ready {

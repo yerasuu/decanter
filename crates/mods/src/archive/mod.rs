@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest as _, Sha256};
 
+use crate::dll::{self, DllOverride};
 use crate::game::{GameMods, INCOMING};
 use crate::import::{hex, make_incoming};
 use crate::manifest::{FILES, ModFile, ModManifest, check_paths, display_name};
@@ -78,6 +79,7 @@ pub struct ArchivePreview {
     source_modified: Option<SystemTime>,
     entries: Vec<Entry>,
     install: HashSet<String>,
+    program_dirs: HashSet<String>,
 }
 
 impl ArchivePreview {
@@ -147,6 +149,19 @@ impl ArchivePreview {
         self.duplicate_of.as_ref().map(|found| (&found.0, found.1.as_str()))
     }
 
+    /// The overrides a proxy DLL among the files under `target` gets at import, which the Mods tab
+    /// can change afterwards.
+    #[must_use]
+    #[inline]
+    pub fn dll_overrides(&self, target: Option<&ModPath>) -> Vec<DllOverride> {
+        let in_game: Vec<ModPath> = self
+            .entries
+            .iter()
+            .filter_map(|entry| entry.path.inside(target).ok())
+            .collect();
+        dll::suggest(in_game.iter(), &self.program_dirs)
+    }
+
     /// The game's files the mod would replace with its files under `target`, as many as a preview
     /// shows, and how many there are in all.
     #[must_use]
@@ -177,6 +192,7 @@ pub(crate) fn preview(game: &GameMods, source: &Path, progress: &Progress) -> Re
     let (entries, stripped) = strip_wrapper(listed, &install_files)?;
     let install: HashSet<String> = install_files.iter().map(ModPath::folded).collect();
     let folders = install_folders(&install_files);
+    let program_dirs = dll::program_dirs(&install_files);
     let target = preselect(&entries, &install_files, &folders);
     check_paths(entries.iter().map(|entry| &entry.path), target.as_ref())?;
     let has_installer = entries.iter().any(|entry| is_installer(&entry.path));
@@ -223,6 +239,7 @@ pub(crate) fn preview(game: &GameMods, source: &Path, progress: &Progress) -> Re
         source_modified: metadata.modified().ok(),
         entries,
         install,
+        program_dirs,
     })
 }
 
@@ -256,6 +273,7 @@ pub(crate) fn import(
     fs::create_dir_all(&game.dir).map_err(Error::io(&game.dir))?;
     let incoming = make_incoming(&game.dir.join(INCOMING))?;
     let id = ModId::new();
+    let dll_overrides = preview.dll_overrides(target.as_ref());
     let extracted = extract(preview, &incoming, progress).and_then(|files| {
         let manifest = ModManifest {
             id: id.clone(),
@@ -268,6 +286,7 @@ pub(crate) fn import(
                 .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX)),
             target,
             files,
+            dll_overrides,
         };
         manifest.write(&incoming)?;
         let destination = game.mod_dir(&id);
@@ -282,6 +301,7 @@ pub(crate) fn import(
                 format = ?preview.format,
                 files = manifest.files.len(),
                 bytes = preview.size,
+                dll_overrides = manifest.dll_overrides.len(),
                 "mod imported from an archive"
             );
             Ok(manifest)

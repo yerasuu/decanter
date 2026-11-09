@@ -6,11 +6,12 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::archive::{self, ArchivePreview};
+use crate::dll::{self, DllMode, EffectiveOverride};
 use crate::manifest::ModManifest;
 use crate::merge::{Owner, merge};
 use crate::path::{ModId, ModPath, id_component};
 use crate::progress::Progress;
-use crate::set::ModSet;
+use crate::set::{ModSet, Shift};
 use crate::tree::{self, Prepared};
 use crate::{Error, Result, import};
 
@@ -176,6 +177,60 @@ impl GameMods {
         set.write(&path)?;
         tracing::info!(account, mod_id = %id, enabled, "mod set changed");
         Ok(())
+    }
+
+    /// Moves an enabled mod one place in `account`'s load order, where the later one wins a file and
+    /// a DLL override.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownMod`] for a mod the game does not have, else when the set file can't be
+    /// read or written.
+    #[inline]
+    pub fn shift(&self, account: &str, id: &ModId, step: Shift) -> Result<()> {
+        if !self.mod_dir(id).is_dir() {
+            return Err(Error::UnknownMod(id.to_string()));
+        }
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        if set.shift(id, step) {
+            set.write(&path)?;
+            tracing::info!(account, mod_id = %id, ?step, "mod load order changed");
+        }
+        Ok(())
+    }
+
+    /// Changes how Wine loads `dll` for the mod, for every account that has it on; a mod that did
+    /// not ask for `dll` gets it added.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownMod`] for a mod the game does not have, [`Error::InvalidOverride`] for a
+    /// name that can't be a DLL's, else when its `mod.toml` can't be read or written.
+    #[inline]
+    pub fn set_dll_mode(&self, id: &ModId, dll: &str, mode: DllMode) -> Result<()> {
+        let dir = self.mod_dir(id);
+        let mut manifest = ModManifest::read(&dir, id)?.ok_or_else(|| Error::UnknownMod(id.to_string()))?;
+        let wanted = dll::DllOverride::new(dll, mode)?;
+        if let Some(known) = manifest.dll_overrides.iter_mut().find(|known| known.dll == wanted.dll) {
+            known.mode = mode;
+        } else {
+            manifest.dll_overrides.push(wanted);
+        }
+        manifest.write(&dir)?;
+        tracing::info!(mod_id = %id, dll, mode = mode.as_str(), "mod dll override changed");
+        Ok(())
+    }
+
+    /// The DLL overrides `account`'s enabled mods ask for, the later mod winning one asked for
+    /// twice.
+    ///
+    /// # Errors
+    ///
+    /// When the set file or an enabled mod's `mod.toml` does not hold up.
+    #[inline]
+    pub fn dll_overrides(&self, account: &str) -> Result<Vec<EffectiveOverride>> {
+        Ok(dll::effective(&self.enabled_manifests(account)?))
     }
 
     /// Copies a folder of loose files laid out as the game's root in as a new mod, enabled for

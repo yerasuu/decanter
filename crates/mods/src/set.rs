@@ -19,6 +19,16 @@ pub(crate) struct ModSet {
     pub(crate) disabled: Vec<ModId>,
 }
 
+/// Which way a mod moves in the load order, where later wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Shift {
+    /// Loses to one more mod.
+    Earlier,
+    /// Wins over one more mod.
+    Later,
+}
+
 #[derive(Serialize, Deserialize)]
 struct RawSet {
     schema: u32,
@@ -73,6 +83,23 @@ impl ModSet {
     pub(crate) fn forget(&mut self, id: &ModId) {
         self.mods.retain(|known| known != id);
         self.disabled.retain(|known| known != id);
+    }
+
+    /// Swaps an enabled mod with its neighbour in the load order; `false` when it is not enabled
+    /// or already at that end.
+    pub(crate) fn shift(&mut self, id: &ModId, step: Shift) -> bool {
+        let Some(index) = self.mods.iter().position(|known| known == id) else {
+            return false;
+        };
+        let other = match step {
+            Shift::Earlier => index.checked_sub(1),
+            Shift::Later => index.checked_add(1).filter(|&next| next < self.mods.len()),
+        };
+        let Some(other) = other else {
+            return false;
+        };
+        self.mods.swap(index, other);
+        true
     }
 
     pub(crate) fn is_enabled(&self, id: &ModId) -> bool {

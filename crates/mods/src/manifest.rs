@@ -6,6 +6,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::dll::{DllMode, DllOverride};
 use crate::path::{ModId, ModPath};
 use crate::{Error, MAX_MOD_BYTES, MAX_MOD_FILES, Result, files};
 
@@ -30,6 +31,8 @@ pub struct ModManifest {
     /// The game's subfolder the files go to; `None` for its root.
     pub target: Option<ModPath>,
     pub files: Vec<ModFile>,
+    /// What the mod needs `WINEDLLOVERRIDES` to say, suggested at import for a proxy DLL.
+    pub dll_overrides: Vec<DllOverride>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +59,14 @@ struct RawManifest {
     target: String,
     #[serde(default)]
     files: Vec<RawFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    dll_overrides: Vec<RawOverride>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RawOverride {
+    dll: String,
+    mode: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -113,6 +124,14 @@ impl ModManifest {
                     executable: file.executable,
                 })
                 .collect(),
+            dll_overrides: self
+                .dll_overrides
+                .iter()
+                .map(|wanted| RawOverride {
+                    dll: wanted.dll.clone(),
+                    mode: wanted.mode.as_str().to_owned(),
+                })
+                .collect(),
         };
         files::write(&dir.join(MANIFEST), &raw)
     }
@@ -159,6 +178,14 @@ impl ModManifest {
             return Err(Error::TooLarge);
         }
         check_paths(files.iter().map(|file| &file.path), target.as_ref())?;
+        let mut dll_overrides: Vec<DllOverride> = Vec::with_capacity(raw.dll_overrides.len());
+        for wanted in raw.dll_overrides {
+            let wanted = DllOverride::new(&wanted.dll, wanted.mode.parse::<DllMode>()?)?;
+            if dll_overrides.iter().any(|known| known.dll == wanted.dll) {
+                return Err(bad("a DLL is overridden twice"));
+            }
+            dll_overrides.push(wanted);
+        }
         Ok(Self {
             id: id.clone(),
             name,
@@ -168,6 +195,7 @@ impl ModManifest {
             added_at: raw.added_at,
             target,
             files,
+            dll_overrides,
         })
     }
 }

@@ -232,7 +232,6 @@ library.properties.mods.overridden_by: "%{name} ha la precedenza su di essa in %
 library.properties.mods.show_files: "Mostra i file"
 library.properties.mods.hide_files: "Nascondi i file"
 library.properties.mods.more: "...e altri %{count}"
-library.properties.mods.later_wins: "Quando due mod hanno lo stesso file, vince quella attivata per ultima."
 library.properties.mods.written_by_game: "%{count} file scritti dal gioco nella cartella da cui parte vengono conservati e hanno la precedenza sui file del gioco e delle mod:"
 library.properties.releases.current: ATTUALE
 library.properties.betas.switch: Passa
