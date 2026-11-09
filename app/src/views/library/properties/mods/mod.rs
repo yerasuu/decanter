@@ -3,6 +3,7 @@
 //! Changes apply at the next launch, never while the game runs (docs/third-party-mods-design.md).
 
 mod archive;
+mod attention;
 mod dll;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -30,6 +31,8 @@ struct Row {
     enabled: bool,
     /// Its place in this account's load order, when enabled.
     position: Option<usize>,
+    /// The game files an update changed under it, which leave it out until kept or disabled.
+    attention: Option<Vec<ModPath>>,
     /// Accounts whose set has it enabled.
     users: usize,
     conflicts: Option<ModConflicts>,
@@ -59,6 +62,8 @@ pub(super) struct ModsTab {
     name_input: Entity<TextInput>,
     /// A plain line about the last action, such as a cancelled import.
     notice: Option<Text>,
+    /// Per mod, the files that are no longer what was imported, once checked.
+    verified: HashMap<ModId, Vec<ModPath>>,
     error: Option<Text>,
 }
 
@@ -76,6 +81,7 @@ impl ModsTab {
             importing: None,
             name_input,
             notice: None,
+            verified: HashMap::new(),
             error: None,
         };
         this.reload(cx);
@@ -84,15 +90,15 @@ impl ModsTab {
 
     fn reload(&mut self, cx: &Context<Self>) {
         let account_id = self.target.account_id.clone();
-        self.mods = crate::core::installed_game(&account_id, &self.target.product_id)
-            .as_ref()
-            .and_then(crate::mods::for_game);
+        let installed = crate::core::installed_game(&account_id, &self.target.product_id);
+        self.mods = installed.as_ref().and_then(crate::mods::for_game);
+        let build_id = installed.map(|game| game.build_id).unwrap_or_default();
         self.running = crate::launch::is_running(&account_id, &self.target.product_id);
         let Some(mods) = self.mods.clone() else {
             return;
         };
         cx.spawn(async move |this, cx| {
-            let read = tokio::task::spawn_blocking(move || snapshot(&mods, &account_id)).await;
+            let read = tokio::task::spawn_blocking(move || snapshot(&mods, &account_id, &build_id)).await;
             let _ = this.update(cx, |this, cx| {
                 match read {
                     Ok(Ok(loaded)) => this.loaded = Some(loaded),
@@ -326,6 +332,8 @@ impl ModsTab {
             .child(header)
             .children(details)
             .children(self.dll_block(index, row, locked, cx))
+            .children(self.attention_block(index, row, locked, cx))
+            .children(self.verify_block(index, row, locked, cx))
     }
 
     /// Up and down in the load order, where the later mod wins a file and a DLL.
@@ -377,8 +385,9 @@ impl ModsTab {
 
 /// What the tab shows, read off the UI: every mod of the game with this account's choice, and the
 /// conflicts among the enabled ones.
-fn snapshot(mods: &GameMods, account_id: &str) -> decanter_mods::Result<Loaded> {
+fn snapshot(mods: &GameMods, account_id: &str, build_id: &str) -> decanter_mods::Result<Loaded> {
     let all = mods.list()?;
+    let mut attention = mods.needing_attention(account_id, build_id)?;
     let enabled = mods.enabled(account_id)?;
     let mut conflicts = mods.conflicts(account_id)?;
     let dll = mods.dll_overrides(account_id)?;
@@ -394,6 +403,7 @@ fn snapshot(mods: &GameMods, account_id: &str) -> decanter_mods::Result<Loaded> 
         rows.push(Row {
             enabled: order.contains_key(&manifest.id),
             position: order.get(&manifest.id).copied(),
+            attention: attention.remove(&manifest.id),
             users,
             conflicts: conflicts.remove(&manifest.id),
             manifest,

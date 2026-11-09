@@ -22,6 +22,8 @@ pub(super) struct UpdatesTab {
     /// The installed Epic DLC the last check found a newer build of.
     dlc_updates: Vec<decanter_epic::DlcUpdate>,
     error: Option<Text>,
+    /// Said once, after an update changed game files that enabled mods replace.
+    mods_notice: Option<Text>,
 }
 
 impl UpdatesTab {
@@ -35,11 +37,28 @@ impl UpdatesTab {
             updating: false,
             dlc_updates: Vec::new(),
             error: None,
+            mods_notice: None,
         }
     }
 
     fn reload(&mut self) {
         self.installed = crate::core::installed_game(&self.target.account_id, &self.target.product_id);
+    }
+
+    /// Compares the game's files enabled mods replace with what they were, after an update.
+    fn check_mods(&self, cx: &Context<Self>) {
+        let Some(game) = self.installed.clone() else {
+            return;
+        };
+        let account_id = self.target.account_id.clone();
+        cx.spawn(async move |this, cx| {
+            let count = crate::mods::check_after_update(&account_id, &game).await;
+            let _ = this.update(cx, |this, cx| {
+                this.mods_notice = (count > 0).then(|| Text::new("mods.attention.after_update").arg("count", count));
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn check(&mut self, cx: &mut Context<Self>) {
@@ -165,6 +184,7 @@ impl UpdatesTab {
                         .is_some_and(|installed| Some(&installed.build_id) == latest.as_ref());
                     if is_current || latest.is_none() {
                         this.result = Some(None);
+                        this.check_mods(cx);
                     }
                     this.dlc_updates = remaining;
                     cx.notify();
@@ -200,6 +220,9 @@ impl UpdatesTab {
                 }
                 this.updating = false;
                 this.reload();
+                if this.result == Some(None) {
+                    this.check_mods(cx);
+                }
                 cx.notify();
             });
         })
@@ -282,6 +305,7 @@ impl Render for UpdatesTab {
                     ),
             )
             .child(actions)
+            .children(self.mods_notice.as_ref().map(theme::muted))
             .children(error_line(self.error.as_ref()))
     }
 }

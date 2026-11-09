@@ -32,6 +32,8 @@ pub struct Prepared {
     pub mods: Vec<(ModId, String)>,
     /// What the enabled mods ask `WINEDLLOVERRIDES` for.
     pub dll_overrides: Vec<EffectiveOverride>,
+    /// Enabled mods left out because an update changed a game file under them.
+    pub left_out: Vec<(ModId, String)>,
     pub links: usize,
     /// Files the game wrote into the play tree, which stay as they are.
     pub written_by_game: usize,
@@ -107,6 +109,7 @@ pub(crate) fn reconcile(game: &GameMods, account: &str, mods: &[ModManifest]) ->
             .map(|manifest| (manifest.id.clone(), manifest.name.clone()))
             .collect(),
         dll_overrides: dll::effective(mods),
+        left_out: Vec::new(),
         links: placed.len(),
         written_by_game,
     })
@@ -393,4 +396,29 @@ pub(crate) fn written_by_game(game: &GameMods, account: &str) -> Result<Vec<ModP
     }
     found.sort();
     Ok(found)
+}
+
+/// The bytes of the real files under `dir`, without following or counting links.
+pub(crate) fn real_size(dir: &Path) -> Result<u64> {
+    let mut total = 0_u64;
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        let entries = match fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(Error::io(&folder)(err)),
+        };
+        for entry in entries {
+            let entry = entry.map_err(Error::io(&folder))?;
+            let file_type = entry.file_type().map_err(Error::io(&entry.path()))?;
+            if file_type.is_dir() {
+                pending.push(entry.path());
+            } else if !file_type.is_symlink() {
+                total = total.saturating_add(entry.metadata().map_err(Error::io(&entry.path()))?.len());
+            } else {
+                // A link decanter placed: its target is the install's or a mod's, not the game's.
+            }
+        }
+    }
+    Ok(total)
 }

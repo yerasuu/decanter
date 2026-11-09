@@ -633,8 +633,31 @@ async fn install_dlcs(
 
 /// Uninstalls the game, and with it the paused downloads of it (an update,
 /// say) and of its DLC, which the confirmation the user answered named each
-/// with its size (#1316).
-pub async fn uninstall(account_id: String, product_id: String, state: AppState, cx: &mut AsyncApp) -> Result<(), Text> {
+/// with its size (#1316). Then its play tree for the account goes and, when `mods` says so, its
+/// mods; the game's mods folder is found before its record goes.
+pub async fn uninstall(
+    account_id: String,
+    product_id: String,
+    mods: crate::mods::OnUninstall,
+    state: AppState,
+    cx: &mut AsyncApp,
+) -> Result<(), Text> {
+    let game_mods = crate::core::installed_game(&account_id, &product_id)
+        .as_ref()
+        .and_then(crate::mods::for_game);
+    uninstall_store(account_id.clone(), product_id, state, cx).await?;
+    crate::mods::after_uninstall(&account_id, game_mods, mods)
+        .await
+        .inspect_err(|err| tracing::error!(account_id, error = %err, "mods not removed with the game"))
+        .map_err(Text::verbatim)
+}
+
+async fn uninstall_store(
+    account_id: String,
+    product_id: String,
+    state: AppState,
+    cx: &mut AsyncApp,
+) -> Result<(), Text> {
     #[cfg(target_os = "linux")]
     if super::amazon_install::is_amazon_account(&account_id) {
         return super::amazon_install::uninstall(&account_id, &product_id, &state, cx).await;

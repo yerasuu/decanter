@@ -66,6 +66,105 @@ pub async fn override_summary(account_id: &str, game: &InstalledGame) -> Option<
     }
 }
 
+/// How many of the account's enabled mods an update of the game changed a file under, which are
+/// left out of the play tree until the Mods tab keeps or disables them; checked right after the
+/// update so the Updates tab can say so once.
+pub async fn check_after_update(account_id: &str, game: &InstalledGame) -> usize {
+    let Some(mods) = for_game(game) else {
+        return 0;
+    };
+    let account = account_id.to_owned();
+    let build_id = game.build_id.clone();
+    match tokio::task::spawn_blocking(move || mods.needing_attention(&account, &build_id)).await {
+        Ok(Ok(attention)) => {
+            if !attention.is_empty() {
+                tracing::warn!(game_id = %game.game_id, mods = attention.len(), "the update changed game files that mods replace");
+            }
+            attention.len()
+        }
+        Ok(Err(err)) => {
+            tracing::warn!(game_id = %game.game_id, %err, "mods not checked after the update");
+            0
+        }
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "checking the mods after the update stopped");
+            0
+        }
+    }
+}
+
+/// What uninstalling a game removes of its mods, for the confirmation (decision #1133: say what
+/// goes and how big it is).
+#[derive(Clone, Copy)]
+pub struct UninstallMods {
+    /// What the game wrote into this account's play tree, which goes with the prefix.
+    pub play_bytes: u64,
+    pub mods: usize,
+    pub mods_bytes: u64,
+    /// Only when no other account still has the game installed, since its set may use them.
+    pub can_remove_mods: bool,
+}
+
+/// Whether an uninstall also deletes the game's mods: off unless ticked (design, open question 9).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum OnUninstall {
+    KeepMods,
+    RemoveMods,
+}
+
+/// `None` when the game has no mods folder.
+pub async fn uninstall_summary(account_id: &str, game: &InstalledGame) -> Option<UninstallMods> {
+    let mods = for_game(game)?;
+    if !mods.dir().exists() {
+        return None;
+    }
+    // Without the library, taken as shared so that nothing another account may use is offered.
+    let shared = crate::core::library_for_account(account_id).map_or(true, |library| {
+        library.install_dir_is_shared(&game.install_dir, account_id, &game.game_id)
+    });
+    let account = account_id.to_owned();
+    let read = tokio::task::spawn_blocking(move || {
+        let all = mods.list()?;
+        let play_bytes = mods.play_size(&account)?;
+        Ok::<_, decanter_mods::Error>(UninstallMods {
+            play_bytes,
+            mods: all.len(),
+            mods_bytes: all.iter().map(decanter_mods::ModManifest::size).sum(),
+            can_remove_mods: !shared,
+        })
+    })
+    .await;
+    match read {
+        Ok(Ok(summary)) => Some(summary),
+        Ok(Err(err)) => {
+            tracing::warn!(game_id = %game.game_id, %err, "the game's mods could not be measured for the uninstall");
+            None
+        }
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "measuring the game's mods stopped");
+            None
+        }
+    }
+}
+
+/// After the game's own uninstall: its play tree for the account goes, and its mods when asked.
+pub async fn after_uninstall(account_id: &str, mods: Option<GameMods>, choice: OnUninstall) -> Result<(), String> {
+    let Some(mods) = mods else {
+        return Ok(());
+    };
+    let account = account_id.to_owned();
+    tokio::task::spawn_blocking(move || {
+        mods.remove_play(&account)?;
+        if choice == OnUninstall::RemoveMods {
+            mods.remove_all()?;
+        }
+        Ok::<_, decanter_mods::Error>(())
+    })
+    .await
+    .map_err(|err| format!("removing the game's mods stopped: {err}"))?
+    .map_err(|err| format!("the game is uninstalled, but its mods could not be removed: {err}"))
+}
+
 /// A launch from a play tree instead of the install.
 pub struct Play {
     install: PathBuf,
@@ -79,8 +178,9 @@ pub async fn prepare(account_id: &str, game: &InstalledGame) -> Result<Option<Pl
         return Ok(None);
     };
     let account = account_id.to_owned();
+    let build_id = game.build_id.clone();
     let install = mods.install().to_path_buf();
-    let prepared = tokio::task::spawn_blocking(move || mods.prepare(&account))
+    let prepared = tokio::task::spawn_blocking(move || mods.prepare(&account, &build_id))
         .await
         .map_err(|err| format!("the play tree's preparation stopped: {err}"))?
         .map_err(|err| format!("the game's mods could not be applied: {err}"))?;
@@ -95,7 +195,7 @@ impl Play {
             .map(|relative| self.prepared.root.join(relative))
     }
 
-    pub fn facts(&self) -> [(&'static str, String); 3] {
+    pub fn facts(&self) -> [(&'static str, String); 4] {
         let names = self
             .prepared
             .mods
@@ -103,6 +203,18 @@ impl Play {
             .map(|(id, name)| format!("{name} ({id})"))
             .collect::<Vec<_>>()
             .join(", ");
+        let left_out = self
+            .prepared
+            .left_out
+            .iter()
+            .map(|(id, name)| format!("{name} ({id}), an update changed a game file it replaces"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let left_out = if left_out.is_empty() {
+            "none".to_owned()
+        } else {
+            left_out
+        };
         let overrides = self
             .prepared
             .dll_overrides
@@ -121,6 +233,7 @@ impl Play {
                     overrides
                 },
             ),
+            ("mods_left_out", left_out),
         ]
     }
 

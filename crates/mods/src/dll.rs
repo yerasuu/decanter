@@ -27,6 +27,10 @@ const MAX_DLL_CHARS: usize = 64;
 /// How Wine loads one DLL, as `WINEDLLOVERRIDES` spells it: the whole of Wine's grammar, so it is
 /// not expected to grow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "Wine's whole grammar for one DLL, matched without a wildcard"
+)]
 pub enum DllMode {
     /// `n,b`: the game folder's copy first, Wine's own if there is none.
     NativeThenBuiltin,

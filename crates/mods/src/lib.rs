@@ -60,6 +60,7 @@
 )]
 
 mod archive;
+mod base;
 mod dll;
 mod error;
 mod files;

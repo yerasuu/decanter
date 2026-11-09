@@ -11,7 +11,7 @@ use crate::theme;
 use crate::views::downloads::{download_actions, progress_lines};
 use crate::views::library::install::{self, InstallRequest};
 use crate::views::library::{actions, open_properties};
-use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
+use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
 
 impl DetailView {
     pub(super) fn action_bar(&self, game: &Game, bar_state: BarState, window: &Window, cx: &Context<Self>) -> Div {
@@ -79,11 +79,13 @@ impl DetailView {
             )
         };
         if !uninstall.confirming {
+            let (account_id, product_id) = (game.account_id.clone(), game.id.clone());
             return vec![
                 button("uninstall", ButtonKind::Icon, label.clone(), false)
                     .tooltip(tooltip(label))
-                    .on_click(cx.listener(|this, _, _, cx| {
+                    .on_click(cx.listener(move |this, _, _, cx| {
                         this.local.uninstall.confirming = true;
+                        Self::measure_mods(account_id.clone(), product_id.clone(), cx);
                         cx.notify();
                     }))
                     .into_any_element(),
@@ -108,6 +110,7 @@ impl DetailView {
                 _ => None,
             })
             .collect();
+        elements.extend(self.uninstall_mods_lines(cx));
         // Uninstalling an Epic game deletes the DLC installed into its folder with it.
         if self.loaded.as_ref().is_some_and(|loaded| !loaded.epic_dlcs.is_empty()) {
             elements.push(theme::muted(t!("epic.dlc.uninstall_with_game")).into_any_element());
@@ -121,6 +124,8 @@ impl DetailView {
             button("uninstall-cancel", ButtonKind::Icon, t!("common.cancel"), false)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.local.uninstall.confirming = false;
+                    this.local.uninstall.mods = None;
+                    this.local.uninstall.remove_mods = false;
                     cx.notify();
                 }))
                 .into_any_element(),
@@ -280,6 +285,73 @@ impl DetailView {
         }
     }
 
+    /// Reads what the uninstall would remove of the game's mods, for the confirmation.
+    fn measure_mods(account_id: String, product_id: String, cx: &Context<Self>) {
+        let Some(game) = crate::core::installed_game(&account_id, &product_id) else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let summary = crate::mods::uninstall_summary(&account_id, &game).await;
+            let _ = this.update(cx, |this, cx| {
+                let still_shown = this
+                    .loaded
+                    .as_ref()
+                    .is_some_and(|loaded| loaded.product_id == product_id && loaded.account_id == account_id);
+                if still_shown && this.local.uninstall.confirming {
+                    this.local.uninstall.mods = summary;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// The play tree that goes with the prefix, and the box that also removes the mods when no
+    /// other account has the game (decision #1133).
+    fn uninstall_mods_lines(&self, cx: &Context<Self>) -> Vec<AnyElement> {
+        let Some(summary) = self.local.uninstall.mods else {
+            return Vec::new();
+        };
+        let mut lines = Vec::with_capacity(2);
+        if summary.play_bytes > 0 {
+            lines.push(
+                theme::muted(t!(
+                    "mods.uninstall.play",
+                    size = crate::format::bytes(summary.play_bytes)
+                ))
+                .into_any_element(),
+            );
+        }
+        if summary.mods == 0 {
+            return lines;
+        }
+        if summary.can_remove_mods {
+            let checked = self.local.uninstall.remove_mods;
+            lines.push(
+                div()
+                    .id("uninstall-mods")
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.local.uninstall.remove_mods = !this.local.uninstall.remove_mods;
+                        cx.notify();
+                    }))
+                    .child(checkbox(checked))
+                    .child(theme::muted(t!(
+                        "mods.uninstall.remove_mods",
+                        count = summary.mods,
+                        size = crate::format::bytes(summary.mods_bytes)
+                    )))
+                    .into_any_element(),
+            );
+        } else {
+            lines.push(theme::muted(t!("mods.uninstall.mods_kept", count = summary.mods)).into_any_element());
+        }
+        lines
+    }
+
     fn uninstall(&mut self, account_id: String, product_id: String, cx: &mut Context<Self>) {
         self.local.uninstall.busy = true;
         cx.notify();
@@ -315,10 +387,17 @@ impl DetailView {
             return;
         }
         let state = AppState::get(cx).clone();
+        let wants_mods_removed = self.local.uninstall.remove_mods
+            && self.local.uninstall.mods.is_some_and(|summary| summary.can_remove_mods);
+        let mods = if wants_mods_removed {
+            crate::mods::OnUninstall::RemoveMods
+        } else {
+            crate::mods::OnUninstall::KeepMods
+        };
         // Detached rather than held by the view: it deletes real files, so
         // selecting another game mid-way mustn't cancel it half done.
         cx.spawn(async move |this, cx| {
-            let result = install::uninstall(account_id.clone(), product_id.clone(), state, cx).await;
+            let result = install::uninstall(account_id.clone(), product_id.clone(), mods, state, cx).await;
             let _ = this.update(cx, |this, cx| {
                 // The pane may have moved on to another game by now, whose
                 // confirm step this result has nothing to do with.

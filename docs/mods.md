@@ -1,7 +1,7 @@
 # Third-party mods
 
-What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 3, loose folders and zip or 7z
-archives for GOG games, DLL overrides and load order. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
+What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 4 for GOG games: loose folders and zip
+or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
 the Mods tab is `app/src/views/library/properties/mods/`.
 
 ## Using it
@@ -26,6 +26,25 @@ the Mods tab is `app/src/views/library/properties/mods/`.
   header names them (`mod_dll_overrides`); Compatibilidad shows them read-only. On a Windows host they are ignored.
 - Each enabled mod lists the game's files it replaces and the files it wins or loses against other mods.
 - *Quitar* asks first, with the mod's size and how many accounts use it, then deletes it for every account.
+- *Comprobar archivos* hashes a mod's files against its `mod.toml` and lists those that changed (a game that rewrote
+  a config through its link writes the mod's copy).
+
+## Updates
+
+- When an account's set is applied, `profiles/<account>.toml` `[base]` records the build and, per game path a mod
+  replaces or adds (folded), the install file's `sha256:` or `absent`. The comparison runs again only when the
+  installed build differs from `[base].build_id`: at launch, when the Mods tab opens, and right after an update in
+  Actualizaciones, which then says how many mods need attention.
+- A changed file (or a path only a mod had that the update now ships) puts every enabled mod touching it in
+  `[attention]`: it is left out of the play tree (the run log's `mods_left_out` says so) and the Mods tab lists the
+  files with *Seguir usándolo* (records the new files) and *Desactivarlo*. Nothing is decided for the user.
+
+## Uninstall
+
+- The confirmation says how much the game wrote into this account's play tree, which goes with the prefix
+  (`play/<account>/` and its record; the set stays for a reinstall).
+- When no other account still has the game installed, a box *also remove N mods (size)*, off by default, deletes the
+  whole `mods/<store>/<game>/` folder; otherwise the mods are kept and the dialog says so.
 
 ## Where things are
 
@@ -73,5 +92,4 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-RAR, update checks and the uninstall dialog (phase 4),
-external games, renaming a mod once added, and a target folder for a loose folder.
+RAR, external games, renaming a mod once added, and a target folder for a loose folder.

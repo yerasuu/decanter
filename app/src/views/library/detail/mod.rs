@@ -153,6 +153,10 @@ struct Uninstall {
     confirming: bool,
     busy: bool,
     error: Option<crate::i18n::Text>,
+    /// What the uninstall removes of the game's mods, read once the confirmation opens.
+    mods: Option<crate::mods::UninstallMods>,
+    /// The confirmation's *also remove the mods* box, off by default.
+    remove_mods: bool,
 }
 
 /// UI state that belongs to one game and starts over when the selection

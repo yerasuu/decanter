@@ -6,6 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::archive::{self, ArchivePreview};
+use crate::base;
 use crate::dll::{self, DllMode, EffectiveOverride};
 use crate::manifest::ModManifest;
 use crate::merge::{Owner, merge};
@@ -428,19 +429,141 @@ impl GameMods {
     /// from; `None` while the account has never enabled a mod, so the game starts from its install
     /// as it always did. Must not run while the game runs: links it replaces may be open.
     ///
+    /// The game's files the enabled mods touch are first compared with what they were when the
+    /// mods were applied, once per `build_id` (the installed build); a mod an update changed a file
+    /// under is left out until [`Self::keep`] or it is disabled.
+    ///
     /// # Errors
     ///
     /// When an enabled mod does not hold up (its `mod.toml`, or a file that is missing or leads
     /// outside it), or a link can't be placed; the launch then fails rather than starting the
     /// game without its mods.
     #[inline]
-    pub fn prepare(&self, account: &str) -> Result<Option<Prepared>> {
-        let mods = self.enabled_manifests(account)?;
+    pub fn prepare(&self, account: &str, build_id: &str) -> Result<Option<Prepared>> {
+        let mut mods = self.enabled_manifests(account)?;
         let play = self.play_dir(account)?;
         if mods.is_empty() && !play.exists() {
             return Ok(None);
         }
-        tree::reconcile(self, account, &mods).map(Some)
+        let set = self.checked_set(account, build_id, &mods)?;
+        let left_out: Vec<(ModId, String)> = mods
+            .iter()
+            .filter(|manifest| set.attention.contains_key(&manifest.id))
+            .map(|manifest| (manifest.id.clone(), manifest.name.clone()))
+            .collect();
+        mods.retain(|manifest| !set.attention.contains_key(&manifest.id));
+        for skipped in &left_out {
+            tracing::warn!(account, mod_id = %skipped.0, name = skipped.1, "mod left out of the play tree, it needs attention");
+        }
+        let mut prepared = tree::reconcile(self, account, &mods)?;
+        prepared.left_out = left_out;
+        Ok(Some(prepared))
+    }
+
+    /// `account`'s set after comparing the files its enabled `mods` touch at `build_id`, written
+    /// back when that changed it.
+    fn checked_set(&self, account: &str, build_id: &str, mods: &[ModManifest]) -> Result<ModSet> {
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        if !mods.is_empty() && base::check(self, &mut set, build_id, mods)? {
+            set.write(&path)?;
+        }
+        Ok(set)
+    }
+
+    /// The enabled mods of `account` that an update changed a game file under, with those files,
+    /// comparing them first when `build_id` is new; what the Mods tab and the Updates tab show.
+    ///
+    /// # Errors
+    ///
+    /// When the set file or an enabled mod does not hold up, or a game file can't be read.
+    #[inline]
+    pub fn needing_attention(&self, account: &str, build_id: &str) -> Result<BTreeMap<ModId, Vec<ModPath>>> {
+        let mods = self.enabled_manifests(account)?;
+        Ok(self.checked_set(account, build_id, &mods)?.attention)
+    }
+
+    /// Takes the game's files as they are now as what `id` was made for, which lets it back into
+    /// `account`'s play tree.
+    ///
+    /// # Errors
+    ///
+    /// When the set file can't be read or written, or a game file can't be read.
+    #[inline]
+    pub fn keep(&self, account: &str, id: &ModId) -> Result<()> {
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        base::keep(self, &mut set, id)?;
+        set.write(&path)
+    }
+
+    /// The mod's files that are no longer what was imported (a game that rewrote one in place).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownMod`] for a mod the game does not have, else when a file can't be read.
+    #[inline]
+    pub fn changed_files(&self, id: &ModId) -> Result<Vec<ModPath>> {
+        let manifest = ModManifest::read(&self.mod_dir(id), id)?.ok_or_else(|| Error::UnknownMod(id.to_string()))?;
+        base::changed_files(self, &manifest)
+    }
+
+    /// The bytes of what the game wrote into `account`'s play tree, which go with it on uninstall;
+    /// the links themselves are not counted.
+    ///
+    /// # Errors
+    ///
+    /// When the play tree can't be read.
+    #[inline]
+    pub fn play_size(&self, account: &str) -> Result<u64> {
+        tree::real_size(&self.play_dir(account)?)
+    }
+
+    /// Deletes `account`'s play tree and its record, as uninstalling the game does with its prefix;
+    /// its set stays, so a reinstall plays with the same mods.
+    ///
+    /// # Errors
+    ///
+    /// When either can't be deleted.
+    #[inline]
+    pub fn remove_play(&self, account: &str) -> Result<()> {
+        let play = self.play_dir(account)?;
+        match fs::remove_dir_all(&play) {
+            Ok(()) => {}
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => return Err(Error::io(&play)(err)),
+        }
+        let record = self.record_path(account)?;
+        match fs::remove_file(&record) {
+            Ok(()) => {}
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => return Err(Error::io(&record)(err)),
+        }
+        tracing::info!(account, path = %play.display(), "play tree removed");
+        Ok(())
+    }
+
+    /// Deletes the game's whole mods folder: every mod, set and play tree.
+    ///
+    /// # Errors
+    ///
+    /// When it can't be deleted; renamed away first, so a deletion cut short leaves no half mods
+    /// folder under the game's id.
+    #[inline]
+    pub fn remove_all(&self) -> Result<()> {
+        let Some(parent) = self.dir.parent() else {
+            return Err(Error::NotAnInstall(self.dir.display().to_string()));
+        };
+        let name = self.dir.file_name().and_then(|name| name.to_str()).unwrap_or("game");
+        let doomed = parent.join(format!(".{name}.removed-{}", std::process::id()));
+        match fs::rename(&self.dir, &doomed) {
+            Ok(()) => {}
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(err) => return Err(Error::io(&self.dir)(err)),
+        }
+        fs::remove_dir_all(&doomed).map_err(Error::io(&doomed))?;
+        tracing::info!(path = %self.dir.display(), "game's mods folder removed");
+        Ok(())
     }
 
     /// The files in `account`'s play tree that decanter did not place: the game's saves and
