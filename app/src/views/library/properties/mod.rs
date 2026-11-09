@@ -105,13 +105,14 @@ const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 const STEAM_TABS: &[Tab] = &[Tab::General];
 
 /// Amazon has no branches, languages, DLC or cloud saves decanter reads yet;
-/// its files are verified and updated like any store's.
-const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles];
+/// its files are verified and updated like any store's, and mods apply over
+/// its install as over GOG's.
+const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::Mods];
 
 /// Epic has no languages yet, and its DLC are listed under the game's detail;
-/// its files are verified and updated like Amazon's, and its cloud saves are
-/// its own (`epic_cloud_saves`).
-const EPIC_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::CloudSaves];
+/// its files are verified and updated like Amazon's, its cloud saves are its
+/// own (`epic_cloud_saves`), and mods apply over its install as over GOG's.
+const EPIC_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::CloudSaves, Tab::Mods];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close

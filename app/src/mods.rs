@@ -11,12 +11,16 @@ use decanter_mods::{GameMods, Prepared, Store};
 const SHARED_BY_DEFAULT: [&str; 6] = ["/home", "/media", "/mnt", "/run/media", "/opt", "/srv"];
 const SHARE_VARIABLE: &str = "PRESSURE_VESSEL_FILESYSTEMS_RW";
 
-/// The mods folder of an installed GOG game. External games get mods later (design, open
-/// question 6), so they have none.
+/// The mods folder of an installed GOG, Amazon Games or Epic Games game, all of which install
+/// under `common/<InstallDir>` with a manifest of their own. External games get mods later
+/// (design, open question 6), so they have none.
 pub fn for_game(game: &InstalledGame) -> Option<GameMods> {
-    if game.storefront != Storefront::Gog {
-        return None;
-    }
+    let store = match game.storefront {
+        Storefront::Gog => Store::Gog,
+        Storefront::AmazonGames => Store::Amazon,
+        Storefront::EpicGames => Store::Epic,
+        _ => return None,
+    };
     let library = match crate::core::library_for_account(&game.account_id) {
         Ok(library) => library,
         Err(err) => {
@@ -25,7 +29,7 @@ pub fn for_game(game: &InstalledGame) -> Option<GameMods> {
         }
     };
     let install = library.install_dir(&game.install_dir)?;
-    GameMods::new(&install, Store::Gog, &game.game_id)
+    GameMods::new(&install, store, &game.game_id)
         .inspect_err(|err| tracing::warn!(game_id = %game.game_id, %err, "no mods folder for the game"))
         .ok()
 }

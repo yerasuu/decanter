@@ -1,7 +1,7 @@
 # Third-party mods
 
-What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 4 for GOG games: loose folders and zip
-or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
+What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 4 for GOG, Amazon Games and Epic Games
+games: loose folders and zip or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
 the Mods tab is `app/src/views/library/properties/mods/`.
 
 ## Using it
@@ -51,7 +51,7 @@ the Mods tab is `app/src/views/library/properties/mods/`.
 Under the library root that holds the install (`<root>/common/<InstallDir>`):
 
 ```
-<root>/decanter/mods/gog/<game id>/
+<root>/decanter/mods/<store>/<game id>/    <store>: gog, amazon or epic
     <mod uuid>/mod.toml, files/    one mod, shared by every account that has the game
     profiles/<account>.toml        the account's enabled mods in load order, and the disabled ones
     play/<account>/                the play tree the game starts from
@@ -66,7 +66,9 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
   file and is never replaced. A cloud save folder inside the install is read from the play tree instead.
 - The game starts from the play tree once an account has turned a mod on, and keeps starting from it with every mod
   off, since it may hold the game's files. With no mod ever on there is no play tree and nothing changes.
-- Verify, repair and update read and write only `common/<InstallDir>`: a mod never writes into the install.
+- Verify, repair and update read and write only `common/<InstallDir>`: a mod never writes into the install. This holds
+  for all three stores, whose installs are all `common/<InstallDir>` with a manifest per account; an Epic DLC
+  installed into the game's folder is mirrored at the next launch like any file of the install.
 - When the library root is outside the folders the Steam Linux Runtime shares by default, the launch adds it to
   `PRESSURE_VESSEL_FILESYSTEMS_RW`.
 

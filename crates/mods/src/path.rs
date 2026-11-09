@@ -149,13 +149,15 @@ impl fmt::Display for ModId {
 }
 
 /// An account or game id as one folder or file name: the rule manifests already follow (ASCII
-/// alphanumerics, `_`, `-`).
+/// alphanumerics, `_`, `-`, and `.` for Amazon's dotted `amzn1.adg.product.<uuid>`), never starting
+/// with a `.`, so it can't be `.`, `..` or a hidden name.
 pub(crate) fn id_component(text: &str) -> Result<&str> {
     if text.is_empty()
         || text.len() > 128
+        || text.starts_with('.')
         || !text
             .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
     {
         return Err(Error::InvalidName(text.to_owned()));
     }

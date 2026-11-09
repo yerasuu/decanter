@@ -25,6 +25,8 @@ pub(crate) const INCOMING: &str = "incoming";
 #[non_exhaustive]
 pub enum Store {
     Gog,
+    Amazon,
+    Epic,
     External,
 }
 
@@ -32,6 +34,8 @@ impl Store {
     const fn folder(self) -> &'static str {
         match self {
             Self::Gog => "gog",
+            Self::Amazon => "amazon",
+            Self::Epic => "epic",
             Self::External => "ext",
         }
     }
