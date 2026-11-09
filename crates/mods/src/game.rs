@@ -267,7 +267,18 @@ impl GameMods {
     /// ratio caps), [`Error::Cancelled`] when `progress` was cancelled, or on a read failure.
     #[inline]
     pub fn preview_archive(&self, source: &Path, progress: &Progress) -> Result<ArchivePreview> {
-        archive::preview(self, source, progress)
+        archive::preview(self, source, progress, &[])
+    }
+
+    /// As [`Self::preview_archive`], for an archive a mod platform packs with metadata files at
+    /// its root (`leave_out`, compared ignoring case) that are not part of the mod.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::preview_archive`], and [`Error::Empty`] when nothing else is left.
+    #[inline]
+    pub fn preview_package(&self, source: &Path, progress: &Progress, leave_out: &[&str]) -> Result<ArchivePreview> {
+        archive::preview(self, source, progress, leave_out)
     }
 
     /// Extracts the archive `preview` read into a new mod, enabled for `account`, named `name` and

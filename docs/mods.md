@@ -46,6 +46,34 @@ the Mods tab is `app/src/views/library/properties/mods/`.
 - When no other account still has the game installed, a box *also remove N mods (size)*, off by default, deletes the
   whole `mods/<store>/<game>/` folder; otherwise the mods are kept and the dialog says so.
 
+## Thunderstore
+
+*Añadir desde Thunderstore…* opens a browser in the tab (`crates/thunderstore`, `mods/thunderstore/` in the app;
+[mod-platforms-analysis.md](mod-platforms-analysis.md) section 2). No account; nothing is asked of Thunderstore until
+the user acts, requests are paced to one a second and name decanter in the User-Agent, HTTPS only, redirects only to
+`*.thunderstore.io`.
+
+- Community: the first time, the game's title is matched against `/api/experimental/community/` (cached a week in
+  `<root>/decanter/thunderstore/communities.json`); the user confirms the match or picks one, with the layout, and the
+  choice is kept in `mods/<store>/<game>/thunderstore.toml`. *Cambiar* picks again.
+- Packages: `/c/<community>/api/v1/package/`, streamed to `<root>/decanter/thunderstore/listings/<community>.json`
+  (6 hours, at most 1 GiB) and searched locally: name, team, summary, downloads, rating, last update, icon. The detail
+  lists versions and the latest one's dependencies. A package or version that does not parse is skipped and counted
+  in the log; an answer that does not parse at all is a retryable error.
+- *Instalar* plans the latest version and every `Team-Name-1.2.3` it needs, recursively (10 levels, 100 packages,
+  cycle-safe; the higher version wins; a dependency already installed from Thunderstore is not downloaded again and
+  is listed with the version asked for; one the community lacks refuses the install). The zips download into
+  `mods/<store>/<game>/incoming/thunderstore-<pid>-<n>/` with progress and *Cancelar*, each matched against the size
+  the listing gives, then each is read by the archive import above, `icon.png`, `README.md`, `manifest.json` and
+  `CHANGELOG.md` at its root left out. Nothing is added before *Añadir*; dependencies go first in the load order.
+- Layout, per game: *BepInEx* follows r2modman's convention as the analysis reads it (not verified against
+  r2modman): a package with `BepInEx/` goes to the game's root, `plugins/`, `patchers/`, `config/` and `monomod/` go
+  under `BepInEx/`, a package with none of them into `BepInEx/plugins/<Team-Name>/`; one mixing those folders with
+  other files is placed as any archive and the preview says so. *Como cualquier archivo* places every package as any
+  archive. Making BepInEx load under Proton (`winhttp` and its doorstop) is the DLL proxy rule above, nothing more.
+- `mod.toml` gets `[origin]` (`platform = "thunderstore"`, `package`, `version`, `host`). Such a mod shows it with
+  *Buscar actualizaciones*, which compares it with the latest version in the community's listing.
+
 ## Where things are
 
 Under the library root that holds the install (`<root>/common/<InstallDir>`):
@@ -94,4 +122,4 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-RAR, external games, renaming a mod once added, and a target folder for a loose folder.
+RAR, external games, renaming a mod once added, a target folder for a loose folder, and Nexus Mods or mod.io.

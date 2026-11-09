@@ -9,7 +9,7 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 
 | Component | Terms and source |
 | --- | --- |
-| decanter application and its crates (`app`, `crates/amazon`, `crates/core`, `crates/epic`, `crates/galaxy`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
+| decanter application and its crates (`app`, `crates/amazon`, `crates/core`, `crates/epic`, `crates/galaxy`, `crates/gog`, `crates/mods`, `crates/nix`, `crates/ps`, `crates/runtime`, `crates/report`, `crates/thunderstore`), scripts and tools | GPL-3.0-or-later; root `LICENSE`. The GOG web API client in `crates/gog/src/api` began as `gog` 0.5.0 (gogapi-rs) by nicohman, GPL-3.0 (`https://git.sr.ht/~nicohman/gogapi-rs`), and holds none of its code any more: see `crates/gog/src/api/VENDOR.md` |
 | Galaxy64.dll achievement proxy (`crates/hook`) | GPL-3.0-or-later; `crates/hook/Cargo.toml`. A Windows DLL built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a GOG game |
 | GalaxyCommunication stand-in service (`crates/galaxy-service`) | GPL-3.0-or-later; `crates/galaxy-service/Cargo.toml`. A dependency-free Windows executable built from this crate and embedded in decanter; it runs inside the Wine or Proton prefix of a game that uses the Galaxy SDK |
 | Report server (`crates/reports-server`) | AGPL-3.0-or-later; `crates/reports-server/LICENSE`. A separate binary with its own workspace; it links s3db (AGPL-3.0-or-later) and `decanter-report` |
@@ -57,6 +57,8 @@ similar permissive terms. Exceptions this review found:
   with deflate64 (MIT), ppmd-rust (CC0-1.0 OR MIT-0), typed-path (MIT OR Apache-2.0) and lzma-rust2 0.23 (Apache-2.0,
   beside the 0.25 crates/amazon uses). All are pure Rust and compatible with GPL-3.0-or-later. bzip2 support is left
   out because libbz2-rs-sys is `bzip2-1.0.6`, a licence the inventory's allow-list does not hold.
+- `crates/thunderstore` reads Thunderstore's public API from the facts of `docs/mod-platforms-analysis.md` and adds
+  no dependency: reqwest, serde, serde_json, sha2, tokio, toml and url are already in the workspace.
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.

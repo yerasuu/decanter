@@ -1394,6 +1394,7 @@ dependencies = [
  "decanter-ps",
  "decanter-report",
  "decanter-runtime",
+ "decanter-thunderstore",
  "dirs 7.0.0",
  "embed-resource",
  "futures",
@@ -1604,6 +1605,23 @@ dependencies = [
  "tokio",
  "tracing",
  "win32job",
+]
+
+[[package]]
+name = "decanter-thunderstore"
+version = "0.4.0"
+dependencies = [
+ "decanter-core",
+ "decanter-mods",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml 1.1.8+spec-1.1.0",
+ "tracing",
+ "url",
 ]
 
 [[package]]

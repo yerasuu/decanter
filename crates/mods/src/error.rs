@@ -62,6 +62,8 @@ pub enum Error {
     Cancelled,
     #[error("{0:?} is not a DLL override decanter writes")]
     InvalidOverride(String),
+    #[error("{0:?} can't be part of a mod's origin")]
+    InvalidOrigin(String),
 }
 
 impl Error {

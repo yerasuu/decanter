@@ -20,6 +20,7 @@ decanter-nix.workspace = true
 decanter-ps.workspace = true
 decanter-report.workspace = true
 decanter-runtime.workspace = true
+decanter-thunderstore.workspace = true
 dirs.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 anyhow.workspace = true

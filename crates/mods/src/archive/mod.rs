@@ -18,7 +18,7 @@ use sha2::{Digest as _, Sha256};
 use crate::dll::{self, DllOverride};
 use crate::game::{GameMods, INCOMING};
 use crate::import::{hex, make_incoming};
-use crate::manifest::{FILES, ModFile, ModManifest, check_paths, display_name};
+use crate::manifest::{FILES, ModFile, ModManifest, ModOrigin, check_paths, display_name};
 use crate::merge::walk_install;
 use crate::path::{ModId, ModPath};
 use crate::progress::Progress;
@@ -80,6 +80,7 @@ pub struct ArchivePreview {
     entries: Vec<Entry>,
     install: HashSet<String>,
     program_dirs: HashSet<String>,
+    origin: Option<ModOrigin>,
 }
 
 impl ArchivePreview {
@@ -142,6 +143,40 @@ impl ArchivePreview {
         self.has_installer
     }
 
+    /// The SHA-256 of the archive as read.
+    #[must_use]
+    #[inline]
+    pub fn source_sha256(&self) -> &str {
+        &self.source_sha256
+    }
+
+    /// The folders at the archive's top level once its wrapper is left out, as the archive spells
+    /// them: what a mod loader's layout is recognised by.
+    #[must_use]
+    #[inline]
+    pub fn top_folders(&self) -> BTreeSet<&str> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.path.depth() > 1)
+            .filter_map(|entry| entry.path.components().next())
+            .collect()
+    }
+
+    /// Whether a file sits at the archive's top level once its wrapper is left out.
+    #[must_use]
+    #[inline]
+    pub fn has_top_files(&self) -> bool {
+        self.entries.iter().any(|entry| entry.path.depth() == 1)
+    }
+
+    /// Records in the mod's `mod.toml` the platform the archive was downloaded from.
+    #[must_use]
+    #[inline]
+    pub fn with_origin(mut self, origin: ModOrigin) -> Self {
+        self.origin = Some(origin);
+        self
+    }
+
     /// The game's mod already made from this same archive, and its name.
     #[must_use]
     #[inline]
@@ -184,10 +219,34 @@ impl ArchivePreview {
     }
 }
 
-pub(crate) fn preview(game: &GameMods, source: &Path, progress: &Progress) -> Result<ArchivePreview> {
+/// `leave_out` names files at the archive's root that are its platform's metadata, not part of the
+/// mod (a Thunderstore package's `manifest.json`), compared ignoring case; they are dropped before
+/// the wrapper and the target are worked out.
+pub(crate) fn preview(
+    game: &GameMods,
+    source: &Path,
+    progress: &Progress,
+    leave_out: &[&str],
+) -> Result<ArchivePreview> {
     let (format, metadata) = open(source)?;
     let source_sha256 = hash(source, metadata.len(), progress)?;
-    let listed = list(format, source)?;
+    let mut listed = list(format, source)?;
+    let before = listed.len();
+    listed.retain(|entry| {
+        entry.path.depth() > 1
+            || !leave_out
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(entry.path.as_str()))
+    });
+    if listed.is_empty() {
+        return Err(Error::Empty);
+    }
+    if listed.len() < before {
+        tracing::debug!(
+            left_out = before.saturating_sub(listed.len()),
+            "platform metadata files left out of the mod"
+        );
+    }
     let install_files = walk_install(&game.install)?;
     let (entries, stripped) = strip_wrapper(listed, &install_files)?;
     let install: HashSet<String> = install_files.iter().map(ModPath::folded).collect();
@@ -240,6 +299,7 @@ pub(crate) fn preview(game: &GameMods, source: &Path, progress: &Progress) -> Re
         entries,
         install,
         program_dirs,
+        origin: None,
     })
 }
 
@@ -287,6 +347,7 @@ pub(crate) fn import(
             target,
             files,
             dll_overrides,
+            origin: preview.origin.clone(),
         };
         manifest.write(&incoming)?;
         let destination = game.mod_dir(&id);
@@ -302,6 +363,7 @@ pub(crate) fn import(
                 files = manifest.files.len(),
                 bytes = preview.size,
                 dll_overrides = manifest.dll_overrides.len(),
+                origin = ?manifest.origin.as_ref().map(|from| format!("{}:{}@{}", from.platform, from.package, from.version)),
                 "mod imported from an archive"
             );
             Ok(manifest)

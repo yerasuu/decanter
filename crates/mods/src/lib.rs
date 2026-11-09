@@ -77,7 +77,7 @@ pub use archive::{ArchiveFormat, ArchivePreview};
 pub use dll::{DllMode, DllOverride, EffectiveOverride};
 pub use error::Error;
 pub use game::{GameMods, ModConflicts, Store};
-pub use manifest::{ModFile, ModManifest};
+pub use manifest::{ModFile, ModManifest, ModOrigin};
 pub use path::{ModId, ModPath};
 pub use progress::Progress;
 pub use set::Shift;

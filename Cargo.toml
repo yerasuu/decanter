@@ -11,6 +11,7 @@ members = [
     "crates/ps",
     "crates/report",
     "crates/runtime",
+    "crates/thunderstore",
     "app",
 ]
 # `app` is the workspace's only binary crate (decanter) — this is what lets
@@ -47,6 +48,7 @@ decanter-nix = { path = "crates/nix" }
 decanter-ps = { path = "crates/ps" }
 decanter-report = { path = "crates/report" }
 decanter-runtime = { path = "crates/runtime" }
+decanter-thunderstore = { path = "crates/thunderstore" }
 
 # --- User interface ---
 # Zed's repository at a pinned commit: the crates.io release of gpui no

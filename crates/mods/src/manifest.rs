@@ -14,6 +14,7 @@ pub(crate) const MANIFEST: &str = "mod.toml";
 pub(crate) const FILES: &str = "files";
 const SCHEMA: u32 = 1;
 const MAX_NAME_CHARS: usize = 200;
+const MAX_ORIGIN_BYTES: usize = 128;
 /// Both names of the Galaxy hook's pair: the proxy must stay what the game loads and the real DLL
 /// what the proxy forwards to (design, section 3).
 const RESERVED: [&str; 2] = ["galaxy64.dll", "galaxy64.orig.dll"];
@@ -33,6 +34,50 @@ pub struct ModManifest {
     pub files: Vec<ModFile>,
     /// What the mod needs `WINEDLLOVERRIDES` to say, suggested at import for a proxy DLL.
     pub dll_overrides: Vec<DllOverride>,
+    /// The platform a downloaded mod came from; `None` for a file or folder the user gave.
+    pub origin: Option<ModOrigin>,
+}
+
+/// Where a downloaded mod came from, so that an update check can ask its platform for a newer
+/// version. Every field is a short token, since each came from a platform's answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ModOrigin {
+    /// Which platform, as the crate that downloaded it names it (`thunderstore`).
+    pub platform: String,
+    /// The platform's id of the package, such as Thunderstore's `Team-Name`.
+    pub package: String,
+    pub version: String,
+    /// The host the archive was asked from.
+    pub host: String,
+}
+
+impl ModOrigin {
+    /// # Errors
+    ///
+    /// [`Error::InvalidOrigin`] when a field is empty, longer than 128 bytes or holds anything
+    /// but ASCII letters, digits, `.`, `_` and `-`.
+    #[inline]
+    pub fn new(platform: &str, package: &str, version: &str, host: &str) -> Result<Self> {
+        for field in [platform, package, version, host] {
+            if !is_origin_token(field) {
+                return Err(Error::InvalidOrigin(field.to_owned()));
+            }
+        }
+        Ok(Self {
+            platform: platform.to_owned(),
+            package: package.to_owned(),
+            version: version.to_owned(),
+            host: host.to_owned(),
+        })
+    }
+}
+
+fn is_origin_token(text: &str) -> bool {
+    (1..=MAX_ORIGIN_BYTES).contains(&text.len())
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +106,16 @@ struct RawManifest {
     files: Vec<RawFile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     dll_overrides: Vec<RawOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<RawOrigin>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RawOrigin {
+    platform: String,
+    package: String,
+    version: String,
+    host: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -132,6 +187,12 @@ impl ModManifest {
                     mode: wanted.mode.as_str().to_owned(),
                 })
                 .collect(),
+            origin: self.origin.as_ref().map(|origin| RawOrigin {
+                platform: origin.platform.clone(),
+                package: origin.package.clone(),
+                version: origin.version.clone(),
+                host: origin.host.clone(),
+            }),
         };
         files::write(&dir.join(MANIFEST), &raw)
     }
@@ -186,6 +247,10 @@ impl ModManifest {
             }
             dll_overrides.push(wanted);
         }
+        let origin = raw
+            .origin
+            .map(|origin| ModOrigin::new(&origin.platform, &origin.package, &origin.version, &origin.host))
+            .transpose()?;
         Ok(Self {
             id: id.clone(),
             name,
@@ -196,6 +261,7 @@ impl ModManifest {
             target,
             files,
             dll_overrides,
+            origin,
         })
     }
 }

@@ -65,6 +65,7 @@ pub(crate) fn folder(game: &GameMods, source: &Path) -> Result<ModManifest> {
             target: None,
             files,
             dll_overrides,
+            origin: None,
         };
         manifest.write(&incoming)?;
         let destination = game.mod_dir(&id);

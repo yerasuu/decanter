@@ -23,6 +23,7 @@
         "crates/ps",
         "crates/runtime",
         "crates/report",
+        "crates/thunderstore",
         "scripts",
         "tools",
         "shell.nix",

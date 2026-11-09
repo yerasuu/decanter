@@ -5,6 +5,7 @@
 mod archive;
 mod attention;
 mod dll;
+mod thunderstore;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -20,6 +21,7 @@ use crate::theme;
 use crate::widgets::input::TextInput;
 use crate::widgets::{ButtonKind, button, checkbox, confirm_panel, tooltip};
 use archive::Importing;
+use thunderstore::{Browser, UpdateCheck};
 
 /// How many paths an expanded conflict lists before summing up the rest.
 const SHOWN_PATHS: usize = 50;
@@ -64,6 +66,10 @@ pub(super) struct ModsTab {
     notice: Option<Text>,
     /// Per mod, the files that are no longer what was imported, once checked.
     verified: HashMap<ModId, Vec<ModPath>>,
+    /// The Thunderstore browser, while open.
+    thunderstore: Option<Browser>,
+    /// Per mod from Thunderstore, its last update check.
+    updates: HashMap<ModId, UpdateCheck>,
     error: Option<Text>,
 }
 
@@ -82,6 +88,8 @@ impl ModsTab {
             name_input,
             notice: None,
             verified: HashMap::new(),
+            thunderstore: None,
+            updates: HashMap::new(),
             error: None,
         };
         this.reload(cx);
@@ -215,8 +223,11 @@ impl ModsTab {
         }
     }
 
-    const fn is_locked(&self) -> bool {
-        self.running || self.busy.is_some() || self.importing.is_some()
+    fn is_locked(&self) -> bool {
+        self.running
+            || self.busy.is_some()
+            || self.importing.is_some()
+            || self.thunderstore.as_ref().is_some_and(Browser::is_busy)
     }
 
     fn remove(&mut self, id: ModId, cx: &mut Context<Self>) {
@@ -334,6 +345,7 @@ impl ModsTab {
             .children(self.dll_block(index, row, locked, cx))
             .children(self.attention_block(index, row, locked, cx))
             .children(self.verify_block(index, row, locked, cx))
+            .children(self.origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
     }
 
     /// Up and down in the load order, where the later mod wins a file and a DLL.
@@ -499,6 +511,17 @@ impl Render for ModsTab {
                 button("mod-add", ButtonKind::Secondary, add_label, locked)
                     .when(!locked, |b| b.on_click(cx.listener(|_, _, _, cx| Self::add(cx)))),
             )
+            .child(
+                button(
+                    "mod-add-thunderstore",
+                    ButtonKind::Secondary,
+                    t!("mods.thunderstore.add_button"),
+                    locked || self.thunderstore.is_some(),
+                )
+                .when(!locked && self.thunderstore.is_none(), |b| {
+                    b.on_click(cx.listener(|this, _, _, cx| this.open_thunderstore(None, cx)))
+                }),
+            )
             .children(
                 self.running
                     .then(|| theme::muted(t!("library.properties.mods.running"))),
@@ -547,6 +570,7 @@ impl Render for ModsTab {
             .child(theme::muted(t!("mods.archive.note")))
             .child(actions)
             .children(self.archive_panel(cx))
+            .children(self.thunderstore_panel(locked, cx))
             .children(self.notice.as_ref().map(theme::muted))
             .children(self.confirmation(cx))
             .child(list)
