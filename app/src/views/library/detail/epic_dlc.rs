@@ -84,6 +84,10 @@ impl DetailView {
             } else {
                 theme::muted(t!("epic.dlc.no_build")).into_any_element()
             };
+            let is_outdated = is_dlc_installed
+                && background
+                    .outdated_epic_dlcs
+                    .contains(&DownloadKey::new(&game.account_id, &dlc.id));
             let failed = match status {
                 Some(InstallStatus::Failed(error)) => Some(error.clone()),
                 _ => None,
@@ -97,6 +101,7 @@ impl DetailView {
                         .flex_col()
                         .gap(px(4.))
                         .child(div().truncate().child(dlc.title))
+                        .children(is_outdated.then(|| theme::muted(t!("epic.dlc.update_available")).text_size(px(11.))))
                         .children(failed.map(|error| {
                             theme::muted(t!("library.detail.install.failed", error = error)).text_size(px(11.))
                         })),

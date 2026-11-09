@@ -83,4 +83,4 @@ pub use library::{AssetList, CatalogRegion, EpicGame, LaunchAttributes, Library,
 pub use login::{complete_login, login_url};
 pub use manifest::{Manifest, ManifestError, ManifestFile, Sha1Digest, parse_manifest};
 pub use session::{Account, SessionState, check_session, log_out};
-pub use updates::check_update;
+pub use updates::{DlcUpdate, Updates, check_updates};

@@ -189,6 +189,12 @@ pub async fn download(
     let is_done = matches!(track(state, job, progress, work, cx).await, Ended::Done(()));
     if is_done {
         tracing::info!(account_id, product_id, is_repair, "epic download finished");
+        if parent_id.is_some() {
+            state.background.update(cx, |background, cx| {
+                background.outdated_epic_dlcs.remove(&key);
+                cx.notify();
+            });
+        }
     }
     refresh_install_state(state, account_id, product_id, cx);
     if let Some(parent_id) = parent_id.as_deref() {
@@ -384,6 +390,12 @@ pub async fn uninstall_dlc(
         })
         .map_err(Text::verbatim)?;
     drop_paused_rows(state, account_id, [dlc_id], cx);
+    state.background.update(cx, |background, cx| {
+        background
+            .outdated_epic_dlcs
+            .remove(&DownloadKey::new(account_id, dlc_id));
+        cx.notify();
+    });
     refresh_install_state(state, account_id, dlc_id, cx);
     refresh_install_state(state, account_id, parent_id, cx);
     tracing::info!(account_id, dlc_id, parent_id, "epic dlc uninstall finished");

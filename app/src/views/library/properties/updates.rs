@@ -19,6 +19,8 @@ pub(super) struct UpdatesTab {
     /// inside for "already up to date".
     result: Option<Option<String>>,
     updating: bool,
+    /// The installed Epic DLC the last check found a newer build of.
+    dlc_updates: Vec<decanter_epic::DlcUpdate>,
     error: Option<Text>,
 }
 
@@ -31,6 +33,7 @@ impl UpdatesTab {
             checking: false,
             result: None,
             updating: false,
+            dlc_updates: Vec::new(),
             error: None,
         }
     }
@@ -44,6 +47,7 @@ impl UpdatesTab {
             return;
         };
         let account_id = self.target.account_id.clone();
+        let state = AppState::get(cx).clone();
         self.checking = true;
         self.error = None;
         tracing::debug!(account_id, product_id = %installed.game_id, "checking gog for a newer build");
@@ -52,7 +56,21 @@ impl UpdatesTab {
             let outcome = check_build(&account_id, &installed).await;
             let _ = this.update(cx, |this, cx| {
                 match outcome {
-                    Ok(update) => this.result = Some(update),
+                    Ok((update, dlc_updates)) => {
+                        state.background.update(cx, |background, cx| {
+                            for dlc in installed.dlcs.keys() {
+                                let key = DownloadKey::new(&account_id, dlc);
+                                if dlc_updates.iter().any(|update| update.app_name == *dlc) {
+                                    background.outdated_epic_dlcs.insert(key);
+                                } else {
+                                    background.outdated_epic_dlcs.remove(&key);
+                                }
+                            }
+                            cx.notify();
+                        });
+                        this.result = Some(update);
+                        this.dlc_updates = dlc_updates;
+                    }
                     Err(err) => {
                         tracing::error!(account_id, product_id = %installed.game_id, error = %err, "update check failed");
                         this.error = Some(Text::verbatim(err));
@@ -69,6 +87,7 @@ impl UpdatesTab {
     fn install_update(&mut self, cx: &mut Context<Self>) {
         let target = Rc::clone(&self.target);
         let latest = self.result.clone().flatten();
+        let dlc_updates = self.dlc_updates.clone();
         self.updating = true;
         self.error = None;
         tracing::info!(
@@ -98,9 +117,38 @@ impl UpdatesTab {
             if is_amazon || target.storefront == Storefront::EpicGames {
                 let key = DownloadKey::new(account_id, product_id);
                 let title = target.title.clone();
+                let mut remaining = dlc_updates;
                 if target.storefront == Storefront::EpicGames {
-                    crate::views::library::epic_install::download(key, title, DownloadKind::Update, None, &state, cx)
+                    let is_game_current = latest.is_none()
+                        || crate::views::library::epic_install::download(
+                            key,
+                            title,
+                            DownloadKind::Update,
+                            None,
+                            &state,
+                            cx,
+                        )
                         .await;
+                    // The DLC build is asked for the game's folder as it now is, so a failed game
+                    // update leaves them for the next try.
+                    if is_game_current {
+                        let pending = std::mem::take(&mut remaining);
+                        for dlc in pending {
+                            let key = DownloadKey::new(account_id, &dlc.app_name);
+                            let is_done = crate::views::library::epic_install::download(
+                                key,
+                                dlc.title.clone(),
+                                DownloadKind::Dlc,
+                                None,
+                                &state,
+                                cx,
+                            )
+                            .await;
+                            if !is_done {
+                                remaining.push(dlc);
+                            }
+                        }
+                    }
                 } else {
                     #[cfg(target_os = "linux")]
                     crate::views::library::amazon_install::download(key, title, DownloadKind::Update, None, &state, cx)
@@ -115,9 +163,10 @@ impl UpdatesTab {
                         .installed
                         .as_ref()
                         .is_some_and(|installed| Some(&installed.build_id) == latest.as_ref());
-                    if is_current {
+                    if is_current || latest.is_none() {
                         this.result = Some(None);
                     }
+                    this.dlc_updates = remaining;
                     cx.notify();
                 });
                 return;
@@ -174,13 +223,32 @@ impl Render for UpdatesTab {
                 b.on_click(cx.listener(|this, _, _, cx| this.check(cx)))
             }),
         );
+        let update_label = if self.updating {
+            t!("library.properties.updates.updating")
+        } else {
+            t!("library.properties.updates.update")
+        };
+        let dlc_titles = self
+            .dlc_updates
+            .iter()
+            .map(|dlc| dlc.title.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
         match &self.result {
+            Some(None) if !self.dlc_updates.is_empty() => {
+                actions = actions
+                    .child(theme::muted(t!(
+                        "library.properties.updates.dlc_available",
+                        dlcs = dlc_titles
+                    )))
+                    .child(
+                        button("install-update", ButtonKind::Primary, update_label, self.updating)
+                            .when(!self.updating, |b| {
+                                b.on_click(cx.listener(|this, _, _, cx| this.install_update(cx)))
+                            }),
+                    );
+            }
             Some(Some(build_id)) => {
-                let update_label = if self.updating {
-                    t!("library.properties.updates.updating")
-                } else {
-                    t!("library.properties.updates.update")
-                };
                 actions = actions
                     .child(theme::muted(t!(
                         "library.properties.updates.available",
@@ -218,14 +286,18 @@ impl Render for UpdatesTab {
     }
 }
 
-/// The newer build's id for `installed`, from its own store.
-async fn check_build(account_id: &str, installed: &InstalledGame) -> anyhow::Result<Option<String>> {
+/// The newer build's id for `installed`, from its own store, and the Epic DLC with a newer build.
+async fn check_build(
+    account_id: &str,
+    installed: &InstalledGame,
+) -> anyhow::Result<(Option<String>, Vec<decanter_epic::DlcUpdate>)> {
     #[cfg(target_os = "linux")]
     if installed.storefront == Storefront::AmazonGames {
-        return decanter_amazon::check_update(account_id, installed).await;
+        return Ok((decanter_amazon::check_update(account_id, installed).await?, Vec::new()));
     }
     if installed.storefront == Storefront::EpicGames {
-        return decanter_epic::check_update(account_id, installed).await;
+        let updates = decanter_epic::check_updates(account_id, installed).await?;
+        return Ok((updates.game, updates.dlcs));
     }
-    decanter_gog::check_update(account_id, installed).await
+    Ok((decanter_gog::check_update(account_id, installed).await?, Vec::new()))
 }

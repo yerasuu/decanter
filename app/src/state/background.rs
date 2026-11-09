@@ -179,6 +179,9 @@ pub struct Background {
     /// Every GOG download in flight (installs, DLC, updates, branch and
     /// build switches, repairs) and the failures not yet dismissed.
     pub installing: HashMap<DownloadKey, Download>,
+    /// Installed Epic DLC whose last update check found a newer build, until it is installed again
+    /// or uninstalled. Kept in memory: the check is a network call the detail pane must not make.
+    pub outdated_epic_dlcs: HashSet<DownloadKey>,
     /// The download whose Cancelar was pressed and now waits for the user
     /// to confirm deleting what it downloaded (#1133). One at a time, and
     /// shared, so Descargas and the game's own page ask the same question.
