@@ -361,7 +361,7 @@ impl ModsTab {
             .children(details)
             .children(self.dll_block(index, row, locked, cx))
             .children(self.attention_block(index, row, locked, cx))
-            .children(self.verify_block(index, row, locked, cx))
+            .child(self.verify_block(index, row, locked, cx))
             .children(self.origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.modio_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.nexus_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))

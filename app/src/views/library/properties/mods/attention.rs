@@ -56,7 +56,7 @@ impl ModsTab {
         )
     }
 
-    pub(super) fn verify_block(&self, index: usize, row: &Row, locked: bool, cx: &Context<Self>) -> Option<Div> {
+    pub(super) fn verify_block(&self, index: usize, row: &Row, locked: bool, cx: &Context<Self>) -> Div {
         let id = row.manifest.id.clone();
         let result = self.verified.get(&id).map(|changed| {
             if changed.is_empty() {
@@ -69,23 +69,18 @@ impl ModsTab {
                     .children(path_list(changed))
             }
         });
-        Some(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .pl(px(29.))
-                .text_size(px(12.5))
-                .child(
-                    div().flex().child(
-                        button(("mod-verify", index), ButtonKind::Icon, t!("mods.verify.check"), locked)
-                            .when(!locked, |b| {
-                                b.on_click(cx.listener(move |this, _, _, cx| this.verify(id.clone(), cx)))
-                            }),
-                    ),
-                )
-                .children(result),
-        )
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .pl(px(29.))
+            .text_size(px(12.5))
+            .child(div().flex().child(
+                button(("mod-verify", index), ButtonKind::Icon, t!("mods.verify.check"), locked).when(!locked, |b| {
+                    b.on_click(cx.listener(move |this, _, _, cx| this.verify(id.clone(), cx)))
+                }),
+            ))
+            .children(result)
     }
 
     fn keep(&mut self, id: ModId, cx: &mut Context<Self>) {
