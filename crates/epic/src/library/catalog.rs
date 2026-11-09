@@ -195,9 +195,14 @@ fn art(raw: &Value, seen: &mut Seen) -> Art {
     };
     let shaped =
         |wanted: fn(&Image<'_>) -> bool| images.iter().find(|image| wanted(image)).map(|image| image.url.clone());
+    let cover = named("tall").or_else(|| shaped(|image| image.height > image.width));
     Art {
-        icon: named("thumbnail"),
-        cover: named("tall").or_else(|| shaped(|image| image.height > image.width)),
+        // Epic's catalog carries a `Thumbnail` for almost no title, and the sidebar list shows only the icon,
+        // so a cover (cropped to the square) stands in for it.
+        icon: named("thumbnail")
+            .or_else(|| named("androidicon"))
+            .or_else(|| cover.clone()),
+        cover,
         background: named("wide")
             .or_else(|| {
                 images
