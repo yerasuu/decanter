@@ -1,6 +1,10 @@
 //! The game's third-party mods: add a folder of loose files or a zip or 7z archive, turn each on
 //! or off for this account, see which files they replace, and remove one after saying what goes.
 //! Changes apply at the next launch, never while the game runs (docs/third-party-mods-design.md).
+//!
+//! A tab of the game's detail view, which keeps it while the same game stays selected and drops it
+//! on another selection or an uninstall; dropping it stops what it still reads, extracts or
+//! downloads, since nothing would be left to show the outcome.
 
 mod archive;
 mod attention;
@@ -13,12 +17,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use decanter_core::Game;
 use decanter_mods::{EffectiveOverride, GameMods, ModConflicts, ModId, ModManifest, ModPath, Shift};
-use gpui::{Context, Entity, ExternalPaths, SharedString, Window, div, prelude::*};
+use gpui::{Context, Div, Entity, ExternalPaths, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
-use super::{Target, error_line, field_row, not_installed, pane};
 use crate::i18n::Text;
+use crate::state::AppState;
 use crate::theme;
 use crate::widgets::input::TextInput;
 use crate::widgets::{ButtonKind, button, checkbox, confirm_panel, tooltip};
@@ -30,6 +35,20 @@ use thunderstore::{Browser, UpdateCheck};
 const SHOWN_PATHS: usize = 50;
 /// How many of the game's own files in the play tree are named before summing up the rest.
 const SHOWN_WRITTEN: usize = 5;
+/// The narrowest the mod list and the open panels get side by side; narrower, the panels go below.
+const COLUMN_MIN: f32 = 440.;
+
+/// Which game the tab is about, shared with the browsers.
+struct Target {
+    account_id: String,
+    product_id: String,
+    title: String,
+}
+
+/// A line of controls, at most 520px wide.
+fn field_row() -> Div {
+    div().flex().gap(px(10.)).mb_3().max_w(px(520.))
+}
 
 struct Row {
     manifest: ModManifest,
@@ -58,6 +77,8 @@ pub(super) struct ModsTab {
     mods: Option<GameMods>,
     loaded: Option<Loaded>,
     running: bool,
+    /// Whether the app's run list had the game at the last look, so a launch or an exit reloads.
+    listed_running: bool,
     busy: Option<Text>,
     expanded: HashSet<ModId>,
     confirm_remove: Option<ModId>,
@@ -85,13 +106,31 @@ pub(super) struct ModsTab {
 }
 
 impl ModsTab {
-    pub(super) fn new(target: Rc<Target>, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new(game: &Game, cx: &mut Context<Self>) -> Self {
         let name_input = cx.new(|cx| TextInput::new(Text::new("mods.archive.name"), cx));
+        let background = AppState::get(cx).background.clone();
+        let listed_running = background.read(cx).running.contains(&game.id);
+        // Play sits right above the tab, so the lock has to follow a launch and an exit, after
+        // which the play tree may also hold new files the game wrote.
+        cx.observe(&background, |this: &mut Self, background, cx| {
+            let listed = background.read(cx).running.contains(&this.target.product_id);
+            if listed != this.listed_running {
+                this.listed_running = listed;
+                this.reload(cx);
+            }
+        })
+        .detach();
+        cx.on_release(|this: &mut Self, _| this.stop_work()).detach();
         let mut this = Self {
-            target,
+            target: Rc::new(Target {
+                account_id: game.account_id.clone(),
+                product_id: game.id.clone(),
+                title: game.title.clone(),
+            }),
             mods: None,
             loaded: None,
             running: false,
+            listed_running,
             busy: None,
             expanded: HashSet::new(),
             confirm_remove: None,
@@ -111,7 +150,22 @@ impl ModsTab {
         this
     }
 
-    fn reload(&mut self, cx: &Context<Self>) {
+    fn stop_work(&mut self) {
+        if let Some(importing) = self.importing.take() {
+            importing.cancel();
+        }
+        if let Some(browser) = self.thunderstore.take() {
+            browser.discard();
+        }
+        if let Some(browser) = self.modio.take() {
+            browser.discard();
+        }
+        if let Some(browser) = self.nexus.take() {
+            browser.discard();
+        }
+    }
+
+    pub(super) fn reload(&mut self, cx: &Context<Self>) {
         let account_id = self.target.account_id.clone();
         let installed = crate::core::installed_game(&account_id, &self.target.product_id);
         self.mods = installed.as_ref().and_then(crate::mods::for_game);
@@ -178,7 +232,7 @@ impl ModsTab {
 
     fn toggle(&mut self, id: ModId, enabled: bool, cx: &mut Context<Self>) {
         self.run(
-            Text::new("library.properties.mods.applying"),
+            Text::new("library.detail.mods.applying"),
             move |mods, account| mods.set_enabled(account, &id, enabled),
             cx,
         );
@@ -186,7 +240,7 @@ impl ModsTab {
 
     fn shift(&mut self, id: ModId, step: Shift, cx: &mut Context<Self>) {
         self.run(
-            Text::new("library.properties.mods.applying"),
+            Text::new("library.detail.mods.applying"),
             move |mods, account| mods.shift(account, &id, step),
             cx,
         );
@@ -195,7 +249,7 @@ impl ModsTab {
     fn add(cx: &Context<Self>) {
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new()
-                .set_title(t!("library.properties.mods.pick_title"))
+                .set_title(t!("library.detail.mods.pick_title"))
                 .pick_folder()
                 .await
             else {
@@ -210,7 +264,7 @@ impl ModsTab {
     fn add_folder(&mut self, source: PathBuf, cx: &mut Context<Self>) {
         tracing::info!(path = %source.display(), "mod folder picked");
         self.run(
-            Text::new("library.properties.mods.adding"),
+            Text::new("library.detail.mods.adding"),
             move |mods, account| mods.import_folder(&source, account).map(|_| ()),
             cx,
         );
@@ -250,7 +304,7 @@ impl ModsTab {
     fn remove(&mut self, id: ModId, cx: &mut Context<Self>) {
         self.confirm_remove = None;
         self.run(
-            Text::new("library.properties.mods.removing"),
+            Text::new("library.detail.mods.removing"),
             move |mods, _| mods.remove(&id),
             cx,
         );
@@ -270,7 +324,7 @@ impl ModsTab {
         let expand_id = id.clone();
         let expanded = self.expanded.contains(&id);
         let summary = t!(
-            "library.properties.mods.summary",
+            "library.detail.mods.summary",
             files = row.manifest.files.len(),
             size = crate::format::bytes(row.manifest.size())
         );
@@ -299,7 +353,7 @@ impl ModsTab {
                 button(
                     ("mod-remove", index),
                     ButtonKind::Icon,
-                    t!("library.properties.mods.remove"),
+                    t!("library.detail.mods.remove"),
                     locked,
                 )
                 .when(!locked, |b| {
@@ -318,9 +372,9 @@ impl ModsTab {
         let has_conflicts = !lines.is_empty();
         let details = has_conflicts.then(|| {
             let toggle_label = if expanded {
-                t!("library.properties.mods.hide_files")
+                t!("library.detail.mods.hide_files")
             } else {
-                t!("library.properties.mods.show_files")
+                t!("library.detail.mods.show_files")
             };
             div()
                 .flex()
@@ -396,15 +450,15 @@ impl ModsTab {
         let id = self.confirm_remove.clone()?;
         let row = self.loaded.as_ref()?.rows.iter().find(|row| row.manifest.id == id)?;
         let body = t!(
-            "library.properties.mods.remove_body",
+            "library.detail.mods.remove_body",
             size = crate::format::bytes(row.manifest.size()),
             accounts = row.users
         );
         Some(confirm_panel(
             "mod-remove-confirm",
-            t!("library.properties.mods.remove_title", name = row.manifest.name),
+            t!("library.detail.mods.remove_title", name = row.manifest.name),
             body,
-            t!("library.properties.mods.remove"),
+            t!("library.detail.mods.remove"),
             cx.listener(move |this, _, _, cx| this.remove(id.clone(), cx)),
             cx.listener(|this, _, _, cx| {
                 this.confirm_remove = None;
@@ -459,7 +513,7 @@ fn conflict_lines<'row>(
     if !conflicts.overrides_game.is_empty() {
         lines.push((
             t!(
-                "library.properties.mods.overrides_game",
+                "library.detail.mods.overrides_game",
                 count = conflicts.overrides_game.len()
             )
             .into_owned()
@@ -470,7 +524,7 @@ fn conflict_lines<'row>(
     for (other, paths) in &conflicts.overrides {
         lines.push((
             t!(
-                "library.properties.mods.overrides",
+                "library.detail.mods.overrides",
                 name = name_of(other),
                 count = paths.len()
             )
@@ -482,7 +536,7 @@ fn conflict_lines<'row>(
     for (other, paths) in &conflicts.overridden_by {
         lines.push((
             t!(
-                "library.properties.mods.overridden_by",
+                "library.detail.mods.overridden_by",
                 name = name_of(other),
                 count = paths.len()
             )
@@ -500,21 +554,24 @@ fn path_list(paths: &[ModPath]) -> impl Iterator<Item = gpui::Div> + '_ {
         .iter()
         .take(SHOWN_PATHS)
         .map(|path| theme::mono().pl_2().child(path.to_string()))
-        .chain((rest > 0).then(|| theme::muted(t!("library.properties.mods.more", count = rest)).pl_2()))
+        .chain((rest > 0).then(|| theme::muted(t!("library.detail.mods.more", count = rest)).pl_2()))
 }
 
 impl Render for ModsTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.mods.is_none() {
-            return not_installed();
+            return theme::muted(t!("library.properties.not_installed"));
         }
         let locked = self.is_locked();
         let add_label = self.busy.as_ref().map_or_else(
-            || SharedString::from(t!("library.properties.mods.add").into_owned()),
+            || SharedString::from(t!("library.detail.mods.add").into_owned()),
             SharedString::from,
         );
-        let actions = field_row()
+        let actions = div()
+            .flex()
+            .flex_wrap()
             .items_center()
+            .gap(px(10.))
             .child(
                 button(
                     "mod-add-archive",
@@ -563,14 +620,11 @@ impl Render for ModsTab {
                     b.on_click(cx.listener(|this, _, _, cx| this.open_nexus(None, cx)))
                 }),
             )
-            .children(
-                self.running
-                    .then(|| theme::muted(t!("library.properties.mods.running"))),
-            );
+            .children(self.running.then(|| theme::muted(t!("library.detail.mods.running"))));
 
         let list = match &self.loaded {
-            None => theme::muted(t!("library.properties.mods.loading")),
-            Some(loaded) if loaded.rows.is_empty() => theme::muted(t!("library.properties.mods.none")),
+            None => theme::muted(t!("library.detail.mods.loading")),
+            Some(loaded) if loaded.rows.is_empty() => theme::muted(t!("library.detail.mods.none")),
             Some(loaded) => {
                 let count = loaded.rows.len();
                 theme::card().children(
@@ -598,27 +652,56 @@ impl Render for ModsTab {
                 theme::muted(format!(
                     "{} {shown}",
                     t!(
-                        "library.properties.mods.written_by_game",
+                        "library.detail.mods.written_by_game",
                         count = loaded.written_by_game.len()
                     )
                 ))
             });
 
-        pane()
-            .gap_3()
-            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.dropped(paths, cx)))
-            .child(theme::muted(t!("library.properties.mods.note")))
-            .child(theme::muted(t!("mods.archive.note")))
-            .child(actions)
-            .children(self.archive_panel(cx))
-            .children(self.thunderstore_panel(locked, cx))
-            .children(self.modio_panel(locked, cx))
-            .children(self.nexus_panel(locked, cx))
-            .children(self.notice.as_ref().map(theme::muted))
+        let panels: Vec<Div> = [
+            self.archive_panel(cx),
+            self.thunderstore_panel(locked, cx),
+            self.modio_panel(locked, cx),
+            self.nexus_panel(locked, cx),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let column = || {
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .flex_1()
+                .flex_basis(px(COLUMN_MIN))
+                .min_w_0()
+        };
+        let mod_list = column()
             .children(self.confirmation(cx))
             .child(list)
             .child(theme::muted(t!("mods.order.later_wins")))
-            .children(written)
-            .children(error_line(self.error.as_ref()))
+            .children(written);
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.dropped(paths, cx)))
+            .child(theme::muted(t!("library.detail.mods.note")))
+            .child(theme::muted(t!("mods.archive.note")))
+            .child(actions)
+            .children(self.notice.as_ref().map(theme::muted))
+            .children(self.error.as_ref().map(theme::error))
+            // The list leads and the open archive or browsers sit beside it while both fit at
+            // `COLUMN_MIN`, wrapping below it at full width otherwise.
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_start()
+                    .gap_6()
+                    .child(mod_list)
+                    .when(!panels.is_empty(), |row| row.child(column().children(panels))),
+            )
     }
 }

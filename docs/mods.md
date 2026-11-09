@@ -2,11 +2,11 @@
 
 What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 4 for GOG, Amazon Games and Epic Games
 games: loose folders and zip or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
-the Mods tab is `app/src/views/library/properties/mods/`.
+the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
 
 ## Using it
 
-- Propiedades → Mods → *Añadir carpeta de mod...*: pick a folder laid out like the game's own folder (its files go
+- The game's detail view → Mods → *Añadir carpeta de mod...*: pick a folder laid out like the game's own folder (its files go
   to the same relative paths). The folder is copied in and never changed; the mod is turned on for the account
   that added it.
 - *Añadir archivo comprimido...* (or an archive dropped on the tab): a zip or 7z. It is hashed and every entry

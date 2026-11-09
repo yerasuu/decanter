@@ -2,8 +2,8 @@
 //! playtime — Steam's playtime pill, adapted, but self-tracked: nothing
 //! upstream has a notion of a play session), a favorite toggle, a real
 //! Play/Stop action wired to whichever prefix this game was installed
-//! into, and two tabs — Resumen (catalog metadata already on `Game` but
-//! never shown before) and Logros.
+//! into, and its tabs — Resumen (catalog metadata already on `Game` but
+//! never shown before), Logros, Mods and Registro.
 
 mod achievements;
 mod action_bar;
@@ -11,6 +11,7 @@ mod epic_dlc;
 mod hero;
 mod import;
 mod install_dialog;
+mod mods;
 mod summary;
 
 use std::collections::BTreeSet;
@@ -28,6 +29,7 @@ use crate::widgets::reveal::reveal;
 use crate::widgets::tabs;
 use hero::hero;
 use install_dialog::InstallDialog;
+use mods::ModsTab;
 use summary::summary_tab;
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -35,6 +37,7 @@ enum DetailTab {
     #[default]
     Summary,
     Achievements,
+    Mods,
     Log,
 }
 
@@ -81,7 +84,8 @@ impl Loaded {
         (self.product_id.as_str(), self.account_id.as_str()) == (game.id.as_str(), game.account_id.as_str())
     }
 
-    fn refresh(&mut self, game: &Game, profile_id: Option<&str>, background: &Background) {
+    /// Says whether the install changed, which the mods tab has to read again.
+    fn refresh(&mut self, game: &Game, profile_id: Option<&str>, background: &Background) -> bool {
         if self.organisation != background.organisation || self.profile_id.as_deref() != profile_id {
             self.organisation = background.organisation;
             self.profile_id = profile_id.map(str::to_owned);
@@ -92,18 +96,28 @@ impl Loaded {
             self.playtime_generation = background.playtime_generation;
             self.playtime = data::load_playtime(&game.account_id, game.storefront, &game.id);
         }
-        if self.install_state != game.install_state {
-            self.install_state.clone_from(&game.install_state);
-            self.launch = launch_target(game);
-            self.needs_epic_online = needs_epic_online(game);
-            self.epic_dlcs = epic_dlc::installed_dlcs(game);
+        if self.install_state == game.install_state {
+            return false;
         }
+        self.install_state.clone_from(&game.install_state);
+        self.launch = launch_target(game);
+        self.needs_epic_online = needs_epic_online(game);
+        self.epic_dlcs = epic_dlc::installed_dlcs(game);
+        true
     }
 }
 
 fn needs_epic_online(game: &Game) -> bool {
     game.storefront == Storefront::EpicGames
         && crate::views::library::epic_install::needs_online(&game.account_id, &game.id)
+}
+
+/// The stores whose installs `crate::mods::for_game` gives a mods folder.
+const fn has_mods(game: &Game) -> bool {
+    matches!(
+        game.storefront,
+        Storefront::Gog | Storefront::AmazonGames | Storefront::EpicGames
+    )
 }
 
 fn launch_target(game: &Game) -> Option<InstalledGame> {
@@ -170,6 +184,9 @@ struct Local {
     dialog: Option<InstallDialog>,
     /// Follows the game's latest run, which a new one replaces.
     log: Option<Entity<LogView>>,
+    /// Made when the tab is first opened and kept while the game stays selected, so an import
+    /// or a browser survives a look at another tab.
+    mods: Option<Entity<ModsTab>>,
     took_focus: bool,
 }
 
@@ -201,12 +218,35 @@ impl DetailView {
         }
     }
 
-    fn sync(&mut self, game: &Game, profile_id: Option<&str>, background: &Background) {
+    /// Says whether the same game's install changed.
+    fn sync(&mut self, game: &Game, profile_id: Option<&str>, background: &Background) -> bool {
         match &mut self.loaded {
             Some(loaded) if loaded.is_for(game) => loaded.refresh(game, profile_id, background),
             _ => {
                 self.loaded = Some(Loaded::load(game, profile_id, background));
                 self.local = Local::default();
+                false
+            }
+        }
+    }
+
+    /// The tab follows the install: an update or a repair reads the mods again, and an
+    /// uninstall drops the tab with whatever it still had running.
+    fn sync_mods(&mut self, game: &Game, is_shown: bool, install_changed: bool, cx: &mut Context<Self>) {
+        if !is_shown {
+            self.local.mods = None;
+            return;
+        }
+        match &self.local.mods {
+            Some(tab) => {
+                if install_changed {
+                    tab.update(cx, |tab, cx| tab.reload(cx));
+                }
+            }
+            None => {
+                if self.local.tab == DetailTab::Mods {
+                    self.local.mods = Some(cx.new(|cx| ModsTab::new(game, cx)));
+                }
             }
         }
     }
@@ -257,7 +297,7 @@ impl Render for DetailView {
         };
         let profile_id = state.session.read(cx).active_profile.clone();
         let background = state.background.read(cx);
-        self.sync(&game, profile_id.as_deref(), background);
+        let install_changed = self.sync(&game, profile_id.as_deref(), background);
         let requested = self.model.update(cx, |model, _| {
             let is_for_game = model
                 .install_request
@@ -280,7 +320,9 @@ impl Render for DetailView {
             .as_ref()
             .is_some_and(|(key, _)| background.cancel_confirm.as_ref() == Some(key));
         let is_installed = game.install_state.as_ref().is_some_and(|install| install.installed);
+        let mods_shown = is_installed && has_mods(&game);
         self.sync_log(&game, cx);
+        self.sync_mods(&game, mods_shown, install_changed, cx);
 
         let (achievements, poll_status) = {
             let model = self.model.read(cx);
@@ -319,11 +361,15 @@ impl Render for DetailView {
         }
 
         let hidden = (achievement_source.is_none() && self.local.tab == DetailTab::Achievements)
+            || (!mods_shown && self.local.tab == DetailTab::Mods)
             || (!is_installed && self.local.tab == DetailTab::Log);
         let active = if hidden { DetailTab::Summary } else { self.local.tab };
         let mut detail_tabs = vec![(DetailTab::Summary, t!("library.detail.tabs.summary"))];
         if achievement_source.is_some() {
             detail_tabs.push((DetailTab::Achievements, t!("library.detail.tabs.achievements")));
+        }
+        if mods_shown {
+            detail_tabs.push((DetailTab::Mods, t!("library.detail.tabs.mods")));
         }
         if is_installed {
             detail_tabs.push((DetailTab::Log, t!("library.detail.tabs.log")));
@@ -341,6 +387,13 @@ impl Render for DetailView {
             DetailTab::Summary => summary_tab(&game, playtime).into_any_element(),
             DetailTab::Achievements => {
                 self.achievements_tab(achievements.as_ref(), &poll_status, achievement_source, cx)
+            }
+            DetailTab::Mods => {
+                let pane = div().mt(px(20.)).mx(px(32.)).pb(px(32.));
+                match &self.local.mods {
+                    Some(view) => pane.child(view.clone()).into_any_element(),
+                    None => pane.into_any_element(),
+                }
             }
             DetailTab::Log => {
                 let log = div().mt(px(20.)).mx(px(32.));

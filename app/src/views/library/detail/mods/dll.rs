@@ -96,7 +96,7 @@ impl ModsTab {
 
     fn set_dll_mode(&mut self, id: ModId, dll: String, mode: DllMode, cx: &mut Context<Self>) {
         self.run(
-            Text::new("library.properties.mods.applying"),
+            Text::new("library.detail.mods.applying"),
             move |mods, _| mods.set_dll_mode(&id, &dll, mode),
             cx,
         );

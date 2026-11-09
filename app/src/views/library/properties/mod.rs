@@ -2,10 +2,10 @@
 //! Propiedades for an installed game, in the same tabbed shape — General,
 //! Actualizaciones, Archivos locales, Betas, plus decanter's own on top:
 //! Versiones (rollback to a specific historical build, not just Steam's
-//! per-branch newest), Idioma (which language's files are installed), Mods
-//! (third-party mods over the install) and
+//! per-branch newest), Idioma (which language's files are installed) and
 //! Compatibilidad (this game's own Proton pin; not on Windows, where games
-//! run natively).
+//! run natively). Mods have their own tab in the game's detail view, which has
+//! the room they need.
 //!
 //! A real second OS window rather than an in-app overlay — the same "its
 //! own floating dialog, draggable and resizable independent of the
@@ -26,7 +26,6 @@ mod epic_cloud_saves;
 mod general;
 mod language;
 mod local_files;
-mod mods;
 mod releases;
 mod updates;
 
@@ -60,7 +59,6 @@ enum Tab {
     Language,
     CloudSaves,
     Dlc,
-    Mods,
     Betas,
     Versions,
     Compatibility,
@@ -75,7 +73,6 @@ impl Tab {
             Self::Language => t!("library.properties.tabs.language"),
             Self::CloudSaves => t!("library.properties.tabs.cloud_saves"),
             Self::Dlc => t!("library.properties.tabs.dlc"),
-            Self::Mods => t!("library.properties.tabs.mods"),
             Self::Betas => t!("library.properties.tabs.betas"),
             Self::Versions => t!("library.properties.tabs.versions"),
             Self::Compatibility => t!("library.properties.tabs.compatibility"),
@@ -90,7 +87,6 @@ const TABS: &[Tab] = &[
     Tab::Language,
     Tab::CloudSaves,
     Tab::Dlc,
-    Tab::Mods,
     Tab::Betas,
     Tab::Versions,
     Tab::Compatibility,
@@ -105,14 +101,13 @@ const EXTERNAL_TABS: &[Tab] = &[Tab::General, Tab::Compatibility];
 const STEAM_TABS: &[Tab] = &[Tab::General];
 
 /// Amazon has no branches, languages, DLC or cloud saves decanter reads yet;
-/// its files are verified and updated like any store's, and mods apply over
-/// its install as over GOG's.
-const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::Mods];
+/// its files are verified and updated like any store's.
+const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles];
 
 /// Epic has no languages yet, and its DLC are listed under the game's detail;
 /// its files are verified and updated like Amazon's, its cloud saves are its
-/// own (`epic_cloud_saves`), and mods apply over its install as over GOG's.
-const EPIC_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::CloudSaves, Tab::Mods];
+/// own (`epic_cloud_saves`).
+const EPIC_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::CloudSaves];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
@@ -251,7 +246,6 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         }
         Tab::CloudSaves => cx.new(|cx| cloud_saves::CloudSavesTab::new(target, window, cx)).into(),
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
-        Tab::Mods => cx.new(|cx| mods::ModsTab::new(target, cx)).into(),
         Tab::Betas => cx.new(|cx| releases::BetasTab::new(target, cx)).into(),
         Tab::Versions => cx.new(|cx| releases::VersionsTab::new(target, cx)).into(),
         Tab::Compatibility => cx.new(|cx| compatibility::CompatibilityTab::new(target, cx)).into(),

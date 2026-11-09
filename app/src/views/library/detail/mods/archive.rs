@@ -13,7 +13,7 @@ use rust_i18n::t;
 use super::ModsTab;
 use crate::i18n::Text;
 use crate::theme;
-use crate::views::library::properties::field_row;
+use crate::views::library::detail::mods::field_row;
 use crate::widgets::{ButtonKind, Select, button, progress_bar};
 
 /// How often the progress line is redrawn while a blocking read or extraction runs.
@@ -33,6 +33,14 @@ pub(super) enum Importing {
 impl Importing {
     const fn is_working(&self) -> bool {
         matches!(self, Self::Reading(_) | Self::Extracting(_))
+    }
+
+    /// Stops a read or an extraction; a previewed archive has nothing running.
+    pub(super) fn cancel(&self) {
+        if let Self::Reading(progress) | Self::Extracting(progress) = self {
+            progress.cancel();
+            tracing::info!("mod archive import cancel asked");
+        }
     }
 }
 
@@ -213,7 +221,7 @@ impl ModsTab {
                         .take(SHOWN_OVERRIDES)
                         .map(|path| theme::mono().pl_2().text_size(px(12.5)).child(path.to_string())),
                 )
-                .children((rest > 0).then(|| theme::muted(t!("library.properties.mods.more", count = rest)).pl_2()))
+                .children((rest > 0).then(|| theme::muted(t!("library.detail.mods.more", count = rest)).pl_2()))
         };
         let duplicate = preview.duplicate_of();
         let can_add = duplicate.is_none() && !self.name_input.read(cx).text().trim().is_empty();

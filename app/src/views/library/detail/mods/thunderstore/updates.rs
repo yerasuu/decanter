@@ -11,7 +11,7 @@ use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, button};
 
-pub(in crate::views::library::properties::mods) enum UpdateCheck {
+pub(in crate::views::library::detail::mods) enum UpdateCheck {
     Checking,
     UpToDate,
     Newer(VersionNumber),
@@ -22,7 +22,7 @@ pub(in crate::views::library::properties::mods) enum UpdateCheck {
 
 impl ModsTab {
     /// The origin line of a mod downloaded from Thunderstore, with its update check.
-    pub(in crate::views::library::properties::mods) fn origin_block(
+    pub(in crate::views::library::detail::mods) fn origin_block(
         &self,
         index: usize,
         id: &ModId,

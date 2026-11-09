@@ -25,7 +25,7 @@ const IMPORTING: u8 = 2;
 
 /// What runs off the UI, shared with the panel that draws it and cancels it.
 #[derive(Default)]
-pub(in crate::views::library::properties::mods) struct Work {
+pub(in crate::views::library::detail::mods) struct Work {
     phase: AtomicU8,
     transfer: Transfer,
     progress: Progress,
@@ -38,7 +38,7 @@ impl Work {
     }
 }
 
-pub(in crate::views::library::properties::mods) enum Install {
+pub(in crate::views::library::detail::mods) enum Install {
     Working(Arc<Work>),
     Ready(Ready),
 }
@@ -59,7 +59,7 @@ impl Install {
     }
 }
 
-pub(in crate::views::library::properties::mods) struct Ready {
+pub(in crate::views::library::detail::mods) struct Ready {
     name: String,
     version: Option<String>,
     virus: Virus,

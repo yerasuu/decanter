@@ -21,7 +21,7 @@ use super::ModsTab;
 use crate::i18n::Text;
 use crate::nexus::{account_line, failure_text};
 use crate::theme;
-use crate::views::library::properties::field_row;
+use crate::views::library::detail::mods::field_row;
 use crate::widgets::input::{InputEvent, TextInput};
 use crate::widgets::{ButtonKind, Select, button};
 pub(super) use install::Install;
@@ -73,6 +73,13 @@ enum Retry {
 impl Browser {
     pub(super) const fn is_busy(&self) -> bool {
         self.install.is_some()
+    }
+
+    /// Stops its download or import, or drops what it downloaded, as closing it does.
+    pub(super) fn discard(self) {
+        if let Some(install) = self.install {
+            install.discard();
+        }
     }
 
     fn domain(&self) -> Option<&GameDomain> {
@@ -397,10 +404,8 @@ impl ModsTab {
     }
 
     fn close_nexus(&mut self, cx: &mut Context<Self>) {
-        if let Some(browser) = self.nexus.take()
-            && let Some(install) = browser.install
-        {
-            install.discard();
+        if let Some(browser) = self.nexus.take() {
+            browser.discard();
         }
         tracing::info!("nexus browser closed");
         cx.notify();

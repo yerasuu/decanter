@@ -85,7 +85,7 @@ impl ModsTab {
 
     fn keep(&mut self, id: ModId, cx: &mut Context<Self>) {
         self.run(
-            Text::new("library.properties.mods.applying"),
+            Text::new("library.detail.mods.applying"),
             move |mods, account| mods.keep(account, &id),
             cx,
         );

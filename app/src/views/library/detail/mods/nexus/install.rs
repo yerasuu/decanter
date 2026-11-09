@@ -15,7 +15,7 @@ use super::ModsTab;
 use crate::i18n::Text;
 use crate::nexus::failure_text;
 use crate::theme;
-use crate::views::library::properties::field_row;
+use crate::views::library::detail::mods::field_row;
 use crate::widgets::{ButtonKind, Select, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -28,7 +28,7 @@ const IMPORTING: u8 = 3;
 
 /// What runs off the UI, shared with the panel that draws it and cancels it.
 #[derive(Default)]
-pub(in crate::views::library::properties::mods) struct Work {
+pub(in crate::views::library::detail::mods) struct Work {
     phase: AtomicU8,
     transfer: Transfer,
     progress: Progress,
@@ -41,7 +41,7 @@ impl Work {
     }
 }
 
-pub(in crate::views::library::properties::mods) enum Install {
+pub(in crate::views::library::detail::mods) enum Install {
     Working(Arc<Work>),
     Ready(Ready),
 }
@@ -62,7 +62,7 @@ impl Install {
     }
 }
 
-pub(in crate::views::library::properties::mods) struct Ready {
+pub(in crate::views::library::detail::mods) struct Ready {
     preview: ArchivePreview,
     name: String,
     target: Option<ModPath>,

@@ -91,6 +91,7 @@ library.shelves.recent: "Jeux récents"
 library.properties.title: Propriétés
 library.detail.tabs.summary: Aperçu
 library.detail.tabs.achievements: Succès
+library.detail.tabs.mods: Mods
 library.detail.tabs.log: Journal
 library.detail.no_runs: Ce jeu n’a pas encore été lancé depuis decanter.
 library.detail.favorite.add: Ajouter aux favoris
@@ -162,7 +163,6 @@ library.properties.tabs.updates: Mises à jour
 library.properties.tabs.local_files: Fichiers locaux
 library.properties.tabs.cloud_saves: Sauvegardes dans le cloud
 library.properties.tabs.dlc: DLC
-library.properties.tabs.mods: Mods
 library.properties.tabs.betas: Bêtas
 library.properties.tabs.versions: Versions
 library.properties.tabs.compatibility: Compatibilité
@@ -213,26 +213,26 @@ library.properties.dlc.none: Ce jeu n’a pas de contenu additionnel.
 library.properties.dlc.applying: application…
 library.properties.dlc.goodies_note: Livres d’art, bandes originales et autres. Ils vous appartiennent, mais GOG ne les fournit pas comme contenu installable — ils se téléchargent séparément, et Decanter ne sait pas encore le faire.
 library.properties.dlc.not_installable: non installable
-library.properties.mods.note: 'Les mods sont copiés dans la bibliothèque et appliqués au lancement du jeu, sans modifier les fichiers du jeu : la vérification et la mise à jour continuent de fonctionner. Choisissez un dossier organisé comme le dossier du jeu.'
-library.properties.mods.add: Ajouter un dossier de mod…
-library.properties.mods.adding: Ajout…
-library.properties.mods.applying: Application…
-library.properties.mods.removing: Retrait…
-library.properties.mods.pick_title: Choisissez le dossier du mod
-library.properties.mods.loading: Lecture des mods…
-library.properties.mods.none: Ce jeu n’a pas encore de mods.
-library.properties.mods.running: 'Le jeu est en cours d’exécution : les mods pourront être modifiés une fois qu’il sera fermé.'
-library.properties.mods.summary: '%{files} fichiers, %{size}'
-library.properties.mods.remove: Retirer
-library.properties.mods.remove_title: Retirer %{name} ?
-library.properties.mods.remove_body: 'Supprime ses fichiers (%{size}) de la bibliothèque, pour tous les comptes qui possèdent ce jeu. Comptes qui l’utilisent actuellement : %{accounts}.'
-library.properties.mods.overrides_game: Remplace %{count} fichiers du jeu
-library.properties.mods.overrides: Prend le dessus sur %{name} pour %{count} fichiers
-library.properties.mods.overridden_by: '%{name} prend le dessus sur lui pour %{count} fichiers'
-library.properties.mods.show_files: Afficher les fichiers
-library.properties.mods.hide_files: Masquer les fichiers
-library.properties.mods.more: …et %{count} de plus
-library.properties.mods.written_by_game: '%{count} fichiers écrits par le jeu dans le dossier d’où il démarre sont conservés et ont priorité sur les fichiers du jeu et des mods :'
+library.detail.mods.note: 'Les mods sont copiés dans la bibliothèque et appliqués au lancement du jeu, sans modifier les fichiers du jeu : la vérification et la mise à jour continuent de fonctionner. Choisissez un dossier organisé comme le dossier du jeu.'
+library.detail.mods.add: Ajouter un dossier de mod…
+library.detail.mods.adding: Ajout…
+library.detail.mods.applying: Application…
+library.detail.mods.removing: Retrait…
+library.detail.mods.pick_title: Choisissez le dossier du mod
+library.detail.mods.loading: Lecture des mods…
+library.detail.mods.none: Ce jeu n’a pas encore de mods.
+library.detail.mods.running: 'Le jeu est en cours d’exécution : les mods pourront être modifiés une fois qu’il sera fermé.'
+library.detail.mods.summary: '%{files} fichiers, %{size}'
+library.detail.mods.remove: Retirer
+library.detail.mods.remove_title: Retirer %{name} ?
+library.detail.mods.remove_body: 'Supprime ses fichiers (%{size}) de la bibliothèque, pour tous les comptes qui possèdent ce jeu. Comptes qui l’utilisent actuellement : %{accounts}.'
+library.detail.mods.overrides_game: Remplace %{count} fichiers du jeu
+library.detail.mods.overrides: Prend le dessus sur %{name} pour %{count} fichiers
+library.detail.mods.overridden_by: '%{name} prend le dessus sur lui pour %{count} fichiers'
+library.detail.mods.show_files: Afficher les fichiers
+library.detail.mods.hide_files: Masquer les fichiers
+library.detail.mods.more: …et %{count} de plus
+library.detail.mods.written_by_game: '%{count} fichiers écrits par le jeu dans le dossier d’où il démarre sont conservés et ont priorité sur les fichiers du jeu et des mods :'
 library.properties.releases.current: ACTUELLE
 library.properties.betas.switch: Passer à cette branche
 library.properties.betas.switching: Changement…

@@ -91,6 +91,7 @@ library.shelves.recent: "최근 게임"
 library.properties.title: 속성
 library.detail.tabs.summary: 개요
 library.detail.tabs.achievements: 업적
+library.detail.tabs.mods: 모드
 library.detail.tabs.log: 로그
 library.detail.no_runs: 이 게임은 아직 decanter에서 실행된 적이 없습니다.
 library.detail.favorite.add: 즐겨찾기에 추가
@@ -162,7 +163,6 @@ library.properties.tabs.updates: 업데이트
 library.properties.tabs.local_files: 로컬 파일
 library.properties.tabs.cloud_saves: 클라우드 저장
 library.properties.tabs.dlc: DLC
-library.properties.tabs.mods: 모드
 library.properties.tabs.betas: 베타
 library.properties.tabs.versions: 버전
 library.properties.tabs.compatibility: 호환성
@@ -213,26 +213,26 @@ library.properties.dlc.none: 이 게임에는 추가 콘텐츠가 없습니다.
 library.properties.dlc.applying: 적용 중…
 library.properties.dlc.goodies_note: 아트북, 사운드트랙 등입니다. 사용자의 소유이지만 GOG에서 설치 가능한 콘텐츠로 제공하지 않으므로 별도로 다운로드해야 하며, Decanter는 아직 이를 지원하지 않습니다.
 library.properties.dlc.not_installable: 설치할 수 없음
-library.properties.mods.note: '모드는 라이브러리에 복사되어 게임을 시작할 때 적용되며 게임 파일은 변경되지 않으므로 파일 확인과 업데이트가 계속 작동합니다. 게임 자체 폴더와 같은 구조로 된 폴더를 선택하세요.'
-library.properties.mods.add: '모드 폴더 추가...'
-library.properties.mods.adding: '추가 중...'
-library.properties.mods.applying: '적용 중...'
-library.properties.mods.removing: '제거 중...'
-library.properties.mods.pick_title: '모드 폴더 선택'
-library.properties.mods.loading: '모드를 읽는 중...'
-library.properties.mods.none: '이 게임에는 아직 모드가 없습니다.'
-library.properties.mods.running: '게임이 실행 중입니다. 게임을 종료한 뒤에 모드를 변경할 수 있습니다.'
-library.properties.mods.summary: '파일 %{files}개, %{size}'
-library.properties.mods.remove: '제거'
-library.properties.mods.remove_title: '모드를 제거하시겠습니까: %{name}'
-library.properties.mods.remove_body: '이 게임을 가진 모든 계정에 대해 라이브러리에서 모드 파일(%{size})을 삭제합니다. 현재 사용 중인 계정: %{accounts}.'
-library.properties.mods.overrides_game: '게임 파일 %{count}개를 대체합니다'
-library.properties.mods.overrides: '파일 %{count}개에서 %{name}보다 우선합니다'
-library.properties.mods.overridden_by: '파일 %{count}개에서 %{name}이(가) 우선합니다'
-library.properties.mods.show_files: '파일 표시'
-library.properties.mods.hide_files: '파일 숨기기'
-library.properties.mods.more: '...외 %{count}개'
-library.properties.mods.written_by_game: '게임이 시작되는 폴더에 게임이 쓴 파일 %{count}개는 유지되며 게임 및 모드 파일보다 우선합니다:'
+library.detail.mods.note: '모드는 라이브러리에 복사되어 게임을 시작할 때 적용되며 게임 파일은 변경되지 않으므로 파일 확인과 업데이트가 계속 작동합니다. 게임 자체 폴더와 같은 구조로 된 폴더를 선택하세요.'
+library.detail.mods.add: '모드 폴더 추가...'
+library.detail.mods.adding: '추가 중...'
+library.detail.mods.applying: '적용 중...'
+library.detail.mods.removing: '제거 중...'
+library.detail.mods.pick_title: '모드 폴더 선택'
+library.detail.mods.loading: '모드를 읽는 중...'
+library.detail.mods.none: '이 게임에는 아직 모드가 없습니다.'
+library.detail.mods.running: '게임이 실행 중입니다. 게임을 종료한 뒤에 모드를 변경할 수 있습니다.'
+library.detail.mods.summary: '파일 %{files}개, %{size}'
+library.detail.mods.remove: '제거'
+library.detail.mods.remove_title: '모드를 제거하시겠습니까: %{name}'
+library.detail.mods.remove_body: '이 게임을 가진 모든 계정에 대해 라이브러리에서 모드 파일(%{size})을 삭제합니다. 현재 사용 중인 계정: %{accounts}.'
+library.detail.mods.overrides_game: '게임 파일 %{count}개를 대체합니다'
+library.detail.mods.overrides: '파일 %{count}개에서 %{name}보다 우선합니다'
+library.detail.mods.overridden_by: '파일 %{count}개에서 %{name}이(가) 우선합니다'
+library.detail.mods.show_files: '파일 표시'
+library.detail.mods.hide_files: '파일 숨기기'
+library.detail.mods.more: '...외 %{count}개'
+library.detail.mods.written_by_game: '게임이 시작되는 폴더에 게임이 쓴 파일 %{count}개는 유지되며 게임 및 모드 파일보다 우선합니다:'
 library.properties.releases.current: 현재
 library.properties.betas.switch: 전환
 library.properties.betas.switching: 전환 중...
