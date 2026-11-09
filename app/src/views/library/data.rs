@@ -4,6 +4,8 @@
 
 use chrono::{DateTime, Local};
 use decanter_core::{CachedAchievement, Collection, Db, Playtime, Storefront};
+use decanter_gog::LibraryEntry;
+use rust_i18n::t;
 
 /// A cached achievement with its unlock time parsed once, on load, so the
 /// grid doesn't re-parse the stored text every frame.
@@ -36,12 +38,32 @@ impl UnlockedAt {
     }
 }
 
-pub(super) fn load_achievements(account_id: String, product_id: String) -> anyhow::Result<Vec<Achievement>> {
-    tracing::debug!(account_id = %account_id, product_id = %product_id, "loading cached achievements");
+/// The store whose achievements an entry shows: GOG's games, and Epic's games but not their DLC,
+/// since an Epic DLC shares its game's sandbox and so its achievements.
+pub(super) const fn achievement_source(entry: &LibraryEntry) -> Option<Storefront> {
+    match entry.game.storefront {
+        Storefront::Gog => Some(Storefront::Gog),
+        Storefront::EpicGames if entry.parent_id.is_none() => Some(Storefront::EpicGames),
+        Storefront::EpicGames
+        | Storefront::Unspecified
+        | Storefront::Steam
+        | Storefront::AmazonGames
+        | Storefront::EaApp
+        | Storefront::UbisoftConnect
+        | Storefront::BattleNet => None,
+    }
+}
+
+pub(super) fn load_achievements(
+    account_id: String,
+    storefront: Storefront,
+    product_id: String,
+) -> anyhow::Result<Vec<Achievement>> {
+    tracing::debug!(account_id = %account_id, ?storefront, product_id = %product_id, "loading cached achievements");
     let db = crate::achv_try!(Db::open_active().inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open achievement db")
     ));
-    let achievements = crate::achv_try!(db.list_achievements(&account_id, Storefront::Gog, &product_id).inspect_err(
+    let achievements = crate::achv_try!(db.list_achievements(&account_id, storefront, &product_id).inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to read achievement cache")
     ));
     Ok(achievements
@@ -69,9 +91,16 @@ pub(super) enum PollStatus {
     Failed(String),
 }
 
-/// Hits the GOG API and refreshes the cache — the thing that used to
+/// Hits the game's store and refreshes the cache — the thing that used to
 /// require running `decanter achievements` by hand.
-pub(super) async fn poll_achievements(account_id: String, product_id: String) -> Result<(), String> {
+pub(super) async fn poll_achievements(
+    account_id: String,
+    storefront: Storefront,
+    product_id: String,
+) -> Result<(), String> {
+    if storefront == Storefront::EpicGames {
+        return poll_epic_achievements(&account_id, &product_id).await;
+    }
     tracing::debug!(account_id = %account_id, product_id = %product_id, "polling gog for achievement updates");
     let mut db = crate::achv_try!(Db::open_active().map_err(|err| err.to_string()).inspect_err(
         |err| tracing::error!(account_id = %account_id, product_id = %product_id, error = %err, "failed to open db for achievement poll")
@@ -88,6 +117,36 @@ pub(super) async fn poll_achievements(account_id: String, product_id: String) ->
             ))
     );
     Ok(())
+}
+
+/// Epic asks achievements by the sandbox the library listing cached for the game.
+async fn poll_epic_achievements(account_id: &str, app_name: &str) -> Result<(), String> {
+    let Some(namespace) = super::epic_install::cached_game(account_id, app_name).and_then(|game| game.namespace) else {
+        tracing::warn!(
+            account_id,
+            app_name,
+            "no cached epic namespace, achievements not polled"
+        );
+        return Err(t!("epic.install.no_ids").into_owned());
+    };
+    let mut db = Db::open_active().map_err(|err| {
+        tracing::error!(account_id, app_name, error = %err, "failed to open db for achievement poll");
+        err.to_string()
+    })?;
+    let region = crate::state::gog_library::epic_region();
+    decanter_epic::poll_achievements(&mut db, account_id, app_name, &namespace, &region)
+        .await
+        .map(|_newly_unlocked| ())
+        .map_err(|err| {
+            let reason = format!("{err:#}");
+            tracing::warn!(
+                account_id,
+                app_name,
+                reason,
+                "epic achievement poll failed, keeping the cache"
+            );
+            reason
+        })
 }
 
 /// Collections and their membership, read together — the sidebar needs

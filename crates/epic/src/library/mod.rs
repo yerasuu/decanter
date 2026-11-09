@@ -11,7 +11,7 @@
 //! listing, with no URL and no token.
 
 pub(crate) mod assets;
-mod catalog;
+pub(crate) mod catalog;
 mod entitlements;
 
 use core::time::Duration;
@@ -62,6 +62,10 @@ impl CatalogRegion {
             language: code(language).unwrap_or("en").to_ascii_lowercase(),
             country: code(country).unwrap_or("US").to_ascii_uppercase(),
         }
+    }
+
+    pub(crate) fn language(&self) -> &str {
+        &self.language
     }
 }
 
@@ -595,7 +599,7 @@ pub(crate) fn is_id(id: &str) -> bool {
 }
 
 /// Control characters go and the text is cut at `max_chars`; `None` when nothing is left.
-fn printable(text: &str, max_chars: usize) -> Option<String> {
+pub(crate) fn printable(text: &str, max_chars: usize) -> Option<String> {
     let cleaned: String = text.chars().filter(|c| !c.is_control()).take(max_chars).collect();
     let trimmed = cleaned.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_owned())

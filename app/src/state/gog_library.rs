@@ -33,6 +33,7 @@ use super::cache::{has_synced_before, load_cached_games, save_entries};
 mod amazon;
 mod epic;
 
+pub(crate) use epic::region as epic_region;
 pub use epic::{EpicPhase, EpicStatus};
 
 /// Raised by `main` once GPUI has returned and before the tokio runtime is

@@ -24,6 +24,9 @@ mod shelves;
 mod sidebar;
 pub mod unfinished;
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use gpui::{
     Context, Entity, FocusHandle, Pixels, Point, StyleRefinement, Task, Window, div, prelude::*, px, relative, rgb,
 };
@@ -42,6 +45,8 @@ use crate::widgets::progress_bar;
 use crate::widgets::reveal::scrolling;
 
 const SIDEBAR_WIDTH: f32 = 292.;
+/// How long an Epic game's achievements stand without a new poll when its page is opened again.
+const EPIC_POLL_INTERVAL: Duration = Duration::from_mins(15);
 
 /// The one menu-like popup the whole view can have open at a time — a
 /// game's context menu, a shelf's, or the "new collection" popup. Shared
@@ -83,6 +88,10 @@ struct LibraryModel {
     /// that cover once they show again.
     pub(crate) opened_from: Option<FocusHandle>,
     poll: Option<Task<()>>,
+    /// When each `(account, app name)`'s Epic achievements were last read, since Epic's unlocks
+    /// come only from a game's own online session and two store queries per opening would be
+    /// spent mostly on answers that did not change.
+    epic_polled: HashMap<(String, String), Instant>,
 }
 
 impl LibraryModel {
@@ -116,6 +125,7 @@ impl LibraryModel {
             install_request: None,
             opened_from: None,
             poll: None,
+            epic_polled: HashMap::new(),
         }
     }
 
@@ -145,10 +155,11 @@ impl LibraryModel {
         cx.notify();
     }
 
-    /// Selects a game and polls GOG for its achievements right away — the
+    /// Selects a game and polls its store for its achievements right away — the
     /// cache still shows instantly, this just refreshes it. The status is
     /// tracked, not just the resulting cache, so the empty case can say
-    /// *why* it's empty.
+    /// *why* it's empty. An Epic game polled less than [`EPIC_POLL_INTERVAL`]
+    /// ago shows its cache alone, until [`Self::refresh_achievements`].
     ///
     /// Keyed off the game's own account, not the active profile: with
     /// several accounts merged into one library, achievements belong to
@@ -158,42 +169,84 @@ impl LibraryModel {
         if self.selected.is_some() {
             self.mods_open = false;
         }
-        // An external game has no achievements anywhere to poll.
-        let account_id = self.selected.as_deref().and_then(|id| {
-            AppState::get(cx)
-                .library
-                .read(cx)
-                .games
-                .iter()
-                .find(|entry| entry.game.id == id && entry.game.storefront == decanter_core::Storefront::Gog)
-                .map(|entry| entry.game.account_id.clone())
-        });
-        match (account_id, self.selected.clone()) {
-            (Some(account_id), Some(product_id)) => {
-                self.poll_status = PollStatus::Polling;
-                self.achievements = Some(
-                    data::load_achievements(account_id.clone(), product_id.clone()).map_err(|err| err.to_string()),
-                );
-                self.poll = Some(cx.spawn(async move |this, cx| {
-                    let result = data::poll_achievements(account_id.clone(), product_id.clone()).await;
-                    let _ = this.update(cx, |this, cx| {
-                        this.poll_status = match result {
-                            Ok(()) => PollStatus::Done,
-                            Err(err) => PollStatus::Failed(err),
-                        };
-                        this.achievements =
-                            Some(data::load_achievements(account_id, product_id).map_err(|err| err.to_string()));
-                        cx.notify();
-                    });
-                }));
+        match self.achievement_owner(cx) {
+            Some((account_id, storefront, game_id)) => {
+                let is_fresh = storefront == decanter_core::Storefront::EpicGames
+                    && self
+                        .epic_polled
+                        .get(&(account_id.clone(), game_id.clone()))
+                        .is_some_and(|polled| polled.elapsed() < EPIC_POLL_INTERVAL);
+                if is_fresh {
+                    self.poll = None;
+                    self.poll_status = PollStatus::Done;
+                    self.achievements =
+                        Some(data::load_achievements(account_id, storefront, game_id).map_err(|err| err.to_string()));
+                } else {
+                    self.poll_achievements(account_id, storefront, game_id, cx);
+                }
             }
-            _ => {
+            None => {
                 self.poll = None;
                 self.poll_status = PollStatus::Idle;
                 self.achievements = None;
             }
         }
         cx.notify();
+    }
+
+    /// Polls the selected game's achievements now, whenever they were last polled.
+    pub fn refresh_achievements(&mut self, cx: &mut Context<Self>) {
+        if let Some((account_id, storefront, product_id)) = self.achievement_owner(cx) {
+            self.poll_achievements(account_id, storefront, product_id, cx);
+            cx.notify();
+        }
+    }
+
+    /// The selected game's account, store and id, when its store has achievements for it; an
+    /// external game has none anywhere to poll.
+    fn achievement_owner(&self, cx: &Context<Self>) -> Option<(String, decanter_core::Storefront, String)> {
+        let product_id = self.selected.as_deref()?;
+        AppState::get(cx)
+            .library
+            .read(cx)
+            .games
+            .iter()
+            .find(|entry| entry.game.id == product_id)
+            .and_then(|entry| {
+                let storefront = data::achievement_source(entry)?;
+                Some((entry.game.account_id.clone(), storefront, product_id.to_owned()))
+            })
+    }
+
+    fn poll_achievements(
+        &mut self,
+        account_id: String,
+        storefront: decanter_core::Storefront,
+        product_id: String,
+        cx: &Context<Self>,
+    ) {
+        self.poll_status = PollStatus::Polling;
+        self.achievements = Some(
+            data::load_achievements(account_id.clone(), storefront, product_id.clone()).map_err(|err| err.to_string()),
+        );
+        self.poll = Some(cx.spawn(async move |this, cx| {
+            let result = data::poll_achievements(account_id.clone(), storefront, product_id.clone()).await;
+            let _ = this.update(cx, |this, cx| {
+                this.poll_status = match result {
+                    Ok(()) => {
+                        if storefront == decanter_core::Storefront::EpicGames {
+                            this.epic_polled
+                                .insert((account_id.clone(), product_id.clone()), Instant::now());
+                        }
+                        PollStatus::Done
+                    }
+                    Err(err) => PollStatus::Failed(err),
+                };
+                this.achievements =
+                    Some(data::load_achievements(account_id, storefront, product_id).map_err(|err| err.to_string()));
+                cx.notify();
+            });
+        }));
     }
 }
 

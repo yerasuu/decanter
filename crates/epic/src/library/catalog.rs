@@ -251,7 +251,7 @@ fn contains_ignore_case(text: &str, word: &str) -> bool {
 
 /// An image address the interface may fetch: HTTPS, bounded, with no control characters or
 /// spaces, as Amazon's art is checked.
-fn https_image(url: Option<&str>) -> Option<String> {
+pub(crate) fn https_image(url: Option<&str>) -> Option<String> {
     let url = url?.trim();
     (url.len() <= IMAGE_URL_MAX_LEN
         && url.starts_with("https://")

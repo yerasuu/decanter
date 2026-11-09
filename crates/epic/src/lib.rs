@@ -59,6 +59,7 @@
               not as a blanket requirement — see CLAUDE.md's comment philosophy"
 )]
 
+mod achievements;
 mod error;
 mod hosts;
 mod http;
@@ -72,6 +73,7 @@ mod session;
 mod token;
 mod updates;
 
+pub use achievements::poll_achievements;
 pub use error::CallError;
 pub use hosts::Host;
 pub use install::{

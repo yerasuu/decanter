@@ -309,8 +309,9 @@ async fn sync_account(account_id: String, updates: tokio::sync::mpsc::UnboundedS
     let _closed = updates.send(update);
 }
 
-/// The app's language and the system locale's country, for the catalog's titles.
-fn region() -> CatalogRegion {
+/// The app's language and the system locale's country, for the catalog's titles and the
+/// achievements' texts.
+pub(crate) fn region() -> CatalogRegion {
     let locale = rust_i18n::locale();
     let language = locale.split(['-', '_']).next().unwrap_or_default();
     let system = decanter_core::platform::system_locale().unwrap_or_default();

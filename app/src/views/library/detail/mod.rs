@@ -236,6 +236,7 @@ impl Render for DetailView {
         let game = entry.game.clone();
         let installable = entry.installable;
         let is_mod = entry.is_mod;
+        let achievement_source = data::achievement_source(entry);
         let dlcs: Vec<(String, String)> = dlcs_of(games, &game.id).collect();
         let epic_dlcs: Vec<epic_dlc::Dlc> = if game.storefront == Storefront::EpicGames {
             games
@@ -313,13 +314,11 @@ impl Render for DetailView {
             window.focus(&self.primary, cx);
         }
 
-        // Neither an external game nor a Steam entry has achievements of GOG's.
-        let external = game.storefront != Storefront::Gog;
-        let hidden = (external && self.local.tab == DetailTab::Achievements)
+        let hidden = (achievement_source.is_none() && self.local.tab == DetailTab::Achievements)
             || (!is_installed && self.local.tab == DetailTab::Log);
         let active = if hidden { DetailTab::Summary } else { self.local.tab };
         let mut detail_tabs = vec![(DetailTab::Summary, t!("library.detail.tabs.summary"))];
-        if !external {
+        if achievement_source.is_some() {
             detail_tabs.push((DetailTab::Achievements, t!("library.detail.tabs.achievements")));
         }
         if is_installed {
@@ -336,7 +335,9 @@ impl Render for DetailView {
         });
         let body = match active {
             DetailTab::Summary => summary_tab(&game, playtime).into_any_element(),
-            DetailTab::Achievements => self.achievements_tab(achievements.as_ref(), &poll_status, cx),
+            DetailTab::Achievements => {
+                self.achievements_tab(achievements.as_ref(), &poll_status, achievement_source, cx)
+            }
             DetailTab::Log => {
                 let log = div().mt(px(20.)).mx(px(32.));
                 match &self.local.log {

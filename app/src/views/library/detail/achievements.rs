@@ -1,10 +1,12 @@
+use decanter_core::Storefront;
 use gpui::{AnyElement, Context, Div, FontWeight, ObjectFit, WeakEntity, canvas, div, img, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::DetailView;
 use crate::theme;
 use crate::views::library::data::{Achievement, PollStatus, UnlockedAt};
-use crate::views::library::fmt;
+use crate::views::library::{LibraryModel, fmt};
+use crate::widgets::{ButtonKind, button};
 
 /// `.achv-grid`'s `repeat(auto-fill, minmax(260px, 1fr))` and its gap.
 const ACHV_MIN_COLUMN: f32 = 260.;
@@ -15,10 +17,41 @@ impl DetailView {
     /// game genuinely has no achievements, or the poll failed. `poll_status`
     /// (the live poll that just ran, or is running, for this exact game)
     /// disambiguates it instead of always pointing at a CLI command.
+    ///
+    /// Epic's page is polled on a cadence rather than on every opening, so it
+    /// gets a refresh of its own.
     pub(super) fn achievements_tab(
         &self,
         achievements: Option<&Result<Vec<Achievement>, String>>,
         poll_status: &PollStatus,
+        source: Option<Storefront>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let body = self.achievements_body(achievements, poll_status, source, cx);
+        if source != Some(Storefront::EpicGames) {
+            return body;
+        }
+        let model = self.model.clone();
+        let refresh = button(
+            "epic-achievements-refresh",
+            ButtonKind::Secondary,
+            t!("epic.achievements.refresh"),
+            *poll_status == PollStatus::Polling,
+        )
+        .on_click(move |_, _, app| model.update(app, LibraryModel::refresh_achievements));
+        div()
+            .flex()
+            .flex_col()
+            .child(div().flex().justify_end().mt(px(20.)).mx(px(32.)).child(refresh))
+            .child(body)
+            .into_any_element()
+    }
+
+    fn achievements_body(
+        &self,
+        achievements: Option<&Result<Vec<Achievement>, String>>,
+        poll_status: &PollStatus,
+        source: Option<Storefront>,
         cx: &Context<Self>,
     ) -> AnyElement {
         let status_text = |text: String| div().mt(px(20.)).mx(px(32.)).child(theme::muted(text));
@@ -33,10 +66,16 @@ impl DetailView {
         }
         match poll_status {
             PollStatus::Polling => status_text(t!("library.detail.achievements.polling").into_owned()),
-            PollStatus::Done => div()
-                .mt(px(20.))
-                .mx(px(32.))
-                .child(theme::empty(t!("library.detail.achievements.none"))),
+            PollStatus::Done => {
+                div()
+                    .mt(px(20.))
+                    .mx(px(32.))
+                    .child(theme::empty(if source == Some(Storefront::EpicGames) {
+                        t!("epic.achievements.none")
+                    } else {
+                        t!("library.detail.achievements.none")
+                    }))
+            }
             PollStatus::Failed(err) => {
                 status_error(t!("library.detail.achievements.poll_failed", error = err).into_owned())
             }
