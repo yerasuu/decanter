@@ -120,6 +120,7 @@ mod launch;
 mod launcher;
 mod logs;
 mod memory;
+mod modio;
 mod mods;
 mod nexus;
 mod platform;

@@ -5,6 +5,7 @@
 mod archive;
 mod attention;
 mod dll;
+mod modio;
 mod nexus;
 mod thunderstore;
 
@@ -72,6 +73,10 @@ pub(super) struct ModsTab {
     thunderstore: Option<Browser>,
     /// Per mod from Thunderstore, its last update check.
     updates: HashMap<ModId, UpdateCheck>,
+    /// The mod.io browser, while open.
+    modio: Option<modio::Browser>,
+    /// Per mod from mod.io, its last update check.
+    modio_updates: HashMap<ModId, modio::UpdateCheck>,
     /// The Nexus Mods browser, while open.
     nexus: Option<NexusBrowser>,
     /// Per mod from Nexus Mods, its last update check, only ever asked by its button.
@@ -96,6 +101,8 @@ impl ModsTab {
             verified: HashMap::new(),
             thunderstore: None,
             updates: HashMap::new(),
+            modio: None,
+            modio_updates: HashMap::new(),
             nexus: None,
             nexus_updates: HashMap::new(),
             error: None,
@@ -236,6 +243,7 @@ impl ModsTab {
             || self.busy.is_some()
             || self.importing.is_some()
             || self.thunderstore.as_ref().is_some_and(Browser::is_busy)
+            || self.modio.as_ref().is_some_and(modio::Browser::is_busy)
             || self.nexus.as_ref().is_some_and(NexusBrowser::is_busy)
     }
 
@@ -355,6 +363,7 @@ impl ModsTab {
             .children(self.attention_block(index, row, locked, cx))
             .children(self.verify_block(index, row, locked, cx))
             .children(self.origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
+            .children(self.modio_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.nexus_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
     }
 
@@ -534,6 +543,17 @@ impl Render for ModsTab {
             )
             .child(
                 button(
+                    "mod-add-modio",
+                    ButtonKind::Secondary,
+                    t!("mods.modio.add_button"),
+                    locked || self.modio.is_some(),
+                )
+                .when(!locked && self.modio.is_none(), |b| {
+                    b.on_click(cx.listener(|this, _, _, cx| this.open_modio(None, cx)))
+                }),
+            )
+            .child(
+                button(
                     "mod-add-nexus",
                     ButtonKind::Secondary,
                     t!("mods.nexus.add_button"),
@@ -592,6 +612,7 @@ impl Render for ModsTab {
             .child(actions)
             .children(self.archive_panel(cx))
             .children(self.thunderstore_panel(locked, cx))
+            .children(self.modio_panel(locked, cx))
             .children(self.nexus_panel(locked, cx))
             .children(self.notice.as_ref().map(theme::muted))
             .children(self.confirmation(cx))

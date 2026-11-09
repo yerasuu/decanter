@@ -1,0 +1,26 @@
+[package]
+name = "decanter-modio"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# Read-only use of mod.io's REST API v1 with the user's own API key, as docs/mod-platforms-analysis.md
+# section 3 describes it; every archive is handed to decanter-mods' import, which alone extracts.
+[dependencies]
+decanter-core.workspace = true
+decanter-mods.workspace = true
+md5.workspace = true
+reqwest = { workspace = true, features = ["system-proxy"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "fs", "io-util"] }
+toml.workspace = true
+tracing.workspace = true
+url.workspace = true

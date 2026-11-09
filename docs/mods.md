@@ -74,6 +74,37 @@ the user acts, requests are paced to one a second and name decanter in the User-
 - `mod.toml` gets `[origin]` (`platform = "thunderstore"`, `package`, `version`, `host`). Such a mod shows it with
   *Buscar actualizaciones*, which compares it with the latest version in the community's listing.
 
+## mod.io
+
+*Añadir desde mod.io…* opens a browser in the tab (`crates/modio`, `mods/modio/` in the app;
+[mod-platforms-analysis.md](mod-platforms-analysis.md) section 3) on mod.io's REST API v1. decanter ships no API key
+(decision #1629): the user makes one at `https://mod.io/me/access` and saves it in *Ajustes › General › mod.io*, which
+also has *Probar clave* (`GET /games?_limit=1`) and *Borrar clave*. The key lives in the keyring
+(`SecretKey::MODIO`, entry `modio/api_key`), travels only as the `api_key` query parameter to `api.mod.io`, and never
+reaches a log, an error, `mod.toml` or a download host. HTTPS only, redirects (5 at most) only to `mod.io`,
+`*.mod.io`, `*.modapi.io` and `*.modcdn.io`; one request every 1.5 s across the process (a user key gets 60 a minute);
+a 429 holds every request back for its `retry-after` (60 s when 0 or missing), as the reference warns that ignoring
+429s can revoke the key.
+
+- Terms: before anything else, `GET /authenticate/terms` is shown with links to the Terms of Use and the Privacy
+  Policy; only the user's own *Acepto* records the SHA-256 of that text in `<root>/decanter/modio/terms.toml`, so
+  changed terms are shown again. A 403 with error 11074 on any call drops the agreement and says so. decanter makes no
+  login call, so it never sends `terms_agreed`.
+- Game: the title is searched with `GET /games?_q=`; the user picks one and it is kept in
+  `mods/<store>/<game>/modio.toml`. The game's own record is read again each time the browser opens: without
+  `api_access_options` bit 1 (third-party access) it is refused with its own line. The documentation does not say
+  whether a user's key reaches a game that left it off, so decanter does not try. A game with bit 4 or 8 (downloads
+  need a logged-in user) can be browsed but not downloaded from, since decanter has no mod.io login.
+- Mods: pages of 30 by downloads, searched with `_q`: name, author, summary, downloads, subscribers, rating, dates,
+  logo (HTTPS on mod.io's hosts). The detail lists the latest files and `/dependencies` (read for `mod_id` and `name`
+  only, shape unverified; shown, never installed on their own).
+- *Instalar* asks for the file's record again right before (its `binary_url` may expire), refuses `virus_positive` 1
+  and warns on 2 or an unscanned file, downloads into `mods/<store>/<game>/incoming/modio-<pid>-<n>/` with progress
+  and *Cancelar*, cut at the listed `filesize` and decanter-mods' cap, then checks the size and `filehash.md5`. The
+  archive goes to the import above unchanged; nothing is added before *Añadir*.
+- `mod.toml` gets `[origin]` with `platform = "modio"`, `package = "<game id>-<mod id>"`,
+  `version = "<file id>-<version>"` and the download's host. *Buscar actualizaciones* reads the game's record and the
+  mod, and offers the file mod.io now calls current when it is another one.
 ## Nexus Mods
 
 *Añadir desde Nexus Mods…* opens a browser in the tab (`crates/nexus`, `mods/nexus/` in the app;
@@ -154,5 +185,5 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-RAR, external games, renaming a mod once added, a target folder for a loose folder, mod.io, and Nexus' `nxm://`
-links for free accounts.
+RAR, external games, renaming a mod once added, a target folder for a loose folder, a mod.io login (subscriptions,
+games whose downloads need one) and Nexus' `nxm://` links for free accounts.

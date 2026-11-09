@@ -13,6 +13,7 @@ use rust_i18n::t;
 
 use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
+use super::modio::ModioKeySection;
 use super::nexus::NexusSection;
 use super::{checkbox_field, column, field_row, inline, section};
 use crate::capabilities::Caps;
@@ -45,6 +46,7 @@ pub struct GeneralTab {
     release: Option<Result<Standing, ReleaseError>>,
     availability: Availability,
     install: Option<Install>,
+    modio: Entity<ModioKeySection>,
     nexus: Entity<NexusSection>,
     credentials: Entity<CredentialsSection>,
     debug: Entity<DebugSection>,
@@ -78,6 +80,7 @@ impl GeneralTab {
             release: None,
             availability: self_update::availability(),
             install: None,
+            modio: cx.new(ModioKeySection::new),
             nexus: cx.new(NexusSection::new),
             credentials: cx.new(CredentialsSection::new),
             debug: cx.new(DebugSection::new),
@@ -774,6 +777,7 @@ impl Render for GeneralTab {
             ))
             .child(theme::h2(t!("settings.general.updates.title")))
             .child(section("updates", self.release_section(cx)))
+            .child(section("modio-key", self.modio.clone()))
             .child(section("nexus", self.nexus.clone()))
             .child(section("credentials", self.credentials.clone()))
             .child(section("debug", self.debug.clone()))

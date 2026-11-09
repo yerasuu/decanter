@@ -31,6 +31,8 @@ implemented.
   install, with each mod's files, each account's set and its play tree;
   a game's Thunderstore community is its `thunderstore.toml`, and the
   community list and listings are cached in `<root>/decanter/thunderstore/`;
+  a game's mod.io game is its `modio.toml`, and the user's agreement to
+  mod.io's terms of use is `<root>/decanter/modio/terms.toml`.
   a game's Nexus Mods game is its `nexus.toml`, and Nexus' game list is cached
   in `<root>/decanter/nexus/games.json` (the user's Nexus key is in the OS
   keyring, never in the library).
