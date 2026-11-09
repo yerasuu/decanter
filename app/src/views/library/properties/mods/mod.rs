@@ -1,18 +1,23 @@
-//! The game's third-party mods: add a folder of loose files, turn each on or off for this
-//! account, see which files they replace, and remove one after saying what goes. Changes apply at
-//! the next launch, never while the game runs (docs/third-party-mods-design.md, phase 1).
+//! The game's third-party mods: add a folder of loose files or a zip or 7z archive, turn each on
+//! or off for this account, see which files they replace, and remove one after saying what goes.
+//! Changes apply at the next launch, never while the game runs (docs/third-party-mods-design.md).
+
+mod archive;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use decanter_mods::{GameMods, ModConflicts, ModId, ModManifest, ModPath};
-use gpui::{Context, SharedString, Window, div, prelude::*};
+use gpui::{Context, Entity, ExternalPaths, SharedString, Window, div, prelude::*};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, not_installed, pane};
 use crate::i18n::Text;
 use crate::theme;
+use crate::widgets::input::TextInput;
 use crate::widgets::{ButtonKind, button, checkbox, confirm_panel};
+use archive::Importing;
 
 /// How many paths an expanded conflict lists before summing up the rest.
 const SHOWN_PATHS: usize = 50;
@@ -42,11 +47,18 @@ pub(super) struct ModsTab {
     busy: Option<Text>,
     expanded: HashSet<ModId>,
     confirm_remove: Option<ModId>,
+    /// An archive being read, previewed or extracted.
+    importing: Option<Importing>,
+    /// The previewed archive's mod name, editable before adding.
+    name_input: Entity<TextInput>,
+    /// A plain line about the last action, such as a cancelled import.
+    notice: Option<Text>,
     error: Option<Text>,
 }
 
 impl ModsTab {
-    pub(super) fn new(target: Rc<Target>, cx: &Context<Self>) -> Self {
+    pub(super) fn new(target: Rc<Target>, cx: &mut Context<Self>) -> Self {
+        let name_input = cx.new(|cx| TextInput::new(Text::new("mods.archive.name"), cx));
         let mut this = Self {
             target,
             mods: None,
@@ -55,6 +67,9 @@ impl ModsTab {
             busy: None,
             expanded: HashSet::new(),
             confirm_remove: None,
+            importing: None,
+            name_input,
+            notice: None,
             error: None,
         };
         this.reload(cx);
@@ -103,6 +118,7 @@ impl ModsTab {
         let account_id = self.target.account_id.clone();
         self.busy = Some(busy);
         self.error = None;
+        self.notice = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let outcome = tokio::task::spawn_blocking(move || work(&mods, &account_id)).await;
@@ -143,16 +159,44 @@ impl ModsTab {
                 return;
             };
             let source = folder.path().to_path_buf();
-            tracing::info!(path = %source.display(), "mod folder picked");
-            let _ = this.update(cx, |this, cx| {
-                this.run(
-                    Text::new("library.properties.mods.adding"),
-                    move |mods, account| mods.import_folder(&source, account).map(|_| ()),
-                    cx,
-                );
-            });
+            let _ = this.update(cx, |this, cx| this.add_folder(source, cx));
         })
         .detach();
+    }
+
+    fn add_folder(&mut self, source: PathBuf, cx: &mut Context<Self>) {
+        tracing::info!(path = %source.display(), "mod folder picked");
+        self.run(
+            Text::new("library.properties.mods.adding"),
+            move |mods, account| mods.import_folder(&source, account).map(|_| ()),
+            cx,
+        );
+    }
+
+    /// A folder dropped on the tab is added as loose files, anything else read as an archive.
+    fn dropped(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
+        if self.is_locked() {
+            tracing::info!("drop on the mods tab ignored, it is busy or the game runs");
+            return;
+        }
+        let Some(path) = paths.paths().first().cloned() else {
+            return;
+        };
+        if paths.paths().len() > 1 {
+            tracing::info!(
+                count = paths.paths().len(),
+                "several files dropped on the mods tab, only the first is added"
+            );
+        }
+        if path.is_dir() {
+            self.add_folder(path, cx);
+        } else {
+            self.read_archive(path, cx);
+        }
+    }
+
+    fn is_locked(&self) -> bool {
+        self.running || self.busy.is_some() || self.importing.is_some()
     }
 
     fn remove(&mut self, id: ModId, cx: &mut Context<Self>) {
@@ -375,13 +419,24 @@ impl Render for ModsTab {
         if self.mods.is_none() {
             return not_installed();
         }
-        let locked = self.running || self.busy.is_some();
+        let locked = self.is_locked();
         let add_label = self.busy.as_ref().map_or_else(
             || SharedString::from(t!("library.properties.mods.add").into_owned()),
             SharedString::from,
         );
         let actions = field_row()
             .items_center()
+            .child(
+                button(
+                    "mod-add-archive",
+                    ButtonKind::Secondary,
+                    t!("mods.archive.add_button"),
+                    locked,
+                )
+                .when(!locked, |b| {
+                    b.on_click(cx.listener(|_, _, _, cx| Self::pick_archive(cx)))
+                }),
+            )
             .child(
                 button("mod-add", ButtonKind::Secondary, add_label, locked)
                     .when(!locked, |b| b.on_click(cx.listener(|_, _, _, cx| Self::add(cx)))),
@@ -429,8 +484,12 @@ impl Render for ModsTab {
 
         pane()
             .gap_3()
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.dropped(paths, cx)))
             .child(theme::muted(t!("library.properties.mods.note")))
+            .child(theme::muted(t!("mods.archive.note")))
             .child(actions)
+            .children(self.archive_panel(cx))
+            .children(self.notice.as_ref().map(theme::muted))
             .children(self.confirmation(cx))
             .child(list)
             .child(theme::muted(t!("library.properties.mods.later_wins")))

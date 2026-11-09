@@ -59,6 +59,7 @@
     reason = "a desktop crate on std, with no no_std target to justify alloc::"
 )]
 
+mod archive;
 mod error;
 mod files;
 mod game;
@@ -66,19 +67,26 @@ mod import;
 mod manifest;
 mod merge;
 mod path;
+mod progress;
 mod set;
 mod tree;
 
+pub use archive::{ArchiveFormat, ArchivePreview};
 pub use error::Error;
 pub use game::{GameMods, ModConflicts, Store};
 pub use manifest::{ModFile, ModManifest};
 pub use path::{ModId, ModPath};
+pub use progress::Progress;
 pub use tree::Prepared;
 
 /// The owner's cap (design, open question 8), since a texture pack can be larger than 20 gigabytes.
 pub const MAX_MOD_BYTES: u64 = 64 << 30;
 /// The owner's cap (design, open question 8).
 pub const MAX_MOD_FILES: usize = 200_000;
+/// Entries of an archive, folders included, read before anything is extracted (design, section 5).
+pub const MAX_ENTRIES: usize = 200_000;
+/// How many times its compressed size one entry of an archive may expand to (design, section 5).
+pub const MAX_RATIO: u64 = 1000;
 /// What an import leaves free on the library's disk, so a mod never fills it.
 pub const FREE_SPACE_MARGIN: u64 = 1 << 30;
 

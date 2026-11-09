@@ -5,9 +5,11 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::archive::{self, ArchivePreview};
 use crate::manifest::ModManifest;
 use crate::merge::{Owner, merge};
 use crate::path::{ModId, ModPath, id_component};
+use crate::progress::Progress;
 use crate::set::ModSet;
 use crate::tree::{self, Prepared};
 use crate::{Error, Result, import};
@@ -188,6 +190,45 @@ impl GameMods {
     pub fn import_folder(&self, source: &Path, account: &str) -> Result<ModManifest> {
         let path = self.set_path(account)?;
         let manifest = import::folder(self, source)?;
+        let mut set = ModSet::read(&path)?;
+        set.set_enabled(&manifest.id, true);
+        set.write(&path)?;
+        Ok(manifest)
+    }
+
+    /// Reads a zip or 7z archive the user gave, hashing it and checking every entry, without
+    /// writing anything; [`Self::import_archive`] then extracts what it read. The file is only read.
+    ///
+    /// # Errors
+    ///
+    /// When the file is no archive decanter reads (RAR among them), is encrypted, or holds an
+    /// entry that breaks a rule of a mod (a name that leaves the mod, a link or device, a
+    /// reserved name, two names that are one file for a Windows game, the entry, size, file and
+    /// ratio caps), [`Error::Cancelled`] when `progress` was cancelled, or on a read failure.
+    #[inline]
+    pub fn preview_archive(&self, source: &Path, progress: &Progress) -> Result<ArchivePreview> {
+        archive::preview(self, source, progress)
+    }
+
+    /// Extracts the archive `preview` read into a new mod, enabled for `account`, named `name` and
+    /// with its files under `target` (`None` for the game's root).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::SourceChanged`] when the file changed since the preview, [`Error::Cancelled`] when
+    /// `progress` was cancelled, else as [`Self::preview_archive`], when the library's disk lacks
+    /// the space, or on any read or write failure; nothing is left behind then.
+    #[inline]
+    pub fn import_archive(
+        &self,
+        preview: &ArchivePreview,
+        name: &str,
+        target: Option<ModPath>,
+        account: &str,
+        progress: &Progress,
+    ) -> Result<ModManifest> {
+        let path = self.set_path(account)?;
+        let manifest = archive::import(self, preview, name, target, progress)?;
         let mut set = ModSet::read(&path)?;
         set.set_enabled(&manifest.id, true);
         set.write(&path)?;

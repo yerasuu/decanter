@@ -53,6 +53,10 @@ similar permissive terms. Exceptions this review found:
   legendary-gl (GPL-3.0-or-later). The only values copied from legendary-gl 0.21.1 (`legendary/api/egs.py`) are the
   official Epic Games Launcher's OAuth client id and secret, Epic's own identifiers, pinned as constants (decision
   D3 of `docs/epic-legendary-integration-analysis.md`). It adds no dependency.
+- `crates/mods` adds zip 9.1.3 (MIT) and sevenz-rust2 0.24.1 (Apache-2.0) to read mod archives (decision #1234),
+  with deflate64 (MIT), ppmd-rust (CC0-1.0 OR MIT-0), typed-path (MIT OR Apache-2.0) and lzma-rust2 0.23 (Apache-2.0,
+  beside the 0.25 crates/amazon uses). All are pure Rust and compatible with GPL-3.0-or-later. bzip2 support is left
+  out because libbz2-rs-sys is `bzip2-1.0.6`, a licence the inventory's allow-list does not hold.
 - `cbindgen`, `dwrote` and `option-ext` are MPL-2.0, used unmodified; their notices travel with the source.
 - `r-efi` offers LGPL-2.1-or-later as a third alternative; `self_cell` offers GPL-2.0-only as a second one. Neither
   alternative is taken: the MIT or Apache-2.0 option applies.

@@ -70,6 +70,12 @@ url = "2.5.8"
 flate2 = "1.1.10"
 # The LZMA body of an Amazon Games manifest; pure Rust, with `optimization` (its only unsafe code) left off.
 lzma-rust2 = { version = "=0.25.0", default-features = false }
+# Mod archives (crates/mods/src/archive, decision #1234), pinned exactly as the owner approved them. Pure
+# Rust decoders only: no AES (an encrypted archive is refused); no zstd, whose crate builds C; no
+# bzip2, whose libbz2-rs-sys carries the bzip2-1.0.6 licence scripts/licenses.py does not list; and no
+# LZMA in zip, whose dictionary size nothing would cap before it is allocated (7z's is checked).
+zip = { version = "=9.1.3", default-features = false, features = ["deflate-flate2", "deflate64"] }
+sevenz-rust2 = { version = "=0.24.1", default-features = false, features = ["deflate", "ppmd"] }
 
 # --- Data, files and the command line ---
 serde = "1.0.229"

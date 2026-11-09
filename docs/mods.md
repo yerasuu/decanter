@@ -1,14 +1,20 @@
 # Third-party mods
 
-What is built of [third-party-mods-design.md](third-party-mods-design.md): phase 1, loose folders for GOG games.
-The code is `crates/mods` (data, import, play tree) and `app/src/mods.rs` (launch); the Mods tab is
-`app/src/views/library/properties/mods.rs`.
+What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 and 2, loose folders and zip or 7z
+archives for GOG games. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
+the Mods tab is `app/src/views/library/properties/mods/`.
 
 ## Using it
 
 - Propiedades → Mods → *Añadir carpeta de mod...*: pick a folder laid out like the game's own folder (its files go
   to the same relative paths). The folder is copied in and never changed; the mod is turned on for the account
   that added it.
+- *Añadir archivo comprimido...* (or an archive dropped on the tab): a zip or 7z. It is hashed and every entry
+  checked first, with a progress line and *Cancelar*; then a preview shows its name (editable), file count and
+  size, where its files go (the game's folder or one of its folders, preselected from the archive's top level; a
+  single wrapping folder that matches nothing of the game is left out), the game's files it replaces, and whether
+  it carries an installer (FOMOD or setup program), which is never run. Nothing is written before *Añadir*; the
+  same archive added twice points at the mod it already is. RAR is refused with a line saying so.
 - The checkbox turns a mod on or off for this account. A mod turned on goes last and wins a file over the ones
   already on. Changes apply at the next launch; nothing can be changed while the game runs.
 - Each enabled mod lists the game's files it replaces and the files it wins or loses against other mods.
@@ -40,7 +46,14 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
 
 ## Rules an import keeps
 
-- Only regular files and folders; a link, device or name that is not UTF-8 refuses the whole import.
+- Only regular files and folders; a link, device or name that is not UTF-8 refuses the whole import (in an archive:
+  zip symlink modes and Unix types, 7z reparse points, Unix types and anti-items).
+- Archive names: `\` read as `/`, then no absolute path, drive letter, `..` or `.`; any bad entry refuses the
+  archive. Encrypted archives are refused, and so are 7z methods decanter does not build (bzip2, zstd, brotli, lz4)
+  and LZMA or PPMd dictionaries larger than 1 536 MiB.
+- Archives: at most 200 000 entries, and each entry (each solid block in 7z) larger than 1 MiB at most 1 000 times
+  its compressed size. Sizes are enforced again while extracting, since a header can lie; files are created
+  `0644` and folders `0755` in a fresh `incoming/` folder, and a cancel or failure removes it.
 - Paths: relative, at most 1 024 bytes and 64 components, no `.`, `..`, `\`, `:` or control characters.
 - Two names that are the same file for a Windows game (differing only in case) refuse the import.
 - `Galaxy64.dll` and `Galaxy64.orig.dll` are kept for decanter's Galaxy hook and refuse the import.
@@ -53,5 +66,5 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-Archives (phase 2), DLL overrides and reordering (phase 3), update checks and the uninstall dialog (phase 4),
-external games, renaming a mod and choosing its target folder.
+RAR, DLL overrides and reordering (phase 3), update checks and the uninstall dialog (phase 4),
+external games, renaming a mod once added, and a target folder for a loose folder.

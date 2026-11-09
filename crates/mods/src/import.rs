@@ -127,7 +127,7 @@ fn walk(source: &Path) -> Result<(Vec<Found>, u64)> {
     Ok((found, total))
 }
 
-fn make_incoming(base: &Path) -> Result<PathBuf> {
+pub(crate) fn make_incoming(base: &Path) -> Result<PathBuf> {
     fs::create_dir_all(base).map_err(Error::io(base))?;
     let pid = std::process::id();
     let mut attempt = 0_u32;
@@ -191,7 +191,7 @@ fn copy_in(found: &[Found], incoming: &Path) -> Result<Vec<ModFile>> {
     Ok(files)
 }
 
-fn hex(digest: &[u8]) -> String {
+pub(crate) fn hex(digest: &[u8]) -> String {
     let mut text = String::with_capacity(digest.len().saturating_mul(2));
     for byte in digest {
         for nibble in [byte >> 4_u8, byte & 0x0f] {

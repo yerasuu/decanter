@@ -160,7 +160,7 @@ fn relative_target(path: &ModPath, up: usize, rest: &str) -> String {
 
 /// Every file of the install, without following links into folders: the play tree mirrors what
 /// the game would see there, DLC and the Galaxy hook included.
-fn walk_install(install: &Path) -> Result<Vec<ModPath>> {
+pub(crate) fn walk_install(install: &Path) -> Result<Vec<ModPath>> {
     let mut found = Vec::new();
     let mut pending = vec![(install.to_path_buf(), String::new())];
     while let Some((dir, prefix)) = pending.pop() {
