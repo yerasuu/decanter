@@ -3,7 +3,9 @@
 //! launcher (docs/epic-legendary-integration-analysis.md, option R of D4). It signs an account in
 //! from the browser, keeps its session in the OS keyring, lists its library, and installs,
 //! verifies, updates and uninstalls its games and builds their offline command line; only
-//! [`install`], [`repair`], [`uninstall`] and [`discard`] write to the library.
+//! [`install`], [`repair`], [`uninstall`] and [`discard`] write to the library. Its cloud saves are
+//! restored with [`download_saves`] and uploaded with [`upload_saves`], the one call that writes to
+//! the account.
 //!
 //! Epic documents none of this. The protocol is the one docs/epic-api-behaviour-spec.md describes,
 //! written from legendary-gl 0.21.1 as facts only: no code of legendary's is here (decisions #1225,
@@ -69,6 +71,7 @@ mod launch;
 mod library;
 mod login;
 mod manifest;
+mod saves;
 mod session;
 mod token;
 mod updates;
@@ -84,5 +87,9 @@ pub use launch::{OfflineLaunch, offline_arguments};
 pub use library::{AssetList, CatalogRegion, EpicGame, LaunchAttributes, Library, Listing, list_games};
 pub use login::{complete_login, login_url};
 pub use manifest::{Manifest, ManifestError, ManifestFile, Sha1Digest, parse_manifest};
+pub use saves::{
+    Approval, Direction, FolderFault, SaveCheck, SaveError, SaveFolder, SaveOutcome, SaveRoots, SaveSpec, SaveTarget,
+    SaveVerdict, Snapshot, check_saves, download_saves, save_folder, upload_saves,
+};
 pub use session::{Account, SessionState, check_session, log_out};
 pub use updates::{DlcUpdate, Updates, check_updates};

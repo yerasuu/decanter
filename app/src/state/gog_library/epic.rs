@@ -400,6 +400,9 @@ fn cache(account_id: &str, games: &[EpicGame], complete: bool) -> Option<i64> {
                 .launch
                 .as_ref()
                 .map(|launch| launch.additional_command_line.clone()),
+            cloud_save_folder: game.launch.as_ref().map(|launch| launch.cloud_save_folder.clone()),
+            cloud_include_list: game.launch.as_ref().map(|launch| launch.cloud_include_list.clone()),
+            cloud_exclude_list: game.launch.as_ref().map(|launch| launch.cloud_exclude_list.clone()),
         };
         match db.upsert_game(account_id, &cached, confirmed_new) {
             Ok(()) => written = written.saturating_add(1),

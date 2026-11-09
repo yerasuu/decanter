@@ -111,6 +111,7 @@ mod core;
 mod debug_logs;
 mod desktop;
 mod dump_size;
+mod epic_saves;
 mod external;
 mod format;
 mod game_tools;

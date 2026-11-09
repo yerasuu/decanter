@@ -7,16 +7,22 @@
 //! since how that hash covers a short last window is still open (spec, Q15), and a disagreement is
 //! counted for the owner instead. Only a chunk with no SHA-1 to check is held to the rolling hash.
 
-use std::io::Read as _;
+use std::io::{self, Read as _, Write as _};
 
+use flate2::Compression;
 use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
 
 use crate::manifest::{Chunk, Guid, MAX_WINDOW, Sha1Digest};
 
 const MAGIC: u32 = 0xB1FE_3AA2;
 const COMPRESSED: u8 = 0x1;
 const ENCRYPTED: u8 = 0x2;
+const HASH_ROLLING: u8 = 0x1;
 const HASH_SHA1: u8 = 0x2;
+/// Spec 7.1's header version 3: the SHA-1 and the uncompressed size, with no secret fields.
+const WRITTEN_VERSION: u32 = 3;
+const WRITTEN_HEADER_SIZE: u32 = 66;
 /// The polynomial of spec 7.2's rolling hash, a variation on CRC-64-ECMA.
 const POLYNOMIAL: u64 = 0xC96C_5795_D787_0F42;
 const ROLLING_TABLE: [u64; 256] = rolling_table();
@@ -24,15 +30,15 @@ const ROLLING_TABLE: [u64; 256] = rolling_table();
 /// What a chunk needs to be fetched and checked, copied out of the manifest so a download task owns
 /// it.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct Want {
-    pub(super) guid: Guid,
-    pub(super) rolling_hash: u64,
-    pub(super) sha1: Option<Sha1Digest>,
-    pub(super) window_size: u32,
+pub(crate) struct Want {
+    pub(crate) guid: Guid,
+    pub(crate) rolling_hash: u64,
+    pub(crate) sha1: Option<Sha1Digest>,
+    pub(crate) window_size: u32,
 }
 
 impl Want {
-    pub(super) const fn of(chunk: &Chunk) -> Self {
+    pub(crate) const fn of(chunk: &Chunk) -> Self {
         Self {
             guid: chunk.guid,
             rolling_hash: chunk.rolling_hash,
@@ -44,7 +50,7 @@ impl Want {
 
 /// Why a chunk file was refused.
 #[derive(Debug)]
-pub(super) enum Fault {
+pub(crate) enum Fault {
     /// Not a chunk file of a shape spec 7.1 describes.
     Malformed(&'static str),
     /// Its data does not match what the manifest or its header says; names the check.
@@ -64,11 +70,11 @@ impl core::fmt::Display for Fault {
 }
 
 /// A chunk's data, checked.
-pub(super) struct Verified {
-    pub(super) data: Vec<u8>,
+pub(crate) struct Verified {
+    pub(crate) data: Vec<u8>,
     /// The SHA-1 passed but spec 7.2's rolling hash came out otherwise, over the data and over it
     /// padded to 1 MiB.
-    pub(super) is_rolling_off: bool,
+    pub(crate) is_rolling_off: bool,
 }
 
 struct Header {
@@ -83,7 +89,7 @@ struct Header {
 }
 
 /// Reads, inflates and checks one chunk file as downloaded.
-pub(super) fn decode(raw: &[u8], want: &Want) -> Result<Verified, Fault> {
+pub(crate) fn decode(raw: &[u8], want: &Want) -> Result<Verified, Fault> {
     let header = header(raw)?;
     if header.guid != want.guid {
         return Err(Fault::Mismatch("the chunk header names another chunk"));
@@ -124,6 +130,42 @@ pub(super) fn decode(raw: &[u8], want: &Want) -> Result<Verified, Fault> {
     Ok(Verified {
         data,
         is_rolling_off: !is_rolling_right,
+    })
+}
+
+/// A chunk file as [`decode`] reads it back, written for the save snapshots decanter uploads: header
+/// version 3, the data zlib-compressed and unencrypted, both hashes over `data` as given.
+pub(crate) struct Encoded {
+    pub(crate) file: Vec<u8>,
+    pub(crate) rolling_hash: u64,
+    pub(crate) sha1: Sha1Digest,
+}
+
+pub(crate) fn encode(guid: Guid, data: &[u8]) -> io::Result<Encoded> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data)?;
+    let payload = encoder.finish()?;
+    let too_large = || io::Error::other("a save chunk is larger than a chunk header can declare");
+    let compressed_size = u32::try_from(payload.len()).map_err(|_| too_large())?;
+    let uncompressed_size = u32::try_from(data.len()).map_err(|_| too_large())?;
+    let rolling_hash = rolling(data);
+    let sha1 = Sha1Digest::of(data);
+    let mut file = Vec::with_capacity(to_usize(WRITTEN_HEADER_SIZE).saturating_add(payload.len()));
+    file.extend_from_slice(&MAGIC.to_le_bytes());
+    file.extend_from_slice(&WRITTEN_VERSION.to_le_bytes());
+    file.extend_from_slice(&WRITTEN_HEADER_SIZE.to_le_bytes());
+    file.extend_from_slice(&compressed_size.to_le_bytes());
+    file.extend_from_slice(&guid.to_le_bytes());
+    file.extend_from_slice(&rolling_hash.to_le_bytes());
+    file.push(COMPRESSED);
+    file.extend_from_slice(sha1.as_bytes());
+    file.push(HASH_ROLLING | HASH_SHA1);
+    file.extend_from_slice(&uncompressed_size.to_le_bytes());
+    file.extend_from_slice(&payload);
+    Ok(Encoded {
+        file,
+        rolling_hash,
+        sha1,
     })
 }
 
@@ -233,7 +275,7 @@ const fn rolling_table() -> [u64; 256] {
 }
 
 /// The chunk's path under a CDN base by the manifest's feature level (spec, 6.4).
-pub(super) fn path(feature_level: u32, chunk: &Chunk) -> String {
+pub(crate) fn path(feature_level: u32, chunk: &Chunk) -> String {
     let dir = match feature_level {
         22.. => "ChunksV5",
         15..=21 => "ChunksV4",

@@ -22,6 +22,7 @@
 mod cloud_saves;
 mod compatibility;
 mod dlc;
+mod epic_cloud_saves;
 mod general;
 mod language;
 mod local_files;
@@ -107,9 +108,10 @@ const STEAM_TABS: &[Tab] = &[Tab::General];
 /// its files are verified and updated like any store's.
 const AMAZON_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles];
 
-/// Epic has no languages or cloud saves yet, and its DLC are listed under the
-/// game's detail; its files are verified and updated like Amazon's.
-const EPIC_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles];
+/// Epic has no languages yet, and its DLC are listed under the game's detail;
+/// its files are verified and updated like Amazon's, and its cloud saves are
+/// its own (`epic_cloud_saves`).
+const EPIC_TABS: &[Tab] = &[Tab::General, Tab::Updates, Tab::LocalFiles, Tab::CloudSaves];
 
 /// Opens Propiedades for `game` in its own window. Fire-and-forget: unlike
 /// an overlay, there's no state here for the caller to hold onto or close
@@ -243,6 +245,9 @@ fn build_pane(tab: Tab, target: &Rc<Target>, window: &mut Window, cx: &mut App) 
         Tab::Updates => cx.new(|_| updates::UpdatesTab::new(target)).into(),
         Tab::LocalFiles => cx.new(|_| local_files::LocalFilesTab::new(target)).into(),
         Tab::Language => cx.new(|cx| language::LanguageTab::new(target, cx)).into(),
+        Tab::CloudSaves if target.storefront == Storefront::EpicGames => {
+            cx.new(|cx| epic_cloud_saves::EpicCloudSavesTab::new(target, cx)).into()
+        }
         Tab::CloudSaves => cx.new(|cx| cloud_saves::CloudSavesTab::new(target, window, cx)).into(),
         Tab::Dlc => cx.new(|_| dlc::DlcTab::new(target)).into(),
         Tab::Mods => cx.new(|cx| mods::ModsTab::new(target, cx)).into(),

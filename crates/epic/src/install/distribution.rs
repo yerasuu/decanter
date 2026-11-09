@@ -235,7 +235,7 @@ fn sha1_hex(text: &str) -> Option<Sha1Digest> {
 /// The anonymous client of the manifest and chunk downloads (spec, 2.3): the launcher's CDN user
 /// agent, no `Authorization`, HTTPS only, and redirects held to the host asked or Epic's own
 /// (spec, 13.12).
-pub(super) fn cdn_client() -> Result<reqwest::Client, CallError> {
+pub(crate) fn cdn_client() -> Result<reqwest::Client, CallError> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(USER_AGENT, reqwest::header::HeaderValue::from_static(CDN_USER_AGENT));
     reqwest::Client::builder()
@@ -309,7 +309,7 @@ pub(super) async fn manifest(download: &GameDownload) -> Result<Vec<u8>, Manifes
 }
 
 /// Why one anonymous download failed.
-pub(super) enum Fetched {
+pub(crate) enum Fetched {
     /// 401, 403, 404 or 410: this CDN will not give the file.
     Refused(u16),
     /// A 429, with how long it asked to wait.
@@ -330,7 +330,7 @@ impl core::fmt::Display for Fetched {
 }
 
 /// GET `url` and its body of at most `limit` bytes; only a 200 is an answer (spec, 7.4).
-pub(super) async fn fetch_capped(
+pub(crate) async fn fetch_capped(
     client: &reqwest::Client,
     url: &Url,
     limit: usize,

@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS games_cache (
     can_run_offline INTEGER,
     ownership_token INTEGER,
     additional_command_line TEXT,
+    cloud_save_folder TEXT,
+    cloud_include_list TEXT,
+    cloud_exclude_list TEXT,
     first_seen      INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
@@ -222,7 +225,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -356,6 +359,9 @@ impl Db {
             ("can_run_offline", "INTEGER"),
             ("ownership_token", "INTEGER"),
             ("additional_command_line", "TEXT"),
+            ("cloud_save_folder", "TEXT"),
+            ("cloud_include_list", "TEXT"),
+            ("cloud_exclude_list", "TEXT"),
         ] {
             if !has_column(&conn, "games_cache", column)? {
                 tracing::info!(table = "games_cache", column, "adding column");

@@ -29,6 +29,9 @@ const BULK_ITEMS: Call = Call {
 const TITLE_MAX_CHARS: usize = 256;
 /// Arguments Epic adds to every launch end up on the game's command line, so they are bounded.
 const COMMAND_LINE_MAX_CHARS: usize = 1024;
+/// A save folder template or filter list cut short would name another folder or other files, so
+/// one past this is dropped whole instead.
+const SAVE_ATTRIBUTE_MAX_CHARS: usize = 2048;
 const IMAGE_URL_MAX_LEN: usize = 1024;
 const MAX_IMAGES: usize = 64;
 /// Bounds on what is gathered for the log, since both come from Epic's answers.
@@ -171,7 +174,18 @@ fn launch_attributes(attributes: Option<&Map<String, Value>>) -> LaunchAttribute
         additional_command_line: value("AdditionalCommandLine")
             .and_then(|text| printable(text, COMMAND_LINE_MAX_CHARS))
             .unwrap_or_default(),
+        cloud_save_folder: save_attribute(value("CloudSaveFolder")),
+        cloud_include_list: save_attribute(value("CloudIncludeList")),
+        cloud_exclude_list: save_attribute(value("CloudExcludeList")),
     }
+}
+
+/// The attribute as given, or empty when it holds a control character or is too long to be whole.
+fn save_attribute(text: Option<&str>) -> String {
+    text.map(str::trim)
+        .filter(|text| text.chars().count() <= SAVE_ATTRIBUTE_MAX_CHARS && !text.chars().any(char::is_control))
+        .unwrap_or_default()
+        .to_owned()
 }
 
 fn first_app_id(item: &Value) -> Option<String> {

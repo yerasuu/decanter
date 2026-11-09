@@ -18,9 +18,9 @@
 //! A DLC goes into its game's folder and onto its game's record ([`dlc`]). Install tags, delta
 //! manifests (spec, 5.5), prerequisites and encrypted builds are left for later.
 
-mod chunk;
+pub(crate) mod chunk;
 mod disk;
-mod distribution;
+pub(crate) mod distribution;
 mod dlc;
 mod fetch;
 mod import;

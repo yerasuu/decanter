@@ -48,6 +48,9 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
         can_run_offline: None,
         ownership_token: None,
         additional_command_line: None,
+        cloud_save_folder: None,
+        cloud_include_list: None,
+        cloud_exclude_list: None,
     }
 }
 

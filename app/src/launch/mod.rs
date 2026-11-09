@@ -546,6 +546,9 @@ async fn apply_hook_log(account_id: &str, game: &InstalledGame, achievement_log:
 /// worth of files "changed since" a timestamp cloud saves already knows
 /// about, and re-push them for nothing.
 pub(crate) async fn sync_cloud_saves_before_launch(account_id: &str, game: &InstalledGame) -> Option<i64> {
+    if game.storefront == decanter_core::Storefront::EpicGames {
+        return crate::epic_saves::before_launch(account_id, game).await;
+    }
     let Some(local_root) = game.cloud_save_path.as_deref() else {
         return game.cloud_save_last_sync;
     };
@@ -583,6 +586,9 @@ pub(crate) async fn sync_cloud_saves_before_launch(account_id: &str, game: &Inst
 /// [`sync_cloud_saves_before_launch`]. `checkpoint` is that call's return
 /// value, not `game.cloud_save_last_sync` — see its doc for why.
 pub(crate) async fn sync_cloud_saves_after_exit(account_id: &str, game: &InstalledGame, checkpoint: Option<i64>) {
+    if game.storefront == decanter_core::Storefront::EpicGames {
+        return crate::epic_saves::after_exit(account_id, game, checkpoint).await;
+    }
     let Some(local_root) = game.cloud_save_path.as_deref() else {
         return;
     };

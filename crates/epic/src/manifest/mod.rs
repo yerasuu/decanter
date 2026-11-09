@@ -11,6 +11,7 @@
 mod binary;
 mod json;
 mod reader;
+pub(crate) mod write;
 
 use core::fmt;
 use std::collections::{HashMap, HashSet};

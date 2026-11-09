@@ -97,8 +97,8 @@ pub struct EpicGame {
     pub launch: Option<LaunchAttributes>,
 }
 
-/// What the catalog says about starting a title (spec, 4.5), its defaults standing in for an
-/// attribute it does not carry.
+/// What the catalog says about starting a title and keeping its saves (spec, 4.5), its defaults
+/// standing in for an attribute it does not carry.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct LaunchAttributes {
@@ -108,6 +108,12 @@ pub struct LaunchAttributes {
     pub ownership_token: bool,
     /// `AdditionalCommandLine`, under either spelling; empty when there is none.
     pub additional_command_line: String,
+    /// `CloudSaveFolder`, the save folder's template (spec, 9); empty when the title has no cloud
+    /// saves.
+    pub cloud_save_folder: String,
+    /// `CloudIncludeList` and `CloudExcludeList`, comma lists; empty when there are none.
+    pub cloud_include_list: String,
+    pub cloud_exclude_list: String,
 }
 
 /// Where the asset list stands in a listing.
