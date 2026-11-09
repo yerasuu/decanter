@@ -14,6 +14,8 @@ use super::Planned;
 use crate::i18n::Text;
 
 const LAUNCHER: &str = "umu-run";
+/// umu's and protonfixes' name for the Epic Games Store.
+pub(super) const EPIC_STORE: &str = "egs";
 
 /// Longer than any game takes to give up on a screen mode it cannot set, so a session that ran
 /// for a while is never blamed on it.
@@ -116,6 +118,10 @@ pub(super) async fn register_galaxy_service(account_id: &str, game: &InstalledGa
 /// ids rather than Amazon's product id, and GE-Proton11-9 ships no fix
 /// module for that store, so `umu-<product id>` with `STORE=amazon` would
 /// match nothing and lose the default fixes `umu-default` gets.
+/// An Epic game goes in as `umu-default` with `STORE=egs` until its launch
+/// finds the database row whose codename is its `appName` (`epic::prepare`):
+/// protonfixes keys `egs` rows by Steam-derived ids too, and under that store
+/// it runs the `egs` defaults the Epic launcher would otherwise set up.
 pub(super) fn identified(launch: Launch, game: &InstalledGame) -> Launch {
     match (game.storefront, &game.umu_id) {
         (decanter_core::Storefront::Gog, _) => launch.game_id(format!("umu-{}", game.game_id)).store("gog"),
@@ -126,6 +132,7 @@ pub(super) fn identified(launch: Launch, game: &InstalledGame) -> Launch {
                 None => launch,
             }
         }
+        (decanter_core::Storefront::EpicGames, None) => launch.game_id(crate::external::UMU_ID).store(EPIC_STORE),
         (_, None) => launch.game_id(crate::external::UMU_ID),
     }
 }

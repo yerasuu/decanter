@@ -67,6 +67,21 @@ pub async fn search(name: &str) -> Result<Vec<Match>, Text> {
         .collect())
 }
 
+/// The umu id of the row `store` files under `codename`, the store's own id for the game (an Epic
+/// `appName`), read from an installed copy only: a launch never waits on the network for it.
+pub async fn id_for_codename(store: &str, codename: &str) -> Option<String> {
+    let local = newest_local()?;
+    let csv = tokio::fs::read_to_string(&local)
+        .await
+        .inspect_err(|err| tracing::warn!(path = %local.display(), %err, "could not read an installed umu database"))
+        .ok()?;
+    csv.lines().skip(1).find_map(|line| {
+        let fields = parse_row(line);
+        let (row_store, row_codename, id) = (fields.get(1)?, fields.get(2)?, fields.get(3)?);
+        (row_store == store && row_codename == codename && !id.is_empty()).then(|| id.clone())
+    })
+}
+
 fn rank(title: &str, acronym: &str, query: &str) -> Option<u8> {
     if title == query || acronym == query {
         Some(0)

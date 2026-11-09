@@ -15,15 +15,8 @@ use super::install::{self, InstallRequest};
 use crate::state::{AppState, Download, DownloadKey, DownloadKind, InstallStatus};
 
 /// Why `game` can't be installed or played here, when this system has no
-/// build of it or its store's installs aren't in decanter yet: shown in
-/// place of Instalar and Jugar.
+/// build of it: shown in place of Instalar and Jugar.
 pub fn missing_build(game: &Game) -> Option<Cow<'static, str>> {
-    // Epic games install (#1619) but launch only in the next stage, so an installed one has a note
-    // where Jugar would be.
-    if game.storefront == decanter_core::Storefront::EpicGames {
-        let is_installed = game.install_state.as_ref().is_some_and(|state| state.installed);
-        return is_installed.then(|| t!("epic.detail.launch_later"));
-    }
     let system = platform::game_system();
     (!game.has_build_for(system)).then(|| t!("library.detail.no_build", system = system.to_string()))
 }
@@ -41,8 +34,9 @@ pub fn resolve_launch_target(account_id: &str, game: &Game) -> Option<InstalledG
     if installed.storefront == decanter_core::Storefront::Steam {
         return Some(installed);
     }
-    // Launching an Epic game needs its exchange code and arguments, which come in the next stage.
-    if installed.storefront == decanter_core::Storefront::EpicGames {
+    if installed.storefront == decanter_core::Storefront::EpicGames
+        && !super::epic_install::is_program_inside(account_id, &installed)
+    {
         return None;
     }
     #[cfg(target_os = "linux")]

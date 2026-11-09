@@ -1,8 +1,7 @@
 //! Epic Games titles through the same Descargas rows, pause, cancel and properties as GOG's and
-//! Amazon's (kb #1619); the download itself is `decanter_epic`'s. Launching them comes in the next
-//! stage, so an installed one shows a note where Jugar would be.
+//! Amazon's (kb #1619); the download itself is `decanter_epic`'s.
 
-use decanter_core::{Library, Storefront};
+use decanter_core::{CachedGame, InstalledGame, Library, Storefront};
 use gpui::AsyncApp;
 
 use super::install::{DownloadJob, Ended, progress_channel, refresh_install_state, track};
@@ -30,14 +29,69 @@ struct Ids {
     catalog_item_id: String,
 }
 
-fn cached_ids(account_id: &str, app_name: &str) -> Option<Ids> {
-    let game = crate::core::db()
+/// What the library listing cached for the game: the ids its manifest request and launch name, and
+/// the catalog attributes its launch reads.
+pub fn cached_game(account_id: &str, app_name: &str) -> Option<CachedGame> {
+    crate::core::db()
         .ok()?
         .list_games(account_id)
         .inspect_err(|err| tracing::warn!(account_id, %err, "failed to read the cached epic games"))
         .ok()?
         .into_iter()
-        .find(|game| game.storefront == Storefront::EpicGames && game.product_id == app_name)?;
+        .find(|game| game.storefront == Storefront::EpicGames && game.product_id == app_name)
+}
+
+/// Whether the catalog said the game does not start without Epic's online session, which the
+/// offline launch does not give it.
+pub fn needs_online(account_id: &str, app_name: &str) -> bool {
+    cached_game(account_id, app_name).and_then(|game| game.can_run_offline) == Some(false)
+}
+
+/// Whether the record's program is a regular file inside the game's folder, reached through no
+/// symbolic link, as the install checked it: a link put there since could start something outside.
+pub fn is_program_inside(account_id: &str, game: &InstalledGame) -> bool {
+    let product_id = game.game_id.as_str();
+    let Some(program) = game.launch_executable.as_deref() else {
+        return false;
+    };
+    match program_file_type(account_id, game, program) {
+        Ok(file_type) if file_type.is_file() => true,
+        Ok(_) => {
+            tracing::warn!(
+                account_id,
+                product_id,
+                program,
+                "the epic game's program is not a regular file, not launched"
+            );
+            false
+        }
+        Err(reason) => {
+            tracing::warn!(
+                account_id,
+                product_id,
+                program,
+                reason,
+                "the epic game's program is refused, not launched"
+            );
+            false
+        }
+    }
+}
+
+fn program_file_type(account_id: &str, game: &InstalledGame, program: &str) -> Result<std::fs::FileType, String> {
+    let library = crate::core::library_for_account(account_id).map_err(|err| err.to_string())?;
+    let folder = library
+        .install_dir(&game.install_dir)
+        .ok_or_else(|| format!("unusable install folder {:?}", game.install_dir))?;
+    let path = decanter_runtime::install::ManifestPath::parse(program).map_err(|err| err.to_string())?;
+    let full = decanter_runtime::install::files::inside(&folder, &path).map_err(|err| err.to_string())?;
+    std::fs::symlink_metadata(full)
+        .map(|meta| meta.file_type())
+        .map_err(|err| err.to_string())
+}
+
+fn cached_ids(account_id: &str, app_name: &str) -> Option<Ids> {
+    let game = cached_game(account_id, app_name)?;
     Some(Ids {
         namespace: game.namespace?,
         catalog_item_id: game.catalog_item_id?,

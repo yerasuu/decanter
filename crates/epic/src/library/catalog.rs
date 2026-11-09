@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! One catalog item's metadata (spec, 4.3): its title, whether it is a mod or a DLC and of what,
-//! its `appName` and its art.
+//! its `appName`, its art and the attributes that shape its launch (spec, 4.5).
 //!
 //! The answer is read member by member from the raw JSON rather than into a fixed shape, since
 //! region and locale change which members come back (spec, 13.6): a member missing or of another
@@ -14,7 +14,7 @@ use reqwest::Method;
 use serde_json::{Map, Value};
 use url::form_urlencoded::Serializer;
 
-use super::{CatalogRegion, is_id, printable};
+use super::{CatalogRegion, LaunchAttributes, is_id, printable};
 use crate::error::CallError;
 use crate::hosts::Host;
 use crate::http::{self, Call, Kind};
@@ -27,6 +27,8 @@ const BULK_ITEMS: Call = Call {
 };
 
 const TITLE_MAX_CHARS: usize = 256;
+/// Arguments Epic adds to every launch end up on the game's command line, so they are bounded.
+const COMMAND_LINE_MAX_CHARS: usize = 1024;
 const IMAGE_URL_MAX_LEN: usize = 1024;
 const MAX_IMAGES: usize = 64;
 /// Bounds on what is gathered for the log, since both come from Epic's answers.
@@ -50,6 +52,7 @@ pub(super) struct Meta {
     /// `releaseInfo[0].appId`.
     pub app_name: Option<String>,
     pub art: Art,
+    pub launch: LaunchAttributes,
 }
 
 pub(super) struct MainGame {
@@ -140,6 +143,34 @@ pub(super) fn meta(raw: &Value, seen: &mut Seen) -> Meta {
         main_game,
         app_name: first_app_id(raw),
         art: art(raw, seen),
+        launch: launch_attributes(raw.get("customAttributes").and_then(Value::as_object)),
+    }
+}
+
+/// `customAttributes.<name>.value`, the defaults of spec 4.5 standing in for a missing one.
+fn launch_attributes(attributes: Option<&Map<String, Value>>) -> LaunchAttributes {
+    let value = |name: &str| {
+        let found = attributes?;
+        found
+            .get(name)
+            .or_else(|| {
+                // Both `AdditionalCommandLine` and `AdditionalCommandline` occur (spec, 4.5), so
+                // names are matched without case once the exact one is missing.
+                found
+                    .iter()
+                    .find(|entry| entry.0.eq_ignore_ascii_case(name))
+                    .map(|entry| entry.1)
+            })?
+            .get("value")?
+            .as_str()
+    };
+    let is_true = |name: &str| value(name).map(|text| text.trim().eq_ignore_ascii_case("true"));
+    LaunchAttributes {
+        can_run_offline: is_true("CanRunOffline").unwrap_or(true),
+        ownership_token: is_true("OwnershipToken").unwrap_or(false),
+        additional_command_line: value("AdditionalCommandLine")
+            .and_then(|text| printable(text, COMMAND_LINE_MAX_CHARS))
+            .unwrap_or_default(),
     }
 }
 

@@ -16,6 +16,7 @@
 
 #[cfg(target_os = "linux")]
 mod amazon;
+mod epic;
 mod headless;
 mod linux_native;
 mod native;
@@ -312,7 +313,9 @@ pub async fn start(
     let notes = if kind == Kind::Umu
         && matches!(
             game.storefront,
-            decanter_core::Storefront::Gog | decanter_core::Storefront::AmazonGames
+            decanter_core::Storefront::Gog
+                | decanter_core::Storefront::AmazonGames
+                | decanter_core::Storefront::EpicGames
         ) {
         set_running(&background, &game.game_id, true, cx);
         prepare_store_prefix(&account_id, &game, &mut planned.launch).await
@@ -363,6 +366,7 @@ pub(crate) async fn prepare_store_prefix(account_id: &str, game: &InstalledGame,
         decanter_core::Storefront::Gog => prepare_gog_prefix(account_id, game, launch).await,
         #[cfg(target_os = "linux")]
         decanter_core::Storefront::AmazonGames => amazon::prepare(account_id, game, launch).await,
+        decanter_core::Storefront::EpicGames => epic::prepare(account_id, game, launch).await,
         _ => Vec::new(),
     }
 }

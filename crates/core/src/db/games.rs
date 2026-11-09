@@ -40,6 +40,11 @@ pub struct CachedGame {
     pub namespace: Option<String>,
     /// Epic's catalog item id, the key of its metadata; `None` as for `entitlement_id`.
     pub catalog_item_id: Option<String>,
+    /// Epic's `CanRunOffline`, `OwnershipToken` and additional command line (empty for none),
+    /// which its launch reads; `None` as for `entitlement_id`.
+    pub can_run_offline: Option<bool>,
+    pub ownership_token: Option<bool>,
+    pub additional_command_line: Option<String>,
 }
 
 /// Unit separator, not a comma: a genre name is free text from the store
@@ -83,9 +88,9 @@ impl Db {
                     account_id, storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
                     parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id,
-                    first_seen, updated_at
+                    can_run_offline, ownership_token, additional_command_line, first_seen, updated_at
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, {first_seen_if_new}, strftime('%s','now'))
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, {first_seen_if_new}, strftime('%s','now'))
                  ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
                     title = excluded.title,
                     icon_url = excluded.icon_url,
@@ -104,6 +109,9 @@ impl Db {
                     product_sku = COALESCE(excluded.product_sku, product_sku),
                     namespace = COALESCE(excluded.namespace, namespace),
                     catalog_item_id = COALESCE(excluded.catalog_item_id, catalog_item_id),
+                    can_run_offline = COALESCE(excluded.can_run_offline, can_run_offline),
+                    ownership_token = COALESCE(excluded.ownership_token, ownership_token),
+                    additional_command_line = COALESCE(excluded.additional_command_line, additional_command_line),
                     updated_at = excluded.updated_at"
             ),
             params![
@@ -127,6 +135,9 @@ impl Db {
                 game.product_sku,
                 game.namespace,
                 game.catalog_item_id,
+                game.can_run_offline,
+                game.ownership_token,
+                game.additional_command_line,
             ],
         )?;
         tracing::debug!(
@@ -211,7 +222,8 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT storefront, product_id, title, icon_url, cover_url, background_url,
                     kind, purchased_at, release_date, rating, genres, library_rank,
-                    parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id
+                    parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id,
+                    can_run_offline, ownership_token, additional_command_line
              FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
         )?;
         let rows = stmt.query_map(params![account_id], |row| {
@@ -243,6 +255,9 @@ impl Db {
                 product_sku: row.get(16)?,
                 namespace: row.get(17)?,
                 catalog_item_id: row.get(18)?,
+                can_run_offline: row.get(19)?,
+                ownership_token: row.get(20)?,
+                additional_command_line: row.get(21)?,
             })
         })?;
         let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;

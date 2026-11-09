@@ -2,8 +2,8 @@
 //! Epic Games: the client of the official launcher's web services, which decanter speaks as that
 //! launcher (docs/epic-legendary-integration-analysis.md, option R of D4). It signs an account in
 //! from the browser, keeps its session in the OS keyring, lists its library, and installs,
-//! verifies, updates and uninstalls its games; only [`install`], [`repair`], [`uninstall`] and
-//! [`discard`] write to the library.
+//! verifies, updates and uninstalls its games and builds their offline command line; only
+//! [`install`], [`repair`], [`uninstall`] and [`discard`] write to the library.
 //!
 //! Epic documents none of this. The protocol is the one docs/epic-api-behaviour-spec.md describes,
 //! written from legendary-gl 0.21.1 as facts only: no code of legendary's is here (decisions #1225,
@@ -64,6 +64,7 @@ mod hosts;
 mod http;
 mod identity;
 mod install;
+mod launch;
 mod library;
 mod login;
 mod manifest;
@@ -74,10 +75,11 @@ mod updates;
 pub use error::CallError;
 pub use hosts::Host;
 pub use install::{
-    BrokenFile, BrokenReason, Target, VerifyReport, cancel, discard, install, pause, pause_for_quit, repair,
-    unfinished_downloads, uninstall, verify,
+    BrokenFile, BrokenReason, Target, VerifyReport, cancel, discard, install, installed_manifest, pause,
+    pause_for_quit, repair, unfinished_downloads, uninstall, verify,
 };
-pub use library::{AssetList, CatalogRegion, EpicGame, Library, Listing, list_games};
+pub use launch::{OfflineLaunch, offline_arguments};
+pub use library::{AssetList, CatalogRegion, EpicGame, LaunchAttributes, Library, Listing, list_games};
 pub use login::{complete_login, login_url};
 pub use manifest::{Manifest, ManifestError, ManifestFile, Sha1Digest, parse_manifest};
 pub use session::{Account, SessionState, check_session, log_out};

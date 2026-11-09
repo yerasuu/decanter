@@ -85,6 +85,21 @@ pub struct EpicGame {
     pub icon_url: Option<String>,
     pub cover_url: Option<String>,
     pub background_url: Option<String>,
+    /// `None` when the catalog gave no item for the title.
+    pub launch: Option<LaunchAttributes>,
+}
+
+/// What the catalog says about starting a title (spec, 4.5), its defaults standing in for an
+/// attribute it does not carry.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct LaunchAttributes {
+    /// `CanRunOffline`: whether the game starts without an exchange code.
+    pub can_run_offline: bool,
+    /// `OwnershipToken`: whether an online launch hands the game an ownership token file.
+    pub ownership_token: bool,
+    /// `AdditionalCommandLine`, under either spelling; empty when there is none.
+    pub additional_command_line: String,
 }
 
 /// Where the asset list stands in a listing.
@@ -423,6 +438,7 @@ impl Found {
                 icon_url: art.and_then(|art| art.icon.clone()),
                 cover_url: art.and_then(|art| art.cover.clone()),
                 background_url: art.and_then(|art| art.background.clone()),
+                launch: meta.map(|meta| meta.launch.clone()),
             });
         }
         tally.listed = counts;

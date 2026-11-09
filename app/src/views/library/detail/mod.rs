@@ -50,6 +50,8 @@ struct Loaded {
     /// Names of the profile's collections this game sits on.
     collections: Vec<String>,
     launch: Option<InstalledGame>,
+    /// The Epic catalog said the game needs the online session, which its offline launch lacks.
+    needs_epic_online: bool,
 }
 
 impl Loaded {
@@ -65,6 +67,7 @@ impl Loaded {
             playtime: data::load_playtime(&game.account_id, game.storefront, &game.id),
             collections: member_of(profile_id, &game.id),
             launch: launch_target(game),
+            needs_epic_online: needs_epic_online(game),
         }
     }
 
@@ -86,8 +89,14 @@ impl Loaded {
         if self.install_state != game.install_state {
             self.install_state.clone_from(&game.install_state);
             self.launch = launch_target(game);
+            self.needs_epic_online = needs_epic_online(game);
         }
     }
+}
+
+fn needs_epic_online(game: &Game) -> bool {
+    game.storefront == Storefront::EpicGames
+        && crate::views::library::epic_install::needs_online(&game.account_id, &game.id)
 }
 
 fn launch_target(game: &Game) -> Option<InstalledGame> {
@@ -129,6 +138,7 @@ struct BarState {
     /// That download's Cancelar is waiting for the user's confirmation.
     confirming_cancel: bool,
     dlcs: Vec<(String, String)>,
+    needs_epic_online: bool,
 }
 
 #[derive(Default)]
@@ -262,6 +272,7 @@ impl Render for DetailView {
         let playtime = loaded.playtime;
         let collections = loaded.collections.clone();
         let launch = loaded.launch.clone();
+        let needs_epic_online = loaded.needs_epic_online;
 
         let hero = hero(&game, (unlocked, total), playtime, is_fav, is_mod, cx);
         let bar = BarState {
@@ -272,6 +283,7 @@ impl Render for DetailView {
             download,
             confirming_cancel,
             dlcs,
+            needs_epic_online,
         };
         let action_bar = self.action_bar(&game, bar, window, cx);
         if !self.local.took_focus && self.model.read(cx).opened_from.is_some() {

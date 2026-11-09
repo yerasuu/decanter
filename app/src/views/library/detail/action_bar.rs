@@ -50,6 +50,11 @@ impl DetailView {
         .when(game.storefront == Storefront::AmazonGames, |bar| {
             bar.child(theme::muted(t!("amazon.detail.online_unknown")))
         })
+        // Epic games start offline (decision D10 of the Epic analysis), which a game the catalog
+        // marks as not able to run offline may refuse.
+        .when(bar_state.needs_epic_online, |bar| {
+            bar.child(theme::muted(t!("epic.detail.online_needed")))
+        })
         .children(relocation.map(|(_, lines)| lines))
     }
 

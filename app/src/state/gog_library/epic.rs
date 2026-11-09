@@ -393,6 +393,12 @@ fn cache(account_id: &str, games: &[EpicGame], complete: bool) -> Option<i64> {
             product_sku: None,
             namespace: Some(game.namespace.clone()),
             catalog_item_id: Some(game.catalog_item_id.clone()),
+            can_run_offline: game.launch.as_ref().map(|launch| launch.can_run_offline),
+            ownership_token: game.launch.as_ref().map(|launch| launch.ownership_token),
+            additional_command_line: game
+                .launch
+                .as_ref()
+                .map(|launch| launch.additional_command_line.clone()),
         };
         match db.upsert_game(account_id, &cached, confirmed_new) {
             Ok(()) => written = written.saturating_add(1),

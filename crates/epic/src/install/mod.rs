@@ -559,6 +559,24 @@ async fn saved_manifest(root: &Path, app_name: &str, is_installed: bool) -> Opti
     }
 }
 
+/// The installed game's manifest as saved at its install, which names the program to start and its
+/// arguments; `None` when the game is not installed.
+///
+/// # Errors
+///
+/// The record's library folder is gone, or the saved manifest can't be read or is refused.
+#[inline]
+pub async fn installed_manifest(
+    library: &Library,
+    account_id: &str,
+    app_name: &str,
+) -> anyhow::Result<Option<Manifest>> {
+    let Some((_, _, saved)) = installed_files(library, account_id, app_name)? else {
+        return Ok(None);
+    };
+    read_saved(&saved).await.map(Some)
+}
+
 async fn read_saved(path: &Path) -> anyhow::Result<Manifest> {
     let raw = tokio::fs::read(path)
         .await

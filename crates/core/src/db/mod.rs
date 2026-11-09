@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS games_cache (
     product_sku     TEXT,
     namespace       TEXT,
     catalog_item_id TEXT,
+    can_run_offline INTEGER,
+    ownership_token INTEGER,
+    additional_command_line TEXT,
     first_seen      INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
@@ -219,7 +222,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -347,10 +350,16 @@ impl Db {
             tracing::info!(table = "games_cache", "adding product_sku column");
             conn.execute_batch("ALTER TABLE games_cache ADD COLUMN product_sku TEXT;")?;
         }
-        for column in ["namespace", "catalog_item_id"] {
+        for (column, ty) in [
+            ("namespace", "TEXT"),
+            ("catalog_item_id", "TEXT"),
+            ("can_run_offline", "INTEGER"),
+            ("ownership_token", "INTEGER"),
+            ("additional_command_line", "TEXT"),
+        ] {
             if !has_column(&conn, "games_cache", column)? {
                 tracing::info!(table = "games_cache", column, "adding column");
-                conn.execute_batch(&format!("ALTER TABLE games_cache ADD COLUMN {column} TEXT;"))?;
+                conn.execute_batch(&format!("ALTER TABLE games_cache ADD COLUMN {column} {ty};"))?;
             }
         }
 

@@ -45,6 +45,9 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
         product_sku: None,
         namespace: None,
         catalog_item_id: None,
+        can_run_offline: None,
+        ownership_token: None,
+        additional_command_line: None,
     }
 }
 
