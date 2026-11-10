@@ -1,7 +1,8 @@
 //! Installing a package: its plan (it and its dependencies, those already installed left out), the
 //! downloads into the game's staging folder with a progress line and a cancel, each archive read by
 //! the mods import with where its files go, and only after *Añadir* the imports themselves, in the
-//! plan's order so the chosen package goes last and wins.
+//! plan's order so the chosen package goes last and wins, or, as a newer version of a package the
+//! game has, takes that mod's slot.
 
 use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use rust_i18n::t;
 use super::{ModsTab, failure_text};
 use crate::i18n::Text;
 use crate::theme;
+use crate::views::library::detail::mods::replace::Replacement;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -72,6 +74,8 @@ impl Install {
 pub(in crate::views::library::detail::mods) struct Ready {
     items: Vec<ReadyItem>,
     skipped: Vec<Skipped>,
+    /// The user's opt-in to keep a replaced version, turned off, after its newer one.
+    keep_previous: bool,
     /// Holds the downloads until the imports are done; dropping it deletes them.
     staging: Staging,
 }
@@ -82,6 +86,8 @@ struct ReadyItem {
     is_dependency: bool,
     preview: ArchivePreview,
     placement: Placement,
+    /// The older version of the chosen package the game has, whose slot this one takes.
+    replaces: Option<Replacement>,
 }
 
 /// How the imports ended: how many mods were added, and how many were already the game's.
@@ -279,6 +285,7 @@ fn read_all(
     layout: Layout,
     work: &Work,
 ) -> decanter_thunderstore::Result<Ready> {
+    let installed = mods.list()?;
     let mut items = Vec::with_capacity(plan.items.len());
     for (index, (item, file)) in plan.items.into_iter().zip(downloaded).enumerate() {
         work.current.store(index, Ordering::Relaxed);
@@ -293,7 +300,12 @@ fn read_all(
             files = preview.files(),
             "thunderstore package read"
         );
+        // Dependencies the game has are never in the plan, so only the chosen package can be newer.
+        let replaces = (!item.is_dependency)
+            .then(|| older_version(&installed, &item.package, item.version.number))
+            .flatten();
         items.push(ReadyItem {
+            replaces,
             version: item.version.number,
             is_dependency: item.is_dependency,
             preview: preview.with_origin(origin),
@@ -304,8 +316,34 @@ fn read_all(
     Ok(Ready {
         items,
         skipped: plan.skipped,
+        keep_previous: false,
         staging,
     })
+}
+
+/// The installed mod with the highest version of `package` below `version`.
+fn older_version(
+    installed: &[decanter_mods::ModManifest],
+    package: &PackageId,
+    version: VersionNumber,
+) -> Option<Replacement> {
+    let wanted = package.to_string();
+    installed
+        .iter()
+        .filter_map(|manifest| {
+            let origin = manifest
+                .origin
+                .as_ref()
+                .filter(|origin| origin.platform == decanter_thunderstore::PLATFORM && origin.package == wanted)?;
+            let had = origin
+                .version
+                .parse::<VersionNumber>()
+                .ok()
+                .filter(|&had| had < version)?;
+            Some((had, manifest))
+        })
+        .max_by_key(|&(had, _)| had)
+        .map(|(_, manifest)| Replacement::of(manifest))
 }
 
 /// Each package in turn, skipping one the game already has from the same archive; a failure
@@ -323,21 +361,12 @@ fn import_all(mods: &GameMods, ready: Ready, account_id: &str, work: &Work) -> A
             added.duplicates = added.duplicates.saturating_add(1);
             continue;
         }
-        let name = item.package.display_name();
-        match mods.import_archive(
-            &item.preview,
-            &name,
-            item.placement.target.clone(),
-            account_id,
-            &work.progress,
-        ) {
-            Ok(_) => added.new = added.new.saturating_add(1),
-            Err(err) => {
-                tracing::warn!(package = %item.package, %err, "thunderstore package not added");
-                added.failure = Some(err);
-                break;
-            }
+        if let Err(err) = import_one(mods, item, account_id, work, ready.keep_previous) {
+            tracing::warn!(package = %item.package, %err, "thunderstore package not added in full");
+            added.failure = Some(err);
+            break;
         }
+        added.new = added.new.saturating_add(1);
     }
     tracing::info!(
         added = added.new,
@@ -347,6 +376,28 @@ fn import_all(mods: &GameMods, ready: Ready, account_id: &str, work: &Work) -> A
     );
     drop(ready.staging);
     added
+}
+
+/// One package, put in the slot of the older version it replaces, if any.
+fn import_one(
+    mods: &GameMods,
+    item: &ReadyItem,
+    account_id: &str,
+    work: &Work,
+    keep_previous: bool,
+) -> decanter_mods::Result<()> {
+    let name = item.package.display_name();
+    let manifest = mods.import_archive(
+        &item.preview,
+        &name,
+        item.placement.target.clone(),
+        account_id,
+        &work.progress,
+    )?;
+    match item.replaces.as_ref() {
+        Some(replaces) => replaces.apply(mods, &manifest.id, keep_previous),
+        None => Ok(()),
+    }
 }
 
 fn working_panel(work: &Arc<Work>, cx: &Context<ModsTab>) -> Div {
@@ -416,6 +467,30 @@ fn placement_text(placement: &Placement) -> String {
     .into_owned()
 }
 
+fn replacement(ready: &Ready, item: &ReadyItem, cx: &Context<ModsTab>) -> Option<Div> {
+    let replaces = item
+        .replaces
+        .as_ref()
+        .filter(|_| item.preview.duplicate_of().is_none())?;
+    Some(
+        replaces
+            .block(
+                "ts-keep-previous",
+                ready.keep_previous,
+                |this, cx| {
+                    if let Some(Install::Ready(ready)) =
+                        this.thunderstore.as_mut().and_then(|browser| browser.install.as_mut())
+                    {
+                        ready.keep_previous = !ready.keep_previous;
+                    }
+                    cx.notify();
+                },
+                cx,
+            )
+            .pt_1(),
+    )
+}
+
 fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
     let new = ready
         .items
@@ -475,6 +550,7 @@ fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
                     .duplicate_of()
                     .map(|(_, name)| theme::muted(t!("mods.thunderstore.duplicate", name = name)).text_size(px(12.5))),
             )
+            .children(replacement(ready, item, cx))
     });
     let skipped = ready.skipped.iter().map(|skipped| {
         theme::muted(t!(

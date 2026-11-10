@@ -13,6 +13,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use decanter_mods::Likeness;
 use serde::{Deserialize, Serialize};
 
 use crate::http::Client;
@@ -28,8 +29,6 @@ const MAX_COMMUNITIES: usize = 10_000;
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SUGGESTIONS: usize = 8;
 /// Words too common in titles to say two of them are the same game.
-const COMMON_WORDS: [&str; 6] = ["the", "of", "and", "edition", "game", "remastered"];
-
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Community {
@@ -202,57 +201,29 @@ pub struct Suggestions {
     pub is_exact: bool,
 }
 
-/// The communities whose name or identifier matches `title`: the same letters and digits first,
-/// then one holding the other, then those sharing a significant word.
+/// The communities whose name or id plausibly is `title` ([`decanter_mods::likeness`]).
+///
+/// The same letters and digits first, then one holding the other, then those sharing significant
+/// words. One sharing only a loose word is left out.
 #[must_use]
 #[inline]
 pub fn suggest(communities: &[Community], title: &str) -> Suggestions {
-    let wanted = squashed(title);
-    let words = significant_words(title);
-    if wanted.is_empty() {
-        return Suggestions::default();
-    }
-    let mut scored: Vec<(u8, usize)> = communities
+    let mut scored: Vec<(Likeness, usize)> = communities
         .iter()
         .enumerate()
         .filter_map(|(index, community)| {
-            let name = squashed(&community.name);
-            let id = squashed(community.id.as_str());
-            let score = if name == wanted || id == wanted {
-                3
-            } else if [&name, &id]
-                .iter()
-                .any(|known| known.len() >= 4 && (known.contains(&wanted) || wanted.contains(known.as_str())))
-            {
-                2
-            } else {
-                u8::from(!significant_words(&community.name).is_disjoint(&words))
-            };
-            (score > 0).then_some((score, index))
+            let found = decanter_mods::best_likeness(title, [community.name.as_str(), community.id.as_str()])?;
+            Some((found, index))
         })
         .collect();
-    scored.sort_by_key(|&(score, index)| (core::cmp::Reverse(score), index));
+    scored.sort_by_key(|&(found, index)| (core::cmp::Reverse(found), index));
     Suggestions {
-        is_exact: scored.first().is_some_and(|&(score, _)| score == 3)
-            && scored.get(1).is_none_or(|&(score, _)| score < 3),
+        is_exact: scored.first().is_some_and(|&(found, _)| found == Likeness::Exact)
+            && scored.get(1).is_none_or(|&(found, _)| found < Likeness::Exact),
         candidates: scored
             .into_iter()
             .take(MAX_SUGGESTIONS)
             .map(|(_, index)| index)
             .collect(),
     }
-}
-
-fn squashed(text: &str) -> String {
-    text.chars()
-        .filter(|character| character.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-fn significant_words(text: &str) -> HashSet<String> {
-    text.split(|character: char| !character.is_alphanumeric())
-        .map(str::to_lowercase)
-        .filter(|word| word.chars().count() >= 4 && !COMMON_WORDS.contains(&word.as_str()))
-        .collect()
 }

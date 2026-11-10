@@ -3,21 +3,28 @@
 //! remembered beside its mods, its own record checked for third-party access every time), a page
 //! of its mods, a mod's files and dependencies, and installing one file through the same import
 //! as any archive (docs/mod-platforms-analysis.md, section 3). The network is `decanter_modio`'s.
+//!
+//! Every search is a request, so a page is kept in memory for ten minutes (design, section 2.4):
+//! going back to a sort or a query already asked shows it again without asking mod.io.
 
 mod install;
 mod updates;
 
 use std::future::Future;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use decanter_modio::{
-    Client, Detail, Error, Game, GameId, GameSettings, ModFile, ModioModId, ModsPage, RemoteMod, Terms, Virus,
+    Client, Detail, Error, Game, GameId, GameSettings, ModFile, ModioModId, ModsPage, ModsQuery, ModsSort, Origin,
+    RemoteMod, TagGroup, Terms, Virus,
 };
-use gpui::{Context, Div, Entity, ObjectFit, div, img, prelude::*, px, rgb};
+use decanter_mods::Likeness;
+use gpui::{Context, Div, Entity, SharedString, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::ModsTab;
 use super::credits::{self, Platform};
+use super::search::{self, Provider, ResultItem};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
@@ -27,6 +34,8 @@ pub(super) use install::Install;
 pub(super) use updates::UpdateCheck;
 
 const SUMMARY_CHARS: usize = 140;
+const PAGE_TTL: Duration = Duration::from_mins(10);
+const MAX_PAGES: usize = 40;
 
 pub(super) struct Browser {
     client: Option<Client>,
@@ -38,11 +47,23 @@ pub(super) struct Browser {
     /// The game's own record, read fresh and allowing third-party access.
     game: Option<Game>,
     games: Option<Vec<Game>>,
+    /// Whether `games` answers words the user typed, which shows what does not look like the
+    /// game too, under its own heading.
+    games_by_hand: bool,
     /// The game picker is shown: no choice yet, or the user asked to change it.
     choosing: bool,
     game_query: Entity<TextInput>,
-    search: Entity<TextInput>,
-    page: Option<ModsPage>,
+    /// The game's tags to filter by, `None` when mod.io did not give them.
+    tags: Option<Vec<TagGroup>>,
+    /// The sort and filters the next search takes; its words come from the search surface.
+    controls: ModsQuery,
+    /// What the results answer, which *Mostrar más* goes on with.
+    searched: Option<ModsQuery>,
+    results: Vec<RemoteMod>,
+    total: Option<u64>,
+    /// The offset of the next page, while there is one.
+    next: Option<u64>,
+    pages: Vec<CachedPage>,
     selected: Option<Selected>,
     /// A mod to open once the game is read, from an update check.
     pending: Option<ModioModId>,
@@ -56,6 +77,12 @@ struct Selected {
     detail: Option<Detail>,
 }
 
+struct CachedPage {
+    query: ModsQuery,
+    asked: Instant,
+    page: ModsPage,
+}
+
 struct Failure {
     text: Text,
     retry: Option<Retry>,
@@ -67,7 +94,7 @@ struct Failure {
 enum Retry {
     Start,
     Games,
-    Game,
+    Game(GameId),
     Page(u64),
 }
 
@@ -82,10 +109,48 @@ impl Browser {
             install.discard();
         }
     }
+
+    fn cached(&self, query: &ModsQuery, offset: u64) -> Option<ModsPage> {
+        self.pages
+            .iter()
+            .find(|cached| cached.page.offset == offset && cached.query == *query && cached.asked.elapsed() < PAGE_TTL)
+            .map(|cached| cached.page.clone())
+    }
+
+    fn remember(&mut self, query: ModsQuery, page: ModsPage) {
+        self.pages.retain(|cached| cached.asked.elapsed() < PAGE_TTL);
+        if self.pages.len() >= MAX_PAGES {
+            self.pages.remove(0);
+        }
+        self.pages.push(CachedPage {
+            query,
+            asked: Instant::now(),
+            page,
+        });
+    }
+
+    /// A first page replaces the results, a later one adds to them.
+    fn show(&mut self, query: ModsQuery, page: ModsPage) {
+        let count = page.mods.len() as u64;
+        let end = page.offset.saturating_add(count);
+        let has_more = count > 0
+            && page
+                .total
+                .map_or(count == decanter_modio::PAGE_SIZE, |total| end < total);
+        if page.offset == 0 {
+            self.results = page.mods;
+        } else {
+            self.results.extend(page.mods);
+        }
+        self.total = page.total;
+        self.next = has_more.then_some(end);
+        self.searched = Some(query);
+    }
 }
 
 impl ModsTab {
     pub(super) fn open_modio(&mut self, pending: Option<ModioModId>, cx: &mut Context<Self>) {
+        self.show_search(Provider::Modio, cx);
         if let Some(browser) = self.modio.as_mut() {
             if let Some(id) = pending {
                 browser.pending = Some(id);
@@ -113,14 +178,7 @@ impl ModsTab {
         cx.subscribe(&game_query, |this, input, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Submit) {
                 let query = input.read(cx).text().trim().to_owned();
-                this.modio_find_games(query, cx);
-            }
-        })
-        .detach();
-        let search = cx.new(|cx| TextInput::new(Text::new("mods.modio.search"), cx));
-        cx.subscribe(&search, |this, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Submit) {
-                this.modio_search(0, cx);
+                this.modio_find_games(query, true, cx);
             }
         })
         .detach();
@@ -134,9 +192,15 @@ impl ModsTab {
             settings,
             game: None,
             games: None,
+            games_by_hand: false,
             game_query,
-            search,
-            page: None,
+            tags: None,
+            controls: ModsQuery::new(),
+            searched: None,
+            results: Vec::new(),
+            total: None,
+            next: None,
+            pages: Vec::new(),
             selected: None,
             pending,
             loading: None,
@@ -315,12 +379,12 @@ impl ModsTab {
             Some(game) if !browser.choosing => self.modio_load_game(game, cx),
             _ => {
                 let title = self.target.title.clone();
-                self.modio_find_games(title, cx);
+                self.modio_find_games(title, false, cx);
             }
         }
     }
 
-    fn modio_find_games(&mut self, query: String, cx: &mut Context<Self>) {
+    fn modio_find_games(&mut self, query: String, by_hand: bool, cx: &mut Context<Self>) {
         let Some(client) = self.modio.as_ref().and_then(|browser| browser.client.clone()) else {
             return;
         };
@@ -331,9 +395,10 @@ impl ModsTab {
             "mods.modio.loading_games",
             Some(Retry::Games),
             async move { decanter_modio::search_games(&client, &query).await },
-            |this, games, _| {
+            move |this, games, _| {
                 if let Some(browser) = this.modio.as_mut() {
                     browser.games = Some(games);
+                    browser.games_by_hand = by_hand;
                     browser.choosing = true;
                 }
             },
@@ -341,50 +406,87 @@ impl ModsTab {
         );
     }
 
-    /// Saves the user's choice once the game's record lets decanter in.
+    /// Reads the chosen game's own record; [`Self::modio_load_game`] saves the choice only once
+    /// that record answered and lets decanter in.
     fn modio_choose_game(&mut self, game: &Game, cx: &mut Context<Self>) {
         if let Err(err) = decanter_modio::check_access(game) {
             self.modio_fail(&err, None);
             cx.notify();
             return;
         }
-        let Some(mods) = self.mods.clone() else {
-            return;
-        };
         let Some(browser) = self.modio.as_mut() else {
             return;
         };
-        let settings = GameSettings::new(game.id, &game.name);
-        if let Err(err) = settings.write(&mods) {
-            tracing::error!(%err, "modio game settings could not be saved");
-            self.modio_fail(&err, None);
-            cx.notify();
-            return;
-        }
-        browser.settings = Some(settings);
         browser.choosing = false;
         browser.game = None;
-        browser.page = None;
+        browser.results.clear();
+        browser.searched = None;
+        browser.pages.clear();
         browser.selected = None;
         self.modio_load_game(game.id, cx);
     }
 
-    /// The game's own record, refused unless it allows third-party access, then its first page.
+    /// The game's own record, refused unless it allows third-party access, and its tags, read once
+    /// for the session; then the choice is saved, if new, and its first page asked. A record mod.io
+    /// no longer has drops the choice and shows the picker again.
     fn modio_load_game(&mut self, id: GameId, cx: &mut Context<Self>) {
         let Some(client) = self.modio.as_ref().and_then(|browser| browser.client.clone()) else {
             return;
         };
+        let known_tags = self.modio.as_ref().and_then(|browser| {
+            browser.game.as_ref().filter(|game| game.id == id)?;
+            browser.tags.clone()
+        });
         self.modio_task(
             "mods.modio.loading_game",
-            Some(Retry::Game),
+            Some(Retry::Game(id)),
             async move {
-                let game = decanter_modio::game(&client, id).await?;
+                let game = match decanter_modio::game(&client, id).await {
+                    Err(Error::NotFound { .. }) => return Ok(None),
+                    found => found?,
+                };
                 decanter_modio::check_access(&game)?;
-                Ok(game)
+                let tags = match known_tags {
+                    Some(tags) => Some(tags),
+                    // The tags only add a filter, so a failure leaves it out instead of the game.
+                    None => match decanter_modio::tag_options(&client, id).await {
+                        Ok(tags) => Some(tags),
+                        Err(err) => {
+                            tracing::warn!(%err, game_id = %id, "modio tags not read, no tag filter");
+                            None
+                        }
+                    },
+                };
+                Ok(Some((game, tags)))
             },
-            |this, game, cx| {
+            move |this, found, cx| {
+                let Some((game, tags)) = found else {
+                    this.modio_game_gone(id, cx);
+                    return;
+                };
+                let mods = this.mods.clone();
                 if let Some(browser) = this.modio.as_mut() {
+                    if browser
+                        .settings
+                        .as_ref()
+                        .is_none_or(|settings| settings.game != game.id)
+                        && let Some(mods) = mods
+                    {
+                        let settings = GameSettings::new(game.id, &game.name);
+                        match settings.write(&mods) {
+                            Ok(()) => browser.settings = Some(settings),
+                            Err(err) => {
+                                tracing::error!(%err, "modio game settings could not be saved");
+                                browser.failure = Some(Failure {
+                                    text: crate::modio::failure(&err),
+                                    retry: None,
+                                    is_terms: false,
+                                });
+                            }
+                        }
+                    }
                     browser.game = Some(game);
+                    browser.tags = tags.filter(|groups| !groups.is_empty());
                 }
                 this.modio_search(0, cx);
                 this.modio_open_pending(cx);
@@ -393,25 +495,94 @@ impl ModsTab {
         );
     }
 
-    fn modio_search(&mut self, offset: u64, cx: &mut Context<Self>) {
-        let Some(browser) = self.modio.as_ref() else {
+    /// mod.io has no game `id` any more: a saved choice of it is forgotten and the picker shows
+    /// again, inside the section, with the title's matches.
+    fn modio_game_gone(&mut self, id: GameId, cx: &mut Context<Self>) {
+        let Some(mods) = self.mods.clone() else {
+            return;
+        };
+        let Some(browser) = self.modio.as_mut() else {
+            return;
+        };
+        let was_saved = browser.settings.as_ref().is_some_and(|settings| settings.game == id);
+        tracing::warn!(game_id = %id, was_saved, "modio game record not found, choosing again");
+        if was_saved {
+            browser.settings = None;
+            if let Err(err) = GameSettings::forget(&mods) {
+                tracing::error!(%err, "modio game settings could not be forgotten");
+            }
+        }
+        browser.game = None;
+        browser.choosing = true;
+        browser.results.clear();
+        browser.searched = None;
+        browser.selected = None;
+        let title = self.target.title.clone();
+        self.modio_find_games(title, false, cx);
+        if let Some(browser) = self.modio.as_mut() {
+            browser.failure = Some(Failure {
+                text: Text::new("mods.search.mapping_gone").arg("platform", Platform::Modio.name()),
+                retry: None,
+                is_terms: false,
+            });
+        }
+    }
+
+    /// The first page of what the search surface and the controls ask, or the page at `offset` of
+    /// what the results already answer; one kept from the last ten minutes is shown again unasked.
+    pub(super) fn modio_search(&mut self, offset: u64, cx: &mut Context<Self>) {
+        let text = self.search_text(cx);
+        let Some(browser) = self.modio.as_mut() else {
             return;
         };
         let (Some(client), Some(game)) = (browser.client.clone(), browser.game.as_ref().map(|game| game.id)) else {
             return;
         };
-        let query = browser.search.read(cx).text().to_owned();
+        let query = if offset == 0 {
+            let mut query = browser.controls.clone();
+            query.text = text;
+            query
+        } else if let Some(searched) = browser.searched.clone() {
+            searched
+        } else {
+            return;
+        };
+        if let Some(page) = browser.cached(&query, offset) {
+            tracing::debug!(offset, "modio page shown from the last ten minutes");
+            browser.show(query, page);
+            browser.failure = None;
+            cx.notify();
+            return;
+        }
+        let asked = query.clone();
         self.modio_task(
             "mods.modio.loading_mods",
             Some(Retry::Page(offset)),
-            async move { decanter_modio::search_mods(&client, game, &query, offset).await },
-            |this, page, _| {
+            async move { decanter_modio::search_mods(&client, game, &asked, offset).await },
+            move |this, page, _| {
                 if let Some(browser) = this.modio.as_mut() {
-                    browser.page = Some(page);
+                    browser.remember(query.clone(), page.clone());
+                    browser.show(query, page);
                 }
             },
             cx,
         );
+    }
+
+    /// Changes the sort or a filter, then asks for the first page again.
+    fn modio_refine(&mut self, change: impl FnOnce(&mut ModsQuery), cx: &mut Context<Self>) {
+        if let Some(browser) = self.modio.as_mut() {
+            change(&mut browser.controls);
+        }
+        self.modio_search(0, cx);
+    }
+
+    /// The version of mod `id` the game has from mod.io, if any.
+    fn modio_installed(&self, game: GameId, id: ModioModId) -> Option<String> {
+        let origin = self.installed_origin(|origin| {
+            Origin::from_mod_origin(origin).is_some_and(|found| found.game == game && found.mod_id == id)
+        })?;
+        Some(Origin::version_of(origin).map_or_else(|| origin.version.clone(), str::to_owned))
     }
 
     fn modio_select(&mut self, remote: RemoteMod, cx: &mut Context<Self>) {
@@ -453,7 +624,7 @@ impl ModsTab {
             "mods.modio.loading_detail",
             None,
             async move { decanter_modio::fetch_mod(&client, game, id).await },
-            |this, remote, cx| this.modio_select(remote, cx),
+            Self::modio_select,
             cx,
         );
     }
@@ -476,23 +647,11 @@ impl ModsTab {
                 let query = self.modio.as_ref().map_or_else(String::new, |browser| {
                     browser.game_query.read(cx).text().trim().to_owned()
                 });
-                let query = if query.is_empty() {
-                    self.target.title.clone()
-                } else {
-                    query
-                };
-                self.modio_find_games(query, cx);
+                let by_hand = !query.is_empty();
+                let query = if by_hand { query } else { self.target.title.clone() };
+                self.modio_find_games(query, by_hand, cx);
             }
-            Retry::Game => {
-                if let Some(game) = self
-                    .modio
-                    .as_ref()
-                    .and_then(|browser| browser.settings.as_ref())
-                    .map(|settings| settings.game)
-                {
-                    self.modio_load_game(game, cx);
-                }
-            }
+            Retry::Game(game) => self.modio_load_game(game, cx),
             Retry::Page(offset) => self.modio_search(offset, cx),
         }
     }
@@ -507,112 +666,132 @@ impl ModsTab {
 
     pub(super) fn modio_panel(&self, locked: bool, cx: &Context<Self>) -> Option<Div> {
         let browser = self.modio.as_ref()?;
-        let body = if let Some(install) = browser.install.as_ref() {
-            install::panel(install, cx)
-        } else if let Some(loading) = browser.loading.as_ref() {
-            theme::muted(loading)
-        } else if let Some(terms) = browser.terms.as_ref() {
+        let body = if let Some(terms) = browser.terms.as_ref() {
             terms_panel(terms, cx)
         } else if !browser.is_agreed {
             div()
         } else if browser.choosing {
             self.modio_game_picker(browser, cx)
-        } else if let Some(selected) = browser.selected.as_ref() {
-            detail_panel(selected, locked, cx)
         } else {
-            results_panel(browser, cx)
-        };
-        let failure = browser.failure.as_ref().map(|failure| {
+            let chosen = if let Some(install) = browser.install.as_ref() {
+                install::panel(install, cx)
+            } else if let Some(selected) = browser.selected.as_ref() {
+                detail_panel(selected, locked, cx)
+            } else {
+                search::nothing_chosen()
+            };
+            let (controls, list) = self.modio_results(browser, cx);
             div()
                 .flex()
                 .flex_col()
-                .gap_2()
-                .child(theme::error(&failure.text))
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(10.))
-                        .children(failure.retry.map(|retry| {
-                            button("modio-retry", ButtonKind::Secondary, t!("mods.modio.retry"), false)
-                                .on_click(cx.listener(move |this, _, _, cx| this.modio_retry(retry, cx)))
-                        }))
-                        .when(failure.is_terms, |row| {
-                            row.child(legal_links(decanter_modio::TERMS_PAGE, decanter_modio::PRIVACY_PAGE))
-                        }),
-                )
-        });
-        Some(
-            theme::card()
                 .gap_3()
-                .px(px(18.))
-                .py(px(14.))
-                .child(header(browser, cx))
-                .child(theme::muted(t!("mods.modio.note")))
+                .child(self.query_bar(Provider::Modio, controls, cx))
+                .child(search::split(list, chosen))
+        };
+        let failure = browser.failure.as_ref().map(|failure| {
+            let retry = failure
+                .retry
+                .map(|retry| -> search::Retry { Box::new(move |this, cx| this.modio_retry(retry, cx)) });
+            let links = failure
+                .is_terms
+                .then(|| legal_links(decanter_modio::TERMS_PAGE, decanter_modio::PRIVACY_PAGE));
+            search::failure_line("modio-retry", &failure.text, retry, links, cx)
+        });
+        Some(search::section_frame(
+            Platform::Modio,
+            header(browser, cx),
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(theme::muted(t!("mods.modio.note")).text_size(px(12.5)))
+                .children(browser.loading.as_ref().map(theme::muted))
                 .children(failure)
-                .child(body)
-                .child(credits::footer(Platform::Modio)),
-        )
+                .child(body),
+        ))
     }
 
     fn modio_game_picker(&self, browser: &Browser, cx: &Context<Self>) -> Div {
         let title = &self.target.title;
         let games = browser.games.as_deref().unwrap_or_default();
-        let exact = games
+        // mod.io's own search answers loosely, so only what looks like the game is suggested; the
+        // rest shows only for words the user typed, under its own heading.
+        let mut likely: Vec<(Likeness, &Game)> = games
             .iter()
-            .filter(|game| squashed(&game.name) == squashed(title))
-            .count();
+            .filter_map(|game| Some((decanter_mods::likeness(title, &game.name)?, game)))
+            .collect();
+        likely.sort_by_key(|&(found, _)| core::cmp::Reverse(found));
+        let exact = likely.iter().filter(|&&(found, _)| found == Likeness::Exact).count();
+        let others: Vec<&Game> = if browser.games_by_hand {
+            games
+                .iter()
+                .filter(|game| decanter_mods::likeness(title, &game.name).is_none())
+                .collect()
+        } else {
+            Vec::new()
+        };
         let intro = if browser.games.is_none() {
             t!("mods.modio.game_type", title = title)
-        } else if games.is_empty() {
-            t!("mods.modio.game_none", title = title)
+        } else if likely.is_empty() {
+            t!("mods.search.no_match", platform = Platform::Modio.name())
         } else if exact == 1 {
             t!("mods.modio.game_exact", title = title)
         } else {
             t!("mods.modio.game_ambiguous", title = title)
         };
         let input = browser.game_query.clone();
+        let suggested = likely.len();
         div()
             .flex()
             .flex_col()
             .gap_2()
             .child(theme::muted(intro))
-            .children(games.iter().enumerate().map(|(index, game)| {
-                let access = if !game.access.allows_third_party() {
-                    theme::error(t!("mods.modio.access_off"))
-                } else if game.access.needs_login() {
-                    theme::muted(t!("mods.modio.access_login"))
-                } else {
-                    theme::muted(t!("mods.modio.access_on"))
-                };
-                let allowed = game.access.allows_third_party();
-                let chosen = game.clone();
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .py(px(4.))
-                    .child(logo(game.logo.as_deref(), 32.))
-                    .child(
-                        div()
+            .children(
+                likely
+                    .into_iter()
+                    .map(|(_, game)| game)
+                    .chain(others)
+                    .enumerate()
+                    .map(|(index, game)| {
+                        let heading = (index == suggested).then(search::other_results);
+                        let access = if !game.access.allows_third_party() {
+                            theme::error(t!("mods.modio.access_off"))
+                        } else if game.access.needs_login() {
+                            theme::muted(t!("mods.modio.access_login"))
+                        } else {
+                            theme::muted(t!("mods.modio.access_on"))
+                        };
+                        let allowed = game.access.allows_third_party();
+                        let chosen = game.clone();
+                        let row = div()
                             .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .child(game.name.clone())
-                            .child(access.text_size(px(12.))),
-                    )
-                    .child(
-                        button(
-                            ("modio-game", index),
-                            ButtonKind::Secondary,
-                            t!("mods.modio.use"),
-                            !allowed,
-                        )
-                        .when(allowed, |b| {
-                            b.on_click(cx.listener(move |this, _, _, cx| this.modio_choose_game(&chosen, cx)))
-                        }),
-                    )
-            }))
+                            .items_center()
+                            .gap_3()
+                            .py(px(4.))
+                            .child(search::picture(game.logo.as_deref(), 32.))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(game.name.clone())
+                                    .child(access.text_size(px(12.))),
+                            )
+                            .child(
+                                button(
+                                    ("modio-game", index),
+                                    ButtonKind::Secondary,
+                                    t!("mods.modio.use"),
+                                    !allowed,
+                                )
+                                .when(allowed, |b| {
+                                    b.on_click(cx.listener(move |this, _, _, cx| this.modio_choose_game(&chosen, cx)))
+                                }),
+                            );
+                        div().flex().flex_col().children(heading).child(row)
+                    }),
+            )
             .child(
                 field_row()
                     .items_center()
@@ -626,18 +805,121 @@ impl ModsTab {
                         )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let query = input.read(cx).text().trim().to_owned();
-                            this.modio_find_games(query, cx);
+                            this.modio_find_games(query, true, cx);
                         })),
                     ),
             )
     }
-}
 
-fn squashed(text: &str) -> String {
-    text.chars()
-        .filter(|character| character.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
+    /// The sort and filter controls, then the results under them.
+    fn modio_results(&self, browser: &Browser, cx: &Context<Self>) -> (Div, Div) {
+        let sorts = vec![
+            (
+                ModsSort::Downloads,
+                t!("mods.search.sort_downloads").into_owned().into(),
+            ),
+            (ModsSort::Updated, t!("mods.search.sort_updated").into_owned().into()),
+            (ModsSort::Newest, t!("mods.search.sort_newest").into_owned().into()),
+            (ModsSort::Rating, t!("mods.search.sort_rating").into_owned().into()),
+            (ModsSort::Name, t!("mods.search.sort_name").into_owned().into()),
+        ];
+        let sort = search::choice(
+            "modio-sort",
+            t!("mods.search.sort").into_owned().into(),
+            sorts,
+            browser.controls.sort,
+            |this, sort, cx| this.modio_refine(|query| query.sort = sort, cx),
+            cx,
+        );
+        let tags: Vec<(usize, SharedString)> = browser
+            .tags
+            .iter()
+            .flatten()
+            .flat_map(|group| group.tags.iter().map(move |tag| format!("{}: {tag}", group.name)))
+            .enumerate()
+            .map(|(index, label)| (index, SharedString::from(label)))
+            .collect();
+        let tag = (!tags.is_empty()).then(|| {
+            let all: Vec<&String> = browser.tags.iter().flatten().flat_map(|group| &group.tags).collect();
+            let selected = browser
+                .controls
+                .tags
+                .first()
+                .and_then(|wanted| all.iter().position(|tag| *tag == wanted));
+            let options = core::iter::once((None, SharedString::from(t!("mods.search.any").into_owned())))
+                .chain(tags.into_iter().map(|(index, label)| (Some(index), label)))
+                .collect();
+            search::choice(
+                "modio-tag",
+                t!("mods.search.tag").into_owned().into(),
+                options,
+                selected,
+                |this, chosen: Option<usize>, cx| {
+                    let tag = chosen.and_then(|index| {
+                        this.modio
+                            .as_ref()?
+                            .tags
+                            .iter()
+                            .flatten()
+                            .flat_map(|group| &group.tags)
+                            .nth(index)
+                            .cloned()
+                    });
+                    this.modio_refine(|query| query.tags = tag.into_iter().collect(), cx);
+                },
+                cx,
+            )
+        });
+        let controls = search::controls().child(sort).children(tag).child(search::flag(
+            "modio-hide-mature",
+            t!("mods.search.hide_mature").into_owned().into(),
+            browser.controls.hide_mature,
+            |this, on, cx| this.modio_refine(|query| query.hide_mature = on, cx),
+            cx,
+        ));
+        let rows = browser
+            .results
+            .iter()
+            .enumerate()
+            .map(|(index, remote)| self.modio_result_row(index, remote, cx));
+        let list = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .children(
+                browser
+                    .searched
+                    .is_some()
+                    .then(|| search::count_line(browser.results.len(), browser.total)),
+            )
+            .children(rows)
+            .children(
+                browser
+                    .next
+                    .map(|next| search::load_more("modio-more", move |this, cx| this.modio_search(next, cx), cx)),
+            );
+        (controls, list)
+    }
+
+    fn modio_result_row(&self, index: usize, remote: &RemoteMod, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let chosen = remote.clone();
+        search::result_row(
+            ("modio-result", index),
+            ResultItem {
+                picture: remote.logo.as_deref(),
+                name: &remote.name,
+                by: Some(by_line(remote)),
+                summary: search::summary(&remote.summary, SUMMARY_CHARS),
+                stats: stats(remote),
+                flags: Vec::new(),
+                platform: Platform::Modio,
+                is_adult: remote.maturity != 0,
+                installed: self.modio_installed(remote.game, remote.id),
+            },
+            move |this, cx| this.modio_select(chosen.clone(), cx),
+            cx,
+        )
+    }
 }
 
 fn header(browser: &Browser, cx: &Context<ModsTab>) -> Div {
@@ -652,10 +934,11 @@ fn header(browser: &Browser, cx: &Context<ModsTab>) -> Div {
         .flex()
         .items_center()
         .gap_3()
-        .child(div().flex_1().child(t!("mods.modio.title")))
-        .children(
-            game.filter(|_| !browser.choosing)
-                .map(|name| theme::muted(t!("mods.modio.game", name = name))),
+        .child(
+            div().flex_1().children(
+                game.filter(|_| !browser.choosing)
+                    .map(|name| theme::muted(t!("mods.modio.game", name = name))),
+            ),
         )
         .children(can_change.then(|| {
             button("modio-change", ButtonKind::Secondary, t!("mods.modio.change"), working).when(!working, |b| {
@@ -667,16 +950,12 @@ fn header(browser: &Browser, cx: &Context<ModsTab>) -> Div {
                     }
                     let has_list = this.modio.as_ref().is_some_and(|browser| browser.games.is_some());
                     if !has_list {
-                        this.modio_find_games(title, cx);
+                        this.modio_find_games(title, false, cx);
                     }
                     cx.notify();
                 }))
             })
         }))
-        .child(
-            button("modio-close", ButtonKind::Secondary, t!("mods.modio.close"), false)
-                .on_click(cx.listener(|this, _, _, cx| this.close_modio(cx))),
-        )
 }
 
 fn legal_links(terms: &str, privacy: &str) -> Div {
@@ -753,99 +1032,6 @@ fn terms_panel(terms: &Terms, cx: &Context<ModsTab>) -> Div {
         )
 }
 
-fn results_panel(browser: &Browser, cx: &Context<ModsTab>) -> Div {
-    let page = browser.page.as_ref();
-    let shown = page.map_or(0, |page| page.mods.len());
-    let offset = page.map_or(0, |page| page.offset);
-    let total = page.and_then(|page| page.total);
-    let count = match total {
-        Some(total) if shown > 0 => t!(
-            "mods.modio.results_range",
-            from = offset.saturating_add(1),
-            to = offset.saturating_add(shown as u64),
-            count = total
-        ),
-        _ => t!("mods.modio.results", count = shown),
-    };
-    let page_size = decanter_modio::PAGE_SIZE;
-    let has_previous = offset > 0;
-    let has_next = total.map_or(shown as u64 == page_size, |total| {
-        offset.saturating_add(shown as u64) < total
-    });
-    let rows = page
-        .into_iter()
-        .flat_map(|page| page.mods.iter())
-        .enumerate()
-        .map(|(index, remote)| result_row(index, remote, cx));
-    let input = browser.search.clone();
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(
-            field_row()
-                .items_center()
-                .child(div().flex_1().min_w_0().child(input))
-                .child(
-                    button(
-                        "modio-search",
-                        ButtonKind::Secondary,
-                        t!("mods.modio.search_button"),
-                        false,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| this.modio_search(0, cx))),
-                ),
-        )
-        .child(theme::muted(count))
-        .children(rows)
-        .child(
-            div()
-                .flex()
-                .gap(px(10.))
-                .children(has_previous.then(|| {
-                    let previous = offset.saturating_sub(page_size);
-                    button(
-                        "modio-previous",
-                        ButtonKind::Secondary,
-                        t!("mods.modio.previous"),
-                        false,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| this.modio_search(previous, cx)))
-                }))
-                .children(has_next.then(|| {
-                    let next = offset.saturating_add(shown as u64);
-                    button("modio-next", ButtonKind::Secondary, t!("mods.modio.next"), false)
-                        .on_click(cx.listener(move |this, _, _, cx| this.modio_search(next, cx)))
-                })),
-        )
-}
-
-fn logo(url: Option<&str>, size: f32) -> Div {
-    let frame = div()
-        .flex_none()
-        .size(px(size))
-        .rounded(px(theme::RADIUS_SM))
-        .overflow_hidden()
-        .bg(rgb(theme::BG_PANEL));
-    match url {
-        Some(url) => frame.child(
-            img(crate::art::source(url, gpui::size(size, size)))
-                .size_full()
-                .object_fit(ObjectFit::Cover),
-        ),
-        None => frame,
-    }
-}
-
-fn summary(text: &str) -> String {
-    if text.chars().count() <= SUMMARY_CHARS {
-        return text.to_owned();
-    }
-    let mut cut: String = text.chars().take(SUMMARY_CHARS).collect();
-    cut.push('…');
-    cut
-}
-
 fn stats(remote: &RemoteMod) -> String {
     let rating = match (remote.rating.as_deref(), remote.rating_percent) {
         (Some(text), Some(percent)) => format!("{text} ({percent} %)"),
@@ -877,39 +1063,6 @@ fn by_line(remote: &RemoteMod) -> String {
             |author| t!("mods.modio.by", author = author, version = version),
         )
         .into_owned()
-}
-
-fn result_row(index: usize, remote: &RemoteMod, cx: &Context<ModsTab>) -> impl IntoElement + use<> {
-    let chosen = remote.clone();
-    div()
-        .id(("modio-result", index))
-        .flex()
-        .gap_3()
-        .py(px(6.))
-        .cursor_pointer()
-        .border_t_1()
-        .border_color(rgb(theme::LINE))
-        .on_click(cx.listener(move |this, _, _, cx| this.modio_select(chosen.clone(), cx)))
-        .child(logo(remote.logo.as_deref(), 40.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(remote.name.clone())
-                        .child(theme::muted(by_line(remote)))
-                        .child(credits::source(Platform::Modio))
-                        .children((remote.maturity != 0).then(credits::adult_badge)),
-                )
-                .child(theme::muted(summary(&remote.summary)).text_size(px(12.5)))
-                .child(theme::muted(stats(remote)).text_size(px(12.))),
-        )
 }
 
 fn virus_line(file: &ModFile) -> Option<Div> {
@@ -979,7 +1132,10 @@ fn file_row(
                 .then(|| theme::muted(t!("mods.modio.no_md5")).text_size(px(12.))),
         )
         .children(virus_line(file).map(|line| line.text_size(px(12.))))
-        .children((!file.changelog.is_empty()).then(|| theme::muted(summary(&file.changelog)).text_size(px(12.))))
+        .children(
+            (!file.changelog.is_empty())
+                .then(|| theme::muted(search::summary(&file.changelog, SUMMARY_CHARS)).text_size(px(12.))),
+        )
 }
 
 fn detail_panel(selected: &Selected, locked: bool, cx: &Context<ModsTab>) -> Div {
@@ -1036,47 +1192,31 @@ fn detail_panel(selected: &Selected, locked: bool, cx: &Context<ModsTab>) -> Div
         .flex()
         .flex_col()
         .gap_2()
-        .child(
-            div().flex().gap_3().child(logo(remote.logo.as_deref(), 64.)).child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(remote.name.clone())
-                    .child(theme::muted(by_line(remote)))
-                    .child(theme::muted(stats(remote)).text_size(px(12.)))
-                    .child(
-                        theme::muted(t!(
-                            "mods.modio.dates",
-                            added = remote.added.as_deref().unwrap_or("-"),
-                            updated = remote.updated.as_deref().unwrap_or("-")
-                        ))
-                        .text_size(px(12.)),
-                    ),
-            ),
-        )
+        .child(search::detail_head(
+            remote.logo.as_deref(),
+            &remote.name,
+            [
+                theme::muted(by_line(remote)),
+                theme::muted(stats(remote)).text_size(px(12.)),
+                theme::muted(t!(
+                    "mods.modio.dates",
+                    added = remote.added.as_deref().unwrap_or("-"),
+                    updated = remote.updated.as_deref().unwrap_or("-")
+                ))
+                .text_size(px(12.)),
+            ],
+        ))
         .child(credits::browsed("modio-credits", Platform::Modio, remote.credits()))
         .child(div().child(remote.summary.clone()))
         .child(files_block)
         .child(dependencies)
-        .child(
-            div()
-                .flex()
-                .gap(px(10.))
-                .children(page.map(|page| {
-                    button("modio-page", ButtonKind::Secondary, t!("mods.modio.open_page"), false)
-                        .on_click(move |_, _, _| open_page(&page))
-                }))
-                .child(
-                    button("modio-back", ButtonKind::Secondary, t!("mods.modio.back"), false).on_click(cx.listener(
-                        |this, _, _, cx| {
-                            if let Some(browser) = this.modio.as_mut() {
-                                browser.selected = None;
-                            }
-                            cx.notify();
-                        },
-                    )),
-                ),
-        )
+        .child(div().flex().gap(px(10.)).children(page.map(|page| {
+            button(
+                "modio-page",
+                ButtonKind::Secondary,
+                t!("mods.credits.view_on", platform = Platform::Modio.name()),
+                false,
+            )
+            .on_click(move |_, _, _| open_page(&page))
+        })))
 }

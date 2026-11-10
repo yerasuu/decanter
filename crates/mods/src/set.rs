@@ -227,6 +227,27 @@ impl ModSet {
         true
     }
 
+    /// As [`Self::replace`], but `old` stays right after `new`, turned off, for a rollback.
+    pub(crate) fn supersede(&mut self, old: &ModId, new: &ModId) -> bool {
+        self.entries.retain(|entry| entry.id != *new);
+        let Some(at) = self.position(old) else {
+            return false;
+        };
+        self.attention.remove(old);
+        let Some(entry) = self.entries.get_mut(at) else {
+            return false;
+        };
+        let enabled = core::mem::replace(&mut entry.enabled, false);
+        self.entries.insert(
+            at,
+            Entry {
+                id: new.clone(),
+                enabled,
+            },
+        );
+        true
+    }
+
     pub(crate) fn is_enabled(&self, id: &ModId) -> bool {
         self.entries.iter().any(|entry| entry.id == *id && entry.enabled)
     }

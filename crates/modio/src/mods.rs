@@ -2,6 +2,10 @@
 //! A game's mods: a page of them searched and sorted by mod.io (`GET /games/{id}/mods`), one mod
 //! (`/mods/{id}`), its files (`/files`) and the mods it depends on (`/dependencies`).
 //!
+//! The search uses the filters the REST reference documents for that endpoint (`_q`, `tags`,
+//! `maturity_option`, `_sort` with `-` for descending, `_limit`, `_offset`); the sort fields are the
+//! ones the design read from the reference's filtering notes (design, section 2.1).
+//!
 //! The dependencies endpoint exists, but the analysis could not read its answer's shape
 //! (section 3): each entry is read for a `mod_id` and a `name` and nothing more, an entry without
 //! them is skipped and counted, and a failure leaves the detail without the list rather than
@@ -35,6 +39,7 @@ const MAX_DEPENDENCIES: &str = "100";
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SUMMARY_CHARS: usize = 500;
 const MAX_QUERY_CHARS: usize = 100;
+const MAX_TAG_CHARS: usize = 100;
 /// Bit and token of each `credit_options` permission, the token named by the app.
 const CREDIT_OPTIONS: [(u32, &str); 11] = [
     (1, "credits"),
@@ -103,6 +108,53 @@ impl RemoteMod {
         }
         credits.is_adult = self.maturity != 0;
         credits.checked(crate::PLATFORM)
+    }
+}
+
+/// What a search of a game's mods asks for.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ModsQuery {
+    pub text: String,
+    pub sort: ModsSort,
+    /// Tag names of the game's [`crate::TagGroup`]s; a mod must carry them.
+    pub tags: Vec<String>,
+    /// Leaves out mods with any `maturity_option` set.
+    pub hide_mature: bool,
+}
+
+impl ModsQuery {
+    /// No words, most downloaded first, any tag, mature mods hidden.
+    #[must_use]
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            hide_mature: true,
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum ModsSort {
+    #[default]
+    Downloads,
+    Updated,
+    Newest,
+    Rating,
+    Name,
+}
+
+impl ModsSort {
+    const fn param(self) -> &'static str {
+        match self {
+            Self::Downloads => "-downloads_total",
+            Self::Updated => "-date_updated",
+            Self::Newest => "-date_live",
+            Self::Rating => "-ratings_weighted_aggregate",
+            Self::Name => "name",
+        }
     }
 }
 
@@ -240,24 +292,43 @@ fn validate(raw: &RawMod, game: GameId) -> Option<RemoteMod> {
     })
 }
 
-/// A page of `game`'s mods, from `offset`, matching `query` when it is not empty, most downloaded
-/// first.
+/// A page of `game`'s mods, from `offset`, matching `query`'s words when it has any, its tags and
+/// maturity, in its order.
 ///
 /// # Errors
 ///
 /// As a request, or [`Error::Malformed`] when the answer is not a page of mods.
 #[inline]
-pub async fn search_mods(client: &Client, game: GameId, query: &str, offset: u64) -> Result<ModsPage> {
-    let wanted: String = query.trim().chars().take(MAX_QUERY_CHARS).collect();
+pub async fn search_mods(client: &Client, game: GameId, query: &ModsQuery, offset: u64) -> Result<ModsPage> {
+    let wanted: String = query.text.trim().chars().take(MAX_QUERY_CHARS).collect();
+    // mod.io reads a comma as the separator of the values `tags` must all match.
+    let tags = query
+        .tags
+        .iter()
+        .map(|tag| {
+            tag.chars()
+                .filter(|&character| character != ',')
+                .take(MAX_TAG_CHARS)
+                .collect::<String>()
+        })
+        .filter(|tag| !tag.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(",");
     let limit = PAGE_SIZE.to_string();
     let offset_text = offset.to_string();
     let mut params = vec![
         ("_limit", limit.as_str()),
         ("_offset", offset_text.as_str()),
-        ("_sort", "-downloads_total"),
+        ("_sort", query.sort.param()),
     ];
     if !wanted.is_empty() {
         params.push(("_q", wanted.as_str()));
+    }
+    if !tags.is_empty() {
+        params.push(("tags", tags.as_str()));
+    }
+    if query.hide_mature {
+        params.push(("maturity_option", "0"));
     }
     let page: RawPage = client
         .api(&format!("/games/{game}/mods"), &params, SEARCH_CALL, MAX_PAGE_BYTES)

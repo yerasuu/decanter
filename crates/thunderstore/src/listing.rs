@@ -7,10 +7,14 @@
 //! is downloaded to the library's cache and kept for six hours instead of asking per package.
 //! It can be large, so it is streamed to disk and read one package at a time: each is parsed on
 //! its own, and one that does not hold up is skipped and counted rather than failing the rest.
+//!
+//! Search, sorts and filters run over the read listing, so typing asks Thunderstore nothing. The
+//! `categories` field of a package is read when present; no official page documents it
+//! (design, section 13), so a listing without it simply offers no category filter.
 
 use core::fmt;
 use core::time::Duration;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::BufReader;
 use std::path::Path;
@@ -32,6 +36,8 @@ const MAX_VERSIONS: usize = 2_000;
 const MAX_DEPENDENCIES: usize = 200;
 /// The package format's limit on `description`, with room for older packages.
 const MAX_DESCRIPTION_CHARS: usize = 500;
+const MAX_CATEGORIES: usize = 16;
+const MAX_CATEGORY_CHARS: usize = 60;
 
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -51,6 +57,8 @@ pub struct Package {
     pub is_deprecated: bool,
     pub is_pinned: bool,
     pub has_nsfw_content: bool,
+    /// The community's categories the package is filed under, when the listing names them.
+    pub categories: Vec<String>,
     pub latest: PackageVersion,
     /// Newest first.
     pub older: Vec<PackageVersion>,
@@ -93,6 +101,7 @@ pub struct Listing {
     community: CommunityId,
     packages: Vec<Package>,
     by_id: HashMap<PackageId, usize>,
+    categories: Vec<String>,
 }
 
 impl Listing {
@@ -120,44 +129,120 @@ impl Listing {
         self.packages.is_empty()
     }
 
-    /// Up to `limit` packages matching every word of `query` in their name, team or description,
-    /// name matches first and then by downloads; with an empty query, pinned ones first and then
-    /// the most downloaded. Also how many matched in all.
     #[must_use]
     #[inline]
-    pub fn search(&self, query: &str, limit: usize) -> (Vec<&Package>, usize) {
-        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
-        let mut found: Vec<(u8, &Package)> = self
+    pub fn at(&self, index: usize) -> Option<&Package> {
+        self.packages.get(index)
+    }
+
+    /// Every category a package of the listing is filed under, sorted, without repeats.
+    #[must_use]
+    #[inline]
+    pub fn categories(&self) -> &[String] {
+        &self.categories
+    }
+
+    /// The listing's indices ([`Self::at`]) of the packages matching every word of the query in
+    /// their name, team or description and passing its filters, in its order. Relevance puts name
+    /// matches first and then the most downloaded; with no words, pinned ones first.
+    #[must_use]
+    #[inline]
+    pub fn find(&self, query: &Query) -> Vec<usize> {
+        let words: Vec<String> = query.text.split_whitespace().map(str::to_lowercase).collect();
+        let mut found: Vec<(u8, usize)> = self
             .packages
             .iter()
-            .filter_map(|package| {
-                if words.is_empty() {
-                    return Some((u8::from(package.is_pinned), package));
-                }
-                let name = package.id.display_name().to_lowercase();
-                let team = package.id.namespace().to_lowercase();
-                let description = package.description.to_lowercase();
-                let mut score = 2_u8;
-                for word in &words {
-                    if name.contains(word.as_str()) {
-                        continue;
-                    }
-                    if team.contains(word.as_str()) || description.contains(word.as_str()) {
-                        score = 1;
-                    } else {
-                        return None;
-                    }
-                }
-                Some((score, package))
+            .enumerate()
+            .filter(|&(_, package)| {
+                (!query.hide_deprecated || !package.is_deprecated)
+                    && (!query.hide_nsfw || !package.has_nsfw_content)
+                    && query
+                        .category
+                        .as_ref()
+                        .is_none_or(|wanted| package.categories.contains(wanted))
             })
+            .filter_map(|(index, package)| Some((relevance(package, &words)?, index)))
             .collect();
-        let total = found.len();
-        found.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.downloads.cmp(&a.1.downloads)));
-        (
-            found.into_iter().take(limit).map(|(_, package)| package).collect(),
-            total,
-        )
+        let packages = &self.packages;
+        let package = |index: usize| packages.get(index);
+        found.sort_by(|a, b| {
+            let (Some(first), Some(second)) = (package(a.1), package(b.1)) else {
+                return core::cmp::Ordering::Equal;
+            };
+            let by_downloads = second.downloads.cmp(&first.downloads);
+            match query.sort {
+                Sort::Relevance => b.0.cmp(&a.0).then(by_downloads),
+                Sort::Downloads => by_downloads,
+                Sort::Rating => second.rating.cmp(&first.rating).then(by_downloads),
+                Sort::Updated => second.updated.cmp(&first.updated).then(by_downloads),
+                Sort::Name => first
+                    .id
+                    .display_name()
+                    .to_lowercase()
+                    .cmp(&second.id.display_name().to_lowercase()),
+            }
+        });
+        found.into_iter().map(|(_, index)| index).collect()
     }
+}
+
+/// What a search over a listing asks for.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct Query {
+    pub text: String,
+    pub sort: Sort,
+    pub hide_deprecated: bool,
+    pub hide_nsfw: bool,
+    /// One of [`Listing::categories`].
+    pub category: Option<String>,
+}
+
+impl Query {
+    /// No words, by relevance, deprecated and NSFW packages hidden, any category.
+    #[must_use]
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            hide_deprecated: true,
+            hide_nsfw: true,
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Sort {
+    #[default]
+    Relevance,
+    Downloads,
+    Rating,
+    Updated,
+    Name,
+}
+
+/// 2 when every word is in the name, 1 when one is only in the team or description, `None` when
+/// one is nowhere; every package is a 1 or, pinned, a 2 for no words at all.
+fn relevance(package: &Package, words: &[String]) -> Option<u8> {
+    if words.is_empty() {
+        return Some(u8::from(package.is_pinned).saturating_add(1));
+    }
+    let name = package.id.display_name().to_lowercase();
+    let team = package.id.namespace().to_lowercase();
+    let description = package.description.to_lowercase();
+    let mut score = 2_u8;
+    for word in words {
+        if name.contains(word.as_str()) {
+            continue;
+        }
+        if team.contains(word.as_str()) || description.contains(word.as_str()) {
+            score = 1;
+        } else {
+            return None;
+        }
+    }
+    Some(score)
 }
 
 /// `community`'s listing, from the cache while it is fresh.
@@ -245,10 +330,19 @@ fn read_listing(path: &Path, community: CommunityId) -> Result<Listing> {
         .enumerate()
         .map(|(index, package)| (package.id.clone(), index))
         .collect();
+    let categories = read
+        .packages
+        .iter()
+        .flat_map(|package| package.categories.iter().map(String::as_str))
+        .collect::<BTreeSet<&str>>()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
     Ok(Listing {
         community,
         packages: read.packages,
         by_id,
+        categories,
     })
 }
 
@@ -317,6 +411,8 @@ struct RawPackage {
     #[serde(default)]
     date_updated: Option<String>,
     #[serde(default)]
+    categories: Vec<serde_json::Value>,
+    #[serde(default)]
     versions: Vec<serde_json::Value>,
 }
 
@@ -381,6 +477,14 @@ fn package(raw: RawPackage, skipped_versions: &mut usize) -> Option<Package> {
         is_deprecated: raw.is_deprecated.unwrap_or_default(),
         is_pinned: raw.is_pinned.unwrap_or_default(),
         has_nsfw_content: raw.has_nsfw_content.unwrap_or_default(),
+        categories: raw
+            .categories
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(|text| display_text(text, MAX_CATEGORY_CHARS))
+            .filter(|text| !text.is_empty())
+            .take(MAX_CATEGORIES)
+            .collect(),
         latest,
         older,
     })

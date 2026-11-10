@@ -13,6 +13,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use decanter_mods::Likeness;
 use serde::{Deserialize, Serialize};
 
 use crate::http::Client;
@@ -27,8 +28,6 @@ const MAX_GAMES: usize = 50_000;
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SUGGESTIONS: usize = 8;
 /// Words too common in titles to say two of them are the same game.
-const COMMON_WORDS: [&str; 6] = ["the", "of", "and", "edition", "game", "remastered"];
-
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Game {
@@ -169,57 +168,29 @@ pub struct Suggestions {
     pub is_exact: bool,
 }
 
-/// The games whose name or domain matches `title`: the same letters and digits first, then one
-/// holding the other, then those sharing a significant word; more mods first among equals.
+/// The games whose name or domain plausibly is `title` ([`decanter_mods::likeness`]).
+///
+/// The same letters and digits first, then one holding the other, then those sharing significant
+/// words; more mods first among equals. A game sharing only a loose word is left out.
 #[must_use]
 #[inline]
 pub fn suggest(games: &[Game], title: &str) -> Suggestions {
-    let wanted = squashed(title);
-    let words = significant_words(title);
-    if wanted.is_empty() {
-        return Suggestions::default();
-    }
-    let mut scored: Vec<(u8, u64, usize)> = games
+    let mut scored: Vec<(Likeness, u64, usize)> = games
         .iter()
         .enumerate()
         .filter_map(|(index, game)| {
-            let name = squashed(&game.name);
-            let domain = squashed(game.domain.as_str());
-            let score = if name == wanted || domain == wanted {
-                3
-            } else if [&name, &domain]
-                .iter()
-                .any(|known| known.len() >= 4 && (known.contains(&wanted) || wanted.contains(known.as_str())))
-            {
-                2
-            } else {
-                u8::from(!significant_words(&game.name).is_disjoint(&words))
-            };
-            (score > 0).then_some((score, game.mods.unwrap_or_default(), index))
+            let found = decanter_mods::best_likeness(title, [game.name.as_str(), game.domain.as_str()])?;
+            Some((found, game.mods.unwrap_or_default(), index))
         })
         .collect();
-    scored.sort_by_key(|&(score, mods, index)| (core::cmp::Reverse(score), core::cmp::Reverse(mods), index));
+    scored.sort_by_key(|&(found, mods, index)| (core::cmp::Reverse(found), core::cmp::Reverse(mods), index));
     Suggestions {
-        is_exact: scored.first().is_some_and(|&(score, _, _)| score == 3)
-            && scored.get(1).is_none_or(|&(score, _, _)| score < 3),
+        is_exact: scored.first().is_some_and(|&(found, _, _)| found == Likeness::Exact)
+            && scored.get(1).is_none_or(|&(found, _, _)| found < Likeness::Exact),
         candidates: scored
             .into_iter()
             .take(MAX_SUGGESTIONS)
             .map(|(_, _, index)| index)
             .collect(),
     }
-}
-
-fn squashed(text: &str) -> String {
-    text.chars()
-        .filter(|character| character.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-fn significant_words(text: &str) -> HashSet<String> {
-    text.split(|character: char| !character.is_alphanumeric())
-        .map(str::to_lowercase)
-        .filter(|word| word.chars().count() >= 4 && !COMMON_WORDS.contains(&word.as_str()))
-        .collect()
 }

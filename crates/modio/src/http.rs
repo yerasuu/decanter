@@ -157,12 +157,12 @@ impl Client {
             );
             return Err(Error::RateLimited { call, seconds });
         }
-        if status == StatusCode::NOT_FOUND || status == StatusCode::GONE {
-            return Err(Error::NotFound { call });
-        }
         let code = status.as_u16();
         let error_ref = error_ref(response).await;
         tracing::warn!(call, status = code, ?error_ref, "modio refused a request");
+        if status == StatusCode::NOT_FOUND || status == StatusCode::GONE {
+            return Err(Error::NotFound { call });
+        }
         match status {
             StatusCode::UNAUTHORIZED => Err(Error::KeyRejected { call }),
             StatusCode::FORBIDDEN if error_ref == Some(TERMS_REF) => Err(Error::TermsRequired { call }),

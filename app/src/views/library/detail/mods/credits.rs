@@ -29,7 +29,7 @@ impl Platform {
     }
 
     /// The platform's own spelling, never translated.
-    const fn name(self) -> &'static str {
+    pub(super) const fn name(self) -> &'static str {
         match self {
             Self::Thunderstore => "Thunderstore",
             Self::Modio => "mod.io",

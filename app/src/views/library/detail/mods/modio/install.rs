@@ -1,6 +1,7 @@
 //! Installing one mod.io file: a fresh record and download into the game's staging folder with a
 //! progress line and a cancel, the archive read by the mods import, and only after *Añadir* the
-//! import itself, with the mod's origin for *Buscar actualizaciones*.
+//! import itself, with the mod's origin for *Buscar actualizaciones*. Another file of a mod the
+//! game has takes that mod's slot.
 
 use core::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -14,6 +15,7 @@ use rust_i18n::t;
 use super::{Failure, ModsTab};
 use crate::i18n::Text;
 use crate::theme;
+use crate::views::library::detail::mods::replace::Replacement;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -65,6 +67,9 @@ pub(in crate::views::library::detail::mods) struct Ready {
     virus: Virus,
     origin: Origin,
     preview: ArchivePreview,
+    /// The game's mod from another file of the same mod.io mod, whose slot this one takes.
+    replaces: Option<Replacement>,
+    keep_previous: bool,
     /// Holds the download until the import is done; dropping it deletes it.
     staging: Staging,
 }
@@ -155,15 +160,22 @@ impl ModsTab {
                     preview,
                     staging,
                     origin,
+                    replaces,
+                    keep_previous,
                     ..
                 } = ready;
                 let target = preview.target().cloned();
-                let added = mods.import_archive(&preview, &name, target, &account_id, &work.progress);
-                match &added {
-                    Ok(manifest) => {
+                let added = mods
+                    .import_archive(&preview, &name, target, &account_id, &work.progress)
+                    .and_then(|manifest| {
                         tracing::info!(mod_id = %origin.mod_id, file_id = %origin.file, added = %manifest.id, "modio mod added");
-                    }
-                    Err(err) => tracing::warn!(mod_id = %origin.mod_id, %err, "modio mod not added"),
+                        match replaces {
+                            Some(replaces) => replaces.apply(&mods, &manifest.id, keep_previous).map(|()| manifest),
+                            None => Ok(manifest),
+                        }
+                    });
+                if let Err(err) = &added {
+                    tracing::warn!(mod_id = %origin.mod_id, %err, "modio mod not added in full");
                 }
                 drop(staging);
                 added
@@ -236,9 +248,17 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_modio::Result<Re
         .with_credits(remote.credits());
     let path = downloaded.path;
     let reading = Arc::clone(&work);
-    let preview = tokio::task::spawn_blocking(move || mods.preview_archive(&path, &reading.progress))
-        .await
-        .map_err(joined)??;
+    let (preview, replaces) = tokio::task::spawn_blocking(move || {
+        let preview = mods.preview_archive(&path, &reading.progress)?;
+        let replaces = mods.list()?.iter().rev().find_map(|manifest| {
+            let had = Origin::from_mod_origin(manifest.origin.as_ref()?)?;
+            (had.game == origin.game && had.mod_id == origin.mod_id && had.file != origin.file)
+                .then(|| Replacement::of(manifest))
+        });
+        Ok::<_, decanter_modio::Error>((preview, replaces))
+    })
+    .await
+    .map_err(joined)??;
     tracing::info!(
         mod_id = %remote.id,
         file_id = %file,
@@ -252,6 +272,8 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_modio::Result<Re
         virus: downloaded.file.virus,
         origin,
         preview: preview.with_origin(mod_origin),
+        replaces,
+        keep_previous: false,
         staging,
     })
 }
@@ -353,6 +375,21 @@ fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
             Virus::Clean | Virus::Malicious | _ => None,
         })
         .children(duplicate.map(|(_, name)| theme::error(t!("mods.archive.duplicate", name = name))))
+        .children(ready.replaces.as_ref().filter(|_| can_add).map(|replaces| {
+            replaces.block(
+                "modio-keep-previous",
+                ready.keep_previous,
+                |this, cx| {
+                    if let Some(Install::Ready(ready)) =
+                        this.modio.as_mut().and_then(|browser| browser.install.as_mut())
+                    {
+                        ready.keep_previous = !ready.keep_previous;
+                    }
+                    cx.notify();
+                },
+                cx,
+            )
+        }))
         .child(
             div()
                 .flex()

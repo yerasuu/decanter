@@ -13,6 +13,8 @@ mod dll;
 mod modio;
 mod nexus;
 mod order;
+mod replace;
+mod search;
 mod thunderstore;
 
 use std::collections::{HashMap, HashSet};
@@ -111,6 +113,8 @@ pub(super) struct ModsTab {
     nexus_updates: HashMap<ModId, nexus::UpdateCheck>,
     /// Ajustes' experimental switch for Nexus Mods (decision #1635), read at every reload.
     nexus_experimental: bool,
+    /// Which section the tab shows, and the query box its provider sections share.
+    search: search::Surface,
     error: Option<Text>,
 }
 
@@ -130,6 +134,7 @@ impl ModsTab {
         })
         .detach();
         cx.on_release(|this: &mut Self, _| this.stop_work()).detach();
+        let search = search::Surface::new(cx);
         let mut this = Self {
             target: Rc::new(Target {
                 account_id: game.account_id.clone(),
@@ -155,6 +160,7 @@ impl ModsTab {
             nexus: None,
             nexus_updates: HashMap::new(),
             nexus_experimental: false,
+            search,
             error: None,
         };
         this.reload(cx);
@@ -188,6 +194,7 @@ impl ModsTab {
         {
             browser.discard();
         }
+        self.follow_nexus_switch();
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -294,6 +301,7 @@ impl ModsTab {
                 "several files dropped on the mods tab, only the first is added"
             );
         }
+        self.show_installed(cx);
         if path.is_dir() {
             self.add_folder(path, cx);
         } else {
@@ -591,39 +599,6 @@ impl Render for ModsTab {
                 button("mod-add", ButtonKind::Secondary, add_label, locked)
                     .when(!locked, |b| b.on_click(cx.listener(|_, _, _, cx| Self::add(cx)))),
             )
-            .child(
-                button(
-                    "mod-add-thunderstore",
-                    ButtonKind::Secondary,
-                    t!("mods.thunderstore.add_button"),
-                    locked || self.thunderstore.is_some(),
-                )
-                .when(!locked && self.thunderstore.is_none(), |b| {
-                    b.on_click(cx.listener(|this, _, _, cx| this.open_thunderstore(None, cx)))
-                }),
-            )
-            .child(
-                button(
-                    "mod-add-modio",
-                    ButtonKind::Secondary,
-                    t!("mods.modio.add_button"),
-                    locked || self.modio.is_some(),
-                )
-                .when(!locked && self.modio.is_none(), |b| {
-                    b.on_click(cx.listener(|this, _, _, cx| this.open_modio(None, cx)))
-                }),
-            )
-            .children(self.nexus_experimental.then(|| {
-                button(
-                    "mod-add-nexus",
-                    ButtonKind::Secondary,
-                    t!("mods.nexus.add_button"),
-                    locked || self.nexus.is_some(),
-                )
-                .when(!locked && self.nexus.is_none(), |b| {
-                    b.on_click(cx.listener(|this, _, _, cx| this.open_nexus(None, cx)))
-                })
-            }))
             .children(self.running.then(|| theme::muted(t!("library.detail.mods.running"))));
 
         let list = match &self.loaded {
@@ -662,15 +637,7 @@ impl Render for ModsTab {
                 ))
             });
 
-        let panels: Vec<Div> = [
-            self.archive_panel(cx),
-            self.thunderstore_panel(locked, cx),
-            self.modio_panel(locked, cx),
-            self.nexus_panel(locked, cx),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
+        let archive = self.archive_panel(cx);
         let column = || {
             div()
                 .flex()
@@ -687,26 +654,31 @@ impl Render for ModsTab {
             .child(theme::muted(t!("mods.order.later_wins")))
             .children(written);
 
+        let is_installed = self.search.section() == search::Section::Installed;
         div()
             .flex()
             .flex_col()
             .gap_3()
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.dropped(paths, cx)))
-            .child(theme::muted(t!("library.detail.mods.note")))
-            .child(theme::muted(t!("mods.archive.note")))
-            .child(actions)
+            .child(self.section_nav(cx))
             .children(self.notice.as_ref().map(theme::muted))
             .children(self.error.as_ref().map(theme::error))
-            // The list leads and the open archive or browsers sit beside it while both fit at
-            // `COLUMN_MIN`, wrapping below it at full width otherwise.
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_start()
-                    .gap_6()
-                    .child(mod_list)
-                    .when(!panels.is_empty(), |row| row.child(column().children(panels))),
-            )
+            .children(self.provider_section(locked, cx))
+            .when(is_installed, |tab| {
+                tab.child(theme::muted(t!("library.detail.mods.note")))
+                    .child(theme::muted(t!("mods.archive.note")))
+                    .child(actions)
+                    // The list leads and the open archive sits beside it while both fit at
+                    // `COLUMN_MIN`, wrapping below it at full width otherwise.
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_start()
+                            .gap_6()
+                            .child(mod_list)
+                            .children(archive.map(|panel| column().child(panel))),
+                    )
+            })
     }
 }

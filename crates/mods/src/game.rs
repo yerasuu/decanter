@@ -21,6 +21,12 @@ const PROFILES: &str = "profiles";
 const PLAY: &str = "play";
 pub(crate) const INCOMING: &str = "incoming";
 
+#[derive(Clone, Copy)]
+enum Previous {
+    Remove,
+    KeepDisabled,
+}
+
 /// Where a game's manifest is filed, which is also the first level of its mods folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -278,6 +284,21 @@ impl GameMods {
     /// `mod.toml` or `old`'s folder can't be changed.
     #[inline]
     pub fn replace(&self, old: &ModId, new: &ModId) -> Result<()> {
+        self.succeed(old, new, Previous::Remove)
+    }
+
+    /// As [`Self::replace`], but `old` is kept, turned off, in the slot right after `new` in every
+    /// account that had it, so that going back to it is one toggle.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::replace`].
+    #[inline]
+    pub fn replace_keeping_previous(&self, old: &ModId, new: &ModId) -> Result<()> {
+        self.succeed(old, new, Previous::KeepDisabled)
+    }
+
+    fn succeed(&self, old: &ModId, new: &ModId, previous: Previous) -> Result<()> {
         let old_manifest =
             ModManifest::read(&self.mod_dir(old), old)?.ok_or_else(|| Error::UnknownMod(old.to_string()))?;
         let new_dir = self.mod_dir(new);
@@ -297,12 +318,24 @@ impl GameMods {
             new_manifest.write(&new_dir)?;
         }
         for (account, mut set) in self.sets()? {
-            if set.replace(old, new) {
+            let changed = match previous {
+                Previous::Remove => set.replace(old, new),
+                Previous::KeepDisabled => set.supersede(old, new),
+            };
+            if changed {
                 set.write(&self.set_path(&account)?)?;
             }
         }
-        tracing::info!(old = %old, new = %new, kept_modes, "mod replaced by its newer version");
-        self.remove(old)
+        match previous {
+            Previous::Remove => {
+                tracing::info!(old = %old, new = %new, kept_modes, "mod replaced by its newer version");
+                self.remove(old)
+            }
+            Previous::KeepDisabled => {
+                tracing::info!(old = %old, new = %new, kept_modes, "mod replaced by its newer version, old one kept off");
+                Ok(())
+            }
+        }
     }
 
     /// Changes how Wine loads `dll` for the mod, for every account that has it on; a mod that did

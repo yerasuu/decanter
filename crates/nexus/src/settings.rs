@@ -96,6 +96,24 @@ impl GameSettings {
         tracing::info!(domain = %self.domain, "nexus game settings saved");
         Ok(())
     }
+
+    /// Drops the game's choice, so that the picker shows again; nothing to drop is no error.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Io`] when the file is there and can't be removed.
+    #[inline]
+    pub fn forget(mods: &decanter_mods::GameMods) -> Result<()> {
+        let path = path(mods);
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                tracing::info!("nexus game settings forgotten");
+                Ok(())
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(Error::io(&path)(err)),
+        }
+    }
 }
 
 fn path(mods: &decanter_mods::GameMods) -> PathBuf {

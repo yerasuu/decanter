@@ -71,7 +71,7 @@ pub use error::Error;
 pub use http::Client;
 pub use id::{CommunityId, Dependency, PackageId, VersionNumber};
 pub use layout::{LEAVE_OUT, Placement, PlacementKind, credits, origin, place};
-pub use listing::{Listing, Package, PackageVersion, listing};
+pub use listing::{Listing, Package, PackageVersion, Query, Sort, listing};
 pub use resolve::{Installed, Plan, PlanItem, Skipped, installed, plan};
 pub use settings::{GameSettings, Layout};
 

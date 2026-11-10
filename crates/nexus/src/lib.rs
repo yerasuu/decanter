@@ -66,6 +66,7 @@ mod id;
 mod key;
 mod listing;
 mod origin;
+mod search;
 mod settings;
 
 pub use account::{Account, validate};
@@ -78,6 +79,7 @@ pub use id::{FileId, GameDomain, NexusModId, mod_page, parse_mod_reference};
 pub use key::{forget_key, load_key, save_key};
 pub use listing::{Feed, ModInfo, feed, mod_info};
 pub use origin::{NexusOrigin, origin};
+pub use search::{GRAPHQL_URL, SEARCH_PAGE, SEARCH_V2, SearchPage, SearchSort, read_search, search_body};
 pub use settings::GameSettings;
 
 /// Which platform a mod's `mod.toml` origin names.

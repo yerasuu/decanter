@@ -4,6 +4,10 @@
 //! Premium account downloading one into the same import as any archive (docs/mods.md). A free
 //! account gets the page and the file list and adds the file it downloads as any archive, since
 //! Nexus gives free accounts no download link through the API. The network is `decanter_nexus`'s.
+//!
+//! v1 has no search by name, so the search surface's words filter the list in memory and its sort
+//! reorders it there: typing asks Nexus nothing. The v2 search waits behind
+//! [`decanter_nexus::SEARCH_V2`], off.
 
 mod install;
 mod updates;
@@ -12,19 +16,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use decanter_nexus::{
-    Account, Category, Client, Feed, FileList, Game, GameDomain, GameSettings, ModInfo, NexusFile, NexusModId, Refresh,
+    Account, Category, Client, Feed, FileList, Game, GameDomain, GameSettings, ModInfo, NexusFile, NexusModId,
+    NexusOrigin, Refresh,
 };
-use gpui::{Context, Div, Entity, ObjectFit, SharedString, div, img, prelude::*, px, rgb};
+use gpui::{Context, Div, Entity, SharedString, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::ModsTab;
 use super::credits::{self, Platform};
+use super::search::{self, Provider, ResultItem};
 use crate::i18n::Text;
 use crate::nexus::{account_line, failure_text};
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
 use crate::widgets::input::{InputEvent, TextInput};
-use crate::widgets::{ButtonKind, Select, button};
+use crate::widgets::{ButtonKind, button};
 pub(super) use install::Install;
 pub(super) use updates::UpdateCheck;
 
@@ -36,15 +42,18 @@ pub(super) struct Browser {
     account: Option<Account>,
     cache: PathBuf,
     settings: Option<GameSettings>,
+    /// What `nexus.toml` holds: a choice is written only once its first list answered.
+    saved: Option<GameSettings>,
     games: Option<Arc<[Game]>>,
     suggestions: Vec<usize>,
     is_exact: bool,
     /// The game picker is shown: no choice yet, or the user asked to change it.
     choosing: bool,
     game_filter: Entity<TextInput>,
-    filter: Entity<TextInput>,
     reference: Entity<TextInput>,
     feed: Feed,
+    order: Order,
+    hide_adult: bool,
     mods: Vec<ModInfo>,
     selected: Option<Selected>,
     /// A mod to open once the account is known, from an update check.
@@ -69,6 +78,15 @@ enum Retry {
     Account,
     Games,
     Feed,
+}
+
+/// How the list in memory is ordered: as Nexus listed it, or by one of its fields.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Order {
+    Listed,
+    Endorsements,
+    Updated,
+    Name,
 }
 
 impl Browser {
@@ -98,6 +116,7 @@ impl ModsTab {
             tracing::info!("nexus browser not opened, its experimental switch is off");
             return;
         }
+        self.show_search(Provider::Nexus, cx);
         if self.nexus.is_some() {
             if let Some(id) = pending {
                 self.open_mod(id, cx);
@@ -125,13 +144,6 @@ impl ModsTab {
             }
         })
         .detach();
-        let filter = cx.new(|cx| TextInput::new(Text::new("mods.nexus.filter"), cx));
-        cx.subscribe(&filter, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Changed) {
-                cx.notify();
-            }
-        })
-        .detach();
         let reference = cx.new(|cx| TextInput::new(Text::new("mods.nexus.reference"), cx));
         cx.subscribe(&reference, |this, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Submit) {
@@ -145,14 +157,16 @@ impl ModsTab {
             account: None,
             cache,
             choosing: settings.is_none(),
+            saved: settings.clone(),
             settings,
             games: None,
             suggestions: Vec::new(),
             is_exact: false,
             game_filter,
-            filter,
             reference,
             feed: Feed::Latest,
+            order: Order::Listed,
+            hide_adult: true,
             mods: Vec::new(),
             selected: None,
             pending,
@@ -278,24 +292,69 @@ impl ModsTab {
             return;
         };
         let settings = GameSettings::new(domain);
-        if let Err(err) = settings.write(&mods) {
-            tracing::error!(%err, "nexus game settings could not be saved");
-            browser.failure = Some(Failure {
-                text: failure_text(&err),
-                retry: None,
-            });
-            cx.notify();
-            return;
-        }
-        let is_same = browser.domain() == Some(&settings.domain);
+        let is_same = browser.domain() == Some(&settings.domain) && !browser.mods.is_empty();
         browser.settings = Some(settings);
         browser.choosing = false;
-        if is_same && !browser.mods.is_empty() {
+        browser.failure = None;
+        if is_same {
+            // Its list already answered, so the choice is known good.
+            Self::nexus_save(browser, &mods);
             cx.notify();
         } else {
             browser.mods.clear();
             browser.selected = None;
             self.load_feed(cx);
+        }
+    }
+
+    /// Writes the choice once a list of its mods answered; until then nothing is kept for the game.
+    fn nexus_save(browser: &mut Browser, mods: &decanter_mods::GameMods) {
+        if browser.settings == browser.saved {
+            return;
+        }
+        let Some(settings) = browser.settings.clone() else {
+            return;
+        };
+        match settings.write(mods) {
+            Ok(()) => browser.saved = Some(settings),
+            Err(err) => {
+                tracing::error!(%err, "nexus game settings could not be saved");
+                browser.failure = Some(Failure {
+                    text: failure_text(&err),
+                    retry: None,
+                });
+            }
+        }
+    }
+
+    /// Nexus has no such game: a saved choice is forgotten and the picker shows again, inside the
+    /// section.
+    fn nexus_game_gone(&mut self, cx: &mut Context<Self>) {
+        let Some(mods) = self.mods.clone() else {
+            return;
+        };
+        let Some(browser) = self.nexus.as_mut() else {
+            return;
+        };
+        let gone = browser.settings.take().map(|settings| settings.domain.to_string());
+        tracing::warn!(domain = ?gone, saved = browser.saved.is_some(), "nexus game not found, choosing again");
+        if browser.saved.take().is_some()
+            && let Err(err) = GameSettings::forget(&mods)
+        {
+            tracing::error!(%err, "nexus game settings could not be forgotten");
+        }
+        browser.choosing = true;
+        browser.mods.clear();
+        browser.selected = None;
+        let needs_list = browser.games.is_none();
+        if needs_list {
+            self.load_games(Refresh::IfStale, cx);
+        }
+        if let Some(browser) = self.nexus.as_mut() {
+            browser.failure = Some(Failure {
+                text: Text::new("mods.search.mapping_gone").arg("platform", Platform::Nexus.name()),
+                retry: None,
+            });
         }
     }
 
@@ -318,7 +377,13 @@ impl ModsTab {
                 };
                 browser.loading = None;
                 match fetched {
-                    Ok(Ok(found)) => browser.mods = found,
+                    Ok(Ok(found)) => {
+                        browser.mods = found;
+                        if let Some(mods) = this.mods.as_ref() {
+                            Self::nexus_save(browser, mods);
+                        }
+                    }
+                    Ok(Err(decanter_nexus::Error::NotFound { .. })) => this.nexus_game_gone(cx),
                     Ok(Err(err)) => {
                         tracing::warn!(%err, retryable = err.is_retryable(), "nexus mod list failed");
                         browser.failure = Some(Failure {
@@ -408,53 +473,47 @@ impl ModsTab {
         .detach();
     }
 
-    fn close_nexus(&mut self, cx: &mut Context<Self>) {
-        if let Some(browser) = self.nexus.take() {
-            browser.discard();
-        }
-        tracing::info!("nexus browser closed");
-        cx.notify();
-    }
-
     pub(super) fn nexus_panel(&self, locked: bool, cx: &Context<Self>) -> Option<Div> {
         let browser = self.nexus.as_ref()?;
-        let body = if let Some(install) = browser.install.as_ref() {
-            install::panel(install, cx)
-        } else if let Some(loading) = browser.loading.as_ref() {
-            theme::muted(loading)
-        } else if browser.account.is_none() {
+        let body = if browser.account.is_none() {
             no_account(browser)
         } else if browser.choosing {
             self.game_picker(browser, cx)
-        } else if let Some(selected) = browser.selected.as_ref() {
-            detail(browser, selected, locked, cx)
         } else {
-            results_panel(browser, cx)
-        };
-        let failure = browser.failure.as_ref().map(|failure| {
+            let chosen = if let Some(install) = browser.install.as_ref() {
+                install::panel(install, cx)
+            } else if let Some(selected) = browser.selected.as_ref() {
+                detail(browser, selected, locked, cx)
+            } else {
+                search::nothing_chosen()
+            };
+            let (controls, list) = self.nexus_results(browser, cx);
             div()
                 .flex()
-                .items_center()
+                .flex_col()
                 .gap_3()
-                .child(theme::error(&failure.text))
-                .children(failure.retry.map(|retry| {
-                    button("nx-retry", ButtonKind::Secondary, t!("mods.nexus.retry"), false).on_click(cx.listener(
-                        move |this, _, _, cx| match retry {
-                            Retry::Account => this.load_account(cx),
-                            Retry::Games => this.load_games(Refresh::Now, cx),
-                            Retry::Feed => this.load_feed(cx),
-                        },
-                    ))
-                }))
+                .child(self.query_bar(Provider::Nexus, controls, cx))
+                .child(search::split(list, chosen))
+        };
+        let failure = browser.failure.as_ref().map(|failure| {
+            let retry = failure.retry.map(|retry| -> search::Retry {
+                Box::new(move |this, cx| match retry {
+                    Retry::Account => this.load_account(cx),
+                    Retry::Games => this.load_games(Refresh::Now, cx),
+                    Retry::Feed => this.load_feed(cx),
+                })
+            });
+            search::failure_line("nx-retry", &failure.text, retry, None, cx)
         });
         let working = browser.install.is_some() || browser.loading.is_some();
-        Some(
-            theme::card()
+        Some(search::section_frame(
+            Platform::Nexus,
+            header(browser, working, cx),
+            div()
+                .flex()
+                .flex_col()
                 .gap_3()
-                .px(px(18.))
-                .py(px(14.))
-                .child(header(browser, working, cx))
-                .child(theme::muted(t!("mods.nexus.note")))
+                .child(theme::muted(t!("mods.nexus.note")).text_size(px(12.5)))
                 .children(
                     browser
                         .account
@@ -462,9 +521,147 @@ impl ModsTab {
                         .map(|account| theme::muted(account_line(account))),
                 )
                 .children(remaining_line())
+                .children(browser.loading.as_ref().map(theme::muted))
                 .children(failure)
-                .child(body)
-                .child(credits::footer(Platform::Nexus)),
+                .child(body),
+        ))
+    }
+
+    /// The list, sort and filter controls with opening a mod by number, then the results under them.
+    fn nexus_results(&self, browser: &Browser, cx: &Context<Self>) -> (Div, Div) {
+        let feeds = vec![
+            (Feed::Latest, feed_label(Feed::Latest)),
+            (Feed::Trending, feed_label(Feed::Trending)),
+            (Feed::Updated, feed_label(Feed::Updated)),
+        ];
+        let feed = search::choice(
+            "nx-feed",
+            t!("mods.nexus.feed").into_owned().into(),
+            feeds,
+            browser.feed,
+            |this, feed, cx| {
+                if let Some(browser) = this.nexus.as_mut() {
+                    browser.feed = feed;
+                }
+                this.load_feed(cx);
+            },
+            cx,
+        );
+        let orders = vec![
+            (Order::Listed, t!("mods.search.sort_listed").into_owned().into()),
+            (
+                Order::Endorsements,
+                t!("mods.search.sort_endorsements").into_owned().into(),
+            ),
+            (Order::Updated, t!("mods.search.sort_updated").into_owned().into()),
+            (Order::Name, t!("mods.search.sort_name").into_owned().into()),
+        ];
+        let order = search::choice(
+            "nx-order",
+            t!("mods.search.sort").into_owned().into(),
+            orders,
+            browser.order,
+            |this, order, cx| {
+                if let Some(browser) = this.nexus.as_mut() {
+                    browser.order = order;
+                }
+                cx.notify();
+            },
+            cx,
+        );
+        let controls = search::controls().child(feed).child(order).child(search::flag(
+            "nx-hide-adult",
+            t!("mods.search.hide_adult").into_owned().into(),
+            browser.hide_adult,
+            |this, on, cx| {
+                if let Some(browser) = this.nexus.as_mut() {
+                    browser.hide_adult = on;
+                }
+                cx.notify();
+            },
+            cx,
+        ));
+        let filter = self.search_text(cx).to_lowercase();
+        let words: Vec<&str> = filter.split_whitespace().collect();
+        let mut shown: Vec<&ModInfo> = browser
+            .mods
+            .iter()
+            .filter(|info| !browser.hide_adult || !info.has_adult_content)
+            .filter(|info| {
+                let name = info.name.to_lowercase();
+                let summary = info.summary.to_lowercase();
+                words.iter().all(|word| name.contains(word) || summary.contains(word))
+            })
+            .collect();
+        match browser.order {
+            Order::Listed => {}
+            Order::Endorsements => shown.sort_by_key(|info| core::cmp::Reverse(info.endorsements)),
+            Order::Updated => shown.sort_by(|a, b| b.updated.cmp(&a.updated)),
+            Order::Name => shown.sort_by_key(|info| info.name.to_lowercase()),
+        }
+        let controls = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(controls)
+            .child(
+                field_row()
+                    .items_center()
+                    .child(div().flex_1().min_w_0().child(browser.reference.clone()))
+                    .child(
+                        button(
+                            "nx-open-ref",
+                            ButtonKind::Secondary,
+                            t!("mods.nexus.open_reference"),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.open_reference(cx))),
+                    ),
+            )
+            .child(theme::muted(t!("mods.nexus.search_note")).text_size(px(12.)));
+        let list = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(search::count_line(shown.len(), Some(browser.mods.len() as u64)))
+            .children(
+                shown
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, info)| self.nexus_result_row(index, browser, info, cx)),
+            );
+        (controls, list)
+    }
+
+    fn nexus_result_row(
+        &self,
+        index: usize,
+        browser: &Browser,
+        info: &ModInfo,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let id = info.id;
+        let installed = browser.domain().and_then(|domain| {
+            let origin = self.installed_origin(|origin| {
+                matches!(NexusOrigin::read(origin), Ok(Some(found)) if found.domain == *domain && found.mod_id == id)
+            })?;
+            Some(origin.version.clone())
+        });
+        search::result_row(
+            ("nx-result", index),
+            ResultItem {
+                picture: info.picture.as_deref(),
+                name: &info.name,
+                by: None,
+                summary: search::summary(&info.summary, SUMMARY_CHARS),
+                stats: stats(info),
+                flags: flags(info),
+                platform: Platform::Nexus,
+                is_adult: info.has_adult_content,
+                installed,
+            },
+            move |this, cx| this.open_mod(id, cx),
+            cx,
         )
     }
 
@@ -480,24 +677,35 @@ impl ModsTab {
                 .on_click(cx.listener(|this, _, _, cx| this.load_games(Refresh::IfStale, cx))),
             );
         };
+        let title = &self.target.title;
         let filter = browser.game_filter.read(cx).text().trim().to_lowercase();
-        let shown: Vec<&Game> = if filter.is_empty() {
-            browser
-                .suggestions
-                .iter()
-                .filter_map(|&index| games.get(index))
-                .collect()
+        // A hand search shows what the user typed, the ones that look like the game first and the
+        // rest under their own heading, never mixed with the suggestions.
+        let (shown, others): (Vec<&Game>, Vec<&Game>) = if filter.is_empty() {
+            (
+                browser
+                    .suggestions
+                    .iter()
+                    .filter_map(|&index| games.get(index))
+                    .collect(),
+                Vec::new(),
+            )
         } else {
             games
                 .iter()
                 .filter(|game| game.name.to_lowercase().contains(&filter) || game.domain.as_str().contains(&filter))
                 .take(SHOWN_GAMES)
-                .collect()
+                .partition(|game| {
+                    decanter_mods::best_likeness(title, [game.name.as_str(), game.domain.as_str()]).is_some()
+                })
         };
         let intro = if !filter.is_empty() {
-            t!("mods.nexus.game_filtered", count = shown.len())
+            t!(
+                "mods.nexus.game_filtered",
+                count = shown.len().saturating_add(others.len())
+            )
         } else if browser.suggestions.is_empty() {
-            t!("mods.nexus.game_none", title = self.target.title)
+            t!("mods.search.no_match", platform = Platform::Nexus.name())
         } else if browser.is_exact {
             t!("mods.nexus.game_exact", title = self.target.title)
         } else {
@@ -508,9 +716,10 @@ impl ModsTab {
             .flex_col()
             .gap_2()
             .child(theme::muted(intro))
-            .children(shown.into_iter().enumerate().map(|(index, game)| {
+            .children(shown.iter().chain(&others).enumerate().map(|(index, game)| {
+                let heading = (index == shown.len()).then(search::other_results);
                 let domain = game.domain.clone();
-                div()
+                let row = div()
                     .flex()
                     .items_center()
                     .gap_3()
@@ -519,7 +728,8 @@ impl ModsTab {
                     .child(
                         button(("nx-game", index), ButtonKind::Secondary, t!("mods.nexus.use"), false)
                             .on_click(cx.listener(move |this, _, _, cx| this.choose_game(domain.clone(), cx))),
-                    )
+                    );
+                div().flex().flex_col().children(heading).child(row)
             }))
             .child(
                 field_row()
@@ -552,7 +762,11 @@ fn remaining_line() -> Option<Div> {
     let (Some(daily), Some(hourly)) = (left.daily, left.hourly) else {
         return None;
     };
-    Some(theme::muted(t!("mods.nexus.remaining", daily = daily, hourly = hourly)).text_size(px(12.)))
+    Some(search::quota_line(t!(
+        "mods.nexus.remaining",
+        daily = daily,
+        hourly = hourly
+    )))
 }
 
 fn feed_label(feed: Feed) -> SharedString {
@@ -563,90 +777,6 @@ fn feed_label(feed: Feed) -> SharedString {
     }
     .into_owned()
     .into()
-}
-
-fn results_panel(browser: &Browser, cx: &Context<ModsTab>) -> Div {
-    let entity = cx.entity();
-    let feeds = [Feed::Latest, Feed::Trending, Feed::Updated];
-    let selected = match browser.feed {
-        Feed::Trending => "trending",
-        Feed::Updated => "updated",
-        Feed::Latest | _ => "latest",
-    };
-    let feed = Select::new(
-        "nx-feed",
-        feeds.map(|feed| {
-            let value = match feed {
-                Feed::Trending => "trending",
-                Feed::Updated => "updated",
-                Feed::Latest | _ => "latest",
-            };
-            (SharedString::from(value), feed_label(feed))
-        }),
-        selected,
-    )
-    .on_change(move |chosen, _, cx| {
-        let feed = match chosen.as_ref() {
-            "trending" => Feed::Trending,
-            "updated" => Feed::Updated,
-            _ => Feed::Latest,
-        };
-        entity.update(cx, |this, cx| {
-            if let Some(browser) = this.nexus.as_mut() {
-                browser.feed = feed;
-            }
-            this.load_feed(cx);
-        });
-    });
-    let filter = browser.filter.read(cx).text().trim().to_lowercase();
-    let words: Vec<&str> = filter.split_whitespace().collect();
-    let shown: Vec<&ModInfo> = browser
-        .mods
-        .iter()
-        .filter(|info| {
-            let name = info.name.to_lowercase();
-            let summary = info.summary.to_lowercase();
-            words.iter().all(|word| name.contains(word) || summary.contains(word))
-        })
-        .collect();
-    let count = t!("mods.nexus.results", count = shown.len(), total = browser.mods.len());
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(
-            field_row()
-                .items_center()
-                .child(div().w(px(110.)).child(theme::muted(t!("mods.nexus.feed"))))
-                .child(feed),
-        )
-        .child(
-            field_row()
-                .items_center()
-                .child(div().flex_1().min_w_0().child(browser.filter.clone())),
-        )
-        .child(
-            field_row()
-                .items_center()
-                .child(div().flex_1().min_w_0().child(browser.reference.clone()))
-                .child(
-                    button(
-                        "nx-open-ref",
-                        ButtonKind::Secondary,
-                        t!("mods.nexus.open_reference"),
-                        false,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| this.open_reference(cx))),
-                ),
-        )
-        .child(theme::muted(t!("mods.nexus.search_note")))
-        .child(theme::muted(count))
-        .children(
-            shown
-                .into_iter()
-                .enumerate()
-                .map(|(index, info)| result_row(index, info, cx)),
-        )
 }
 
 fn header(browser: &Browser, working: bool, cx: &Context<ModsTab>) -> Div {
@@ -663,8 +793,7 @@ fn header(browser: &Browser, working: bool, cx: &Context<ModsTab>) -> Div {
         .flex()
         .items_center()
         .gap_3()
-        .child(div().flex_1().child(t!("mods.nexus.title")))
-        .children(game)
+        .child(div().flex_1().children(game))
         .children(can_change.then(|| {
             button("nx-change", ButtonKind::Secondary, t!("mods.nexus.change"), working).when(!working, |b| {
                 b.on_click(cx.listener(|this, _, _, cx| {
@@ -679,36 +808,6 @@ fn header(browser: &Browser, working: bool, cx: &Context<ModsTab>) -> Div {
                 }))
             })
         }))
-        .child(
-            button("nx-close", ButtonKind::Secondary, t!("mods.nexus.close"), false)
-                .on_click(cx.listener(|this, _, _, cx| this.close_nexus(cx))),
-        )
-}
-
-fn picture(url: Option<&str>, size: f32) -> Div {
-    let frame = div()
-        .flex_none()
-        .size(px(size))
-        .rounded(px(theme::RADIUS_SM))
-        .overflow_hidden()
-        .bg(rgb(theme::BG_PANEL));
-    match url {
-        Some(url) => frame.child(
-            img(crate::art::source(url, gpui::size(size, size)))
-                .size_full()
-                .object_fit(ObjectFit::Cover),
-        ),
-        None => frame,
-    }
-}
-
-fn summary(text: &str) -> String {
-    if text.chars().count() <= SUMMARY_CHARS {
-        return text.to_owned();
-    }
-    let mut cut: String = text.chars().take(SUMMARY_CHARS).collect();
-    cut.push('…');
-    cut
 }
 
 fn stats(info: &ModInfo) -> String {
@@ -722,7 +821,7 @@ fn stats(info: &ModInfo) -> String {
     .into_owned()
 }
 
-fn flags(info: &ModInfo) -> Option<Div> {
+fn flags(info: &ModInfo) -> Vec<String> {
     let mut flags = Vec::new();
     if !info.is_available {
         flags.push(t!("mods.nexus.unavailable").into_owned());
@@ -730,39 +829,7 @@ fn flags(info: &ModInfo) -> Option<Div> {
     if info.has_adult_content {
         flags.push(t!("mods.nexus.adult").into_owned());
     }
-    (!flags.is_empty()).then(|| theme::error(flags.join(" · ")))
-}
-
-fn result_row(index: usize, info: &ModInfo, cx: &Context<ModsTab>) -> impl IntoElement + use<> {
-    let id = info.id;
-    div()
-        .id(("nx-result", index))
-        .flex()
-        .gap_3()
-        .py(px(6.))
-        .cursor_pointer()
-        .border_t_1()
-        .border_color(rgb(theme::LINE))
-        .on_click(cx.listener(move |this, _, _, cx| this.open_mod(id, cx)))
-        .child(picture(info.picture.as_deref(), 40.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(info.name.clone())
-                        .child(credits::source(Platform::Nexus)),
-                )
-                .child(theme::muted(summary(&info.summary)).text_size(px(12.5)))
-                .child(theme::muted(stats(info)).text_size(px(12.)))
-                .children(flags(info)),
-        )
+    flags
 }
 
 fn category_label(category: Category) -> String {
@@ -822,7 +889,8 @@ fn file_row(
                 .child(file.name.clone())
                 .child(theme::muted(line).text_size(px(12.)))
                 .children(
-                    (!file.description.is_empty()).then(|| theme::muted(summary(&file.description)).text_size(px(12.))),
+                    (!file.description.is_empty())
+                        .then(|| theme::muted(search::summary(&file.description, SUMMARY_CHARS)).text_size(px(12.))),
                 ),
         )
         .children(can_download.then(|| {
@@ -857,18 +925,14 @@ fn detail(browser: &Browser, selected: &Selected, locked: bool, cx: &Context<Mod
         .flex()
         .flex_col()
         .gap_2()
-        .child(
-            div().flex().gap_3().child(picture(info.picture.as_deref(), 64.)).child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(info.name.clone())
-                    .child(theme::muted(stats(info)).text_size(px(12.)))
-                    .children(flags(info)),
-            ),
-        )
+        .child(search::detail_head(
+            info.picture.as_deref(),
+            &info.name,
+            core::iter::once(theme::muted(stats(info)).text_size(px(12.))).chain({
+                let flags = flags(info);
+                (!flags.is_empty()).then(|| theme::error(flags.join(" · ")))
+            }),
+        ))
         .children(
             browser
                 .domain()
@@ -878,29 +942,17 @@ fn detail(browser: &Browser, selected: &Selected, locked: bool, cx: &Context<Mod
         .children(free_line)
         .child(theme::muted(t!("mods.nexus.files", count = selected.files.files.len())))
         .children(files)
-        .child(
-            div()
-                .flex()
-                .gap(px(10.))
-                .pt_2()
-                .children(page.map(|page| {
-                    button("nx-page", ButtonKind::Secondary, t!("mods.nexus.open_page"), false).on_click(
-                        move |_, _, _| {
-                            if let Err(err) = crate::desktop::open(&page) {
-                                tracing::warn!(%err, "could not open the mod's page");
-                            }
-                        },
-                    )
-                }))
-                .child(
-                    button("nx-back", ButtonKind::Secondary, t!("mods.nexus.back"), false).on_click(cx.listener(
-                        |this, _, _, cx| {
-                            if let Some(browser) = this.nexus.as_mut() {
-                                browser.selected = None;
-                            }
-                            cx.notify();
-                        },
-                    )),
-                ),
-        )
+        .child(div().flex().gap(px(10.)).pt_2().children(page.map(|page| {
+            button(
+                "nx-page",
+                ButtonKind::Secondary,
+                t!("mods.credits.view_on", platform = Platform::Nexus.name()),
+                false,
+            )
+            .on_click(move |_, _, _| {
+                if let Err(err) = crate::desktop::open(&page) {
+                    tracing::warn!(%err, "could not open the mod's page");
+                }
+            })
+        })))
 }

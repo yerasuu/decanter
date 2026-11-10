@@ -23,7 +23,9 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
   new winner (`GameMods::preview_place`, the same merge as the conflict lists); a move that changes no winner applies
   at once. Changes apply at the next launch; nothing can be changed while the game runs.
 - `GameMods::replace` puts a newer version of a mod in the old one's slot of every account, on or off as it was,
-  with the old one's DLL modes for the DLLs both ask for, then removes the old one. `decanter_mods::constraints` is
+  with the old one's DLL modes for the DLLs both ask for, then removes the old one;
+  `GameMods::replace_keeping_previous` does the same but keeps the old one, turned off, in the slot right after.
+  Installing from a provider a newer file of a mod the game has goes through them (see Sections and search below). `decanter_mods::constraints` is
   where hard ordering edges between mods (provider dependencies, packs) will come from; it returns none yet, and the
   row of a mod placed before one it requires would show it.
 - DLL proxies: a mod file named after a system DLL Wine has a builtin for (`dinput8`, `version`, `winmm`, `dxgi`,
@@ -47,6 +49,54 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
   `[attention]`: it is left out of the play tree (the run log's `mods_left_out` says so) and the Mods tab lists the
   files with *Seguir usándolo* (records the new files) and *Desactivarlo*. Nothing is decided for the user.
 
+## Sections and search
+
+The Mods tab has a row of sections: *Instalados (N)* (the mod list with its order, credits and DLL overrides,
+*Añadir archivo comprimido…* and *Añadir carpeta de mod...*), then *Thunderstore*, *mod.io* and *Nexus Mods* (the last
+only with its experimental switch on); a later section (packs) is one more `search::Section` variant. Each provider
+section is the whole width of the tab (`mods/search/` in the app; design
+[mod-packs-and-search-design.md](mod-packs-and-search-design.md) sections 2.3 to 2.5, decision #1635): a top bar with
+the provider's name, the mapped game or community with *Cambiar juego* (*Cambiar comunidad* for Thunderstore), the
+account and request-budget lines; a search bar with the shared query box and that provider's sort and filter
+controls; the results on the left (picture, name, author, summary, numbers, flags, platform label, adult badge,
+*instalado <versión>* when the game has it, *Mostrar más*); the chosen mod on the right (description, versions or
+files, dependencies, credits and licence, *Instalar*/*Descargar* with progress and *Cancelar*, *Ver en <plataforma>*);
+the attribution line at the bottom. There is no merged list and no close button: a browser opens the first time its
+section is shown and keeps its results and chosen mod while other sections are visited; leaving the game drops it and
+stops its downloads and imports. An archive or folder dropped on the tab goes to *Instalados*.
+
+Mapping a game: a game without a mapping shows the picker inside the section. Suggestions are only plausible matches
+(`decanter_mods::likeness`: the same letters and digits, then one name starting with or mostly holding the other,
+then at least two significant words in common); with none the picker says there is no game with that name on the
+platform. What does not look like the game shows only after a search by hand, under *Otros resultados*. A choice is
+written (`thunderstore.toml`, `modio.toml`, `nexus.toml`) only once the platform answered for it: the community's
+listing, mod.io's `GET /games/{id}` with third-party access, Nexus' first list. A 404 for a mapped game or community
+forgets the file and shows the picker again with a line saying so; mod.io logs the status and `error_ref` of a 404
+like any other refusal.
+
+- Thunderstore: the cached listing is searched in memory as you type: sort by relevance (name matches first, then
+  downloads; no words: pinned first), downloads, rating, last update or name; *Ocultar obsoletos* and *Ocultar NSFW*
+  (both on by default); a category selector when the listing's packages carry `categories` (read when present, not
+  documented); 50 results, then 50 more per *Mostrar más* (`Listing::find`, `thunderstore::Query`).
+- mod.io: a search runs on Enter or *Buscar* only: `_q`, `_sort` (`-downloads_total`, `-date_updated`, `-date_live`,
+  `-ratings_weighted_aggregate`, `name`), `tags` from the game's `GET /games/{id}/tags` (read once with the game, entries
+  read for `name`, `tags` and `hidden` only, shape unverified; a failure only hides the tag selector), and
+  `maturity_option=0` while *Ocultar contenido maduro* is on (default). Pages of 30 with `_offset`; *Mostrar más* adds
+  the next one while `result_total` says there are more. Each page is kept in memory for 10 minutes (at most 40), so
+  going back to a query, sort or filter already asked shows it without a request. The 429 handling is the client's,
+  unchanged.
+- Nexus Mods: the latest added, trending and latest updated lists as before, filtered in memory by the query's words,
+  ordered as listed or by endorsements, last update or name, *Ocultar contenido para adultos* on by default; any other
+  mod opens by its number or page address. The `X-RL-*` counts are the budget line. `crates/nexus/src/search.rs` holds
+  the v2 GraphQL `mods` search (request body with variables, answer reading) behind `SEARCH_V2 = false`: nothing sends
+  it and the app does not use it until the design's spike and Nexus' answer (section 2.2).
+- Updates take the slot: when an install from any provider is a newer file of a mod the game has (Thunderstore: the
+  same package at a lower version; mod.io: another file of the same mod; Nexus: a file the author's `file_updates`
+  chain or the newest main file names as the update of the installed one), the confirmation says so and the new mod
+  takes the old one's slot in every account (`GameMods::replace`), with *Conservar la versión anterior, desactivada,
+  justo después* (off by default) to keep the old one (`GameMods::replace_keeping_previous`). The new mod's credits
+  are the ones the provider gave with the new file.
+
 ## Uninstall
 
 - The confirmation says how much the game wrote into this account's play tree, which goes with the prefix
@@ -56,7 +106,7 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
 
 ## Thunderstore
 
-*Añadir desde Thunderstore…* opens a browser in the tab (`crates/thunderstore`, `mods/thunderstore/` in the app;
+The Thunderstore section is its browser (`crates/thunderstore`, `mods/thunderstore/` in the app;
 [mod-platforms-analysis.md](mod-platforms-analysis.md) section 2). No account; nothing is asked of Thunderstore until
 the user acts, requests are paced to one a second and name decanter in the User-Agent, HTTPS only, redirects only to
 `*.thunderstore.io`.
@@ -65,7 +115,7 @@ the user acts, requests are paced to one a second and name decanter in the User-
   `<root>/decanter/thunderstore/communities.json`); the user confirms the match or picks one, with the layout, and the
   choice is kept in `mods/<store>/<game>/thunderstore.toml`. *Cambiar* picks again.
 - Packages: `/c/<community>/api/v1/package/`, streamed to `<root>/decanter/thunderstore/listings/<community>.json`
-  (6 hours, at most 1 GiB) and searched locally: name, team, summary, downloads, rating, last update, icon. The detail
+  (6 hours, at most 1 GiB) and searched locally (see Sections and search): name, team, summary, downloads, rating, last update, icon. The detail
   lists versions and the latest one's dependencies. A package or version that does not parse is skipped and counted
   in the log; an answer that does not parse at all is a retryable error.
 - *Instalar* plans the latest version and every `Team-Name-1.2.3` it needs, recursively (10 levels, 100 packages,
@@ -84,7 +134,7 @@ the user acts, requests are paced to one a second and name decanter in the User-
 
 ## mod.io
 
-*Añadir desde mod.io…* opens a browser in the tab (`crates/modio`, `mods/modio/` in the app;
+The mod.io section is its browser (`crates/modio`, `mods/modio/` in the app;
 [mod-platforms-analysis.md](mod-platforms-analysis.md) section 3) on mod.io's REST API v1. decanter ships no API key
 (decision #1629): the user makes one at `https://mod.io/me/access` and saves it in *Ajustes › General › mod.io*, which
 also has *Probar clave* (`GET /games?_limit=1`) and *Borrar clave*. The key lives in the keyring
@@ -99,12 +149,12 @@ a 429 holds every request back for its `retry-after` (60 s when 0 or missing), a
   changed terms are shown again. A 403 with error 11074 on any call drops the agreement and says so. decanter makes no
   login call, so it never sends `terms_agreed`.
 - Game: the title is searched with `GET /games?_q=`; the user picks one and it is kept in
-  `mods/<store>/<game>/modio.toml`. The game's own record is read again each time the browser opens: without
+  `mods/<store>/<game>/modio.toml` once its own record answered. The game's own record is read again each time the browser opens: without
   `api_access_options` bit 1 (third-party access) it is refused with its own line. The documentation does not say
   whether a user's key reaches a game that left it off, so decanter does not try. A game with bit 4 or 8 (downloads
   need a logged-in user) can be browsed but not downloaded from, since decanter has no mod.io login.
-- Mods: pages of 30 by downloads, searched with `_q`: name, author, summary, downloads, subscribers, rating, dates,
-  logo (HTTPS on mod.io's hosts). The detail lists the latest files and `/dependencies` (read for `mod_id` and `name`
+- Mods: pages of 30, searched, sorted and filtered as Sections and search says: name, author, summary, downloads, subscribers,
+  rating, dates, logo (HTTPS on mod.io's hosts). The detail lists the latest files and `/dependencies` (read for `mod_id` and `name`
   only, shape unverified; shown, never installed on their own).
 - *Instalar* asks for the file's record again right before (its `binary_url` may expire), refuses `virus_positive` 1
   and warns on 2 or an unscanned file, downloads into `mods/<store>/<game>/incoming/modio-<pid>-<n>/` with progress
@@ -116,7 +166,7 @@ a 429 holds every request back for its `retry-after` (60 s when 0 or missing), a
 ## Nexus Mods
 
 Off by default, behind Ajustes' experimental switch (see Credits and attribution).
-*Añadir desde Nexus Mods…* opens a browser in the tab (`crates/nexus`, `mods/nexus/` in the app;
+The Nexus Mods section is its browser (`crates/nexus`, `mods/nexus/` in the app;
 [mod-platforms-analysis.md](mod-platforms-analysis.md) section 1). decanter registers no application and ships no key
 (decision #1629): each user pastes a personal API key in Ajustes › General, kept in the OS keyring
 (`SecretKey::NEXUS`, `nexusmods/api_key`) and sent only to `api.nexusmods.com` in the `apikey` header. *Probar clave*
@@ -130,8 +180,8 @@ asks `/v1/users/validate.json` and shows the account and whether it is Premium. 
 - Game: the first time, the game's title is matched against `/v1/games.json` (cached a week in
   `<root>/decanter/nexus/games.json`); the user confirms the match or picks one, kept in
   `mods/<store>/<game>/nexus.toml`. *Cambiar* picks again.
-- Mods: the latest added, trending and latest updated lists, filtered locally by name; v1 has no search by name, so
-  any other mod is opened by its number or the address of its page. The detail lists the files with category
+- Mods: the latest added, trending and latest updated lists, filtered and ordered locally (see Sections and search); v1 has no
+  search by name, so any other mod is opened by its number or the address of its page. The detail lists the files with category
   (main, update, optional, …), version, size, date and whether Nexus gives an MD5.
 - Premium accounts: *Descargar* asks the file's `download_link.json`, takes the first HTTPS mirror on Nexus' hosts and
   downloads into `mods/<store>/<game>/incoming/nexus-<pid>-<n>/` with progress and *Cancelar*, matched against the
@@ -167,14 +217,14 @@ every text is in `app/locales/<lang>/mods_credits.<lang>.yml`, so wording can ch
   no permissions text the analysis could confirm, so the line points to the mod's page. The detail and each
   installed Nexus mod acknowledge Nexus Mods and the mod's authors as the authors of the content (ToS s.10).
 - The Mods tab: each card and detail names its platform as text (no logos: none was cleared, and for Nexus one could
-  suggest association, ToS s.27), *por <autor>* linked to the profile, *Ver en <plataforma>* (installed mods; the
-  browsers keep their page button), the licence or permissions line and an adult badge; each browser ends with a
+  suggest association, ToS s.27), *por <autor>* linked to the profile, *Ver en <plataforma>* (installed mods and the
+  provider sections' detail), the licence or permissions line and an adult badge; each provider section ends with a
   line saying the mods are their authors' and decanter is not affiliated with or endorsed by the platform. Ajustes ›
   mod.io links its Terms of Use and Privacy Policy beside the key.
 - Nexus Mods is off by default behind *Usar Nexus Mods (experimental, solo para uso personal)* in Ajustes › General
   (settings key `nexus_experimental`, decision #1635), since the acceptable use policy forbids personal API keys in a
-  public application and decanter's registration is pending. Off hides the key section, the *Añadir desde Nexus
-  Mods…* button and the Nexus update check; the saved key stays in the keyring and Nexus mods keep working and
+  public application and decanter's registration is pending. Off hides the key section, the Nexus Mods
+  section and the Nexus update check; the saved key stays in the keyring and Nexus mods keep working and
   showing their credits. Both Nexus clients send `Application-Name: decanter` and `Application-Version`.
 
 ## Where things are

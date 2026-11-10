@@ -1,13 +1,16 @@
 //! Downloading one file for a Premium account: a link asked for it, the download into the game's
 //! staging folder with a progress line and a cancel, checked against the listed size and MD5, the
-//! archive read by the mods import with where its files go, and only after *Añadir* the import.
+//! archive read by the mods import with where its files go, and only after *Añadir* the import. A
+//! file the author linked as the update of one the game has takes that mod's slot.
 
 use core::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use decanter_mods::{ArchivePreview, GameMods, ModCredits, ModPath, Progress};
-use decanter_nexus::{Client, FileId, GameDomain, NexusFile, NexusModId, Staging, Transfer};
+use decanter_nexus::{
+    Client, FileId, FileList, GameDomain, NexusFile, NexusModId, NexusOrigin, Staging, Transfer, Update,
+};
 use gpui::{Context, Div, SharedString, div, prelude::*, px};
 use rust_i18n::t;
 
@@ -16,6 +19,7 @@ use crate::i18n::Text;
 use crate::nexus::failure_text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
+use crate::views::library::detail::mods::replace::Replacement;
 use crate::widgets::{ButtonKind, Select, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -67,6 +71,9 @@ pub(in crate::views::library::detail::mods) struct Ready {
     name: String,
     target: Option<ModPath>,
     is_md5_checked: bool,
+    /// The game's mod from the file this one updates, whose slot it takes.
+    replaces: Option<Replacement>,
+    keep_previous: bool,
     /// Holds the download until the import is done; dropping it deletes it.
     staging: Staging,
 }
@@ -77,6 +84,8 @@ struct Request {
     domain: GameDomain,
     mod_id: NexusModId,
     file: NexusFile,
+    /// The mod's file list, whose `file_updates` links say which installed file this one updates.
+    files: FileList,
     name: String,
     credits: ModCredits,
 }
@@ -104,6 +113,7 @@ impl ModsTab {
             mod_id,
             name: selected.info.name.clone(),
             credits: selected.info.credits(&domain),
+            files: selected.files.clone(),
             domain,
             file,
         };
@@ -168,9 +178,16 @@ impl ModsTab {
                     name,
                     target,
                     staging,
+                    replaces,
+                    keep_previous,
                     ..
                 } = ready;
-                let added = mods.import_archive(&preview, &name, target, &account_id, &work.progress);
+                let added = mods
+                    .import_archive(&preview, &name, target, &account_id, &work.progress)
+                    .and_then(|manifest| match replaces {
+                        Some(replaces) => replaces.apply(&mods, &manifest.id, keep_previous).map(|()| manifest),
+                        None => Ok(manifest),
+                    });
                 drop(staging);
                 added
             })
@@ -238,6 +255,7 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_nexus::Result<Re
         domain,
         mod_id,
         file,
+        files,
         name,
         credits,
     } = request;
@@ -257,6 +275,14 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_nexus::Result<Re
     let read_mods = mods.clone();
     tokio::task::spawn_blocking(move || -> decanter_nexus::Result<Ready> {
         let preview = read_mods.preview_archive(&downloaded.path, &reader.progress)?;
+        let replaces = read_mods.list()?.iter().rev().find_map(|manifest| {
+            let had = NexusOrigin::read(manifest.origin.as_ref()?).ok()??;
+            let is_update = had.domain == domain
+                && had.mod_id == mod_id
+                && had.file_id != file.id
+                && matches!(decanter_nexus::update(&files, had.file_id), Update::Newer(newer) if newer.id == file.id);
+            is_update.then(|| Replacement::of(manifest))
+        });
         let origin = decanter_nexus::origin(&domain, mod_id, &file, &downloaded.host)?.with_credits(credits);
         tracing::info!(
             mod_id = %mod_id,
@@ -270,6 +296,8 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_nexus::Result<Re
             preview: preview.with_origin(origin),
             name,
             is_md5_checked: downloaded.is_md5_checked,
+            replaces,
+            keep_previous: false,
             staging,
         })
     })
@@ -317,6 +345,21 @@ fn working_panel(work: &Arc<Work>, cx: &Context<ModsTab>) -> Div {
                 }))
             }),
         ))
+}
+
+fn replacement(ready: &Ready, can_add: bool, cx: &Context<ModsTab>) -> Option<Div> {
+    let replaces = ready.replaces.as_ref().filter(|_| can_add)?;
+    Some(replaces.block(
+        "nx-keep-previous",
+        ready.keep_previous,
+        |this, cx| {
+            if let Some(Install::Ready(ready)) = this.nexus.as_mut().and_then(|browser| browser.install.as_mut()) {
+                ready.keep_previous = !ready.keep_previous;
+            }
+            cx.notify();
+        },
+        cx,
+    ))
 }
 
 fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
@@ -395,6 +438,7 @@ fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
                 .then(|| theme::muted(t!("mods.archive.installer"))),
         )
         .children(duplicate.map(|(_, name)| theme::error(t!("mods.archive.duplicate", name = name))))
+        .children(replacement(ready, can_add, cx))
         .child(
             div()
                 .flex()

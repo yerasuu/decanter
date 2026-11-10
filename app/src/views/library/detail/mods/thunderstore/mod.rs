@@ -10,13 +10,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use decanter_thunderstore::{
-    Client, Community, CommunityId, GameSettings, Layout, Listing, Package, PackageId, Refresh, VersionNumber,
+    Client, Community, CommunityId, GameSettings, Layout, Listing, Package, PackageId, Query, Refresh, Sort,
+    VersionNumber,
 };
-use gpui::{Context, Div, Entity, ObjectFit, SharedString, div, img, prelude::*, px, rgb};
+use gpui::{Context, Div, Entity, SharedString, div, prelude::*, px};
 use rust_i18n::t;
 
 use super::ModsTab;
 use super::credits::{self, Platform};
+use super::search::{self, Provider, ResultItem};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
@@ -25,8 +27,8 @@ use crate::widgets::{ButtonKind, Select, button};
 pub(super) use install::Install;
 pub(super) use updates::UpdateCheck;
 
-/// How many packages a search shows; the rest are counted.
-const SHOWN_RESULTS: usize = 30;
+/// How many packages show at first and each *Mostrar más* adds; all matches are in memory.
+const PAGE: usize = 50;
 const SHOWN_COMMUNITIES: usize = 20;
 const SHOWN_VERSIONS: usize = 8;
 const SUMMARY_CHARS: usize = 140;
@@ -35,6 +37,8 @@ pub(super) struct Browser {
     client: Client,
     cache: PathBuf,
     settings: Option<GameSettings>,
+    /// What `thunderstore.toml` holds: a choice is written only once its listing answered.
+    saved: Option<GameSettings>,
     communities: Option<Arc<[Community]>>,
     suggestions: Vec<usize>,
     is_exact: bool,
@@ -43,10 +47,12 @@ pub(super) struct Browser {
     /// The layout the picker saves with the community.
     layout: Layout,
     community_filter: Entity<TextInput>,
-    search: Entity<TextInput>,
     listing: Option<Arc<Listing>>,
-    results: Vec<PackageId>,
-    matched: usize,
+    /// The listing's indices of what matches, in the chosen order.
+    results: Vec<usize>,
+    shown: usize,
+    /// The sort and filters; its words are the search surface's, copied in at each search.
+    query: Query,
     selected: Option<PackageId>,
     /// A package to open once the listing is read, from an update check.
     pending: Option<PackageId>,
@@ -92,6 +98,7 @@ fn failure_text(err: &decanter_thunderstore::Error) -> Text {
 
 impl ModsTab {
     pub(super) fn open_thunderstore(&mut self, pending: Option<PackageId>, cx: &mut Context<Self>) {
+        self.show_search(Provider::Thunderstore, cx);
         if let Some(browser) = self.thunderstore.as_mut() {
             if pending.is_some() {
                 browser.selected.clone_from(&pending);
@@ -127,29 +134,23 @@ impl ModsTab {
             }
         })
         .detach();
-        let search = cx.new(|cx| TextInput::new(Text::new("mods.thunderstore.search"), cx));
-        cx.subscribe(&search, |this, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Changed | InputEvent::Submit) {
-                this.run_search(cx);
-            }
-        })
-        .detach();
         let has_settings = settings.is_some();
         tracing::info!(has_settings, "thunderstore browser opened");
         self.thunderstore = Some(Browser {
             client,
             cache,
             layout: settings.as_ref().map_or(Layout::BepInEx, |settings| settings.layout),
+            saved: settings.clone(),
             settings,
             communities: None,
             suggestions: Vec::new(),
             is_exact: false,
             choosing: !has_settings,
             community_filter,
-            search,
             listing: None,
             results: Vec::new(),
-            matched: 0,
+            shown: PAGE,
+            query: Query::new(),
             selected: None,
             pending,
             loading: None,
@@ -224,27 +225,69 @@ impl ModsTab {
             return;
         };
         let settings = GameSettings::new(community, browser.layout);
-        if let Err(err) = settings.write(&mods) {
-            tracing::error!(%err, "thunderstore game settings could not be saved");
-            browser.failure = Some(Failure {
-                text: failure_text(&err),
-                retry: None,
-            });
-            cx.notify();
-            return;
-        }
         let is_same = browser
-            .settings
+            .listing
             .as_ref()
-            .is_some_and(|known| known.community == settings.community);
+            .is_some_and(|listing| *listing.community() == settings.community);
         browser.settings = Some(settings);
         browser.choosing = false;
-        if is_same && browser.listing.is_some() {
+        browser.failure = None;
+        if is_same {
+            // Its listing already answered, so the choice is known good.
+            Self::ts_save(browser, &mods);
             cx.notify();
         } else {
             browser.listing = None;
             browser.selected = None;
             self.load_listing(Refresh::IfStale, cx);
+        }
+    }
+
+    /// Writes the choice once its listing answered; until then nothing is kept for the game.
+    fn ts_save(browser: &mut Browser, mods: &decanter_mods::GameMods) {
+        if browser.settings == browser.saved {
+            return;
+        }
+        let Some(settings) = browser.settings.clone() else {
+            return;
+        };
+        match settings.write(mods) {
+            Ok(()) => browser.saved = Some(settings),
+            Err(err) => {
+                tracing::error!(%err, "thunderstore game settings could not be saved");
+                browser.failure = Some(Failure {
+                    text: failure_text(&err),
+                    retry: None,
+                });
+            }
+        }
+    }
+
+    /// The community answers that it does not exist: a saved choice is forgotten and the picker
+    /// shows again, inside the section.
+    fn ts_community_gone(&mut self, cx: &mut Context<Self>) {
+        let Some(mods) = self.mods.clone() else {
+            return;
+        };
+        let Some(browser) = self.thunderstore.as_mut() else {
+            return;
+        };
+        let gone = browser.settings.take().map(|settings| settings.community.to_string());
+        tracing::warn!(community = ?gone, saved = browser.saved.is_some(), "thunderstore community not found, choosing again");
+        if browser.saved.take().is_some()
+            && let Err(err) = GameSettings::forget(&mods)
+        {
+            tracing::error!(%err, "thunderstore game settings could not be forgotten");
+        }
+        browser.choosing = true;
+        browser.listing = None;
+        browser.selected = None;
+        browser.failure = Some(Failure {
+            text: Text::new("mods.search.mapping_gone").arg("platform", Platform::Thunderstore.name()),
+            retry: None,
+        });
+        if browser.communities.is_none() {
+            self.load_communities(Refresh::IfStale, cx);
         }
     }
 
@@ -271,6 +314,9 @@ impl ModsTab {
                 browser.loading = None;
                 match fetched {
                     Ok(Ok(listing)) => {
+                        if let Some(mods) = this.mods.as_ref() {
+                            Self::ts_save(browser, mods);
+                        }
                         if let Some(pending) = browser.pending.take()
                             && listing.get(&pending).is_some()
                         {
@@ -279,6 +325,7 @@ impl ModsTab {
                         browser.listing = Some(Arc::new(listing));
                         this.run_search(cx);
                     }
+                    Ok(Err(decanter_thunderstore::Error::NotFound { .. })) => this.ts_community_gone(cx),
                     Ok(Err(err)) => {
                         tracing::warn!(%err, retryable = err.is_retryable(), "thunderstore listing failed");
                         browser.failure = Some(Failure {
@@ -300,72 +347,81 @@ impl ModsTab {
         .detach();
     }
 
-    fn run_search(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn run_search(&mut self, cx: &mut Context<Self>) {
+        let text = self.search_text(cx);
         let Some(browser) = self.thunderstore.as_mut() else {
             return;
         };
         let Some(listing) = browser.listing.as_ref() else {
             return;
         };
-        let query = browser.search.read(cx).text().to_owned();
-        let (found, matched) = listing.search(&query, SHOWN_RESULTS);
-        browser.results = found.into_iter().map(|package| package.id.clone()).collect();
-        browser.matched = matched;
+        browser.query.text = text;
+        browser.results = listing.find(&browser.query);
+        browser.shown = PAGE;
         cx.notify();
     }
 
-    fn close_thunderstore(&mut self, cx: &mut Context<Self>) {
-        if let Some(browser) = self.thunderstore.take() {
-            browser.discard();
+    /// Changes the sort or a filter, then searches again over the same listing.
+    fn ts_refine(&mut self, change: impl FnOnce(&mut Query), cx: &mut Context<Self>) {
+        if let Some(browser) = self.thunderstore.as_mut() {
+            change(&mut browser.query);
         }
-        tracing::info!("thunderstore browser closed");
-        cx.notify();
+        self.run_search(cx);
+    }
+
+    /// The version of `package` the game has from Thunderstore, if any.
+    fn ts_installed(&self, package: &PackageId) -> Option<String> {
+        let wanted = package.to_string();
+        self.installed_origin(|origin| origin.platform == decanter_thunderstore::PLATFORM && origin.package == wanted)
+            .map(|origin| origin.version.clone())
     }
 
     pub(super) fn thunderstore_panel(&self, locked: bool, cx: &Context<Self>) -> Option<Div> {
         let browser = self.thunderstore.as_ref()?;
-        let body = if let Some(install) = browser.install.as_ref() {
-            install::panel(install, cx)
-        } else if let Some(loading) = browser.loading.as_ref() {
-            theme::muted(loading)
-        } else if browser.choosing {
+        let body = if browser.choosing {
             self.community_picker(browser, cx)
-        } else if let Some(package) = browser
-            .selected
-            .as_ref()
-            .and_then(|id| browser.listing.as_ref()?.get(id))
-        {
-            detail(package, locked, cx)
         } else {
-            results_panel(browser, cx)
-        };
-        let failure = browser.failure.as_ref().map(|failure| {
+            let chosen = if let Some(install) = browser.install.as_ref() {
+                install::panel(install, cx)
+            } else if let Some(package) = browser
+                .selected
+                .as_ref()
+                .and_then(|id| browser.listing.as_ref()?.get(id))
+            {
+                detail(package, locked, cx)
+            } else {
+                search::nothing_chosen()
+            };
+            let (controls, list) = self.ts_results(browser, cx);
             div()
                 .flex()
-                .items_center()
+                .flex_col()
                 .gap_3()
-                .child(theme::error(&failure.text))
-                .children(failure.retry.map(|retry| {
-                    button("ts-retry", ButtonKind::Secondary, t!("mods.thunderstore.retry"), false).on_click(
-                        cx.listener(move |this, _, _, cx| match retry {
-                            Retry::Communities => this.load_communities(Refresh::IfStale, cx),
-                            Retry::Listing => this.load_listing(Refresh::Now, cx),
-                        }),
-                    )
-                }))
+                .child(self.query_bar(Provider::Thunderstore, controls, cx))
+                .child(search::split(list, chosen))
+        };
+        let failure = browser.failure.as_ref().map(|failure| {
+            let retry = failure.retry.map(|retry| -> search::Retry {
+                Box::new(move |this, cx| match retry {
+                    Retry::Communities => this.load_communities(Refresh::IfStale, cx),
+                    Retry::Listing => this.load_listing(Refresh::Now, cx),
+                })
+            });
+            search::failure_line("ts-retry", &failure.text, retry, None, cx)
         });
         let working = browser.install.is_some() || browser.loading.is_some();
-        Some(
-            theme::card()
+        Some(search::section_frame(
+            Platform::Thunderstore,
+            header(browser, working, cx),
+            div()
+                .flex()
+                .flex_col()
                 .gap_3()
-                .px(px(18.))
-                .py(px(14.))
-                .child(header(browser, working, cx))
-                .child(theme::muted(t!("mods.thunderstore.note")))
+                .child(theme::muted(t!("mods.thunderstore.note")).text_size(px(12.5)))
+                .children(browser.loading.as_ref().map(theme::muted))
                 .children(failure)
-                .child(body)
-                .child(credits::footer(Platform::Thunderstore)),
-        )
+                .child(body),
+        ))
     }
 
     fn community_picker(&self, browser: &Browser, cx: &Context<Self>) -> Div {
@@ -409,13 +465,19 @@ impl ModsTab {
                 .on_click(cx.listener(|this, _, _, cx| this.load_communities(Refresh::IfStale, cx))),
             );
         };
+        let title = &self.target.title;
         let filter = browser.community_filter.read(cx).text().trim().to_lowercase();
-        let shown: Vec<&Community> = if filter.is_empty() {
-            browser
-                .suggestions
-                .iter()
-                .filter_map(|&index| communities.get(index))
-                .collect()
+        // A hand search shows what the user typed, the ones that look like the game first and the
+        // rest under their own heading, never mixed with the suggestions.
+        let (shown, others): (Vec<&Community>, Vec<&Community>) = if filter.is_empty() {
+            (
+                browser
+                    .suggestions
+                    .iter()
+                    .filter_map(|&index| communities.get(index))
+                    .collect(),
+                Vec::new(),
+            )
         } else {
             communities
                 .iter()
@@ -423,12 +485,17 @@ impl ModsTab {
                     community.name.to_lowercase().contains(&filter) || community.id.as_str().contains(&filter)
                 })
                 .take(SHOWN_COMMUNITIES)
-                .collect()
+                .partition(|community| {
+                    decanter_mods::best_likeness(title, [community.name.as_str(), community.id.as_str()]).is_some()
+                })
         };
         let intro = if !filter.is_empty() {
-            t!("mods.thunderstore.community_filtered", count = shown.len())
+            t!(
+                "mods.thunderstore.community_filtered",
+                count = shown.len().saturating_add(others.len())
+            )
         } else if browser.suggestions.is_empty() {
-            t!("mods.thunderstore.community_none", title = self.target.title)
+            t!("mods.search.no_match", platform = Platform::Thunderstore.name())
         } else if browser.is_exact {
             t!("mods.thunderstore.community_exact", title = self.target.title)
         } else {
@@ -446,9 +513,10 @@ impl ModsTab {
             )
             .child(theme::muted(t!("mods.thunderstore.layout_note")))
             .child(theme::muted(intro))
-            .children(shown.into_iter().enumerate().map(|(index, community)| {
+            .children(shown.iter().chain(&others).enumerate().map(|(index, community)| {
+                let heading = (index == shown.len()).then(search::other_results);
                 let id = community.id.clone();
-                div()
+                let row = div()
                     .flex()
                     .items_center()
                     .gap_3()
@@ -462,7 +530,8 @@ impl ModsTab {
                             false,
                         )
                         .on_click(cx.listener(move |this, _, _, cx| this.choose_community(id.clone(), cx))),
-                    )
+                    );
+                div().flex().flex_col().children(heading).child(row)
             }))
             .child(
                 field_row()
@@ -470,38 +539,141 @@ impl ModsTab {
                     .child(div().flex_1().min_w_0().child(browser.community_filter.clone())),
             )
     }
-}
 
-fn results_panel(browser: &Browser, cx: &Context<ModsTab>) -> Div {
-    let Some(listing) = browser.listing.as_ref() else {
-        return div();
-    };
-    let rows = browser
-        .results
-        .iter()
-        .filter_map(|id| listing.get(id))
-        .enumerate()
-        .map(|(index, package)| result_row(index, package, cx));
-    let count = if browser.matched > browser.results.len() {
-        t!(
-            "mods.thunderstore.results_more",
-            shown = browser.results.len(),
-            count = browser.matched
+    /// The sort and filter controls, then the results under them.
+    fn ts_results(&self, browser: &Browser, cx: &Context<Self>) -> (Div, Div) {
+        let Some(listing) = browser.listing.as_ref() else {
+            return (div(), div());
+        };
+        let sorts = vec![
+            (Sort::Relevance, t!("mods.search.sort_relevance").into_owned().into()),
+            (Sort::Downloads, t!("mods.search.sort_downloads").into_owned().into()),
+            (Sort::Rating, t!("mods.search.sort_rating").into_owned().into()),
+            (Sort::Updated, t!("mods.search.sort_updated").into_owned().into()),
+            (Sort::Name, t!("mods.search.sort_name").into_owned().into()),
+        ];
+        let sort = search::choice(
+            "ts-sort",
+            t!("mods.search.sort").into_owned().into(),
+            sorts,
+            browser.query.sort,
+            |this, sort, cx| this.ts_refine(|query| query.sort = sort, cx),
+            cx,
+        );
+        let categories = listing.categories();
+        let category = (!categories.is_empty()).then(|| {
+            let options = core::iter::once((None, SharedString::from(t!("mods.search.any").into_owned())))
+                .chain(
+                    categories
+                        .iter()
+                        .enumerate()
+                        .map(|(index, name)| (Some(index), SharedString::from(name.clone()))),
+                )
+                .collect();
+            let selected = browser
+                .query
+                .category
+                .as_ref()
+                .and_then(|wanted| categories.iter().position(|name| name == wanted));
+            search::choice(
+                "ts-category",
+                t!("mods.search.category").into_owned().into(),
+                options,
+                selected,
+                |this, chosen: Option<usize>, cx| {
+                    let name = chosen.and_then(|index| {
+                        this.thunderstore
+                            .as_ref()?
+                            .listing
+                            .as_ref()?
+                            .categories()
+                            .get(index)
+                            .cloned()
+                    });
+                    this.ts_refine(|query| query.category = name, cx);
+                },
+                cx,
+            )
+        });
+        let controls = search::controls()
+            .child(sort)
+            .children(category)
+            .child(search::flag(
+                "ts-hide-deprecated",
+                t!("mods.search.hide_deprecated").into_owned().into(),
+                browser.query.hide_deprecated,
+                |this, on, cx| this.ts_refine(|query| query.hide_deprecated = on, cx),
+                cx,
+            ))
+            .child(search::flag(
+                "ts-hide-nsfw",
+                t!("mods.search.hide_nsfw").into_owned().into(),
+                browser.query.hide_nsfw,
+                |this, on, cx| this.ts_refine(|query| query.hide_nsfw = on, cx),
+                cx,
+            ));
+        let shown = browser.results.len().min(browser.shown);
+        let rows = browser
+            .results
+            .iter()
+            .take(shown)
+            .filter_map(|&index| listing.at(index))
+            .enumerate()
+            .map(|(row, package)| self.ts_result_row(row, package, cx));
+        let has_more = browser.results.len() > shown;
+        let list = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(search::count_line(shown, Some(browser.results.len() as u64)))
+            .children(rows)
+            .children(has_more.then(|| {
+                search::load_more(
+                    "ts-more",
+                    |this, cx| {
+                        if let Some(browser) = this.thunderstore.as_mut() {
+                            browser.shown = browser.shown.saturating_add(PAGE);
+                        }
+                        cx.notify();
+                    },
+                    cx,
+                )
+            }));
+        (controls, list)
+    }
+
+    fn ts_result_row(&self, row: usize, package: &Package, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let id = package.id.clone();
+        let name = package.id.display_name();
+        search::result_row(
+            ("ts-result", row),
+            ResultItem {
+                picture: package.icon.as_deref(),
+                name: &name,
+                by: Some(
+                    t!(
+                        "mods.thunderstore.by",
+                        team = package.id.namespace(),
+                        version = package.latest.number
+                    )
+                    .into_owned(),
+                ),
+                summary: search::summary(&package.description, SUMMARY_CHARS),
+                stats: stats(package),
+                flags: flags(package),
+                platform: Platform::Thunderstore,
+                is_adult: false,
+                installed: self.ts_installed(&package.id),
+            },
+            move |this, cx| {
+                if let Some(browser) = this.thunderstore.as_mut() {
+                    browser.selected = Some(id.clone());
+                }
+                cx.notify();
+            },
+            cx,
         )
-    } else {
-        t!("mods.thunderstore.results", count = browser.matched)
-    };
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(
-            field_row()
-                .items_center()
-                .child(div().flex_1().min_w_0().child(browser.search.clone())),
-        )
-        .child(theme::muted(count))
-        .children(rows)
+    }
 }
 
 fn header(browser: &Browser, working: bool, cx: &Context<ModsTab>) -> Div {
@@ -527,8 +699,7 @@ fn header(browser: &Browser, working: bool, cx: &Context<ModsTab>) -> Div {
         .flex()
         .items_center()
         .gap_3()
-        .child(div().flex_1().child(t!("mods.thunderstore.title")))
-        .children(community)
+        .child(div().flex_1().children(community))
         .children((browser.settings.is_some() && !browser.choosing).then(|| {
             button(
                 "ts-change",
@@ -563,39 +734,9 @@ fn header(browser: &Browser, working: bool, cx: &Context<ModsTab>) -> Div {
                 b.on_click(cx.listener(|this, _, _, cx| this.load_listing(Refresh::Now, cx)))
             })
         }))
-        .child(
-            button("ts-close", ButtonKind::Secondary, t!("mods.thunderstore.close"), false)
-                .on_click(cx.listener(|this, _, _, cx| this.close_thunderstore(cx))),
-        )
 }
 
-fn icon(url: Option<&str>, size: f32) -> Div {
-    let frame = div()
-        .flex_none()
-        .size(px(size))
-        .rounded(px(theme::RADIUS_SM))
-        .overflow_hidden()
-        .bg(rgb(theme::BG_PANEL));
-    match url {
-        Some(url) => frame.child(
-            img(crate::art::source(url, gpui::size(size, size)))
-                .size_full()
-                .object_fit(ObjectFit::Cover),
-        ),
-        None => frame,
-    }
-}
-
-fn summary(text: &str) -> String {
-    if text.chars().count() <= SUMMARY_CHARS {
-        return text.to_owned();
-    }
-    let mut cut: String = text.chars().take(SUMMARY_CHARS).collect();
-    cut.push('…');
-    cut
-}
-
-fn flags(package: &Package) -> Option<Div> {
+fn flags(package: &Package) -> Vec<String> {
     let mut flags = Vec::new();
     if package.is_deprecated {
         flags.push(t!("mods.thunderstore.deprecated").into_owned());
@@ -603,7 +744,7 @@ fn flags(package: &Package) -> Option<Div> {
     if package.has_nsfw_content {
         flags.push(t!("mods.thunderstore.nsfw").into_owned());
     }
-    (!flags.is_empty()).then(|| theme::error(flags.join(" · ")))
+    flags
 }
 
 fn stats(package: &Package) -> String {
@@ -614,48 +755,6 @@ fn stats(package: &Package) -> String {
         updated = package.updated.as_deref().unwrap_or("-")
     )
     .into_owned()
-}
-
-fn result_row(index: usize, package: &Package, cx: &Context<ModsTab>) -> impl IntoElement + use<> {
-    let id = package.id.clone();
-    div()
-        .id(("ts-result", index))
-        .flex()
-        .gap_3()
-        .py(px(6.))
-        .cursor_pointer()
-        .border_t_1()
-        .border_color(rgb(theme::LINE))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            if let Some(browser) = this.thunderstore.as_mut() {
-                browser.selected = Some(id.clone());
-            }
-            cx.notify();
-        }))
-        .child(icon(package.icon.as_deref(), 40.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(package.id.display_name())
-                        .child(theme::muted(t!(
-                            "mods.thunderstore.by",
-                            team = package.id.namespace(),
-                            version = package.latest.number
-                        )))
-                        .child(credits::source(Platform::Thunderstore)),
-                )
-                .child(theme::muted(summary(&package.description)).text_size(px(12.5)))
-                .child(theme::muted(stats(package)).text_size(px(12.)))
-                .children(flags(package)),
-        )
 }
 
 fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
@@ -688,23 +787,23 @@ fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
         .flex()
         .flex_col()
         .gap_2()
-        .child(
-            div().flex().gap_3().child(icon(package.icon.as_deref(), 64.)).child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(package.id.display_name())
-                    .child(theme::muted(t!(
-                        "mods.thunderstore.by",
-                        team = package.id.namespace(),
-                        version = latest.number
-                    )))
-                    .child(theme::muted(stats(package)).text_size(px(12.)))
-                    .children(flags(package)),
-            ),
-        )
+        .child(search::detail_head(
+            package.icon.as_deref(),
+            &package.id.display_name(),
+            [
+                theme::muted(t!(
+                    "mods.thunderstore.by",
+                    team = package.id.namespace(),
+                    version = latest.number
+                )),
+                theme::muted(stats(package)).text_size(px(12.)),
+            ]
+            .into_iter()
+            .chain({
+                let flags = flags(package);
+                (!flags.is_empty()).then(|| theme::error(flags.join(" · ")))
+            }),
+        ))
         .child(credits::browsed(
             "ts-credits",
             Platform::Thunderstore,
@@ -743,7 +842,7 @@ fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
                     button(
                         "ts-page",
                         ButtonKind::Secondary,
-                        t!("mods.thunderstore.open_page"),
+                        t!("mods.credits.view_on", platform = Platform::Thunderstore.name()),
                         false,
                     )
                     .on_click(move |_, _, _| {
@@ -751,16 +850,6 @@ fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
                             tracing::warn!(%err, "could not open the package's page");
                         }
                     })
-                }))
-                .child(
-                    button("ts-back", ButtonKind::Secondary, t!("mods.thunderstore.back"), false).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            if let Some(browser) = this.thunderstore.as_mut() {
-                                browser.selected = None;
-                            }
-                            cx.notify();
-                        }),
-                    ),
-                ),
+                })),
         )
 }

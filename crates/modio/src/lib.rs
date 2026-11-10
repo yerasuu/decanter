@@ -65,6 +65,7 @@ mod http;
 mod id;
 mod mods;
 mod settings;
+mod tags;
 mod terms;
 
 pub use download::{Downloaded, Staging, Transfer, download};
@@ -73,8 +74,11 @@ pub use files::{ModFile, Virus};
 pub use games::{Access, Game, check_access, game, probe, search_games};
 pub use http::{Client, is_key_shaped};
 pub use id::{FileId, GameId, ModioModId};
-pub use mods::{Dependency, Detail, ModsPage, PAGE_SIZE, RemoteMod, detail, fetch_mod, search_mods};
+pub use mods::{
+    Dependency, Detail, ModsPage, ModsQuery, ModsSort, PAGE_SIZE, RemoteMod, detail, fetch_mod, search_mods,
+};
 pub use settings::GameSettings;
+pub use tags::{TagGroup, tag_options};
 pub use terms::{PRIVACY_PAGE, TERMS_PAGE, Terms, agreed, forget_agreement, record_agreement, terms};
 
 /// Which platform a mod's `mod.toml` origin names.
