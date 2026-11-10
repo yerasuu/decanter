@@ -1390,6 +1390,7 @@ dependencies = [
  "decanter-epic",
  "decanter-gog",
  "decanter-modio",
+ "decanter-modpack",
  "decanter-mods",
  "decanter-nexus",
  "decanter-nix",

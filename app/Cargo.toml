@@ -16,6 +16,7 @@ decanter-core.workspace = true
 decanter-epic.workspace = true
 decanter-gog.workspace = true
 decanter-mods.workspace = true
+decanter-modpack.workspace = true
 decanter-nexus.workspace = true
 decanter-nix.workspace = true
 decanter-ps.workspace = true

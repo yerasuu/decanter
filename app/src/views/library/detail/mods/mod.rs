@@ -13,6 +13,7 @@ mod dll;
 mod modio;
 mod nexus;
 mod order;
+mod packs;
 mod replace;
 mod search;
 mod thunderstore;
@@ -111,6 +112,9 @@ pub(super) struct ModsTab {
     nexus: Option<NexusBrowser>,
     /// Per mod from Nexus Mods, its last update check, only ever asked by its button.
     nexus_updates: HashMap<ModId, nexus::UpdateCheck>,
+    /// The Packs section's state, once it was shown.
+    packs: Option<packs::Packs>,
+    /// Which section fills the tab (TODO: the full sub-navigation of feat-mods-search replaces
     /// Ajustes' experimental switch for Nexus Mods (decision #1635), read at every reload.
     nexus_experimental: bool,
     /// Which section the tab shows, and the query box its provider sections share.
@@ -159,6 +163,7 @@ impl ModsTab {
             modio_updates: HashMap::new(),
             nexus: None,
             nexus_updates: HashMap::new(),
+            packs: None,
             nexus_experimental: false,
             search,
             error: None,
@@ -179,6 +184,9 @@ impl ModsTab {
         }
         if let Some(browser) = self.nexus.take() {
             browser.discard();
+        }
+        if let Some(packs) = self.packs.take() {
+            packs.discard();
         }
     }
 
@@ -317,6 +325,7 @@ impl ModsTab {
             || self.thunderstore.as_ref().is_some_and(Browser::is_busy)
             || self.modio.as_ref().is_some_and(modio::Browser::is_busy)
             || self.nexus.as_ref().is_some_and(NexusBrowser::is_busy)
+            || self.packs.as_ref().is_some_and(packs::Packs::is_busy)
     }
 
     fn remove(&mut self, id: ModId, cx: &mut Context<Self>) {
@@ -575,6 +584,16 @@ impl Render for ModsTab {
             return theme::muted(t!("library.properties.not_installed"));
         }
         let locked = self.is_locked();
+        if self.search.section() == search::Section::Packs {
+            return div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(self.section_nav(cx))
+                .children(self.notice.as_ref().map(theme::muted))
+                .children(self.error.as_ref().map(theme::error))
+                .child(self.packs_section(locked, cx));
+        }
         let add_label = self.busy.as_ref().map_or_else(
             || SharedString::from(t!("library.detail.mods.add").into_owned()),
             SharedString::from,

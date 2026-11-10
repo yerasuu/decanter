@@ -54,6 +54,7 @@ impl Provider {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Section {
     Installed,
+    Packs,
     Provider(Provider),
 }
 
@@ -117,9 +118,18 @@ impl ModsTab {
     }
 
     fn select_section(&mut self, section: Section, cx: &mut Context<Self>) {
-        let Section::Provider(provider) = section else {
-            self.show_installed(cx);
-            return;
+        let provider = match section {
+            Section::Provider(provider) => provider,
+            Section::Packs => {
+                self.search.section = Section::Packs;
+                self.show_packs(cx);
+                cx.notify();
+                return;
+            }
+            Section::Installed => {
+                self.show_installed(cx);
+                return;
+            }
         };
         self.show_search(provider, cx);
         match provider {
@@ -153,6 +163,10 @@ impl ModsTab {
             (
                 Section::Installed,
                 SharedString::from(t!("mods.section.installed", count = installed).into_owned()),
+            ),
+            (
+                Section::Packs,
+                SharedString::from(t!("mods.packs.section_packs").into_owned()),
             ),
             (
                 Section::Provider(Provider::Thunderstore),

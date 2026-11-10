@@ -249,6 +249,19 @@ impl GameMods {
         order::changes(self, mods, &after)
     }
 
+    /// The files and DLLs whose winner would change if the enabled mods `before`, in that load
+    /// order, were loaded in `after`'s order instead, as [`Self::preview_place`] computes it for
+    /// one move: what a mod pack placing several mods at once asks about. `after` must hold the
+    /// same mods; nothing is written.
+    ///
+    /// # Errors
+    ///
+    /// When the install can't be walked or a mod's `mod.toml` does not hold up.
+    #[inline]
+    pub fn preview_order(&self, before: &[ModId], after: &[ModId]) -> Result<OrderChange> {
+        order::changes(self, self.manifests(before.iter())?, after)
+    }
+
     /// `account`'s set without the mods whose folder is gone, so that its slots are the ones the
     /// Mods tab lists.
     fn present_set(&self, account: &str) -> Result<(PathBuf, ModSet)> {

@@ -227,6 +227,59 @@ every text is in `app/locales/<lang>/mods_credits.<lang>.yml`, so wording can ch
   section and the Nexus update check; the saved key stays in the keyring and Nexus mods keep working and
   showing their credits. Both Nexus clients send `Application-Name: decanter` and `Application-Version`.
 
+## Packs
+
+A pack is a named, ordered list of mod references for one game, as
+[mod-packs-and-search-design.md](mod-packs-and-search-design.md) sections 3 to 6 describe it: the format, validator,
+resolver, diff and plan are `crates/modpack`, the section is `app/src/views/library/detail/mods/packs/`. The Mods tab
+switches between *Instalados* and *Packs*; the Packs section lists the game's packs on the left and shows the chosen
+pack's entries, or its apply plan and progress, on the right.
+
+- *Nuevo pack con los mods instalados*: every mod of the game becomes an entry, in this account's load order with its
+  on or off state (mods only other accounts have go last, off), `track = "pinned"`, its origin as structured ids
+  (Thunderstore package and version, Nexus domain, mod and file, mod.io game, mod and file), its `target`, its DLL
+  modes and its archive's `source_sha256` and size. A mod without an origin is a `local` entry named by its archive's
+  file name; one imported from a folder has no hash, is marked *not shareable* and is recognised only through the
+  pack's notes. The header records the game's title and its Thunderstore community, Nexus domain and mod.io game.
+- Editing: rename, ↑ and ↓ (refused when a `requires` edge would break; a move that hands an installed mod's file or
+  DLL to another asks first, computed with `GameMods::preview_order`), the checkbox (`enabled`), *Fijada* / *La más
+  reciente* (`track`, not for local entries) and × (the entry and every edge naming it). Each save bumps `revision`
+  and writes through `Pack::write`, which re-reads what it wrote; every pack file read goes through `Pack::parse`, and
+  a file that does not hold up is listed with the reason so it can still be removed.
+- *Aplicar...* first makes a plan, on that click: the Thunderstore listing when a Thunderstore entry is missing (its
+  cache, refreshed when stale), and with the Nexus switch on and a Nexus entry missing, the account (Premium or not).
+  The plan lists each step in the resolved sequence (the listing's dependencies between the pack's Thunderstore
+  entries are hard edges): already installed, to download (with the total size), needs a file, not available,
+  blocked by a requirement, and the winners that placing the pack's mods in its order changes among the mods on now.
+  Nothing is downloaded before *Aplicar el pack*.
+- Applying runs one entry at a time: Thunderstore entries download into `incoming/` (`decanter_thunderstore::Staging`,
+  removed after the import), are checked against the entry's `sha256` when pinned, read with `preview_package` and
+  imported with `import_archive` under the entry's `target`; a newer version replaces the installed one in its slot
+  (`GameMods::replace`); the entry's DLL modes are set. After every entry the pack's present mods are placed as one
+  block at the slot of the first of them already in the load order (else last), in the resolved order, on or off as
+  the plan says, and `packs/<id>.local.toml` records which mod each entry is and whether the pack installed it.
+  A conflict line per mod the new one wins over or loses to follows each import, and a summary ends the run.
+- Failure is skip and flag (decision #1635): an entry that fails, waits for a file or is not available holds back only
+  what `requires` it (blocked, left off, its slot kept); the rest goes on. The pack shows *Incompleto: N de M en
+  espera*, and applying again recomputes the plan from what is installed, so it does only what remains. *Cancelar*
+  stops the download or import in flight, which removes its staging and partial import; what was installed before stays
+  placed.
+- Manual steps: Nexus Mods entries always have one (*Abrir la página*, the files tab built from the ids, and *Elegir
+  archivo...*); with the switch on and a Premium account a *Descargar* button downloads that one file (`files`,
+  `mod_info`, `download_link`, `download`, which checks Nexus' size and MD5), one per click, since batch downloads are
+  an open question for Nexus. mod.io entries are manual too (the mod and file ids, no page link: the pack carries no
+  URL and mod.io's pages use names, not ids), since its download path needs the browser's terms dialog and access
+  checks. Local entries ask for their archive, or for a folder when they were one. A picked file is checked against
+  the entry (SHA-256, else MD5, else size, when pinned) and imported with the origin the provider's crate would write,
+  so the next apply recognises it.
+- *Quitar el pack* deletes `packs/<id>.toml` and `.local.toml`; the mods stay. Ticking *Quitar también los N mods que
+  instaló este pack* also removes the mods the notes say the pack installed, except those another pack's notes name
+  or another account has on (counted as kept). Without notes nothing is offered.
+- Not yet (later phases): export and import of pack files, adding to a pack from search, `requires`/`after` editing,
+  Thunderstore dependencies added as `auto` entries at creation, update checks per pack, the mapping adoption of
+  section 6.4 (a different Thunderstore community is only said), *accept this file once* after a hash mismatch, and
+  mod.io downloads.
+
 ## Where things are
 
 Under the library root that holds the install (`<root>/common/<InstallDir>`):
@@ -238,6 +291,8 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
     play/<account>/                the play tree the game starts from
     play/<account>.toml            every link decanter placed in it, and its target
     incoming/                      imports and removals in progress
+    packs/<pack uuid>.toml         a pack: the recipe, shareable
+    packs/<pack uuid>.local.toml   this machine's notes: entry -> mod, and which mods the pack installed
 ```
 
 - `profiles/<account>.toml` is `schema = 2`. A schema 1 file (`mods`, enabled in load order, and `disabled`) is read
