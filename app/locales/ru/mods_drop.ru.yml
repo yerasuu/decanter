@@ -1,0 +1,3 @@
+mods.archive.compact: '%{file}: файлов — %{files}, после распаковки %{size}'
+mods.archive.options: 'Параметры'
+mods.archive.options_reason: 'Decanter не может определить, в какую папку класть эти файлы: выбери, куда их положить.'

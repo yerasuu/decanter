@@ -27,6 +27,9 @@ pub(super) enum Importing {
     Ready {
         preview: Arc<ArchivePreview>,
         target: Option<ModPath>,
+        /// Whether the name and target controls are shown; open from the start when the archive
+        /// does not say where it goes.
+        options: bool,
     },
     Extracting(Arc<Progress>),
 }
@@ -91,6 +94,7 @@ impl ModsTab {
                         this.name_input.update(cx, |input, cx| input.set_text(name, cx));
                         this.importing = Some(Importing::Ready {
                             target: preview.target().cloned(),
+                            options: !preview.target_certain(),
                             preview: Arc::new(preview),
                         });
                     }
@@ -110,7 +114,7 @@ impl ModsTab {
     }
 
     fn add_archive(&mut self, cx: &Context<Self>) {
-        let Some(Importing::Ready { preview, target }) = self.importing.take() else {
+        let Some(Importing::Ready { preview, target, .. }) = self.importing.take() else {
             return;
         };
         let Some(mods) = self.mods.clone() else {
@@ -184,13 +188,23 @@ impl ModsTab {
                 |done, total| t!("mods.archive.extracting", done = done, total = total),
                 cx,
             )),
-            Importing::Ready { preview, target } => Some(self.preview_panel(preview, target.as_ref(), cx)),
+            Importing::Ready {
+                preview,
+                target,
+                options,
+            } => Some(self.preview_panel(preview, target.as_ref(), *options, cx)),
         }
     }
 
-    fn preview_panel(&self, preview: &ArchivePreview, target: Option<&ModPath>, cx: &Context<Self>) -> Div {
+    fn preview_panel(
+        &self,
+        preview: &ArchivePreview,
+        target: Option<&ModPath>,
+        options_open: bool,
+        cx: &Context<Self>,
+    ) -> Div {
         let entity = cx.entity();
-        let options = std::iter::once((
+        let folders = std::iter::once((
             SharedString::default(),
             SharedString::from(t!("mods.archive.root").into_owned()),
         ))
@@ -199,7 +213,7 @@ impl ModsTab {
             (folder.clone(), folder)
         }));
         let selected = target.map(ModPath::to_string).unwrap_or_default();
-        let place = Select::new("mod-archive-target", options, selected).on_change(move |chosen, _, cx| {
+        let place = Select::new("mod-archive-target", folders, selected).on_change(move |chosen, _, cx| {
             let chosen = (!chosen.is_empty()).then(|| ModPath::parse(chosen).ok()).flatten();
             entity.update(cx, |this, cx| {
                 if let Some(Importing::Ready { target, .. }) = this.importing.as_mut() {
@@ -209,9 +223,7 @@ impl ModsTab {
             });
         });
         let (shown, count) = preview.overrides(target);
-        let overrides = if count == 0 {
-            theme::muted(t!("mods.archive.overrides_none"))
-        } else {
+        let overrides = (count > 0).then(|| {
             let rest = count.saturating_sub(shown.len().min(SHOWN_OVERRIDES));
             div()
                 .flex()
@@ -224,43 +236,65 @@ impl ModsTab {
                         .map(|path| theme::mono().pl_2().text_size(px(12.5)).child(path.to_string())),
                 )
                 .children((rest > 0).then(|| theme::muted(t!("library.detail.mods.more", count = rest)).pl_2()))
-        };
+        });
         let duplicate = preview.duplicate_of();
         let can_add = duplicate.is_none() && !self.name_input.read(cx).text().trim().is_empty();
         theme::card()
             .gap_2()
             .px(px(18.))
             .py(px(14.))
-            .child(div().child(t!("mods.archive.title", file = preview.source_file_name())))
-            .child(
-                field_row()
-                    .items_center()
-                    .child(div().w(px(90.)).child(theme::muted(t!("mods.archive.name"))))
-                    .child(div().flex_1().min_w_0().child(self.name_input.clone())),
-            )
-            .child(
-                field_row()
-                    .items_center()
-                    .child(div().w(px(90.)).child(theme::muted(t!("mods.archive.target"))))
-                    .child(place),
-            )
-            .child(theme::muted(t!(
-                "mods.archive.summary",
+            .child(div().child(t!(
+                "mods.archive.compact",
+                file = preview.source_file_name(),
                 files = preview.files(),
                 size = crate::format::bytes(preview.size())
             )))
-            .children(
-                preview
-                    .stripped()
-                    .map(|folder| theme::muted(t!("mods.archive.stripped", folder = folder.as_str()))),
-            )
-            .child(overrides)
+            .children(overrides)
             .children(
                 preview
                     .has_installer()
                     .then(|| theme::muted(t!("mods.archive.installer"))),
             )
             .children(duplicate.map(|(_, name)| theme::error(t!("mods.archive.duplicate", name = name))))
+            .child(
+                div().flex().child(
+                    div()
+                        .id("mod-archive-options")
+                        .cursor_pointer()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(Importing::Ready { options, .. }) = this.importing.as_mut() {
+                                *options = !*options;
+                            }
+                            cx.notify();
+                        }))
+                        .child(theme::muted(format!(
+                            "{} {}",
+                            if options_open { "\u{25be}" } else { "\u{25b8}" },
+                            t!("mods.archive.options")
+                        ))),
+                ),
+            )
+            .when(options_open, |panel| {
+                panel
+                    .children((!preview.target_certain()).then(|| theme::muted(t!("mods.archive.options_reason"))))
+                    .child(
+                        field_row()
+                            .items_center()
+                            .child(div().w(px(90.)).child(theme::muted(t!("mods.archive.name"))))
+                            .child(div().flex_1().min_w_0().child(self.name_input.clone())),
+                    )
+                    .child(
+                        field_row()
+                            .items_center()
+                            .child(div().w(px(90.)).child(theme::muted(t!("mods.archive.target"))))
+                            .child(place),
+                    )
+                    .children(
+                        preview
+                            .stripped()
+                            .map(|folder| theme::muted(t!("mods.archive.stripped", folder = folder.as_str()))),
+                    )
+            })
             .child(install_choice(
                 "mod-archive-enable-on-install",
                 self.enables_on_install(),

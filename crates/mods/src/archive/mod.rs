@@ -70,6 +70,7 @@ pub struct ArchivePreview {
     size: u64,
     stripped: Option<ModPath>,
     target: Option<ModPath>,
+    target_certain: bool,
     folders: Vec<ModPath>,
     has_installer: bool,
     duplicate_of: Option<(ModId, String)>,
@@ -127,6 +128,14 @@ impl ArchivePreview {
     #[inline]
     pub const fn target(&self) -> Option<&ModPath> {
         self.target.as_ref()
+    }
+
+    /// Whether the archive's top level singled out [`Self::target`], so that a caller can add it
+    /// without asking where it goes.
+    #[must_use]
+    #[inline]
+    pub const fn target_certain(&self) -> bool {
+        self.target_certain
     }
 
     /// The install's folders a target can be picked from.
@@ -252,7 +261,7 @@ pub(crate) fn preview(
     let install: HashSet<String> = install_files.iter().map(ModPath::folded).collect();
     let folders = install_folders(&install_files);
     let program_dirs = dll::program_dirs(&install_files);
-    let target = preselect(&entries, &install_files, &folders);
+    let (target, target_certain) = preselect(&entries, &install_files, &folders);
     check_paths(entries.iter().map(|entry| &entry.path), target.as_ref())?;
     let has_installer = entries.iter().any(|entry| is_installer(&entry.path));
     let duplicate_of = game
@@ -289,6 +298,7 @@ pub(crate) fn preview(
         size,
         stripped,
         target,
+        target_certain,
         folders,
         has_installer,
         duplicate_of,
@@ -553,8 +563,9 @@ fn install_folders(files: &[ModPath]) -> Vec<ModPath> {
 
 /// The game's root when the archive's top level matches it, else the install folder whose
 /// children match most of the archive's top level (a texture pack's `textures/` and `meshes/` into
-/// `Data/`), else the root.
-fn preselect(entries: &[Entry], install_files: &[ModPath], folders: &[ModPath]) -> Option<ModPath> {
+/// `Data/`), else the root. The flag is false when nothing of the archive's top level is in the
+/// install or several folders match equally well, since the root is then a guess.
+fn preselect(entries: &[Entry], install_files: &[ModPath], folders: &[ModPath]) -> (Option<ModPath>, bool) {
     let tops: HashSet<String> = entries
         .iter()
         .filter_map(|entry| entry.path.components().next())
@@ -577,12 +588,17 @@ fn preselect(entries: &[Entry], install_files: &[ModPath], folders: &[ModPath]) 
             .map_or(0, |names| tops.iter().filter(|top| names.contains(*top)).count())
     };
     let at_root = matches("");
-    folders
+    let ranked: Vec<_> = folders
         .iter()
         .map(|folder| (matches(&folder.folded()), folder))
         .filter(|&(count, _)| count > at_root)
-        .max_by_key(|&(count, folder)| (count, core::cmp::Reverse(folder.depth())))
-        .map(|(_, folder)| folder.clone())
+        .collect();
+    let rank = |&(count, folder): &(usize, &ModPath)| (count, core::cmp::Reverse(folder.depth()));
+    let Some(best) = ranked.iter().max_by_key(|entry| rank(entry)) else {
+        return (None, at_root > 0);
+    };
+    let tied = ranked.iter().filter(|entry| rank(entry) == rank(best)).count() > 1;
+    (Some(best.1.clone()), !tied)
 }
 
 fn is_installer(path: &ModPath) -> bool {

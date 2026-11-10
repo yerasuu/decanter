@@ -10,10 +10,12 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
   to the same relative paths). The folder is copied in and never changed; the mod is turned on for the account
   that added it.
 - *Añadir archivo comprimido...* (or an archive dropped on the tab): a zip or 7z. It is hashed and every entry
-  checked first, with a progress line and *Cancelar*; then a preview shows its name (editable), file count and
-  size, where its files go (the game's folder or one of its folders, preselected from the archive's top level; a
-  single wrapping folder that matches nothing of the game is left out), the game's files it replaces, and whether
-  it carries an installer (FOMOD or setup program), which is never run. Nothing is written before *Añadir*; the
+  checked first, with a progress line and *Cancelar*; then a compact preview shows the file name, file count and size, the game's files it replaces and whether
+  it carries an installer (FOMOD or setup program), which is never run, plus *Activar al instalar*. The name
+  (the archive's file stem, editable) and where its files go (the game's folder or one of its folders,
+  preselected from the archive's top level; a single wrapping folder that matches nothing of the game is left
+  out) sit behind *Opciones*, closed unless the top level does not single out a folder, which opens it with a line
+  saying why. Nothing is written before *Añadir*; the
   same archive added twice points at the mod it already is. RAR is refused with a line saying so.
 - The checkbox turns a mod on or off for this account. Each mod keeps its slot in the load order on or off (a
   disabled mod stays in the list, greyed, with its number, and turning it on again puts it back there); a mod new
