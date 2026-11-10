@@ -15,9 +15,17 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
   single wrapping folder that matches nothing of the game is left out), the game's files it replaces, and whether
   it carries an installer (FOMOD or setup program), which is never run. Nothing is written before *Añadir*; the
   same archive added twice points at the mod it already is. RAR is refused with a line saying so.
-- The checkbox turns a mod on or off for this account. A mod turned on goes last and wins a file over the ones
-  already on; ↑ and ↓ move an enabled mod in the load order (`profiles/<account>.toml` `mods`), where the lower one
-  wins. Changes apply at the next launch; nothing can be changed while the game runs.
+- The checkbox turns a mod on or off for this account. Each mod keeps its slot in the load order on or off (a
+  disabled mod stays in the list, greyed, with its number, and turning it on again puts it back there); a mod new
+  to the account goes last and wins a file over the ones already on. ↑ and ↓, or dragging a row's handle onto
+  another row, move a mod in the load order, where the lower enabled one wins a file and a DLL. A move that hands a
+  file or a DLL override to another mod asks first, listing the paths (at most 12 named) and DLLs with their old and
+  new winner (`GameMods::preview_place`, the same merge as the conflict lists); a move that changes no winner applies
+  at once. Changes apply at the next launch; nothing can be changed while the game runs.
+- `GameMods::replace` puts a newer version of a mod in the old one's slot of every account, on or off as it was,
+  with the old one's DLL modes for the DLLs both ask for, then removes the old one. `decanter_mods::constraints` is
+  where hard ordering edges between mods (provider dependencies, packs) will come from; it returns none yet, and the
+  row of a mod placed before one it requires would show it.
 - DLL proxies: a mod file named after a system DLL Wine has a builtin for (`dinput8`, `version`, `winmm`, `dxgi`,
   `d3d9`, `d3d11`, `dsound`, `xinput1_3`, `winhttp`) in a folder of the game that holds a `.exe` gets the override
   `n,b` at import, stored in its `mod.toml` (`[[dll_overrides]]`). The Mods tab lists each with a selector for its
@@ -144,12 +152,15 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
 ```
 <root>/decanter/mods/<store>/<game id>/    <store>: gog, amazon or epic
     <mod uuid>/mod.toml, files/    one mod, shared by every account that has the game
-    profiles/<account>.toml        the account's enabled mods in load order, and the disabled ones
+    profiles/<account>.toml        the account's mods in load order, each `[[mod]]` with `id` and `enabled`
     play/<account>/                the play tree the game starts from
     play/<account>.toml            every link decanter placed in it, and its target
     incoming/                      imports and removals in progress
 ```
 
+- `profiles/<account>.toml` is `schema = 2`. A schema 1 file (`mods`, enabled in load order, and `disabled`) is read
+  as the enabled list followed by the disabled one, so it loads to the same winners, and is written as schema 2 at
+  its next change; a decanter older than that refuses a schema 2 file.
 - The play tree is real folders and one relative symbolic link per file, to the install's file or the winning
   mod's (`../../…/common/<InstallDir>/…`, `../../<mod uuid>/files/…`), so moving the library keeps it valid. On a
   Windows host the links are hard links, since a symbolic link needs a privilege there.

@@ -2,7 +2,7 @@
 //! Per account rather than per game because the play tree holds what the game writes, which like
 //! the prefix belongs to one account (design, open question 1).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -10,19 +10,27 @@ use serde::{Deserialize, Serialize};
 use crate::path::{ModId, ModPath};
 use crate::{Error, MAX_MOD_FILES, Result, files};
 
-const SCHEMA: u32 = 1;
+/// Schema 2 keeps one ordered list with an enabled flag per mod, so a mod turned off keeps its
+/// slot; schema 1 (`mods` enabled in order, then `disabled`) is still read, and rewritten as 2 on
+/// the next save.
+const SCHEMA: u32 = 2;
+const SCHEMA_SPLIT_LISTS: u32 = 1;
 const MAX_BUILD_ID_CHARS: usize = 200;
 
 #[derive(Debug, Default)]
 pub(crate) struct ModSet {
-    /// Enabled, in load order: the last one wins a path.
-    pub(crate) mods: Vec<ModId>,
-    /// Known to this account but off.
-    pub(crate) disabled: Vec<ModId>,
+    /// Every mod this account knows, in load order, on or off: the last enabled one wins a path.
+    pub(crate) entries: Vec<Entry>,
     pub(crate) base: Base,
     /// Enabled mods left out of the play tree, with the paths an update changed under them, until
     /// the user keeps or disables them.
     pub(crate) attention: BTreeMap<ModId, Vec<ModPath>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Entry {
+    pub(crate) id: ModId,
+    pub(crate) enabled: bool,
 }
 
 /// What the game's files a mod touches were when its set was last applied (design, section 3).
@@ -39,27 +47,25 @@ pub(crate) struct Base {
 /// as one that changes it.
 pub(crate) const ABSENT: &str = "absent";
 
-/// Which way a mod moves in the load order, where later wins.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Shift {
-    /// Loses to one more mod.
-    Earlier,
-    /// Wins over one more mod.
-    Later,
-}
-
 #[derive(Serialize, Deserialize)]
 struct RawSet {
     schema: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     mods: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     disabled: Vec<String>,
+    #[serde(default, rename = "mod", skip_serializing_if = "Vec::is_empty")]
+    entries: Vec<RawEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     base: Option<RawBase>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     attention: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RawEntry {
+    id: String,
+    enabled: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -76,18 +82,28 @@ impl ModSet {
         let Some(raw) = files::read::<RawSet>(path)? else {
             return Ok(Self::default());
         };
-        if raw.schema != SCHEMA {
-            return Err(Error::malformed(path, &"unknown schema"));
-        }
-        if raw.mods.len().saturating_add(raw.disabled.len()) > MAX_MOD_FILES {
+        let listed: Vec<(String, bool)> = match raw.schema {
+            // Enabled first, then disabled: the enabled ones keep their order and so their winners.
+            SCHEMA_SPLIT_LISTS if raw.entries.is_empty() => raw
+                .mods
+                .into_iter()
+                .map(|id| (id, true))
+                .chain(raw.disabled.into_iter().map(|id| (id, false)))
+                .collect(),
+            SCHEMA if raw.mods.is_empty() && raw.disabled.is_empty() => {
+                raw.entries.into_iter().map(|entry| (entry.id, entry.enabled)).collect()
+            }
+            SCHEMA_SPLIT_LISTS | SCHEMA => return Err(Error::malformed(path, &"mixes the lists of two schemas")),
+            _ => return Err(Error::malformed(path, &"unknown schema")),
+        };
+        if listed.len() > MAX_MOD_FILES {
             return Err(Error::malformed(path, &"lists more mods than decanter writes"));
         }
         let mut set = Self::default();
-        for (list, out) in [(raw.mods, &mut set.mods), (raw.disabled, &mut set.disabled)] {
-            for text in list {
-                let id = ModId::parse(&text).map_err(|err| Error::malformed(path, &err))?;
-                out.push(id);
-            }
+        set.entries.reserve(listed.len());
+        for (text, enabled) in listed {
+            let id = ModId::parse(&text).map_err(|err| Error::malformed(path, &err))?;
+            set.entries.push(Entry { id, enabled });
         }
         if let Some(base) = raw.base {
             set.base = read_base(base, path)?;
@@ -104,15 +120,25 @@ impl ModSet {
             set.attention.insert(id, paths);
         }
         set.dedup();
-        set.attention.retain(|id, _| set.mods.contains(id));
+        let mut attention = core::mem::take(&mut set.attention);
+        attention.retain(|id, _| set.is_enabled(id));
+        set.attention = attention;
         Ok(set)
     }
 
     pub(crate) fn write(&self, path: &Path) -> Result<()> {
         let raw = RawSet {
             schema: SCHEMA,
-            mods: self.mods.iter().map(|id| id.as_str().to_owned()).collect(),
-            disabled: self.disabled.iter().map(|id| id.as_str().to_owned()).collect(),
+            mods: Vec::new(),
+            disabled: Vec::new(),
+            entries: self
+                .entries
+                .iter()
+                .map(|entry| RawEntry {
+                    id: entry.id.as_str().to_owned(),
+                    enabled: entry.enabled,
+                })
+                .collect(),
             base: (self.base.build_id.is_some() || !self.base.files.is_empty()).then(|| RawBase {
                 build_id: self.base.build_id.clone(),
                 files: self
@@ -136,48 +162,80 @@ impl ModSet {
         files::write(path, &raw)
     }
 
-    /// Enabled ones go last, so a mod turned on wins over those already on.
+    /// The enabled mods, in load order.
+    pub(crate) fn enabled(&self) -> impl Iterator<Item = &ModId> {
+        self.entries.iter().filter(|entry| entry.enabled).map(|entry| &entry.id)
+    }
+
+    pub(crate) fn position(&self, id: &ModId) -> Option<usize> {
+        self.entries.iter().position(|entry| entry.id == *id)
+    }
+
+    /// A mod the account already knows keeps its slot either way; a new one goes last, so it wins
+    /// over those already on.
     pub(crate) fn set_enabled(&mut self, id: &ModId, enabled: bool) {
-        self.forget(id);
-        if enabled {
-            self.mods.push(id.clone());
+        self.attention.remove(id);
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == *id) {
+            entry.enabled = enabled;
         } else {
-            self.disabled.push(id.clone());
+            self.entries.push(Entry {
+                id: id.clone(),
+                enabled,
+            });
         }
     }
 
     pub(crate) fn forget(&mut self, id: &ModId) {
-        self.mods.retain(|known| known != id);
-        self.disabled.retain(|known| known != id);
+        self.entries.retain(|entry| entry.id != *id);
         self.attention.remove(id);
     }
 
-    /// Swaps an enabled mod with its neighbour in the load order; `false` when it is not enabled
-    /// or already at that end.
-    pub(crate) fn shift(&mut self, id: &ModId, step: Shift) -> bool {
-        let Some(index) = self.mods.iter().position(|known| known == id) else {
+    /// Moves a known mod to slot `to`, the others keeping their relative order; a mod the account
+    /// does not know yet is put there turned off. `false` when nothing moved. The caller checks
+    /// `to` against [`Self::entries`]' length, one more for an unknown mod.
+    pub(crate) fn place(&mut self, id: &ModId, to: usize) -> bool {
+        let entry = match self.position(id) {
+            Some(from) if from == to => return false,
+            Some(from) => self.entries.remove(from),
+            None => Entry {
+                id: id.clone(),
+                enabled: false,
+            },
+        };
+        self.entries.insert(to.min(self.entries.len()), entry);
+        true
+    }
+
+    /// `new` takes `old`'s slot and on or off state; whatever slot `new` had is dropped.
+    pub(crate) fn replace(&mut self, old: &ModId, new: &ModId) -> bool {
+        let Some(enabled) = self
+            .entries
+            .iter()
+            .find(|entry| entry.id == *old)
+            .map(|entry| entry.enabled)
+        else {
             return false;
         };
-        let other = match step {
-            Shift::Earlier => index.checked_sub(1),
-            Shift::Later => index.checked_add(1).filter(|&next| next < self.mods.len()),
-        };
-        let Some(other) = other else {
-            return false;
-        };
-        self.mods.swap(index, other);
+        self.entries.retain(|entry| entry.id != *new);
+        self.attention.remove(old);
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == *old) {
+            *entry = Entry {
+                id: new.clone(),
+                enabled,
+            };
+        }
         true
     }
 
     pub(crate) fn is_enabled(&self, id: &ModId) -> bool {
-        self.mods.contains(id)
+        self.entries.iter().any(|entry| entry.id == *id && entry.enabled)
     }
 
-    /// A hand-edited file may list a mod twice: the first mention counts, enabled before disabled.
+    /// A hand-edited file may list a mod twice: the first mention counts, which in schema 1 puts
+    /// enabled before disabled.
     fn dedup(&mut self) {
-        let mut seen = std::collections::HashSet::new();
-        self.mods.retain(|id| seen.insert(id.clone()));
-        self.disabled.retain(|id| seen.insert(id.clone()));
+        let mut seen = HashSet::new();
+        self.entries.retain(|entry| seen.insert(entry.id.clone()));
     }
 }
 

@@ -10,9 +10,10 @@ use crate::base;
 use crate::dll::{self, DllMode, EffectiveOverride};
 use crate::manifest::ModManifest;
 use crate::merge::{Owner, merge};
+use crate::order::{self, OrderChange, Slot};
 use crate::path::{ModId, ModPath, id_component};
 use crate::progress::Progress;
-use crate::set::{ModSet, Shift};
+use crate::set::ModSet;
 use crate::tree::{self, Prepared};
 use crate::{Error, Result, import};
 
@@ -162,10 +163,29 @@ impl GameMods {
     /// When its set file can't be read or does not hold up.
     #[inline]
     pub fn enabled(&self, account: &str) -> Result<Vec<ModId>> {
-        Ok(ModSet::read(&self.set_path(account)?)?.mods)
+        Ok(ModSet::read(&self.set_path(account)?)?.enabled().cloned().collect())
     }
 
-    /// Turns a mod on or off for `account`; one turned on goes last in the load order.
+    /// Every mod `account`'s set lists, on or off, in load order: the slots [`Self::place`] counts.
+    ///
+    /// # Errors
+    ///
+    /// When its set file can't be read or does not hold up.
+    #[inline]
+    pub fn load_order(&self, account: &str) -> Result<Vec<Slot>> {
+        let (_, set) = self.present_set(account)?;
+        Ok(set
+            .entries
+            .into_iter()
+            .map(|entry| Slot {
+                id: entry.id,
+                enabled: entry.enabled,
+            })
+            .collect())
+    }
+
+    /// Turns a mod on or off for `account`. It keeps its slot in the load order either way; one the
+    /// account never had goes last.
     ///
     /// # Errors
     ///
@@ -184,25 +204,105 @@ impl GameMods {
         Ok(())
     }
 
-    /// Moves an enabled mod one place in `account`'s load order, where the later one wins a file and
-    /// a DLL override.
+    /// Moves a mod to `slot` of `account`'s load order (see [`Self::load_order`]), where the later
+    /// enabled one wins a file and a DLL override; the other mods keep their relative order. A mod
+    /// of the game the account has never had is put there turned off.
     ///
     /// # Errors
     ///
-    /// [`Error::UnknownMod`] for a mod the game does not have, else when the set file can't be
-    /// read or written.
+    /// [`Error::UnknownMod`] for a mod the game does not have, [`Error::InvalidSlot`] for a slot past
+    /// the end, else when the set file can't be read or written.
     #[inline]
-    pub fn shift(&self, account: &str, id: &ModId, step: Shift) -> Result<()> {
+    pub fn place(&self, account: &str, id: &ModId, slot: usize) -> Result<()> {
+        let (path, mut set) = self.present_set(account)?;
+        self.check_slot(&set, id, slot)?;
+        if set.place(id, slot) {
+            set.write(&path)?;
+            tracing::info!(account, mod_id = %id, slot, "mod load order changed");
+        }
+        Ok(())
+    }
+
+    /// The files and DLLs whose winner [`Self::place`] with the same arguments would change,
+    /// computed as [`Self::conflicts`] does; nothing is written.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::place`], and when the install can't be walked or an enabled mod's `mod.toml`
+    /// does not hold up.
+    #[inline]
+    pub fn preview_place(&self, account: &str, id: &ModId, slot: usize) -> Result<OrderChange> {
+        let (_, mut set) = self.present_set(account)?;
+        self.check_slot(&set, id, slot)?;
+        if !set.is_enabled(id) {
+            return Ok(OrderChange::default());
+        }
+        let mods = self.manifests(set.enabled())?;
+        set.place(id, slot);
+        let after: Vec<ModId> = set.enabled().cloned().collect();
+        order::changes(self, mods, &after)
+    }
+
+    /// `account`'s set without the mods whose folder is gone, so that its slots are the ones the
+    /// Mods tab lists.
+    fn present_set(&self, account: &str) -> Result<(PathBuf, ModSet)> {
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        set.entries.retain(|entry| self.mod_dir(&entry.id).is_dir());
+        Ok((path, set))
+    }
+
+    fn check_slot(&self, set: &ModSet, id: &ModId, slot: usize) -> Result<()> {
         if !self.mod_dir(id).is_dir() {
             return Err(Error::UnknownMod(id.to_string()));
         }
-        let path = self.set_path(account)?;
-        let mut set = ModSet::read(&path)?;
-        if set.shift(id, step) {
-            set.write(&path)?;
-            tracing::info!(account, mod_id = %id, ?step, "mod load order changed");
+        let count = set.entries.len();
+        let last = if set.position(id).is_some() {
+            count.saturating_sub(1)
+        } else {
+            count
+        };
+        if slot > last {
+            return Err(Error::InvalidSlot { slot, count });
         }
         Ok(())
+    }
+
+    /// Puts `new`, the newer version of `old`, in `old`'s slot of every account's set with its on or
+    /// off state, gives it the DLL modes `old` had for the DLLs both ask for, then removes `old`, so
+    /// that updating a mod moves nothing in any load order.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownMod`] when either is not a mod of the game, else when a set file, `new`'s
+    /// `mod.toml` or `old`'s folder can't be changed.
+    #[inline]
+    pub fn replace(&self, old: &ModId, new: &ModId) -> Result<()> {
+        let old_manifest =
+            ModManifest::read(&self.mod_dir(old), old)?.ok_or_else(|| Error::UnknownMod(old.to_string()))?;
+        let new_dir = self.mod_dir(new);
+        let mut new_manifest = ModManifest::read(&new_dir, new)?.ok_or_else(|| Error::UnknownMod(new.to_string()))?;
+        let mut kept_modes = false;
+        for wanted in &mut new_manifest.dll_overrides {
+            if let Some(known) = old_manifest
+                .dll_overrides
+                .iter()
+                .find(|known| known.dll == wanted.dll && known.mode != wanted.mode)
+            {
+                wanted.mode = known.mode;
+                kept_modes = true;
+            }
+        }
+        if kept_modes {
+            new_manifest.write(&new_dir)?;
+        }
+        for (account, mut set) in self.sets()? {
+            if set.replace(old, new) {
+                set.write(&self.set_path(&account)?)?;
+            }
+        }
+        tracing::info!(old = %old, new = %new, kept_modes, "mod replaced by its newer version");
+        self.remove(old)
     }
 
     /// Changes how Wine loads `dll` for the mod, for every account that has it on; a mod that did
@@ -374,9 +474,12 @@ impl GameMods {
 
     /// The enabled mods of `account`, in load order; a removed one is skipped, a broken one fails.
     fn enabled_manifests(&self, account: &str) -> Result<Vec<ModManifest>> {
-        let set = ModSet::read(&self.set_path(account)?)?;
-        let mut mods = Vec::with_capacity(set.mods.len());
-        for id in &set.mods {
+        self.manifests(ModSet::read(&self.set_path(account)?)?.enabled())
+    }
+
+    fn manifests<'set>(&self, ids: impl Iterator<Item = &'set ModId>) -> Result<Vec<ModManifest>> {
+        let mut mods = Vec::new();
+        for id in ids {
             if let Some(manifest) = ModManifest::read(&self.mod_dir(id), id)? {
                 mods.push(manifest);
             } else {

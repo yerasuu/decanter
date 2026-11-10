@@ -12,7 +12,7 @@ use crate::theme;
 use crate::widgets::Select;
 
 /// What a mode means, next to its `WINEDLLOVERRIDES` spelling.
-fn mode_label(mode: DllMode) -> SharedString {
+pub(super) fn mode_label(mode: DllMode) -> SharedString {
     let meaning = match mode {
         DllMode::NativeThenBuiltin => t!("mods.dll.native_then_builtin"),
         DllMode::BuiltinThenNative => t!("mods.dll.builtin_then_native"),

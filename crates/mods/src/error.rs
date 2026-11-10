@@ -38,6 +38,8 @@ pub enum Error {
     SourceInsideMods,
     #[error("no mod {0} for this game")]
     UnknownMod(String),
+    #[error("slot {slot} is past the end of a load order of {count} mods")]
+    InvalidSlot { slot: usize, count: usize },
     #[error("decanter reads zip and 7z archives, and this file is neither")]
     UnknownFormat,
     #[error("RAR archives aren't supported yet: extract it and add the folder, or repack it as zip or 7z")]

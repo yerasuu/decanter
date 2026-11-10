@@ -68,6 +68,7 @@ mod game;
 mod import;
 mod manifest;
 mod merge;
+mod order;
 mod path;
 mod progress;
 mod set;
@@ -78,9 +79,9 @@ pub use dll::{DllMode, DllOverride, EffectiveOverride};
 pub use error::Error;
 pub use game::{GameMods, ModConflicts, Store};
 pub use manifest::{ModFile, ModManifest, ModOrigin};
+pub use order::{Constraint, DllChange, OrderChange, Slot, WinnerChange, constraints};
 pub use path::{ModId, ModPath};
 pub use progress::Progress;
-pub use set::Shift;
 pub use tree::Prepared;
 
 /// The owner's cap (design, open question 8), since a texture pack can be larger than 20 gigabytes.

@@ -11,14 +11,15 @@ mod attention;
 mod dll;
 mod modio;
 mod nexus;
+mod order;
 mod thunderstore;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use decanter_core::Game;
-use decanter_mods::{EffectiveOverride, GameMods, ModConflicts, ModId, ModManifest, ModPath, Shift};
+use decanter_mods::{EffectiveOverride, GameMods, ModConflicts, ModId, ModManifest, ModPath};
 use gpui::{Context, Div, Entity, ExternalPaths, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
@@ -26,9 +27,10 @@ use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::input::TextInput;
-use crate::widgets::{ButtonKind, button, checkbox, confirm_panel, tooltip};
+use crate::widgets::{ButtonKind, button, checkbox, confirm_panel};
 use archive::Importing;
 use nexus::Browser as NexusBrowser;
+use order::PendingMove;
 use thunderstore::{Browser, UpdateCheck};
 
 /// How many paths an expanded conflict lists before summing up the rest.
@@ -53,21 +55,24 @@ fn field_row() -> Div {
 struct Row {
     manifest: ModManifest,
     enabled: bool,
-    /// Its place in this account's load order, when enabled.
+    /// Its slot in this account's load order, on or off; `None` for a mod only other accounts have
+    /// had.
     position: Option<usize>,
     /// The game files an update changed under it, which leave it out until kept or disabled.
     attention: Option<Vec<ModPath>>,
     /// Accounts whose set has it enabled.
     users: usize,
     conflicts: Option<ModConflicts>,
+    /// Names of the mods a hard constraint wants before this one that come after it.
+    unmet: Vec<String>,
 }
 
 struct Loaded {
-    /// Enabled ones first, in load order, then the rest as they were added.
+    /// The account's load order, on and off alike, then the mods it never had as they were added.
     rows: Vec<Row>,
     names: HashMap<ModId, String>,
     written_by_game: Vec<ModPath>,
-    enabled_count: usize,
+    slot_count: usize,
     /// What the enabled mods ask Wine for, the later one winning a DLL.
     dll: Vec<EffectiveOverride>,
 }
@@ -82,6 +87,7 @@ pub(super) struct ModsTab {
     busy: Option<Text>,
     expanded: HashSet<ModId>,
     confirm_remove: Option<ModId>,
+    confirm_move: Option<PendingMove>,
     /// An archive being read, previewed or extracted.
     importing: Option<Importing>,
     /// The previewed archive's mod name, editable before adding.
@@ -134,6 +140,7 @@ impl ModsTab {
             busy: None,
             expanded: HashSet::new(),
             confirm_remove: None,
+            confirm_move: None,
             importing: None,
             name_input,
             notice: None,
@@ -238,14 +245,6 @@ impl ModsTab {
         );
     }
 
-    fn shift(&mut self, id: ModId, step: Shift, cx: &mut Context<Self>) {
-        self.run(
-            Text::new("library.detail.mods.applying"),
-            move |mods, account| mods.shift(account, &id, step),
-            cx,
-        );
-    }
-
     fn add(cx: &Context<Self>) {
         cx.spawn(async move |this, cx| {
             let Some(folder) = rfd::AsyncFileDialog::new()
@@ -295,6 +294,7 @@ impl ModsTab {
     fn is_locked(&self) -> bool {
         self.running
             || self.busy.is_some()
+            || self.confirm_move.is_some()
             || self.importing.is_some()
             || self.thunderstore.as_ref().is_some_and(Browser::is_busy)
             || self.modio.as_ref().is_some_and(modio::Browser::is_busy)
@@ -343,10 +343,7 @@ impl ModsTab {
                     })
                     .child(checkbox(enabled).when(locked, |b| b.opacity(0.4))),
             )
-            .children(
-                row.position
-                    .map(|position| self.order_buttons(index, &id, position, locked, cx)),
-            )
+            .children(self.order_controls(index, row, locked, cx))
             .child(div().flex_1().child(row.manifest.name.clone()))
             .child(theme::muted(summary))
             .child(
@@ -404,14 +401,17 @@ impl ModsTab {
                 )
         });
 
-        div()
+        let item = div()
             .flex()
             .flex_col()
             .gap_2()
             .px(gpui::px(18.))
             .py(gpui::px(12.))
-            .when(!last, |item| item.border_b_1().border_color(gpui::rgb(theme::LINE)))
+            .when(!enabled, |item| item.opacity(0.6))
+            .when(!last, |item| item.border_b_1().border_color(gpui::rgb(theme::LINE)));
+        Self::drop_target(item, row, locked, cx)
             .child(header)
+            .children(Self::constraint_block(row))
             .children(details)
             .children(self.dll_block(index, row, locked, cx))
             .children(self.attention_block(index, row, locked, cx))
@@ -419,31 +419,6 @@ impl ModsTab {
             .children(self.origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.modio_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.nexus_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
-    }
-
-    /// Up and down in the load order, where the later mod wins a file and a DLL.
-    fn order_buttons(&self, index: usize, id: &ModId, position: usize, locked: bool, cx: &Context<Self>) -> gpui::Div {
-        let count = self.loaded.as_ref().map_or(0, |loaded| loaded.enabled_count);
-        let first = position == 0 || locked;
-        let last = position.saturating_add(1) >= count || locked;
-        let (earlier, later) = (id.clone(), id.clone());
-        div()
-            .flex()
-            .gap_1()
-            .child(
-                button(("mod-earlier", index), ButtonKind::Icon, "↑", first)
-                    .tooltip(tooltip(t!("mods.order.earlier")))
-                    .when(!first, |b| {
-                        b.on_click(cx.listener(move |this, _, _, cx| this.shift(earlier.clone(), Shift::Earlier, cx)))
-                    }),
-            )
-            .child(
-                button(("mod-later", index), ButtonKind::Icon, "↓", last)
-                    .tooltip(tooltip(t!("mods.order.later")))
-                    .when(!last, |b| {
-                        b.on_click(cx.listener(move |this, _, _, cx| this.shift(later.clone(), Shift::Later, cx)))
-                    }),
-            )
     }
 
     fn confirmation(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
@@ -473,33 +448,51 @@ impl ModsTab {
 fn snapshot(mods: &GameMods, account_id: &str, build_id: &str) -> decanter_mods::Result<Loaded> {
     let all = mods.list()?;
     let mut attention = mods.needing_attention(account_id, build_id)?;
-    let enabled = mods.enabled(account_id)?;
+    let slots = mods.load_order(account_id)?;
     let mut conflicts = mods.conflicts(account_id)?;
     let dll = mods.dll_overrides(account_id)?;
     let written_by_game = mods.written_by_game(account_id)?;
-    let names = all
+    let names: HashMap<ModId, String> = all
         .iter()
         .map(|manifest| (manifest.id.clone(), manifest.name.clone()))
         .collect();
-    let order: BTreeMap<&ModId, usize> = enabled.iter().enumerate().map(|(index, id)| (id, index)).collect();
+    let order: HashMap<&ModId, (usize, bool)> = slots
+        .iter()
+        .enumerate()
+        .map(|(index, slot)| (&slot.id, (index, slot.enabled)))
+        .collect();
+    let slot_of = |id: &ModId| order.get(id).map(|&(index, _)| index);
+    let constraints = decanter_mods::constraints(&all);
     let mut rows = Vec::with_capacity(all.len());
     for manifest in all {
         let users = mods.users(&manifest.id)?.len();
+        let position = slot_of(&manifest.id);
+        let unmet = constraints
+            .iter()
+            .filter(|constraint| {
+                constraint.then == manifest.id
+                    && slot_of(&constraint.first)
+                        .zip(position)
+                        .is_some_and(|(first, then)| first > then)
+            })
+            .filter_map(|constraint| names.get(&constraint.first).cloned())
+            .collect();
         rows.push(Row {
-            enabled: order.contains_key(&manifest.id),
-            position: order.get(&manifest.id).copied(),
+            enabled: order.get(&manifest.id).is_some_and(|&(_, enabled)| enabled),
+            position,
             attention: attention.remove(&manifest.id),
             users,
             conflicts: conflicts.remove(&manifest.id),
+            unmet,
             manifest,
         });
     }
-    rows.sort_by_key(|row| order.get(&row.manifest.id).copied().unwrap_or(usize::MAX));
+    rows.sort_by_key(|row| row.position.unwrap_or(usize::MAX));
     Ok(Loaded {
         rows,
         names,
         written_by_game,
-        enabled_count: enabled.len(),
+        slot_count: slots.len(),
         dll,
     })
 }
@@ -678,6 +671,7 @@ impl Render for ModsTab {
         };
         let mod_list = column()
             .children(self.confirmation(cx))
+            .children(self.move_confirmation(cx))
             .child(list)
             .child(theme::muted(t!("mods.order.later_wins")))
             .children(written);
