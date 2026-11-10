@@ -7,6 +7,7 @@ members = [
     "crates/galaxy",
     "crates/gog",
     "crates/mods",
+    "crates/modpack",
     "crates/modio",
     "crates/nexus",
     "crates/nix",
@@ -46,6 +47,7 @@ decanter-epic = { path = "crates/epic" }
 decanter-galaxy = { path = "crates/galaxy" }
 decanter-gog = { path = "crates/gog" }
 decanter-mods = { path = "crates/mods" }
+decanter-modpack = { path = "crates/modpack" }
 decanter-modio = { path = "crates/modio" }
 decanter-nexus = { path = "crates/nexus" }
 decanter-nix = { path = "crates/nix" }

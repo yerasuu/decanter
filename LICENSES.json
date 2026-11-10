@@ -19,6 +19,7 @@
         "crates/galaxy",
         "crates/gog",
         "crates/mods",
+        "crates/modpack",
         "crates/modio",
         "crates/nix",
         "crates/ps",

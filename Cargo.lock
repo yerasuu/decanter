@@ -1551,6 +1551,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "decanter-modpack"
+version = "0.4.0"
+dependencies = [
+ "decanter-mods",
+ "serde",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "uuid",
+]
+
+[[package]]
 name = "decanter-mods"
 version = "0.4.0"
 dependencies = [

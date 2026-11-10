@@ -1,0 +1,20 @@
+[package]
+name = "decanter-modpack"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# Mod packs as docs/mod-packs-and-search-design.md sections 3, 5 and 8 describe them: the format, its
+# validator, the resolver, the diff and the plan. Pure: no network and no provider types, which stay
+# in the app's glue, so the only filesystem access is reading and writing the pack's own files.
+[dependencies]
+decanter-mods.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+toml.workspace = true
+uuid = { workspace = true, features = ["v4"] }
