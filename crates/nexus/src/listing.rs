@@ -5,6 +5,7 @@
 //! search by name, so the app filters what these lists hold and opens any other mod by its number
 //! or page address. A mod that does not hold up is skipped and counted.
 
+use decanter_mods::ModCredits;
 use serde::Deserialize;
 
 use crate::http::Client;
@@ -17,6 +18,7 @@ const MAX_LIST: usize = 200;
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SUMMARY_CHARS: usize = 600;
 const MAX_FIELD_CHARS: usize = 100;
+const MAX_URL: usize = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -56,6 +58,8 @@ pub struct ModInfo {
     /// The mod's own version string, free text the author types.
     pub version: Option<String>,
     pub author: Option<String>,
+    /// As the answer gives it; only [`ModInfo::credits`] reads it, which checks it.
+    pub author_page: Option<String>,
     pub endorsements: u64,
     /// `YYYY-MM-DD`.
     pub updated: Option<String>,
@@ -78,6 +82,8 @@ struct RawMod {
     #[serde(default)]
     author: Option<String>,
     #[serde(default)]
+    uploaded_users_profile_url: Option<String>,
+    #[serde(default)]
     endorsement_count: Option<u64>,
     #[serde(default)]
     updated_time: Option<String>,
@@ -87,6 +93,23 @@ struct RawMod {
     available: Option<bool>,
     #[serde(default)]
     status: Option<String>,
+}
+
+impl ModInfo {
+    /// Who to credit, as far as v1 says: the author, linked to the uploader's profile when the
+    /// answer has one, the mod's page, and the adult flag. v1 has no field the attribution doc
+    /// could confirm for the author's permissions and credits text, so none is kept and the app
+    /// points to the mod's page for them.
+    #[must_use]
+    #[inline]
+    pub fn credits(&self, domain: &GameDomain) -> ModCredits {
+        let mut credits = ModCredits::fetched_now();
+        credits.author.clone_from(&self.author);
+        credits.author_url.clone_from(&self.author_page);
+        credits.page_url = Some(crate::id::mod_home(domain, self.id));
+        credits.is_adult = self.has_adult_content;
+        credits.checked(crate::PLATFORM)
+    }
 }
 
 /// One of `domain`'s lists, as Nexus orders it.
@@ -168,6 +191,12 @@ fn validate(raw: &RawMod) -> Option<ModInfo> {
         picture: raw.picture_url.as_deref().and_then(checked_picture),
         version: field(raw.version.as_deref()),
         author: field(raw.author.as_deref()),
+        author_page: raw
+            .uploaded_users_profile_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty() && url.len() <= MAX_URL)
+            .map(str::to_owned),
         endorsements: raw.endorsement_count.unwrap_or_default(),
         updated: raw.updated_time.as_deref().and_then(date),
         has_adult_content: raw.contains_adult_content.unwrap_or_default(),

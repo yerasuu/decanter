@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use decanter_mods::ModManifest;
+use decanter_mods::{ModCredits, ModManifest};
 
 use crate::id::{Dependency, PackageId, VersionNumber};
 use crate::listing::{Listing, Package, PackageVersion};
@@ -30,6 +30,8 @@ pub struct PlanItem {
     pub version: PackageVersion,
     /// Whether it is there because another package needs it, not because the user chose it.
     pub is_dependency: bool,
+    /// Read from the listing with the version, so its `mod.toml` credits who made it.
+    pub credits: ModCredits,
 }
 
 /// A dependency left out because a version of it is installed already.
@@ -192,7 +194,10 @@ fn order(
     let Some(&number) = chosen.get(id) else {
         return;
     };
-    let Some(version) = listing.get(id).and_then(|package| package.version(number)) else {
+    let Some((package, version)) = listing
+        .get(id)
+        .and_then(|package| Some((package, package.version(number)?)))
+    else {
         return;
     };
     for dependency in &version.dependencies {
@@ -204,5 +209,6 @@ fn order(
         package: id.clone(),
         version: version.clone(),
         is_dependency: true,
+        credits: crate::layout::credits(package, version),
     });
 }

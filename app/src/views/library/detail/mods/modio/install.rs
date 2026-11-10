@@ -231,7 +231,9 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_modio::Result<Re
     work.phase.store(READING, Ordering::Relaxed);
     let origin = Origin::new(game.id, remote.id, file);
     let version = downloaded.file.version.clone();
-    let mod_origin = origin.to_mod_origin(version.as_deref(), &downloaded.host)?;
+    let mod_origin = origin
+        .to_mod_origin(version.as_deref(), &downloaded.host)?
+        .with_credits(remote.credits());
     let path = downloaded.path;
     let reading = Arc::clone(&work);
     let preview = tokio::task::spawn_blocking(move || mods.preview_archive(&path, &reading.progress))

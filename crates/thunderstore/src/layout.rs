@@ -11,10 +11,10 @@
 //! `BepInEx/plugins/<Team-Name>/`. A package that mixes those folders with anything else matches
 //! no rule and is imported as any archive, the preview saying so.
 
-use decanter_mods::{ArchivePreview, ModOrigin, ModPath};
+use decanter_mods::{ArchivePreview, ModCredits, ModOrigin, ModPath};
 
 use crate::id::{DOMAIN, PackageId};
-use crate::listing::PackageVersion;
+use crate::listing::{Package, PackageVersion};
 use crate::settings::Layout;
 use crate::{PLATFORM, Result};
 
@@ -98,7 +98,7 @@ fn placed(target: &str, kind: PlacementKind) -> Result<Placement> {
 }
 
 /// What the mod's `mod.toml` records of where it came from: the package, the version and the
-/// host its download was asked from.
+/// host its download was asked from; the plan's credits are attached by the caller.
 ///
 /// # Errors
 ///
@@ -112,4 +112,31 @@ pub fn origin(package: &PackageId, version: &PackageVersion) -> Result<ModOrigin
         &version.number.to_string(),
         host,
     )?)
+}
+
+/// Who to credit for `version` of `package`.
+///
+/// Its team, linked to the team's page, its page, and the manifest's `website_url`. The package
+/// format has no licence field (attribution doc, section 2), so none is ever given and the app
+/// says the page is where to look.
+#[must_use]
+#[inline]
+pub fn credits(package: &Package, version: &PackageVersion) -> ModCredits {
+    let mut credits = ModCredits::fetched_now();
+    credits.author = Some(package.id.namespace().to_owned());
+    credits.author_url = package
+        .page
+        .as_deref()
+        .and_then(|page| team_page(page, package.id.name()));
+    credits.page_url.clone_from(&package.page);
+    credits.website_url.clone_from(&version.website);
+    credits.is_adult = package.has_nsfw_content;
+    credits.checked(PLATFORM)
+}
+
+/// The team's page, which Thunderstore's package pages sit under (`…/p/<team>/<name>/`).
+fn team_page(page: &str, name: &str) -> Option<String> {
+    let trimmed = page.strip_suffix('/').unwrap_or(page);
+    let parent = trimmed.strip_suffix(name)?.strip_suffix('/')?;
+    parent.contains("/p/").then(|| format!("{parent}/"))
 }

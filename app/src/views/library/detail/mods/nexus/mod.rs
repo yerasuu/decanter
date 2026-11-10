@@ -18,6 +18,7 @@ use gpui::{Context, Div, Entity, ObjectFit, SharedString, div, img, prelude::*, 
 use rust_i18n::t;
 
 use super::ModsTab;
+use super::credits::{self, Platform};
 use crate::i18n::Text;
 use crate::nexus::{account_line, failure_text};
 use crate::theme;
@@ -93,6 +94,10 @@ impl Browser {
 
 impl ModsTab {
     pub(super) fn open_nexus(&mut self, pending: Option<NexusModId>, cx: &mut Context<Self>) {
+        if !self.nexus_experimental {
+            tracing::info!("nexus browser not opened, its experimental switch is off");
+            return;
+        }
         if self.nexus.is_some() {
             if let Some(id) = pending {
                 self.open_mod(id, cx);
@@ -458,7 +463,8 @@ impl ModsTab {
                 )
                 .children(remaining_line())
                 .children(failure)
-                .child(body),
+                .child(body)
+                .child(credits::footer(Platform::Nexus)),
         )
     }
 
@@ -745,7 +751,14 @@ fn result_row(index: usize, info: &ModInfo, cx: &Context<ModsTab>) -> impl IntoE
                 .flex_col()
                 .flex_1()
                 .min_w_0()
-                .child(info.name.clone())
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(info.name.clone())
+                        .child(credits::source(Platform::Nexus)),
+                )
                 .child(theme::muted(summary(&info.summary)).text_size(px(12.5)))
                 .child(theme::muted(stats(info)).text_size(px(12.)))
                 .children(flags(info)),
@@ -855,6 +868,11 @@ fn detail(browser: &Browser, selected: &Selected, locked: bool, cx: &Context<Mod
                     .child(theme::muted(stats(info)).text_size(px(12.)))
                     .children(flags(info)),
             ),
+        )
+        .children(
+            browser
+                .domain()
+                .map(|domain| credits::browsed("nx-credits", Platform::Nexus, info.credits(domain))),
         )
         .child(div().child(info.summary.clone()))
         .children(free_line)

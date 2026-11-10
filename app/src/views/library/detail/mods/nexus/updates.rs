@@ -86,7 +86,9 @@ impl ModsTab {
                             file_id = origin.file_id,
                             version = origin.version
                         )))
-                        .child(
+                        // The check asks Nexus with the personal key, which only the experimental
+                        // switch allows; the mod itself keeps working without it.
+                        .children(self.nexus_experimental.then(|| {
                             button(
                                 ("nx-check-update", index),
                                 ButtonKind::Secondary,
@@ -97,8 +99,8 @@ impl ModsTab {
                                 b.on_click(cx.listener(move |this, _, _, cx| {
                                     this.check_nexus_update(check_id.clone(), check_origin.clone(), cx);
                                 }))
-                            }),
-                        ),
+                            })
+                        })),
                 )
                 .children(result),
         )
@@ -111,6 +113,14 @@ impl ModsTab {
             let checked = tokio::spawn(async move {
                 let client = crate::nexus::client().await?;
                 let list = decanter_nexus::files(&client, &origin.domain, origin.mod_id).await?;
+                // The credits are read again on the same press; failing to only keeps the old ones.
+                let credits = match decanter_nexus::mod_info(&client, &origin.domain, origin.mod_id).await {
+                    Ok(info) => Some(info.credits(&origin.domain)),
+                    Err(err) => {
+                        tracing::warn!(mod_id = %origin.mod_id, %err, "nexus mod not read again for its credits");
+                        None
+                    }
+                };
                 let state = match decanter_nexus::update(&list, origin.file_id) {
                     Update::Newer(file) => {
                         tracing::info!(
@@ -133,12 +143,17 @@ impl ModsTab {
                         UpdateCheck::UpToDate
                     }
                 };
-                Ok::<_, decanter_nexus::Error>(state)
+                Ok::<_, decanter_nexus::Error>((state, credits))
             })
             .await;
             let _ = this.update(cx, |this, cx| {
                 let state = match checked {
-                    Ok(Ok(state)) => state,
+                    Ok(Ok((state, credits))) => {
+                        if let Some(credits) = credits {
+                            this.refresh_credits(id.clone(), credits, cx);
+                        }
+                        state
+                    }
                     Ok(Err(err)) => {
                         tracing::warn!(%err, "nexus update check failed");
                         UpdateCheck::Failed(failure_text(&err))

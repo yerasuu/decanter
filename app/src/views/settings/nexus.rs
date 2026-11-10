@@ -1,13 +1,17 @@
 //! The user's personal Nexus Mods API key in Ajustes › General: saved to the keyring, never shown
 //! back, checked against Nexus only when the user presses *Probar clave*, and forgotten on
 //! *Borrar clave*. decanter has no key of its own (decision #1629).
+//!
+//! All of it sits behind an experimental switch, off by default (decision #1635): Nexus'
+//! acceptable use policy forbids personal API keys in a public application, and decanter's
+//! registration with Nexus is pending. Turning the switch off hides the key, never deletes it.
 
 use decanter_core::secrets::Secret;
 use decanter_nexus::Account;
-use gpui::{Context, Entity, IntoElement, Window, div, prelude::*};
+use gpui::{Context, Entity, IntoElement, Window, div, prelude::*, px};
 use rust_i18n::t;
 
-use super::{column, field_row};
+use super::{checkbox_field, column, field_row};
 use crate::i18n::Text;
 use crate::nexus::{account_line, failure_text};
 use crate::theme;
@@ -18,6 +22,7 @@ use crate::widgets::{ButtonKind, button};
 const KEY_PAGE: &str = "https://www.nexusmods.com/users/myaccount?tab=api";
 
 pub struct NexusSection {
+    is_experimental: bool,
     input: Entity<TextInput>,
     /// `None` while the keyring is read.
     is_saved: Option<bool>,
@@ -50,12 +55,28 @@ impl NexusSection {
         })
         .detach();
         Self {
+            is_experimental: crate::nexus::is_experimental(),
             input,
             is_saved: None,
             busy: false,
             status: None,
             account: None,
         }
+    }
+
+    fn set_experimental(&mut self, is_on: bool, cx: &mut Context<Self>) {
+        match crate::nexus::set_experimental(is_on) {
+            Ok(()) => {
+                self.is_experimental = is_on;
+                self.status = None;
+                self.account = None;
+            }
+            Err(err) => {
+                tracing::warn!(is_on, %err, "nexus experimental switch not saved");
+                self.status = Some(Text::verbatim(err));
+            }
+        }
+        cx.notify();
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
@@ -156,8 +177,18 @@ impl Render for NexusSection {
             Some(false) => t!("mods.nexus.settings.none"),
         };
         let can_use = is_saved && !self.busy;
-        column()
-            .child(theme::h2(t!("mods.nexus.settings.title")))
+        let is_on = self.is_experimental;
+        let switch = column().child(theme::h2(t!("mods.nexus.settings.title"))).child(
+            checkbox_field("nexus-experimental", is_on, t!("mods.credits.nexus.switch"))
+                .on_click(cx.listener(move |this, _, _, cx| this.set_experimental(!is_on, cx))),
+        );
+        if !is_on {
+            return switch
+                .child(theme::muted(t!("mods.credits.nexus.off")).max_w(px(520.)))
+                .children(self.status.as_ref().map(|status| theme::muted(status).mt_2()));
+        }
+        switch
+            .child(theme::muted(t!("mods.credits.nexus.on")).mb_3().max_w(px(520.)))
             .child(theme::muted(t!("mods.nexus.settings.hint")))
             .child(
                 field_row()

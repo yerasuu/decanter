@@ -23,6 +23,39 @@ pub async fn client() -> decanter_nexus::Result<Client> {
     Client::new(key.ok_or(Error::NoKey)?)
 }
 
+/// The settings key of Ajustes' switch that lets the Nexus Mods browser and the key be used.
+const EXPERIMENTAL_SETTING: &str = "nexus_experimental";
+
+/// Whether the user turned Nexus Mods on as an experimental, personal-use feature. Off by default
+/// (decision #1635), because Nexus' acceptable use policy forbids personal API keys in a public
+/// application and decanter's registration with Nexus is still pending. An unreadable setting
+/// reads as off.
+pub fn is_experimental() -> bool {
+    crate::core::db()
+        .inspect_err(|err| tracing::warn!(%err, "could not open the database for the nexus switch"))
+        .ok()
+        .and_then(|db| {
+            db.setting(EXPERIMENTAL_SETTING)
+                .inspect_err(|err| tracing::warn!(%err, "could not read the nexus switch"))
+                .ok()
+                .flatten()
+        })
+        .is_some_and(|value| value == "1")
+}
+
+/// Turning it off keeps the saved key, so turning it on again needs nothing more.
+///
+/// # Errors
+///
+/// When the database can't be opened or written, as text for the settings line.
+pub fn set_experimental(is_on: bool) -> Result<(), String> {
+    let db = crate::core::db().map_err(|err| err.to_string())?;
+    db.set_setting(EXPERIMENTAL_SETTING, if is_on { "1" } else { "0" })
+        .map_err(|err| err.to_string())?;
+    tracing::info!(is_on, "nexus experimental switch changed");
+    Ok(())
+}
+
 /// A failure's line; one Nexus may answer differently later says so.
 pub fn failure_text(err: &Error) -> Text {
     match err {

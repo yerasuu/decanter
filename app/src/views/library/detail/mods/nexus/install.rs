@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use decanter_mods::{ArchivePreview, GameMods, ModPath, Progress};
+use decanter_mods::{ArchivePreview, GameMods, ModCredits, ModPath, Progress};
 use decanter_nexus::{Client, FileId, GameDomain, NexusFile, NexusModId, Staging, Transfer};
 use gpui::{Context, Div, SharedString, div, prelude::*, px};
 use rust_i18n::t;
@@ -78,6 +78,7 @@ struct Request {
     mod_id: NexusModId,
     file: NexusFile,
     name: String,
+    credits: ModCredits,
 }
 
 impl ModsTab {
@@ -100,9 +101,10 @@ impl ModsTab {
         let request = Request {
             client,
             mods,
-            domain,
             mod_id,
             name: selected.info.name.clone(),
+            credits: selected.info.credits(&domain),
+            domain,
             file,
         };
         let work = Arc::new(Work::default());
@@ -237,6 +239,7 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_nexus::Result<Re
         mod_id,
         file,
         name,
+        credits,
     } = request;
     let joined = |err: tokio::task::JoinError| decanter_nexus::Error::Io {
         path: mods.dir().to_path_buf(),
@@ -254,7 +257,7 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_nexus::Result<Re
     let read_mods = mods.clone();
     tokio::task::spawn_blocking(move || -> decanter_nexus::Result<Ready> {
         let preview = read_mods.preview_archive(&downloaded.path, &reader.progress)?;
-        let origin = decanter_nexus::origin(&domain, mod_id, &file, &downloaded.host)?;
+        let origin = decanter_nexus::origin(&domain, mod_id, &file, &downloaded.host)?.with_credits(credits);
         tracing::info!(
             mod_id = %mod_id,
             file_id = %file.id,

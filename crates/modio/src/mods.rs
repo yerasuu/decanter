@@ -7,7 +7,14 @@
 //! them is skipped and counted, and a failure leaves the detail without the list rather than
 //! failing it. Dependencies are shown, never installed on their own: what installing them means is
 //! not documented.
+//!
+//! `credit_options` and `maturity_option` are bit masks; the attribution doc read that bit 1 shows
+//! the credits section and that the rest are redistribution, porting, patching and repackaging
+//! permissions, without their values. The values below are mod.io's mod object reference as
+//! recalled, unverified: each decoded bit only names a permission next to a link to the mod's
+//! page, and an unknown bit is logged and left out rather than guessed.
 
+use decanter_mods::ModCredits;
 use serde::Deserialize;
 
 use crate::files::{ModFile, RawFile};
@@ -28,6 +35,20 @@ const MAX_DEPENDENCIES: &str = "100";
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SUMMARY_CHARS: usize = 500;
 const MAX_QUERY_CHARS: usize = 100;
+/// Bit and token of each `credit_options` permission, the token named by the app.
+const CREDIT_OPTIONS: [(u32, &str); 11] = [
+    (1, "credits"),
+    (2, "original"),
+    (4, "redistribute-credit"),
+    (8, "port-credit"),
+    (16, "patch"),
+    (32, "patch-credit"),
+    (64, "patch-permission"),
+    (128, "repackage"),
+    (256, "repackage-credit"),
+    (512, "repackage-permission"),
+    (1024, "resell"),
+];
 
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -37,6 +58,8 @@ pub struct RemoteMod {
     pub name: String,
     pub summary: String,
     pub author: Option<String>,
+    /// The author's profile, HTTPS on a mod.io host.
+    pub author_page: Option<String>,
     /// HTTPS on a mod.io host.
     pub logo: Option<String>,
     pub page: Option<String>,
@@ -50,6 +73,37 @@ pub struct RemoteMod {
     pub updated: Option<String>,
     /// The file mod.io offers now, the one an install takes.
     pub current: Option<ModFile>,
+    /// `credit_options` as mod.io gives it.
+    pub credit_options: u32,
+    /// `maturity_option`: alcohol, drugs, violence, explicit; 0 when none applies.
+    pub maturity: u32,
+}
+
+impl RemoteMod {
+    /// Who to credit and on what terms: `submitted_by` linked to its profile, the mod's page, the
+    /// decoded `credit_options` and whether any maturity option is set. Unknown bits are logged at
+    /// debug level only, since the browser's detail asks for this every frame.
+    #[must_use]
+    #[inline]
+    pub fn credits(&self) -> ModCredits {
+        let mut credits = ModCredits::fetched_now();
+        credits.author.clone_from(&self.author);
+        credits.author_url.clone_from(&self.author_page);
+        credits.page_url.clone_from(&self.page);
+        credits.permissions = CREDIT_OPTIONS
+            .iter()
+            .filter(|&&(bit, _)| self.credit_options & bit != 0)
+            .map(|&(_, token)| token.to_owned())
+            .collect();
+        let unknown = CREDIT_OPTIONS
+            .iter()
+            .fold(self.credit_options, |left, &(bit, _)| left & !bit);
+        if unknown != 0 {
+            tracing::debug!(mod_id = %self.id, unknown, "modio credit_options bits not known, left out");
+        }
+        credits.is_adult = self.maturity != 0;
+        credits.checked(crate::PLATFORM)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -99,12 +153,20 @@ struct RawMod {
     modfile: Option<RawFile>,
     #[serde(default)]
     stats: Option<RawStats>,
+    #[serde(default)]
+    credit_options: u32,
+    #[serde(default)]
+    maturity_option: u32,
 }
 
 #[derive(Deserialize)]
 struct RawUser {
     #[serde(default)]
     username: Option<String>,
+    #[serde(default)]
+    display_name_portal: Option<String>,
+    #[serde(default)]
+    profile_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -128,7 +190,7 @@ struct RawDependency {
 
 /// A mod whose id and name hold up and that belongs to `game`; a game id the answer leaves out is
 /// taken as the one asked for.
-fn validate(raw: RawMod, game: GameId) -> Option<RemoteMod> {
+fn validate(raw: &RawMod, game: GameId) -> Option<RemoteMod> {
     if raw.game_id != 0 && raw.game_id != game.get() {
         return None;
     }
@@ -146,11 +208,19 @@ fn validate(raw: RawMod, game: GameId) -> Option<RemoteMod> {
             .as_deref()
             .map(|text| display_text(text, MAX_SUMMARY_CHARS))
             .unwrap_or_default(),
-        author: raw
+        author: raw.submitted_by.as_ref().and_then(|user| {
+            [user.display_name_portal.as_deref(), user.username.as_deref()]
+                .into_iter()
+                .flatten()
+                .map(|text| display_text(text, MAX_NAME_CHARS))
+                .find(|text| !text.is_empty())
+        }),
+        author_page: raw
             .submitted_by
-            .and_then(|user| user.username)
-            .map(|text| display_text(&text, MAX_NAME_CHARS))
-            .filter(|text| !text.is_empty()),
+            .as_ref()
+            .and_then(|user| user.profile_url.as_deref())
+            .and_then(checked_url)
+            .map(String::from),
         logo: raw.logo.as_ref().and_then(RawLogo::url),
         page: raw.profile_url.as_deref().and_then(checked_url).map(String::from),
         downloads: counts.map(|stats| stats.downloads_total).unwrap_or_default(),
@@ -165,6 +235,8 @@ fn validate(raw: RawMod, game: GameId) -> Option<RemoteMod> {
         added: date(raw.date_added),
         updated: date(raw.date_updated),
         current: raw.modfile.as_ref().and_then(RawFile::validate),
+        credit_options: raw.credit_options,
+        maturity: raw.maturity_option,
     })
 }
 
@@ -195,7 +267,7 @@ pub async fn search_mods(client: &Client, game: GameId, query: &str, offset: u64
     for value in page.data {
         match serde_json::from_value::<RawMod>(value)
             .ok()
-            .and_then(|raw| validate(raw, game))
+            .and_then(|raw| validate(&raw, game))
         {
             Some(found) => mods.push(found),
             None => skipped = skipped.saturating_add(1),
@@ -226,7 +298,7 @@ pub async fn fetch_mod(client: &Client, game: GameId, id: ModioModId) -> Result<
     let raw: RawMod = client
         .api(&format!("/games/{game}/mods/{id}"), &[], MOD_CALL, MAX_PAGE_BYTES)
         .await?;
-    let found = validate(raw, game).ok_or_else(|| Error::malformed(MOD_CALL, "no id or name"))?;
+    let found = validate(&raw, game).ok_or_else(|| Error::malformed(MOD_CALL, "no id or name"))?;
     if found.id != id {
         return Err(Error::malformed(MOD_CALL, "another mod's record"));
     }

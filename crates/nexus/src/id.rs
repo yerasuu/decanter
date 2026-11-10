@@ -164,6 +164,11 @@ pub fn mod_page(domain: &GameDomain, id: NexusModId) -> String {
     format!("https://{SITE_HOST}/{domain}/mods/{id}?tab=files")
 }
 
+/// The mod's page on the site, as its credits link to it.
+pub(crate) fn mod_home(domain: &GameDomain, id: NexusModId) -> String {
+    format!("https://{SITE_HOST}/{domain}/mods/{id}")
+}
+
 pub(crate) fn api_url(path: &str) -> Option<url::Url> {
     url::Url::parse(&format!("https://{API_HOST}{path}")).ok()
 }

@@ -82,6 +82,9 @@ pub struct PackageVersion {
     pub file_size: Option<u64>,
     /// HTTPS on a Thunderstore host.
     pub download_url: url::Url,
+    /// The manifest's `website_url`, which the author may point anywhere; checked as a credit
+    /// link before it is shown.
+    pub website: Option<String>,
 }
 
 /// A community's packages, as read from its listing.
@@ -335,6 +338,8 @@ struct RawVersion {
     file_size: Option<u64>,
     #[serde(default)]
     is_active: Option<bool>,
+    #[serde(default)]
+    website_url: Option<String>,
 }
 
 /// A package whose name and at least one version hold up; its other versions that don't are
@@ -410,6 +415,12 @@ fn version(raw: &RawVersion) -> Option<(PackageVersion, String, Option<String>)>
             created: raw.date_created.as_deref().and_then(date),
             file_size: raw.file_size,
             download_url,
+            website: raw
+                .website_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|url| !url.is_empty())
+                .map(str::to_owned),
         },
         description,
         icon,

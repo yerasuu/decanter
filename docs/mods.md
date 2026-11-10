@@ -115,6 +115,7 @@ a 429 holds every request back for its `retry-after` (60 s when 0 or missing), a
   mod, and offers the file mod.io now calls current when it is another one.
 ## Nexus Mods
 
+Off by default, behind Ajustes' experimental switch (see Credits and attribution).
 *Añadir desde Nexus Mods…* opens a browser in the tab (`crates/nexus`, `mods/nexus/` in the app;
 [mod-platforms-analysis.md](mod-platforms-analysis.md) section 1). decanter registers no application and ships no key
 (decision #1629): each user pastes a personal API key in Ajustes › General, kept in the OS keyring
@@ -144,6 +145,37 @@ asks `/v1/users/validate.json` and shows the account and whether it is Premium. 
   header names, the premium flag's spelling, the download link's shape and CDN hosts, and whether `files.json`
   carries `md5` and `size_in_bytes`. Each is optional when read; a mod or file that does not parse is skipped and
   counted in the log, an answer that does not parse at all is a retryable error.
+
+## Credits and attribution
+
+What each platform asks of decanter, with its source, is in
+[mod-platforms-attribution.md](mod-platforms-attribution.md) (rows marked unverified follow the conservative reading;
+every text is in `app/locales/<lang>/mods_credits.<lang>.yml`, so wording can change).
+
+- `mod.toml` `[origin]` also keeps the credits (`decanter_mods::ModCredits`), filled at install and refreshed by
+  *Buscar actualizaciones*: `author`, `author_url`, `page_url`, `website_url`, `licence`, `permissions`, `adult` and
+  `fetched_at`. Older files without them still read; the mod then shows its platform and says the credits come with
+  the next update check. Texts are plain and bounded; `author_url` and `page_url` must be HTTPS without credentials
+  or port on the platform's own hosts (`thunderstore.io`, `mod.io`, `nexusmods.com` and their subdomains),
+  `website_url` HTTPS on any host; a link that fails is left out when attached and refuses the file when read.
+- Thunderstore: the team, linked to its page under the package's page, the package page and the manifest's
+  `website_url`; the package format has no licence, so the line says it is not stated and points to the page.
+- mod.io: `submitted_by` (`display_name_portal`, else `username`) linked to its `profile_url`, the mod's
+  `profile_url`, `credit_options` decoded to permission tokens (bit values recalled, not read in the reference;
+  unknown bits are left out) and `maturity_option` (any bit set) as the adult flag.
+- Nexus Mods: `author`, `uploaded_users_profile_url` when given, the mod's page and `contains_adult_content`; v1 gives
+  no permissions text the analysis could confirm, so the line points to the mod's page. The detail and each
+  installed Nexus mod acknowledge Nexus Mods and the mod's authors as the authors of the content (ToS s.10).
+- The Mods tab: each card and detail names its platform as text (no logos: none was cleared, and for Nexus one could
+  suggest association, ToS s.27), *por <autor>* linked to the profile, *Ver en <plataforma>* (installed mods; the
+  browsers keep their page button), the licence or permissions line and an adult badge; each browser ends with a
+  line saying the mods are their authors' and decanter is not affiliated with or endorsed by the platform. Ajustes ›
+  mod.io links its Terms of Use and Privacy Policy beside the key.
+- Nexus Mods is off by default behind *Usar Nexus Mods (experimental, solo para uso personal)* in Ajustes › General
+  (settings key `nexus_experimental`, decision #1635), since the acceptable use policy forbids personal API keys in a
+  public application and decanter's registration is pending. Off hides the key section, the *Añadir desde Nexus
+  Mods…* button and the Nexus update check; the saved key stays in the keyring and Nexus mods keep working and
+  showing their credits. Both Nexus clients send `Application-Name: decanter` and `Application-Version`.
 
 ## Where things are
 

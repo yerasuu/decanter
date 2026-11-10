@@ -1,6 +1,8 @@
 //! *Buscar actualizaciones* on a mod that came from Thunderstore: its `mod.toml` origin against
 //! the latest version in the game's community listing, asked only when the user presses it.
 
+use std::sync::Arc;
+
 use decanter_mods::{ModId, ModOrigin};
 use decanter_thunderstore::{Client, GameSettings, PackageId, Refresh, VersionNumber};
 use gpui::{Context, Div, div, prelude::*, px};
@@ -139,17 +141,29 @@ impl ModsTab {
         cx.notify();
         cx.spawn(async move |this, cx| {
             let checked = tokio::spawn(async move {
-                let latest = match open {
-                    Some(listing) => listing.get(&package).map(|found| found.latest.number),
-                    None => decanter_thunderstore::listing(&client, &cache, &settings.community, Refresh::IfStale)
-                        .await?
-                        .get(&package)
-                        .map(|found| found.latest.number),
+                let listing = match open {
+                    Some(listing) => listing,
+                    None => Arc::new(
+                        decanter_thunderstore::listing(&client, &cache, &settings.community, Refresh::IfStale).await?,
+                    ),
                 };
-                Ok::<_, decanter_thunderstore::Error>(latest)
+                // The credits are those of the installed version while the listing still has it.
+                let found = listing.get(&package).map(|found| {
+                    let credited = found.version(version).unwrap_or(&found.latest);
+                    (found.latest.number, decanter_thunderstore::credits(found, credited))
+                });
+                Ok::<_, decanter_thunderstore::Error>(found)
             })
             .await;
             let _ = this.update(cx, |this, cx| {
+                let checked = checked.map(|read| {
+                    read.map(|found| {
+                        found.map(|(latest, credits)| {
+                            this.refresh_credits(id.clone(), credits, cx);
+                            latest
+                        })
+                    })
+                });
                 let state = match checked {
                     Ok(Ok(Some(latest))) if latest > version => {
                         tracing::info!(mod_id = %id, installed = %version, latest = %latest, "thunderstore update available");

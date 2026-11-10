@@ -3,7 +3,7 @@
 //! whose own record still allows third-party access.
 
 use decanter_modio::{FileId, Origin};
-use decanter_mods::{ModId, ModOrigin};
+use decanter_mods::{ModCredits, ModId, ModOrigin};
 use gpui::{Context, Div, div, prelude::*, px};
 use rust_i18n::t;
 
@@ -109,6 +109,10 @@ impl ModsTab {
                 .await
                 .unwrap_or_else(|err| Err(Text::verbatim(err)));
             let _ = this.update(cx, |this, cx| {
+                let checked = checked.map(|(current, credits)| {
+                    this.refresh_credits(id.clone(), credits, cx);
+                    current
+                });
                 let state = match checked {
                     // mod.io documents no order between files, so any other current file is offered,
                     // a rollback by the author included.
@@ -138,8 +142,8 @@ impl ModsTab {
 }
 
 /// The file mod.io offers now for the mod `origin` names, once the game's record still allows
-/// third-party access.
-async fn current_file(origin: Origin) -> Result<Option<(FileId, Option<String>)>, Text> {
+/// third-party access, and who the same answer credits.
+async fn current_file(origin: Origin) -> Result<(Option<(FileId, Option<String>)>, ModCredits), Text> {
     let client = tokio::task::spawn_blocking(crate::modio::client)
         .await
         .unwrap_or_else(|err| Err(Text::verbatim(err)))?;
@@ -149,5 +153,6 @@ async fn current_file(origin: Origin) -> Result<Option<(FileId, Option<String>)>
     let remote = decanter_modio::fetch_mod(&client, origin.game, origin.mod_id)
         .await
         .map_err(failure)?;
-    Ok(remote.current.map(|file| (file.id, file.version)))
+    let credits = remote.credits();
+    Ok((remote.current.map(|file| (file.id, file.version)), credits))
 }

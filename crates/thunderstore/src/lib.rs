@@ -70,7 +70,7 @@ pub use download::{Downloaded, Staging, Transfer, download, download_plan};
 pub use error::Error;
 pub use http::Client;
 pub use id::{CommunityId, Dependency, PackageId, VersionNumber};
-pub use layout::{LEAVE_OUT, Placement, PlacementKind, origin, place};
+pub use layout::{LEAVE_OUT, Placement, PlacementKind, credits, origin, place};
 pub use listing::{Listing, Package, PackageVersion, listing};
 pub use resolve::{Installed, Plan, PlanItem, Skipped, installed, plan};
 pub use settings::{GameSettings, Layout};

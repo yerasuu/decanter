@@ -6,6 +6,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::credits::ModCredits;
 use crate::dll::{DllMode, DllOverride};
 use crate::path::{ModId, ModPath};
 use crate::{Error, MAX_MOD_BYTES, MAX_MOD_FILES, Result, files};
@@ -39,7 +40,7 @@ pub struct ModManifest {
 }
 
 /// Where a downloaded mod came from, so that an update check can ask its platform for a newer
-/// version. Every field is a short token, since each came from a platform's answer.
+/// version. Every field but the credits is a short token, since each came from a platform's answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ModOrigin {
@@ -50,6 +51,8 @@ pub struct ModOrigin {
     pub version: String,
     /// The host the archive was asked from.
     pub host: String,
+    /// `None` for a mod installed before decanter kept them.
+    pub credits: Option<ModCredits>,
 }
 
 impl ModOrigin {
@@ -69,7 +72,17 @@ impl ModOrigin {
             package: package.to_owned(),
             version: version.to_owned(),
             host: host.to_owned(),
+            credits: None,
         })
+    }
+
+    /// The origin crediting `credits`, whose texts are made plain and whose links and tokens this
+    /// platform may not carry are left out.
+    #[must_use]
+    #[inline]
+    pub fn with_credits(mut self, credits: ModCredits) -> Self {
+        self.credits = Some(credits.checked(&self.platform));
+        self
     }
 }
 
@@ -116,6 +129,74 @@ struct RawOrigin {
     package: String,
     version: String,
     host: String,
+    /// Present exactly when the origin has credits, which older files lack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fetched_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    author: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    author_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    page_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    website_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    licence: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    permissions: Vec<String>,
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    adult: bool,
+}
+
+impl RawOrigin {
+    fn new(origin: &ModOrigin) -> Self {
+        let credits = origin.credits.as_ref();
+        Self {
+            platform: origin.platform.clone(),
+            package: origin.package.clone(),
+            version: origin.version.clone(),
+            host: origin.host.clone(),
+            fetched_at: credits.map(|credits| credits.fetched_at),
+            author: credits.and_then(|credits| credits.author.clone()),
+            author_url: credits.and_then(|credits| credits.author_url.clone()),
+            page_url: credits.and_then(|credits| credits.page_url.clone()),
+            website_url: credits.and_then(|credits| credits.website_url.clone()),
+            licence: credits.and_then(|credits| credits.licence.clone()),
+            permissions: credits.map(|credits| credits.permissions.clone()).unwrap_or_default(),
+            adult: credits.is_some_and(|credits| credits.is_adult),
+        }
+    }
+
+    fn validate(self, bad: &dyn Fn(&str) -> Error) -> Result<ModOrigin> {
+        let mut origin = ModOrigin::new(&self.platform, &self.package, &self.version, &self.host)?;
+        let Some(fetched_at) = self.fetched_at else {
+            let has_credits = self.author.is_some()
+                || self.author_url.is_some()
+                || self.page_url.is_some()
+                || self.website_url.is_some()
+                || self.licence.is_some()
+                || !self.permissions.is_empty()
+                || self.adult;
+            return if has_credits {
+                Err(bad("origin credits without fetched_at"))
+            } else {
+                Ok(origin)
+            };
+        };
+        let credits = ModCredits {
+            author: self.author,
+            author_url: self.author_url,
+            page_url: self.page_url,
+            website_url: self.website_url,
+            licence: self.licence,
+            permissions: self.permissions,
+            is_adult: self.adult,
+            fetched_at,
+        };
+        credits.check(&origin.platform).map_err(bad)?;
+        origin.credits = Some(credits);
+        Ok(origin)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -187,12 +268,7 @@ impl ModManifest {
                     mode: wanted.mode.as_str().to_owned(),
                 })
                 .collect(),
-            origin: self.origin.as_ref().map(|origin| RawOrigin {
-                platform: origin.platform.clone(),
-                package: origin.package.clone(),
-                version: origin.version.clone(),
-                host: origin.host.clone(),
-            }),
+            origin: self.origin.as_ref().map(RawOrigin::new),
         };
         files::write(&dir.join(MANIFEST), &raw)
     }
@@ -247,10 +323,7 @@ impl ModManifest {
             }
             dll_overrides.push(wanted);
         }
-        let origin = raw
-            .origin
-            .map(|origin| ModOrigin::new(&origin.platform, &origin.package, &origin.version, &origin.host))
-            .transpose()?;
+        let origin = raw.origin.map(|origin| origin.validate(&bad)).transpose()?;
         Ok(Self {
             id: id.clone(),
             name,

@@ -36,6 +36,13 @@ const USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (+https://github.com/yerasuu/decanter; personal API key)"
 );
+fn application_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert("Application-Name", HeaderValue::from_static(APPLICATION_NAME));
+    headers.insert("Application-Version", HeaderValue::from_static(APPLICATION_VERSION));
+    headers
+}
+
 /// No count seen yet.
 const UNKNOWN: u64 = u64::MAX;
 
@@ -84,9 +91,7 @@ impl Client {
         if key.expose().trim().is_empty() {
             return Err(Error::NoKey);
         }
-        let mut headers = HeaderMap::new();
-        headers.insert("Application-Name", HeaderValue::from_static(APPLICATION_NAME));
-        headers.insert("Application-Version", HeaderValue::from_static(APPLICATION_VERSION));
+        let mut headers = application_headers();
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         let api = builder()
             .default_headers(headers)
@@ -96,7 +101,10 @@ impl Client {
             ))
             .build()
             .map_err(Error::Setup)?;
+        // Downloads name decanter too, since the policy counts blank request metadata against an
+        // application wherever its requests go.
         let download = builder()
+            .default_headers(application_headers())
             .redirect(policy(is_download_host, "redirected off Nexus' download hosts"))
             .build()
             .map_err(Error::Setup)?;

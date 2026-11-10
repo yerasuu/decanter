@@ -284,7 +284,7 @@ fn read_all(
         work.current.store(index, Ordering::Relaxed);
         let preview = mods.preview_package(&file.path, &work.progress, &LEAVE_OUT)?;
         let placement = decanter_thunderstore::place(&preview, layout, &item.package)?;
-        let origin = decanter_thunderstore::origin(&item.package, &item.version)?;
+        let origin = decanter_thunderstore::origin(&item.package, &item.version)?.with_credits(item.credits);
         tracing::info!(
             package = %item.package,
             version = %item.version.number,

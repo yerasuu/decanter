@@ -17,6 +17,7 @@ use gpui::{Context, Div, Entity, ObjectFit, div, img, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::ModsTab;
+use super::credits::{self, Platform};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
@@ -26,9 +27,6 @@ pub(super) use install::Install;
 pub(super) use updates::UpdateCheck;
 
 const SUMMARY_CHARS: usize = 140;
-/// mod.io's own pages, the analysis' links for the terms dialog.
-const TERMS_PAGE: &str = "https://mod.io/legal/terms";
-const PRIVACY_PAGE: &str = "https://mod.io/legal/privacy";
 
 pub(super) struct Browser {
     client: Option<Client>,
@@ -538,7 +536,9 @@ impl ModsTab {
                             button("modio-retry", ButtonKind::Secondary, t!("mods.modio.retry"), false)
                                 .on_click(cx.listener(move |this, _, _, cx| this.modio_retry(retry, cx)))
                         }))
-                        .when(failure.is_terms, |row| row.child(legal_links(TERMS_PAGE, PRIVACY_PAGE))),
+                        .when(failure.is_terms, |row| {
+                            row.child(legal_links(decanter_modio::TERMS_PAGE, decanter_modio::PRIVACY_PAGE))
+                        }),
                 )
         });
         Some(
@@ -549,7 +549,8 @@ impl ModsTab {
                 .child(header(browser, cx))
                 .child(theme::muted(t!("mods.modio.note")))
                 .children(failure)
-                .child(body),
+                .child(body)
+                .child(credits::footer(Platform::Modio)),
         )
     }
 
@@ -899,9 +900,12 @@ fn result_row(index: usize, remote: &RemoteMod, cx: &Context<ModsTab>) -> impl I
                 .child(
                     div()
                         .flex()
+                        .items_center()
                         .gap_2()
                         .child(remote.name.clone())
-                        .child(theme::muted(by_line(remote))),
+                        .child(theme::muted(by_line(remote)))
+                        .child(credits::source(Platform::Modio))
+                        .children((remote.maturity != 0).then(credits::adult_badge)),
                 )
                 .child(theme::muted(summary(&remote.summary)).text_size(px(12.5)))
                 .child(theme::muted(stats(remote)).text_size(px(12.))),
@@ -1052,6 +1056,7 @@ fn detail_panel(selected: &Selected, locked: bool, cx: &Context<ModsTab>) -> Div
                     ),
             ),
         )
+        .child(credits::browsed("modio-credits", Platform::Modio, remote.credits()))
         .child(div().child(remote.summary.clone()))
         .child(files_block)
         .child(dependencies)

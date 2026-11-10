@@ -8,6 +8,7 @@
 
 mod archive;
 mod attention;
+mod credits;
 mod dll;
 mod modio;
 mod nexus;
@@ -108,6 +109,8 @@ pub(super) struct ModsTab {
     nexus: Option<NexusBrowser>,
     /// Per mod from Nexus Mods, its last update check, only ever asked by its button.
     nexus_updates: HashMap<ModId, nexus::UpdateCheck>,
+    /// Ajustes' experimental switch for Nexus Mods (decision #1635), read at every reload.
+    nexus_experimental: bool,
     error: Option<Text>,
 }
 
@@ -151,6 +154,7 @@ impl ModsTab {
             modio_updates: HashMap::new(),
             nexus: None,
             nexus_updates: HashMap::new(),
+            nexus_experimental: false,
             error: None,
         };
         this.reload(cx);
@@ -178,6 +182,12 @@ impl ModsTab {
         self.mods = installed.as_ref().and_then(crate::mods::for_game);
         let build_id = installed.map(|game| game.build_id).unwrap_or_default();
         self.running = crate::launch::is_running(&account_id, &self.target.product_id);
+        self.nexus_experimental = crate::nexus::is_experimental();
+        if !self.nexus_experimental
+            && let Some(browser) = self.nexus.take()
+        {
+            browser.discard();
+        }
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -416,6 +426,7 @@ impl ModsTab {
             .children(self.dll_block(index, row, locked, cx))
             .children(self.attention_block(index, row, locked, cx))
             .child(self.verify_block(index, row, locked, cx))
+            .children(Self::credits_block(index, row.manifest.origin.as_ref()))
             .children(self.origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.modio_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
             .children(self.nexus_origin_block(index, &row.manifest.id, row.manifest.origin.as_ref(), locked, cx))
@@ -602,7 +613,7 @@ impl Render for ModsTab {
                     b.on_click(cx.listener(|this, _, _, cx| this.open_modio(None, cx)))
                 }),
             )
-            .child(
+            .children(self.nexus_experimental.then(|| {
                 button(
                     "mod-add-nexus",
                     ButtonKind::Secondary,
@@ -611,8 +622,8 @@ impl Render for ModsTab {
                 )
                 .when(!locked && self.nexus.is_none(), |b| {
                     b.on_click(cx.listener(|this, _, _, cx| this.open_nexus(None, cx)))
-                }),
-            )
+                })
+            }))
             .children(self.running.then(|| theme::muted(t!("library.detail.mods.running"))));
 
         let list = match &self.loaded {

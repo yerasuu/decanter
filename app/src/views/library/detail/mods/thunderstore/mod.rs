@@ -16,6 +16,7 @@ use gpui::{Context, Div, Entity, ObjectFit, SharedString, div, img, prelude::*, 
 use rust_i18n::t;
 
 use super::ModsTab;
+use super::credits::{self, Platform};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
@@ -362,7 +363,8 @@ impl ModsTab {
                 .child(header(browser, working, cx))
                 .child(theme::muted(t!("mods.thunderstore.note")))
                 .children(failure)
-                .child(body),
+                .child(body)
+                .child(credits::footer(Platform::Thunderstore)),
         )
     }
 
@@ -640,13 +642,15 @@ fn result_row(index: usize, package: &Package, cx: &Context<ModsTab>) -> impl In
                 .child(
                     div()
                         .flex()
+                        .items_center()
                         .gap_2()
                         .child(package.id.display_name())
                         .child(theme::muted(t!(
                             "mods.thunderstore.by",
                             team = package.id.namespace(),
                             version = package.latest.number
-                        ))),
+                        )))
+                        .child(credits::source(Platform::Thunderstore)),
                 )
                 .child(theme::muted(summary(&package.description)).text_size(px(12.5)))
                 .child(theme::muted(stats(package)).text_size(px(12.)))
@@ -701,6 +705,11 @@ fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
                     .children(flags(package)),
             ),
         )
+        .child(credits::browsed(
+            "ts-credits",
+            Platform::Thunderstore,
+            decanter_thunderstore::credits(package, latest),
+        ))
         .child(div().child(package.description.clone()))
         .child(theme::muted(t!("mods.thunderstore.download_size", size = size)))
         .child(dependencies)

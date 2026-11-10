@@ -166,19 +166,38 @@ impl Render for ModioKeySection {
                     .max_w(px(520.)),
             )
             .child(
-                div().flex().mb(px(12.)).child(
-                    button(
-                        "modio-key-page",
-                        ButtonKind::Secondary,
-                        t!("mods.modio.key.open_page"),
-                        false,
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .mb(px(12.))
+                    .child(
+                        button(
+                            "modio-key-page",
+                            ButtonKind::Secondary,
+                            t!("mods.modio.key.open_page"),
+                            false,
+                        )
+                        .on_click(|_, _, _| open_page(decanter_modio::KEY_PAGE)),
                     )
-                    .on_click(|_, _, _| {
-                        if let Err(err) = crate::desktop::open(decanter_modio::KEY_PAGE) {
-                            tracing::warn!(%err, "could not open mod.io's key page");
-                        }
-                    }),
-                ),
+                    .child(
+                        button(
+                            "modio-key-terms",
+                            ButtonKind::Secondary,
+                            t!("mods.credits.modio.terms"),
+                            false,
+                        )
+                        .on_click(|_, _, _| open_page(decanter_modio::TERMS_PAGE)),
+                    )
+                    .child(
+                        button(
+                            "modio-key-privacy",
+                            ButtonKind::Secondary,
+                            t!("mods.credits.modio.privacy"),
+                            false,
+                        )
+                        .on_click(|_, _, _| open_page(decanter_modio::PRIVACY_PAGE)),
+                    ),
             )
             .child(theme::muted(state).mb_2())
             .child(
@@ -216,5 +235,11 @@ impl Render for ModioKeySection {
                     ),
             )
             .children(status)
+    }
+}
+
+fn open_page(url: &str) {
+    if let Err(err) = crate::desktop::open(url) {
+        tracing::warn!(%err, "could not open a mod.io page");
     }
 }

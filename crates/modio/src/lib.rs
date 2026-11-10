@@ -75,7 +75,7 @@ pub use http::{Client, is_key_shaped};
 pub use id::{FileId, GameId, ModioModId};
 pub use mods::{Dependency, Detail, ModsPage, PAGE_SIZE, RemoteMod, detail, fetch_mod, search_mods};
 pub use settings::GameSettings;
-pub use terms::{Terms, agreed, forget_agreement, record_agreement, terms};
+pub use terms::{PRIVACY_PAGE, TERMS_PAGE, Terms, agreed, forget_agreement, record_agreement, terms};
 
 /// Which platform a mod's `mod.toml` origin names.
 pub const PLATFORM: &str = "modio";

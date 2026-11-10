@@ -27,9 +27,10 @@ const MAX_BYTES: u64 = 1 << 20;
 const MAX_FILE_BYTES: u64 = 4 << 10;
 const MAX_TEXT_CHARS: usize = 20_000;
 const MAX_BUTTON_CHARS: usize = 60;
-/// The pages the analysis names; used when the answer does not give its own.
-const TERMS_PAGE: &str = "https://mod.io/legal/terms";
-const PRIVACY_PAGE: &str = "https://mod.io/legal/privacy";
+/// The pages the analysis names; used when the answer does not give its own, and linked from
+/// Ajustes beside the key.
+pub const TERMS_PAGE: &str = "https://mod.io/legal/terms";
+pub const PRIVACY_PAGE: &str = "https://mod.io/legal/privacy";
 
 #[derive(Debug, Clone)]
 #[non_exhaustive]

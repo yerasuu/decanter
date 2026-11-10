@@ -61,6 +61,7 @@
 
 mod archive;
 mod base;
+mod credits;
 mod dll;
 mod error;
 mod files;
@@ -75,6 +76,7 @@ mod set;
 mod tree;
 
 pub use archive::{ArchiveFormat, ArchivePreview};
+pub use credits::ModCredits;
 pub use dll::{DllMode, DllOverride, EffectiveOverride};
 pub use error::Error;
 pub use game::{GameMods, ModConflicts, Store};
