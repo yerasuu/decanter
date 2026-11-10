@@ -9,6 +9,8 @@ mod edit;
 mod remove;
 mod run;
 
+pub(super) use edit::change_lines;
+
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -214,7 +216,7 @@ impl ModsTab {
         let own_lock = locked || packs.naming.is_some() || packs.pending_move.is_some() || packs.removal.is_some();
         let selected = packs.open.as_ref().map(|open| &open.pack.id);
         let right = if let Some(apply) = packs.apply.as_ref() {
-            Self::apply_panel(apply, locked, cx)
+            Self::apply_panel(apply, self.enables_on_install(), locked, cx)
         } else if let Some(open) = packs.open.as_ref() {
             self.editor(open, own_lock, cx)
         } else {

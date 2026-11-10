@@ -25,6 +25,7 @@ use rust_i18n::t;
 use super::ModsTab;
 use super::credits::{self, Platform};
 use super::search::{self, Provider, ResultItem};
+use super::toggles::{self, Installed};
 use crate::i18n::Text;
 use crate::nexus::{account_line, failure_text};
 use crate::theme;
@@ -481,9 +482,15 @@ impl ModsTab {
             self.game_picker(browser, cx)
         } else {
             let chosen = if let Some(install) = browser.install.as_ref() {
-                install::panel(install, cx)
+                install::panel(install, self.enables_on_install(), cx)
             } else if let Some(selected) = browser.selected.as_ref() {
-                detail(browser, selected, locked, cx)
+                detail(
+                    browser,
+                    selected,
+                    self.nexus_installed(browser, selected.info.id),
+                    locked,
+                    cx,
+                )
             } else {
                 search::nothing_chosen()
             };
@@ -641,12 +648,7 @@ impl ModsTab {
         cx: &Context<Self>,
     ) -> impl IntoElement + use<> {
         let id = info.id;
-        let installed = browser.domain().and_then(|domain| {
-            let origin = self.installed_origin(|origin| {
-                matches!(NexusOrigin::read(origin), Ok(Some(found)) if found.domain == *domain && found.mod_id == id)
-            })?;
-            Some(origin.version.clone())
-        });
+        let installed = self.nexus_installed(browser, id);
         search::result_row(
             ("nx-result", index),
             ResultItem {
@@ -662,6 +664,15 @@ impl ModsTab {
             },
             move |this, cx| this.open_mod(id, cx),
             cx,
+        )
+    }
+
+    /// The mod `id` the game has from Nexus Mods, if any.
+    fn nexus_installed(&self, browser: &Browser, id: NexusModId) -> Option<Installed> {
+        let domain = browser.domain()?;
+        self.installed_mod(
+            |origin| matches!(NexusOrigin::read(origin), Ok(Some(found)) if found.domain == *domain && found.mod_id == id),
+            |origin| origin.version.clone(),
         )
     }
 
@@ -906,7 +917,13 @@ fn file_row(
         }))
 }
 
-fn detail(browser: &Browser, selected: &Selected, locked: bool, cx: &Context<ModsTab>) -> Div {
+fn detail(
+    browser: &Browser,
+    selected: &Selected,
+    installed: Option<Installed>,
+    locked: bool,
+    cx: &Context<ModsTab>,
+) -> Div {
     let info = &selected.info;
     let page = browser.domain().map(|domain| decanter_nexus::mod_page(domain, info.id));
     let free_line = (!browser.is_premium()).then(|| div().child(t!("mods.nexus.free_account")));
@@ -938,6 +955,7 @@ fn detail(browser: &Browser, selected: &Selected, locked: bool, cx: &Context<Mod
                 .domain()
                 .map(|domain| credits::browsed("nx-credits", Platform::Nexus, info.credits(domain))),
         )
+        .children(installed.map(|installed| toggles::installed_controls(0, &installed, cx)))
         .child(div().child(info.summary.clone()))
         .children(free_line)
         .child(theme::muted(t!("mods.nexus.files", count = selected.files.files.len())))

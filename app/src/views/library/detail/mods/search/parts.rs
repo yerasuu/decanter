@@ -6,6 +6,7 @@ use rust_i18n::t;
 
 use super::super::ModsTab;
 use super::super::credits::{self, Platform};
+use super::super::toggles::{Installed, installed_controls};
 use crate::i18n::Text;
 use crate::theme;
 use crate::widgets::{ButtonKind, Select, button, checkbox};
@@ -50,8 +51,8 @@ pub(in crate::views::library::detail::mods) struct ResultItem<'item> {
     pub(in crate::views::library::detail::mods) flags: Vec<String>,
     pub(in crate::views::library::detail::mods) platform: Platform,
     pub(in crate::views::library::detail::mods) is_adult: bool,
-    /// The version of it the game already has.
-    pub(in crate::views::library::detail::mods) installed: Option<String>,
+    /// The mod of it the game already has.
+    pub(in crate::views::library::detail::mods) installed: Option<Installed>,
 }
 
 pub(in crate::views::library::detail::mods) fn result_row(
@@ -87,9 +88,15 @@ pub(in crate::views::library::detail::mods) fn result_row(
                         .child(credits::source(item.platform))
                         .children(item.is_adult.then(credits::adult_badge))
                         .children(
-                            item.installed
-                                .map(|version| theme::muted(t!("mods.search.installed", version = version))),
+                            item.installed.as_ref().map(|installed| {
+                                theme::muted(t!("mods.search.installed", version = installed.version))
+                            }),
                         ),
+                )
+                .children(
+                    item.installed
+                        .as_ref()
+                        .map(|installed| installed_controls(id.1, installed, cx)),
                 )
                 .child(theme::muted(item.summary).text_size(px(12.5)))
                 .child(theme::muted(item.stats).text_size(px(12.)))

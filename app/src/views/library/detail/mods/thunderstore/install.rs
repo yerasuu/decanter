@@ -20,6 +20,7 @@ use super::{ModsTab, failure_text};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::replace::Replacement;
+use crate::views::library::detail::mods::toggles::{install_choice, install_label};
 use crate::widgets::{ButtonKind, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -157,6 +158,7 @@ impl ModsTab {
     }
 
     fn add_packages(&mut self, cx: &mut Context<Self>) {
+        let enabled = self.enables_on_install();
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -174,7 +176,8 @@ impl ModsTab {
         Self::follow_install(cx);
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let added = tokio::task::spawn_blocking(move || import_all(&mods, ready, &account_id, &work)).await;
+            let added =
+                tokio::task::spawn_blocking(move || import_all(&mods, ready, &account_id, enabled, &work)).await;
             let _ = this.update(cx, |this, cx| {
                 if let Some(browser) = this.thunderstore.as_mut() {
                     browser.install = None;
@@ -225,10 +228,10 @@ impl ModsTab {
     }
 }
 
-pub(super) fn panel(install: &Install, cx: &Context<ModsTab>) -> Div {
+pub(super) fn panel(install: &Install, enable_on_install: bool, cx: &Context<ModsTab>) -> Div {
     match install {
         Install::Working(work) => working_panel(work, cx),
-        Install::Ready(ready) => ready_panel(ready, cx),
+        Install::Ready(ready) => ready_panel(ready, enable_on_install, cx),
     }
 }
 
@@ -348,7 +351,7 @@ fn older_version(
 
 /// Each package in turn, skipping one the game already has from the same archive; a failure
 /// stops there, leaving the ones before it added, since each is a whole mod of its own.
-fn import_all(mods: &GameMods, ready: Ready, account_id: &str, work: &Work) -> Added {
+fn import_all(mods: &GameMods, ready: Ready, account_id: &str, enabled: bool, work: &Work) -> Added {
     let mut added = Added {
         new: 0,
         duplicates: 0,
@@ -361,7 +364,7 @@ fn import_all(mods: &GameMods, ready: Ready, account_id: &str, work: &Work) -> A
             added.duplicates = added.duplicates.saturating_add(1);
             continue;
         }
-        if let Err(err) = import_one(mods, item, account_id, work, ready.keep_previous) {
+        if let Err(err) = import_one(mods, item, account_id, enabled, work, ready.keep_previous) {
             tracing::warn!(package = %item.package, %err, "thunderstore package not added in full");
             added.failure = Some(err);
             break;
@@ -383,6 +386,7 @@ fn import_one(
     mods: &GameMods,
     item: &ReadyItem,
     account_id: &str,
+    enabled: bool,
     work: &Work,
     keep_previous: bool,
 ) -> decanter_mods::Result<()> {
@@ -392,6 +396,7 @@ fn import_one(
         &name,
         item.placement.target.clone(),
         account_id,
+        enabled,
         &work.progress,
     )?;
     match item.replaces.as_ref() {
@@ -491,7 +496,7 @@ fn replacement(ready: &Ready, item: &ReadyItem, cx: &Context<ModsTab>) -> Option
     )
 }
 
-fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
+fn ready_panel(ready: &Ready, enable_on_install: bool, cx: &Context<ModsTab>) -> Div {
     let new = ready
         .items
         .iter()
@@ -569,6 +574,16 @@ fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
         .child(div().child(t!("mods.thunderstore.ready", count = new)))
         .children(items)
         .children(skipped)
+        .child(
+            install_choice(
+                "ts-enable-on-install",
+                enable_on_install,
+                install_label(),
+                ModsTab::set_enable_on_install,
+                cx,
+            )
+            .pt_2(),
+        )
         .child(
             div()
                 .flex()

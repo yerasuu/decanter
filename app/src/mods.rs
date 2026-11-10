@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use decanter_core::{InstalledGame, Storefront};
 use decanter_mods::{GameMods, Prepared, Store};
+use rust_i18n::t;
 
 /// Where pressure-vessel shares the host's files with the game by default, per Valve's
 /// [Steam Linux Runtime known issues](https://github.com/ValveSoftware/steam-runtime/blob/master/doc/steamlinuxruntime-known-issues.md).
@@ -35,30 +36,31 @@ pub fn for_game(game: &InstalledGame) -> Option<GameMods> {
 }
 
 /// The DLL overrides the account's enabled mods give Wine, as `dll=mode (mod)` for Compatibilidad,
-/// which shows everything that changes how Wine loads the game; `None` when there are none.
+/// which shows everything that changes how Wine loads the game; `None` when there are none. With
+/// the game's mods switched off it says they are not applied, since the launch leaves them out.
 pub async fn override_summary(account_id: &str, game: &InstalledGame) -> Option<String> {
     let mods = for_game(game)?;
     let account = account_id.to_owned();
     let read = tokio::task::spawn_blocking(move || {
         let names = mods.list()?;
         let overrides = mods.dll_overrides(&account)?;
-        Ok::<_, decanter_mods::Error>(
-            overrides
-                .iter()
-                .map(|wanted| {
-                    let name = names
-                        .iter()
-                        .find(|manifest| manifest.id == wanted.from)
-                        .map_or_else(|| wanted.from.to_string(), |manifest| manifest.name.clone());
-                    format!("{}={} ({name})", wanted.dll, wanted.mode)
-                })
-                .collect::<Vec<_>>(),
-        )
+        let lines = overrides
+            .iter()
+            .map(|wanted| {
+                let name = names
+                    .iter()
+                    .find(|manifest| manifest.id == wanted.from)
+                    .map_or_else(|| wanted.from.to_string(), |manifest| manifest.name.clone());
+                format!("{}={} ({name})", wanted.dll, wanted.mode)
+            })
+            .collect::<Vec<_>>();
+        Ok::<_, decanter_mods::Error>((lines, mods.is_active(&account)?))
     })
     .await;
     match read {
-        Ok(Ok(lines)) if lines.is_empty() => None,
-        Ok(Ok(lines)) => Some(lines.join(", ")),
+        Ok(Ok((lines, _))) if lines.is_empty() => None,
+        Ok(Ok((lines, true))) => Some(lines.join(", ")),
+        Ok(Ok((lines, false))) => Some(t!("mods.toggles.compat_off", overrides = lines.join(", ")).into_owned()),
         Ok(Err(err)) => {
             tracing::warn!(game_id = %game.game_id, %err, "the mods' dll overrides could not be read");
             None
@@ -68,6 +70,16 @@ pub async fn override_summary(account_id: &str, game: &InstalledGame) -> Option<
             None
         }
     }
+}
+
+/// Whether the account switched the game's mods off, for the Mods tab's label; a set file that
+/// can't be read counts as on, since the Mods tab then says why.
+pub fn is_switched_off(game: &InstalledGame) -> bool {
+    for_game(game).is_some_and(|mods| {
+        mods.is_active(&game.account_id)
+            .inspect_err(|err| tracing::warn!(game_id = %game.game_id, %err, "the mods switch could not be read"))
+            .is_ok_and(|active| !active)
+    })
 }
 
 /// How many of the account's enabled mods an update of the game changed a file under, which are
@@ -199,7 +211,7 @@ impl Play {
             .map(|relative| self.prepared.root.join(relative))
     }
 
-    pub fn facts(&self) -> [(&'static str, String); 4] {
+    pub fn facts(&self) -> [(&'static str, String); 5] {
         let names = self
             .prepared
             .mods
@@ -238,6 +250,15 @@ impl Play {
                 },
             ),
             ("mods_left_out", left_out),
+            (
+                "mods_active",
+                if self.prepared.is_active {
+                    "yes"
+                } else {
+                    "no, switched off in the Mods tab"
+                }
+                .to_owned(),
+            ),
         ]
     }
 

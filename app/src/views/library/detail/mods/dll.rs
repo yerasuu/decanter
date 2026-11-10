@@ -34,6 +34,7 @@ impl ModsTab {
         }
         let loaded = self.loaded.as_ref()?;
         let name_of = |id: &ModId| loaded.names.get(id).cloned().unwrap_or_else(|| id.to_string());
+        let is_active = loaded.is_active;
         let lines = row.manifest.dll_overrides.iter().enumerate().map(|(position, wanted)| {
             let options = DllMode::ALL
                 .into_iter()
@@ -72,6 +73,13 @@ impl ModsTab {
                             .collect::<Vec<_>>()
                             .join(", ");
                         Some(t!("mods.dll.wins", names = over))
+                    }
+                })
+                .map(|line| {
+                    if is_active {
+                        line.into_owned().into()
+                    } else {
+                        super::toggles::no_effect(&line)
                     }
                 });
             div()

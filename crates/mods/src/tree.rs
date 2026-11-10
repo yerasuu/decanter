@@ -34,6 +34,8 @@ pub struct Prepared {
     pub dll_overrides: Vec<EffectiveOverride>,
     /// Enabled mods left out because an update changed a game file under them.
     pub left_out: Vec<(ModId, String)>,
+    /// `false` when the account switched its mods off, so the tree holds the install alone.
+    pub is_active: bool,
     pub links: usize,
     /// Files the game wrote into the play tree, which stay as they are.
     pub written_by_game: usize,
@@ -110,6 +112,7 @@ pub(crate) fn reconcile(game: &GameMods, account: &str, mods: &[ModManifest]) ->
             .collect(),
         dll_overrides: dll::effective(mods),
         left_out: Vec::new(),
+        is_active: true,
         links: placed.len(),
         written_by_game,
     })

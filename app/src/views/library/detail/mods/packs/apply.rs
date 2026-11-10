@@ -24,6 +24,7 @@ use super::{attribution, entry_name, read_notes, version_text};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::ModsTab;
+use crate::views::library::detail::mods::toggles::install_choice;
 use crate::widgets::{ButtonKind, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -59,6 +60,8 @@ pub(super) struct Planned {
     warnings: Vec<Text>,
     providers: Arc<Providers>,
     summary: Option<Summary>,
+    /// Some entry leaves it to the installer whether it ends on.
+    has_unstated: bool,
 }
 
 /// One step of the plan, as the dialog shows it.
@@ -76,6 +79,7 @@ struct Row {
 
 impl ModsTab {
     pub(super) fn start_apply(&mut self, id: PackId, cx: &mut Context<Self>) {
+        let enable_unstated = self.enables_on_install();
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -90,7 +94,8 @@ impl ModsTab {
         tracing::info!(pack = %id, "mod pack plan asked");
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let prepared = tokio::spawn(async move { prepare(mods, account, id, nexus_on).await }).await;
+            let prepared =
+                tokio::spawn(async move { prepare(mods, account, id, nexus_on, enable_unstated).await }).await;
             let _ = this.update(cx, |this, cx| {
                 let Some(packs) = this.packs.as_mut() else {
                     return;
@@ -117,6 +122,7 @@ impl ModsTab {
     }
 
     fn run_job(&mut self, job: Job, cx: &mut Context<Self>) {
+        let enable_unstated = self.enables_on_install();
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -148,7 +154,7 @@ impl ModsTab {
                 let pack =
                     Pack::read(&decanter_modpack::pack_file(mods.dir(), &pack_id)).map_err(super::read_failed)?;
                 let notes = read_notes(&mods, &pack.id).unwrap_or_else(|| LocalNotes::new(pack.id.clone()));
-                plan_for(&mods, &account, pack, notes, providers)
+                plan_for(&mods, &account, pack, notes, providers, enable_unstated)
             })
             .await;
             let _ = this.update(cx, |this, cx| {
@@ -171,6 +177,51 @@ impl ModsTab {
                     }
                 }
                 this.reload(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The plan again with the install choice changed, which entries that don't say follow.
+    fn replan_with_choice(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.set_enable_on_install(enabled, cx);
+        let Some(mods) = self.mods.clone() else {
+            return;
+        };
+        let Some(packs) = self.packs.as_mut() else {
+            return;
+        };
+        let Some(Apply::Ready(planned)) = packs.apply.as_ref() else {
+            return;
+        };
+        let (pack, notes, providers) = (
+            planned.pack.clone(),
+            planned.notes.clone(),
+            Arc::clone(&planned.providers),
+        );
+        let account = self.target.account_id.clone();
+        packs.apply = Some(Apply::Preparing);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let replanned =
+                tokio::task::spawn_blocking(move || plan_for(&mods, &account, pack, notes, providers, enabled)).await;
+            let _ = this.update(cx, |this, cx| {
+                let Some(packs) = this.packs.as_mut() else {
+                    return;
+                };
+                if !matches!(packs.apply, Some(Apply::Preparing)) {
+                    return;
+                }
+                packs.apply = None;
+                match replanned {
+                    Ok(Ok(planned)) => packs.apply = Some(Apply::Ready(Box::new(planned))),
+                    Ok(Err(text)) => packs.set_error(text),
+                    Err(err) => {
+                        tracing::error!(%err, "replanning the mod pack stopped");
+                        packs.set_error(Text::verbatim(err));
+                    }
+                }
                 cx.notify();
             });
         })
@@ -217,7 +268,7 @@ impl ModsTab {
         .detach();
     }
 
-    pub(super) fn apply_panel(apply: &Apply, locked: bool, cx: &Context<Self>) -> Div {
+    pub(super) fn apply_panel(apply: &Apply, enable_on_install: bool, locked: bool, cx: &Context<Self>) -> Div {
         match apply {
             Apply::Preparing => div()
                 .flex()
@@ -235,13 +286,19 @@ impl ModsTab {
                     )),
                 )),
             Apply::Running { planned, work } => running_panel(planned, work, cx),
-            Apply::Ready(planned) => plan_panel(planned, locked, cx),
+            Apply::Ready(planned) => plan_panel(planned, enable_on_install, locked, cx),
         }
     }
 }
 
 /// What the plan needs from the providers, read once on the user's click, then the plan itself.
-async fn prepare(mods: GameMods, account: String, id: PackId, nexus_on: bool) -> Result<Planned, Text> {
+async fn prepare(
+    mods: GameMods,
+    account: String,
+    id: PackId,
+    nexus_on: bool,
+    enable_unstated: bool,
+) -> Result<Planned, Text> {
     let reader = mods.clone();
     let (pack, notes, installed) = tokio::task::spawn_blocking(move || {
         let pack = Pack::read(&decanter_modpack::pack_file(reader.dir(), &id)).map_err(super::read_failed)?;
@@ -289,7 +346,7 @@ async fn prepare(mods: GameMods, account: String, id: PackId, nexus_on: bool) ->
         nexus,
         warnings,
     });
-    tokio::task::spawn_blocking(move || plan_for(&mods, &account, pack, notes, providers))
+    tokio::task::spawn_blocking(move || plan_for(&mods, &account, pack, notes, providers, enable_unstated))
         .await
         .map_err(Text::verbatim)?
 }
@@ -350,14 +407,21 @@ pub(super) fn thunderstore_version<'listing>(
     Some((found, found.version(version.parse().ok()?)?))
 }
 
-/// Off the UI: the plan from what the game has now, so a second run does only what remains.
+/// Off the UI: the plan from what the game has now, so a second run does only what remains. An
+/// entry that doesn't say whether it ends on takes `enable_unstated`, the installer's choice.
 fn plan_for(
     mods: &GameMods,
     account: &str,
-    pack: Pack,
+    mut pack: Pack,
     notes: LocalNotes,
     providers: Arc<Providers>,
+    enable_unstated: bool,
 ) -> Result<Planned, Text> {
+    let mut has_unstated = false;
+    for entry in pack.entries.iter_mut().filter(|entry| !entry.is_enabled_stated) {
+        entry.enabled = enable_unstated;
+        has_unstated = true;
+    }
     let installed = mods.list().map_err(Text::verbatim)?;
     let diff = decanter_modpack::diff(&pack, &installed, Some(&notes));
     let mut warnings = providers.warnings.clone();
@@ -456,6 +520,7 @@ fn plan_for(
         warnings,
         providers,
         summary: None,
+        has_unstated,
     })
 }
 
@@ -544,7 +609,7 @@ fn state_text(row: &Row) -> Text {
     }
 }
 
-fn plan_panel(planned: &Planned, locked: bool, cx: &Context<ModsTab>) -> Div {
+fn plan_panel(planned: &Planned, enable_on_install: bool, locked: bool, cx: &Context<ModsTab>) -> Div {
     let count = |wanted: fn(&StepState) -> bool| planned.rows.iter().filter(|row| wanted(&row.state)).count();
     let fetch_rows = planned
         .rows
@@ -602,6 +667,15 @@ fn plan_panel(planned: &Planned, locked: bool, cx: &Context<ModsTab>) -> Div {
                 .children(change.into_iter().map(|line| theme::muted(line).pl_2()))
         }))
         .child(theme::card().children(rows))
+        .children((planned.has_unstated && !locked).then(|| {
+            install_choice(
+                "pack-enable-on-install",
+                enable_on_install,
+                t!("mods.toggles.install_enabled_pack").into_owned().into(),
+                ModsTab::replan_with_choice,
+                cx,
+            )
+        }))
         .child(
             div()
                 .flex()

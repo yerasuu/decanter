@@ -17,6 +17,7 @@ mod packs;
 mod replace;
 mod search;
 mod thunderstore;
+mod toggles;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -79,6 +80,9 @@ struct Loaded {
     slot_count: usize,
     /// What the enabled mods ask Wine for, the later one winning a DLL.
     dll: Vec<EffectiveOverride>,
+    /// The account's switch for every mod of the game.
+    is_active: bool,
+    enable_on_install: bool,
 }
 
 pub(super) struct ModsTab {
@@ -92,6 +96,13 @@ pub(super) struct ModsTab {
     expanded: HashSet<ModId>,
     confirm_remove: Option<ModId>,
     confirm_move: Option<PendingMove>,
+    /// *Activar todos* waiting for the user's answer, with the winners it takes from mods on now.
+    confirm_enable_all: Option<decanter_mods::OrderChange>,
+    /// The row *Ver en Instalados* came to.
+    highlight: Option<ModId>,
+    /// Whether a mod installed from here starts on; `None` until the set file is first read, so a
+    /// reload never undoes a choice still being written.
+    enable_on_install: Option<bool>,
     /// An archive being read, previewed or extracted.
     importing: Option<Importing>,
     /// The previewed archive's mod name, editable before adding.
@@ -153,6 +164,9 @@ impl ModsTab {
             expanded: HashSet::new(),
             confirm_remove: None,
             confirm_move: None,
+            confirm_enable_all: None,
+            highlight: None,
+            enable_on_install: None,
             importing: None,
             name_input,
             notice: None,
@@ -210,7 +224,10 @@ impl ModsTab {
             let read = tokio::task::spawn_blocking(move || snapshot(&mods, &account_id, &build_id)).await;
             let _ = this.update(cx, |this, cx| {
                 match read {
-                    Ok(Ok(loaded)) => this.loaded = Some(loaded),
+                    Ok(Ok(loaded)) => {
+                        this.enable_on_install.get_or_insert(loaded.enable_on_install);
+                        this.loaded = Some(loaded);
+                    }
                     Ok(Err(err)) => {
                         tracing::error!(error = %err, "could not read the game's mods");
                         this.error = Some(Text::verbatim(err));
@@ -287,9 +304,10 @@ impl ModsTab {
 
     fn add_folder(&mut self, source: PathBuf, cx: &mut Context<Self>) {
         tracing::info!(path = %source.display(), "mod folder picked");
+        let enabled = self.enables_on_install();
         self.run(
             Text::new("library.detail.mods.adding"),
-            move |mods, account| mods.import_folder(&source, account).map(|_| ()),
+            move |mods, account| mods.import_folder(&source, account, enabled).map(|_| ()),
             cx,
         );
     }
@@ -321,6 +339,7 @@ impl ModsTab {
         self.running
             || self.busy.is_some()
             || self.confirm_move.is_some()
+            || self.confirm_enable_all.is_some()
             || self.importing.is_some()
             || self.thunderstore.as_ref().is_some_and(Browser::is_busy)
             || self.modio.as_ref().is_some_and(modio::Browser::is_busy)
@@ -388,11 +407,17 @@ impl ModsTab {
                 }),
             );
 
-        let lines = row
+        let is_active = self.is_active();
+        let mut lines = row
             .conflicts
             .as_ref()
             .map(|conflicts| conflict_lines(conflicts, &name_of))
             .unwrap_or_default();
+        if !is_active {
+            for (label, _) in &mut lines {
+                *label = toggles::no_effect(label);
+            }
+        }
         let has_conflicts = !lines.is_empty();
         let details = has_conflicts.then(|| {
             let toggle_label = if expanded {
@@ -434,7 +459,10 @@ impl ModsTab {
             .gap_2()
             .px(gpui::px(18.))
             .py(gpui::px(12.))
-            .when(!enabled, |item| item.opacity(0.6))
+            .when(!enabled || !is_active, |item| item.opacity(0.6))
+            .when(self.highlight.as_ref() == Some(&id), |item| {
+                item.bg(gpui::rgb(theme::BG_PANEL_LIGHT))
+            })
             .when(!last, |item| item.border_b_1().border_color(gpui::rgb(theme::LINE)));
         Self::drop_target(item, row, locked, cx)
             .child(header)
@@ -480,6 +508,8 @@ fn snapshot(mods: &GameMods, account_id: &str, build_id: &str) -> decanter_mods:
     let mut conflicts = mods.conflicts(account_id)?;
     let dll = mods.dll_overrides(account_id)?;
     let written_by_game = mods.written_by_game(account_id)?;
+    let is_active = mods.is_active(account_id)?;
+    let enable_on_install = mods.enables_on_install(account_id)?;
     let names: HashMap<ModId, String> = all
         .iter()
         .map(|manifest| (manifest.id.clone(), manifest.name.clone()))
@@ -522,6 +552,8 @@ fn snapshot(mods: &GameMods, account_id: &str, build_id: &str) -> decanter_mods:
         written_by_game,
         slot_count: slots.len(),
         dll,
+        is_active,
+        enable_on_install,
     })
 }
 
@@ -618,6 +650,13 @@ impl Render for ModsTab {
                 button("mod-add", ButtonKind::Secondary, add_label, locked)
                     .when(!locked, |b| b.on_click(cx.listener(|_, _, _, cx| Self::add(cx)))),
             )
+            .child(toggles::install_choice(
+                "mod-add-enable-on-install",
+                self.enables_on_install(),
+                toggles::install_label(),
+                ModsTab::set_enable_on_install,
+                cx,
+            ))
             .children(self.running.then(|| theme::muted(t!("library.detail.mods.running"))));
 
         let list = match &self.loaded {
@@ -669,6 +708,7 @@ impl Render for ModsTab {
         let mod_list = column()
             .children(self.confirmation(cx))
             .children(self.move_confirmation(cx))
+            .children(self.enable_all_confirmation(cx))
             .child(list)
             .child(theme::muted(t!("mods.order.later_wins")))
             .children(written);
@@ -684,7 +724,8 @@ impl Render for ModsTab {
             .children(self.error.as_ref().map(theme::error))
             .children(self.provider_section(locked, cx))
             .when(is_installed, |tab| {
-                tab.child(theme::muted(t!("library.detail.mods.note")))
+                tab.children(self.switch_panel(locked, cx))
+                    .child(theme::muted(t!("library.detail.mods.note")))
                     .child(theme::muted(t!("mods.archive.note")))
                     .child(actions)
                     // The list leads and the open archive sits beside it while both fit at

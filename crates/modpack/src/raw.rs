@@ -140,7 +140,7 @@ impl From<&Entry> for RawEntry {
             order: Some(entry.order),
             platform: Some(entry.source.platform().to_owned()),
             track: Some(entry.track.as_str().to_owned()),
-            enabled: Some(entry.enabled),
+            enabled: entry.is_enabled_stated.then_some(entry.enabled),
             auto: entry.auto.then_some(true),
             target: entry.target.as_ref().map(|target| target.as_str().to_owned()),
             name: entry.name.clone(),
@@ -312,6 +312,7 @@ fn validate_entry(index: usize, mut raw: RawEntry) -> Result<Entry> {
         source,
         track,
         enabled: raw.enabled.unwrap_or(true),
+        is_enabled_stated: raw.enabled.is_some(),
         auto: raw.auto.unwrap_or(false),
         target,
         name: raw

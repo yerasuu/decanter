@@ -11,7 +11,6 @@
 
 mod parts;
 
-use decanter_mods::ModOrigin;
 use gpui::{App, Context, Div, Entity, SharedString, div, prelude::*, px};
 use rust_i18n::t;
 
@@ -94,21 +93,11 @@ impl ModsTab {
         self.search.query.read(cx).text().trim().to_owned()
     }
 
-    /// The origin of the last mod in the load order `matches` accepts, for a result's *installed* mark.
-    pub(super) fn installed_origin(&self, matches: impl Fn(&ModOrigin) -> bool) -> Option<&ModOrigin> {
-        self.loaded
-            .as_ref()?
-            .rows
-            .iter()
-            .filter_map(|row| row.manifest.origin.as_ref())
-            .filter(|origin| matches(origin))
-            .last()
-    }
-
     /// Shows `provider`'s section without opening its browser; every way into a browser goes
     /// through here, so that its section is the one shown.
     pub(super) fn show_search(&mut self, provider: Provider, cx: &mut Context<Self>) {
         self.search.section = Section::Provider(provider);
+        self.highlight = None;
         cx.notify();
     }
 

@@ -210,6 +210,100 @@ impl GameMods {
         Ok(())
     }
 
+    /// Turns every mod of the game on for `account`, or every one it has on off, in one write; each
+    /// keeps its slot and one the account never had goes last. How many changed.
+    ///
+    /// # Errors
+    ///
+    /// When the mods folder or the set file can't be read, or the set file can't be written.
+    #[inline]
+    pub fn set_all_enabled(&self, account: &str, enabled: bool) -> Result<usize> {
+        let ids: Vec<ModId> = if enabled {
+            self.list()?.into_iter().map(|manifest| manifest.id).collect()
+        } else {
+            Vec::new()
+        };
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        let changed = set.set_all_enabled(&ids, enabled);
+        if changed > 0 {
+            set.write(&path)?;
+        }
+        tracing::info!(account, enabled, changed, "every mod of the game switched");
+        Ok(changed)
+    }
+
+    /// The files and DLLs whose winner [`Self::set_all_enabled`] turning every mod on would take
+    /// from a mod on now, computed as [`Self::preview_place`] does; nothing is written.
+    ///
+    /// # Errors
+    ///
+    /// When the set file or a mod's `mod.toml` does not hold up, or the install can't be walked.
+    #[inline]
+    pub fn preview_all_enabled(&self, account: &str) -> Result<OrderChange> {
+        let mut set = ModSet::read(&self.set_path(account)?)?;
+        let before = self.manifests(set.enabled())?;
+        let ids: Vec<ModId> = self.list()?.into_iter().map(|manifest| manifest.id).collect();
+        set.set_all_enabled(&ids, true);
+        let after = self.manifests(set.enabled())?;
+        order::between(self, &before, &after)
+    }
+
+    /// Whether `account` plays the game with its mods: off, the next launch starts it from the play
+    /// tree with the install alone, every mod keeping its own state.
+    ///
+    /// # Errors
+    ///
+    /// When the set file can't be read or does not hold up.
+    #[inline]
+    pub fn is_active(&self, account: &str) -> Result<bool> {
+        Ok(!ModSet::read(&self.set_path(account)?)?.switched_off)
+    }
+
+    /// Switches every mod of the game on or off for `account` at once, leaving each mod's flag,
+    /// slot and DLL modes as they are, so switching back restores the same selection.
+    ///
+    /// # Errors
+    ///
+    /// When the set file can't be read or written.
+    #[inline]
+    pub fn set_active(&self, account: &str, active: bool) -> Result<()> {
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        if set.switched_off == active {
+            set.switched_off = !active;
+            set.write(&path)?;
+        }
+        tracing::info!(account, active, "mods of the game switched");
+        Ok(())
+    }
+
+    /// Whether a mod `account` installs starts on: the choice the install dialogs remember.
+    ///
+    /// # Errors
+    ///
+    /// When the set file can't be read or does not hold up.
+    #[inline]
+    pub fn enables_on_install(&self, account: &str) -> Result<bool> {
+        Ok(!ModSet::read(&self.set_path(account)?)?.adds_disabled)
+    }
+
+    /// Remembers whether a mod `account` installs starts on.
+    ///
+    /// # Errors
+    ///
+    /// When the set file can't be read or written.
+    #[inline]
+    pub fn set_enables_on_install(&self, account: &str, enabled: bool) -> Result<()> {
+        let path = self.set_path(account)?;
+        let mut set = ModSet::read(&path)?;
+        if set.adds_disabled == enabled {
+            set.adds_disabled = !enabled;
+            set.write(&path)?;
+        }
+        Ok(())
+    }
+
     /// Moves a mod to `slot` of `account`'s load order (see [`Self::load_order`]), where the later
     /// enabled one wins a file and a DLL override; the other mods keep their relative order. A mod
     /// of the game the account has never had is put there turned off.
@@ -384,8 +478,8 @@ impl GameMods {
         Ok(dll::effective(&self.enabled_manifests(account)?))
     }
 
-    /// Copies a folder of loose files laid out as the game's root in as a new mod, enabled for
-    /// `account`. The folder is only read.
+    /// Copies a folder of loose files laid out as the game's root in as a new mod, on or off for
+    /// `account` as `enabled` says. The folder is only read.
     ///
     /// # Errors
     ///
@@ -393,11 +487,11 @@ impl GameMods {
     /// names that are one file for a Windows game, the size and file caps), when the library's disk
     /// lacks the space, or on any read or write failure; nothing is left behind then.
     #[inline]
-    pub fn import_folder(&self, source: &Path, account: &str) -> Result<ModManifest> {
+    pub fn import_folder(&self, source: &Path, account: &str, enabled: bool) -> Result<ModManifest> {
         let path = self.set_path(account)?;
         let manifest = import::folder(self, source)?;
         let mut set = ModSet::read(&path)?;
-        set.set_enabled(&manifest.id, true);
+        set.set_enabled(&manifest.id, enabled);
         set.write(&path)?;
         Ok(manifest)
     }
@@ -427,8 +521,8 @@ impl GameMods {
         archive::preview(self, source, progress, leave_out)
     }
 
-    /// Extracts the archive `preview` read into a new mod, enabled for `account`, named `name` and
-    /// with its files under `target` (`None` for the game's root).
+    /// Extracts the archive `preview` read into a new mod, on or off for `account` as `enabled`
+    /// says, named `name` and with its files under `target` (`None` for the game's root).
     ///
     /// # Errors
     ///
@@ -436,18 +530,23 @@ impl GameMods {
     /// `progress` was cancelled, else as [`Self::preview_archive`], when the library's disk lacks
     /// the space, or on any read or write failure; nothing is left behind then.
     #[inline]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each names a different part of what the new mod is and whose set it joins"
+    )]
     pub fn import_archive(
         &self,
         preview: &ArchivePreview,
         name: &str,
         target: Option<ModPath>,
         account: &str,
+        enabled: bool,
         progress: &Progress,
     ) -> Result<ModManifest> {
         let path = self.set_path(account)?;
         let manifest = archive::import(self, preview, name, target, progress)?;
         let mut set = ModSet::read(&path)?;
-        set.set_enabled(&manifest.id, true);
+        set.set_enabled(&manifest.id, enabled);
         set.write(&path)?;
         Ok(manifest)
     }
@@ -591,7 +690,9 @@ impl GameMods {
 
     /// Brings `account`'s play tree up to date with its set and returns where the game starts
     /// from; `None` while the account has never enabled a mod, so the game starts from its install
-    /// as it always did. Must not run while the game runs: links it replaces may be open.
+    /// as it always did. With the account's mods switched off ([`Self::set_active`]) the tree is
+    /// reconciled to the install alone rather than left, so that what the game wrote there stays
+    /// where it reads it. Must not run while the game runs: links it replaces may be open.
     ///
     /// The game's files the enabled mods touch are first compared with what they were when the
     /// mods were applied, once per `build_id` (the installed build); a mod an update changed a file
@@ -604,7 +705,13 @@ impl GameMods {
     /// game without its mods.
     #[inline]
     pub fn prepare(&self, account: &str, build_id: &str) -> Result<Option<Prepared>> {
-        let mut mods = self.enabled_manifests(account)?;
+        let switched = ModSet::read(&self.set_path(account)?)?;
+        let is_active = !switched.switched_off;
+        let mut mods = if is_active {
+            self.manifests(switched.enabled())?
+        } else {
+            Vec::new()
+        };
         let play = self.play_dir(account)?;
         if mods.is_empty() && !play.exists() {
             return Ok(None);
@@ -619,8 +726,15 @@ impl GameMods {
         for skipped in &left_out {
             tracing::warn!(account, mod_id = %skipped.0, name = skipped.1, "mod left out of the play tree, it needs attention");
         }
+        if !is_active {
+            tracing::info!(
+                account,
+                "mods of the game switched off, the play tree holds the install alone"
+            );
+        }
         let mut prepared = tree::reconcile(self, account, &mods)?;
         prepared.left_out = left_out;
+        prepared.is_active = is_active;
         Ok(Some(prepared))
     }
 

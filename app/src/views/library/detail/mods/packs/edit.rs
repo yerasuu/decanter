@@ -124,6 +124,7 @@ impl ModsTab {
             move |pack| {
                 if let Some(entry) = pack.entries.iter_mut().find(|entry| entry.key == key) {
                     entry.enabled = !entry.enabled;
+                    entry.is_enabled_stated = true;
                 }
             },
             cx,
@@ -280,7 +281,10 @@ fn present_members(pack: &Pack, open: &Open) -> Vec<ModId> {
 }
 
 /// The lines a winner-change confirmation lists, as the mod list's move confirmation words them.
-pub(super) fn change_lines(change: &OrderChange, name_of: &dyn Fn(&ModId) -> String) -> Vec<String> {
+pub(in crate::views::library::detail::mods) fn change_lines(
+    change: &OrderChange,
+    name_of: &dyn Fn(&ModId) -> String,
+) -> Vec<String> {
     let mut lines = Vec::with_capacity(SHOWN_CHANGES.saturating_mul(2).saturating_add(4));
     if !change.files.is_empty() {
         lines.push(t!("mods.order.files_change", count = change.files.len()).into_owned());

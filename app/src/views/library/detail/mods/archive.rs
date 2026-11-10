@@ -14,6 +14,7 @@ use super::ModsTab;
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
+use crate::views::library::detail::mods::toggles::{install_choice, install_label};
 use crate::widgets::{ButtonKind, Select, button, progress_bar};
 
 /// How often the progress line is redrawn while a blocking read or extraction runs.
@@ -117,12 +118,13 @@ impl ModsTab {
         };
         let name = self.name_input.read(cx).text().trim().to_owned();
         let account_id = self.target.account_id.clone();
+        let enabled = self.enables_on_install();
         let progress = Arc::new(Progress::default());
         self.importing = Some(Importing::Extracting(Arc::clone(&progress)));
         Self::follow(cx);
         cx.spawn(async move |this, cx| {
             let added = tokio::task::spawn_blocking(move || {
-                mods.import_archive(&preview, &name, target, &account_id, &progress)
+                mods.import_archive(&preview, &name, target, &account_id, enabled, &progress)
             })
             .await;
             let _ = this.update(cx, |this, cx| {
@@ -259,6 +261,13 @@ impl ModsTab {
                     .then(|| theme::muted(t!("mods.archive.installer"))),
             )
             .children(duplicate.map(|(_, name)| theme::error(t!("mods.archive.duplicate", name = name))))
+            .child(install_choice(
+                "mod-archive-enable-on-install",
+                self.enables_on_install(),
+                install_label(),
+                ModsTab::set_enable_on_install,
+                cx,
+            ))
             .child(
                 div()
                     .flex()

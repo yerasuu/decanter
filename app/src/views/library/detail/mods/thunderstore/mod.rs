@@ -19,6 +19,7 @@ use rust_i18n::t;
 use super::ModsTab;
 use super::credits::{self, Platform};
 use super::search::{self, Provider, ResultItem};
+use super::toggles::{self, Installed};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
@@ -369,11 +370,13 @@ impl ModsTab {
         self.run_search(cx);
     }
 
-    /// The version of `package` the game has from Thunderstore, if any.
-    fn ts_installed(&self, package: &PackageId) -> Option<String> {
+    /// The mod of `package` the game has from Thunderstore, if any.
+    fn ts_installed(&self, package: &PackageId) -> Option<Installed> {
         let wanted = package.to_string();
-        self.installed_origin(|origin| origin.platform == decanter_thunderstore::PLATFORM && origin.package == wanted)
-            .map(|origin| origin.version.clone())
+        self.installed_mod(
+            |origin| origin.platform == decanter_thunderstore::PLATFORM && origin.package == wanted,
+            |origin| origin.version.clone(),
+        )
     }
 
     pub(super) fn thunderstore_panel(&self, locked: bool, cx: &Context<Self>) -> Option<Div> {
@@ -382,13 +385,13 @@ impl ModsTab {
             self.community_picker(browser, cx)
         } else {
             let chosen = if let Some(install) = browser.install.as_ref() {
-                install::panel(install, cx)
+                install::panel(install, self.enables_on_install(), cx)
             } else if let Some(package) = browser
                 .selected
                 .as_ref()
                 .and_then(|id| browser.listing.as_ref()?.get(id))
             {
-                detail(package, locked, cx)
+                detail(package, self.ts_installed(&package.id), locked, cx)
             } else {
                 search::nothing_chosen()
             };
@@ -757,7 +760,7 @@ fn stats(package: &Package) -> String {
     .into_owned()
 }
 
-fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
+fn detail(package: &Package, installed: Option<Installed>, locked: bool, cx: &Context<ModsTab>) -> Div {
     let latest = &package.latest;
     let id = package.id.clone();
     let number: VersionNumber = latest.number;
@@ -809,6 +812,7 @@ fn detail(package: &Package, locked: bool, cx: &Context<ModsTab>) -> Div {
             Platform::Thunderstore,
             decanter_thunderstore::credits(package, latest),
         ))
+        .children(installed.map(|installed| toggles::installed_controls(0, &installed, cx)))
         .child(div().child(package.description.clone()))
         .child(theme::muted(t!("mods.thunderstore.download_size", size = size)))
         .child(dependencies)

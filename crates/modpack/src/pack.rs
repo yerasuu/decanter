@@ -49,6 +49,9 @@ pub struct Entry {
     pub source: Source,
     pub track: Track,
     pub enabled: bool,
+    /// Whether the pack's file says if the entry ends on; one that doesn't is read as on, and the
+    /// installer may choose otherwise.
+    pub is_enabled_stated: bool,
     /// Added as a provider-declared dependency of another entry.
     pub auto: bool,
     /// The game's subfolder chosen at import; `None` for the game's root.
@@ -238,6 +241,7 @@ impl Entry {
             source,
             track: Track::Pinned,
             enabled: true,
+            is_enabled_stated: true,
             auto: false,
             target: None,
             name: None,

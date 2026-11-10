@@ -16,6 +16,7 @@ use super::{Failure, ModsTab};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::replace::Replacement;
+use crate::views::library::detail::mods::toggles::{install_choice, install_label};
 use crate::widgets::{ButtonKind, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -138,6 +139,7 @@ impl ModsTab {
     }
 
     fn modio_add(&mut self, cx: &mut Context<Self>) {
+        let enabled = self.enables_on_install();
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -166,7 +168,7 @@ impl ModsTab {
                 } = ready;
                 let target = preview.target().cloned();
                 let added = mods
-                    .import_archive(&preview, &name, target, &account_id, &work.progress)
+                    .import_archive(&preview, &name, target, &account_id, enabled, &work.progress)
                     .and_then(|manifest| {
                         tracing::info!(mod_id = %origin.mod_id, file_id = %origin.file, added = %manifest.id, "modio mod added");
                         match replaces {
@@ -278,10 +280,10 @@ async fn prepare(request: Request, work: Arc<Work>) -> decanter_modio::Result<Re
     })
 }
 
-pub(super) fn panel(install: &Install, cx: &Context<ModsTab>) -> Div {
+pub(super) fn panel(install: &Install, enable_on_install: bool, cx: &Context<ModsTab>) -> Div {
     match install {
         Install::Working(work) => working_panel(work, cx),
-        Install::Ready(ready) => ready_panel(ready, cx),
+        Install::Ready(ready) => ready_panel(ready, enable_on_install, cx),
     }
 }
 
@@ -326,7 +328,7 @@ fn working_panel(work: &Arc<Work>, cx: &Context<ModsTab>) -> Div {
         ))
 }
 
-fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
+fn ready_panel(ready: &Ready, enable_on_install: bool, cx: &Context<ModsTab>) -> Div {
     let preview = &ready.preview;
     let target = preview.target();
     let (shown, count) = preview.overrides(target);
@@ -390,6 +392,16 @@ fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
                 cx,
             )
         }))
+        .child(
+            install_choice(
+                "modio-enable-on-install",
+                enable_on_install,
+                install_label(),
+                ModsTab::set_enable_on_install,
+                cx,
+            )
+            .pt_1(),
+        )
         .child(
             div()
                 .flex()

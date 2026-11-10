@@ -20,6 +20,7 @@ use crate::nexus::failure_text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
 use crate::views::library::detail::mods::replace::Replacement;
+use crate::views::library::detail::mods::toggles::{install_choice, install_label};
 use crate::widgets::{ButtonKind, Select, button, progress_bar};
 
 const TICK: Duration = Duration::from_millis(200);
@@ -156,6 +157,7 @@ impl ModsTab {
     }
 
     fn add_download(&mut self, cx: &mut Context<Self>) {
+        let enabled = self.enables_on_install();
         let Some(mods) = self.mods.clone() else {
             return;
         };
@@ -183,7 +185,7 @@ impl ModsTab {
                     ..
                 } = ready;
                 let added = mods
-                    .import_archive(&preview, &name, target, &account_id, &work.progress)
+                    .import_archive(&preview, &name, target, &account_id, enabled, &work.progress)
                     .and_then(|manifest| match replaces {
                         Some(replaces) => replaces.apply(&mods, &manifest.id, keep_previous).map(|()| manifest),
                         None => Ok(manifest),
@@ -240,10 +242,10 @@ impl ModsTab {
     }
 }
 
-pub(super) fn panel(install: &Install, cx: &Context<ModsTab>) -> Div {
+pub(super) fn panel(install: &Install, enable_on_install: bool, cx: &Context<ModsTab>) -> Div {
     match install {
         Install::Working(work) => working_panel(work, cx),
-        Install::Ready(ready) => ready_panel(ready, cx),
+        Install::Ready(ready) => ready_panel(ready, enable_on_install, cx),
     }
 }
 
@@ -362,7 +364,7 @@ fn replacement(ready: &Ready, can_add: bool, cx: &Context<ModsTab>) -> Option<Di
     ))
 }
 
-fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
+fn ready_panel(ready: &Ready, enable_on_install: bool, cx: &Context<ModsTab>) -> Div {
     let entity = cx.entity();
     let preview = &ready.preview;
     let options = core::iter::once((
@@ -439,6 +441,13 @@ fn ready_panel(ready: &Ready, cx: &Context<ModsTab>) -> Div {
         )
         .children(duplicate.map(|(_, name)| theme::error(t!("mods.archive.duplicate", name = name))))
         .children(replacement(ready, can_add, cx))
+        .child(install_choice(
+            "nx-enable-on-install",
+            enable_on_install,
+            install_label(),
+            ModsTab::set_enable_on_install,
+            cx,
+        ))
         .child(
             div()
                 .flex()

@@ -25,6 +25,7 @@ use rust_i18n::t;
 use super::ModsTab;
 use super::credits::{self, Platform};
 use super::search::{self, Provider, ResultItem};
+use super::toggles::{self, Installed};
 use crate::i18n::Text;
 use crate::theme;
 use crate::views::library::detail::mods::field_row;
@@ -577,12 +578,12 @@ impl ModsTab {
         self.modio_search(0, cx);
     }
 
-    /// The version of mod `id` the game has from mod.io, if any.
-    fn modio_installed(&self, game: GameId, id: ModioModId) -> Option<String> {
-        let origin = self.installed_origin(|origin| {
-            Origin::from_mod_origin(origin).is_some_and(|found| found.game == game && found.mod_id == id)
-        })?;
-        Some(Origin::version_of(origin).map_or_else(|| origin.version.clone(), str::to_owned))
+    /// The mod `id` the game has from mod.io, if any.
+    fn modio_installed(&self, game: GameId, id: ModioModId) -> Option<Installed> {
+        self.installed_mod(
+            |origin| Origin::from_mod_origin(origin).is_some_and(|found| found.game == game && found.mod_id == id),
+            |origin| Origin::version_of(origin).map_or_else(|| origin.version.clone(), str::to_owned),
+        )
     }
 
     fn modio_select(&mut self, remote: RemoteMod, cx: &mut Context<Self>) {
@@ -674,9 +675,10 @@ impl ModsTab {
             self.modio_game_picker(browser, cx)
         } else {
             let chosen = if let Some(install) = browser.install.as_ref() {
-                install::panel(install, cx)
+                install::panel(install, self.enables_on_install(), cx)
             } else if let Some(selected) = browser.selected.as_ref() {
-                detail_panel(selected, locked, cx)
+                let installed = self.modio_installed(selected.remote.game, selected.remote.id);
+                detail_panel(selected, installed, locked, cx)
             } else {
                 search::nothing_chosen()
             };
@@ -1138,7 +1140,7 @@ fn file_row(
         )
 }
 
-fn detail_panel(selected: &Selected, locked: bool, cx: &Context<ModsTab>) -> Div {
+fn detail_panel(selected: &Selected, installed: Option<Installed>, locked: bool, cx: &Context<ModsTab>) -> Div {
     let remote = &selected.remote;
     let page = remote.page.clone();
     let current = remote.current.as_ref().map(|file| file.id);
@@ -1207,6 +1209,7 @@ fn detail_panel(selected: &Selected, locked: bool, cx: &Context<ModsTab>) -> Div
             ],
         ))
         .child(credits::browsed("modio-credits", Platform::Modio, remote.credits()))
+        .children(installed.map(|installed| toggles::installed_controls(0, &installed, cx)))
         .child(div().child(remote.summary.clone()))
         .child(files_block)
         .child(dependencies)

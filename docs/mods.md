@@ -22,6 +22,23 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
   file or a DLL override to another mod asks first, listing the paths (at most 12 named) and DLLs with their old and
   new winner (`GameMods::preview_place`, the same merge as the conflict lists); a move that changes no winner applies
   at once. Changes apply at the next launch; nothing can be changed while the game runs.
+- *Mods activos*, at the top of Instalados, is the account's switch for every mod of the game
+  (`GameMods::set_active`). Off, the next launch reconciles the play tree to the install alone (no mod file, no mod
+  DLL override, the run log's `mods_active` says `no`), so what the game wrote there stays where it reads it, and
+  each mod keeps its own box, slot and DLL modes: switching it on again restores the same selection. With no play
+  tree yet the game starts from its install. While off the rows are greyed, their conflict and DLL lines say they
+  have no effect, the Mods tab's label says *desactivados* and Compatibilidad's mod DLL line says it is not applied;
+  the update checks and *attention* keep working.
+- *Activar todos* and *Desactivar todos* set every mod's box in one write, each keeping its slot
+  (`GameMods::set_all_enabled`). Turning all on asks first when it hands a file or a DLL a mod on now wins to
+  another mod, listing them as a move does (`GameMods::preview_all_enabled`); turning all off asks nothing.
+- *Activar al instalar* (on by default), in every install dialog (folder and archive adds, the Thunderstore, mod.io
+  and Nexus Mods installs, and a pack's plan), says whether a new mod starts on. It is one choice per game and
+  account, remembered in its set file. A newer file of a mod the game has still takes the old one's slot on or off as
+  it was. In a pack's plan it decides the entries whose `enabled` the pack file leaves out; an entry that says keeps
+  it.
+- A provider's result or detail of a mod the game already has shows its box, which turns it on or off as Instalados
+  does, and *Ver en Instalados*, which goes to its row and marks it.
 - `GameMods::replace` puts a newer version of a mod in the old one's slot of every account, on or off as it was,
   with the old one's DLL modes for the DLLs both ask for, then removes the old one;
   `GameMods::replace_keeping_previous` does the same but keeps the old one, turned off, in the slot right after.
@@ -287,7 +304,8 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
 ```
 <root>/decanter/mods/<store>/<game id>/    <store>: gog, amazon or epic
     <mod uuid>/mod.toml, files/    one mod, shared by every account that has the game
-    profiles/<account>.toml        the account's mods in load order, each `[[mod]]` with `id` and `enabled`
+    profiles/<account>.toml        the account's mods in load order, each `[[mod]]` with `id` and `enabled`;
+                                   `active`, `enable_on_install`
     play/<account>/                the play tree the game starts from
     play/<account>.toml            every link decanter placed in it, and its target
     incoming/                      imports and removals in progress
@@ -297,7 +315,9 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
 
 - `profiles/<account>.toml` is `schema = 2`. A schema 1 file (`mods`, enabled in load order, and `disabled`) is read
   as the enabled list followed by the disabled one, so it loads to the same winners, and is written as schema 2 at
-  its next change; a decanter older than that refuses a schema 2 file.
+  its next change; a decanter older than that refuses a schema 2 file. `active = false` (the *Mods activos* switch
+  off) and `enable_on_install = false` (*Activar al instalar* unticked) are written only when off, so a file without
+  them reads as on and the schema stays 2.
 - The play tree is real folders and one relative symbolic link per file, to the install's file or the winning
   mod's (`../../…/common/<InstallDir>/…`, `../../<mod uuid>/files/…`), so moving the library keeps it valid. On a
   Windows host the links are hard links, since a symbolic link needs a privilege there.

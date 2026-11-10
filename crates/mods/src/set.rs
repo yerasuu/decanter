@@ -25,6 +25,11 @@ pub(crate) struct ModSet {
     /// Enabled mods left out of the play tree, with the paths an update changed under them, until
     /// the user keeps or disables them.
     pub(crate) attention: BTreeMap<ModId, Vec<ModPath>>,
+    /// The account's switch for every mod of the game: off, the play tree holds only the install
+    /// while each entry keeps its flag and slot, so switching back restores the same selection.
+    pub(crate) switched_off: bool,
+    /// What a mod added for this account starts as, the user's last choice at an install.
+    pub(crate) adds_disabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +65,23 @@ struct RawSet {
     base: Option<RawBase>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     attention: BTreeMap<String, Vec<String>>,
+    /// Added within schema 2 and written only when off, so a file without them reads as before.
+    #[serde(default = "on", skip_serializing_if = "is_on")]
+    active: bool,
+    #[serde(default = "on", skip_serializing_if = "is_on")]
+    enable_on_install: bool,
+}
+
+const fn on() -> bool {
+    true
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if hands the field by reference"
+)]
+const fn is_on(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Serialize, Deserialize)]
@@ -99,7 +121,11 @@ impl ModSet {
         if listed.len() > MAX_MOD_FILES {
             return Err(Error::malformed(path, &"lists more mods than decanter writes"));
         }
-        let mut set = Self::default();
+        let mut set = Self {
+            switched_off: !raw.active,
+            adds_disabled: !raw.enable_on_install,
+            ..Self::default()
+        };
         set.entries.reserve(listed.len());
         for (text, enabled) in listed {
             let id = ModId::parse(&text).map_err(|err| Error::malformed(path, &err))?;
@@ -158,6 +184,8 @@ impl ModSet {
                     )
                 })
                 .collect(),
+            active: !self.switched_off,
+            enable_on_install: !self.adds_disabled,
         };
         files::write(path, &raw)
     }
@@ -183,6 +211,20 @@ impl ModSet {
                 enabled,
             });
         }
+    }
+
+    /// Turns on every mod of `ids` that is off, or off every mod the account has on, each keeping
+    /// its slot, so the attention of a mod left as it was stays; how many changed.
+    pub(crate) fn set_all_enabled(&mut self, ids: &[ModId], enabled: bool) -> usize {
+        let changing: Vec<ModId> = if enabled {
+            ids.iter().filter(|id| !self.is_enabled(id)).cloned().collect()
+        } else {
+            self.enabled().cloned().collect()
+        };
+        for id in &changing {
+            self.set_enabled(id, enabled);
+        }
+        changing.len()
     }
 
     pub(crate) fn forget(&mut self, id: &ModId) {

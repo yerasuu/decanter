@@ -529,7 +529,7 @@ async fn from_file(
             if !matches!(entry.source, Source::Local { .. }) || entry.sha256.is_some() {
                 return Err(StepError::Failed(Text::new("mods.packs.wants_archive")));
             }
-            let manifest = mods.import_folder(&path, &account)?;
+            let manifest = mods.import_folder(&path, &account, entry.enabled)?;
             return Ok(Imported {
                 id: manifest.id,
                 is_duplicate: false,
@@ -644,7 +644,14 @@ fn import(
         });
     }
     let name = entry.name.clone().unwrap_or_else(|| preview.name().to_owned());
-    let manifest = mods.import_archive(preview, &name, entry.target.clone(), account, &work.progress)?;
+    let manifest = mods.import_archive(
+        preview,
+        &name,
+        entry.target.clone(),
+        account,
+        entry.enabled,
+        &work.progress,
+    )?;
     Ok(Imported {
         id: manifest.id,
         is_duplicate: false,

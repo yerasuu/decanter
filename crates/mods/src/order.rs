@@ -71,47 +71,66 @@ pub const fn constraints(_mods: &[ModManifest]) -> Vec<Constraint> {
 /// `mods` are the enabled ones in their current load order, `moved` the enabled ids in the order
 /// the move would leave.
 pub(crate) fn changes(game: &GameMods, mut mods: Vec<ModManifest>, moved: &[ModId]) -> Result<OrderChange> {
-    let before_files = winners(game, &mods)?;
-    let before_dlls = dll::effective(&mods);
+    let before = Standing::of(game, &mods)?;
     let rank: HashMap<&ModId, usize> = moved.iter().enumerate().map(|(index, id)| (id, index)).collect();
     mods.sort_by_key(|manifest| rank.get(&manifest.id).copied().unwrap_or(usize::MAX));
-    let after_files = winners(game, &mods)?;
-    let files = before_files
-        .into_iter()
-        .filter_map(|(key, (path, before))| {
-            let winner = &after_files.get(&key)?.1;
-            (*winner != before).then(|| WinnerChange {
-                path,
-                before,
-                after: winner.clone(),
-            })
-        })
-        .collect();
-    let dlls = dll::effective(&mods)
-        .into_iter()
-        .filter_map(|after| {
-            let before = before_dlls.iter().find(|before| before.dll == after.dll)?;
-            (before.mode != after.mode).then(|| DllChange {
-                before: before.clone(),
-                after,
-            })
-        })
-        .collect();
-    Ok(OrderChange { files, dlls })
+    Ok(before.against(Standing::of(game, &mods)?))
 }
 
-/// Per folded path two or more mods ship, the mod that wins it; a path one mod alone has can't
-/// change hands by a move.
+/// The winners that change from the enabled mods `before` to the enabled mods `after`, each in
+/// load order; a path or DLL no mod of `before` wins is not a change, since nothing loses it.
+pub(crate) fn between(game: &GameMods, before: &[ModManifest], after: &[ModManifest]) -> Result<OrderChange> {
+    Ok(Standing::of(game, before)?.against(Standing::of(game, after)?))
+}
+
+/// Who wins what among some enabled mods.
+struct Standing {
+    files: BTreeMap<String, (ModPath, ModId)>,
+    dlls: Vec<EffectiveOverride>,
+}
+
+impl Standing {
+    fn of(game: &GameMods, mods: &[ModManifest]) -> Result<Self> {
+        Ok(Self {
+            files: winners(game, mods)?,
+            dlls: dll::effective(mods),
+        })
+    }
+
+    fn against(self, after: Self) -> OrderChange {
+        let files = self
+            .files
+            .into_iter()
+            .filter_map(|(key, (path, before))| {
+                let winner = &after.files.get(&key)?.1;
+                (*winner != before).then(|| WinnerChange {
+                    path,
+                    before,
+                    after: winner.clone(),
+                })
+            })
+            .collect();
+        let dlls = after
+            .dlls
+            .into_iter()
+            .filter_map(|after| {
+                let before = self.dlls.iter().find(|before| before.dll == after.dll)?;
+                (before.mode != after.mode).then(|| DllChange {
+                    before: before.clone(),
+                    after,
+                })
+            })
+            .collect();
+        OrderChange { files, dlls }
+    }
+}
+
+/// Per folded path a mod wins, that mod.
 fn winners(game: &GameMods, mods: &[ModManifest]) -> Result<BTreeMap<String, (ModPath, ModId)>> {
     Ok(merge(game, mods)?
         .into_iter()
         .filter_map(|(key, wanted)| {
-            let shipped_by = wanted
-                .providers
-                .iter()
-                .filter(|owner| matches!(owner, Owner::Mod(_)))
-                .count();
-            let Some(&Owner::Mod(winner)) = wanted.providers.last().filter(|_| shipped_by > 1) else {
+            let Some(&Owner::Mod(winner)) = wanted.providers.last() else {
                 return None;
             };
             Some((key, (wanted.path, mods.get(winner)?.id.clone())))

@@ -60,10 +60,14 @@ struct Loaded {
     needs_epic_online: bool,
     /// The DLC recorded on the installed Epic game.
     epic_dlcs: BTreeSet<String>,
+    /// The account switched the game's mods off, which the Mods tab's label says until the tab
+    /// itself is open and knows.
+    mods_off: bool,
 }
 
 impl Loaded {
     fn load(game: &Game, profile_id: Option<&str>, background: &Background) -> Self {
+        let launch = launch_target(game);
         Self {
             product_id: game.id.clone(),
             account_id: game.account_id.clone(),
@@ -74,7 +78,8 @@ impl Loaded {
             is_favorite: data::is_favorite(&game.account_id, game.storefront, &game.id),
             playtime: data::load_playtime(&game.account_id, game.storefront, &game.id),
             collections: member_of(profile_id, &game.id),
-            launch: launch_target(game),
+            mods_off: mods_switched_off(game, launch.as_ref()),
+            launch,
             needs_epic_online: needs_epic_online(game),
             epic_dlcs: epic_dlc::installed_dlcs(game),
         }
@@ -103,6 +108,7 @@ impl Loaded {
         self.launch = launch_target(game);
         self.needs_epic_online = needs_epic_online(game);
         self.epic_dlcs = epic_dlc::installed_dlcs(game);
+        self.mods_off = mods_switched_off(game, self.launch.as_ref());
         true
     }
 }
@@ -118,6 +124,10 @@ const fn has_mods(game: &Game) -> bool {
         game.storefront,
         Storefront::Gog | Storefront::AmazonGames | Storefront::EpicGames
     )
+}
+
+fn mods_switched_off(game: &Game, launch: Option<&InstalledGame>) -> bool {
+    has_mods(game) && launch.is_some_and(crate::mods::is_switched_off)
 }
 
 fn launch_target(game: &Game) -> Option<InstalledGame> {
@@ -245,7 +255,10 @@ impl DetailView {
             }
             None => {
                 if self.local.tab == DetailTab::Mods {
-                    self.local.mods = Some(cx.new(|cx| ModsTab::new(game, cx)));
+                    let tab = cx.new(|cx| ModsTab::new(game, cx));
+                    // Observed so that the tab's label follows the switch.
+                    cx.observe(&tab, |_, _, cx| cx.notify()).detach();
+                    self.local.mods = Some(tab);
                 }
             }
         }
@@ -369,7 +382,20 @@ impl Render for DetailView {
             detail_tabs.push((DetailTab::Achievements, t!("library.detail.tabs.achievements")));
         }
         if mods_shown {
-            detail_tabs.push((DetailTab::Mods, t!("library.detail.tabs.mods")));
+            let is_off = self
+                .local
+                .mods
+                .as_ref()
+                .and_then(|tab| tab.read(cx).is_switched_off())
+                .unwrap_or(loaded.mods_off);
+            let label = if is_off {
+                t!("mods.toggles.tab_off", tab = t!("library.detail.tabs.mods"))
+                    .into_owned()
+                    .into()
+            } else {
+                t!("library.detail.tabs.mods")
+            };
+            detail_tabs.push((DetailTab::Mods, label));
         }
         if is_installed {
             detail_tabs.push((DetailTab::Log, t!("library.detail.tabs.log")));
