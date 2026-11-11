@@ -17,7 +17,7 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use super::{checkbox_field, column, field_row, inline, section, storefront_label};
+use super::{column, field_row, inline, section, storefront_label};
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
@@ -28,7 +28,7 @@ use crate::views::gog_login::{GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
 use crate::views::{session_renewal, shell};
 use crate::widgets::reveal::reveal;
-use crate::widgets::{ButtonKind, Select, button};
+use crate::widgets::{ButtonKind, Select, SettingRow, button};
 
 #[cfg(target_os = "linux")]
 mod amazon;
@@ -694,13 +694,11 @@ impl AccountTab {
 
     fn steam_games(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let shown = self.steam_shown;
-        column()
-            .child(theme::h3("Steam"))
-            .child(
-                checkbox_field("steam-show", shown, t!("settings.account.steam.show"))
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_steam_shown(!shown, cx))),
-            )
-            .child(theme::muted(t!("settings.account.steam.hint")))
+        column().child(theme::h3("Steam")).child(
+            SettingRow::new("steam-show", shown, t!("settings.account.steam.show"))
+                .help(t!("settings.account.steam.hint"))
+                .on_click(cx.listener(move |this, _, _, cx| this.set_steam_shown(!shown, cx))),
+        )
     }
 
     fn add_gog_account(&self, cx: &mut Context<Self>) -> impl IntoElement {

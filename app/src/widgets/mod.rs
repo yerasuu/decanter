@@ -7,6 +7,7 @@ pub mod menu;
 pub mod nav;
 pub mod reveal;
 pub mod select;
+pub mod setting_row;
 
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -19,6 +20,7 @@ use rust_i18n::t;
 
 pub use input::{InputEvent, TextInput};
 pub use select::Select;
+pub use setting_row::SettingRow;
 
 use crate::i18n::Language;
 use crate::theme;

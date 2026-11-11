@@ -11,12 +11,12 @@ use decanter_nexus::Account;
 use gpui::{Context, Entity, IntoElement, Window, div, prelude::*, px};
 use rust_i18n::t;
 
-use super::{checkbox_field, column, field_row};
+use super::{column, field_row};
 use crate::i18n::Text;
 use crate::nexus::{account_line, failure_text};
 use crate::theme;
 use crate::widgets::input::TextInput;
-use crate::widgets::{ButtonKind, button};
+use crate::widgets::{ButtonKind, SettingRow, button};
 
 /// Where a personal key is made: the account's API access page on the site.
 const KEY_PAGE: &str = "https://www.nexusmods.com/users/myaccount?tab=api";
@@ -179,7 +179,7 @@ impl Render for NexusSection {
         let can_use = is_saved && !self.busy;
         let is_on = self.is_experimental;
         let switch = column().child(theme::h2(t!("mods.nexus.settings.title"))).child(
-            checkbox_field("nexus-experimental", is_on, t!("mods.credits.nexus.switch"))
+            SettingRow::new("nexus-experimental", is_on, t!("mods.credits.nexus.switch"))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_experimental(!is_on, cx))),
         );
         if !is_on {

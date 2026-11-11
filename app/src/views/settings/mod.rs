@@ -18,13 +18,12 @@ mod nexus;
 use std::borrow::Cow;
 
 use decanter_core::Storefront;
-use gpui::{App, Context, Div, Entity, IntoElement, SharedString, Stateful, Window, div, prelude::*, px};
+use gpui::{App, Context, Div, Entity, IntoElement, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::state::AppState;
 use crate::theme;
 use crate::widgets::reveal::reveal;
-use crate::widgets::{checkbox_large, nav};
 use account::AccountTab;
 use compatibility::CompatibilityTab;
 use general::GeneralTab;
@@ -168,17 +167,6 @@ pub(crate) fn storefront_label(storefront: Storefront) -> Cow<'static, str> {
 /// `.field-row`: a 520px-max row of controls, 12px above whatever follows.
 fn field_row() -> Div {
     div().flex().gap(px(10.)).mb(px(12.)).max_w(px(520.))
-}
-
-/// `label.field-row` around a checkbox, a single tab stop that the caller's `on_click` toggles
-/// from the pointer, Enter or Space; the row is the hit area, not just the box.
-fn checkbox_field(id: &'static str, checked: bool, text: impl Into<SharedString>) -> Stateful<Div> {
-    nav::tab_stop(field_row().id(id))
-        .items_center()
-        .min_h(px(36.))
-        .cursor_pointer()
-        .child(checkbox_large(checked))
-        .child(div().min_w_0().child(text.into()))
 }
 
 /// Keeps a button at its content width inside a flex column, where it

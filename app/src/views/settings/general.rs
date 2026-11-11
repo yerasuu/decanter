@@ -15,7 +15,7 @@ use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
 use super::modio::ModioKeySection;
 use super::nexus::NexusSection;
-use super::{checkbox_field, column, field_row, inline, section};
+use super::{column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
 use crate::platform;
@@ -23,7 +23,7 @@ use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, button, checkbox_large, language_note, language_select};
+use crate::widgets::{ButtonKind, SettingRow, button, language_note, language_select};
 
 pub struct GeneralTab {
     language: Option<Language>,
@@ -548,121 +548,96 @@ impl GeneralTab {
             .children(error.map(theme::error))
     }
 
-    /// `label.field-row` around a checkbox: the whole row toggles it, the
-    /// way clicking a `<label>`'s text does.
     fn checkbox_row(
         id: &'static str,
         checked: bool,
         text: impl Into<SharedString>,
         on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        checkbox_field(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
-    }
-
-    /// A switch under another, indented; while `is_offered` is false (the switch above is off) it
-    /// shows its value dimmed and doesn't toggle.
-    fn sub_checkbox_row(
-        id: &'static str,
-        checked: bool,
-        is_offered: bool,
-        text: impl Into<SharedString>,
-        on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        if is_offered {
-            return checkbox_field(id, checked, text)
-                .ml(px(23.))
-                .on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
-                .into_any_element();
-        }
-        // Not a tab stop while it can't toggle, so Tab and the d-pad skip it.
-        field_row()
-            .id(id)
-            .ml(px(23.))
-            .items_center()
-            .min_h(px(36.))
-            .opacity(0.4)
-            .child(checkbox_large(checked))
-            .child(div().min_w_0().child(text.into()))
-            .into_any_element()
+    ) -> SettingRow {
+        SettingRow::new(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
     }
 
     fn steam_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let is_offered = self.steam_compat;
-        let hint = |text: SharedString| {
-            theme::muted(text)
-                .ml(px(23.))
-                .when(!is_offered, |hint| hint.opacity(0.4))
-        };
+        let sub_row =
+            |id, checked, text, help, on_toggle: fn(&mut Self, bool, &mut Context<Self>), cx: &mut Context<Self>| {
+                Self::checkbox_row(id, checked, text, on_toggle, cx)
+                    .nested(is_offered)
+                    .help(help)
+            };
         column()
-            .child(Self::checkbox_row(
-                "steam-compat",
-                self.steam_compat,
-                t!("settings.general.steam.compat"),
-                Self::set_steam_compat,
-                cx,
-            ))
-            .child(theme::muted(t!("settings.general.steam.compat_hint")))
-            .child(Self::sub_checkbox_row(
+            .child(
+                Self::checkbox_row(
+                    "steam-compat",
+                    self.steam_compat,
+                    t!("settings.general.steam.compat"),
+                    Self::set_steam_compat,
+                    cx,
+                )
+                .help(t!("settings.general.steam.compat_hint")),
+            )
+            .child(sub_row(
                 "steam-register-folders",
                 self.steam_register_folders,
-                is_offered,
                 t!("settings.general.steam.register"),
+                t!("settings.general.steam.register_hint"),
                 Self::set_steam_register_folders,
                 cx,
             ))
-            .child(hint(t!("settings.general.steam.register_hint").into()))
-            .child(Self::sub_checkbox_row(
+            .child(sub_row(
                 "steam-export",
                 self.steam_export_enabled,
-                is_offered,
                 t!("settings.general.steam.add"),
+                t!("settings.general.steam.restart_hint"),
                 Self::set_steam_export,
                 cx,
             ))
-            .child(hint(t!("settings.general.steam.restart_hint").into()))
-            .child(Self::sub_checkbox_row(
+            .child(sub_row(
                 "steam-discover",
                 self.steam_discover,
-                is_offered,
                 t!("settings.general.steam.discover"),
+                t!("settings.general.steam.discover_hint"),
                 Self::set_steam_discover,
                 cx,
             ))
-            .child(hint(t!("settings.general.steam.discover_hint").into()))
     }
 
     fn downloads_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        column()
-            .child(Self::checkbox_row(
+        column().child(
+            Self::checkbox_row(
                 "resume-downloads",
                 self.resume_downloads,
                 t!("settings.general.downloads.resume_on_start"),
                 Self::set_resume_downloads,
                 cx,
-            ))
-            .child(theme::muted(t!("settings.general.downloads.resume_hint")))
+            )
+            .help(t!("settings.general.downloads.resume_hint")),
+        )
     }
 
     fn galaxy_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
         column()
-            .child(Self::checkbox_row(
-                "galaxy-service",
-                self.galaxy_service,
-                t!("settings.general.galaxy.service"),
-                Self::set_galaxy_service,
-                cx,
-            ))
-            .child(theme::muted(t!("settings.general.galaxy.service_hint")))
-            .child(Self::checkbox_row(
-                "galaxy-upload",
-                self.galaxy_upload,
-                t!("settings.general.galaxy.upload"),
-                Self::set_galaxy_upload,
-                cx,
-            ))
-            .child(theme::muted(t!("settings.general.galaxy.upload_hint")))
+            .child(
+                Self::checkbox_row(
+                    "galaxy-service",
+                    self.galaxy_service,
+                    t!("settings.general.galaxy.service"),
+                    Self::set_galaxy_service,
+                    cx,
+                )
+                .help(t!("settings.general.galaxy.service_hint")),
+            )
+            .child(
+                Self::checkbox_row(
+                    "galaxy-upload",
+                    self.galaxy_upload,
+                    t!("settings.general.galaxy.upload"),
+                    Self::set_galaxy_upload,
+                    cx,
+                )
+                .help(t!("settings.general.galaxy.upload_hint")),
+            )
     }
 
     fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -712,15 +687,16 @@ impl Render for GeneralTab {
                 "close-to-tray-section",
                 offered(
                     Feature::CloseToTray,
-                    column()
-                        .child(Self::checkbox_row(
+                    column().child(
+                        Self::checkbox_row(
                             "close-to-tray",
                             self.close_to_tray,
                             t!("settings.general.close.to_tray"),
                             Self::set_close_to_tray,
                             cx,
-                        ))
-                        .child(theme::muted(t!("settings.general.close.restart_hint"))),
+                        )
+                        .help(t!("settings.general.close.restart_hint")),
+                    ),
                     cx,
                 ),
             ))
@@ -729,19 +705,20 @@ impl Render for GeneralTab {
                 "close-game-section",
                 offered(
                     Feature::PadClose,
-                    column()
-                        .child(Self::checkbox_row(
+                    column().child(
+                        Self::checkbox_row(
                             "close-game-shortcut",
                             self.close_game_shortcut,
                             t!(platform::CLOSE_GAME_LABEL),
                             Self::set_close_game_shortcut,
                             cx,
-                        ))
-                        .child(theme::muted(t!(
+                        )
+                        .help(t!(
                             platform::CLOSE_GAME_HINT,
                             hold = crate::closing::HOLD.as_secs(),
                             grace = crate::closing::GRACE.as_secs()
-                        ))),
+                        )),
+                    ),
                     cx,
                 ),
             ))
@@ -763,15 +740,16 @@ impl Render for GeneralTab {
                 "raven-section-block",
                 offered(
                     Feature::Raven,
-                    column()
-                        .child(Self::checkbox_row(
+                    column().child(
+                        Self::checkbox_row(
                             "raven-section",
                             self.raven,
                             t!("settings.general.raven.enable"),
                             Self::set_raven,
                             cx,
-                        ))
-                        .child(theme::muted(t!("settings.general.raven.hint"))),
+                        )
+                        .help(t!("settings.general.raven.hint")),
+                    ),
                     cx,
                 ),
             ))

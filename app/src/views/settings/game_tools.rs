@@ -6,10 +6,11 @@ use decanter_core::capabilities::Feature;
 use gpui::{Context, IntoElement, SharedString, Window, prelude::*};
 use rust_i18n::t;
 
-use super::{checkbox_field, column};
+use super::column;
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::theme;
+use crate::widgets::SettingRow;
 
 pub struct GameToolDefaults {
     mangohud: bool,
@@ -86,15 +87,14 @@ impl GameToolDefaults {
         cx.notify();
     }
 
-    /// The whole row toggles its checkbox, the way clicking a `<label>`'s text does.
     fn checkbox_row(
         id: &'static str,
         checked: bool,
         text: impl Into<SharedString>,
         on_toggle: impl Fn(&mut Self, bool, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        checkbox_field(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
+    ) -> SettingRow {
+        SettingRow::new(id, checked, text).on_click(cx.listener(move |this, _, _, cx| on_toggle(this, !checked, cx)))
     }
 }
 
@@ -111,23 +111,26 @@ impl Render for GameToolDefaults {
                 Self::set_mangohud,
                 cx,
             ))
-            .child(Self::checkbox_row(
-                "mangohud-autostart-log",
-                self.mangohud_autostart_log,
-                t!("settings.compatibility.game_tools.mangohud_log"),
-                Self::set_mangohud_autostart_log,
-                cx,
-            ))
-            .child(theme::muted(t!("settings.compatibility.game_tools.mangohud_log_hint")));
-        let gamemode = column()
-            .child(Self::checkbox_row(
+            .child(
+                Self::checkbox_row(
+                    "mangohud-autostart-log",
+                    self.mangohud_autostart_log,
+                    t!("settings.compatibility.game_tools.mangohud_log"),
+                    Self::set_mangohud_autostart_log,
+                    cx,
+                )
+                .help(t!("settings.compatibility.game_tools.mangohud_log_hint")),
+            );
+        let gamemode = column().child(
+            Self::checkbox_row(
                 "default-gamemode",
                 self.gamemode,
                 t!("settings.compatibility.game_tools.gamemode"),
                 Self::set_gamemode,
                 cx,
-            ))
-            .child(theme::muted(t!("settings.compatibility.game_tools.gamemode_hint")));
+            )
+            .help(t!("settings.compatibility.game_tools.gamemode_hint")),
+        );
         let caps = Caps::get(cx);
         section
             .child(caps.gate_or(Feature::MangoHud, mangohud, t!("game_tools.mangohud_missing")))
