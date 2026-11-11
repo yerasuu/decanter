@@ -1,7 +1,10 @@
 settings.title: 'Настройки'
 settings.tabs.general: 'Основные'
-settings.tabs.account: 'Учётная запись'
+settings.tabs.account: "Аккаунты и библиотека"
 settings.tabs.compatibility: 'Совместимость'
+settings.tabs.downloads: "Загрузки и обновления"
+settings.tabs.integrations: "Интеграции"
+settings.tabs.advanced: "Дополнительно"
 settings.storage_error: 'Ошибка при открытии хранилища: %{error}'
 settings.general.language.title: 'Язык'
 settings.general.language.system: 'Как в системе'

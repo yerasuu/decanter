@@ -763,7 +763,7 @@ fn no_account(browser: &Browser) -> Div {
                 t!("mods.nexus.open_settings"),
                 false,
             )
-            .on_click(|_, _, cx| crate::views::settings::open(crate::views::settings::Tab::General, cx)),
+            .on_click(|_, _, cx| crate::views::settings::open(crate::views::settings::Tab::Integrations, cx)),
         )
     }))
 }

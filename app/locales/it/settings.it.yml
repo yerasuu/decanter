@@ -1,7 +1,10 @@
 settings.title: Impostazioni
 settings.tabs.general: Generale
-settings.tabs.account: Account
+settings.tabs.account: "Account e libreria"
 settings.tabs.compatibility: Compatibilità
+settings.tabs.downloads: "Download e aggiornamenti"
+settings.tabs.integrations: "Integrazioni"
+settings.tabs.advanced: "Avanzate"
 settings.storage_error: "Errore nell'apertura dell'archiviazione: %{error}"
 settings.general.language.title: Lingua
 settings.general.language.system: Predefinita del sistema

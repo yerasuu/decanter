@@ -15,7 +15,7 @@ use super::credentials::CredentialsSection;
 use super::debug::DebugSection;
 use super::modio::ModioKeySection;
 use super::nexus::NexusSection;
-use super::{column, field_row, inline, section};
+use super::{Tab, column, field_row, inline, section};
 use crate::capabilities::Caps;
 use crate::i18n::{self, Language, Text};
 use crate::platform;
@@ -25,7 +25,11 @@ use crate::state::AppState;
 use crate::theme;
 use crate::widgets::{ButtonKind, SettingRow, button, language_note, language_select};
 
+/// Hidden until uploading Galaxy achievements exists; the setting and its code stay.
+const GALAXY_UPLOAD_AVAILABLE: bool = false;
+
 pub struct GeneralTab {
+    tab: Tab,
     language: Option<Language>,
     close_to_tray: bool,
     close_game_shortcut: bool,
@@ -59,8 +63,9 @@ enum Install {
 }
 
 impl GeneralTab {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(tab: Tab, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
+            tab,
             language: None,
             close_to_tray: false,
             close_game_shortcut: true,
@@ -628,7 +633,7 @@ impl GeneralTab {
                 )
                 .help(t!("settings.general.galaxy.service_hint")),
             )
-            .child(
+            .children((GALAXY_UPLOAD_AVAILABLE).then(|| {
                 Self::checkbox_row(
                     "galaxy-upload",
                     self.galaxy_upload,
@@ -636,8 +641,8 @@ impl GeneralTab {
                     Self::set_galaxy_upload,
                     cx,
                 )
-                .help(t!("settings.general.galaxy.upload_hint")),
-            )
+                .help(t!("settings.general.galaxy.upload_hint"))
+            }))
     }
 
     fn language_select(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -678,87 +683,93 @@ impl Render for GeneralTab {
                 .children(self.restart_error.as_ref().map(theme::error))
         });
 
-        column()
-            .child(theme::h2(t!("settings.general.language.title")))
-            .child(section("language", self.language_select(cx)))
-            .children(language_note(self.language).map(|note| note.mb(px(12.)).max_w(px(520.))))
-            .child(theme::h2(t!("settings.general.close.title")))
-            .child(section(
-                "close-to-tray-section",
-                offered(
-                    Feature::CloseToTray,
-                    column().child(
-                        Self::checkbox_row(
-                            "close-to-tray",
-                            self.close_to_tray,
-                            t!("settings.general.close.to_tray"),
-                            Self::set_close_to_tray,
-                            cx,
-                        )
-                        .help(t!("settings.general.close.restart_hint")),
+        match self.tab {
+            Tab::General => column()
+                .child(theme::h2(t!("settings.general.language.title")))
+                .child(section("language", self.language_select(cx)))
+                .children(language_note(self.language).map(|note| note.mb(px(12.)).max_w(px(520.))))
+                .child(theme::h2(t!("settings.general.close.title")))
+                .child(section(
+                    "close-to-tray-section",
+                    offered(
+                        Feature::CloseToTray,
+                        column().child(
+                            Self::checkbox_row(
+                                "close-to-tray",
+                                self.close_to_tray,
+                                t!("settings.general.close.to_tray"),
+                                Self::set_close_to_tray,
+                                cx,
+                            )
+                            .help(t!("settings.general.close.restart_hint")),
+                        ),
+                        cx,
                     ),
-                    cx,
-                ),
-            ))
-            .child(theme::h2(t!("settings.general.close_game.title")))
-            .child(section(
-                "close-game-section",
-                offered(
-                    Feature::PadClose,
-                    column().child(
-                        Self::checkbox_row(
-                            "close-game-shortcut",
-                            self.close_game_shortcut,
-                            t!(platform::CLOSE_GAME_LABEL),
-                            Self::set_close_game_shortcut,
-                            cx,
-                        )
-                        .help(t!(
-                            platform::CLOSE_GAME_HINT,
-                            hold = crate::closing::HOLD.as_secs(),
-                            grace = crate::closing::GRACE.as_secs()
-                        )),
+                ))
+                .child(theme::h2(t!("settings.general.close_game.title")))
+                .child(section(
+                    "close-game-section",
+                    offered(
+                        Feature::PadClose,
+                        column().child(
+                            Self::checkbox_row(
+                                "close-game-shortcut",
+                                self.close_game_shortcut,
+                                t!(platform::CLOSE_GAME_LABEL),
+                                Self::set_close_game_shortcut,
+                                cx,
+                            )
+                            .help(t!(
+                                platform::CLOSE_GAME_HINT,
+                                hold = crate::closing::HOLD.as_secs(),
+                                grace = crate::closing::GRACE.as_secs()
+                            )),
+                        ),
+                        cx,
                     ),
-                    cx,
-                ),
-            ))
-            .child(theme::h2(t!("settings.general.steam.title")))
-            .child(section(
-                "steam-section",
-                offered(
-                    Feature::SteamExport,
-                    column().child(self.steam_section(cx)).children(callout),
-                    cx,
-                ),
-            ))
-            .child(theme::h2(t!("settings.general.downloads.title")))
-            .child(section("downloads", self.downloads_section(cx)))
-            .child(theme::h2(t!("settings.general.galaxy.title")))
-            .child(section("galaxy", self.galaxy_section(cx)))
-            .child(theme::h2(t!("settings.general.raven.title")))
-            .child(section(
-                "raven-section-block",
-                offered(
-                    Feature::Raven,
-                    column().child(
-                        Self::checkbox_row(
-                            "raven-section",
-                            self.raven,
-                            t!("settings.general.raven.enable"),
-                            Self::set_raven,
-                            cx,
-                        )
-                        .help(t!("settings.general.raven.hint")),
+                )),
+            Tab::Downloads => column()
+                .child(theme::h2(t!("settings.general.downloads.title")))
+                .child(section("downloads", self.downloads_section(cx)))
+                .child(theme::h2(t!("settings.general.updates.title")))
+                .child(section("updates", self.release_section(cx))),
+            Tab::Integrations => column()
+                .child(theme::h2(t!("settings.general.steam.title")))
+                .child(section(
+                    "steam-section",
+                    offered(
+                        Feature::SteamExport,
+                        column().child(self.steam_section(cx)).children(callout),
+                        cx,
                     ),
-                    cx,
-                ),
-            ))
-            .child(theme::h2(t!("settings.general.updates.title")))
-            .child(section("updates", self.release_section(cx)))
-            .child(section("modio-key", self.modio.clone()))
-            .child(section("nexus", self.nexus.clone()))
-            .child(section("credentials", self.credentials.clone()))
-            .child(section("debug", self.debug.clone()))
+                ))
+                .child(theme::h2(t!("settings.general.galaxy.title")))
+                .child(section("galaxy", self.galaxy_section(cx)))
+                .child(section("modio-key", self.modio.clone()))
+                .child(section("nexus", self.nexus.clone())),
+            Tab::Advanced => column()
+                .child(theme::h2(t!("settings.general.raven.title")))
+                .child(section(
+                    "raven-section-block",
+                    offered(
+                        Feature::Raven,
+                        column().child(
+                            Self::checkbox_row(
+                                "raven-section",
+                                self.raven,
+                                t!("settings.general.raven.enable"),
+                                Self::set_raven,
+                                cx,
+                            )
+                            .help(t!("settings.general.raven.hint")),
+                        ),
+                        cx,
+                    ),
+                ))
+                .child(section("credentials", self.credentials.clone()))
+                .child(section("debug", self.debug.clone())),
+            Tab::Account | Tab::Compatibility => column(),
+        }
     }
 }
 
