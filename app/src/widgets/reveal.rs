@@ -134,14 +134,6 @@ impl<E: StatefulInteractiveElement + Element> Element for Scrolling<E> {
     }
 }
 
-impl<E: StatefulInteractiveElement + Element> IntoElement for Scrolling<E> {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 pub struct Reveal<E> {
     id: Option<ElementId>,
     element: Option<E>,
@@ -237,14 +229,6 @@ impl<E: InteractiveElement + Element> Element for Reveal<E> {
         if let Some(child) = state.child.as_mut() {
             child.paint(window, cx);
         }
-    }
-}
-
-impl<E: InteractiveElement + Element> IntoElement for Reveal<E> {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
     }
 }
 

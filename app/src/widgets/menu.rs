@@ -232,14 +232,6 @@ impl Element for ModalLayer {
     }
 }
 
-impl IntoElement for ModalLayer {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 /// Holds the keyboard inside a popup that took the focus: Tab and the arrows walk its items and
 /// stop at either end instead of moving on to the page behind the backdrop, and Escape dismisses
 /// it. The popup is painted last, so its items sit at the end of the window's tab order.
