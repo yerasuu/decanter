@@ -149,6 +149,7 @@ library.menu.dynamic_collection: 'Dynamic collection: its saved filter decides w
 library.menu.new_collection: New collection…
 library.menu.cancel_install: Cancel install
 library.menu.install: Install
+library.menu.install_many: Install %{count} games
 library.menu.play: Play
 library.menu.stop: Stop
 library.menu.open_folder: Open game folder

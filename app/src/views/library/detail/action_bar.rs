@@ -3,13 +3,13 @@ use decanter_core::{Game, InstalledGame, Storefront};
 use gpui::{AnyElement, Context, Div, FocusHandle, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
-use super::install_dialog::install_dialog;
 use super::{BarState, DetailView};
 use crate::capabilities::Caps;
 use crate::state::{AppState, Download, InstallStatus, MoveKey, MoveStatus, move_fraction, moving_text};
 use crate::theme;
 use crate::views::downloads::{download_actions, progress_lines};
 use crate::views::library::install::{self, InstallRequest};
+use crate::views::library::install_dialog::{self, install_dialog};
 use crate::views::library::{actions, open_properties};
 use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
 
@@ -254,8 +254,9 @@ impl DetailView {
                     .on_click(cx.listener({
                         let title = game.title.clone();
                         move |this, _, _, cx| {
-                            this.open_install_dialog(
-                                InstallRequest {
+                            install_dialog::open(
+                                this,
+                                vec![InstallRequest {
                                     account_id: account_id.clone(),
                                     product_id: product_id.clone(),
                                     parent_id: None,
@@ -264,7 +265,7 @@ impl DetailView {
                                     dlcs: dlcs.clone(),
                                     library_root: None,
                                     language: None,
-                                },
+                                }],
                                 cx,
                             );
                         }

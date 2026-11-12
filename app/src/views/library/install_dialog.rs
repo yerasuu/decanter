@@ -8,18 +8,22 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use super::DetailView;
+use super::actions;
+use super::install::InstallRequest;
 use crate::state::AppState;
 use crate::theme;
-use crate::views::library::actions;
-use crate::views::library::install::InstallRequest;
 use crate::widgets::select::Select;
 use crate::widgets::{ButtonKind, button, menu};
 
-pub(super) struct InstallDialog {
-    /// Spent by the confirm click, or by the install that starts at once
-    /// when there turns out to be nothing to choose.
-    request: Option<InstallRequest>,
+/// A view that can show the install dialog over itself.
+pub(crate) trait InstallHost: 'static {
+    fn install_dialog_mut(&mut self) -> &mut Option<InstallDialog>;
+}
+
+pub(crate) struct InstallDialog {
+    /// Spent by the confirm click. More than one when several games are installed together: the
+    /// dialog then asks only for the library folder, and each goes in on its main branch.
+    requests: Vec<InstallRequest>,
     /// Every library folder the install could go in, with its free space.
     folders: Vec<(PathBuf, Option<u64>)>,
     /// The folder picked; `None` is the main one.
@@ -42,11 +46,11 @@ pub(super) struct InstallDialog {
 }
 
 /// Reads the languages `branch`'s build offers into the open dialog.
-fn fetch_languages(
+fn fetch_languages<H: InstallHost>(
     account_id: String,
     product_id: String,
     branch: Option<String>,
-    cx: &mut Context<DetailView>,
+    cx: &mut Context<H>,
 ) -> Task<()> {
     cx.spawn(async move |this, cx| {
         let offered = decanter_gog::offered_languages(&account_id, &product_id, branch.as_deref(), None)
@@ -55,7 +59,7 @@ fn fetch_languages(
             .unwrap_or_default();
         let wanted = crate::core::gog_languages(&account_id, &product_id);
         let _ = this.update(cx, |this, cx| {
-            let Some(dialog) = &mut this.local.dialog else {
+            let Some(dialog) = this.install_dialog_mut() else {
                 return;
             };
             dialog.language = decanter_gog::language::resolve(&wanted, &offered);
@@ -65,105 +69,128 @@ fn fetch_languages(
     })
 }
 
-impl DetailView {
-    pub(super) fn open_install_dialog(&mut self, request: InstallRequest, cx: &mut Context<Self>) {
-        // Amazon has no branches or languages to pick, so its install starts in the main library
-        // folder without asking.
-        #[cfg(target_os = "linux")]
-        if crate::views::library::amazon_install::is_amazon_account(&request.account_id) {
-            actions::start_install(request, cx);
-            return;
-        }
-        // Nor has Epic, as decanter installs it so far: the base game in the main library folder.
-        if crate::views::library::epic_install::is_epic_account(&request.account_id) {
-            actions::start_install(request, cx);
-            return;
-        }
-        let (account_id, product_id) = (request.account_id.clone(), request.product_id.clone());
-        let folders = crate::core::library_for_account(&account_id)
-            .inspect_err(
-                |err| tracing::warn!(account_id, error = %err, "failed to resolve library root for install dialog"),
-            )
-            .map(|library| library.roots())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|root| {
-                let free = decanter_core::disk_usage(&root).map(|(free, _)| free);
-                (root, free)
-            })
-            .collect();
+/// Opens the dialog for `requests`. Amazon and Epic installs have nothing to pick, so they start
+/// at once in the main library folder; whatever GOG games are left are asked about together.
+pub(crate) fn open<H: InstallHost>(host: &mut H, requests: Vec<InstallRequest>, cx: &mut Context<H>) {
+    let requests: Vec<_> = requests
+        .into_iter()
+        .filter_map(|request| {
+            #[cfg(target_os = "linux")]
+            if super::amazon_install::is_amazon_account(&request.account_id) {
+                actions::start_install(request, cx);
+                return None;
+            }
+            if super::epic_install::is_epic_account(&request.account_id) {
+                actions::start_install(request, cx);
+                return None;
+            }
+            Some(request)
+        })
+        .collect();
+    let Some(first) = requests.first() else {
+        return;
+    };
+    let (account_id, product_id) = (first.account_id.clone(), first.product_id.clone());
+    let folders = crate::core::library_for_account(&account_id)
+        .inspect_err(
+            |err| tracing::warn!(account_id, error = %err, "failed to resolve library root for install dialog"),
+        )
+        .map(|library| library.roots())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|root| {
+            let free = decanter_core::disk_usage(&root).map(|(free, _)| free);
+            (root, free)
+        })
+        .collect();
+    let (fetch, languages_fetch) = if requests.len() == 1 {
+        let (fetch_account, fetch_product) = (account_id.clone(), product_id.clone());
         let fetch = cx.spawn(async move |this, cx| {
+            let (account_id, product_id) = (fetch_account, fetch_product);
             tracing::debug!(account_id, product_id, "fetching gog branch list for install dialog");
             let result = decanter_gog::list_branches(&account_id, &product_id)
                 .await
                 .inspect_err(|err| tracing::error!(account_id, product_id, error = %err, "failed to fetch branch list"))
                 .map_err(|err| err.to_string());
             let _ = this.update(cx, |this, cx| {
-                let Some(dialog) = &mut this.local.dialog else {
+                let Some(dialog) = this.install_dialog_mut() else {
                     return;
                 };
                 dialog.branches = Some(result);
                 cx.notify();
             });
         });
-        let languages_fetch = fetch_languages(request.account_id.clone(), request.product_id.clone(), None, cx);
-        let offline = AppState::get(cx).library.read(cx).offline_folders.clone();
-        self.local.dialog = Some(InstallDialog {
-            request: Some(request),
-            folders,
-            folder: None,
-            offline,
-            branches: None,
-            chosen: None,
-            languages: None,
-            language: None,
-            _fetch: fetch,
-            _languages_fetch: languages_fetch,
-        });
-        cx.notify();
-    }
+        (fetch, fetch_languages(account_id, product_id, None, cx))
+    } else {
+        (Task::ready(()), Task::ready(()))
+    };
+    let offline = AppState::get(cx).library.read(cx).offline_folders.clone();
+    *host.install_dialog_mut() = Some(InstallDialog {
+        requests,
+        folders,
+        folder: None,
+        offline,
+        branches: None,
+        chosen: None,
+        languages: None,
+        language: None,
+        _fetch: fetch,
+        _languages_fetch: languages_fetch,
+    });
+    cx.notify();
 }
 
 /// Confirms an install before it starts, the way Steam does — which library
 /// folder it goes in and which branch to install (mainline by default, same
 /// as Steam defaults to no beta opt-in). Always shown, even with nothing to
 /// choose, and at once, while what it asks about is still loading.
-pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Context<DetailView>) -> Option<AnyElement> {
+pub(crate) fn install_dialog<H: InstallHost>(
+    dialog: &InstallDialog,
+    window: &Window,
+    cx: &Context<H>,
+) -> Option<AnyElement> {
     let this = cx.entity().downgrade();
     let close: menu::Dismiss = Rc::new({
         let this = this.clone();
         move |_, cx| {
             let _ = this.update(cx, |this, cx| {
-                this.local.dialog = None;
+                *this.install_dialog_mut() = None;
                 cx.notify();
             });
         }
     });
-    let request = dialog.request.as_ref()?;
-    let dlc_count = request.dlcs.len();
-    let title = request.title.clone();
+    let first = dialog.requests.first()?;
+    let dlc_count = first.dlcs.len();
+    let is_many = dialog.requests.len() > 1;
+    let title = if is_many {
+        t!("library.menu.install_many", count = dialog.requests.len()).into_owned()
+    } else {
+        t!("library.detail.install.dialog_title", title = first.title).into_owned()
+    };
 
     let rows = install_rows(dialog, dlc_count);
     let folders = folder_picker(dialog, this.clone());
     let language = language_picker(dialog, this.clone());
-    let branch = branch_picker(dialog, this);
+    let branch = (!is_many).then(|| branch_picker(dialog, this));
     let field_row = || div().flex().gap(px(10.)).mb_3().max_w(px(520.));
 
     let confirm = cx.listener(|this, _, _, cx| {
-        let dialog = this.local.dialog.take();
+        let dialog = this.install_dialog_mut().take();
         cx.notify();
         if let Some(InstallDialog {
-            request: Some(mut request),
+            requests,
             chosen,
             folder,
             language,
             ..
         }) = dialog
         {
-            request.branch = chosen;
-            request.library_root = folder;
-            request.language = language.map(|picked| picked.tag);
-            actions::start_install(request, cx);
+            for mut request in requests {
+                request.branch = chosen.clone();
+                request.library_root = folder.clone();
+                request.language = language.as_ref().map(|picked| picked.tag.clone());
+                actions::start_install(request, cx);
+            }
         }
     });
     let cancel = Rc::clone(&close);
@@ -184,7 +211,7 @@ pub(super) fn install_dialog(dialog: &InstallDialog, window: &Window, cx: &Conte
             .pb_6()
             .child(rows)
             .children(folders.map(|folders| field_row().child(div().child(folder_label)).child(folders)))
-            .child(field_row().child(div().child(branch_label)).child(branch))
+            .children(branch.map(|branch| field_row().child(div().child(branch_label)).child(branch)))
             .children(language.map(|language| field_row().child(div().child(language_label)).child(language)))
             .children(language_note.map(|note| div().mb_3().max_w(px(520.)).child(theme::muted(note))))
             .child(
@@ -232,7 +259,7 @@ fn dialog_header(title: &str, close: menu::Dismiss) -> Div {
         .child(
             theme::display(16.)
                 .text_color(rgb(theme::TEXT_MUTED))
-                .child(t!("library.detail.install.dialog_title", title = title).to_uppercase()),
+                .child(title.to_uppercase()),
         )
         .child(
             button("install-dialog-close", ButtonKind::Icon, "✕", false)
@@ -289,7 +316,7 @@ fn install_rows(dialog: &InstallDialog, dlc_count: usize) -> Div {
 
 /// Which library folder a new install goes in, with each one's free space —
 /// only when the profile has more than one.
-fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option<AnyElement> {
+fn folder_picker<H: InstallHost>(dialog: &InstallDialog, this: WeakEntity<H>) -> Option<AnyElement> {
     if dialog.folders.len() < 2 {
         return None;
     }
@@ -321,7 +348,7 @@ fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option
                 let picked = PathBuf::from(value.as_ref());
                 let folder = (Some(&picked) != main.as_ref()).then_some(picked);
                 let _ = this.update(cx, |this, cx| {
-                    if let Some(dialog) = &mut this.local.dialog {
+                    if let Some(dialog) = this.install_dialog_mut() {
                         dialog.folder = folder;
                         cx.notify();
                     }
@@ -333,7 +360,7 @@ fn folder_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option
 
 /// Which language the game installs in, by its own name, among those the
 /// build splits its files by; only when it offers more than one.
-fn language_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Option<AnyElement> {
+fn language_picker<H: InstallHost>(dialog: &InstallDialog, this: WeakEntity<H>) -> Option<AnyElement> {
     let offered = dialog.languages.as_ref().filter(|offered| offered.len() > 1)?;
     let options = offered.iter().map(|tag| {
         (
@@ -350,7 +377,7 @@ fn language_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> Opti
         Select::new("install-language", options, current)
             .on_change(move |value, _, cx| {
                 let _ = this.update(cx, |this, cx| {
-                    if let Some(dialog) = &mut this.local.dialog {
+                    if let Some(dialog) = this.install_dialog_mut() {
                         dialog.language = Some(decanter_gog::language::Resolved::picked(value.to_string()));
                         cx.notify();
                     }
@@ -377,7 +404,7 @@ fn language_note(dialog: &InstallDialog) -> Option<String> {
     )
 }
 
-fn branch_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> AnyElement {
+fn branch_picker<H: InstallHost>(dialog: &InstallDialog, this: WeakEntity<H>) -> AnyElement {
     match &dialog.branches {
         None => theme::muted(t!("common.loading")).into_any_element(),
         Some(Err(err)) => theme::error(err.clone()).into_any_element(),
@@ -394,18 +421,18 @@ fn branch_picker(dialog: &InstallDialog, this: WeakEntity<DetailView>) -> AnyEle
             Select::new("install-branch", options, dialog.chosen.clone().unwrap_or_default())
                 .on_change(move |value, _, cx| {
                     let _ = this.update(cx, |this, cx| {
-                        let Some(dialog) = &mut this.local.dialog else {
+                        let Some(dialog) = this.install_dialog_mut() else {
                             return;
                         };
                         dialog.chosen = (!value.is_empty()).then(|| value.to_string());
                         let ids = dialog
-                            .request
-                            .as_ref()
+                            .requests
+                            .first()
                             .map(|request| (request.account_id.clone(), request.product_id.clone()));
                         let branch = dialog.chosen.clone();
                         if let Some((account_id, product_id)) = ids {
                             let fetch = fetch_languages(account_id, product_id, branch, cx);
-                            if let Some(dialog) = &mut this.local.dialog {
+                            if let Some(dialog) = this.install_dialog_mut() {
                                 dialog._languages_fetch = fetch;
                             }
                         }

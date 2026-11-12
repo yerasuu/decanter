@@ -17,6 +17,7 @@ pub mod epic_install;
 mod filters;
 pub(crate) mod fmt;
 pub mod install;
+mod install_dialog;
 mod mods;
 pub mod properties;
 mod shelf_popups;
@@ -80,9 +81,9 @@ struct LibraryModel {
     pub(crate) mods_open: bool,
     /// The selected game's cached achievements, re-read after each poll.
     pub(crate) achievements: Option<Result<Vec<data::Achievement>, String>>,
-    /// An install asked for from outside the detail pane (the context menu), handed to the
-    /// detail so it opens the install dialog for it.
-    pub(crate) install_request: Option<install::InstallRequest>,
+    /// Installs asked for from a menu, handed to the library view so it opens the install dialog
+    /// over whatever is on screen.
+    pub(crate) install_requests: Vec<install::InstallRequest>,
     /// The cover a game was opened from with the keyboard: its page then
     /// takes the focus for its first action, and the shelves give it back to
     /// that cover once they show again.
@@ -122,7 +123,7 @@ impl LibraryModel {
             poll_status: PollStatus::Idle,
             mods_open: false,
             achievements: None,
-            install_request: None,
+            install_requests: Vec::new(),
             opened_from: None,
             poll: None,
             epic_polled: HashMap::new(),
@@ -139,12 +140,11 @@ impl LibraryModel {
         cx.notify();
     }
 
-    /// Opens the game's detail with its install dialog, so an install asked for from a menu
-    /// offers the same library folder, branch and language as the detail's own button.
-    pub fn request_install(&mut self, request: install::InstallRequest, cx: &mut Context<Self>) {
-        let product_id = request.product_id.clone();
-        self.install_request = Some(request);
-        self.select(Some(product_id), cx);
+    /// Asks for the install dialog without leaving the current view, so a menu offers the same
+    /// library folder, branch and language as the detail's own button.
+    pub fn request_install(&mut self, requests: Vec<install::InstallRequest>, cx: &mut Context<Self>) {
+        self.install_requests = requests;
+        cx.notify();
     }
 
     pub fn show_mods(&mut self, open: bool, cx: &mut Context<Self>) {
@@ -255,6 +255,13 @@ pub struct LibraryView {
     sidebar: Entity<SidebarView>,
     browser: Entity<BrowserView>,
     detail: Entity<DetailView>,
+    dialog: Option<install_dialog::InstallDialog>,
+}
+
+impl install_dialog::InstallHost for LibraryView {
+    fn install_dialog_mut(&mut self) -> &mut Option<install_dialog::InstallDialog> {
+        &mut self.dialog
+    }
 }
 
 impl LibraryView {
@@ -281,6 +288,7 @@ impl LibraryView {
             browser: cx.new(|cx| BrowserView::new(model.clone(), window, cx)),
             detail: cx.new(|cx| DetailView::new(model.clone(), window, cx)),
             model,
+            dialog: None,
         }
     }
 
@@ -294,6 +302,12 @@ impl LibraryView {
 impl Render for LibraryView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = AppState::get(cx).clone();
+        let requests = self
+            .model
+            .update(cx, |model, _| std::mem::take(&mut model.install_requests));
+        if !requests.is_empty() {
+            install_dialog::open(self, requests, cx);
+        }
         let (loading_state, count, enriching) = {
             let library = state.library.read(cx);
             (
@@ -366,6 +380,11 @@ impl Render for LibraryView {
             )
             .children(filter_panel)
             .children(popup)
+            .children(
+                self.dialog
+                    .as_ref()
+                    .and_then(|dialog| install_dialog::install_dialog(dialog, window, cx)),
+            )
             .into_any_element()
     }
 }

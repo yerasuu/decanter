@@ -147,6 +147,7 @@ library.menu.dynamic_collection: 'Динамическая коллекция: �
 library.menu.new_collection: 'Новая коллекция…'
 library.menu.cancel_install: 'Отменить установку'
 library.menu.install: 'Установить'
+library.menu.install_many: "Установить игры: %{count}"
 library.menu.play: 'Играть'
 library.menu.stop: 'Остановить'
 library.menu.open_folder: 'Открыть папку игры'

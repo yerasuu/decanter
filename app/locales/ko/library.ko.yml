@@ -147,6 +147,7 @@ library.menu.dynamic_collection: '동적 컬렉션: 저장된 필터가 포함 �
 library.menu.new_collection: 새 컬렉션…
 library.menu.cancel_install: 설치 취소
 library.menu.install: 설치
+library.menu.install_many: "게임 %{count}개 설치"
 library.menu.play: 플레이
 library.menu.stop: 중지
 library.menu.open_folder: 게임 폴더 열기

@@ -147,6 +147,7 @@ library.menu.dynamic_collection: 'Collection dynamique : son filtre enregistré 
 library.menu.new_collection: Nouvelle collection…
 library.menu.cancel_install: Annuler l’installation
 library.menu.install: Installer
+library.menu.install_many: Installer %{count} jeux
 library.menu.play: Jouer
 library.menu.stop: Arrêter
 library.menu.open_folder: Ouvrir le dossier du jeu

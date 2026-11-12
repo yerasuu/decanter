@@ -10,7 +10,6 @@ mod action_bar;
 mod epic_dlc;
 mod hero;
 mod import;
-mod install_dialog;
 mod mods;
 mod summary;
 
@@ -21,6 +20,7 @@ use decanter_gog::LibraryEntry;
 use gpui::{Context, Div, Entity, FocusHandle, Pixels, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
+use super::install_dialog::{InstallDialog, InstallHost};
 use super::{LibraryModel, actions, data};
 use crate::state::{AppState, Background, Download, DownloadKey};
 use crate::theme;
@@ -28,7 +28,6 @@ use crate::views::ps::log::LogView;
 use crate::widgets::reveal::reveal;
 use crate::widgets::tabs;
 use hero::hero;
-use install_dialog::InstallDialog;
 use mods::ModsTab;
 use summary::summary_tab;
 
@@ -211,6 +210,12 @@ pub struct DetailView {
     primary: FocusHandle,
 }
 
+impl InstallHost for DetailView {
+    fn install_dialog_mut(&mut self) -> &mut Option<InstallDialog> {
+        &mut self.local.dialog
+    }
+}
+
 impl DetailView {
     pub fn new(model: Entity<LibraryModel>, _: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::get(cx).clone();
@@ -311,16 +316,6 @@ impl Render for DetailView {
         let profile_id = state.session.read(cx).active_profile.clone();
         let background = state.background.read(cx);
         let install_changed = self.sync(&game, profile_id.as_deref(), background);
-        let requested = self.model.update(cx, |model, _| {
-            let is_for_game = model
-                .install_request
-                .as_ref()
-                .is_some_and(|request| request.product_id == game.id);
-            is_for_game.then(|| model.install_request.take()).flatten()
-        });
-        if let Some(request) = requested {
-            self.open_install_dialog(request, cx);
-        }
         let background = state.background.read(cx);
         let running = background.running.contains(&game.id);
         let starting = background.starting.contains(&game.id);
