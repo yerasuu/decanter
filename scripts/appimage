@@ -156,7 +156,9 @@ squashfs="$out_dir/decanter.squashfs"
 rm -f "$squashfs"
 mksquashfs "$app_dir" "$squashfs" -root-owned -noappend -comp zstd -quiet -no-progress
 appimage="$out_dir/Decanter-$arch.AppImage"
-cat "$runtime_cache" "$squashfs" > "$appimage"
-chmod +x "$appimage"
+# Built beside and renamed over, because writing into an AppImage that is running fails with "Text file busy".
+cat "$runtime_cache" "$squashfs" > "$appimage.new"
+chmod +x "$appimage.new"
+mv -f "$appimage.new" "$appimage"
 rm -f "$squashfs"
 echo "$appimage"
