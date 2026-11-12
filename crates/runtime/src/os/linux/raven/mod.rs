@@ -136,6 +136,7 @@ pub(crate) async fn raven_prepare(pin: &Pin, on_progress: &mut dyn FnMut(Progres
         item: None,
     });
     build::clone(&checkout, &commit, &mut log).await?;
+    build::patch(&checkout, &commit, &mut log).await?;
     let toolchain_dir = folder.join(TOOLCHAIN);
     let toolchain = Toolchain::resolve(&toolchain_dir, &RECIPE, |received, total| {
         on_progress(Progress {

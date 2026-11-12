@@ -22,25 +22,27 @@ construir» decanter:
 2. clones `github.com/mirkobrombin/raven` shallow at the pinned commit (`RAVEN_COMMIT` in
    `crates/runtime/src/runner.rs`, 82f124e2fbeab6a5fa3050df13160d12aec38ec1, Raven's `main` on 2026-11-12,
    decision #1655) and checks that the checked-out commit is that one;
-3. enters Raven's own nix environment (`crates/runtime/src/os/linux/raven/raven.nix`, through `decanter-nix`:
+3. applies decanter's patch to Raven's sources (`git apply`, see [Patches](#patches)), only at that commit, and
+   fails the build if it does not apply;
+4. enters Raven's own nix environment (`crates/runtime/src/os/linux/raven/raven.nix`, through `decanter-nix`:
    the host's tools when they cover it, else the system's nix, else nix-portable): CMake, Ninja, Python 3,
    the host gcc and g++ (pinned in `CC`/`CXX`, since the MinGW compiler's setup hook would otherwise take
    them), pkg-config, libffi, Wayland and wayland-protocols, xkbcommon, pixman, FreeType, libpng, OpenSSL and
    the MinGW compilers for both widths, `x86_64-w64-mingw32-gcc` and `i686-w64-mingw32-gcc` (with their
    `windres`, `nm` and `dlltool`);
-4. runs Raven's provisioning scripts that download nothing (`COMPILE` in
+5. runs Raven's provisioning scripts that download nothing (`COMPILE` in
    `crates/runtime/src/os/linux/raven/build.rs`), into `components/` of the checkout: `provision-rtl.py`
    (`raven-rtl.dll`, the guest RTL every heap call goes to), `provision-controls.py` (the common controls,
    `raven-user32.dll`, `raven-shell.dll`, DirectWrite, Direct2D, `ucrtbase.dll` and Raven's `control.exe`,
    `regedit.exe`, `dism.exe`, file picker and host bridge) and `provision-controls.py --arch x86` (the same for
    32-bit programs, without the C runtime). All of it is MinGW `gcc` and `windres` over Raven's own MIT sources
    under `native/guest/`;
-5. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR` and
+6. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR` and
    `-DRAVEN_CONTROLS32_COMPONENT_DIR`, so CMake copies the components beside `raven` (the 32-bit ones into
    `build/native/x86/`), and builds `ninja -k 0 native/raven x86_ucrt_component`: the runtime and the 32-bit C
    runtime, `ucrtbase32.dll`, which `native/raven` does not depend on. Raven's full default build adds its test
    programs: at the pin it builds (533 steps) but takes 7.3 GB;
-6. marks the build finished with one rename of its marker, after every step passed.
+7. marks the build finished with one rename of its marker, after every step passed.
 
 Progress (sources, tools download, configure, Ninja's steps) shows in the section, with «Cancelar»: it drops the
 build, kills its process group and removes the folder. A failed build shows its error and the end of its log.
@@ -111,9 +113,12 @@ programs only, no window, compiled with nixpkgs' MinGW GCC 16.2.0 and run with t
 
 | Program | x86_64 | i686 |
 | --- | --- | --- |
-| `printf`, `puts`, `fprintf(stderr)`, `malloc`/`calloc`/`free`, `HeapAlloc` on `GetProcessHeap`, exit status 7, importing `msvcrt.dll` (MinGW's default) | Runs: all its output, exit 7, about 50 ms | Runs to exit 7, but only `puts` and `WriteFile` reach the output: whatever goes through a `FILE *` (`printf`, `fprintf`, `fputs`) is lost without an error |
-| the same with `-mcrtdll=ucrt` (imports `api-ms-win-crt-*`) | Runs: all its output, exit 7 | Runs: all its output, exit 7, about 230 ms; `%zu` prints 8 bytes of the stack instead of a 32-bit `size_t` |
+| `printf`, `puts`, `fprintf(stderr)`, `malloc`/`calloc`/`free`, `HeapAlloc` on `GetProcessHeap`, exit status 7, importing `msvcrt.dll` (MinGW's default) | Runs: all its output, exit 7, about 50 ms | Runs: all its output, exit 7 (without the patch only `puts` and `WriteFile` reached the output) |
+| the same with `-mcrtdll=ucrt` (imports `api-ms-win-crt-*`) | Runs: all its output, exit 7 | Runs: all its output, exit 7, about 230 ms (without the patch `%zu` printed 8 bytes of the stack) |
 | `InitCommonControls` and `InitCommonControlsEx`, then `CreateProcessA` of one of the above, waited, its exit status read | Runs, the child's output and exit status 7 | Runs, a 32-bit or 64-bit child alike |
+
+The i686 results are with decanter's patch; `printf`, `fprintf` and `fputs` to `stdout` and `stderr`, `%zu`, `%Iu` and
+`%td` among other arguments, and `fopen`/`fgets`/`ftell` on a file were checked in both widths and both C runtimes.
 
 At the previous pin (3179949f14) only a program that needed no C runtime and no heap ran: `printf` stopped at
 `missing PE module: msvcrt.dll`, and with a `ucrtbase.dll` at `unimplemented native API GetProcessHeap`, since
@@ -136,6 +141,31 @@ Programs take their arguments after `--`; anything between the program and `--` 
 to load (`native/main.cpp`), so decanter passes none. Raven keeps two folders beside each prefix,
 `<prefix>.apps` and `<prefix>.layers`. No GUI program, installer or game has been run against this pin.
 
+## Patches
+
+decanter carries fixes to Raven's sources that Raven does not have yet, in
+`crates/runtime/src/os/linux/raven/patches/` (unified diffs against `RAVEN_COMMIT`, embedded in decanter). They are
+applied to the pinned commit only: a newer commit chosen in the section is built as Raven has it. A patch is dropped
+when the pin moves to a commit that has its fix, or rewritten if the pin moves and it no longer applies.
+
+`x86-crt.patch` changes Raven's C runtime component, `native/guest/raven-crt/ucrtbase.c` (`ucrtbase.dll` and the
+32-bit `ucrtbase32.dll`, which also answers for a 32-bit program's `msvcrt.dll`):
+
+- The stream record (`Stream`) was 36 bytes on x86. Raven exports its table of standard streams as `_iob` and from
+  `__iob_func`/`__p__iob`, and programs built against msvcrt reach `stdout` and `stderr` as `&_iob[1]` and
+  `&_iob[2]`, at the stride of x86 msvcrt's `FILE`, 32 bytes. Those pointers fell inside the wrong record, whose
+  `handle` field was another field's bytes, so every write through `stdout` or `stderr` went to an invalid handle and
+  was dropped without an error; `puts` and the ucrt's `__acrt_iob_func` index the table themselves, which is why they
+  worked. The two read-buffer counters are now 16-bit (never above the 4096-byte buffer), which makes the record 32
+  bytes on x86 and leaves it at 48 on x64, with a static assertion for each width. A stream opened by `fopen` keeps
+  its lock right after the record, where msvcrt's `_FILEX` keeps it, in both widths.
+- The formatter read `%zu`, `%zd`, `%td` and `%Iu` as 64-bit everywhere. `size_t` and `ptrdiff_t` are as wide as a
+  pointer, so on x86 they took 8 bytes, printed the next argument's bytes with them and shifted every later
+  argument. They now follow the pointer width; `%jd` (`intmax_t`) and `%I64d` stay 64-bit.
+
+A missing flush at exit was not the cause: Raven's streams write through to their handle on every call (`fflush`
+does nothing), and output written without a `fflush` before `return` is there.
+
 ## Licence
 
 Raven is GPL-3.0-or-later. It is not part of decanter: its source is fetched from GitHub and built on the
@@ -143,4 +173,6 @@ player's machine, and it runs as its own process; no Raven source or binary is i
 ([LICENSES.md](../LICENSES.md)). The guest components its provisioning compiles come from the same checkout,
 from Raven's own sources under `native/guest/` (`raven-rtl`, `raven-crt`, `raven-comctl32`, `raven-user32`,
 `raven-shell` and the rest), each file marked `SPDX-License-Identifier: MIT` (Raven's `LICENSES/MIT.txt`); nothing
-else is downloaded for them.
+else is downloaded for them. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
+the patch file is GPL-3.0-or-later like Raven, and the file it changes, `native/guest/raven-crt/ucrtbase.c`, is
+`SPDX-License-Identifier: MIT` and stays MIT.

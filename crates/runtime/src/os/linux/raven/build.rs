@@ -16,9 +16,15 @@ use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, Lines};
 use tokio::process::{ChildStderr, ChildStdout, Command};
 
-use crate::runner::RavenHead;
+use crate::runner::{RAVEN_COMMIT, RavenHead};
 
 const REPOSITORY: &str = "https://github.com/mirkobrombin/raven.git";
+
+/// decanter's fix to Raven's C runtime for 32-bit programs (#1663): x86 msvcrt programs reach their
+/// standard streams at the 32-byte stride of that FILE, and `%zu`, `%td` and `%Iu` take a 32-bit
+/// argument there. Written against [`RAVEN_COMMIT`] and applied only to it.
+const PATCH: &str = include_str!("patches/x86-crt.patch");
+const PATCH_NAME: &str = "x86-crt.patch";
 
 /// How long the remote may take to list its refs before the check gives up, since a stalled
 /// connection would otherwise keep the section's check spinning.
@@ -121,6 +127,33 @@ pub(super) async fn clone(checkout: &Path, commit: &Commit, log: &mut Log) -> an
         bail!("the checkout is at {head:?}, not {commit}");
     }
     Ok(())
+}
+
+/// [`PATCH`] on the verified checkout, before anything compiles. Another commit is built as Raven
+/// has it, since a patch written against the pin need not apply there.
+pub(super) async fn patch(checkout: &Path, commit: &Commit, log: &mut Log) -> anyhow::Result<()> {
+    if commit.as_str() != RAVEN_COMMIT {
+        log.line(&format!(
+            "{commit} is not the pinned commit; decanter's patch is left out"
+        ))
+        .await;
+        return Ok(());
+    }
+    let path = checkout.join(".git").join(PATCH_NAME);
+    tokio::fs::write(&path, PATCH)
+        .await
+        .with_context(|| format!("writing decanter's patch {PATCH_NAME} for Raven"))?;
+    run(
+        git(&["-C"])
+            .arg(checkout)
+            .args(["apply", "--end-of-options"])
+            .arg(&path),
+        &format!("git apply {PATCH_NAME}"),
+        log,
+        |_| {},
+    )
+    .await
+    .with_context(|| format!("decanter's patch {PATCH_NAME} does not apply to Raven {commit}"))
 }
 
 /// What `git ls-remote --symref` lists for `HEAD`: `ref: refs/heads/<branch>\tHEAD` and

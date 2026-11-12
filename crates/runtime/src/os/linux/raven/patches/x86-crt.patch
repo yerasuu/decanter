@@ -1,0 +1,52 @@
+SPDX-License-Identifier: GPL-3.0-or-later
+decanter #1663, against Raven 82f124e2fbeab6a5fa3050df13160d12aec38ec1: x86 msvcrt FILE stride and
+pointer-wide %z/%t/%I in native/guest/raven-crt/ucrtbase.c (MIT). See docs/raven.md#patches.
+
+diff --git a/native/guest/raven-crt/ucrtbase.c b/native/guest/raven-crt/ucrtbase.c
+index 5863dae..53a605a 100644
+--- a/native/guest/raven-crt/ucrtbase.c
++++ b/native/guest/raven-crt/ucrtbase.c
+@@ -633,8 +633,8 @@ CRT void _invalid_parameter_noinfo(void) {}
+ CRT void _invalid_parameter_noinfo_noreturn(void) { ExitProcess(3); }
+ 
+ /* ---- streams ---- */
+-/* The record is the size of msvcrt's FILE on x64 (48 bytes), so the table of standard streams is also the array that msvcrt
+-   programs index; the read buffer is allocated when a stream first reads. */
++/* The record is the size of msvcrt's FILE (48 bytes on x64, 32 on x86), so the table of standard streams is also the array that
++   msvcrt programs index; the read buffer is allocated when a stream first reads. */
+ #define STREAM_BUFFER 4096
+ /* The fields sit where msvcrt's FILE keeps its own: programs built against msvcrt read and write through getc and putc macros that
+    take the next byte at the pointer while the count stays above zero. The pointer is always null and the count zero here, so those
+@@ -648,10 +648,14 @@ typedef struct {
+ 	unsigned char text, end_of_file, error, writable;
+ 	int index;
+ 	HANDLE handle;
+-	unsigned buffer_length, buffer_position;
++	/* Never above STREAM_BUFFER; 16 bits keep the record at the 32 bytes of x86 msvcrt's FILE, whose programs reach stdout and
++	   stderr as &_iob[1] and &_iob[2]. */
++	unsigned short buffer_length, buffer_position;
+ } Stream;
+ #ifdef __x86_64__
+ _Static_assert(sizeof(Stream) == 48, "a stream must have the size of msvcrt's FILE");
++#else
++_Static_assert(sizeof(Stream) == 32, "a stream must have the size of msvcrt's FILE");
+ #endif
+ 
+ Stream streams[3] = {{.index = 0, .pushed = -1}, {.index = 1, .pushed = -1}, {.index = 2, .pushed = -1}};
+@@ -803,12 +807,14 @@ static int format(Sink *sink, const char *narrow_format, const wchar_t *wide_for
+ 			if (c == 'l') { NEXT(); size = PEEK() == 'l' ? (NEXT(), 2) : 1; }
+ 			else if (c == 'h') { NEXT(); size = -1; if (PEEK() == 'h') NEXT(); }
+ 			else if (c == 'w') { NEXT(); size = 3; }
+-			else if (c == 'z' || c == 'j' || c == 't') { NEXT(); size = 2; }
++			else if (c == 'j') { NEXT(); size = 2; }
++			/* size_t and ptrdiff_t are as wide as a pointer: 32 bits on x86, where reading 64 shifts every later argument. */
++			else if (c == 'z' || c == 't') { NEXT(); size = sizeof(size_t) == 8 ? 2 : 0; }
+ 			else if (c == 'I') {
+ 				NEXT();
+ 				if (PEEK() == '6') { NEXT(); NEXT(); size = 2; }
+ 				else if (PEEK() == '3') { NEXT(); NEXT(); }
+-				else size = 2;
++				else size = sizeof(size_t) == 8 ? 2 : 0;
+ 			} else break;
+ 		}
+ 		spec = NEXT();

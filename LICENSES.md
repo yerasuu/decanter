@@ -95,7 +95,11 @@ other runtime are separate programs started as their own processes, built or dow
 keep their own terms: psport is GPL-2.0-only (https://github.com/yerasuu/psport, its own LICENSES.md) and Raven, built
 from a pinned commit only when the user asks for it in its section, is GPL-3.0-or-later
 (https://github.com/mirkobrombin/raven), with the guest components its build compiles from its own MIT sources;
-decanter neither relicenses them nor includes their source or binaries in a release.
+decanter neither relicenses them nor includes their source or binaries in a release. decanter does carry small patches
+to Raven's source, in `crates/runtime/src/os/linux/raven/patches/`, applied to the checkout on the user's machine at
+build time: the patch files are GPL-3.0-or-later, like Raven as a whole and decanter's own code, and the Raven files
+they change keep their own terms (`x86-crt.patch` changes `native/guest/raven-crt/ucrtbase.c`, which is
+`SPDX-License-Identifier: MIT`, Raven's `LICENSES/MIT.txt`). See [docs/raven.md](docs/raven.md#patches).
 
 ## Release contents
 
