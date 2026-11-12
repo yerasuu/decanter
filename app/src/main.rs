@@ -180,10 +180,11 @@ fn main() {
     // register with this runtime's reactor, which its worker threads drive.
     let tokio_context = runtime.enter();
     art::init(runtime.handle().clone());
-    // In turn, since both rewrite the same desktop entries.
+    // In turn, since all of them rewrite the same desktop entries.
     runtime.spawn(async {
         taskbar::sweep().await;
         self_update::settle().await;
+        taskbar::retarget_to_current().await;
         steam_shortcuts::retarget().await;
     });
 

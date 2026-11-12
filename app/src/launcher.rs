@@ -102,7 +102,7 @@ fn steam_arg(arg: &str) -> String {
 /// (`<ld.so> --library-path <nix libraries> target/debug/decanter`, a nix shell's development run):
 /// that command line is the development shell's, so it is never written into an entry, and
 /// decanter alone fails to start outside that shell.
-fn binary() -> Option<(PathBuf, bool)> {
+pub fn binary() -> Option<(PathBuf, bool)> {
     let named = |key| {
         std::env::var_os(key)
             .map(PathBuf::from)

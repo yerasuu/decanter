@@ -73,6 +73,9 @@ fn umu_window_class(game_id: &str) -> Option<String> {
     distinct.then(|| format!("steam_app_{app_id}"))
 }
 
+/// Where the `AppImage` runtime mounts an image; the mount goes away with the process that held it.
+const APPIMAGE_MOUNT: &str = "/tmp/.mount_";
+
 /// Escapes a desktop entry string value.
 fn value(text: &str) -> String {
     text.replace('\\', "\\\\")
@@ -257,10 +260,15 @@ fn rewrite(desktop: &Path, from: &Path, to: &Path) -> io::Result<bool> {
     if rebased == text {
         return Ok(false);
     }
-    let partial = desktop.with_extension("part");
-    std::fs::write(&partial, rebased)?;
-    std::fs::rename(&partial, desktop)?;
+    replace_file(desktop, &rebased)?;
     Ok(true)
+}
+
+/// Written aside and renamed into place, so the desktop never reads half an entry.
+fn replace_file(desktop: &Path, text: &str) -> io::Result<()> {
+    let partial = desktop.with_extension("part");
+    std::fs::write(&partial, text)?;
+    std::fs::rename(&partial, desktop)
 }
 
 /// Points `key`'s symlink at `desktop` while it points at `old`.
@@ -533,6 +541,84 @@ fn rebind_entries(from: &Path, to: &Path) -> io::Result<bool> {
         tracing::info!(from = %from.display(), to = %to.display(), "game desktop entries point at decanter's new binary");
     }
     failed.map_or(Ok(changed), Err)
+}
+
+/// At every start: the GOG and PS entries whose `Exec` starts some other decanter binary, or an
+/// `AppImage` mount that is gone, start the one this decanter was opened from. An `AppImage` is
+/// portable, so whichever copy is opened last owns the entries of every library whose disk is
+/// present; a library whose disk is away is fixed by the next start with it back. Nothing is
+/// written when there is no binary to name (see [`crate::launcher::binary`]).
+pub async fn retarget_to_current() {
+    let Some((program, _)) = crate::launcher::binary() else {
+        return;
+    };
+    let target = program.clone();
+    match tokio::task::spawn_blocking(move || retarget_entries(&target)).await {
+        Ok(0) => {}
+        Ok(count) => {
+            tracing::info!(count, program = %program.display(), "game desktop entries start the binary decanter was opened from");
+            refresh().await;
+        }
+        Err(err) => tracing::warn!(%err, "task bar entry retarget failed"),
+    }
+}
+
+/// [`retarget_to_current`]'s blocking part, returning how many entries changed.
+fn retarget_entries(program: &Path) -> usize {
+    let quoted = exec_arg(&program.to_string_lossy());
+    let mut count = 0;
+    for root in roots() {
+        let Ok(entries) = std::fs::read_dir(desktop_dir(&root)) else {
+            continue;
+        };
+        for desktop in entries.flatten().map(|entry| entry.path()) {
+            if key_of(&desktop).is_none() {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&desktop) else {
+                continue;
+            };
+            let retargeted = retarget_exec(&text, &quoted);
+            if retargeted == text {
+                continue;
+            }
+            match replace_file(&desktop, &retargeted) {
+                Ok(()) => count += 1,
+                Err(err) => {
+                    tracing::warn!(path = %desktop.display(), %err, "could not point a game's desktop entry at decanter's binary")
+                }
+            }
+        }
+    }
+    count
+}
+
+/// `text` with the program of its `Exec` line replaced by `quoted` when that program is an absolute
+/// path to a decanter binary or into an `AppImage` mount; the arguments are kept. The path comes
+/// from a file, so one that holds an escape or a field code is left alone rather than guessed at.
+fn retarget_exec(text: &str, quoted: &str) -> String {
+    text.split_inclusive('\n')
+        .map(|line| {
+            let Some(exec) = line.strip_prefix("Exec=") else {
+                return line.to_owned();
+            };
+            let (span, program) = match exec.strip_prefix('"') {
+                Some(rest) => rest.find('"').map(|end| (end + 2, &rest[..end])),
+                None => {
+                    let end = exec.find([' ', '\n']).unwrap_or(exec.len());
+                    Some((end, &exec[..end]))
+                }
+            }
+            .unwrap_or_default();
+            let is_mount = program.starts_with(APPIMAGE_MOUNT);
+            let is_plain = !program.contains(['\\', '%', '"', '$', '`']);
+            let is_ours = is_mount || (Path::new(program).is_absolute() && crate::launcher::names_decanter(program));
+            if span == 0 || !is_plain || !is_ours {
+                return line.to_owned();
+            }
+            format!("Exec={quoted}{}", &exec[span..])
+        })
+        .collect()
 }
 
 /// The key in a `game.<key>.desktop` file name.
