@@ -33,6 +33,7 @@ struct Folder {
     /// owns their files.
     steam_games: usize,
     steam_size: u64,
+    is_default: bool,
     disk: Option<(u64, u64)>,
     /// Where its games' shader caches go, whether the user picked it, and
     /// how much is in it (`None` before anything was written there).
@@ -141,6 +142,7 @@ impl Folder {
             total,
             steam_games,
             steam_size,
+            is_default: false,
             disk,
             cache,
             cache_custom,
@@ -207,12 +209,16 @@ fn scan(profile_id: &str) -> Vec<Folder> {
         .unwrap_or_default()
         .into_iter()
         .map(PathBuf::from);
-    let folders: Vec<Folder> = primary
+    let mut folders: Vec<Folder> = primary
         .into_iter()
         .map(|root| (root, true))
         .chain(extra.map(|root| (root, false)))
         .map(|(root, primary)| Folder::scan(root, primary, &owners, db.as_ref()))
         .collect();
+    let default = crate::core::default_install_folder(profile_id);
+    for folder in &mut folders {
+        folder.is_default = default.as_ref().map_or(folder.primary, |root| *root == folder.root);
+    }
     tracing::debug!(profile_id, folders = folders.len(), "computed storage usage");
     folders
 }
@@ -641,6 +647,20 @@ impl StorageView {
         cx.notify();
     }
 
+    fn use_as_default(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+            return;
+        };
+        match crate::core::set_default_install_folder(&profile_id, root) {
+            Ok(()) => {
+                self.error = None;
+                self.rescan(cx);
+            }
+            Err(err) => self.error = Some(err),
+        }
+        cx.notify();
+    }
+
     fn remove_folder(&mut self, root: &Path, cx: &mut Context<Self>) {
         let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
             return;
@@ -767,6 +787,7 @@ impl StorageView {
         // checked, and is the folder most likely to be gone for good.
         let removable = !folder.primary && (count == 0 || !folder.present);
         let root = folder.root.clone();
+        let default_root = folder.root.clone();
         theme::card()
             .mb_4()
             .child(reveal(
@@ -780,6 +801,9 @@ impl StorageView {
                     .border_b_1()
                     .border_color(rgb(theme::LINE))
                     .child(theme::badge(label, folder.primary))
+                    .when(folder.is_default, |row| {
+                        row.child(theme::badge(t!("storage.folder.default"), true))
+                    })
                     .child(
                         div()
                             .flex()
@@ -802,6 +826,18 @@ impl StorageView {
                                 col.child(theme::muted(steam).text_size(px(12.)))
                             }),
                     )
+                    .when(!folder.is_default && folder.present, |row| {
+                        row.child(
+                            button(
+                                ("storage-default", index),
+                                ButtonKind::Secondary,
+                                t!("storage.folder.use_default"),
+                                false,
+                            )
+                            .tooltip(tooltip(t!("storage.folder.use_default_hint")))
+                            .on_click(cx.listener(move |this, _, _, cx| this.use_as_default(&default_root, cx))),
+                        )
+                    })
                     .when(!folder.primary, |row| {
                         row.child(
                             button(

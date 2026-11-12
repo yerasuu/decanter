@@ -361,6 +361,13 @@ pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result
 /// practice, but an orphaned account is still better served by the shared
 /// default than a hard failure).
 pub fn library_for_account(account_id: &str) -> Result<Library, StoreError> {
+    match profile_for_account(account_id)? {
+        Some(profile_id) => library_for_profile(&profile_id),
+        None => library(),
+    }
+}
+
+fn profile_for_account(account_id: &str) -> Result<Option<String>, StoreError> {
     let db = db()?;
     let profile_id = crate::achv_try!(
         db.profile_id_for_account(account_id, Storefront::Gog)
@@ -371,18 +378,44 @@ pub fn library_for_account(account_id: &str) -> Result<Library, StoreError> {
             .inspect_err(|err| tracing::warn!(account_id, %err, "failed to resolve profile for account, using default"))
             .map_err(StoreError::Query)
     );
-    if let Some(profile_id) = profile_id {
-        return library_for_profile(&profile_id);
+    if profile_id.is_some() {
+        return Ok(profile_id);
     }
     let is_profile = db
         .list_profiles()
         .inspect_err(|err| tracing::warn!(account_id, %err, "failed to list profiles, using default library"))
         .is_ok_and(|profiles| profiles.iter().any(|profile| profile.id == account_id));
-    if is_profile {
-        library_for_profile(account_id)
-    } else {
-        library()
+    Ok(is_profile.then(|| account_id.to_owned()))
+}
+
+/// The folder new installs of `profile_id` go in when nothing asks, or `None` for its main one.
+/// The stored choice counts only while it is still one of the profile's present library folders;
+/// a missing disk or a removed folder falls back to the main one and leaves the choice stored.
+pub fn default_install_folder(profile_id: &str) -> Option<std::path::PathBuf> {
+    let stored = std::path::PathBuf::from(db().ok()?.profile_default_folder(profile_id).ok().flatten()?);
+    let library = library_for_profile(profile_id).ok()?;
+    (stored.as_path() != library.root() && library.roots().contains(&stored)).then_some(stored)
+}
+
+/// Makes `root`, one of `profile_id`'s library folders, receive its new installs by default; the
+/// main folder clears the choice. Nothing moves.
+pub fn set_default_install_folder(profile_id: &str, root: &std::path::Path) -> Result<(), Text> {
+    let library = library_for_profile(profile_id)?;
+    if !library.roots().iter().any(|known| known == root) {
+        return Err(Text::new("storage.errors.not_a_folder").arg("path", root.display()));
     }
+    let db = db()?;
+    let saved = if root == library.root() {
+        db.set_profile_default_folder(profile_id, None)
+    } else {
+        db.set_profile_default_folder(profile_id, Some(&root.to_string_lossy()))
+    };
+    saved.map_err(|err| Text::new("storage.errors.default").arg("error", err))
+}
+
+/// [`default_install_folder`] for the profile `account_id` belongs to.
+pub fn default_install_folder_for_account(account_id: &str) -> Option<std::path::PathBuf> {
+    default_install_folder(&profile_for_account(account_id).ok()??)
 }
 
 /// Everything this account has installed, newest manifest shape or not.

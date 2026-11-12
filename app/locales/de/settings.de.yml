@@ -59,6 +59,8 @@ settings.account.library.pick_title: Neuen Speicherort der Bibliothek wählen
 settings.account.library.change: Ort ändern
 settings.account.library.moving: Wird verschoben...
 settings.account.library.moving_progress: Wird verschoben... %{done} von %{total}
+settings.account.library.default_title: Standard-Installationsordner
+settings.account.library.default_hint: Neue Installationen landen hier, sofern du beim Installieren keinen anderen Ordner wählst. Es wird nichts verschoben.
 settings.account.library.active_title: Aktive Bibliothek
 settings.account.library.active_hint: Decanter arbeitet jeweils mit einer Bibliothek. Beim Wechsel wird sie mit der Person geöffnet, die sie zuletzt benutzt hat.
 settings.account.library.busy: beende laufende Spiele und Installationen, bevor du die Bibliothek wechselst

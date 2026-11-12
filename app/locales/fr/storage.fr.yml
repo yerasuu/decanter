@@ -14,6 +14,9 @@ storage.folder.used.other: '%{used} utilisés par %{count} jeux'
 storage.folder.steam.one: 'Steam : %{size} · 1 jeu, géré par Steam, non compté ci-dessus'
 storage.folder.steam.other: 'Steam : %{size} · %{count} jeux, gérés par Steam, non comptés ci-dessus'
 storage.folder.free: '%{free} libres sur %{total}'
+storage.folder.default: Par défaut
+storage.folder.use_default: Utiliser par défaut
+storage.folder.use_default_hint: Les nouvelles installations vont dans ce dossier par défaut
 storage.folder.remove: Retirer
 storage.folder.remove_hint: Arrête d’utiliser ce dossier ; ce qui se trouve sur le disque y reste
 storage.folder.remove_blocked: 'Il contient des jeux : désinstallez-les ou déplacez-les d’abord'
@@ -23,6 +26,8 @@ storage.moving.progress: Déplacement de %{done} sur %{total}
 storage.errors.nested: '%{path} fait déjà partie de la bibliothèque (%{folder})'
 storage.errors.add: 'enregistrement du dossier : %{error}'
 storage.errors.remove: 'retrait du dossier : %{error}'
+storage.errors.not_a_folder: '%{path} n''est pas un des dossiers de la bibliothèque'
+storage.errors.default: 'enregistrement du dossier par défaut : %{error}'
 storage.errors.hosted: 'Ce jeu se trouve dans le préfixe de son lanceur : déplacez le lanceur et le jeu suivra.'
 storage.errors.running: 'Le jeu est en cours d’exécution : fermez-le avant de le déplacer.'
 storage.errors.shared: 'Un autre compte partage ces fichiers : ils ne peuvent pas être déplacés seuls.'

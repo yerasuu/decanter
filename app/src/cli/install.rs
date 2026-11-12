@@ -44,6 +44,10 @@ pub async fn install(target: Target<'_>, no_wait: bool) -> anyhow::Result<()> {
     let library = crate::achv_try!(
         crate::core::library_for_account(account_id).map_err(|err| anyhow::anyhow!("resolving library: {err}"))
     );
+    let library = match crate::core::default_install_folder_for_account(account_id) {
+        Some(root) => library.targeting(&root),
+        None => library,
+    };
     let is_installed = library
         .read_manifest(account_id, decanter_core::Storefront::Gog, product_id)
         .is_some();

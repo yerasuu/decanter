@@ -14,6 +14,9 @@ storage.folder.used.other: '%{used} usados por %{count} juegos'
 storage.folder.steam.one: 'Steam: %{size} · 1 juego, lo gestiona Steam y no cuenta arriba'
 storage.folder.steam.other: 'Steam: %{size} · %{count} juegos, los gestiona Steam y no cuentan arriba'
 storage.folder.free: '%{free} libres de %{total}'
+storage.folder.default: Predeterminada
+storage.folder.use_default: Usar por defecto
+storage.folder.use_default_hint: Las instalaciones nuevas van a esta carpeta por defecto
 storage.folder.remove: Quitar
 storage.folder.remove_hint: Deja de usar esta carpeta; lo que haya en el disco se queda
 storage.folder.remove_blocked: 'Tiene juegos: desinstálalos o muévelos antes'
@@ -23,6 +26,8 @@ storage.moving.progress: Moviendo %{done} de %{total}
 storage.errors.nested: '%{path} ya es parte de la biblioteca (%{folder})'
 storage.errors.add: 'guardando la carpeta: %{error}'
 storage.errors.remove: 'quitando la carpeta: %{error}'
+storage.errors.not_a_folder: '%{path} no es una de las carpetas de la biblioteca'
+storage.errors.default: 'al guardar la carpeta predeterminada: %{error}'
 storage.errors.hosted: 'Este juego vive en el prefijo de su lanzador: mueve el lanzador y el juego irá con él.'
 storage.errors.running: 'El juego está abierto: ciérralo antes de moverlo.'
 storage.errors.shared: 'Otra cuenta comparte estos archivos: no se pueden mover solos.'

@@ -14,6 +14,9 @@ storage.folder.used.other: '%{used} von %{count} Spielen belegt'
 storage.folder.steam.one: 'Steam: %{size} · 1 Spiel, von Steam verwaltet, oben nicht mitgezählt'
 storage.folder.steam.other: 'Steam: %{size} · %{count} Spiele, von Steam verwaltet, oben nicht mitgezählt'
 storage.folder.free: '%{free} frei von %{total}'
+storage.folder.default: Standard
+storage.folder.use_default: Als Standard verwenden
+storage.folder.use_default_hint: Neue Installationen gehen standardmäßig in diesen Ordner
 storage.folder.remove: Entfernen
 storage.folder.remove_hint: Der Ordner wird nicht mehr verwendet; was auf dem Laufwerk liegt, bleibt dort
 storage.folder.remove_blocked: 'Er enthält Spiele: deinstalliere oder verschiebe sie zuerst'
@@ -23,6 +26,8 @@ storage.moving.progress: Verschiebe %{done} von %{total}
 storage.errors.nested: '%{path} ist bereits Teil der Bibliothek (%{folder})'
 storage.errors.add: 'Ordner wird gespeichert: %{error}'
 storage.errors.remove: 'Ordner wird entfernt: %{error}'
+storage.errors.not_a_folder: '%{path} ist keiner der Bibliotheksordner'
+storage.errors.default: 'Speichern des Standardordners: %{error}'
 storage.errors.hosted: 'Dieses Spiel liegt im Prefix seines Launchers: Verschiebe den Launcher, dann zieht es mit um.'
 storage.errors.running: 'Das Spiel läuft: Beende es, bevor du es verschiebst.'
 storage.errors.shared: 'Ein anderes Konto teilt sich diese Dateien: Sie lassen sich nicht einzeln verschieben.'

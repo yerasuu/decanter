@@ -59,6 +59,8 @@ settings.account.library.pick_title: Escolha o novo local da biblioteca
 settings.account.library.change: Alterar local
 settings.account.library.moving: Movendo...
 settings.account.library.moving_progress: Movendo... %{done} de %{total}
+settings.account.library.default_title: Pasta de instalação padrão
+settings.account.library.default_hint: As novas instalações vão para cá, a menos que você escolha outra pasta ao instalar. Nada é movido.
 settings.account.library.active_title: Biblioteca ativa
 settings.account.library.active_hint: O Decanter trabalha com uma biblioteca por vez. Trocar de biblioteca a abre com a pessoa que a usou por último.
 settings.account.library.busy: feche os jogos e as instalações em andamento antes de trocar de biblioteca

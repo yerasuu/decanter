@@ -59,6 +59,8 @@ settings.account.library.pick_title: 라이브러리의 새 위치 선택
 settings.account.library.change: 위치 변경
 settings.account.library.moving: 이동 중...
 settings.account.library.moving_progress: '이동 중... %{done} / %{total}'
+settings.account.library.default_title: 기본 설치 폴더
+settings.account.library.default_hint: 설치할 때 다른 폴더를 고르지 않으면 새 설치는 여기에 저장됩니다. 아무것도 옮겨지지 않습니다.
 settings.account.library.active_title: 활성 라이브러리
 settings.account.library.active_hint: Decanter는 한 번에 하나의 라이브러리로 작동합니다. 전환하면 마지막으로 사용한 사용자로 해당 라이브러리가 열립니다.
 settings.account.library.busy: 라이브러리를 전환하기 전에 실행 중인 게임과 설치를 종료하세요

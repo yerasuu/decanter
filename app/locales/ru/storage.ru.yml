@@ -14,6 +14,9 @@ storage.folder.used.other: 'занято %{used}, игр: %{count}'
 storage.folder.steam.one: 'Steam: %{size} · 1 игра, под управлением Steam, не входит в сумму выше'
 storage.folder.steam.other: 'Steam: %{size} · игр: %{count}, под управлением Steam, не входят в сумму выше'
 storage.folder.free: 'свободно %{free} из %{total}'
+storage.folder.default: По умолчанию
+storage.folder.use_default: Использовать по умолчанию
+storage.folder.use_default_hint: Новые установки по умолчанию попадают в эту папку
 storage.folder.remove: 'Убрать'
 storage.folder.remove_hint: 'Папка перестанет использоваться; всё, что лежит на диске, останется на месте'
 storage.folder.remove_blocked: 'В ней есть игры: сначала удалите их или переместите'
@@ -23,6 +26,8 @@ storage.moving.progress: 'Перемещение: %{done} из %{total}'
 storage.errors.nested: '%{path} уже входит в библиотеку (%{folder})'
 storage.errors.add: 'сохранение папки: %{error}'
 storage.errors.remove: 'удаление папки: %{error}'
+storage.errors.not_a_folder: '%{path} не является папкой библиотеки'
+storage.errors.default: 'сохранение папки по умолчанию: %{error}'
 storage.errors.hosted: 'Эта игра находится в префиксе своего лаунчера: переместите лаунчер, и игра переместится вместе с ним.'
 storage.errors.running: 'Игра запущена: закройте её перед перемещением.'
 storage.errors.shared: 'Эти файлы использует другая учётная запись: по отдельности их переместить нельзя.'

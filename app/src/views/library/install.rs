@@ -35,7 +35,7 @@ pub struct InstallRequest {
     /// the game, not as a second thing to go and do.
     pub dlcs: Vec<(String, String)>,
     /// The library folder a new install goes in; `None` is the profile's
-    /// main one. An update or DLC goes wherever the game already is.
+    /// default install folder. An update or DLC goes wherever the game already is.
     pub library_root: Option<std::path::PathBuf>,
     /// The GOG language tag picked in the install dialog, saved as the
     /// game's; `None` asks for the one chosen for it before, else the app's.
@@ -353,6 +353,12 @@ pub async fn install(request: InstallRequest, state: AppState, cx: &mut AsyncApp
         library_root,
         language,
     } = request;
+    let library_root = library_root.or_else(|| {
+        parent_id
+            .is_none()
+            .then(|| crate::core::default_install_folder_for_account(&account_id))
+            .flatten()
+    });
     tracing::info!(
         account_id,
         product_id,

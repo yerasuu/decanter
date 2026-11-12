@@ -26,7 +26,7 @@ pub(crate) struct InstallDialog {
     requests: Vec<InstallRequest>,
     /// Every library folder the install could go in, with its free space.
     folders: Vec<(PathBuf, Option<u64>)>,
-    /// The folder picked; `None` is the main one.
+    /// The folder picked, the profile's default one to begin with.
     folder: Option<PathBuf>,
     /// Library folders whose disk isn't plugged in — the game may already
     /// be installed on one of them.
@@ -70,7 +70,7 @@ fn fetch_languages<H: InstallHost>(
 }
 
 /// Opens the dialog for `requests`. Amazon and Epic installs have nothing to pick, so they start
-/// at once in the main library folder; whatever GOG games are left are asked about together.
+/// at once in the default install folder; whatever GOG games are left are asked about together.
 pub(crate) fn open<H: InstallHost>(host: &mut H, requests: Vec<InstallRequest>, cx: &mut Context<H>) {
     let requests: Vec<_> = requests
         .into_iter()
@@ -103,6 +103,7 @@ pub(crate) fn open<H: InstallHost>(host: &mut H, requests: Vec<InstallRequest>, 
             (root, free)
         })
         .collect();
+    let folder = crate::core::default_install_folder_for_account(&account_id);
     let (fetch, languages_fetch) = if requests.len() == 1 {
         let (fetch_account, fetch_product) = (account_id.clone(), product_id.clone());
         let fetch = cx.spawn(async move |this, cx| {
@@ -128,7 +129,7 @@ pub(crate) fn open<H: InstallHost>(host: &mut H, requests: Vec<InstallRequest>, 
     *host.install_dialog_mut() = Some(InstallDialog {
         requests,
         folders,
-        folder: None,
+        folder,
         offline,
         branches: None,
         chosen: None,
@@ -341,12 +342,10 @@ fn folder_picker<H: InstallHost>(dialog: &InstallDialog, this: WeakEntity<H>) ->
         .or_else(|| dialog.folders.first().map(|(root, _)| root))
         .map(|root| SharedString::from(root.to_string_lossy().into_owned()))
         .unwrap_or_default();
-    let main = dialog.folders.first().map(|(root, _)| root.clone());
     Some(
         Select::new("install-folder", options, current)
             .on_change(move |value, _, cx| {
-                let picked = PathBuf::from(value.as_ref());
-                let folder = (Some(&picked) != main.as_ref()).then_some(picked);
+                let folder = Some(PathBuf::from(value.as_ref()));
                 let _ = this.update(cx, |this, cx| {
                     if let Some(dialog) = this.install_dialog_mut() {
                         dialog.folder = folder;

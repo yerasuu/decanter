@@ -59,6 +59,9 @@ struct AccountRow {
 pub struct AccountTab {
     profile_id: String,
     library_path: Option<String>,
+    /// Every folder the profile keeps games in with its free space, and which of them receives new installs.
+    install_folders: Vec<(PathBuf, Option<u64>)>,
+    default_folder: Option<PathBuf>,
     moving: bool,
     move_progress: Option<(u64, u64)>,
     move_error: Option<Text>,
@@ -116,6 +119,8 @@ impl AccountTab {
         let mut this = Self {
             profile_id,
             library_path: None,
+            install_folders: Vec::new(),
+            default_folder: None,
             moving: false,
             move_progress: None,
             move_error: None,
@@ -141,9 +146,68 @@ impl AccountTab {
     }
 
     fn reload_library_path(&mut self) {
-        self.library_path = crate::core::library_for_profile(&self.profile_id)
-            .ok()
-            .map(|library| library.root().display().to_string());
+        let library = crate::core::library_for_profile(&self.profile_id).ok();
+        self.library_path = library.as_ref().map(|library| library.root().display().to_string());
+        self.default_folder = crate::core::default_install_folder(&self.profile_id)
+            .or_else(|| library.as_ref().map(|library| library.root().to_path_buf()));
+        self.install_folders = library
+            .map(|library| library.roots())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|root| {
+                let free = decanter_core::disk_usage(&root).map(|(free, _)| free);
+                (root, free)
+            })
+            .collect();
+    }
+
+    fn set_default_folder(&mut self, root: &Path, cx: &mut Context<Self>) {
+        match crate::core::set_default_install_folder(&self.profile_id, root) {
+            Ok(()) => self.move_error = None,
+            Err(err) => self.move_error = Some(err),
+        }
+        self.reload_library_path();
+        cx.notify();
+    }
+
+    fn default_folder_picker(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        if self.install_folders.len() < 2 {
+            return None;
+        }
+        let options = self.install_folders.iter().map(|(root, free)| {
+            let label = match free {
+                Some(free) => t!(
+                    "library.detail.install.folder_free",
+                    folder = root.display(),
+                    free = crate::format::bytes(*free)
+                )
+                .into_owned(),
+                None => root.display().to_string(),
+            };
+            (
+                SharedString::from(root.to_string_lossy().into_owned()),
+                SharedString::from(label),
+            )
+        });
+        let selected = self
+            .default_folder
+            .as_ref()
+            .map(|root| SharedString::from(root.to_string_lossy().into_owned()))
+            .unwrap_or_default();
+        let entity = cx.entity();
+        Some(
+            column()
+                .child(theme::h3(t!("settings.account.library.default_title")))
+                .child(theme::muted(t!("settings.account.library.default_hint")))
+                .child(
+                    field_row().child(Select::new("default-install-folder", options, selected).on_change(
+                        move |chosen, _, cx| {
+                            let root = PathBuf::from(chosen.to_string());
+                            entity.update(cx, |this, cx| this.set_default_folder(&root, cx));
+                        },
+                    )),
+                ),
+        )
     }
 
     fn reload_steam_shown(&mut self) {
@@ -522,6 +586,7 @@ impl AccountTab {
                     b.on_click(cx.listener(|this, _, _, cx| this.change_location(cx)))
                 }),
             ))
+            .children(self.default_folder_picker(cx))
     }
 
     /// Switches to `root` with the profile last active there, or its first

@@ -14,6 +14,9 @@ storage.folder.used.other: "%{count} 个游戏占用 %{used}"
 storage.folder.steam.one: 'Steam:%{size} · 1 个游戏,由 Steam 管理,不计入上方'
 storage.folder.steam.other: 'Steam:%{size} · %{count} 个游戏,由 Steam 管理,不计入上方'
 storage.folder.free: "可用 %{free}，共 %{total}"
+storage.folder.default: 默认
+storage.folder.use_default: 设为默认
+storage.folder.use_default_hint: 新安装默认放在此文件夹
 storage.folder.remove: "移除"
 storage.folder.remove_hint: "不再使用此文件夹；驱动器上的内容会保留"
 storage.folder.remove_blocked: "其中有游戏：请先卸载或移动它们"
@@ -23,6 +26,8 @@ storage.moving.progress: "正在移动 %{done} / %{total}"
 storage.errors.nested: "%{path} 已属于游戏库（%{folder}）"
 storage.errors.add: "保存文件夹：%{error}"
 storage.errors.remove: "移除文件夹：%{error}"
+storage.errors.not_a_folder: '%{path} 不是库文件夹'
+storage.errors.default: '保存默认文件夹时出错：%{error}'
 storage.errors.hosted: "此游戏位于其启动器的前缀中：移动启动器，游戏会随之移动。"
 storage.errors.running: "游戏正在运行：请先关闭再移动。"
 storage.errors.shared: "另一个账户共用这些文件：无法单独移动。"

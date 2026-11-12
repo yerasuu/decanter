@@ -59,6 +59,8 @@ settings.account.library.pick_title: Choose the library's new location
 settings.account.library.change: Change location
 settings.account.library.moving: Moving...
 settings.account.library.moving_progress: Moving... %{done} of %{total}
+settings.account.library.default_title: Default install folder
+settings.account.library.default_hint: New installs go here unless you choose another folder when installing. Nothing is moved.
 settings.account.library.active_title: Active library
 settings.account.library.active_hint: Decanter works with one library at a time. Switching opens it with the person who used it last.
 settings.account.library.busy: close running games and installs before switching library

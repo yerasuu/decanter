@@ -14,6 +14,9 @@ storage.folder.used.other: "%{used} 使用(%{count} 本のゲーム)"
 storage.folder.steam.one: 'Steam: %{size} · 1 本のゲーム(Steam が管理、上の合計には含まれません)'
 storage.folder.steam.other: 'Steam: %{size} · %{count} 本のゲーム(Steam が管理、上の合計には含まれません)'
 storage.folder.free: "%{total} 中 %{free} 空き"
+storage.folder.default: 既定
+storage.folder.use_default: 既定として使う
+storage.folder.use_default_hint: 新しいインストールは既定でこのフォルダーに入ります
 storage.folder.remove: "削除"
 storage.folder.remove_hint: "このフォルダーの使用をやめます。ドライブ上のデータはそのまま残ります"
 storage.folder.remove_blocked: "ゲームが含まれています。先にアンインストールするか移動してください"
@@ -23,6 +26,8 @@ storage.moving.progress: "移動中 %{done} / %{total}"
 storage.errors.nested: "%{path} はすでにライブラリ(%{folder})の一部です"
 storage.errors.add: "フォルダーを保存中: %{error}"
 storage.errors.remove: "フォルダーを削除中: %{error}"
+storage.errors.not_a_folder: '%{path} はライブラリのフォルダーではありません'
+storage.errors.default: '既定のフォルダーの保存中: %{error}'
 storage.errors.hosted: "このゲームはランチャーのプレフィックス内にあります。ランチャーを移動すると一緒に移動します。"
 storage.errors.running: "ゲームの実行中です。移動する前にゲームを終了してください。"
 storage.errors.shared: "別のアカウントがこれらのファイルを共有しているため、単独では移動できません。"

@@ -287,4 +287,27 @@ impl Db {
         tracing::info!(profile_id, path, "set profile library path");
         Ok(())
     }
+
+    /// The library folder `profile_id` chose to receive new installs, as stored: it may no longer
+    /// be one of the profile's folders, which is for the caller to check.
+    #[inline]
+    pub fn profile_default_folder(&self, profile_id: &str) -> Result<Option<String>> {
+        let folder = self
+            .setting(&format!("default_install_folder:{profile_id}"))?
+            .filter(|folder| !folder.is_empty());
+        tracing::debug!(profile_id, found = folder.is_some(), "read default install folder");
+        Ok(folder)
+    }
+
+    /// Sets (or clears, with `None`) the folder new installs of `profile_id` go in by default.
+    #[inline]
+    pub fn set_profile_default_folder(&self, profile_id: &str, path: Option<&str>) -> Result<()> {
+        let key = format!("default_install_folder:{profile_id}");
+        match path {
+            Some(path) => self.set_setting(&key, path)?,
+            None => self.delete_setting(&key)?,
+        }
+        tracing::info!(profile_id, path, "set default install folder");
+        Ok(())
+    }
 }

@@ -14,6 +14,9 @@ storage.folder.used.other: "%{used} usati da %{count} giochi"
 storage.folder.steam.one: 'Steam: %{size} · 1 gioco, gestito da Steam, non incluso sopra'
 storage.folder.steam.other: 'Steam: %{size} · %{count} giochi, gestiti da Steam, non inclusi sopra'
 storage.folder.free: "%{free} liberi su %{total}"
+storage.folder.default: Predefinita
+storage.folder.use_default: Usa come predefinita
+storage.folder.use_default_hint: Le nuove installazioni vanno in questa cartella per impostazione predefinita
 storage.folder.remove: Rimuovi
 storage.folder.remove_hint: "Smette di usare questa cartella; quanto c'è sull'unità resta dov'è"
 storage.folder.remove_blocked: "Contiene dei giochi: disinstallali o spostali prima"
@@ -23,6 +26,8 @@ storage.moving.progress: "Spostamento di %{done} su %{total}"
 storage.errors.nested: "%{path} fa già parte della libreria (%{folder})"
 storage.errors.add: "salvataggio della cartella: %{error}"
 storage.errors.remove: "rimozione della cartella: %{error}"
+storage.errors.not_a_folder: '%{path} non è una delle cartelle della libreria'
+storage.errors.default: 'salvataggio della cartella predefinita: %{error}'
 storage.errors.hosted: "Questo gioco risiede nel prefisso del suo launcher: sposta il launcher e il gioco lo seguirà."
 storage.errors.running: "Il gioco è in esecuzione: chiudilo prima di spostarlo."
 storage.errors.shared: "Un altro account condivide questi file: non possono essere spostati da soli."

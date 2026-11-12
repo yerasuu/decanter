@@ -14,6 +14,9 @@ storage.folder.used.other: '%{used} used by %{count} games'
 storage.folder.steam.one: 'Steam: %{size} · 1 game, kept by Steam, not counted above'
 storage.folder.steam.other: 'Steam: %{size} · %{count} games, kept by Steam, not counted above'
 storage.folder.free: '%{free} free of %{total}'
+storage.folder.default: Default
+storage.folder.use_default: Use as default
+storage.folder.use_default_hint: New installs go in this folder by default
 storage.folder.remove: Remove
 storage.folder.remove_hint: Stops using this folder; whatever is on the drive stays there
 storage.folder.remove_blocked: 'It has games: uninstall or move them first'
@@ -23,6 +26,8 @@ storage.moving.progress: Moving %{done} of %{total}
 storage.errors.nested: '%{path} is already part of the library (%{folder})'
 storage.errors.add: 'saving the folder: %{error}'
 storage.errors.remove: 'removing the folder: %{error}'
+storage.errors.not_a_folder: '%{path} is not one of the library folders'
+storage.errors.default: 'saving the default folder: %{error}'
 storage.errors.hosted: 'This game lives in its launcher''s prefix: move the launcher and it comes along.'
 storage.errors.running: 'The game is running: close it before moving it.'
 storage.errors.shared: 'Another account shares these files: they can''t be moved on their own.'

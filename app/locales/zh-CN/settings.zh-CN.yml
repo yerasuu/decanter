@@ -59,6 +59,8 @@ settings.account.library.pick_title: "选择游戏库的新位置"
 settings.account.library.change: "更改位置"
 settings.account.library.moving: "正在移动…"
 settings.account.library.moving_progress: "正在移动… %{done} / %{total}"
+settings.account.library.default_title: 默认安装文件夹
+settings.account.library.default_hint: 除非安装时另选文件夹，新安装都会放在这里。不会移动任何内容。
 settings.account.library.active_title: "当前游戏库"
 settings.account.library.active_hint: "Decanter 一次只使用一个游戏库。切换时会以上次使用该游戏库的用户打开它。"
 settings.account.library.busy: "切换游戏库前请先关闭正在运行的游戏和安装"

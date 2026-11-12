@@ -59,6 +59,8 @@ settings.account.library.pick_title: Scegli la nuova posizione della libreria
 settings.account.library.change: Cambia posizione
 settings.account.library.moving: Spostamento...
 settings.account.library.moving_progress: "Spostamento... %{done} su %{total}"
+settings.account.library.default_title: Cartella di installazione predefinita
+settings.account.library.default_hint: 'Le nuove installazioni vanno qui, a meno che tu non scelga un''altra cartella durante l''installazione. Non viene spostato nulla.'
 settings.account.library.active_title: Libreria attiva
 settings.account.library.active_hint: "Decanter lavora con una libreria alla volta. Cambiarla la apre con la persona che l'ha usata per ultima."
 settings.account.library.busy: chiudi i giochi e le installazioni in corso prima di cambiare libreria
