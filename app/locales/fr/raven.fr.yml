@@ -43,6 +43,8 @@ raven.programs.remove: Supprimer
 raven.programs.open_log: Journal
 raven.programs.needs_build: Compilez Raven pour l’exécuter.
 raven.programs.failed: 'La dernière exécution ne s’est pas bien terminée. Fin de son journal :'
+raven.programs.missing_module: 'Raven n’a pas encore de composant pour %{module}, dont ce programme a besoin ; cette compilation de Raven ne peut pas le lancer.'
+raven.programs.missing_api: 'Raven s’est arrêté sur %{api}, une fonction Windows à laquelle il ne sait pas encore répondre.'
 raven.errors.not_windows: n’est pas un programme Windows
 raven.errors.no_library: La bibliothèque active n’est pas disponible.
 raven.errors.save: 'Impossible de l’ajouter : %{error}'

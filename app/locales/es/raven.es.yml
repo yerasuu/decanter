@@ -43,6 +43,8 @@ raven.programs.remove: Quitar
 raven.programs.open_log: Registro
 raven.programs.needs_build: Construye Raven para ejecutarlo.
 raven.programs.failed: 'La última ejecución no terminó bien. Final de su registro:'
+raven.programs.missing_module: 'Raven aún no tiene un componente para %{module}, que este programa necesita; esta construcción de Raven no puede iniciarlo.'
+raven.programs.missing_api: 'Raven se ha detenido en %{api}, una función de Windows que todavía no sabe atender.'
 raven.errors.not_windows: no es un programa de Windows
 raven.errors.no_library: La biblioteca activa no está disponible.
 raven.errors.save: 'No se ha podido añadir: %{error}'

@@ -43,6 +43,8 @@ raven.programs.remove: Remove
 raven.programs.open_log: Log
 raven.programs.needs_build: Build Raven to run it.
 raven.programs.failed: 'The last run did not end well. End of its log:'
+raven.programs.missing_module: 'Raven has no component for %{module} yet, which this program needs; this Raven build cannot start it.'
+raven.programs.missing_api: 'Raven stopped at %{api}, a Windows function it cannot answer yet.'
 raven.errors.not_windows: is not a Windows program
 raven.errors.no_library: The active library is not available.
 raven.errors.save: 'Could not add it: %{error}'

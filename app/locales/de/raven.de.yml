@@ -43,6 +43,8 @@ raven.programs.remove: Entfernen
 raven.programs.open_log: Protokoll
 raven.programs.needs_build: Baue Raven, um es auszuführen.
 raven.programs.failed: 'Der letzte Lauf ist nicht gut zu Ende gegangen. Ende seines Protokolls:'
+raven.programs.missing_module: 'Raven hat noch keine Komponente für %{module}, die dieses Programm braucht; dieser Raven-Build kann es nicht starten.'
+raven.programs.missing_api: 'Raven ist bei %{api} stehen geblieben, einer Windows-Funktion, die es noch nicht beantworten kann.'
 raven.errors.not_windows: ist kein Windows-Programm
 raven.errors.no_library: Die aktive Bibliothek ist nicht verfügbar.
 raven.errors.save: 'Es konnte nicht hinzugefügt werden: %{error}'

@@ -3,6 +3,7 @@
 //! picker or dropped on the section. Experimental, and says so.
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use decanter_core::InstalledGame;
@@ -538,14 +539,17 @@ fn program_row(
         job.filter(|job| !job.stop_requested && !matches!(job.state, State::Running(_) | State::Exited(Some(0))));
     let output = failed.map(|job| {
         let skipped = job.lines.len().saturating_sub(SHOWN_RUN_LINES);
-        theme::error("").child(div().child(t!("raven.programs.failed"))).child(
-            theme::mono().text_size(px(11.)).children(
-                job.lines
-                    .iter()
-                    .skip(skipped)
-                    .map(|line| div().truncate().child(line.clone())),
-            ),
-        )
+        theme::error("")
+            .children(stop_reason(&job.lines).map(|reason| div().child(reason)))
+            .child(div().child(t!("raven.programs.failed")))
+            .child(
+                theme::mono().text_size(px(11.)).children(
+                    job.lines
+                        .iter()
+                        .skip(skipped)
+                        .map(|line| div().truncate().child(line.clone())),
+                ),
+            )
     });
     div()
         .flex()
@@ -568,6 +572,18 @@ fn program_row(
         )
         .children(output.map(|output| div().px(px(18.)).pb_3().child(output)))
         .into_any_element()
+}
+
+/// Raven's own last word on why a program stopped, put plainly, for the two ways it stops a program
+/// it cannot serve: a Windows library it has no component for, or a function it does not answer.
+fn stop_reason(lines: &VecDeque<String>) -> Option<Cow<'static, str>> {
+    lines.iter().rev().find_map(|line| {
+        if let Some((_, module)) = line.split_once("raven: missing PE module: ") {
+            return Some(t!("raven.programs.missing_module", module = module.trim()));
+        }
+        line.split_once("raven: unimplemented native API ")
+            .map(|(_, api)| t!("raven.programs.missing_api", api = api.trim()))
+    })
 }
 
 /// Hands a log file to the desktop's own opener.

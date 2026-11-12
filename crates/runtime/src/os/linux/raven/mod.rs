@@ -368,15 +368,24 @@ pub(crate) async fn raven_launch(mut launch: Launch) -> anyhow::Result<Launch> {
 
 /// How Raven is asked to run `executable` in `prefix`: a script for the toolchain's shell, and the
 /// variables it and Raven read, since nix-shell's `--run` passes no arguments through.
-// TODO(#1067): confirm after the first real build, against Raven's README and docs at
-// RAVEN_COMMIT: (1) that `--run-process <exe>` starts a GUI program as it started a console
-// hello.exe in the spike (which otherwise only used `--inspect`); (2) how Raven is told its
-// prefix: `RAVEN_PREFIX` is assumed, it may be a flag or a default under `$HOME`; (3) whether the
-// guest components (`provision-*.py`) must be provisioned into the prefix before a first run, as
-// the spike's `missing PE module: msvcrt.dll` suggests.
+///
+/// Raven reads its options in a fixed order, and its prefix only from `RAVEN_PREFIX` (its README
+/// and `native/main.cpp` at [`RAVEN_COMMIT`]). Without `--timeout-ms` it kills the program after
+/// 5 s, and without a terminal a console program's output is not passed on, so the run gets
+/// Raven's longest timeout (24 h) and inherited standard streams for its log. `--desktop=wayland`
+/// opens the Wayland connection only once the program shows a window; without a desktop a window
+/// has nowhere to go, and there is no X11 fallback since the recipe builds no X11 desktop.
 fn invocation(binary: &Path, executable: &Path, prefix: &Path) -> (&'static str, [(&'static str, PathBuf); 3]) {
+    let script = if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        "exec \"$DECANTER_RAVEN\" --run-process --execution=native --timeout-ms=86400000 --desktop=wayland \
+         --stdio=inherit \"$DECANTER_RAVEN_EXE\""
+    } else {
+        tracing::warn!("no Wayland session: a Raven program cannot show a window");
+        "exec \"$DECANTER_RAVEN\" --run-process --execution=native --timeout-ms=86400000 --stdio=inherit \
+         \"$DECANTER_RAVEN_EXE\""
+    };
     (
-        "exec \"$DECANTER_RAVEN\" --run-process --execution=native \"$DECANTER_RAVEN_EXE\"",
+        script,
         [
             ("DECANTER_RAVEN", binary.to_owned()),
             ("DECANTER_RAVEN_EXE", executable.to_owned()),

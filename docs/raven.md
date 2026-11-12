@@ -51,7 +51,28 @@ that fails shows the end of its output under the program.
 
 A program runs through the launch interface's `raven` kind (`app/src/launch/raven.rs`): Raven, started from the
 toolchain that built it, as a Linux program whose session is named by the program's prefix, so Detener and
-closing decanter reach it like any other game.
+closing decanter reach it like any other game. The command (`invocation` in
+`crates/runtime/src/os/linux/raven/mod.rs`) is the one Raven's README gives, checked against `native/main.cpp`
+at the pin, which reads the options in this order:
+
+```sh
+RAVEN_PREFIX=<prefix> raven --run-process --execution=native --timeout-ms=86400000 [--desktop=wayland] \
+    --stdio=inherit program.exe
+```
+
+- `RAVEN_PREFIX` is the only way Raven is told its prefix (its `C:` drive, `registry.dat`, fonts); Raven creates
+  it on the first run.
+- `--timeout-ms`: without it Raven kills the program after 5 s (`native entry timed out`); 86400000 (24 h) is the
+  longest it takes, and what it gives a console program started from a terminal.
+- `--stdio=inherit`: without a terminal Raven keeps a console program's output to itself and prints only
+  `Native process exited with status N`; with it the output reaches the run's log. The program's exit status is
+  Raven's.
+- `--desktop=wayland` only when `WAYLAND_DISPLAY` is set; Raven connects to Wayland only once the program shows
+  a window. The recipe builds no X11 desktop (no libxcb), so on X11 alone a window has nowhere to go and the log
+  says so.
+
+A failed run that ends on Raven's `missing PE module: X` or `unimplemented native API X` also says, in the
+player's language, which library or function stopped it.
 
 ## Where its files live
 
@@ -68,12 +89,36 @@ Everything is inside the active library (docs/data-in-library.md):
 
 ## Known not to work yet
 
-- A plain MinGW `hello.exe` fails with `raven: missing PE module: msvcrt.dll`: Raven's guest components
-  (`provision-*.py`) are not provisioned yet, and Direct3D needs DXVK and vkd3d-proton besides. No commercial
-  game has been tried.
-- How Raven is told which prefix to use, and whether `--run-process` starts a GUI program, are assumptions until
-  the first real build is tried: they sit in one function, `invocation` in
-  `crates/runtime/src/os/linux/raven/mod.rs`, with a `TODO` naming what to confirm.
+Measured on 2026-11-12 with the library's build of the pin, console programs only, no window:
+
+| Program (MinGW GCC 16.2.0, x86_64) | Result |
+| --- | --- |
+| `-nostdlib`, `WriteFile` + `ExitProcess(5)` | Runs: its line in the log, exit status 5 |
+| the same, `Sleep(7000)` first | Without `--timeout-ms`: killed at 5.0 s; with it: runs, 7.0 s |
+| `hello.c` with `printf` (imports `msvcrt.dll`) | `raven: missing PE module: msvcrt.dll` |
+| the same, `ucrtbase.dll` built from Raven's `native/upstream/raven-crt` beside `raven` | `raven: unimplemented native API GetProcessHeap` |
+| Raven's own `cmd.exe`, `whoami.exe`, `hostname.exe` | `raven: unimplemented native API GetProcessHeap` |
+
+So, at the pin, only a program that needs no C runtime and no heap runs. Raven's README says the minimal build
+runs console programs, but every heap call goes to its guest RTL component, `raven-rtl.dll`, and a 64-bit program
+importing `msvcrt.dll` gets its C runtime component, `ucrtbase.dll`; both are looked for beside the `raven` binary
+and neither is part of `native/raven`. They come from the provisioning scripts:
+
+- `scripts/provision-controls.py` builds `ucrtbase.dll` from Raven's own MIT source with MinGW, but only after
+  building the common controls from a ReactOS source archive.
+- `scripts/provision-rtl.py` builds `raven-rtl.dll` from ReactOS's RTL. Both download the same archive,
+  `https://codeload.github.com/reactos/reactos/tar.gz/dacf2a6c47fa562799f9c8a41ab6d5c558556558`
+  (SHA-256 `5373bbbb60541cb2a49e0acb53360e1218d4f5d56c31f9187b341b9fc16daa69`), and need `clang` and `widl`
+  besides, which the recipe does not bring. The archive is source, not Microsoft binaries; Raven's `LICENSES.json`
+  records it as GPL-2.0 (ReactOS `COPYING`, the PE components distributed under version 2) with LGPL parts.
+
+At Raven's `main` on 2026-11-12 (82f124e2fb), `provision-rtl.py` builds `raven-rtl.dll` from Raven's own MIT
+source (`native/guest/raven-rtl`) with MinGW alone, and `provision-controls.py` needs only MinGW's `gcc` and
+`windres`: neither downloads anything. The command line above is unchanged there. decanter does not provision yet:
+whether to download ReactOS's source at the pin, or to move the pin to a commit whose scripts need no download and
+run them in the build (passing `-DRAVEN_RTL_COMPONENT_PATH` and `-DRAVEN_CONTROLS_COMPONENT_DIR` to CMake), is the
+owner's choice. Direct3D needs DXVK and vkd3d-proton besides (`provision-graphics.py`). No GUI program and no game
+has been tried.
 
 ## Licence
 

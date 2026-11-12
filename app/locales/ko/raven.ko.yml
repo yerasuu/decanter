@@ -43,6 +43,8 @@ raven.programs.remove: 제거
 raven.programs.open_log: 로그
 raven.programs.needs_build: 실행하려면 Raven을 빌드하세요.
 raven.programs.failed: '마지막 실행이 정상적으로 끝나지 않았습니다. 로그의 마지막 부분:'
+raven.programs.missing_module: 'Raven에는 이 프로그램에 필요한 %{module} 구성 요소가 아직 없어 이 빌드로는 실행할 수 없습니다.'
+raven.programs.missing_api: 'Raven이 %{api}에서 멈췄습니다. 아직 응답할 수 없는 Windows 함수입니다.'
 raven.errors.not_windows: Windows 프로그램이 아닙니다
 raven.errors.no_library: 활성 라이브러리를 사용할 수 없습니다.
 raven.errors.save: '추가할 수 없습니다: %{error}'
