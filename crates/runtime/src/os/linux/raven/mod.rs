@@ -35,6 +35,8 @@ const RECIPE: Recipe = Recipe {
 const HOST_CHECK: &str = "command -v gcc && command -v g++ && command -v cmake && command -v ninja \
      && command -v python3 && command -v pkg-config && command -v x86_64-w64-mingw32-gcc \
      && command -v x86_64-w64-mingw32-windres && command -v i686-w64-mingw32-gcc && command -v i686-w64-mingw32-windres \
+     && command -v x86_64-w64-mingw32-dlltool && command -v i686-w64-mingw32-dlltool && command -v widl \
+     && command -v bison && command -v patch \
      && pkg-config --exists libffi wayland-client wayland-protocols xkbcommon pixman-1 freetype2 libpng openssl";
 
 /// The runtime, relative to the checkout: what the build makes and what runs programs.

@@ -94,8 +94,14 @@ decanter does not link or ship the programs it runs. Wine/Proton (through umu-ru
 other runtime are separate programs started as their own processes, built or downloaded on the user's machine. They
 keep their own terms: psport is GPL-2.0-only (https://github.com/yerasuu/psport, its own LICENSES.md) and Raven, built
 from a pinned commit only when the user asks for it in its section, is GPL-3.0-or-later
-(https://github.com/mirkobrombin/raven), with the guest components its build compiles from its own MIT sources;
-decanter neither relicenses them nor includes their source or binaries in a release. decanter does carry small patches
+(https://github.com/mirkobrombin/raven), with the guest components its build compiles from its own MIT sources.
+Raven's installer components are also compiled there from the releases its `provision-installer.py` pins by
+SHA-256 and downloads from each project's own site: zlib 1.3.1 (zlib License, https://zlib.net), the Independent
+JPEG Group's libjpeg 10 (IJG License, https://www.ijg.org), LibTIFF 4.7.1 (libtiff License,
+https://download.osgeo.org/libtiff), libxml2 2.12.8 and libxslt 1.1.42 (MIT, https://download.gnome.org); its
+build environment adds widl, built from the mingw-w64 14.0.0 release (LGPL-2.1-or-later, with that release's IDL
+files under their own notices), GNU Bison and GNU patch (GPL-3.0-or-later) from nixpkgs. decanter neither
+relicenses any of them nor includes their source or binaries in a release. decanter does carry small patches
 to Raven's source, in `crates/runtime/src/os/linux/raven/patches/`, applied to the checkout on the user's machine at
 build time: the patch files are GPL-3.0-or-later, like Raven as a whole and decanter's own code, and the Raven files
 they change keep their own terms (`x86-crt.patch` changes `native/guest/raven-crt/ucrtbase.c`, which is

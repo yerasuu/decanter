@@ -30,21 +30,28 @@ const PATCH_NAME: &str = "x86-crt.patch";
 /// connection would otherwise keep the section's check spinning.
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// The guest components first, compiled with `MinGW` from Raven's own sources by its provisioning
-/// scripts, since every heap call goes to `raven-rtl.dll` and a program's C runtime and common
-/// controls are `ucrtbase.dll` and `comctl32.dll`: `CMake` copies them beside the runtime (the 32-bit
-/// ones into `x86/`). Then only the runtime and the 32-bit C runtime, `ucrtbase32.dll`, which
-/// `native/raven` does not build: Raven's default build adds its test programs, gigabytes of them.
-/// `-k 0` so one failing step still shows every other one in the log.
+/// The guest components first, compiled with `MinGW` by Raven's provisioning scripts, since every
+/// heap call goes to `raven-rtl.dll`, a program's C runtime and common controls are `ucrtbase.dll`
+/// and `comctl32.dll`, and an installer's services are `msi.dll`, `cabinet.dll`, `rpcrt4.dll` and the
+/// rest `provision-installer.py` builds on the zlib, libjpeg, libtiff, libxml2 and libxslt releases
+/// it downloads and checks by hash. `CMake` copies them beside the runtime (the 32-bit ones into
+/// `x86/`). Then only the runtime, the 32-bit C runtime, `ucrtbase32.dll`, and the copies of the
+/// installer components, none of which `native/raven` depends on: Raven's default build adds its
+/// test programs, gigabytes of them. `-k 0` so one failing step still shows every other one in the
+/// log.
 const COMPILE: &str = "set -e; components=$PWD/components; \
      python3 scripts/provision-rtl.py --output \"$components/rtl\"; \
      python3 scripts/provision-controls.py --output \"$components/controls\"; \
      python3 scripts/provision-controls.py --arch x86 --output \"$components/controls32\"; \
+     python3 scripts/provision-installer.py --output \"$components/installer\"; \
+     python3 scripts/provision-installer.py --arch x86 --output \"$components/installer32\"; \
      cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
      \"-DRAVEN_RTL_COMPONENT_PATH=$components/rtl/raven-rtl.dll\" \
      \"-DRAVEN_CONTROLS_COMPONENT_DIR=$components/controls\" \
-     \"-DRAVEN_CONTROLS32_COMPONENT_DIR=$components/controls32\"; \
-     ninja -C build -k 0 native/raven x86_ucrt_component";
+     \"-DRAVEN_CONTROLS32_COMPONENT_DIR=$components/controls32\" \
+     \"-DRAVEN_INSTALLER_COMPONENT_DIR=$components/installer\" \
+     \"-DRAVEN_INSTALLER32_COMPONENT_DIR=$components/installer32\"; \
+     ninja -C build -k 0 native/raven x86_ucrt_component installer_components_64 installer_components_32";
 
 /// The build's log, written as the build goes; a line it can't take is said once in decanter's own
 /// log and the build goes on, since the log is only there to read.

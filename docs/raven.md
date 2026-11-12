@@ -29,19 +29,35 @@ construir» decanter:
    the host gcc and g++ (pinned in `CC`/`CXX`, since the MinGW compiler's setup hook would otherwise take
    them), pkg-config, libffi, Wayland and wayland-protocols, xkbcommon, pixman, FreeType, libpng, OpenSSL and
    the MinGW compilers for both widths, `x86_64-w64-mingw32-gcc` and `i686-w64-mingw32-gcc` (with their
-   `windres`, `nm` and `dlltool`);
-5. runs Raven's provisioning scripts that download nothing (`COMPILE` in
-   `crates/runtime/src/os/linux/raven/build.rs`), into `components/` of the checkout: `provision-rtl.py`
-   (`raven-rtl.dll`, the guest RTL every heap call goes to), `provision-controls.py` (the common controls,
-   `raven-user32.dll`, `raven-shell.dll`, DirectWrite, Direct2D, `ucrtbase.dll` and Raven's `control.exe`,
-   `regedit.exe`, `dism.exe`, file picker and host bridge) and `provision-controls.py --arch x86` (the same for
-   32-bit programs, without the C runtime). All of it is MinGW `gcc` and `windres` over Raven's own MIT sources
-   under `native/guest/`;
-6. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR` and
-   `-DRAVEN_CONTROLS32_COMPONENT_DIR`, so CMake copies the components beside `raven` (the 32-bit ones into
-   `build/native/x86/`), and builds `ninja -k 0 native/raven x86_ucrt_component`: the runtime and the 32-bit C
-   runtime, `ucrtbase32.dll`, which `native/raven` does not depend on. Raven's full default build adds its test
-   programs: at the pin it builds (533 steps) but takes 7.3 GB;
+   `windres`, `nm` and `dlltool`), and for the installer components GNU Bison (only `provision-installer.py`'s
+   tool check asks for it), GNU patch and `widl`. nixpkgs has `widl` only inside Wine (1.6 GiB with its
+   closure), so the recipe builds it from `mingw-w64-tools/widl` of the mingw-w64 14.0.0 release its MinGW
+   headers come from (the same source tarball, pinned by nixpkgs' hash, about 20 s), with that release's IDL
+   files and installed headers in `share/widl/include/`: not in `include/`, which the shell would put in the host
+   gcc's search path. Raven's README also lists clang; nothing these scripts run calls it, so the recipe leaves it
+   out;
+5. runs Raven's provisioning scripts (`COMPILE` in `crates/runtime/src/os/linux/raven/build.rs`), into
+   `components/` of the checkout: `provision-rtl.py` (`raven-rtl.dll`, the guest RTL every heap call goes to),
+   `provision-controls.py` (the common controls, `raven-user32.dll`, `raven-shell.dll`, DirectWrite, Direct2D,
+   `ucrtbase.dll` and Raven's `control.exe`, `regedit.exe`, `dism.exe`, file picker and host bridge),
+   `provision-controls.py --arch x86` (the same for 32-bit programs, without the C runtime), and
+   `provision-installer.py` and `provision-installer.py --arch x86` (into `installer/` and `installer32/`): the
+   Windows Installer engine and what installers lean on, `msi.dll`, `msiexec.exe`, `cabinet.dll`, `sxs.dll`,
+   `rpcrt4.dll`, `raven-storage.dll`, `msxml3.dll`, `xmllite.dll`, `atl100.dll`, `oleaut32.dll`, `propsys.dll`,
+   `mlang.dll`, `windowscodecs.dll`, `libjpeg.dll`, `libtiff.dll`, `gdiplus.dll`, `urlmon.dll`, `riched20.dll`,
+   `msftedit.dll`, `msvfw32.dll`, `advpack.dll`, `raven-setupapi.dll`, `raven-appx.dll`, `mspatcha.dll`,
+   `vbscript.dll`, `jscript.dll`, `scrrun.dll` and `wshom.ocx`. The first three download nothing; the installer
+   script downloads five upstream releases (below), checks each against the SHA-256 it pins, applies Raven's two
+   libxml2 patches (`native/guest/raven-installer/patches/libxml2/`) and writes `provenance.json` with the hashes
+   of everything it used and built. All of it is MinGW `gcc`, `windres`, `dlltool` and `widl` over Raven's own
+   MIT sources under `native/guest/` and those releases;
+6. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR`,
+   `-DRAVEN_CONTROLS32_COMPONENT_DIR`, `-DRAVEN_INSTALLER_COMPONENT_DIR` and `-DRAVEN_INSTALLER32_COMPONENT_DIR`,
+   so CMake copies the components beside `raven` (the 32-bit ones into `build/native/x86/`), and builds
+   `ninja -k 0 native/raven x86_ucrt_component installer_components_64 installer_components_32`: the runtime, the
+   32-bit C runtime, `ucrtbase32.dll`, and the copies of the installer components, none of which `native/raven`
+   depends on. Raven's full default build adds its test programs: at the pin it builds (533 steps) but takes
+   7.3 GB;
 7. marks the build finished with one rename of its marker, after every step passed.
 
 Progress (sources, tools download, configure, Ninja's steps) shows in the section, with «Cancelar»: it drops the
@@ -58,6 +74,34 @@ At 82f124e2fb, same machine, from an empty checkout: the provisioning about 50 s
 `raven` binary, a 808 MB build folder and 11 MB of components (855 MB for the checkout). The download: the shallow
 clone about 7 MB, CMake's hash-pinned test data (Notepad++, SQLite, BusyBox) about 15 MB, and from nix's binary
 cache the i686 MinGW toolchain besides what the previous pin used (about 630 MB in the store).
+With the installer components (2026-11-12, same machine, from an empty checkout, 386 s in all): `widl` built and
+the shell entered about 20 s, the RTL and controls about 46 s, the 64-bit installer components 152 s and the 32-bit
+ones 95 s (the script compiles mostly one file at a time), configure 26 s, the runtime 47 s (288 steps). A 185 MB
+`raven` binary, an 828 MB build folder and 258 MB of components (124 MB per width under `installer/` and
+`installer32/`, mostly the unpacked upstream sources and objects; the components themselves are about 10 MB
+per width), 1.1 GB for the checkout. Downloaded besides the above: the five upstream releases, about 11 MB; the
+mingw-w64 14.0.0 source tarball, 11 MB, from nix's binary cache or the project's SourceForge downloads, checked
+against nixpkgs' hash; Bison and patch from nix's binary cache; `widl` adds 19 MB to the store.
+
+### What the installer components download
+
+`provision-installer.py` at the pin fetches these and nothing else; each archive is checked against the SHA-256
+in its `UPSTREAM` table before it is unpacked, kept in the component folder as `NAME-VERSION-source.tar.*`, and its
+licence notices copied to `licenses/`. The hashes below were also checked on 2026-11-12 against what each project
+publishes:
+
+| Library | URL | SHA-256 | Checked against | Licence |
+| --- | --- | --- | --- | --- |
+| zlib 1.3.1 | `https://zlib.net/fossils/zlib-1.3.1.tar.gz` | `9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23` | Mark Adler's GPG signature (key `5ED46A6721D365587791E2AA783FCD8E58BCAFBA`) of the [v1.3.1 release](https://github.com/madler/zlib/releases/tag/v1.3.1), byte-identical | [zlib License](https://zlib.net/zlib_license.html) |
+| libjpeg 10 (IJG) | `https://www.ijg.org/files/jpegsrc.v10.tar.gz` | `8b9eaa13242690ebd03e1728ab1edf97a81a78ed6e83624d493655f31ac95ab5` | the [IJG](https://www.ijg.org/) publishes no checksum or signature: only that its own server serves this file | IJG License (its `README`, "LEGAL ISSUES") |
+| LibTIFF 4.7.1 | `https://download.osgeo.org/libtiff/tiff-4.7.1.tar.gz` | `f698d94f3103da8ca7438d84e0344e453fe0ba3b7486e04c5bf7a9a3fabe9b69` | Even Rouault's GPG signature (`tiff-4.7.1.tar.gz.sig`, key `B1FA7D81EEB8E66399178B9733EBBFC47B3DD87D`) | [libtiff License](https://libtiff.gitlab.io/libtiff/project/license.html) |
+| libxml2 2.12.8 | `https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.8.tar.xz` | `43ad877b018bc63deb2468d71f95219c2fac196876ef36d1bee51d226173ec93` | GNOME's `libxml2-2.12.8.sha256sum` | MIT (its `Copyright`) |
+| libxslt 1.1.42 | `https://download.gnome.org/sources/libxslt/1.1/libxslt-1.1.42.tar.xz` | `85ca62cac0d41fc77d3f6033da9df6fd73d20ea2fc18b0a3609ffb4110e1baeb` | GNOME's `libxslt-1.1.42.sha256sum` | MIT (its `Copyright`) |
+
+No Microsoft binary is downloaded: the libraries the components link against are MinGW-w64's import libraries.
+The build tools come from the pinned nixpkgs: `widl` from mingw-w64 14.0.0 (LGPL-2.1-or-later, Wine's code; the
+IDL files and headers under mingw-w64's ZPL-2.1 and their own notices), GNU Bison 3.8.2 and GNU patch 2.8
+(GPL-3.0-or-later).
 
 ## Programs
 
@@ -116,6 +160,7 @@ programs only, no window, compiled with nixpkgs' MinGW GCC 16.2.0 and run with t
 | `printf`, `puts`, `fprintf(stderr)`, `malloc`/`calloc`/`free`, `HeapAlloc` on `GetProcessHeap`, exit status 7, importing `msvcrt.dll` (MinGW's default) | Runs: all its output, exit 7, about 50 ms | Runs: all its output, exit 7 (without the patch only `puts` and `WriteFile` reached the output) |
 | the same with `-mcrtdll=ucrt` (imports `api-ms-win-crt-*`) | Runs: all its output, exit 7 | Runs: all its output, exit 7, about 230 ms (without the patch `%zu` printed 8 bytes of the stack) |
 | `InitCommonControls` and `InitCommonControlsEx`, then `CreateProcessA` of one of the above, waited, its exit status read | Runs, the child's output and exit status 7 | Runs, a 32-bit or 64-bit child alike |
+| With `-mcrtdll=ucrt`, linked against MinGW's `msi`, `rpcrt4` and `cabinet` import libraries: `UuidCreate` and `UuidToStringA`, `FDICreate` and `FDIDestroy`, `MsiOpenDatabaseA` creating a database, `CREATE TABLE`, `INSERT`, `MsiDatabaseCommit`, then reopening it read-only and a `SELECT` through `MsiDatabaseOpenViewA`, `MsiViewExecute` and `MsiViewFetch` | Runs: a fresh UUID, every call 0, `Value = 42`, exit 0 | Runs the same, exit 0 |
 
 The i686 results are with decanter's patch; `printf`, `fprintf` and `fputs` to `stdout` and `stderr`, `%zu`, `%Iu` and
 `%td` among other arguments, and `fopen`/`fgets`/`ftell` on a file were checked in both widths and both C runtimes.
@@ -125,14 +170,13 @@ At the previous pin (3179949f14) only a program that needed no C runtime and no 
 neither `raven-rtl.dll` nor the C runtime was built. The owner's 32-bit installer stopped at `unimplemented native
 x86 API InitCommonControls` and then `unimplemented native process API` (the line that ends every such run, naming
 no function); the common controls now answer it for both widths. A run that stops on a 32-bit function shows it
-under the program like a 64-bit one.
+under the program like a 64-bit one. Without the installer components the same Windows Installer program stops
+at `missing PE module: cabinet.dll`; with them its database round trip runs for both widths. No installer has been
+run against them yet, so whether the owner's 32-bit installer now gets past `unimplemented native process API` is
+still to be checked.
 
 Still missing from decanter's build:
 
-- the installer services (`msi.dll`, `cabinet.dll`, `sxs.dll`, `rpcrt4.dll`, `msxml3.dll` and others,
-  `provision-installer.py`), which need `clang`, `widl`, `bison` and `patch` and download pinned upstream sources
-  (zlib, libjpeg, libtiff, libxml2, libxslt from their projects' sites); a program stops at its first call into
-  them, so Windows Installer packages and most setup programs do not install yet;
 - Direct3D through DXVK and vkd3d-proton (`provision-graphics.py`), the Microsoft root certificates
   (`provision-roots.py`) and Skia with its fonts (`provision-text.py`), which all download;
 - the components only Raven's full build makes (`mscoree.dll`, ICU, `l_intl.nls` and others).
@@ -172,7 +216,10 @@ Raven is GPL-3.0-or-later. It is not part of decanter: its source is fetched fro
 player's machine, and it runs as its own process; no Raven source or binary is in a decanter release
 ([LICENSES.md](../LICENSES.md)). The guest components its provisioning compiles come from the same checkout,
 from Raven's own sources under `native/guest/` (`raven-rtl`, `raven-crt`, `raven-comctl32`, `raven-user32`,
-`raven-shell` and the rest), each file marked `SPDX-License-Identifier: MIT` (Raven's `LICENSES/MIT.txt`); nothing
-else is downloaded for them. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
+`raven-shell` and the rest), each file marked `SPDX-License-Identifier: MIT` (Raven's `LICENSES/MIT.txt`). The
+installer components add the five upstream releases above, downloaded from each project's own site on the
+player's machine and compiled there, under their own licences (zlib License, IJG License, libtiff License, MIT
+for libxml2 and libxslt), whose notices `provision-installer.py` copies beside the components; decanter
+distributes none of them. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
 the patch file is GPL-3.0-or-later like Raven, and the file it changes, `native/guest/raven-crt/ucrtbase.c`, is
 `SPDX-License-Identifier: MIT` and stays MIT.

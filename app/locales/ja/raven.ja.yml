@@ -22,7 +22,7 @@ raven.build.stage.compiling: "コンパイル中: ステップ %{done} / %{total
 raven.confirm.title: "Raven をビルドしますか?"
 raven.confirm.repo: "リポジトリ: %{repo}"
 raven.confirm.commit: "コミット: %{commit}"
-raven.confirm.text: "decanter は、このコミットの Raven のコードを GitHub から(約 7 MB)、ビルドに必要なツール(64 ビットと 32 ビットの MinGW コンパイラーを含む。システムにない場合は Nix から)、およびビルド中にダウンロードされるデータ(約 15 MB)を取得し、ライブラリ内でコンパイルします。あわせて、Windows プログラムが必要とするコンポーネント(ランタイムライブラリ、C ランタイム、コモンコントロール。64 ビットと 32 ビットのプログラム用)を Raven 自身のソースからビルドします。数分かかります。ビルドフォルダーは約 1 GB、ランタイムは約 185 MB を使用します。これはサードパーティのコードであり、decanter では内容を審査していません。"
+raven.confirm.text: "decanter は、このコミットの Raven のコードを GitHub から(約 7 MB)、ビルドに必要なツール(64 ビットと 32 ビットの MinGW コンパイラーを含む。システムにない場合は Nix から)、ビルド中にダウンロードされるデータ(約 15 MB)、およびインストーラーコンポーネント用に zlib (zlib.net)、libjpeg (ijg.org)、LibTIFF (download.osgeo.org)、libxml2 と libxslt (download.gnome.org) のソースコード(約 11 MB。それぞれのプロジェクト自身のサイトから取得し、固定されたハッシュで検証)を取得し、ライブラリ内でコンパイルします。あわせて、Windows プログラムが必要とするコンポーネント(ランタイムライブラリ、C ランタイム、コモンコントロール、Windows Installer のサービス(msi、cabinet、rpcrt4、msxml3 など)。64 ビットと 32 ビットのプログラム用)を Raven 自身のソースとこれらのライブラリからビルドします。高速なマシンで約 7 分、遅いマシンではそれ以上かかります。ビルドフォルダーは約 1.1 GB、ランタイムは約 185 MB を使用します。これはサードパーティのコードであり、decanter では内容を審査していません。"
 raven.confirm.yes: "ダウンロードしてビルド"
 raven.confirm.no: "キャンセル"
 raven.confirm_remove.title: "Raven を削除しますか?"
