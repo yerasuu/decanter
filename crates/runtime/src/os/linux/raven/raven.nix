@@ -35,9 +35,13 @@ let
 in
 pkgs.mkShell {
   # bison is only asked for by provision-installer.py's tool check; patch
-  # applies Raven's corrections to libxml2.
+  # applies Raven's corrections to libxml2. provision-text.py derives Raven's
+  # dialog faces with fontTools and checks for clang, which builds Skia as
+  # the arguments it pins say; gn is Skia's build generator, taken from here
+  # rather than the binary Skia's fetch-gn downloads without a check.
   packages = with pkgs; [
-    gcc cmake ninja python3 pkg-config bison gnupatch widl
+    gcc cmake ninja (python3.withPackages (python: [ python.fonttools ])) pkg-config bison gnupatch widl
+    clang gn
     libffi wayland wayland-protocols wayland-scanner libxkbcommon pixman freetype libpng openssl
     pkgsCross.mingwW64.buildPackages.gcc pkgsCross.mingw32.buildPackages.gcc
   ];

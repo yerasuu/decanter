@@ -100,7 +100,13 @@ SHA-256 and downloads from each project's own site: zlib 1.3.1 (zlib License, ht
 JPEG Group's libjpeg 10 (IJG License, https://www.ijg.org), LibTIFF 4.7.1 (libtiff License,
 https://download.osgeo.org/libtiff), libxml2 2.12.8 and libxslt 1.1.42 (MIT, https://download.gnome.org); its
 build environment adds widl, built from the mingw-w64 14.0.0 release (LGPL-2.1-or-later, with that release's IDL
-files under their own notices), GNU Bison and GNU patch (GPL-3.0-or-later) from nixpkgs. decanter neither
+files under their own notices), GNU Bison and GNU patch (GPL-3.0-or-later) from nixpkgs. Raven's GDI text layer
+is built there too: Skia (BSD-3-Clause, https://skia.googlesource.com/skia) at the commit Raven's
+`provision-text.py` pins, compiled with Clang (Apache-2.0 WITH LLVM-exception) and GN (BSD-3-Clause) from nixpkgs
+against nixpkgs' FreeType (FreeType License or GPL-2.0), and the fonts that script downloads and checks by SHA-256:
+the Liberation fonts 2.1.5 (SIL OFL 1.1, from Ubuntu's archive, https://archive.ubuntu.com) and DejaVu 2.37
+(Bitstream Vera and Arev font licences, DejaVu's changes public domain, https://github.com/dejavu-fonts), from
+which the script derives the renamed Raven Sans faces with fontTools (MIT) as those licences allow. decanter neither
 relicenses any of them nor includes their source or binaries in a release. decanter does carry small patches
 to Raven's source, in `crates/runtime/src/os/linux/raven/patches/`, applied to the checkout on the user's machine at
 build time: the patch files are GPL-3.0-or-later, like Raven as a whole and decanter's own code, and the Raven files

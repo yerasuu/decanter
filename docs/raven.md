@@ -34,8 +34,9 @@ construir» decanter:
    closure), so the recipe builds it from `mingw-w64-tools/widl` of the mingw-w64 14.0.0 release its MinGW
    headers come from (the same source tarball, pinned by nixpkgs' hash, about 20 s), with that release's IDL
    files and installed headers in `share/widl/include/`: not in `include/`, which the shell would put in the host
-   gcc's search path. Raven's README also lists clang; nothing these scripts run calls it, so the recipe leaves it
-   out;
+   gcc's search path. For GDI text it adds Clang 21.1.8 (`provision-text.py` checks for `clang` and `clang++`, and
+   the Skia arguments it pins name them as compilers), GN (Skia's build generator) and Python's fontTools 4.63.0,
+   with which `provision-text.py` derives Raven's dialog faces; all three from the pinned nixpkgs;
 5. runs Raven's provisioning scripts (`COMPILE` in `crates/runtime/src/os/linux/raven/build.rs`), into
    `components/` of the checkout: `provision-rtl.py` (`raven-rtl.dll`, the guest RTL every heap call goes to),
    `provision-controls.py` (the common controls, `raven-user32.dll`, `raven-shell.dll`, DirectWrite, Direct2D,
@@ -50,10 +51,23 @@ construir» decanter:
    script downloads five upstream releases (below), checks each against the SHA-256 it pins, applies Raven's two
    libxml2 patches (`native/guest/raven-installer/patches/libxml2/`) and writes `provenance.json` with the hashes
    of everything it used and built. All of it is MinGW `gcc`, `windres`, `dlltool` and `widl` over Raven's own
-   MIT sources under `native/guest/` and those releases;
+   MIT sources under `native/guest/` and those releases. Then GDI text, into `components/text/` (see
+   [What the text layer downloads](#what-the-text-layer-downloads)): `provision-text.py --fonts-only` (the Liberation
+   fonts and Raven Sans, its dialog face derived from DejaVu Sans Condensed, both checked by hash), then Skia, the
+   way that script builds it but with the toolchain's tools: a shallow fetch of `SKIA_REPOSITORY` at `SKIA_COMMIT`,
+   checked to be that commit, `args.gn` written from the script's `SKIA_ARGUMENTS` (all three read from the
+   script, so a newer Raven brings its own), `gn gen` and `ninja skia`, a CPU-only `libskia.a` with FreeType from
+   nix. The script's own Skia step is not run: it calls Skia's `tools/git-sync-deps`, which clones every one of
+   Skia's 48 git dependencies (ANGLE, Dawn, SwiftShader, ICU, Perfetto and the rest) and installs the Emscripten SDK
+   4.0.7, and `bin/fetch-gn` and `bin/fetch-ninja`, which download `gn` and `ninja` binaries from
+   `chrome-infra-packages.appspot.com` by tag with no digest checked. With the arguments Raven pins Skia needs none
+   of those dependencies (the build reads nothing under `third_party/externals/`);
 6. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR`,
    `-DRAVEN_CONTROLS32_COMPONENT_DIR`, `-DRAVEN_INSTALLER_COMPONENT_DIR` and `-DRAVEN_INSTALLER32_COMPONENT_DIR`,
-   so CMake copies the components beside `raven` (the 32-bit ones into `build/native/x86/`), and builds
+   so CMake copies the components beside `raven` (the 32-bit ones into `build/native/x86/`), and with
+   `-DRAVEN_SKIA_SOURCE`, `-DRAVEN_SKIA_LIBRARY` and `-DRAVEN_FONT_DIRECTORY`, so `native/CMakeLists.txt` checks the
+   three Liberation fonts against its own hashes and compiles the GDI text layer (`desktop/text.cpp`,
+   `graphics/text.cpp`, Skia's path operations) into `raven`, the font folder's absolute path compiled in; and builds
    `ninja -k 0 native/raven x86_ucrt_component installer_components_64 installer_components_32`: the runtime, the
    32-bit C runtime, `ucrtbase32.dll`, and the copies of the installer components, none of which `native/raven`
    depends on. Raven's full default build adds its test programs: at the pin it builds (533 steps) but takes
@@ -82,6 +96,47 @@ ones 95 s (the script compiles mostly one file at a time), configure 26 s, the r
 per width), 1.1 GB for the checkout. Downloaded besides the above: the five upstream releases, about 11 MB; the
 mingw-w64 14.0.0 source tarball, 11 MB, from nix's binary cache or the project's SourceForge downloads, checked
 against nixpkgs' hash; Bison and patch from nix's binary cache; `widl` adds 19 MB to the store.
+With GDI text (2026-11-12, same machine, from an empty checkout, 407 s in all): the fonts 4 s, the Skia fetch 6 s,
+Skia's 511 steps 21 s, configure 28 s, the runtime 51 s (324 steps). A 199 MB `raven` binary, an 876 MB build
+folder and 581 MB of components, 323 MB of them under `text/` (Skia's source 291 MB, 78 MB of it its shallow
+`.git`; `libskia.a` and its objects 23 MB; the fonts 2.4 MB; the two archives 7 MB), 1.5 GB for the checkout.
+Downloaded besides the above: the two font archives, 7 MB; Skia's shallow fetch, about 78 MB; from nix's binary
+cache Clang, compiler-rt, GN and fontTools, about 153 MB compressed, 985 MB in the store (Clang's libraries
+833 MB). Well inside what the default build can carry, so it is part of it rather than an extra step.
+
+### What the text layer downloads
+
+`provision-text.py` at the pin fetches the two font archives, and decanter fetches Skia at the commit the script
+pins; nothing else. The hashes were also checked on 2026-11-12 against what each source publishes:
+
+| What | URL | Pin | Checked against | Licence |
+| --- | --- | --- | --- | --- |
+| Liberation fonts 2.1.5 (Ubuntu's `fonts-liberation` 1:2.1.5-3build1) | `http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-liberation/fonts-liberation_2.1.5-3build1_all.deb` | SHA-256 `47f156bc945cfc69cf2f2a0c19b8c82b67a685738d3846673462de6a73266e1b`; then each of the three `-Regular.ttf` faces by its own SHA-256 (also checked by Raven's CMake) | the `Packages` index of Ubuntu 26.04 (`resolute`, main, amd64) lists this SHA-256; that index's SHA-256 is in the suite's `InRelease`, signed by the Ubuntu Archive Automatic Signing Key (2018), `F6ECB3762474EDA9D21B7022871920D1991BC93C` | SIL OFL 1.1 (the package's `copyright`; [Liberation fonts](https://github.com/liberationfonts/liberation-fonts)) |
+| DejaVu fonts 2.37 | `https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2` (the same asset through `api.github.com` as a second address) | SHA-256 `fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7` | the GitHub release publishes no digest; the copy on the project's [SourceForge downloads](https://sourceforge.net/projects/dejavu/files/dejavu/2.37/) has the same SHA-256 and matches the SHA-1 (`7fa15e7b9676fc3915338c41e76ad454c344fff5`) and MD5 SourceForge lists | Bitstream Vera Fonts licence and Arev Fonts licence, DejaVu's changes public domain (its `LICENSE`, copied beside Raven Sans as `RavenSans-LICENSE.txt`) |
+| Skia | `https://skia.googlesource.com/skia.git` | commit `a21aae83d6e4e3da284100a30f0a5eafc443b60f` (`SKIA_COMMIT`), fetched by id, so git checks every object against it | Skia's own repository | BSD-3-Clause (its `LICENSE`) |
+
+The fonts are not modified except Raven Sans, which `provision-text.py` derives from DejaVu Sans Condensed (narrower
+advances, Tahoma's vertical metrics) and renames, as the Bitstream Vera and Arev terms ask of a modified font. The
+Liberation archive comes from Ubuntu's archive rather than the project's GitHub releases because that is what Raven
+pins. The build tools come from the pinned nixpkgs: Clang 21.1.8 (Apache-2.0 WITH LLVM-exception), GN
+(BSD-3-Clause), fontTools 4.63.0 (MIT) and FreeType 2.14.3, which Skia links (FreeType License or GPL-2.0).
+
+### What is not built yet
+
+- The Microsoft code-signing roots (`provision-roots.py`, `RAVEN_ROOT_CERTIFICATE_DIRECTORY`, copied by the
+  `root_certificates` target into `build/native/roots/`, which `nt/authenticode.cpp` reads). The four certificates
+  come from `http://www.microsoft.com/pki/certs/`, each pinned by SHA-256, and are public, but Microsoft's
+  [PKI repository](https://www.microsoft.com/pkiops/docs/repository.htm) puts every download under its
+  [Relying Party Agreement](https://www.microsoft.com/pkiops/Docs/Content/policy/MSRelyingPartyAgreement2018.pdf):
+  "By submitting any query to, or otherwise by downloading, accessing, using, or relying on any aspect of, the
+  Microsoft PKI, you are deemed to have accepted all terms of this Agreement", a contract between the person and
+  Microsoft with relying-party duties (checking revocation, reading the CPS). Fetching them would make the player
+  a party to it, which is the owner's decision; until then installers that check Microsoft signatures fail with
+  `0x800b010a`.
+- DXVK 3.1.1 and vkd3d-proton 3.1 (`provision-graphics.py`). At the pin `RAVEN_DXVK_PE64_DIR`, `RAVEN_DXVK_PE32_DIR`
+  and `RAVEN_VKD3D_PE64_DIR` only add CTest tests; a program finds its Direct3D DLLs through `RAVEN_D3D_DIRECTORY`
+  or beside `raven` (`native/main.cpp`, `nt/x86_loader.cpp`), and both widths use the same file names, so using them
+  is a launch change (the directory of the program's width), not a build step.
 
 ### What the installer components download
 
@@ -144,6 +199,7 @@ Everything is inside the active library (docs/data-in-library.md):
 | --- | --- |
 | `<library>/decanter/runners/raven/<commit>/` | The checkout and its build tree (`build/native/raven`), with `.decanter-built` once finished |
 | `<library>/decanter/runners/raven/<commit>/components/` | The guest components the provisioning scripts compiled, copied by CMake beside `build/native/raven` |
+| `<library>/decanter/runners/raven/<commit>/components/text/` | Skia's checkout and `cpu-fonts/libskia.a`, the font archives and `fonts/`, which `raven` reads at run time |
 | `<library>/decanter/runners/raven/toolchain/` | Raven's nix environment files, host marker and, if used, nix-portable and its store |
 | `<library>/decanter/runners/raven/build.log` | The last build's output |
 | `<library>/decanter/runners/raven/confirmed` | The commit the player confirmed |
@@ -160,6 +216,7 @@ programs only, no window, compiled with nixpkgs' MinGW GCC 16.2.0 and run with t
 | `printf`, `puts`, `fprintf(stderr)`, `malloc`/`calloc`/`free`, `HeapAlloc` on `GetProcessHeap`, exit status 7, importing `msvcrt.dll` (MinGW's default) | Runs: all its output, exit 7, about 50 ms | Runs: all its output, exit 7 (without the patch only `puts` and `WriteFile` reached the output) |
 | the same with `-mcrtdll=ucrt` (imports `api-ms-win-crt-*`) | Runs: all its output, exit 7 | Runs: all its output, exit 7, about 230 ms (without the patch `%zu` printed 8 bytes of the stack) |
 | `InitCommonControls` and `InitCommonControlsEx`, then `CreateProcessA` of one of the above, waited, its exit status read | Runs, the child's output and exit status 7 | Runs, a 32-bit or 64-bit child alike |
+| GDI text on a memory DC, no window (`CreateCompatibleDC(NULL)`): `EnumFontFamiliesExA`, `CreateFontIndirectA` (Tahoma, 16 px), `GetTextExtentPoint32A` and `W`, `GetTextMetricsA`, `GetTextFaceW`, `CreateFontW` (Courier New), `TextOutA` and `DrawTextA` on a compatible bitmap | Runs: 1269 faces, every call succeeds (`Hello, Raven` 90 x 19, Tahoma reported), exit 0; without Skia it stops at `unimplemented native API EnumFontFamiliesExA` | Runs the same, exit 0; without Skia `unimplemented native x86 API EnumFontFamiliesExA` |
 | With `-mcrtdll=ucrt`, linked against MinGW's `msi`, `rpcrt4` and `cabinet` import libraries: `UuidCreate` and `UuidToStringA`, `FDICreate` and `FDIDestroy`, `MsiOpenDatabaseA` creating a database, `CREATE TABLE`, `INSERT`, `MsiDatabaseCommit`, then reopening it read-only and a `SELECT` through `MsiDatabaseOpenViewA`, `MsiViewExecute` and `MsiViewFetch` | Runs: a fresh UUID, every call 0, `Value = 42`, exit 0 | Runs the same, exit 0 |
 
 The i686 results are with decanter's patch; `printf`, `fprintf` and `fputs` to `stdout` and `stderr`, `%zu`, `%Iu` and
@@ -175,10 +232,16 @@ at `missing PE module: cabinet.dll`; with them its database round trip runs for 
 run against them yet, so whether the owner's 32-bit installer now gets past `unimplemented native process API` is
 still to be checked.
 
+`EnumFontsA` and `GetTextFaceA` still stop with `unimplemented native API` (and `native x86 API`) with the text layer
+built: at the pin `desktop/gdi_text.cpp` registers `EnumFontsW`, `EnumFontFamiliesA`, `EnumFontFamiliesExA` and their
+wide forms, but no `EnumFontsA`, and `GetTextFaceW` but no `GetTextFaceA`. The owner's `ProjectD2Installer.exe`
+stops at `EnumFontsA` for that reason, with or without Skia; it needs Raven to add the function (or a decanter
+patch). Likewise `PathRenameExtensionW`, which Adobe's installer calls, is not in `nt/shlwapi_api.cpp`.
+
 Still missing from decanter's build:
 
-- Direct3D through DXVK and vkd3d-proton (`provision-graphics.py`), the Microsoft root certificates
-  (`provision-roots.py`) and Skia with its fonts (`provision-text.py`), which all download;
+- Direct3D through DXVK and vkd3d-proton and the Microsoft root certificates (see
+  [What is not built yet](#what-is-not-built-yet));
 - the components only Raven's full build makes (`mscoree.dll`, ICU, `l_intl.nls` and others).
 
 Programs take their arguments after `--`; anything between the program and `--` is read as a further PE module
@@ -220,6 +283,8 @@ from Raven's own sources under `native/guest/` (`raven-rtl`, `raven-crt`, `raven
 installer components add the five upstream releases above, downloaded from each project's own site on the
 player's machine and compiled there, under their own licences (zlib License, IJG License, libtiff License, MIT
 for libxml2 and libxslt), whose notices `provision-installer.py` copies beside the components; decanter
-distributes none of them. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
+distributes none of them. The text layer adds Skia (BSD-3-Clause), built there from its own repository, and the
+Liberation (SIL OFL 1.1) and DejaVu (Bitstream Vera and Arev licences) fonts, downloaded there, Raven Sans derived
+from DejaVu there; decanter distributes none of them either. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
 the patch file is GPL-3.0-or-later like Raven, and the file it changes, `native/guest/raven-crt/ucrtbase.c`, is
 `SPDX-License-Identifier: MIT` and stays MIT.

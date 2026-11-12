@@ -22,7 +22,7 @@ raven.build.stage.compiling: '컴파일 중: %{done} / %{total} 단계'
 raven.confirm.title: Raven을 빌드하시겠습니까?
 raven.confirm.repo: '저장소: %{repo}'
 raven.confirm.commit: '커밋: %{commit}'
-raven.confirm.text: 'decanter는 이 커밋의 Raven 코드를 GitHub에서(약 7 MB), 64비트와 32비트 MinGW 컴파일러를 포함한 빌드 도구를(시스템에 없으면 Nix에서), 빌드 과정에서 받는 데이터를(약 15 MB), 그리고 설치 프로그램 구성 요소용으로 zlib(zlib.net), libjpeg(ijg.org), LibTIFF(download.osgeo.org), libxml2와 libxslt(download.gnome.org)의 소스 코드를(약 11 MB, 각각 해당 프로젝트 자체 사이트에서 받아 고정된 해시로 확인) 다운로드한 뒤 라이브러리 안에서 컴파일합니다. Windows 프로그램에 필요한 구성 요소(런타임 라이브러리, C 런타임, 공용 컨트롤, Windows Installer 서비스(msi, cabinet, rpcrt4, msxml3 등), 64비트 및 32비트 프로그램용)도 Raven 자체 소스와 이 라이브러리들로 함께 빌드합니다. 빠른 컴퓨터에서 약 7분, 느린 컴퓨터에서는 더 오래 걸립니다. 빌드 폴더는 약 1.1 GB, 런타임은 약 185 MB를 차지합니다. decanter가 검토하지 않은 서드파티 코드입니다.'
+raven.confirm.text: 'decanter는 이 커밋의 Raven 코드를 GitHub에서(약 7 MB), 64비트와 32비트 MinGW 컴파일러와 Clang 컴파일러를 포함한 빌드 도구를(시스템에 없으면 Nix에서, Clang은 약 150 MB 추가 다운로드), 빌드 과정에서 받는 데이터를(약 15 MB), 설치 프로그램 구성 요소용으로 zlib(zlib.net), libjpeg(ijg.org), LibTIFF(download.osgeo.org), libxml2와 libxslt(download.gnome.org)의 소스 코드를(약 11 MB), 프로그램 창의 글자 표시용으로 Liberation 글꼴(Ubuntu 아카이브 archive.ubuntu.com에서)과 DejaVu 글꼴(GitHub의 DejaVu 프로젝트에서)을(약 7 MB) 각각 공식 사이트에서 받아 고정된 해시로 확인하고, 고정된 커밋의 그래픽 라이브러리 Skia 소스 코드를(skia.googlesource.com, 약 80 MB) 다운로드한 뒤 라이브러리 안에서 컴파일합니다. Windows 프로그램에 필요한 구성 요소(런타임 라이브러리, C 런타임, 공용 컨트롤, Windows Installer 서비스(msi, cabinet, rpcrt4, msxml3 등), 창과 대화 상자가 쓰는 글자 그리기(이 글꼴을 쓰는 Skia), 64비트 및 32비트 프로그램용)도 Raven 자체 소스와 이 라이브러리들로 함께 빌드합니다. 빠른 컴퓨터에서 약 7분, 느린 컴퓨터에서는 더 오래 걸립니다. 빌드 폴더는 약 1.5 GB, 런타임은 약 200 MB를 차지합니다. decanter가 검토하지 않은 서드파티 코드입니다.'
 raven.confirm.yes: 다운로드 및 빌드
 raven.confirm.no: 취소
 raven.confirm_remove.title: Raven을 제거하시겠습니까?

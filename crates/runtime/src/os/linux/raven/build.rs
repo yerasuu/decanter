@@ -35,22 +35,39 @@ const NETWORK_TIMEOUT: Duration = Duration::from_secs(60);
 /// and `comctl32.dll`, and an installer's services are `msi.dll`, `cabinet.dll`, `rpcrt4.dll` and the
 /// rest `provision-installer.py` builds on the zlib, libjpeg, libtiff, libxml2 and libxslt releases
 /// it downloads and checks by hash. `CMake` copies them beside the runtime (the 32-bit ones into
-/// `x86/`). Then only the runtime, the 32-bit C runtime, `ucrtbase32.dll`, and the copies of the
-/// installer components, none of which `native/raven` depends on: Raven's default build adds its
-/// test programs, gigabytes of them. `-k 0` so one failing step still shows every other one in the
-/// log.
+/// `x86/`). Then GDI text, without which a desktop program stops at its first font call: the fonts
+/// from `provision-text.py`, checked by hash, and Skia at the commit and with the arguments that
+/// script pins, built with the toolchain's `gn` and Ninja. The script itself is left to the fonts
+/// because its Skia step syncs every one of Skia's dependencies, the Emscripten SDK included, and
+/// runs `gn` and Ninja binaries it downloads unchecked, none of which this CPU build uses. Then only
+/// the runtime, the 32-bit C runtime, `ucrtbase32.dll`, and the copies of the installer components,
+/// none of which `native/raven` depends on: Raven's default build adds its test programs, gigabytes
+/// of them. `-k 0` so one failing step still shows every other one in the log.
 const COMPILE: &str = "set -e; components=$PWD/components; \
      python3 scripts/provision-rtl.py --output \"$components/rtl\"; \
      python3 scripts/provision-controls.py --output \"$components/controls\"; \
      python3 scripts/provision-controls.py --arch x86 --output \"$components/controls32\"; \
      python3 scripts/provision-installer.py --output \"$components/installer\"; \
      python3 scripts/provision-installer.py --arch x86 --output \"$components/installer32\"; \
+     text=$components/text; python3 scripts/provision-text.py --fonts-only --output \"$text\"; \
+     mkdir -p \"$text/cpu-fonts\"; \
+     skia=$(python3 -I -c 'import runpy, sys; script = runpy.run_path(sys.argv[1]); \
+     open(sys.argv[2], \"w\").write(script[\"SKIA_ARGUMENTS\"]); \
+     print(script[\"SKIA_REPOSITORY\"], script[\"SKIA_COMMIT\"])' scripts/provision-text.py \
+     \"$text/cpu-fonts/args.gn\"); \
+     git init -q \"$text/skia\"; \
+     git -C \"$text/skia\" fetch -q --depth=1 --no-tags --end-of-options \"${skia% *}\" \"${skia#* }\"; \
+     git -C \"$text/skia\" checkout -q --detach FETCH_HEAD; \
+     test \"$(git -C \"$text/skia\" rev-parse HEAD)\" = \"${skia#* }\"; \
+     gn gen --root=\"$text/skia\" \"$text/cpu-fonts\"; ninja -C \"$text/cpu-fonts\" skia; \
      cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
      \"-DRAVEN_RTL_COMPONENT_PATH=$components/rtl/raven-rtl.dll\" \
      \"-DRAVEN_CONTROLS_COMPONENT_DIR=$components/controls\" \
      \"-DRAVEN_CONTROLS32_COMPONENT_DIR=$components/controls32\" \
      \"-DRAVEN_INSTALLER_COMPONENT_DIR=$components/installer\" \
-     \"-DRAVEN_INSTALLER32_COMPONENT_DIR=$components/installer32\"; \
+     \"-DRAVEN_INSTALLER32_COMPONENT_DIR=$components/installer32\" \
+     \"-DRAVEN_SKIA_SOURCE=$text/skia\" \"-DRAVEN_SKIA_LIBRARY=$text/cpu-fonts/libskia.a\" \
+     \"-DRAVEN_FONT_DIRECTORY=$text/fonts\"; \
      ninja -C build -k 0 native/raven x86_ucrt_component installer_components_64 installer_components_32";
 
 /// The build's log, written as the build goes; a line it can't take is said once in decanter's own
