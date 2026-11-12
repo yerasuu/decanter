@@ -17,14 +17,14 @@ settings.general.close_game.hint: Maintenez Select + Start pendant %{hold} secon
 settings.general.close_game.enabled_keyboard: Fermer le jeu en cours avec un raccourci clavier
 settings.general.close_game.hint_keyboard: Appuyez sur Ctrl+Maj+F4 pendant que vous jouez. Decanter ferme le jeu %{grace} secondes plus tard ; appuyer de nouveau avant l’annule.
 settings.general.steam.title: "Steam"
-settings.general.steam.compat: "Compatibilité avec Steam"
+settings.general.steam.compat: "Intégration à Steam"
 settings.general.steam.compat_hint: "Désactivée, decanter ne change rien dans Steam de lui-même ; « Ajouter à Steam » et « Ajouter via Steam » fonctionnent toujours."
-settings.general.steam.register: "Afficher les dossiers de bibliothèque de decanter dans le stockage de Steam"
-settings.general.steam.register_hint: "Pour que Steam puisse aussi y installer des jeux. Désactivée, seuls les dossiers ajoutés par decanter sont retirés."
-settings.general.steam.add: "Afficher les jeux de decanter dans Steam : ajouter chaque jeu decanter installé à la bibliothèque de Steam comme raccourci, avec sa jaquette et sa bannière"
-settings.general.steam.restart_hint: Steam doit être redémarré pour afficher les changements — il ne lit ses raccourcis qu’au démarrage.
-settings.general.steam.discover: "Importer les jeux de Steam dans decanter : ajouter les dossiers de bibliothèque et les jeux installés de Steam à la bibliothèque de decanter"
-settings.general.steam.discover_hint: "Vérifié au démarrage de decanter et à chaque visite de Stockage, pour que les cartes SD et les disques soient pris en compte dès qu’ils sont branchés. Un dossier ou un jeu que vous retirez ici n’est pas ajouté de nouveau."
+settings.general.steam.register: "Partager les dossiers de bibliothèque de decanter avec Steam"
+settings.general.steam.register_hint: "Pour que Steam puisse aussi y installer des jeux. Désactivé, les dossiers que decanter a ajoutés à Steam sont retirés."
+settings.general.steam.add: "Ajouter les jeux de decanter à Steam comme raccourcis"
+settings.general.steam.restart_hint: "Chaque jeu installé reçoit sa jaquette et sa bannière. Steam ne lit ses raccourcis qu’au démarrage : redémarrez-le pour voir les changements."
+settings.general.steam.discover: "Afficher les jeux et dossiers de Steam dans decanter"
+settings.general.steam.discover_hint: "Vérifié au démarrage de decanter et à chaque visite de Stockage, pour que les cartes SD et les disques soient pris en compte dès qu’ils sont branchés. Désactivé, les jeux Steam et les dossiers de bibliothèque importés sont retirés de decanter ; aucun fichier de jeu n’est touché."
 settings.general.downloads.title: Téléchargements
 settings.general.downloads.resume_on_start: Reprendre les téléchargements à l’ouverture de Decanter
 settings.general.downloads.resume_hint: Ceux arrêtés par la fermeture de Decanter ou par une sortie inattendue. Ceux que vous avez mis en pause attendent que vous les repreniez, et ceux arrêtés par le réseau ou par un disque débranché reprennent seuls à son retour.

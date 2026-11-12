@@ -17,14 +17,14 @@ settings.general.close_game.hint: "Tieni premuti Select + Start per %{hold} seco
 settings.general.close_game.enabled_keyboard: Chiudi il gioco in esecuzione con una scorciatoia da tastiera
 settings.general.close_game.hint_keyboard: "Premi Ctrl+Maiusc+F4 mentre giochi. Decanter chiude il gioco %{grace} secondi dopo; premerlo di nuovo prima di allora annulla la chiusura."
 settings.general.steam.title: "Steam"
-settings.general.steam.compat: "Compatibilità con Steam"
+settings.general.steam.compat: "Integrazione con Steam"
 settings.general.steam.compat_hint: "Disattivata, decanter non cambia nulla in Steam da solo; «Aggiungi a Steam» e «Aggiungi tramite Steam» continuano a funzionare."
-settings.general.steam.register: "Mostra le cartelle della libreria di decanter nell’archiviazione di Steam"
-settings.general.steam.register_hint: "Così Steam può installare anche lì. Disattivata, vengono tolte solo le cartelle aggiunte da decanter."
-settings.general.steam.add: "Mostra i giochi di decanter in Steam: aggiungi ogni gioco decanter installato alla libreria di Steam come collegamento, con copertina e banner"
-settings.general.steam.restart_hint: "Steam deve essere riavviato per mostrare le modifiche: legge le sue scorciatoie solo all'avvio."
-settings.general.steam.discover: "Porta i giochi di Steam in decanter: aggiungi le cartelle della libreria e i giochi installati di Steam alla libreria di decanter"
-settings.general.steam.discover_hint: "Controllato all’avvio di decanter e a ogni visita di Archiviazione, così le schede SD e i dischi vengono rilevati appena collegati. Una cartella o un gioco che togli qui non viene aggiunto di nuovo."
+settings.general.steam.register: "Condividi le cartelle della libreria di decanter con Steam"
+settings.general.steam.register_hint: "Così Steam può installarci giochi a sua volta. Disattivata, le cartelle che decanter ha aggiunto a Steam vengono tolte."
+settings.general.steam.add: "Aggiungi i giochi di decanter a Steam come collegamenti"
+settings.general.steam.restart_hint: "Ogni gioco installato riceve copertina e banner. Steam legge i suoi collegamenti solo all’avvio, quindi riavvialo per vedere le modifiche."
+settings.general.steam.discover: "Mostra i giochi e le cartelle di Steam in decanter"
+settings.general.steam.discover_hint: "Controllato all’avvio di decanter e a ogni visita di Archiviazione, così le schede SD e i dischi vengono rilevati appena collegati. Disattivata, i giochi di Steam e le cartelle della libreria portati da Steam vengono tolti da decanter; nessun file di gioco viene toccato."
 settings.general.downloads.title: Download
 settings.general.downloads.resume_on_start: Riprendi i download all'apertura di Decanter
 settings.general.downloads.resume_hint: "Quelli interrotti dalla chiusura di Decanter o da un'uscita imprevista. Quelli messi in pausa da te aspettano che li riprenda tu, mentre quelli fermati dalla rete o da un disco scollegato riprendono da soli al ritorno di questi."

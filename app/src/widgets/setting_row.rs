@@ -57,11 +57,12 @@ impl SettingRow {
 impl RenderOnce for SettingRow {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         let indent = px(23.);
+        let row_gap = if self.help.is_some() { px(3.) } else { px(12.) };
         let row = div()
             .id(self.id)
             .flex()
             .gap(px(10.))
-            .mb(px(12.))
+            .mb(row_gap)
             .max_w(px(520.))
             .items_center()
             .min_h(px(36.))
@@ -78,7 +79,7 @@ impl RenderOnce for SettingRow {
         };
         let row = if self.nested { row.ml(indent) } else { row };
         let help = self.help.map(|help| {
-            let help = theme::muted(help);
+            let help = theme::muted(help).mb(px(12.));
             let help = if self.nested { help.ml(indent) } else { help };
             if self.is_offered { help } else { help.opacity(0.4) }
         });

@@ -17,14 +17,14 @@ settings.general.close_game.hint: Halte auf einem beliebigen Controller %{hold} 
 settings.general.close_game.enabled_keyboard: Laufendes Spiel mit einem Tastenkürzel beenden
 settings.general.close_game.hint_keyboard: Drücke beim Spielen Strg+Umschalt+F4. Decanter beendet das Spiel %{grace} Sekunden später; drückst du es vorher noch einmal, wird es abgebrochen.
 settings.general.steam.title: "Steam"
-settings.general.steam.compat: "Steam-Kompatibilität"
+settings.general.steam.compat: "Steam-Integration"
 settings.general.steam.compat_hint: "Aus ändert Decanter von sich aus nichts an Steam; „Zu Steam hinzufügen“ und „Über Steam hinzufügen“ funktionieren weiterhin."
-settings.general.steam.register: "Decanters Bibliotheksordner in Steams Speicher anzeigen"
-settings.general.steam.register_hint: "Damit Steam auch in sie installieren kann. Ausgeschaltet werden nur die Ordner entfernt, die Decanter hinzugefügt hat."
-settings.general.steam.add: "Decanter-Spiele in Steam anzeigen: jedes installierte Decanter-Spiel als Verknüpfung mit Cover und Banner in Steams Bibliothek aufnehmen"
-settings.general.steam.restart_hint: Steam muss neu gestartet werden, damit die Änderungen sichtbar werden — es liest seine Verknüpfungen nur beim Start.
-settings.general.steam.discover: "Steam-Spiele in decanter übernehmen: Steams Bibliotheksordner und installierte Spiele in decanters Bibliothek aufnehmen"
-settings.general.steam.discover_hint: "Wird beim Start von Decanter und bei jedem Besuch von Speicher geprüft, sodass SD-Karten und Laufwerke erkannt werden, sobald sie angeschlossen sind. Ein Ordner oder Spiel, das du hier entfernst, wird nicht erneut hinzugefügt."
+settings.general.steam.register: "Bibliotheksordner von Decanter mit Steam teilen"
+settings.general.steam.register_hint: "Damit Steam auch Spiele darin installieren kann. Ausgeschaltet werden die Ordner, die Decanter zu Steam hinzugefügt hat, wieder entfernt."
+settings.general.steam.add: "Decanter-Spiele als Verknüpfungen zu Steam hinzufügen"
+settings.general.steam.restart_hint: "Jedes installierte Spiel erhält sein Cover und Banner. Steam liest seine Verknüpfungen nur beim Start, starte es also neu, um die Änderungen zu sehen."
+settings.general.steam.discover: "Steam-Spiele und -Ordner in Decanter anzeigen"
+settings.general.steam.discover_hint: "Wird beim Start von Decanter und bei jedem Besuch von Speicher geprüft, sodass SD-Karten und Laufwerke erkannt werden, sobald sie angeschlossen sind. Ausgeschaltet werden die von Steam übernommenen Spiele und Bibliotheksordner aus Decanter entfernt; Spieldateien werden nicht angetastet."
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Downloads beim Start von Decanter fortsetzen
 settings.general.downloads.resume_hint: 'Gemeint sind Downloads, die durch das Schließen von Decanter oder ein unerwartetes Beenden gestoppt wurden. Von dir pausierte Downloads warten, bis du sie fortsetzt; durch das Netzwerk oder einen abgezogenen Datenträger gestoppte werden von selbst fortgesetzt, sobald es wieder klappt.'

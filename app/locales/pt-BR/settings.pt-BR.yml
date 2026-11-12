@@ -17,14 +17,14 @@ settings.general.close_game.hint: 'Segure Select + Start por %{hold} segundos em
 settings.general.close_game.enabled_keyboard: Fechar o jogo em execução com um atalho de teclado
 settings.general.close_game.hint_keyboard: 'Pressione Ctrl+Shift+F4 durante o jogo. O Decanter fecha o jogo %{grace} segundos depois; pressioná-lo de novo antes disso cancela o fechamento.'
 settings.general.steam.title: "Steam"
-settings.general.steam.compat: "Compatibilidade com a Steam"
+settings.general.steam.compat: "Integração com a Steam"
 settings.general.steam.compat_hint: "Desativada, o decanter não muda nada na Steam por conta própria; Adicionar à Steam e Adicionar pela Steam continuam funcionando."
-settings.general.steam.register: "Mostrar as pastas de biblioteca do decanter no armazenamento da Steam"
-settings.general.steam.register_hint: "Assim a Steam também pode instalar nelas. Desativada, só as pastas que o decanter adicionou são retiradas."
-settings.general.steam.add: "Mostrar os jogos do decanter no Steam: adicionar cada jogo instalado do decanter à biblioteca do Steam como atalho, com capa e banner"
-settings.general.steam.restart_hint: 'É preciso reiniciar a Steam para ver as alterações — ela só lê seus atalhos ao iniciar.'
-settings.general.steam.discover: "Trazer os jogos do Steam para o decanter: adicionar as pastas de biblioteca e os jogos instalados do Steam à biblioteca do decanter"
-settings.general.steam.discover_hint: "Verificado quando o decanter abre e a cada visita a Armazenamento, então cartões SD e discos são detectados assim que conectados. Uma pasta ou um jogo que você remover aqui não é adicionado de novo."
+settings.general.steam.register: "Compartilhar as pastas de biblioteca do decanter com a Steam"
+settings.general.steam.register_hint: "Assim a Steam também pode instalar jogos nelas. Desativada, as pastas que o decanter adicionou à Steam são retiradas."
+settings.general.steam.add: "Adicionar os jogos do decanter à Steam como atalhos"
+settings.general.steam.restart_hint: "Cada jogo instalado recebe capa e banner. A Steam só lê seus atalhos ao iniciar, então reinicie-a para ver as alterações."
+settings.general.steam.discover: "Mostrar os jogos e pastas da Steam no decanter"
+settings.general.steam.discover_hint: "Verificado quando o decanter abre e a cada visita a Armazenamento, então cartões SD e discos são detectados assim que conectados. Desativada, os jogos da Steam e as pastas de biblioteca que ela trouxe são removidos do decanter; nenhum arquivo de jogo é tocado."
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Retomar downloads quando o Decanter abrir
 settings.general.downloads.resume_hint: 'Os interrompidos ao fechar o Decanter ou por uma saída inesperada. Os que você pausou esperam você retomá-los, e os interrompidos pela rede ou por um disco desconectado continuam sozinhos quando ela ou ele voltar.'

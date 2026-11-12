@@ -17,14 +17,14 @@ settings.general.close_game.hint: '아무 컨트롤러에서나 Select + Start�
 settings.general.close_game.enabled_keyboard: 키보드 단축키로 실행 중인 게임 닫기
 settings.general.close_game.hint_keyboard: '플레이 중에 Ctrl+Shift+F4를 누르세요. Decanter는 %{grace}초 후에 게임을 닫으며, 그 전에 다시 누르면 취소됩니다.'
 settings.general.steam.title: "Steam"
-settings.general.steam.compat: "Steam 호환"
+settings.general.steam.compat: "Steam 연동"
 settings.general.steam.compat_hint: "끄면 decanter는 Steam을 스스로 변경하지 않습니다. 'Steam에 추가'와 'Steam을 통해 추가'는 계속 사용할 수 있습니다."
-settings.general.steam.register: "decanter의 라이브러리 폴더를 Steam 저장 공간에 표시"
-settings.general.steam.register_hint: "Steam도 그 폴더에 설치할 수 있게 됩니다. 끄면 decanter가 추가한 폴더만 제거됩니다."
-settings.general.steam.add: "decanter 게임을 Steam에 표시: 설치된 decanter 게임을 표지와 배너가 있는 바로가기로 Steam 라이브러리에 추가"
-settings.general.steam.restart_hint: 변경 사항을 표시하려면 Steam을 다시 시작해야 합니다. Steam은 시작할 때만 바로가기를 읽습니다.
-settings.general.steam.discover: "Steam 게임을 decanter로 가져오기: Steam의 라이브러리 폴더와 설치된 게임을 decanter 라이브러리에 추가"
-settings.general.steam.discover_hint: "decanter를 시작할 때와 저장 공간을 열 때마다 확인하므로, SD 카드와 드라이브는 연결하면 바로 인식됩니다. 여기에서 제거한 폴더나 게임은 다시 추가되지 않습니다."
+settings.general.steam.register: "decanter의 라이브러리 폴더를 Steam과 공유"
+settings.general.steam.register_hint: "Steam도 그 폴더에 게임을 설치할 수 있습니다. 끄면 decanter가 Steam에 추가한 폴더는 제거됩니다."
+settings.general.steam.add: "decanter의 게임을 바로가기로 Steam에 추가"
+settings.general.steam.restart_hint: "설치된 각 게임에 커버와 배너가 붙습니다. Steam은 시작할 때만 바로가기를 읽으므로 변경 사항을 보려면 Steam을 다시 시작하세요."
+settings.general.steam.discover: "Steam의 게임과 폴더를 decanter에 표시"
+settings.general.steam.discover_hint: "decanter를 시작할 때와 저장 공간을 열 때마다 확인하므로 SD 카드와 드라이브는 연결하면 바로 감지됩니다. 끄면 가져온 Steam 게임과 라이브러리 폴더가 decanter에서 제거되며, 게임 파일은 건드리지 않습니다."
 settings.general.downloads.title: 다운로드
 settings.general.downloads.resume_on_start: Decanter를 열 때 다운로드 재개
 settings.general.downloads.resume_hint: 'Decanter를 닫았거나 예기치 않게 종료되어 중단된 다운로드가 대상입니다. 직접 일시 중지한 다운로드는 직접 재개할 때까지 대기하며, 네트워크 문제나 디스크 연결 해제로 중단된 다운로드는 복구되면 자동으로 재개됩니다.'

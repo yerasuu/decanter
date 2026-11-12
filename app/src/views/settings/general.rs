@@ -240,7 +240,7 @@ impl GeneralTab {
             return;
         }
         tracing::info!(enabled, "steam compatibility setting changed");
-        self.steam_compat_changed(cx);
+        self.steam_compat_changed(false, cx);
     }
 
     fn set_steam_register_folders(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -253,7 +253,7 @@ impl GeneralTab {
             return;
         }
         tracing::info!(enabled, "steam library folder listing setting changed");
-        self.steam_compat_changed(cx);
+        self.steam_compat_changed(false, cx);
     }
 
     fn set_steam_discover(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -266,17 +266,24 @@ impl GeneralTab {
             return;
         }
         tracing::info!(enabled, "steam discovery setting changed");
-        self.steam_compat_changed(cx);
+        self.steam_compat_changed(!enabled, cx);
     }
 
     /// Applies the switches now rather than at the next start, off the UI thread, then shows
-    /// whether that left a change waiting for Steam to restart.
-    fn steam_compat_changed(&mut self, cx: &mut Context<Self>) {
+    /// whether that left a change waiting for Steam to restart. With `is_reset` the active profile's
+    /// Steam games and the library folders found in Steam's list are taken out first.
+    fn steam_compat_changed(&mut self, is_reset: bool, cx: &mut Context<Self>) {
         self.reload();
         cx.notify();
         let state = AppState::get(cx).clone();
         let profile_id = state.session.read(cx).active_profile.clone();
-        let work = cx.background_spawn(async move { crate::steam_compat::sync(profile_id.as_deref()) });
+        let work = cx.background_spawn(async move {
+            if is_reset && let Some(profile_id) = profile_id.as_deref() {
+                crate::steam_compat::reset(profile_id);
+            }
+            let is_changed = crate::steam_compat::sync(profile_id.as_deref());
+            is_changed || is_reset
+        });
         cx.spawn(async move |this, cx| {
             let is_changed = work.await;
             if is_changed {
