@@ -1,6 +1,8 @@
 # Raven's build environment on the pinned nixpkgs, as #1067's spike built it:
 # CMake and Ninja, Python for its generators, the libraries of its Wayland
-# desktop, and the 64-bit MinGW compiler for its Windows-side parts. Without
+# desktop, and the 64-bit and 32-bit MinGW compilers for its Windows-side
+# parts: its provisioning scripts compile the guest components for both widths,
+# and a 32-bit program finds no C runtime without the i686 one. Without
 # libffi wayland-client is not found and the Wayland desktop is left out
 # without an error. OpenSSL is optional to Raven's CMake, but its crypt
 # functions include it unconditionally since 3179949f14, so without it the
@@ -14,7 +16,7 @@ pkgs.mkShell {
   packages = with pkgs; [
     gcc cmake ninja python3 pkg-config
     libffi wayland wayland-protocols wayland-scanner libxkbcommon pixman freetype libpng openssl
-    pkgsCross.mingwW64.buildPackages.gcc
+    pkgsCross.mingwW64.buildPackages.gcc pkgsCross.mingw32.buildPackages.gcc
   ];
   # The cross compiler's setup hook points CC and CXX at MinGW, which then
   # builds Raven itself for Windows; Raven runs on the host, so its compilers

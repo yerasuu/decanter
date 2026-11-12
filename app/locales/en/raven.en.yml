@@ -22,7 +22,7 @@ raven.build.stage.compiling: 'Compiling: step %{done} of %{total}'
 raven.confirm.title: Build Raven?
 raven.confirm.repo: 'Repository: %{repo}'
 raven.confirm.commit: 'Commit: %{commit}'
-raven.confirm.text: 'decanter will download Raven''s code at this commit from GitHub (about 18 MB), the libraries it needs to build (from Nix, if your system lacks them) and the data its build downloads, and compile it in your library. It takes a few minutes. The build folder takes up to about 5 GB and the runtime about 140 MB. It is third-party code that decanter does not review.'
+raven.confirm.text: 'decanter will download Raven''s code at this commit from GitHub (about 7 MB), the tools it needs to build, the 64-bit and 32-bit MinGW compilers among them (from Nix, if your system lacks them), and the data its build downloads (about 15 MB), and compile it in your library together with the components Windows programs need, built from Raven''s own sources: its runtime library, the C runtime and the common controls, for 64-bit and 32-bit programs. It takes a few minutes. The build folder takes about 1 GB and the runtime about 185 MB. It is third-party code that decanter does not review.'
 raven.confirm.yes: Download and build
 raven.confirm.no: Cancel
 raven.confirm_remove.title: Remove Raven?

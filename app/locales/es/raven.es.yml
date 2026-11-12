@@ -22,7 +22,7 @@ raven.build.stage.compiling: 'Compilando: paso %{done} de %{total}'
 raven.confirm.title: ¿Construir Raven?
 raven.confirm.repo: 'Repositorio: %{repo}'
 raven.confirm.commit: 'Commit: %{commit}'
-raven.confirm.text: 'decanter descargará de GitHub el código de Raven en este commit (unos 18 MB), las bibliotecas que necesita para compilarse (desde Nix, si tu sistema no las tiene) y los datos que su compilación descarga, y lo compilará en tu biblioteca. Tarda unos minutos. La carpeta de construcción ocupa hasta unos 5 GB y el runtime unos 140 MB. Es código de terceros que decanter no revisa.'
+raven.confirm.text: 'decanter descargará de GitHub el código de Raven en este commit (unos 7 MB), las herramientas que necesita para compilarse, entre ellas los compiladores MinGW de 64 y 32 bits (desde Nix, si tu sistema no las tiene), y los datos que su compilación descarga (unos 15 MB), y lo compilará en tu biblioteca junto con los componentes que necesitan los programas de Windows, hechos a partir del código del propio Raven: su biblioteca de ejecución, el runtime de C y los controles comunes, para programas de 64 y 32 bits. Tarda unos minutos. La carpeta de construcción ocupa alrededor de 1 GB y el runtime unos 185 MB. Es código de terceros que decanter no revisa.'
 raven.confirm.yes: Descargar y construir
 raven.confirm.no: Cancelar
 raven.confirm_remove.title: ¿Eliminar Raven?

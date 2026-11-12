@@ -20,16 +20,27 @@ construir» decanter:
 
 1. records the confirmation (`runner::confirm`), which the build requires;
 2. clones `github.com/mirkobrombin/raven` shallow at the pinned commit (`RAVEN_COMMIT` in
-   `crates/runtime/src/runner.rs`, 3179949f14330f14407a41cc923dc902b5aa2bb8, 2026-10-29) and checks that the
-   checked-out commit is that one;
+   `crates/runtime/src/runner.rs`, 82f124e2fbeab6a5fa3050df13160d12aec38ec1, Raven's `main` on 2026-11-12,
+   decision #1655) and checks that the checked-out commit is that one;
 3. enters Raven's own nix environment (`crates/runtime/src/os/linux/raven/raven.nix`, through `decanter-nix`:
    the host's tools when they cover it, else the system's nix, else nix-portable): CMake, Ninja, Python 3,
    the host gcc and g++ (pinned in `CC`/`CXX`, since the MinGW compiler's setup hook would otherwise take
    them), pkg-config, libffi, Wayland and wayland-protocols, xkbcommon, pixman, FreeType, libpng, OpenSSL and
-   `x86_64-w64-mingw32-gcc`;
-4. builds only the runtime, `ninja -k 0 native/raven`, since Raven's full default build stops on a test program
-   (`native/vulkan-fixtures/client.exe`, an internal compiler error of nixpkgs' MinGW GCC 16.2.0);
-5. marks the build finished with one rename of its marker, after every step passed.
+   the MinGW compilers for both widths, `x86_64-w64-mingw32-gcc` and `i686-w64-mingw32-gcc` (with their
+   `windres`, `nm` and `dlltool`);
+4. runs Raven's provisioning scripts that download nothing (`COMPILE` in
+   `crates/runtime/src/os/linux/raven/build.rs`), into `components/` of the checkout: `provision-rtl.py`
+   (`raven-rtl.dll`, the guest RTL every heap call goes to), `provision-controls.py` (the common controls,
+   `raven-user32.dll`, `raven-shell.dll`, DirectWrite, Direct2D, `ucrtbase.dll` and Raven's `control.exe`,
+   `regedit.exe`, `dism.exe`, file picker and host bridge) and `provision-controls.py --arch x86` (the same for
+   32-bit programs, without the C runtime). All of it is MinGW `gcc` and `windres` over Raven's own MIT sources
+   under `native/guest/`;
+5. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR` and
+   `-DRAVEN_CONTROLS32_COMPONENT_DIR`, so CMake copies the components beside `raven` (the 32-bit ones into
+   `build/native/x86/`), and builds `ninja -k 0 native/raven x86_ucrt_component`: the runtime and the 32-bit C
+   runtime, `ucrtbase32.dll`, which `native/raven` does not depend on. Raven's full default build adds its test
+   programs: at the pin it builds (533 steps) but takes 7.3 GB;
+6. marks the build finished with one rename of its marker, after every step passed.
 
 Progress (sources, tools download, configure, Ninja's steps) shows in the section, with «Cancelar»: it drops the
 build, kills its process group and removes the folder. A failed build shows its error and the end of its log.
@@ -40,6 +51,11 @@ by hash), the runtime about 3 minutes, a 139 MB `raven` binary; a full build fol
 At the current pin, on a 32-thread machine with the host's nix: configure about 21 s, the runtime about 26 s, a
 137 MB `raven` binary and a 613 MB build folder (the runtime target only); `native/raven` now also builds Raven's own
 `cmd.exe` and its command-line tools, and needs OpenSSL for its crypto code.
+At 82f124e2fb, same machine, from an empty checkout: the provisioning about 50 s (the RTL 1 s, the 64-bit controls
+32 s, the 32-bit ones 16 s), configure about 26 s, the runtime about 46 s (231 steps), 118 s in all; a 185 MB
+`raven` binary, a 808 MB build folder and 11 MB of components (855 MB for the checkout). The download: the shallow
+clone about 7 MB, CMake's hash-pinned test data (Notepad++, SQLite, BusyBox) about 15 MB, and from nix's binary
+cache the i686 MinGW toolchain besides what the previous pin used (about 630 MB in the store).
 
 ## Programs
 
@@ -81,47 +97,50 @@ Everything is inside the active library (docs/data-in-library.md):
 | Path | What |
 | --- | --- |
 | `<library>/decanter/runners/raven/<commit>/` | The checkout and its build tree (`build/native/raven`), with `.decanter-built` once finished |
+| `<library>/decanter/runners/raven/<commit>/components/` | The guest components the provisioning scripts compiled, copied by CMake beside `build/native/raven` |
 | `<library>/decanter/runners/raven/toolchain/` | Raven's nix environment files, host marker and, if used, nix-portable and its store |
 | `<library>/decanter/runners/raven/build.log` | The last build's output |
 | `<library>/decanter/runners/raven/confirmed` | The commit the player confirmed |
 | `<library>/decanter/runners/raven/manifests/<profile>/` | One manifest per program, in the external games' format (the same code writes a `libraryfolders.vdf` beside `manifests/`) |
 | `<library>/decanter/runners/raven/prefixes/<id>/` | Each program's Raven prefix |
 
-## Known not to work yet
+## What runs and what does not yet
 
-Measured on 2026-11-12 with the library's build of the pin, console programs only, no window:
+Measured on 2026-11-12 with decanter's build steps at 82f124e2fb (a scratch build outside the library), console
+programs only, no window, compiled with nixpkgs' MinGW GCC 16.2.0 and run with the command above:
 
-| Program (MinGW GCC 16.2.0, x86_64) | Result |
-| --- | --- |
-| `-nostdlib`, `WriteFile` + `ExitProcess(5)` | Runs: its line in the log, exit status 5 |
-| the same, `Sleep(7000)` first | Without `--timeout-ms`: killed at 5.0 s; with it: runs, 7.0 s |
-| `hello.c` with `printf` (imports `msvcrt.dll`) | `raven: missing PE module: msvcrt.dll` |
-| the same, `ucrtbase.dll` built from Raven's `native/upstream/raven-crt` beside `raven` | `raven: unimplemented native API GetProcessHeap` |
-| Raven's own `cmd.exe`, `whoami.exe`, `hostname.exe` | `raven: unimplemented native API GetProcessHeap` |
+| Program | x86_64 | i686 |
+| --- | --- | --- |
+| `printf`, `puts`, `fprintf(stderr)`, `malloc`/`calloc`/`free`, `HeapAlloc` on `GetProcessHeap`, exit status 7, importing `msvcrt.dll` (MinGW's default) | Runs: all its output, exit 7, about 50 ms | Runs to exit 7, but only `puts` and `WriteFile` reach the output: whatever goes through a `FILE *` (`printf`, `fprintf`, `fputs`) is lost without an error |
+| the same with `-mcrtdll=ucrt` (imports `api-ms-win-crt-*`) | Runs: all its output, exit 7 | Runs: all its output, exit 7, about 230 ms; `%zu` prints 8 bytes of the stack instead of a 32-bit `size_t` |
+| `InitCommonControls` and `InitCommonControlsEx`, then `CreateProcessA` of one of the above, waited, its exit status read | Runs, the child's output and exit status 7 | Runs, a 32-bit or 64-bit child alike |
 
-So, at the pin, only a program that needs no C runtime and no heap runs. Raven's README says the minimal build
-runs console programs, but every heap call goes to its guest RTL component, `raven-rtl.dll`, and a 64-bit program
-importing `msvcrt.dll` gets its C runtime component, `ucrtbase.dll`; both are looked for beside the `raven` binary
-and neither is part of `native/raven`. They come from the provisioning scripts:
+At the previous pin (3179949f14) only a program that needed no C runtime and no heap ran: `printf` stopped at
+`missing PE module: msvcrt.dll`, and with a `ucrtbase.dll` at `unimplemented native API GetProcessHeap`, since
+neither `raven-rtl.dll` nor the C runtime was built. The owner's 32-bit installer stopped at `unimplemented native
+x86 API InitCommonControls` and then `unimplemented native process API` (the line that ends every such run, naming
+no function); the common controls now answer it for both widths. A run that stops on a 32-bit function shows it
+under the program like a 64-bit one.
 
-- `scripts/provision-controls.py` builds `ucrtbase.dll` from Raven's own MIT source with MinGW, but only after
-  building the common controls from a ReactOS source archive.
-- `scripts/provision-rtl.py` builds `raven-rtl.dll` from ReactOS's RTL. Both download the same archive,
-  `https://codeload.github.com/reactos/reactos/tar.gz/dacf2a6c47fa562799f9c8a41ab6d5c558556558`
-  (SHA-256 `5373bbbb60541cb2a49e0acb53360e1218d4f5d56c31f9187b341b9fc16daa69`), and need `clang` and `widl`
-  besides, which the recipe does not bring. The archive is source, not Microsoft binaries; Raven's `LICENSES.json`
-  records it as GPL-2.0 (ReactOS `COPYING`, the PE components distributed under version 2) with LGPL parts.
+Still missing from decanter's build:
 
-At Raven's `main` on 2026-11-12 (82f124e2fb), `provision-rtl.py` builds `raven-rtl.dll` from Raven's own MIT
-source (`native/guest/raven-rtl`) with MinGW alone, and `provision-controls.py` needs only MinGW's `gcc` and
-`windres`: neither downloads anything. The command line above is unchanged there. decanter does not provision yet:
-whether to download ReactOS's source at the pin, or to move the pin to a commit whose scripts need no download and
-run them in the build (passing `-DRAVEN_RTL_COMPONENT_PATH` and `-DRAVEN_CONTROLS_COMPONENT_DIR` to CMake), is the
-owner's choice. Direct3D needs DXVK and vkd3d-proton besides (`provision-graphics.py`). No GUI program and no game
-has been tried.
+- the installer services (`msi.dll`, `cabinet.dll`, `sxs.dll`, `rpcrt4.dll`, `msxml3.dll` and others,
+  `provision-installer.py`), which need `clang`, `widl`, `bison` and `patch` and download pinned upstream sources
+  (zlib, libjpeg, libtiff, libxml2, libxslt from their projects' sites); a program stops at its first call into
+  them, so Windows Installer packages and most setup programs do not install yet;
+- Direct3D through DXVK and vkd3d-proton (`provision-graphics.py`), the Microsoft root certificates
+  (`provision-roots.py`) and Skia with its fonts (`provision-text.py`), which all download;
+- the components only Raven's full build makes (`mscoree.dll`, ICU, `l_intl.nls` and others).
+
+Programs take their arguments after `--`; anything between the program and `--` is read as a further PE module
+to load (`native/main.cpp`), so decanter passes none. Raven keeps two folders beside each prefix,
+`<prefix>.apps` and `<prefix>.layers`. No GUI program, installer or game has been run against this pin.
 
 ## Licence
 
 Raven is GPL-3.0-or-later. It is not part of decanter: its source is fetched from GitHub and built on the
 player's machine, and it runs as its own process; no Raven source or binary is in a decanter release
-([LICENSES.md](../LICENSES.md)).
+([LICENSES.md](../LICENSES.md)). The guest components its provisioning compiles come from the same checkout,
+from Raven's own sources under `native/guest/` (`raven-rtl`, `raven-crt`, `raven-comctl32`, `raven-user32`,
+`raven-shell` and the rest), each file marked `SPDX-License-Identifier: MIT` (Raven's `LICENSES/MIT.txt`); nothing
+else is downloaded for them.

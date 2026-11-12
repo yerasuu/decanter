@@ -576,12 +576,15 @@ fn program_row(
 
 /// Raven's own last word on why a program stopped, put plainly, for the two ways it stops a program
 /// it cannot serve: a Windows library it has no component for, or a function it does not answer.
+/// A 32-bit program's function is named on its own line, before the `unimplemented native process
+/// API` that ends the run and names none.
 fn stop_reason(lines: &VecDeque<String>) -> Option<Cow<'static, str>> {
     lines.iter().rev().find_map(|line| {
         if let Some((_, module)) = line.split_once("raven: missing PE module: ") {
             return Some(t!("raven.programs.missing_module", module = module.trim()));
         }
         line.split_once("raven: unimplemented native API ")
+            .or_else(|| line.split_once("raven: unimplemented native x86 API "))
             .map(|(_, api)| t!("raven.programs.missing_api", api = api.trim()))
     })
 }
