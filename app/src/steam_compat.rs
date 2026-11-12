@@ -102,7 +102,7 @@ pub fn on_start(cx: &App) {
     cx.spawn(async move |cx| {
         let is_changed = work.await;
         if let Some(profile_id) = taskbar_profile {
-            tokio::spawn(async move { crate::external::steam::entries::sync_taskbar(&profile_id).await });
+            tokio::spawn(async move { crate::external::steam::entries::remove_taskbar(&profile_id).await });
         }
         if is_changed {
             state
