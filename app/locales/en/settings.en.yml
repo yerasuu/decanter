@@ -53,12 +53,6 @@ settings.account.add.button: + Add GOG account
 settings.account.add.hint: Open GOG, log in, and paste the address of the page you land on here.
 settings.account.add.open: Open GOG
 settings.account.add.connect: Connect
-settings.account.library.title: Library location
-settings.account.library.unknown: unknown
-settings.account.library.pick_title: Choose the library's new location
-settings.account.library.change: Change location
-settings.account.library.moving: Moving...
-settings.account.library.moving_progress: Moving... %{done} of %{total}
 settings.account.library.default_title: Default install folder
 settings.account.library.default_hint: New installs go here unless you choose another folder when installing. Nothing is moved.
 settings.account.library.active_title: Active library
@@ -66,12 +60,6 @@ settings.account.library.active_hint: Decanter works with one library at a time.
 settings.account.library.busy: close running games and installs before switching library
 settings.account.library.no_profiles: that library has no people yet
 settings.account.errors.browser: 'could not open the browser: %{error}'
-settings.account.errors.db: could not open the database
-settings.account.errors.accounts: could not read the profile's accounts
-settings.account.errors.library: could not resolve the current library
-settings.account.errors.locked: another Decanter window is open — close it before moving the library
-settings.account.errors.busy: a game from this profile is running or installing — close it before moving the library
-settings.account.errors.save_path: 'it was moved, but the new path could not be saved: %{error}'
 settings.account.people.title: People
 settings.account.people.hint: Each person has their own accounts, collections, saves and trophies. Once there's more than one, you switch person from the top bar.
 settings.account.people.add: + Add person

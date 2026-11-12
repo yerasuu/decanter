@@ -53,12 +53,6 @@ settings.account.add.button: + Aggiungi account GOG
 settings.account.add.hint: "Apri GOG, accedi e incolla qui l'indirizzo della pagina in cui arrivi."
 settings.account.add.open: Apri GOG
 settings.account.add.connect: Connetti
-settings.account.library.title: Posizione della libreria
-settings.account.library.unknown: sconosciuta
-settings.account.library.pick_title: Scegli la nuova posizione della libreria
-settings.account.library.change: Cambia posizione
-settings.account.library.moving: Spostamento...
-settings.account.library.moving_progress: "Spostamento... %{done} su %{total}"
 settings.account.library.default_title: Cartella di installazione predefinita
 settings.account.library.default_hint: 'Le nuove installazioni vanno qui, a meno che tu non scelga un''altra cartella durante l''installazione. Non viene spostato nulla.'
 settings.account.library.active_title: Libreria attiva
@@ -66,12 +60,6 @@ settings.account.library.active_hint: "Decanter lavora con una libreria alla vol
 settings.account.library.busy: chiudi i giochi e le installazioni in corso prima di cambiare libreria
 settings.account.library.no_profiles: quella libreria non ha ancora persone
 settings.account.errors.browser: "impossibile aprire il browser: %{error}"
-settings.account.errors.db: impossibile aprire il database
-settings.account.errors.accounts: impossibile leggere gli account del profilo
-settings.account.errors.library: impossibile determinare la libreria corrente
-settings.account.errors.locked: "un'altra finestra di Decanter è aperta: chiudila prima di spostare la libreria"
-settings.account.errors.busy: "un gioco di questo profilo è in esecuzione o in installazione: chiudilo prima di spostare la libreria"
-settings.account.errors.save_path: "è stata spostata, ma non è stato possibile salvare il nuovo percorso: %{error}"
 settings.account.people.title: Persone
 settings.account.people.hint: "Ogni persona ha i propri account, collezioni, salvataggi e trofei. Quando ce n'è più di una, cambi persona dalla barra superiore."
 settings.account.people.add: + Aggiungi persona

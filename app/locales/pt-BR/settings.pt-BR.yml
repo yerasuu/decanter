@@ -53,12 +53,6 @@ settings.account.add.button: + Adicionar conta GOG
 settings.account.add.hint: Abra a GOG, faça login e cole aqui o endereço da página em que você cair.
 settings.account.add.open: Abrir a GOG
 settings.account.add.connect: Conectar
-settings.account.library.title: Local da biblioteca
-settings.account.library.unknown: desconhecido
-settings.account.library.pick_title: Escolha o novo local da biblioteca
-settings.account.library.change: Alterar local
-settings.account.library.moving: Movendo...
-settings.account.library.moving_progress: Movendo... %{done} de %{total}
 settings.account.library.default_title: Pasta de instalação padrão
 settings.account.library.default_hint: As novas instalações vão para cá, a menos que você escolha outra pasta ao instalar. Nada é movido.
 settings.account.library.active_title: Biblioteca ativa
@@ -66,12 +60,6 @@ settings.account.library.active_hint: O Decanter trabalha com uma biblioteca por
 settings.account.library.busy: feche os jogos e as instalações em andamento antes de trocar de biblioteca
 settings.account.library.no_profiles: essa biblioteca ainda não tem pessoas
 settings.account.errors.browser: 'não foi possível abrir o navegador: %{error}'
-settings.account.errors.db: não foi possível abrir o banco de dados
-settings.account.errors.accounts: não foi possível ler as contas do perfil
-settings.account.errors.library: não foi possível localizar a biblioteca atual
-settings.account.errors.locked: outra janela do Decanter está aberta — feche-a antes de mover a biblioteca
-settings.account.errors.busy: um jogo deste perfil está em execução ou sendo instalado — feche-o antes de mover a biblioteca
-settings.account.errors.save_path: 'ela foi movida, mas não foi possível salvar o novo caminho: %{error}'
 settings.account.people.title: Pessoas
 settings.account.people.hint: Cada pessoa tem suas próprias contas, coleções, saves e troféus. Quando houver mais de uma, você troca de pessoa pela barra superior.
 settings.account.people.add: + Adicionar pessoa

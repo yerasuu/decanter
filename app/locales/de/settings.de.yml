@@ -53,12 +53,6 @@ settings.account.add.button: + GOG-Konto hinzufügen
 settings.account.add.hint: Öffne GOG, melde dich an und füge hier die Adresse der Seite ein, auf der du landest.
 settings.account.add.open: GOG öffnen
 settings.account.add.connect: Verbinden
-settings.account.library.title: Speicherort der Bibliothek
-settings.account.library.unknown: unbekannt
-settings.account.library.pick_title: Neuen Speicherort der Bibliothek wählen
-settings.account.library.change: Ort ändern
-settings.account.library.moving: Wird verschoben...
-settings.account.library.moving_progress: Wird verschoben... %{done} von %{total}
 settings.account.library.default_title: Standard-Installationsordner
 settings.account.library.default_hint: Neue Installationen landen hier, sofern du beim Installieren keinen anderen Ordner wählst. Es wird nichts verschoben.
 settings.account.library.active_title: Aktive Bibliothek
@@ -66,12 +60,6 @@ settings.account.library.active_hint: Decanter arbeitet jeweils mit einer Biblio
 settings.account.library.busy: beende laufende Spiele und Installationen, bevor du die Bibliothek wechselst
 settings.account.library.no_profiles: diese Bibliothek hat noch keine Personen
 settings.account.errors.browser: 'der Browser konnte nicht geöffnet werden: %{error}'
-settings.account.errors.db: die Datenbank konnte nicht geöffnet werden
-settings.account.errors.accounts: die Konten des Profils konnten nicht gelesen werden
-settings.account.errors.library: die aktuelle Bibliothek konnte nicht ermittelt werden
-settings.account.errors.locked: ein anderes Decanter-Fenster ist geöffnet — schließe es, bevor du die Bibliothek verschiebst
-settings.account.errors.busy: ein Spiel dieses Profils läuft oder wird installiert — beende es, bevor du die Bibliothek verschiebst
-settings.account.errors.save_path: 'sie wurde verschoben, aber der neue Pfad konnte nicht gespeichert werden: %{error}'
 settings.account.people.title: Personen
 settings.account.people.hint: Jede Person hat eigene Konten, Sammlungen, Spielstände und Trophäen. Gibt es mehr als eine, wechselst du die Person in der oberen Leiste.
 settings.account.people.add: + Person hinzufügen

@@ -53,12 +53,6 @@ settings.account.add.button: + Ajouter un compte GOG
 settings.account.add.hint: Ouvrez GOG, connectez-vous et collez ici l’adresse de la page sur laquelle vous arrivez.
 settings.account.add.open: Ouvrir GOG
 settings.account.add.connect: Connecter
-settings.account.library.title: Emplacement de la bibliothèque
-settings.account.library.unknown: inconnu
-settings.account.library.pick_title: Choisissez le nouvel emplacement de la bibliothèque
-settings.account.library.change: Changer l’emplacement
-settings.account.library.moving: Déplacement…
-settings.account.library.moving_progress: Déplacement… %{done} sur %{total}
 settings.account.library.default_title: 'Dossier d''installation par défaut'
 settings.account.library.default_hint: 'Les nouvelles installations vont ici, sauf si vous choisissez un autre dossier au moment d''installer. Rien n''est déplacé.'
 settings.account.library.active_title: Bibliothèque active
@@ -66,12 +60,6 @@ settings.account.library.active_hint: Decanter travaille avec une seule biblioth
 settings.account.library.busy: fermez les jeux et les installations en cours avant de changer de bibliothèque
 settings.account.library.no_profiles: cette bibliothèque n’a encore aucune personne
 settings.account.errors.browser: 'impossible d’ouvrir le navigateur : %{error}'
-settings.account.errors.db: impossible d’ouvrir la base de données
-settings.account.errors.accounts: impossible de lire les comptes du profil
-settings.account.errors.library: impossible de déterminer la bibliothèque actuelle
-settings.account.errors.locked: une autre fenêtre de Decanter est ouverte — fermez-la avant de déplacer la bibliothèque
-settings.account.errors.busy: un jeu de ce profil est en cours d’exécution ou d’installation — fermez-le avant de déplacer la bibliothèque
-settings.account.errors.save_path: 'elle a été déplacée, mais le nouveau chemin n’a pas pu être enregistré : %{error}'
 settings.account.people.title: Personnes
 settings.account.people.hint: Chaque personne a ses propres comptes, collections, sauvegardes et trophées. Dès qu’il y en a plus d’une, vous changez de personne depuis la barre du haut.
 settings.account.people.add: + Ajouter une personne

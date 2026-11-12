@@ -53,12 +53,6 @@ settings.account.add.button: + Añadir cuenta GOG
 settings.account.add.hint: Abre GOG, inicia sesión y pega aquí la dirección de la página a la que llegues.
 settings.account.add.open: Abrir GOG
 settings.account.add.connect: Conectar
-settings.account.library.title: Ubicación de la biblioteca
-settings.account.library.unknown: desconocida
-settings.account.library.pick_title: Elige la nueva ubicación de la biblioteca
-settings.account.library.change: Cambiar ubicación
-settings.account.library.moving: Moviendo...
-settings.account.library.moving_progress: Moviendo... %{done} de %{total}
 settings.account.library.default_title: Carpeta de instalación predeterminada
 settings.account.library.default_hint: Las instalaciones nuevas van aquí salvo que elijas otra carpeta al instalar. No se mueve nada.
 settings.account.library.active_title: Biblioteca activa
@@ -66,12 +60,6 @@ settings.account.library.active_hint: Decanter trabaja con una biblioteca a la v
 settings.account.library.busy: cierra antes los juegos y las instalaciones para cambiar de biblioteca
 settings.account.library.no_profiles: esa biblioteca todavía no tiene ninguna persona
 settings.account.errors.browser: 'no se pudo abrir el navegador: %{error}'
-settings.account.errors.db: no se pudo abrir la base de datos
-settings.account.errors.accounts: no se pudieron leer las cuentas del perfil
-settings.account.errors.library: no se pudo resolver la biblioteca actual
-settings.account.errors.locked: hay otra ventana de Decanter abierta — ciérrala antes de mover la biblioteca
-settings.account.errors.busy: hay un juego de este perfil en ejecución o instalándose — ciérralo antes de mover la biblioteca
-settings.account.errors.save_path: 'se movió, pero no se pudo guardar la nueva ruta: %{error}'
 settings.account.people.title: Personas
 settings.account.people.hint: Cada persona tiene sus propias cuentas, colecciones, partidas y trofeos. Cuando hay más de una, cambias de persona desde la barra superior.
 settings.account.people.add: + Añadir persona

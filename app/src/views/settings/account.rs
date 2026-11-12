@@ -58,13 +58,10 @@ struct AccountRow {
 
 pub struct AccountTab {
     profile_id: String,
-    library_path: Option<String>,
     /// Every folder the profile keeps games in with its free space, and which of them receives new installs.
     install_folders: Vec<(PathBuf, Option<u64>)>,
     default_folder: Option<PathBuf>,
-    moving: bool,
-    move_progress: Option<(u64, u64)>,
-    move_error: Option<Text>,
+    default_error: Option<Text>,
     libraries: Vec<(PathBuf, Option<Vec<Profile>>)>,
     active_root: Option<PathBuf>,
     switch_error: Option<Text>,
@@ -118,12 +115,9 @@ impl AccountTab {
         .detach();
         let mut this = Self {
             profile_id,
-            library_path: None,
             install_folders: Vec::new(),
             default_folder: None,
-            moving: false,
-            move_progress: None,
-            move_error: None,
+            default_error: None,
             libraries: crate::core::profiles_by_library(),
             active_root: decanter_core::bootstrap::active_root(),
             switch_error: None,
@@ -147,7 +141,6 @@ impl AccountTab {
 
     fn reload_library_path(&mut self) {
         let library = crate::core::library_for_profile(&self.profile_id).ok();
-        self.library_path = library.as_ref().map(|library| library.root().display().to_string());
         self.default_folder = crate::core::default_install_folder(&self.profile_id)
             .or_else(|| library.as_ref().map(|library| library.root().to_path_buf()));
         self.install_folders = library
@@ -163,8 +156,8 @@ impl AccountTab {
 
     fn set_default_folder(&mut self, root: &Path, cx: &mut Context<Self>) {
         match crate::core::set_default_install_folder(&self.profile_id, root) {
-            Ok(()) => self.move_error = None,
-            Err(err) => self.move_error = Some(err),
+            Ok(()) => self.default_error = None,
+            Err(err) => self.default_error = Some(err),
         }
         self.reload_library_path();
         cx.notify();
@@ -199,6 +192,7 @@ impl AccountTab {
             column()
                 .child(theme::h3(t!("settings.account.library.default_title")))
                 .child(theme::muted(t!("settings.account.library.default_hint")))
+                .children(self.default_error.as_ref().map(theme::error))
                 .child(
                     field_row().child(Select::new("default-install-folder", options, selected).on_change(
                         move |chosen, _, cx| {
@@ -448,147 +442,6 @@ impl AccountTab {
         .detach();
     }
 
-    fn set_move_error(this: &WeakEntity<Self>, message: Text, cx: &mut AsyncApp) {
-        let _ = this.update(cx, |this, cx| {
-            this.move_error = Some(message);
-            cx.notify();
-        });
-    }
-
-    /// Moves this profile's library (and whatever's already installed in
-    /// it) somewhere else — a different disk, most likely, which is why the
-    /// move falls back to a real copy rather than assuming a plain rename
-    /// always works (see `decanter_core::Library::move_to`'s own doc).
-    fn change_location(&mut self, cx: &mut Context<Self>) {
-        let profile_id = self.profile_id.clone();
-        let background = AppState::get(cx).background.clone();
-        cx.spawn(async move |this, cx| {
-            let Some(folder) = rfd::AsyncFileDialog::new()
-                .set_title(t!("settings.account.library.pick_title"))
-                .pick_folder()
-                .await
-            else {
-                return;
-            };
-            // Content goes under `.../steamapps`, matching Steam's own
-            // layout for a library folder — see `Library::root_under`'s own
-            // doc.
-            let new_root = decanter_core::Library::root_under(folder.path());
-
-            let Ok(db) = crate::core::db() else {
-                Self::set_move_error(&this, Text::new("settings.account.errors.db"), cx);
-                return;
-            };
-            let Ok(accounts) = db.accounts_in_profile(&profile_id) else {
-                Self::set_move_error(&this, Text::new("settings.account.errors.accounts"), cx);
-                return;
-            };
-            let Ok(library) = crate::core::library_for_profile(&profile_id) else {
-                Self::set_move_error(&this, Text::new("settings.account.errors.library"), cx);
-                return;
-            };
-
-            // Nothing belonging to this profile may be live during the move
-            // — a running game still writing into `compatdata/`, or an
-            // install still writing into `common/`, would corrupt mid-copy.
-            let busy = background.read_with(cx, |background, _| {
-                accounts.iter().any(|account| {
-                    library
-                        .scan(&account.id)
-                        .keys()
-                        .any(|id| background.running.contains(id) || background.status(&account.id, id).is_some())
-                })
-            });
-            if busy {
-                Self::set_move_error(&this, Text::new("settings.account.errors.busy"), cx);
-                return;
-            }
-
-            let _ = this.update(cx, |this, cx| {
-                this.moving = true;
-                this.move_error = None;
-                this.move_progress = Some((0, 0));
-                cx.notify();
-            });
-            tracing::info!(profile_id, to = %new_root.display(), "moving library");
-
-            let old_path = library.root().display().to_string();
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<decanter_core::MoveProgress>();
-            let move_task = tokio::task::spawn_blocking(move || {
-                let old_root = library.root().to_path_buf();
-                // A library's database moves along with its root, whether or
-                // not it's the active one, and no other decanter may start in
-                // between and find it gone.
-                decanter_core::bootstrap::exclusive(|| {
-                    let moved = library.move_to(&new_root, move |progress| {
-                        let _ = tx.send(progress);
-                    })?;
-                    decanter_core::bootstrap::relocate(&old_root, moved.root())?;
-                    let relinked = crate::taskbar::relocate(&old_root, moved.root());
-                    Ok::<_, std::io::Error>((moved, relinked))
-                })
-            });
-
-            while let Some(progress) = rx.recv().await {
-                let _ = this.update(cx, |this, cx| {
-                    this.move_progress = Some((progress.bytes_copied, progress.total_bytes));
-                    cx.notify();
-                });
-            }
-
-            // Saved here, outside any view update, so the new path is
-            // recorded even if Ajustes was closed mid-move — otherwise the
-            // files would sit at the new root with the profile still
-            // pointing at the old one.
-            let error = record_move(move_task.await, &profile_id, &old_path).await;
-            let _ = this.update(cx, |this, cx| {
-                this.moving = false;
-                this.move_progress = None;
-                if error.is_none() {
-                    this.reload_library_path();
-                }
-                this.move_error = error;
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    fn library_location(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let moving = self.moving;
-        column()
-            .child(theme::h3(t!("settings.account.library.title")))
-            .child(theme::muted(
-                self.library_path
-                    .clone()
-                    .unwrap_or_else(|| t!("settings.account.library.unknown").into_owned()),
-            ))
-            .children(self.move_progress.map(|(copied, total)| {
-                theme::muted(t!(
-                    "settings.account.library.moving_progress",
-                    done = crate::format::bytes(copied),
-                    total = crate::format::bytes(total)
-                ))
-            }))
-            .children(self.move_error.as_ref().map(theme::error))
-            .child(inline(
-                button(
-                    "move-library",
-                    ButtonKind::Secondary,
-                    if moving {
-                        t!("settings.account.library.moving")
-                    } else {
-                        t!("settings.account.library.change")
-                    },
-                    moving,
-                )
-                .when(!moving, |b| {
-                    b.on_click(cx.listener(|this, _, _, cx| this.change_location(cx)))
-                }),
-            ))
-            .children(self.default_folder_picker(cx))
-    }
-
     /// Switches to `root` with the profile last active there, or its first
     /// one when that's unknown: a library is only ever entered through one
     /// of its profiles.
@@ -788,75 +641,6 @@ impl AccountTab {
     }
 }
 
-/// A library move run under the libraries' lock: `None` when another decanter held it.
-type LockedMove = Option<std::io::Result<(decanter_core::Library, bool)>>;
-
-async fn record_move(
-    outcome: Result<LockedMove, tokio::task::JoinError>,
-    profile_id: &str,
-    old_path: &str,
-) -> Option<Text> {
-    match outcome {
-        Ok(Some(Ok((moved, relinked)))) => save_moved_path(&moved, relinked, profile_id, old_path).await,
-        Ok(Some(Err(err))) => {
-            tracing::error!(profile_id, %err, "failed to move library");
-            Some(Text::verbatim(err))
-        }
-        Ok(None) => {
-            tracing::error!(profile_id, "library move refused, another decanter holds the libraries");
-            Some(Text::new("settings.account.errors.locked"))
-        }
-        Err(err) => {
-            tracing::error!(profile_id, %err, "move task panicked");
-            Some(Text::new("common.errors.internal_task").arg("error", err))
-        }
-    }
-}
-
-async fn save_moved_path(
-    moved: &decanter_core::Library,
-    relinked: bool,
-    profile_id: &str,
-    old_path: &str,
-) -> Option<Text> {
-    if relinked {
-        crate::taskbar::refresh().await;
-    }
-    let new_path = moved.root().display().to_string();
-    match repoint_profiles(profile_id, old_path, &new_path) {
-        Ok(()) => {
-            tracing::info!(profile_id, "library moved");
-            None
-        }
-        Err(err) => {
-            tracing::error!(profile_id, %err, "library moved but failed to save new path");
-            Some(Text::new("settings.account.errors.save_path").arg("error", err))
-        }
-    }
-}
-
-fn repoint_profiles(profile_id: &str, old_path: &str, new_path: &str) -> Result<(), crate::core::StoreError> {
-    let moved_db = crate::achv_try!(crate::core::db());
-    let profiles = crate::achv_try!(moved_db.list_profiles().map_err(crate::core::StoreError::Query));
-    crate::achv_try!(
-        moved_db
-            .rebase_library_caches(std::path::Path::new(old_path), std::path::Path::new(new_path))
-            .map_err(crate::core::StoreError::Query)
-    );
-    crate::achv_try!(
-        profiles
-            .iter()
-            .filter(|profile| profile.id == profile_id || profile.library_path.as_deref() == Some(old_path))
-            .try_for_each(|profile| {
-                moved_db
-                    .set_profile_library_path(&profile.id, Some(new_path))
-                    .map_err(crate::core::StoreError::Query)
-            })
-    );
-    crate::core::forget_redundant_library_paths();
-    Ok(())
-}
-
 impl Render for AccountTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let accounts = if self.rows.is_empty() {
@@ -865,7 +649,10 @@ impl Render for AccountTab {
             self.account_rows(cx).into_any_element()
         };
         column()
-            .child(section("library-location", self.library_location(cx)))
+            .children(
+                self.default_folder_picker(cx)
+                    .map(|picker| section("default-library", picker)),
+            )
             .children(
                 self.library_switcher(cx)
                     .map(|switcher| section("library-switcher-section", switcher)),
