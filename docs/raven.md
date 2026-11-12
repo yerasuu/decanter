@@ -7,7 +7,7 @@ running under Proton through umu-run. Nothing about Raven is downloaded or built
 
 ## Switching it on
 
-Ajustes → General → «Raven (experimental)» → «Mostrar la sección Raven» (setting `raven_enabled` in the
+Ajustes → Avanzado → «Raven (experimental)» → «Mostrar la sección Raven» (setting `raven_enabled` in the
 library's database, off by default). With it on, the top bar shows a «Raven» section, marked as being tested.
 The section exists only where `Feature::Raven` is offered: Linux on x86_64. The Windows and macOS builds of
 decanter show no section (Windows runs Windows programs itself); the same runner interface answers
