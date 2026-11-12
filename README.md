@@ -1,7 +1,7 @@
 # Decanter
 
-A Linux game launcher for GOG and other Windows games, with achievement
-tracking that also sees unlocks earned under Wine, and a section that runs
+A Linux game launcher for GOG, Amazon Games, Epic Games and other Windows
+games, with achievement tracking that also sees unlocks earned under Wine, and a section that runs
 your own PS4 dumps through psport.
 
 [![CI](https://github.com/yerasuu/decanter/actions/workflows/ci.yml/badge.svg)](https://github.com/yerasuu/decanter/actions/workflows/ci.yml)
@@ -13,18 +13,45 @@ your own PS4 dumps through psport.
 - **GOG.** Log in with one or more GOG accounts, browse the library,
   install, update, roll back to an earlier build, manage DLC and betas, and
   sync a game's saves with GOG Cloud Saves before launch and after exit.
+- **Amazon Games.** Log in, browse the library, install, update, uninstall,
+  launch and import an existing install (`crates/amazon`). Linux only,
+  amazon.com accounts. Amazon publishes no API: the protocol is
+  reverse-engineered, so decanter asks for consent before logging in, and
+  Amazon could limit the account. The compatibility of online titles that
+  use Amazon's FuelPump is unknown.
+- **Epic Games.** Log in, browse the library, install (with DLC), update
+  games and DLC, import an existing install, achievements, and cloud saves
+  (download only, or download and upload, per game; off until turned on)
+  (`crates/epic`). Epic publishes no API either, so the same consent and
+  risk apply. Games start with the offline command line: the online launch
+  is not built, so a title that needs Epic's online session may not run.
 - **Achievements.** GOG achievements are shown per game. Games that use
   Galaxy get decanter's own `Galaxy64.dll` proxy at install time, which
   records unlocks earned under Wine that GOG's client never sees. Those
   unlocks stay local: decanter cannot report them to GOG.
 - **Proton.** Windows games run through Proton via `umu-run`, each in its
-  own prefix, with a default Proton in Ajustes and a per-game pin in the
-  game's properties.
-- **Other Windows games.** Add any executable, run a game's own installer,
+  own prefix, with a default Proton in Ajustes > Compatibilidad and a
+  per-game pin in the game's properties.
+- **Mods.** Third-party mods for GOG, Amazon and Epic games: see
+  [Mods](#mods).
+- **Other Windows games.** Add any `.exe`, run a game's own `.exe` or `.msi`
+  installer (`.msi` under Proton through `msiexec /i`),
   or import a game from another tool's prefix (Lutris, Bottles, Heroic,
   Proton). Games that HoYoPlay or GRYPHLINK installed inside a prefix can
   be added as their own entries. Art comes from Steam, or from SteamGridDB
   with your own API key.
+- **Steam.** In Ajustes > Integraciones (Settings > Integrations), share
+  decanter's library folders with Steam, add decanter's games to Steam as
+  shortcuts, and show Steam's games and library folders in decanter. Games
+  installed by Steam then appear in the Library (switch in Ajustes > Cuentas
+  y biblioteca). Nothing in Steam is changed while Steam integration is off.
+- **Library.** Several library folders per profile, with a default install
+  folder (Ajustes > Cuentas y biblioteca; the folders themselves in
+  Almacenamiento), collections, and a multi-selection context menu: install,
+  uninstall and Steam shortcuts for every selected game.
+- **Raven (experimental).** An optional section that runs Windows programs
+  without Wine: off by default, Linux x86_64 only, built on demand on your
+  machine. See [docs/raven.md](docs/raven.md).
 - **PS section.** Runs your own decrypted PS4 dumps through
   [psport](https://github.com/yerasuu/psport), a compatibility layer in the
   manner of Wine, not an emulator: the game's x86-64 code runs as it is and
@@ -38,7 +65,8 @@ your own PS4 dumps through psport.
 Decanter ships no games, firmware or system modules. You bring your own
 legally obtained dumps.
 
-The interface is in Spanish (Spain) and English.
+The interface is available in ten languages (de, en, es, fr, it, ja, ko,
+pt-BR, ru, zh-CN); all but English and Spanish are machine-translated.
 
 ## Screenshots
 
@@ -63,13 +91,16 @@ chmod +x Decanter-x86_64.AppImage
 
 The AppImage carries the glibc it was built against, so it also runs on
 hosts with an older one, such as SteamOS. To update, replace the file with
-a newer release.
+a newer release. The AppImage is portable: at every start decanter points
+each game's desktop entry at the AppImage it was opened from, so moving or
+renaming the file is safe.
 
 What the host needs:
 
 - A Vulkan driver for the GPU. Without one, rendering falls back to GL.
-- A D-Bus Secret Service (KWallet or GNOME Keyring), where GOG tokens,
-  the SteamGridDB key and the shadNet password for PS online play are kept.
+- A D-Bus Secret Service (KWallet or GNOME Keyring), where the GOG, Amazon
+  and Epic sessions, the SteamGridDB, Nexus Mods and mod.io keys and the
+  shadNet password for PS online play are kept.
 - Optional: a systemd user session (each game gets its own scope; without
   one games start as decanter's children), KDE Plasma for the global
   close-game shortcut, and Steam for the Steam export.
@@ -104,16 +135,36 @@ See [Development](#development).
 1. On the first start, pick the language and create a profile, choosing
    the folder where its library lives (installs, Proton prefixes and
    decanter's own data go there).
-2. In Ajustes > Cuenta (Settings > Account), add a GOG account: open GOG,
-   log in, and paste the address of the page you land on.
+2. In Ajustes > Cuentas y biblioteca (Settings > Accounts and library), add
+   a GOG, Amazon Games or Epic Games account: open the store, log in, and
+   paste the address (Epic: the code) of the page you land on.
 3. Install games from Biblioteca (Library). Updates, versions, DLC, cloud
-   saves and the Proton pin are in each game's Propiedades (Properties).
+   saves and the Proton pin are in each game's Propiedades (Properties);
+   mods are in its Mods tab.
 4. Add other Windows games with Añadir juego (Add game) in Biblioteca.
 5. For PS games, use Añadir volcado (Add dump) in the PS section, or drop a
    dump's folder on the window: decanter copies or moves it, as you choose
    each time, into `<root>/psport/games/<name>/`. A dump left loose in that
    folder is put in a folder of its own on the next scan. The port is
    prepared (fetched prebuilt or built) when a game is played.
+
+## Mods
+
+The Mods tab of a GOG, Amazon or Epic game's detail view adds third-party
+mods without writing to the install: the game starts from a per-account
+play tree. Loose folders and zip or 7z archives (RAR is refused), load
+order, DLL overrides under Proton, a per-game "active" switch, update
+checks, and mod packs (named lists of mods for one game). Installs come
+from three providers:
+
+- **Thunderstore:** no account or key.
+- **mod.io:** your own API key (Ajustes > Integraciones); you accept
+  mod.io's terms in decanter first.
+- **Nexus Mods:** off by default, behind an experimental switch; your own
+  personal API key, and downloads through it need a Premium account.
+
+decanter ships no keys; they are kept in the keyring. Installers inside an
+archive are never run. Details: [docs/mods.md](docs/mods.md).
 
 ## PS section
 
@@ -179,13 +230,17 @@ library can be moved or copied with its profiles:
 | `<root>/decanter/art/` | Art cache |
 | `<root>/decanter/bin/` | `umu-run` |
 | `<root>/decanter/desktop/`, `<root>/decanter/icons/` | Per-game desktop entries and icons |
+| `<root>/decanter/mods/<store>/<game>/` | A game's mods, each account's set and play tree |
+| `<root>/decanter/thunderstore/`, `modio/`, `nexus/` | Mod provider caches and mod.io's accepted terms |
+| `<root>/decanter/runners/raven/` | Raven's checkout and build, if you built it |
 | `<root>/decanter/logs/` | Decanter's log and each Proton game's run logs |
 | `<root>/psport/` | Everything PS: games, ports, toolchain, settings, mods, logs |
 | `<root>/common/`, `<root>/manifests/`, `<root>/compatdata/` | Game files, install manifests, Proton prefixes |
 | `<root>/downloading/` | GOG installs in progress |
 
 A library can span several folders, added and removed in Almacenamiento
-(Storage); each game lives whole in one of them.
+(Storage), with one as the default for new installs; each game lives whole
+in one of them.
 
 Outside the library only what cannot move:
 
@@ -193,15 +248,17 @@ Outside the library only what cannot move:
   and its last profile. The only pointer decanter needs.
 - `~/.local/share/applications/decanter/`: one symlink per game, because
   Plasma only reads its own folders.
-- The keyring (service `dev.decanter.Decanter`), Steam's own files, umu's
-  shared runtime, and `decanter.lock` in `$XDG_RUNTIME_DIR`.
+- The keyring (service `dev.decanter.Decanter`): the GOG, Amazon Games and
+  Epic Games sessions, the SteamGridDB, Nexus Mods and mod.io keys and the
+  shadNet password and token. Also Steam's own files, umu's shared runtime,
+  and `decanter.lock` in `$XDG_RUNTIME_DIR`.
 
 **Upgrading from 0.2.** The first start of 0.3 copies the old
 `~/.local/share/decanter` data into each library, checks it, and only then
 writes `libraries.toml`. It waits while another decanter or a game it
 started is running, or while a library's disk is missing. The old folder
 is left untouched as a backup: older builds keep reading it, deleting
-`libraries.toml` returns to it, and Ajustes > Almacenamiento offers to
+`libraries.toml` returns to it, and Almacenamiento offers to
 remove it. Details: [docs/data-in-library.md](docs/data-in-library.md).
 
 ## Configuration and CLI
@@ -224,7 +281,7 @@ arguments and prints its output in the terminal):
 | Subcommand | Does |
 |---|---|
 | `library` | Lists the account's GOG library |
-| `install --product-id … --title …` | Installs a game (`--branch`, `--build-id` optional) |
+| `install --product-id … --title …` | Installs a game (`--branch`, `--build-id`, `--language`, `--no-wait` optional) |
 | `cancel-install --product-id …` | Cancels an install left running |
 | `launch --product-id …` | Launches an installed game, waits, then polls achievements |
 | `achievements --product-id …` | Polls achievements without launching |
@@ -235,6 +292,9 @@ The PS section's commands work on the active profile instead:
 | Subcommand | Does |
 |---|---|
 | `ps run --title CUSA… [--timeout SECONDS] [--env PS_NAME=VALUE]…` | Plays a game without the window, as Play does, and records its failures for `ps report` |
+| `ps play --title CUSA…` | Plays a game as the window's Play does, for a Steam shortcut or task bar entry; the port must be ready |
+| `ps prepare` | Gets a port ready (clone or update, then bundle, CI build or local build), as the PS section does |
+| `ps settings …` | Lists, reads, changes, copies, resets, exports and imports a game's own settings |
 | `ps report [--title CUSA…] [--print]` | Builds an error report from a recorded failure ([docs/error-reports.md](docs/error-reports.md)) |
 
 `ps run` starts the game with the same port, settings and environment as
@@ -256,10 +316,10 @@ refused). At the end it prints one block: `status` (`clean`, `failure`,
 path inside the library. It exits 0 for a clean run, 1 for a crash, `STOP:`
 or bad exit, or a timeout, and 2 when the game could not start.
 
-Language: decanter follows `LC_ALL`, `LC_MESSAGES` or `LANG` (Spanish when
-it starts with `es`, English otherwise) unless one is chosen in
-Ajustes > General. The CLI and everything decanter writes to disk stay in
-English.
+Language: decanter follows `LC_ALL`, `LC_MESSAGES` or `LANG`, matching one
+of the ten languages and English otherwise, unless one is chosen in
+Ajustes > General ([docs/i18n.md](docs/i18n.md)). The CLI and everything
+decanter writes to disk stay in English.
 
 ## Closing a game
 
@@ -305,19 +365,27 @@ turned off in Ajustes > General.
 | `app` | The `decanter` binary: GPUI views, CLI, tray, desktop integration; `decanter-cli` (Windows), its console front end |
 | `crates/core` | Local state: database, libraries, profiles, accounts, credentials, migration |
 | `crates/gog` | GOG client: auth, library, installs, cloud saves, achievements, Steam export |
+| `crates/amazon` | Amazon Games client: session, library, manifests, installs, updates |
+| `crates/epic` | Epic Games client: session, library, installs, DLC, updates, achievements, cloud saves, offline launch command |
+| `crates/galaxy` | The local Galaxy service a game's GOG Galaxy SDK talks to, answered from decanter's data |
 | `crates/gog/src/api` | The GOG web API client, one module per GOG host or area (provenance in its `VENDOR.md`) |
 | `crates/runtime` | Proton launches through `umu-run` |
 | `crates/mods` | Third-party mods: `mod.toml`, per-account sets, folder import, the play tree a modded game starts from |
+| `crates/thunderstore`, `crates/modio`, `crates/nexus` | Clients of the three mod providers |
+| `crates/modpack` | Mod packs: the pack file, its resolution and plan |
 | `crates/nix` | The nix toolchain a build runs in: host tools, the system's nix or nix-portable, pinned nixpkgs, Vulkan validation layer |
 | `crates/ps` | PS dumps, port builds and updates, the ports' nix recipes, runs, run logs, failures |
+| `crates/report` | Error reports built from an allow-list of fields, shared by decanter and the server |
 | `crates/hook` | `Galaxy64.dll` proxy, a Windows cdylib outside the workspace |
 | `crates/galaxy-service` | `GalaxyCommunication.exe` stand-in service, a Windows executable outside the workspace |
+| `crates/reports-server` | Receives, validates and publishes error reports; outside the workspace, released on its own (AGPL-3.0-or-later) |
 
-UI texts live in `app/locales/`, a folder per language (`es/`, `en/`) with
-one YAML file per area, `<area>.<language>.yml`, and `_language.<language>.yml`
-for the language's own name. A language is added by copying `es/`, renaming
-the files and translating them: the language picker and the system locale
-match find it with no code change.
+UI texts live in `app/locales/`, a folder per language (de, en, es, fr, it,
+ja, ko, pt-BR, ru, zh-CN) with one YAML file per area, `<area>.<language>.yml`,
+and `_language.<language>.yml` for the language's own name. A language is
+added by creating its folder from `en/`: the picker and the system locale
+match find it with no Rust change, except CJK fonts. Steps and the check
+script: [docs/i18n.md](docs/i18n.md).
 
 ### Build
 
