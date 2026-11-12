@@ -8,7 +8,8 @@
 //! its logged-in user), and [`process`] (starting/stopping the real Steam
 //! client, needed because it holds its own in-memory copy of
 //! `shortcuts.vdf` while running). [`library`] reads back what Steam
-//! already has installed and the user's own shortcuts. [`folders`] reads
+//! already has installed and the user's own shortcuts, [`managed`] what it
+//! keeps for one of its apps (Proton, launch options, branch). [`folders`] reads
 //! and merges Steam's list of library folders. [`export`] ties
 //! the write side together into the actual merge-write, staging a change
 //! behind Steam's back when it's running rather than writing straight
@@ -20,6 +21,7 @@ pub mod binary_vdf;
 pub mod export;
 pub mod folders;
 pub mod library;
+pub mod managed;
 pub mod paths;
 pub mod process;
 
@@ -30,4 +32,5 @@ pub use export::{
 };
 pub use folders::{LibraryFolder, Registration, library_folders, register};
 pub use library::{InstalledApp, Shortcut, SteamArt, installed_apps, non_steam_shortcuts};
+pub use managed::{CompatTool, Managed, managed};
 pub use paths::{grid_dir, local_user_id, login_names, shortcuts_vdf_path, steam_root};

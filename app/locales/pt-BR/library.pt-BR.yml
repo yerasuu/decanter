@@ -314,3 +314,13 @@ library.steam.log.cancelled: 'A espera pelo jogo foi interrompida.'
 library.steam.log.timeout: 'O jogo não apareceu em 5 minutos. Se a Steam ainda estiver atualizando, pressione Jogar de novo quando terminar.'
 library.steam.log.running: 'O jogo está em execução (processo %{pid}).'
 library.steam.log.ended: 'O jogo foi fechado.'
+library.properties.steam.title: Gerenciado pela Steam
+library.properties.steam.note: A Steam gerencia estas configurações; altere-as na Steam.
+library.properties.steam.compat_tool: Ferramenta de compatibilidade
+library.properties.steam.compat_default: '%{name} (padrão do Steam Play)'
+library.properties.steam.compat_none: Nenhuma
+library.properties.steam.launch_options: Opções de inicialização
+library.properties.steam.language: Idioma
+library.properties.steam.beta: Ramo beta
+library.properties.steam.install_path: Caminho de instalação
+library.properties.steam.last_updated: Última atualização

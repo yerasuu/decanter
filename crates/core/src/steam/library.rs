@@ -65,9 +65,13 @@ pub struct Shortcut {
     pub art: SteamArt,
 }
 
+pub(super) fn library_cache(root: &Path) -> PathBuf {
+    root.join("appcache/librarycache")
+}
+
 /// Steam's library folders that are there: its own, plus every one in `libraryfolders.vdf` (the SD
 /// card's among them) whose `steamapps` is a directory.
-fn libraries(root: &Path) -> Vec<PathBuf> {
+pub(super) fn libraries(root: &Path) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     std::iter::once(root.to_path_buf())
         .chain(library_folders(root).into_iter().map(|folder| folder.path))
@@ -80,7 +84,7 @@ fn libraries(root: &Path) -> Vec<PathBuf> {
 /// Blocking: reads manifests and directories.
 #[must_use]
 pub fn installed_apps(root: &Path) -> Vec<InstalledApp> {
-    let cache = root.join("appcache/librarycache");
+    let cache = library_cache(root);
     let mut apps = Vec::new();
     for library in libraries(root) {
         let steamapps = library.join("steamapps");
@@ -107,10 +111,7 @@ pub fn installed_apps(root: &Path) -> Vec<InstalledApp> {
     apps
 }
 
-/// One `appmanifest`, if it is a fully installed game whose folder is where
-/// it says. `installdir` is a name Steam writes, but the file sits where
-/// users edit it: it has to be a single plain component to be joined onto
-/// `steamapps/common`.
+/// One `appmanifest`, if it is a fully installed game whose folder is where it says.
 fn manifest(text: &str, file_app_id: &str, steamapps: &Path, cache: &Path) -> Option<InstalledApp> {
     let (_, state) = vdf::from_str(text).ok()?;
     if state.get("appid")? != file_app_id || state.get_u64("StateFlags")? & FULLY_INSTALLED == 0 {
@@ -120,14 +121,7 @@ fn manifest(text: &str, file_app_id: &str, steamapps: &Path, cache: &Path) -> Op
     if name.is_empty() || TOOL_PREFIXES.iter().any(|prefix| name.starts_with(prefix)) {
         return None;
     }
-    let mut parts = Path::new(state.get("installdir")?).components();
-    let (Some(Component::Normal(dir)), None) = (parts.next(), parts.next()) else {
-        return None;
-    };
-    let folder = steamapps.join("common").join(dir);
-    if !folder.is_dir() {
-        return None;
-    }
+    let folder = install_folder(&state, steamapps)?;
     Some(InstalledApp {
         app_id: file_app_id.to_owned(),
         name: name.to_owned(),
@@ -136,10 +130,21 @@ fn manifest(text: &str, file_app_id: &str, steamapps: &Path, cache: &Path) -> Op
     })
 }
 
+/// `installdir` is a name Steam writes, but the file sits where users edit it: it has to be a single
+/// plain component to be joined onto `steamapps/common`, and that folder has to exist.
+pub(super) fn install_folder(state: &vdf::Value, steamapps: &Path) -> Option<PathBuf> {
+    let mut parts = Path::new(state.get("installdir")?).components();
+    let (Some(Component::Normal(dir)), None) = (parts.next(), parts.next()) else {
+        return None;
+    };
+    let folder = steamapps.join("common").join(dir);
+    folder.is_dir().then_some(folder)
+}
+
 /// Steam's `librarycache` has held an app's images two ways: flat as
 /// `<appid>_library_600x900.jpg`, and in `<appid>/`, directly or one hash
 /// folder down.
-fn library_art(cache: &Path, app_id: &str) -> SteamArt {
+pub(super) fn library_art(cache: &Path, app_id: &str) -> SteamArt {
     let dir = cache.join(app_id);
     let subfolders: Vec<PathBuf> = fs::read_dir(&dir)
         .into_iter()

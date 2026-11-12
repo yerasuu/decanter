@@ -314,3 +314,13 @@ library.steam.log.cancelled: '게임 대기를 중단했습니다.'
 library.steam.log.timeout: '5분 안에 게임이 나타나지 않았습니다. Steam이 아직 업데이트 중이라면 끝난 뒤 플레이를 다시 누르세요.'
 library.steam.log.running: '게임이 실행 중입니다(프로세스 %{pid}).'
 library.steam.log.ended: '게임이 종료되었습니다.'
+library.properties.steam.title: Steam에서 관리
+library.properties.steam.note: 이 항목은 Steam이 관리합니다. Steam에서 변경하세요.
+library.properties.steam.compat_tool: 호환성 도구
+library.properties.steam.compat_default: '%{name} (Steam Play 기본값)'
+library.properties.steam.compat_none: 없음
+library.properties.steam.launch_options: 실행 옵션
+library.properties.steam.language: 언어
+library.properties.steam.beta: 베타 브랜치
+library.properties.steam.install_path: 설치 경로
+library.properties.steam.last_updated: 마지막 업데이트

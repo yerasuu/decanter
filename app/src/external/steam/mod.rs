@@ -94,6 +94,13 @@ pub fn installed_apps() -> HashMap<AppId, PathBuf> {
         .unwrap_or_default()
 }
 
+/// What Steam keeps for `app_id`, to be shown and never changed; `None` with no Steam on the
+/// machine. Blocking: reads Steam's config and the app's manifest.
+pub fn managed(app_id: AppId) -> Option<steam::Managed> {
+    let root = root()?;
+    Some(steam::managed(&root, &app_id.to_string()))
+}
+
 fn root() -> Option<PathBuf> {
     platform::steam_root_candidates().find(|root| root.join("steamapps").is_dir())
 }

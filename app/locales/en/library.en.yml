@@ -314,3 +314,13 @@ library.steam.log.cancelled: 'Stopped waiting for the game.'
 library.steam.log.timeout: 'The game didn''t appear within 5 minutes. If Steam is still updating it, press Play again once it''s done.'
 library.steam.log.running: 'The game is running (process %{pid}).'
 library.steam.log.ended: 'The game has closed.'
+library.properties.steam.title: Managed by Steam
+library.properties.steam.note: Steam manages these; change them in Steam.
+library.properties.steam.compat_tool: Compatibility tool
+library.properties.steam.compat_default: '%{name} (Steam Play default)'
+library.properties.steam.compat_none: None
+library.properties.steam.launch_options: Launch options
+library.properties.steam.language: Language
+library.properties.steam.beta: Beta branch
+library.properties.steam.install_path: Install path
+library.properties.steam.last_updated: Last updated

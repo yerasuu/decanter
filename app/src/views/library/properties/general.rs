@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use decanter_core::steam::{CompatTool, Managed};
 use decanter_core::{InstalledGame, Storefront};
 use decanter_gog::{GalaxyStatus, PlayTask, galaxy_status};
-use gpui::{Context, SharedString, Window, div, prelude::*};
+use gpui::{Context, ObjectFit, SharedString, Window, div, img, prelude::*, px};
 use rust_i18n::t;
 
 use super::{Target, error_line, field_row, inline, pane, row, rows};
@@ -21,6 +22,8 @@ pub(super) struct GeneralTab {
     /// The programs the game's `goggame-<id>.info` lists, primary first.
     tasks: Vec<PlayTask>,
     galaxy: Option<GalaxyStatus>,
+    /// What Steam keeps for a Steam entry, shown and never changed: Steam owns it.
+    steam: Option<Managed>,
     error: Option<Text>,
 }
 
@@ -44,6 +47,10 @@ impl GeneralTab {
                 .map(|db| galaxy_status(&db, path, product_id)),
             _ => None,
         };
+        let steam = (target.storefront == Storefront::Steam)
+            .then(|| product_id.parse().ok())
+            .flatten()
+            .and_then(crate::external::steam::managed);
         Self {
             target,
             installed,
@@ -51,6 +58,7 @@ impl GeneralTab {
             path,
             tasks,
             galaxy,
+            steam,
             error: None,
         }
     }
@@ -130,6 +138,61 @@ fn set_executable(account_id: &str, product_id: &str, executable: &str) -> Resul
     }
 }
 
+/// Strictly rows of text: nothing here may change what Steam keeps.
+fn steam_section(managed: &Managed) -> impl IntoElement + use<> {
+    let heading = div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .children(managed.icon.as_ref().map(|icon| {
+            img(crate::art::source(&crate::art::file_url(icon), gpui::size(32., 32.)))
+                .flex_none()
+                .size(px(32.))
+                .rounded(px(theme::RADIUS_SM))
+                .object_fit(ObjectFit::Cover)
+        }))
+        .child(theme::h3(t!("library.properties.steam.title")).mb_0());
+    let compat_tool = managed.compat_tool.as_ref().map(|tool| match tool {
+        CompatTool::Own(name) => SharedString::from(name.clone()),
+        CompatTool::Default(name) => t!("library.properties.steam.compat_default", name = name).into(),
+        CompatTool::None => t!("library.properties.steam.compat_none").into(),
+    });
+    let text = |key: &str, value: Option<&String>| value.map(|value| row(t!(key), value.clone()));
+    let table = rows()
+        .children(compat_tool.map(|tool| row(t!("library.properties.steam.compat_tool"), tool)))
+        .children(text(
+            "library.properties.steam.launch_options",
+            managed.launch_options.as_ref(),
+        ))
+        .children(text("library.properties.steam.language", managed.language.as_ref()))
+        .children(text("library.properties.steam.beta", managed.beta.as_ref()))
+        .children(managed.folder.as_ref().map(|folder| {
+            row(
+                t!("library.properties.steam.install_path"),
+                folder.display().to_string(),
+            )
+        }))
+        .children(
+            managed
+                .size_on_disk
+                .map(|size| row(t!("library.properties.general.size"), crate::format::bytes(size))),
+        )
+        .children(
+            managed
+                .last_updated
+                .and_then(fmt::unix_date)
+                .map(|date| row(t!("library.properties.steam.last_updated"), date)),
+        );
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .mb_4()
+        .child(heading)
+        .child(theme::muted(t!("library.properties.steam.note")))
+        .child(table)
+}
+
 impl Render for GeneralTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let target = &self.target;
@@ -193,6 +256,7 @@ impl Render for GeneralTab {
 
         pane()
             .child(table)
+            .children(self.steam.as_ref().map(steam_section))
             .children(self.executable_picker(cx))
             .children(error_line(self.error.as_ref()))
             .children(self.path.clone().map(|path| {

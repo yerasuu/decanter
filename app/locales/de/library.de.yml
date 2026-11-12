@@ -314,3 +314,13 @@ library.steam.log.cancelled: 'Warten auf das Spiel beendet.'
 library.steam.log.timeout: 'Das Spiel ist nicht innerhalb von 5 Minuten erschienen. Falls Steam es noch aktualisiert, drücke danach erneut auf Spielen.'
 library.steam.log.running: 'Das Spiel läuft (Prozess %{pid}).'
 library.steam.log.ended: 'Das Spiel wurde beendet.'
+library.properties.steam.title: Von Steam verwaltet
+library.properties.steam.note: Steam verwaltet diese Einstellungen; ändere sie in Steam.
+library.properties.steam.compat_tool: Kompatibilitätstool
+library.properties.steam.compat_default: '%{name} (Steam-Play-Standard)'
+library.properties.steam.compat_none: Keines
+library.properties.steam.launch_options: Startoptionen
+library.properties.steam.language: Sprache
+library.properties.steam.beta: Beta-Zweig
+library.properties.steam.install_path: Installationspfad
+library.properties.steam.last_updated: Zuletzt aktualisiert

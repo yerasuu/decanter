@@ -314,3 +314,13 @@ library.steam.log.cancelled: '已停止等待游戏。'
 library.steam.log.timeout: '游戏在 5 分钟内未出现。如果 Steam 仍在更新它，请在完成后再次点击开始游戏。'
 library.steam.log.running: '游戏正在运行（进程 %{pid}）。'
 library.steam.log.ended: '游戏已关闭。'
+library.properties.steam.title: 由 Steam 管理
+library.properties.steam.note: 这些由 Steam 管理；请在 Steam 中更改。
+library.properties.steam.compat_tool: 兼容性工具
+library.properties.steam.compat_default: '%{name}（Steam Play 默认）'
+library.properties.steam.compat_none: 无
+library.properties.steam.launch_options: 启动选项
+library.properties.steam.language: 语言
+library.properties.steam.beta: 测试分支
+library.properties.steam.install_path: 安装路径
+library.properties.steam.last_updated: 最后更新

@@ -314,3 +314,13 @@ library.steam.log.cancelled: 'ゲームの待機を中止しました。'
 library.steam.log.timeout: '5 分以内にゲームが表示されませんでした。Steam が更新中の場合は、完了後にもう一度プレイを押してください。'
 library.steam.log.running: 'ゲームを実行中です（プロセス %{pid}）。'
 library.steam.log.ended: 'ゲームが終了しました。'
+library.properties.steam.title: Steam が管理
+library.properties.steam.note: これらは Steam が管理しています。変更は Steam で行ってください。
+library.properties.steam.compat_tool: 互換性ツール
+library.properties.steam.compat_default: '%{name}（Steam Play の既定）'
+library.properties.steam.compat_none: なし
+library.properties.steam.launch_options: 起動オプション
+library.properties.steam.language: 言語
+library.properties.steam.beta: ベータブランチ
+library.properties.steam.install_path: インストール先
+library.properties.steam.last_updated: 最終更新
