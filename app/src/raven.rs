@@ -97,7 +97,8 @@ pub fn add(profile_id: &str, path: &Path) -> Result<InstalledGame, Text> {
     Ok(program)
 }
 
-/// Forgets the program and deletes its Raven prefix. Blocking.
+/// Forgets the program and deletes its Raven prefix with the `.apps` and `.layers` folders Raven keeps
+/// beside it. Blocking.
 ///
 /// # Errors
 /// When the manifest or the prefix can't be removed; the text is ready to show.
@@ -109,17 +110,29 @@ pub fn remove(profile_id: &str, id: &str) -> Result<(), Text> {
         .remove_manifest(profile_id, Storefront::Unspecified, id)
         .map_err(|err| Text::new("raven.errors.remove").arg("error", err))?;
     if let Some(prefix) = prefix(id) {
-        match std::fs::remove_dir_all(&prefix) {
-            Ok(()) => {}
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => {
-                tracing::error!(profile_id, id, %err, "could not remove a Raven prefix");
-                return Err(Text::new("raven.errors.remove").arg("error", err));
-            }
+        for folder in [".apps", ".layers"].map(|suffix| {
+            let mut name = prefix.as_os_str().to_owned();
+            name.push(suffix);
+            PathBuf::from(name)
+        }) {
+            remove_folder(profile_id, id, &folder)?;
         }
+        remove_folder(profile_id, id, &prefix)?;
     }
     tracing::info!(profile_id, id, "program removed from the Raven section");
     Ok(())
+}
+
+/// A folder already gone is removed; a symlink is unlinked, never followed.
+fn remove_folder(profile_id: &str, id: &str, folder: &Path) -> Result<(), Text> {
+    match std::fs::remove_dir_all(folder) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => {
+            tracing::error!(profile_id, id, path = %folder.display(), %err, "could not remove a Raven prefix folder");
+            Err(Text::new("raven.errors.remove").arg("error", err))
+        }
+    }
 }
 
 /// Stamps the program's manifest with when its session ended. Best-effort, as for a game.

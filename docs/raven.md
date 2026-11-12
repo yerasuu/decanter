@@ -62,7 +62,7 @@ cache the i686 MinGW toolchain besides what the previous pin used (about 630 MB 
 «Añadir…» (a file picker) or dropping files on the section adds Windows programs (a PE executable, read by
 `app/src/external/probe`, never run, changed or moved). Dropped anywhere else in the window, a program is still
 added as an external game of the library ([drop-executable.md](drop-executable.md)). Each program has
-«Ejecutar»/«Detener», «Quitar» (its manifest and its prefix) and «Registro», the log of its last run; a run
+«Ejecutar»/«Detener», «Quitar» (its manifest, its prefix and the `.apps` and `.layers` folders beside it) and «Registro», the log of its last run; a run
 that fails shows the end of its output under the program.
 
 A program runs through the launch interface's `raven` kind (`app/src/launch/raven.rs`): Raven, started from the
