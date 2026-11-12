@@ -16,14 +16,8 @@ pub(super) enum Installer {
     Failed(Text),
 }
 
-/// Under Proton only a Windows program; run natively, Windows' own
-/// installer packages too.
 fn installer_extensions() -> &'static [&'static str] {
-    if crate::launch::in_prefixes() {
-        &["exe"]
-    } else {
-        &["exe", "msi"]
-    }
+    &["exe", "msi"]
 }
 
 impl GameForm {

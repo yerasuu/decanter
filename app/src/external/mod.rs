@@ -246,6 +246,25 @@ pub async fn run_installer(
     }
 }
 
+/// Whether `installer` is a Windows Installer package rather than a program,
+/// and an error unless it is an existing absolute `.exe` or `.msi`.
+fn installer_is_msi(installer: &Path) -> Result<bool, Text> {
+    let is_msi = match installer
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("msi") => true,
+        Some("exe") => false,
+        _ => return Err(Text::new("external.errors.not_an_installer")),
+    };
+    if !installer.is_absolute() || !installer.is_file() {
+        return Err(Text::new("external.errors.not_an_installer"));
+    }
+    Ok(is_msi)
+}
+
 /// Runs a setup program inside `id`'s prefix and waits for it, and for
 /// anything it left running there, to finish. The prefix is the one the
 /// game will then launch in, so whatever the installer writes under
@@ -259,12 +278,23 @@ async fn run_installer_in_prefix(
 ) -> Result<(), Text> {
     let prefix =
         crate::achv_try!(prefix_in(profile_id, id, library_root).ok_or_else(|| Text::new("messages.errors.prefix")));
+    let is_msi = crate::achv_try!(installer_is_msi(installer));
+    let key = format!("{profile_id}/{id}");
+    let launch = if is_msi {
+        // Wine opens a package only through `msiexec`, and names a host file
+        // by mapping `/` to `Z:`.
+        let package = format!("Z:{}", installer.display()).replace('/', "\\");
+        decanter_runtime::Launch::new("msiexec", key).arg("/i").arg(package)
+    } else {
+        decanter_runtime::Launch::new(installer, key)
+    };
     // The same id the game itself launches with, so protonfixes treats
     // both alike.
-    let launch = decanter_runtime::Launch::new(installer, format!("{profile_id}/{id}"))
+    let mut launch = launch
         .prefix(prefix)
         .game_id(UMU_ID)
         .proton(crate::core::proton_or_default(proton));
+    launch.working_directory = installer.parent().map(Path::to_path_buf);
     tracing::info!(profile_id, id, installer = %installer.display(), "running external game installer");
     let session = crate::achv_try!(
         decanter_runtime::start(launch)
@@ -293,19 +323,7 @@ async fn run_installer_in_prefix(
 /// The path travels in the environment so that no quoting can reach the
 /// script.
 async fn run_installer_natively(installer: &Path) -> Result<(), Text> {
-    let is_msi = match installer
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("msi") => true,
-        Some("exe") => false,
-        _ => return Err(Text::new("external.errors.not_an_installer")),
-    };
-    if !installer.is_absolute() || !installer.is_file() {
-        return Err(Text::new("external.errors.not_an_installer"));
-    }
+    let is_msi = crate::achv_try!(installer_is_msi(installer));
     let start = if is_msi {
         "Start-Process -FilePath msiexec.exe -ArgumentList '/i', ('\"' + $env:DECANTER_INSTALLER + '\"')"
     } else {
