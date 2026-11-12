@@ -150,6 +150,13 @@ library.menu.new_collection: New collection…
 library.menu.cancel_install: Cancel install
 library.menu.install: Install
 library.menu.install_many: Install %{count} games
+library.menu.uninstall_many: "Uninstall %{count} games"
+library.menu.uninstall_many_confirm: "Uninstall"
+library.menu.uninstall_many_close: "Close"
+library.menu.uninstall_many_note: "Same as uninstalling each one on its own: the games' files and their paused downloads are deleted. Saves, cloud data and mods are not touched."
+library.menu.uninstall_many_failed: "%{count} games could not be uninstalled:"
+library.menu.steam_add_many: "Add %{count} games to Steam"
+library.menu.steam_remove_many: "Remove %{count} games from Steam"
 library.menu.play: Play
 library.menu.stop: Stop
 library.menu.open_folder: Open game folder

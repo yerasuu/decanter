@@ -150,6 +150,13 @@ library.menu.new_collection: Nueva colección…
 library.menu.cancel_install: Cancelar instalación
 library.menu.install: Instalar
 library.menu.install_many: Instalar %{count} juegos
+library.menu.uninstall_many: "Desinstalar %{count} juegos"
+library.menu.uninstall_many_confirm: "Desinstalar"
+library.menu.uninstall_many_close: "Cerrar"
+library.menu.uninstall_many_note: "Igual que desinstalar cada uno por separado: se borran los archivos de los juegos y sus descargas en pausa. Las partidas guardadas, los datos en la nube y los mods no se tocan."
+library.menu.uninstall_many_failed: "No se pudieron desinstalar %{count} juegos:"
+library.menu.steam_add_many: "Añadir %{count} juegos a Steam"
+library.menu.steam_remove_many: "Quitar %{count} juegos de Steam"
 library.menu.play: Jugar
 library.menu.stop: Detener
 library.menu.open_folder: Abrir carpeta del juego

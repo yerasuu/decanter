@@ -16,6 +16,7 @@ use rust_i18n::t;
 use super::actions::{
     bump_organisation, game_install_path, launch_game, open_in_file_manager, resolve_launch_target, stop_game,
 };
+use super::bulk;
 use super::data;
 use super::install::InstallRequest;
 use super::shelf_popups;
@@ -86,6 +87,8 @@ struct MenuData {
     /// An installed GOG game and the other library folders on a disk it
     /// could move to; `None` when there is nowhere to go.
     move_offer: Option<(Movable, Vec<std::path::PathBuf>)>,
+    /// For a selection of several games: which ones a Steam shortcut can be added to or removed from.
+    steam_selection: bulk::SteamSelection,
 }
 
 impl PopupState {
@@ -236,6 +239,7 @@ fn game_menu(
         prefix_path,
         steam_exported,
         move_offer,
+        steam_selection,
         ..
     }) = state.read(cx).data.as_ref().map(MenuData::clone)
     else {
@@ -262,8 +266,15 @@ fn game_menu(
         panel = panel.child(menu::separator());
     }
 
-    if let Some(install) = install_many_item(&target.product_ids, close, model, cx) {
-        panel = panel.child(install).child(menu::separator());
+    if target.product_ids.len() > 1 {
+        let actions: Vec<AnyElement> = bulk::install_item(&target.product_ids, close, model, cx)
+            .into_iter()
+            .chain(bulk::uninstall_item(&target.product_ids, close, model, cx))
+            .chain(bulk::steam_items(&steam_selection, close))
+            .collect();
+        if !actions.is_empty() {
+            panel = panel.children(actions).child(menu::separator());
+        }
     }
 
     panel = panel
@@ -343,6 +354,11 @@ fn load_menu_data(
             move_offer: single_game
                 .filter(|entry| entry.game.storefront == Storefront::Gog)
                 .and_then(|entry| move_offer(&entry.game.account_id, &entry.game.id, profile_id)),
+            steam_selection: if product_ids.len() > 1 {
+                bulk::steam_selection(product_ids, cx)
+            } else {
+                bulk::SteamSelection::default()
+            },
             organisation,
             revision,
         };
@@ -606,7 +622,7 @@ fn game_action_item(
         .into_any_element()
 }
 
-fn plain_install(account_id: &str, product_id: &str, title: &str) -> InstallRequest {
+pub(super) fn plain_install(account_id: &str, product_id: &str, title: &str) -> InstallRequest {
     InstallRequest {
         account_id: account_id.to_owned(),
         product_id: product_id.to_owned(),
@@ -617,51 +633,6 @@ fn plain_install(account_id: &str, product_id: &str, title: &str) -> InstallRequ
         library_root: None,
         language: None,
     }
-}
-
-/// Instalar for a selection of several games: every one not installed and not already
-/// downloading goes into one install dialog.
-fn install_many_item(
-    product_ids: &[String],
-    close: &menu::Dismiss,
-    model: &Entity<LibraryModel>,
-    cx: &App,
-) -> Option<AnyElement> {
-    let background = AppState::get(cx).background.read(cx);
-    let requests: Vec<InstallRequest> = AppState::get(cx)
-        .library
-        .read(cx)
-        .games
-        .iter()
-        .filter(|entry| entry.kind == GameKind::Game && product_ids.contains(&entry.game.id))
-        .filter(|entry| !entry.game.install_state.as_ref().is_some_and(|state| state.installed))
-        .filter(|entry| {
-            !background
-                .status(&entry.game.account_id, &entry.game.id)
-                .is_some_and(InstallStatus::is_live)
-        })
-        .filter(|entry| super::actions::missing_build(&entry.game).is_none())
-        .map(|entry| plain_install(&entry.game.account_id, &entry.game.id, &entry.game.title))
-        .collect();
-    if requests.len() < 2 {
-        return None;
-    }
-    let label = t!("library.menu.install_many", count = requests.len());
-    let (close, model) = (Rc::clone(close), model.clone());
-    let requests = Rc::new(requests);
-    Some(
-        menu::item("menu-install-many", false)
-            .on_click(move |_, window, cx| {
-                let requests = requests
-                    .iter()
-                    .map(|request| plain_install(&request.account_id, &request.product_id, &request.title))
-                    .collect();
-                model.update(cx, |model, cx| model.request_install(requests, cx));
-                close(window, cx);
-            })
-            .child(label)
-            .into_any_element(),
-    )
 }
 
 /// Opens the install directory — needs only the files, not a resolved

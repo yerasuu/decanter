@@ -10,6 +10,7 @@ pub mod actions;
 #[cfg(target_os = "linux")]
 pub mod amazon_install;
 mod browser;
+mod bulk;
 mod context_menu;
 mod data;
 mod detail;
@@ -84,6 +85,8 @@ struct LibraryModel {
     /// Installs asked for from a menu, handed to the library view so it opens the install dialog
     /// over whatever is on screen.
     pub(crate) install_requests: Vec<install::InstallRequest>,
+    /// The confirmation, progress and failures of uninstalling a selection, shown over the library.
+    pub(crate) uninstall: Option<bulk::Uninstall>,
     /// The cover a game was opened from with the keyboard: its page then
     /// takes the focus for its first action, and the shelves give it back to
     /// that cover once they show again.
@@ -124,6 +127,7 @@ impl LibraryModel {
             mods_open: false,
             achievements: None,
             install_requests: Vec::new(),
+            uninstall: None,
             opened_from: None,
             poll: None,
             epic_polled: HashMap::new(),
@@ -357,6 +361,7 @@ impl Render for LibraryView {
         };
         let filter_panel = self.sidebar.update(cx, |sidebar, cx| sidebar.filter_panel(window, cx));
         let popup = context_menu::render_popup(&self.model, window, cx);
+        let uninstall = bulk::uninstall_modal(&self.model, window, cx);
 
         div()
             .size_full()
@@ -380,6 +385,7 @@ impl Render for LibraryView {
             )
             .children(filter_panel)
             .children(popup)
+            .children(uninstall)
             .children(
                 self.dialog
                     .as_ref()

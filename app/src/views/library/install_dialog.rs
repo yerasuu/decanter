@@ -226,7 +226,7 @@ pub(crate) fn install_dialog<H: InstallHost>(
     Some(menu::modal(panel, window, dismiss))
 }
 
-fn dialog_frame(window: &Window) -> Div {
+pub(super) fn dialog_frame(window: &Window) -> Div {
     let viewport = window.viewport_size();
     div()
         .w(px(640.).min(viewport.width * 0.92))
@@ -247,7 +247,7 @@ fn dialog_frame(window: &Window) -> Div {
         }])
 }
 
-fn dialog_header(title: &str, close: menu::Dismiss) -> Div {
+pub(super) fn dialog_header(title: &str, close: menu::Dismiss) -> Div {
     div()
         .flex()
         .items_center()

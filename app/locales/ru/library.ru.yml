@@ -148,6 +148,13 @@ library.menu.new_collection: 'Новая коллекция…'
 library.menu.cancel_install: 'Отменить установку'
 library.menu.install: 'Установить'
 library.menu.install_many: "Установить игры: %{count}"
+library.menu.uninstall_many: "Удалить игры: %{count}"
+library.menu.uninstall_many_confirm: "Удалить"
+library.menu.uninstall_many_close: "Закрыть"
+library.menu.uninstall_many_note: "Так же, как удаление каждой игры по отдельности: файлы игр и их приостановленные загрузки удаляются. Сохранения, облачные данные и моды не затрагиваются."
+library.menu.uninstall_many_failed: "Не удалось удалить игры: %{count}"
+library.menu.steam_add_many: "Добавить в Steam игры: %{count}"
+library.menu.steam_remove_many: "Убрать из Steam игры: %{count}"
 library.menu.play: 'Играть'
 library.menu.stop: 'Остановить'
 library.menu.open_folder: 'Открыть папку игры'
