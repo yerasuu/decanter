@@ -24,6 +24,10 @@ ps.jobs.rollback: roll back
 ps.errors.environment: 'Couldn''t set up the environment: %{error}'
 ps.errors.builds_unavailable: decanter doesn't build PS ports on this system
 ps.ports.title: Ports
+ps.ports.chip.failed: "Failed"
+ps.ports.chip.working: "Working"
+ps.ports.chip.needs_reset: "Needs reset"
+ps.ports.chip.up_to_date: "Up to date"
 ps.ports.description: Each port is cloned, built and updated on its own, with the system's tools when they are enough and with nix when they aren't. A stable release published as a bundle runs without either.
 ps.ports.stage.idle: Set up the first time it's needed
 ps.ports.stage.resolving: Looking for tools…

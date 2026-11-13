@@ -16,13 +16,13 @@ use decanter_ps::os::linux::updater::{Check, Plan};
 use decanter_ps::paths;
 use decanter_ps::port::Port;
 use decanter_ps::remote::RemoteError;
-use gpui::{AnyElement, Context, ElementId, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Div, ElementId, Entity, SharedString, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::log::LogView;
 use crate::capabilities::Caps;
 use crate::state::{Fallback, JobKey, PortState, Ps, Stage, Track};
-use crate::theme;
+use crate::theme::{self, Tone};
 use crate::widgets::{ButtonKind, button, progress_bar};
 
 pub struct PortsView {
@@ -119,11 +119,24 @@ impl PortsView {
                     .items_center()
                     .gap_3()
                     .child(theme::h3(heading(port)))
-                    .child(theme::muted(port.upstream()).text_size(px(11.))),
+                    .child(
+                        theme::muted(port.upstream())
+                            .text_size(px(11.))
+                            .flex_1()
+                            .min_w_0()
+                            .truncate(),
+                    )
+                    .children(state_chip(failed, busy, needs_reset, check)),
             )
             .child(
                 div()
-                    .text_color(rgb(if failed { theme::ERROR_TEXT } else { theme::TEXT_PRIMARY }))
+                    .text_color(rgb(if failed {
+                        theme::ERROR_TEXT
+                    } else if matches!(stage, Stage::Idle) {
+                        theme::TEXT_MUTED
+                    } else {
+                        theme::TEXT_PRIMARY
+                    }))
                     .child(SharedString::from(stage_text)),
             )
             .children(progress.map(|fraction| progress_bar(("ps-port-progress", port as usize), Some(fraction), 4.)))
@@ -371,4 +384,21 @@ fn heading(port: Port) -> &'static str {
         Port::Bbport => "psport",
         Port::AnyPs5 => port.name(),
     }
+}
+
+/// Where the port stands at a glance, so the lines under it are details, not the verdict.
+fn state_chip(failed: bool, busy: bool, needs_reset: bool, check: Option<&Result<Check, RemoteError>>) -> Option<Div> {
+    let up_to_date = matches!(check, Some(Ok(check)) if matches!(check.plan, Plan::UpToDate));
+    let (text, tone) = if failed {
+        (t!("ps.ports.chip.failed"), Tone::Error)
+    } else if busy {
+        (t!("ps.ports.chip.working"), Tone::Info)
+    } else if needs_reset {
+        (t!("ps.ports.chip.needs_reset"), Tone::Warn)
+    } else if up_to_date {
+        (t!("ps.ports.chip.up_to_date"), Tone::Ok)
+    } else {
+        return None;
+    };
+    Some(theme::chip(text, tone))
 }

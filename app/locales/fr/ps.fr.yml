@@ -24,6 +24,10 @@ ps.jobs.rollback: retour arrière
 ps.errors.environment: 'Impossible de configurer l’environnement : %{error}'
 ps.errors.builds_unavailable: decanter ne compile pas les ports PS sur ce système
 ps.ports.title: Ports
+ps.ports.chip.failed: "Échec"
+ps.ports.chip.working: "En cours"
+ps.ports.chip.needs_reset: "À réinitialiser"
+ps.ports.chip.up_to_date: "À jour"
 ps.ports.description: Chaque port est cloné, compilé et mis à jour séparément, avec les outils du système quand ils suffisent et avec nix sinon. Une version stable publiée sous forme de bundle fonctionne sans l’un ni l’autre.
 ps.ports.stage.idle: Configuré la première fois que nécessaire
 ps.ports.stage.resolving: Recherche des outils…

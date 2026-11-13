@@ -24,6 +24,10 @@ ps.jobs.rollback: reversão
 ps.errors.environment: 'Não foi possível preparar o ambiente: %{error}'
 ps.errors.builds_unavailable: o decanter não compila ports de PS neste sistema
 ps.ports.title: Ports
+ps.ports.chip.failed: "Falhou"
+ps.ports.chip.working: "Em andamento"
+ps.ports.chip.needs_reset: "Precisa redefinir"
+ps.ports.chip.up_to_date: "Atualizado"
 ps.ports.description: Cada port é clonado, compilado e atualizado por conta própria, com as ferramentas do sistema quando elas bastam e com o nix quando não bastam. Uma versão estável publicada como bundle roda sem nenhum dos dois.
 ps.ports.stage.idle: Configurado na primeira vez que for necessário
 ps.ports.stage.resolving: Procurando ferramentas…

@@ -24,6 +24,10 @@ ps.jobs.rollback: 롤백
 ps.errors.environment: '환경을 설정할 수 없습니다: %{error}'
 ps.errors.builds_unavailable: decanter는 이 시스템에서 PS 포트를 빌드하지 않습니다
 ps.ports.title: 포트
+ps.ports.chip.failed: "실패"
+ps.ports.chip.working: "진행 중"
+ps.ports.chip.needs_reset: "초기화 필요"
+ps.ports.chip.up_to_date: "최신"
 ps.ports.description: 각 포트는 따로 복제, 빌드, 업데이트됩니다. 시스템 도구로 충분하면 시스템 도구를, 그렇지 않으면 nix를 사용합니다. 번들로 게시된 안정 릴리스는 둘 다 없이 실행됩니다.
 ps.ports.stage.idle: 처음 필요할 때 설정됩니다
 ps.ports.stage.resolving: 도구를 찾는 중…

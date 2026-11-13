@@ -24,6 +24,10 @@ ps.jobs.rollback: 'откат'
 ps.errors.environment: 'Не удалось подготовить окружение: %{error}'
 ps.errors.builds_unavailable: 'decanter не собирает порты PS в этой системе'
 ps.ports.title: 'Порты'
+ps.ports.chip.failed: "Сбой"
+ps.ports.chip.working: "Выполняется"
+ps.ports.chip.needs_reset: "Нужен сброс"
+ps.ports.chip.up_to_date: "Актуально"
 ps.ports.description: 'Каждый порт клонируется, собирается и обновляется отдельно: инструментами системы, если их достаточно, и через nix, если нет. Стабильный выпуск, опубликованный как пакет, работает без того и другого.'
 ps.ports.stage.idle: 'Настраивается при первой необходимости'
 ps.ports.stage.resolving: 'Поиск инструментов…'
