@@ -219,6 +219,38 @@ pub fn checkbox_large(checked: bool) -> Div {
     checkbox_sized(checked, 20., 15.)
 }
 
+/// The 40x22 switch of a settings row: the knob sits at the end when on, so the state reads from
+/// its position as well as from the colour.
+pub fn switch(on: bool) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .w(px(40.))
+        .h(px(22.))
+        .px(px(3.))
+        .rounded_full()
+        .border_1()
+        .when(on, |track| {
+            track
+                .justify_end()
+                .bg(rgb(theme::ACCENT_BLUE))
+                .border_color(rgb(theme::ACCENT_BLUE))
+        })
+        .when(!on, |track| {
+            track
+                .justify_start()
+                .bg(rgb(theme::BG_PANEL))
+                .border_color(rgb(theme::TEXT_DIM))
+        })
+        .child(
+            div()
+                .size(px(14.))
+                .rounded_full()
+                .bg(rgb(if on { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED })),
+        )
+}
+
 fn checkbox_sized(checked: bool, size: f32, tick: f32) -> Div {
     div()
         .flex()

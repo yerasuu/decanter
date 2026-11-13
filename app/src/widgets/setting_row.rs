@@ -1,9 +1,9 @@
 use gpui::{
     App, ClickEvent, ElementId, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb,
 };
 
-use super::{checkbox_large, nav};
+use super::{nav, switch};
 use crate::theme;
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -56,20 +56,35 @@ impl SettingRow {
 
 impl RenderOnce for SettingRow {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let indent = px(23.);
-        let row_gap = if self.help.is_some() { px(3.) } else { px(12.) };
         let row = div()
             .id(self.id)
             .flex()
-            .gap(px(10.))
-            .mb(row_gap)
-            .max_w(px(520.))
             .items_center()
-            .min_h(px(36.))
-            .child(checkbox_large(self.checked))
-            .child(div().min_w_0().child(self.title));
+            .justify_between()
+            .gap_4()
+            .max_w(px(720.))
+            .min_h(px(52.))
+            .px_4()
+            .py(px(10.))
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::LINE))
+            .bg(rgb(theme::BG_PANEL_2))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(2.))
+                    .child(div().text_color(rgb(theme::TEXT_PRIMARY)).child(self.title))
+                    .children(self.help.map(|help| theme::muted(help).text_size(px(12.)))),
+            )
+            .child(switch(self.checked));
         let row = if self.is_offered {
-            let row = nav::tab_stop(row).cursor_pointer();
+            let row = nav::tab_stop(row)
+                .cursor_pointer()
+                .hover(|row| row.border_color(rgb(theme::ACCENT_BLUE_DIM)));
             match self.on_click {
                 Some(handler) => row.on_click(handler),
                 None => row,
@@ -77,12 +92,16 @@ impl RenderOnce for SettingRow {
         } else {
             row.opacity(0.4)
         };
-        let row = if self.nested { row.ml(indent) } else { row };
-        let help = self.help.map(|help| {
-            let help = theme::muted(help).mb(px(12.));
-            let help = if self.nested { help.ml(indent) } else { help };
-            if self.is_offered { help } else { help.opacity(0.4) }
-        });
-        div().flex().flex_col().child(row).children(help)
+        let row = if self.nested {
+            div()
+                .ml(px(24.))
+                .pl(px(12.))
+                .border_l_2()
+                .border_color(rgb(theme::ACCENT_BLUE_DIM))
+                .child(row)
+        } else {
+            div().child(row)
+        };
+        row.mb(px(10.))
     }
 }
