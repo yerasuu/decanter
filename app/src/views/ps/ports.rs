@@ -118,7 +118,7 @@ impl PortsView {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(theme::h3(port.name()))
+                    .child(theme::h3(heading(port)))
                     .child(theme::muted(port.upstream()).text_size(px(11.))),
             )
             .child(
@@ -362,5 +362,13 @@ fn toolchain_label(toolchain: &Toolchain) -> std::borrow::Cow<'static, str> {
         Toolchain::SystemNix(_) => t!("ps.ports.toolchains.system_nix"),
         Toolchain::Portable(_) => t!("ps.ports.toolchains.portable"),
         Toolchain::Bundle => t!("ps.ports.toolchains.bundle"),
+    }
+}
+
+/// The port's own name is an argument for the build tooling; the page says what the user runs.
+fn heading(port: Port) -> &'static str {
+    match port {
+        Port::Bbport => "psport",
+        Port::AnyPs5 => port.name(),
     }
 }

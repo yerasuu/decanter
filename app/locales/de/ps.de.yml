@@ -280,8 +280,8 @@ ps.scope.read_error: 'Die Einstellungen dieses Spiels konnten nicht vorbereitet 
 ps.detail.explain.needs_convert: Beim ersten Mal wird es vor dem Start mit AnyPS5 konvertiert.
 ps.detail.explain.needs_merge: 'Neben diesem Dump liegt ein 1.09-Update. Beim Zusammenführen entsteht daneben eine spielbare Kopie mit Hardlinks: Sie braucht keinen zusätzlichen Platz und der ursprüngliche Dump bleibt unverändert.'
 ps.detail.explain.has_playable: Du hast die 1.09-Kopie bereits unter %{dir}; spiele diese.
-ps.detail.explain.other_edition: bbport führt von Bloodborne nur die Edition CUSA03173 in Version 1.09 aus.
-ps.detail.explain.needs_update: 'bbport braucht Version 1.09: Füge ihr Update zu einem deiner Ordner hinzu.'
+ps.detail.explain.other_edition: PS führt von Bloodborne nur die Edition CUSA03173 in Version 1.09 aus.
+ps.detail.explain.needs_update: 'PS braucht Version 1.09: Füge ihr Update zu einem deiner Ordner hinzu.'
 ps.detail.explain.needs_vr: Dieses Spiel startet nur mit einem PS-VR-Headset, und der Port hat keines.
 ps.detail.explain.encrypted: Die eboot.bin ist noch verschlüsselt; sie muss auf der Konsole entschlüsselt werden.
 ps.detail.explain.no_eboot: Dieser Dump hat keine eboot.bin.
@@ -331,7 +331,7 @@ ps.keyboard.sources.mouse_x1: Maustaste Zurück
 ps.keyboard.sources.mouse_x2: Maustaste Vor
 ps.keyboard.sources.wheel_up: Mausrad ↑
 ps.keyboard.sources.wheel_down: Mausrad ↓
-ps.keyboard.refusals.keys_only: bbport nimmt nur Tastaturtasten an
+ps.keyboard.refusals.keys_only: PS nimmt nur Tastaturtasten an
 ps.keyboard.refusals.fullscreen_needs_key: Vollbild kann nur eine Tastaturtaste verwenden
 ps.keyboard.refusals.wheel_needs_button: Das Mausrad lässt sich nur einer Controller-Taste zuordnen
 ps.keyboard.unknown_key: Die Taste „%{key}“ hat keinen verlässlichen SDL-Namen; versuche eine andere
@@ -343,7 +343,7 @@ ps.keyboard.assign: + Zuweisen
 ps.keyboard.reset_all: Alle zurücksetzen
 ps.keyboard.hint.own: 'Dein Layout: + Zuweisen und Taste drücken; Speichern schreibt es nur für dieses Spiel, „Im Layout speichern“ zusätzlich ins Layout. Eingabe speichert den Namen.'
 ps.keyboard.hint.custom: 'Dieses Spiel folgt keinem Layout: Seine Tasten sind eigene; Speichern schreibt sie, und Als neu kopieren speichert sie als Layout.'
-ps.keyboard.description.bbport: Tastatur für bbport (key.-Zeilen in der Datei unten). Entfernst du alle Tasten einer Aktion, bleibt sie unbelegt.
+ps.keyboard.description.bbport: Tastatur für PS (key.-Zeilen in der Datei unten). Entfernst du alle Tasten einer Aktion, bleibt sie unbelegt.
 ps.keyboard.description.anyps5: Tastatur und Maus für AnyPS5. Der Controller funktioniert immer ohne Einrichtung.
 ps.keyboard.capture: Drücke eine Taste oder Maustaste oder bewege das Mausrad
 ps.gamepad.inputs.cross.label: ✕
@@ -403,7 +403,7 @@ ps.gamepad.buttons.paddle1: Paddle 1
 ps.gamepad.buttons.paddle2: Paddle 2
 ps.gamepad.buttons.paddle3: Paddle 3
 ps.layouts.code_vein: Code-Vein-Stil
-ps.gamepad.description: bbport-Einstellungen. Sie gelten ab dem nächsten Start. Die Sticks bewegen in jedem Layout die Figur und die Kamera.
+ps.gamepad.description: PS-Einstellungen. Sie gelten ab dem nächsten Start. Die Sticks bewegen in jedem Layout die Figur und die Kamera.
 ps.gamepad.reading: Controller-Konfiguration wird gelesen…
 ps.gamepad.save_error: 'Speichern nicht möglich: %{error}'
 ps.gamepad.controller.title: Controller
@@ -592,7 +592,7 @@ ps.graphics.preupload.options.full_note: Etwa 3 GB mehr Videospeicher
 ps.graphics.preupload.options.off: 'Aus'
 ps.graphics.groups.development: Entwicklung
 ps.graphics.save_log.label: Protokoll und Statistiken in einer Datei speichern
-ps.graphics.save_log.note: 'Im Protokollordner von bbport: zur Untersuchung von Rucklern und Abstürzen'
+ps.graphics.save_log.note: 'Im Protokollordner von PS: zur Untersuchung von Rucklern und Abstürzen'
 ps.graphics.crash_diag.label: Absturzdiagnose
 ps.graphics.crash_diag.note: Prüft den Heap des Spiels und protokolliert Schreibzugriffe auf seinen Speicher; etwas langsamer
 ps.graphics.keep_logs.label: Gespeicherte Läufe behalten
@@ -609,11 +609,11 @@ ps.graphics.gpu_profile.label: GPU-Profil im Protokoll
 ps.graphics.gpu_profile.note: PS_GPU_PROFILE
 ps.graphics.vk_validation.label: Vulkan-Validierungsebenen
 ps.graphics.vk_validation.note: Bremst stark
-ps.graphics.description: bbport-Einstellungen. Sie gelten ab dem nächsten Start.
+ps.graphics.description: PS-Einstellungen. Sie gelten ab dem nächsten Start.
 ps.graphics.reading: Einstellungen werden gelesen…
 ps.graphics.no_limit: Kein Limit
 ps.graphics.save_error: 'Speichern nicht möglich: %{error}'
-ps.errors.bbport_not_ready: 'bbport ist nicht bereit: %{error}'
+ps.errors.bbport_not_ready: 'PS ist nicht bereit: %{error}'
 ps.jobs.fsr411: FSR-4.1.1-Build
 ps.jobs.vk_layer: Vulkan-Validierungsebene
 ps.vk_layer.preparing: Die Vulkan-Validierungsebene wird vorbereitet…
@@ -629,7 +629,7 @@ ps.fsr.built_not_chosen: 'FSR 4.1.1 gebaut, konnte aber nicht gewählt werden: %
 ps.fsr.cancelled: FSR-4.1.1-Build abgebrochen
 ps.fsr.unsupported.fsr40: '%{name}: FSR %{version}, das offizielle FSR 4.0.x von AMD, das nur auf RDNA4 funktioniert und unter Proton auf anderen GPUs nicht aufgezeichnet werden kann. Nötig ist FSR 4.1.x (FSR4_LATEST von OptiScaler oder die DLL eines Spiels mit FSR 4.1)'
 ps.fsr.unsupported.not_fsr4: '%{name}: enthält kein FSR 4; nötig ist amd_fidelityfx_upscaler_dx12.dll 4.1.x'
-ps.fsr.unsupported.other: '%{name}: Version %{version}. bbport gibt nur das offizielle FSR 4.1.x von AMD wieder (Modell v07_fp8_no_scale); Community-Builds werden noch nicht unterstützt'
+ps.fsr.unsupported.other: '%{name}: Version %{version}. PS gibt nur das offizielle FSR 4.1.x von AMD wieder (Modell v07_fp8_no_scale); Community-Builds werden noch nicht unterstützt'
 ps.fsr.bad_loader.is_upscaler: das ist die Upscaler-DLL; der Loader ist amd_fidelityfx_loader_dx12.dll (bei OptiScaler amd_fidelityfx_dx12.dll) im selben Spielordner
 ps.fsr.bad_loader.wrong_version: '%{loader}: Version %{version}; nötig ist der FidelityFX-2.x-Loader aus demselben Spiel'
 ps.fsr.failures.bad_dll: 'Die DLL funktioniert nicht: Details im Protokoll'
@@ -637,7 +637,7 @@ ps.fsr.failures.no_proton: 'Die Aufzeichnung fand kein Proton zum Ausführen, ob
 ps.fsr.failures.proton_not_ready: 'decanter konnte sein GE-Proton für die Aufzeichnung nicht vorbereiten: %{error}'
 ps.fsr.failures.missing_tools: 'Build-Tools fehlen: Die Liste steht im Protokoll'
 ps.fsr.failures.no_proton_ran: 'Kein Proton hat FSR 4.1 mit dieser DLL ausgeführt: Sie sind zu alt oder die DLL aktiviert FSR 4.1 auf dieser GPU nicht'
-ps.fsr.failures.mismatch: 'Die aufgezeichneten Passes passen nicht zu dem, was bbport wiedergibt (andere DLL-Version oder eine neue GPU): Details im Protokoll'
+ps.fsr.failures.mismatch: 'Die aufgezeichneten Passes passen nicht zu dem, was PS wiedergibt (andere DLL-Version oder eine neue GPU): Details im Protokoll'
 ps.fsr.failures.no_loader: Der FidelityFX-2.x-Loader wurde nicht gefunden
 ps.fsr.failures.nixos: Unter NixOS braucht die Aufzeichnung umu-launcher oder Nix auf dem System
 ps.fsr.failures.failed: 'Der Build ist fehlgeschlagen (Code %{code}): Details im Protokoll'
@@ -677,7 +677,7 @@ ps.extras.fsr.progress.runner_downloading_size: 'decanter bereitet %{runner} fü
 ps.extras.fsr.progress.runner_unpacking: decanter entpackt %{runner}…
 ps.extras.fsr.progress.runner_building: decanter baut %{runner}…
 ps.mods.description: 'Sie gelten ab dem nächsten Start; „Mods laden“ findest du unter Grafik.'
-ps.mods.loading: bbport wird vorbereitet und Mods werden gesucht…
+ps.mods.loading: PS wird vorbereitet und Mods werden gesucht…
 ps.mods.no_port: 'Noch keine psport.exe, um sie zu suchen; Spielen oder PS › Ports lädt eine herunter'
 ps.mods.refresh: Aktualisieren
 ps.mods.open: Öffnen

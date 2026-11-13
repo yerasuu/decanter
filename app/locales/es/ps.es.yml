@@ -280,8 +280,8 @@ ps.scope.read_error: 'No se pudieron preparar los ajustes de este juego: %{error
 ps.detail.explain.needs_convert: La primera vez se convierte con AnyPS5 antes de arrancar.
 ps.detail.explain.needs_merge: 'Hay una actualización 1.09 junto a este volcado. Fusionarla crea una copia jugable al lado, con enlaces duros: no ocupa espacio extra y el volcado original no cambia.'
 ps.detail.explain.has_playable: Ya tienes la copia 1.09 en %{dir}; juega con esa.
-ps.detail.explain.other_edition: bbport solo ejecuta la edición CUSA03173 de Bloodborne en su versión 1.09.
-ps.detail.explain.needs_update: 'bbport necesita la versión 1.09: añade su actualización a una de tus carpetas.'
+ps.detail.explain.other_edition: PS solo ejecuta la edición CUSA03173 de Bloodborne en su versión 1.09.
+ps.detail.explain.needs_update: 'PS necesita la versión 1.09: añade su actualización a una de tus carpetas.'
 ps.detail.explain.needs_vr: Este juego solo arranca con un casco PS VR, y el port no tiene uno.
 ps.detail.explain.encrypted: El eboot.bin sigue cifrado; hay que descifrarlo en la consola.
 ps.detail.explain.no_eboot: Este volcado no tiene eboot.bin.
@@ -331,7 +331,7 @@ ps.keyboard.sources.mouse_x1: Ratón atrás
 ps.keyboard.sources.mouse_x2: Ratón adelante
 ps.keyboard.sources.wheel_up: Rueda ↑
 ps.keyboard.sources.wheel_down: Rueda ↓
-ps.keyboard.refusals.keys_only: bbport solo admite teclas del teclado
+ps.keyboard.refusals.keys_only: PS solo admite teclas del teclado
 ps.keyboard.refusals.fullscreen_needs_key: Pantalla completa solo admite una tecla del teclado
 ps.keyboard.refusals.wheel_needs_button: La rueda del ratón solo se puede asignar a un botón del mando
 ps.keyboard.unknown_key: La tecla '%{key}' no tiene nombre SDL fiable; prueba otra
@@ -343,7 +343,7 @@ ps.keyboard.assign: + Asignar
 ps.keyboard.reset_all: Restaurar todo
 ps.keyboard.hint.own: 'Tu esquema: + Asignar y pulsa la tecla; Guardar lo escribe solo en este juego y «Guardar en el esquema» también en el esquema. Enter guarda el nombre.'
 ps.keyboard.hint.custom: 'Este juego no sigue ningún esquema: sus teclas son suyas; Guardar las escribe y «Copiar como nuevo» las guarda como esquema.'
-ps.keyboard.description.bbport: Teclado para bbport (líneas key. del archivo de abajo). Quitar todas las teclas de una acción la deja sin asignar.
+ps.keyboard.description.bbport: Teclado para PS (líneas key. del archivo de abajo). Quitar todas las teclas de una acción la deja sin asignar.
 ps.keyboard.description.anyps5: Teclado y ratón para AnyPS5. El mando funciona siempre sin configurar.
 ps.keyboard.capture: Pulsa una tecla, un botón del ratón o mueve la rueda
 ps.gamepad.inputs.cross.label: ✕
@@ -403,7 +403,7 @@ ps.gamepad.buttons.paddle1: Pala 1
 ps.gamepad.buttons.paddle2: Pala 2
 ps.gamepad.buttons.paddle3: Pala 3
 ps.layouts.code_vein: Estilo Code Vein
-ps.gamepad.description: Ajustes de bbport. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier esquema.
+ps.gamepad.description: Ajustes de PS. Se aplican en el próximo arranque. Los sticks mueven al personaje y la cámara en cualquier esquema.
 ps.gamepad.reading: Leyendo la configuración del mando…
 ps.gamepad.save_error: 'No se pudo guardar: %{error}'
 ps.gamepad.controller.title: Mando
@@ -592,7 +592,7 @@ ps.graphics.preupload.options.full_note: Unos 3 GB más de memoria de vídeo
 ps.graphics.preupload.options.off: Desactivada
 ps.graphics.groups.development: Desarrollo
 ps.graphics.save_log.label: Guardar registro y estadísticas en archivo
-ps.graphics.save_log.note: 'En la carpeta logs de bbport: para analizar tirones y cierres'
+ps.graphics.save_log.note: 'En la carpeta logs de PS: para analizar tirones y cierres'
 ps.graphics.crash_diag.label: Diagnóstico de cierres
 ps.graphics.crash_diag.note: Comprueba el heap del juego y registra escrituras en su memoria; algo más lento
 ps.graphics.keep_logs.label: Partidas guardadas que se conservan
@@ -609,11 +609,11 @@ ps.graphics.gpu_profile.label: Perfil de GPU en el registro
 ps.graphics.gpu_profile.note: PS_GPU_PROFILE
 ps.graphics.vk_validation.label: Capas de validación de Vulkan
 ps.graphics.vk_validation.note: Ralentiza mucho
-ps.graphics.description: Ajustes de bbport. Se aplican en el próximo arranque.
+ps.graphics.description: Ajustes de PS. Se aplican en el próximo arranque.
 ps.graphics.reading: Leyendo los ajustes…
 ps.graphics.no_limit: Sin límite
 ps.graphics.save_error: 'No se pudo guardar: %{error}'
-ps.errors.bbport_not_ready: 'bbport no está listo: %{error}'
+ps.errors.bbport_not_ready: 'PS no está listo: %{error}'
 ps.jobs.fsr411: compilación de FSR 4.1.1
 ps.jobs.vk_layer: capa de validación de Vulkan
 ps.vk_layer.preparing: Preparando la capa de validación de Vulkan…
@@ -629,7 +629,7 @@ ps.fsr.built_not_chosen: 'FSR 4.1.1 compilado, pero no se pudo elegir: %{error}'
 ps.fsr.cancelled: Compilación de FSR 4.1.1 cancelada
 ps.fsr.unsupported.fsr40: '%{name}: FSR %{version}, la FSR 4.0.x oficial de AMD, que solo funciona en RDNA4 y no se puede grabar bajo Proton en otras GPU. Hace falta FSR 4.1.x (FSR4_LATEST de OptiScaler o la DLL de un juego con FSR 4.1)'
 ps.fsr.unsupported.not_fsr4: '%{name}: no contiene FSR 4; hace falta amd_fidelityfx_upscaler_dx12.dll 4.1.x'
-ps.fsr.unsupported.other: '%{name}: versión %{version}. bbport solo reproduce la FSR 4.1.x oficial de AMD (modelo v07_fp8_no_scale); las versiones de la comunidad aún no son compatibles'
+ps.fsr.unsupported.other: '%{name}: versión %{version}. PS solo reproduce la FSR 4.1.x oficial de AMD (modelo v07_fp8_no_scale); las versiones de la comunidad aún no son compatibles'
 ps.fsr.bad_loader.is_upscaler: eso es la DLL del reescalado; el cargador es amd_fidelityfx_loader_dx12.dll (o amd_fidelityfx_dx12.dll en OptiScaler), en la misma carpeta del juego
 ps.fsr.bad_loader.wrong_version: '%{loader}: versión %{version}; hace falta el cargador FidelityFX 2.x del mismo juego'
 ps.fsr.failures.bad_dll: 'La DLL no sirve: detalles en el registro'
@@ -637,7 +637,7 @@ ps.fsr.failures.no_proton: 'La grabación no encontró ningún Proton con el que
 ps.fsr.failures.proton_not_ready: 'decanter no pudo preparar su GE-Proton para la grabación: %{error}'
 ps.fsr.failures.missing_tools: 'Faltan programas para compilar: la lista está en el registro'
 ps.fsr.failures.no_proton_ran: 'Ningún Proton ejecutó FSR 4.1 con esa DLL: son demasiado antiguos o la DLL no activa FSR 4.1 en esta GPU'
-ps.fsr.failures.mismatch: 'Las pasadas grabadas no coinciden con lo que reproduce bbport (otra versión de la DLL o una GPU nueva): detalles en el registro'
+ps.fsr.failures.mismatch: 'Las pasadas grabadas no coinciden con lo que reproduce PS (otra versión de la DLL o una GPU nueva): detalles en el registro'
 ps.fsr.failures.no_loader: No se encontró el cargador FidelityFX 2.x
 ps.fsr.failures.nixos: En NixOS la grabación necesita umu-launcher o Nix en el sistema
 ps.fsr.failures.failed: 'La compilación falló (código %{code}): detalles en el registro'
@@ -677,7 +677,7 @@ ps.extras.fsr.progress.runner_downloading_size: 'decanter está preparando %{run
 ps.extras.fsr.progress.runner_unpacking: decanter está descomprimiendo %{runner}…
 ps.extras.fsr.progress.runner_building: decanter está compilando %{runner}…
 ps.mods.description: Se aplican en el próximo arranque; "Cargar mods" está en Gráficos.
-ps.mods.loading: Preparando bbport y buscando mods…
+ps.mods.loading: Preparando PS y buscando mods…
 ps.mods.no_port: Todavía no hay un psport.exe con el que buscarlos; Jugar o PS › Ports descargan uno
 ps.mods.refresh: Actualizar
 ps.mods.open: Abrir

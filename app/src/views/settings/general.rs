@@ -24,7 +24,7 @@ use crate::releases::{self, Release, ReleaseError, Standing};
 use crate::self_update::{self, Availability, InstallError};
 use crate::state::AppState;
 use crate::theme;
-use crate::widgets::{ButtonKind, SettingRow, button, language_note, language_select};
+use crate::widgets::{ButtonKind, SettingRow, button, language_note, language_select, tooltip};
 
 /// Hidden until uploading Galaxy achievements exists; the setting and its code stay.
 const GALAXY_UPLOAD_AVAILABLE: bool = false;
@@ -526,10 +526,14 @@ impl GeneralTab {
             None | Some(Ok(_)) => None,
         };
         column()
-            .child(theme::muted(t!(
-                "settings.general.updates.installed",
-                version = decanter_core::BUILD
-            )))
+            .child(
+                theme::muted(t!(
+                    "settings.general.updates.installed",
+                    version = env!("CARGO_PKG_VERSION")
+                ))
+                .id("installed-build")
+                .tooltip(tooltip(decanter_core::BUILD)),
+            )
             .child(
                 field_row()
                     .mt_2()
