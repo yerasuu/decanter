@@ -53,7 +53,7 @@ settings.account.add.button: + GOG 계정 추가
 settings.account.add.hint: GOG를 열고 로그인한 다음, 이동한 페이지의 주소를 여기에 붙여 넣으세요.
 settings.account.add.open: GOG 열기
 settings.account.add.connect: 연결
-settings.account.library.default_title: 기본 설치 폴더
+settings.account.library.default_title: 기본 라이브러리
 settings.account.library.default_hint: 설치할 때 다른 폴더를 고르지 않으면 새 설치는 여기에 저장됩니다. 아무것도 옮겨지지 않습니다.
 settings.account.library.active_title: 활성 라이브러리
 settings.account.library.active_hint: Decanter는 한 번에 하나의 라이브러리로 작동합니다. 전환하면 마지막으로 사용한 사용자로 해당 라이브러리가 열립니다.

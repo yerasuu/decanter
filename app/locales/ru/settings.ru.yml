@@ -53,7 +53,7 @@ settings.account.add.button: '+ Добавить учётную запись GOG
 settings.account.add.hint: 'Откройте GOG, войдите и вставьте сюда адрес страницы, на которую попадёте.'
 settings.account.add.open: 'Открыть GOG'
 settings.account.add.connect: 'Подключить'
-settings.account.library.default_title: Папка установки по умолчанию
+settings.account.library.default_title: Библиотека по умолчанию
 settings.account.library.default_hint: Новые установки попадают сюда, если при установке не выбрать другую папку. Ничего не переносится.
 settings.account.library.active_title: 'Активная библиотека'
 settings.account.library.active_hint: 'Decanter работает с одной библиотекой за раз. При переключении она открывается с тем пользователем, который работал с ней последним.'

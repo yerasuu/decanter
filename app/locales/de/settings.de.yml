@@ -53,7 +53,7 @@ settings.account.add.button: + GOG-Konto hinzufügen
 settings.account.add.hint: Öffne GOG, melde dich an und füge hier die Adresse der Seite ein, auf der du landest.
 settings.account.add.open: GOG öffnen
 settings.account.add.connect: Verbinden
-settings.account.library.default_title: Standard-Installationsordner
+settings.account.library.default_title: Standardbibliothek
 settings.account.library.default_hint: Neue Installationen landen hier, sofern du beim Installieren keinen anderen Ordner wählst. Es wird nichts verschoben.
 settings.account.library.active_title: Aktive Bibliothek
 settings.account.library.active_hint: Decanter arbeitet jeweils mit einer Bibliothek. Beim Wechsel wird sie mit der Person geöffnet, die sie zuletzt benutzt hat.

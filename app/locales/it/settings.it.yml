@@ -53,7 +53,7 @@ settings.account.add.button: + Aggiungi account GOG
 settings.account.add.hint: "Apri GOG, accedi e incolla qui l'indirizzo della pagina in cui arrivi."
 settings.account.add.open: Apri GOG
 settings.account.add.connect: Connetti
-settings.account.library.default_title: Cartella di installazione predefinita
+settings.account.library.default_title: Libreria predefinita
 settings.account.library.default_hint: 'Le nuove installazioni vanno qui, a meno che tu non scelga un''altra cartella durante l''installazione. Non viene spostato nulla.'
 settings.account.library.active_title: Libreria attiva
 settings.account.library.active_hint: "Decanter lavora con una libreria alla volta. Cambiarla la apre con la persona che l'ha usata per ultima."

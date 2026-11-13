@@ -53,7 +53,7 @@ settings.account.add.button: "+ GOG アカウントを追加"
 settings.account.add.hint: "GOG を開いてログインし、表示されたページのアドレスをここに貼り付けてください。"
 settings.account.add.open: "GOG を開く"
 settings.account.add.connect: "接続"
-settings.account.library.default_title: 既定のインストール先フォルダー
+settings.account.library.default_title: 既定のライブラリ
 settings.account.library.default_hint: インストール時に別のフォルダーを選ばない限り、新しいインストールはここに入ります。何も移動されません。
 settings.account.library.active_title: "アクティブなライブラリ"
 settings.account.library.active_hint: "Decanter は一度に 1 つのライブラリで動作します。切り替えると、最後にそのライブラリを使っていたユーザーで開きます。"

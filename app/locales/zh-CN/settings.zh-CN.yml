@@ -53,7 +53,7 @@ settings.account.add.button: "+ 添加 GOG 账户"
 settings.account.add.hint: "打开 GOG 并登录，然后将所到达页面的地址粘贴到此处。"
 settings.account.add.open: "打开 GOG"
 settings.account.add.connect: "连接"
-settings.account.library.default_title: 默认安装文件夹
+settings.account.library.default_title: 默认游戏库
 settings.account.library.default_hint: 除非安装时另选文件夹，新安装都会放在这里。不会移动任何内容。
 settings.account.library.active_title: "当前游戏库"
 settings.account.library.active_hint: "Decanter 一次只使用一个游戏库。切换时会以上次使用该游戏库的用户打开它。"
