@@ -12,7 +12,7 @@ use super::shelf::{CARD_GAP, CARD_STRIDE, COVER_HEIGHT, ROW_PADDING, auto_badge,
 use super::{BrowserView, Capsule, Derived, ShelfData};
 use crate::theme;
 use crate::views::library::context_menu::MenuTarget;
-use crate::views::library::{LibraryPopup, SIDEBAR_WIDTH};
+use crate::views::library::{LibraryPopup, sidebar_width};
 use crate::widgets::nav;
 
 /// A cover's height plus the room under it, the same for every row so the rows in view follow from
@@ -50,7 +50,7 @@ impl Page {
     /// From the window rather than the grid's own bounds, which are unknown until it has been laid
     /// out once.
     fn columns_in(window: &Window) -> usize {
-        let width = window.viewport_size().width.as_f32() - SIDEBAR_WIDTH - ROW_PADDING * 2.;
+        let width = window.viewport_size().width.as_f32() - sidebar_width(window) - ROW_PADDING * 2.;
         (((width + CARD_GAP) / CARD_STRIDE).floor() as usize).max(1)
     }
 

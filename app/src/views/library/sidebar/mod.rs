@@ -21,9 +21,9 @@ use gpui::{
 
 use rust_i18n::t;
 
-use super::SIDEBAR_WIDTH;
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{Filters, KindSelection, PlayState, SavedFilter, Sort};
+use super::sidebar_width;
 use super::{LibraryModel, LibraryPopup};
 use crate::i18n::Text;
 use crate::state::AppState;
@@ -500,7 +500,7 @@ impl Render for SidebarView {
         let active_filters = self.model.read(cx).filters.active_count();
 
         div()
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(sidebar_width(window)))
             .flex_none()
             .h_full()
             .flex()

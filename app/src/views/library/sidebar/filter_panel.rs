@@ -8,7 +8,7 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use super::{SIDEBAR_WIDTH, SidebarView};
+use super::{SidebarView, sidebar_width};
 use crate::state::{AppState, DownloadKey};
 use crate::theme;
 use crate::views::library::data::{Collections, LibraryStats};
@@ -124,7 +124,7 @@ impl SidebarView {
         let current = self.model.read(cx).filters.clone();
         let options = self.panel_options(&current, cx);
         let (total, matched) = (options.total, options.matched);
-        let panel_width = (window.viewport_size().width.as_f32() - SIDEBAR_WIDTH).min(720.);
+        let panel_width = (window.viewport_size().width.as_f32() - sidebar_width(window)).min(720.);
         let grid = filter_grid(&cx.entity(), &current, options, panel_width);
         let head = Self::panel_head(&current, cx);
         let foot = self.panel_foot(&current, total, matched, cx);
@@ -140,7 +140,7 @@ impl SidebarView {
             }))
             .absolute()
             .top_0()
-            .left(px(SIDEBAR_WIDTH))
+            .left(px(sidebar_width(window)))
             .w(px(panel_width))
             .max_h_full()
             .overflow_y_scroll()

@@ -43,7 +43,6 @@ pub(super) use gamepad::GamepadView;
 pub(super) use graphics::GraphicsView;
 pub(super) use keyboard::{Controls, KeyboardView};
 
-const SIDEBAR_WIDTH: f32 = 292.;
 const ICON: f32 = 26.;
 /// One height for headers and games alike, so the list can be uniform.
 const COMPATIBLE_GAMES_URL: &str = "https://github.com/yerasuu/psport/blob/develop/docs/en/GAMES.md";
@@ -165,7 +164,7 @@ impl GamesView {
         rows
     }
 
-    fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn sidebar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let rows = self.rows(cx);
         let ps = self.ps.read(cx);
         let dirs: HashSet<&PathBuf> = ps.entries().iter().map(|entry| &entry.game.dir).collect();
@@ -213,7 +212,7 @@ impl GamesView {
             .into_any_element()
         };
         div()
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(crate::views::library::sidebar_width(window)))
             .flex_none()
             .h_full()
             .flex()
@@ -425,16 +424,21 @@ impl Render for GamesView {
         if menu.is_none() {
             self.menu = None;
         }
-        div().size_full().flex().children(menu).child(self.sidebar(cx)).child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .flex()
-                .flex_col()
-                .children(error.map(|err| div().p_4().child(theme::error(err))))
-                .child(div().flex_1().min_h_0().child(pane)),
-        )
+        div()
+            .size_full()
+            .flex()
+            .children(menu)
+            .child(self.sidebar(window, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .children(error.map(|err| div().p_4().child(theme::error(err))))
+                    .child(div().flex_1().min_h_0().child(pane)),
+            )
     }
 }
 
