@@ -622,12 +622,16 @@ impl AccountTab {
     fn add_gog_account(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.adding {
             return inline(
-                button("add-gog", ButtonKind::Primary, t!("settings.account.add.button"), false).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.adding = true;
-                        cx.notify();
-                    },
-                )),
+                button(
+                    "add-gog",
+                    ButtonKind::Secondary,
+                    t!("settings.account.add.button"),
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.adding = true;
+                    cx.notify();
+                })),
             );
         }
         div().child(self.login.clone())
@@ -659,13 +663,19 @@ impl Render for AccountTab {
             )
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
-            .child(section("add-gog-account", div().mb_6().child(self.add_gog_account(cx))))
+            .child(theme::h2(t!("settings.account.add.title")).mt_6())
+            .child(
+                theme::card()
+                    .p_4()
+                    .gap_3()
+                    .child(section("add-gog-account", self.add_gog_account(cx)))
+                    .child(section("amazon-games", self.amazon_section()))
+                    .child(section("epic-games", self.epic_section())),
+            )
             .children(
                 self.steam_installed
                     .then(|| section("steam-games", self.steam_games(cx))),
             )
-            .child(section("amazon-games", self.amazon_section()))
-            .child(section("epic-games", self.epic_section()))
             .child(section("people", self.people(cx)))
     }
 }

@@ -60,6 +60,7 @@ settings.account.renew: 세션 갱신
 settings.account.session.invalid: '잘못된 세션: %{error}'
 settings.account.steam.show: "이 프로필에서 Steam 게임 표시"
 settings.account.steam.hint: "Steam에 설치된 게임과 직접 추가한 게임이 라이브러리에 나타납니다. 끄면 Steam 게임이 Steam 컬렉션·즐겨찾기와 함께 decanter에서 제거되며, 게임 파일은 건드리지 않습니다."
+settings.account.add.title: "계정 추가"
 settings.account.add.button: + GOG 계정 추가
 settings.account.add.hint: GOG를 열고 로그인한 다음, 이동한 페이지의 주소를 여기에 붙여 넣으세요.
 settings.account.add.open: GOG 열기

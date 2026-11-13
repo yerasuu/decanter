@@ -60,6 +60,7 @@ settings.account.renew: Renouveler la session
 settings.account.session.invalid: 'session invalide : %{error}'
 settings.account.steam.show: "Afficher les jeux Steam dans ce profil"
 settings.account.steam.hint: "Les jeux installés dans Steam et ceux que vous avez ajoutés apparaissent dans la Bibliothèque. Désactiver cette option retire les jeux Steam de decanter, avec leurs collections et favoris Steam ; aucun fichier de jeu n’est touché."
+settings.account.add.title: "Ajouter un compte"
 settings.account.add.button: + Ajouter un compte GOG
 settings.account.add.hint: Ouvrez GOG, connectez-vous et collez ici l’adresse de la page sur laquelle vous arrivez.
 settings.account.add.open: Ouvrir GOG
