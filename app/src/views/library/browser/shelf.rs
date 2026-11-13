@@ -89,6 +89,16 @@ impl BrowserView {
             .find(|(id, _)| *id == shelf.source)
             .map(|(_, label)| label.clone())
             .unwrap_or_default();
+        let title = if shelf.source == "all" {
+            Sort::options()
+                .into_iter()
+                .find(|(value, _)| *value == shelf.sort.value())
+                .map(|(_, label)| label)
+                .unwrap_or_default()
+        } else {
+            ghost_label.clone()
+        }
+        .to_uppercase();
         let view = cx.entity();
         let open_focus = self.rows.get(&key).and_then(|row| row.open_focus.as_ref());
 
@@ -156,10 +166,17 @@ impl BrowserView {
                     }))
                     .child(if shelf.collapsed { "▸" } else { "▾" }),
             )
-            // The source picker *is* the shelf's title.
+            // Named after what the shelf shows: three shelves of the whole library differ only in
+            // their order, so the order is what the title says. The pickers stay beside it.
+            .child(
+                theme::display(18.)
+                    .flex_none()
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(title),
+            )
             .child(
                 Select::new(("shelf-source", key), sources.iter().cloned(), shelf.source.clone())
-                    .style(SelectStyle::Heading)
+                    .style(SelectStyle::Small)
                     .on_change(cx.listener(move |this, value: &SharedString, _, cx| {
                         this.update_slot(key, |slot| slot.source = value.to_string(), cx);
                     })),
