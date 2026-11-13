@@ -233,21 +233,21 @@ impl GamesView {
                     .child(self.refresh_button(cx)),
             )
             .child(body)
-            .child(
-                div().p(px(14.)).child(
-                    button(
-                        "ps-compatible-games",
-                        ButtonKind::Secondary,
-                        t!("ps.games.compatible_list"),
-                        false,
-                    )
-                    .on_click(|_, _, _| {
-                        if let Err(err) = crate::desktop::open(COMPATIBLE_GAMES_URL) {
-                            tracing::warn!(%err, "could not open the compatible games list");
-                        }
-                    }),
-                ),
-            )
+    }
+
+    /// Beside the covers' first caption, where the list of what runs is looked up from.
+    fn compatible_games_button() -> impl IntoElement {
+        button(
+            "ps-compatible-games",
+            ButtonKind::Secondary,
+            t!("ps.games.compatible_list"),
+            false,
+        )
+        .on_click(|_, _, _| {
+            if let Err(err) = crate::desktop::open(COMPATIBLE_GAMES_URL) {
+                tracing::warn!(%err, "could not open the compatible games list");
+            }
+        })
     }
 
     /// Reads the games folder again — for dumps copied in while the

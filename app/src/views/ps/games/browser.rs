@@ -291,6 +291,7 @@ impl Render for BrowserView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_cards(window, cx);
         let ps = self.ps.read(cx);
+        let mut first = true;
         let shelves: Vec<_> = [Platform::Ps4, Platform::Ps5]
             .into_iter()
             .filter_map(|platform| {
@@ -301,15 +302,23 @@ impl Render for BrowserView {
                     .map(|entry| (entry.game.dir.clone(), self.card(entry, cx).into_any_element()))
                     .unzip();
                 (!cards.is_empty()).then(|| {
+                    let leads = std::mem::take(&mut first);
                     div()
                         .flex()
                         .flex_col()
                         .gap(px(14.))
-                        .child(theme::display(15.).text_color(rgb(theme::TEXT_MUTED)).child(format!(
-                            "{} · {}",
-                            platform_label(platform),
-                            cards.len()
-                        )))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(theme::display(15.).text_color(rgb(theme::TEXT_MUTED)).child(format!(
+                                    "{} · {}",
+                                    platform_label(platform),
+                                    cards.len()
+                                )))
+                                .when(leads, |row| row.child(GamesView::compatible_games_button())),
+                        )
                         .child(
                             div()
                                 .flex()
