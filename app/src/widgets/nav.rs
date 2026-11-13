@@ -59,17 +59,18 @@ pub fn tab_stop<E: InteractiveElement>(element: E) -> E {
     focus_ring(element.tab_index(0))
 }
 
-/// The ring alone, for an element that tracks a focus handle of its own.
+/// The ring alone, for an element that tracks a focus handle of its own. Two rings, the page's
+/// colour inside the accent one, so it stays visible on an accent fill or on artwork. Shadows
+/// paint in order, so the wider one comes first and the narrower covers its middle.
 pub fn focus_ring<E: InteractiveElement>(element: E) -> E {
-    element.focus_visible(|style| {
-        style.shadow(vec![BoxShadow {
-            color: rgb(theme::ACCENT_BLUE).into(),
-            offset: point(px(0.), px(0.)),
-            blur_radius: px(0.),
-            spread_radius: px(2.),
-            inset: false,
-        }])
-    })
+    let ring = |color: u32, spread: f32| BoxShadow {
+        color: rgb(color).into(),
+        offset: point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(spread),
+        inset: false,
+    };
+    element.focus_visible(|style| style.shadow(vec![ring(theme::ACCENT_BLUE, 4.), ring(theme::BG_DEEP, 2.)]))
 }
 
 /// Tab and the arrows move the focus and Escape calls `back`, in every window, for whatever
