@@ -1,8 +1,8 @@
 settings.title: Settings
 settings.tabs.general: General
-settings.tabs.account: "Accounts and library"
+settings.tabs.account: "Accounts"
 settings.tabs.compatibility: Compatibility
-settings.tabs.downloads: "Downloads and updates"
+settings.tabs.downloads: "Updates"
 settings.tabs.integrations: "Integrations"
 settings.tabs.advanced: "Advanced"
 settings.storage_error: 'Error opening storage: %{error}'

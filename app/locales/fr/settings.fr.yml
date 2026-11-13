@@ -1,8 +1,8 @@
 settings.title: Paramètres
 settings.tabs.general: Général
-settings.tabs.account: "Comptes et bibliothèque"
+settings.tabs.account: "Comptes"
 settings.tabs.compatibility: Compatibilité
-settings.tabs.downloads: "Téléchargements et mises à jour"
+settings.tabs.downloads: "Mises à jour"
 settings.tabs.integrations: "Intégrations"
 settings.tabs.advanced: "Avancé"
 settings.storage_error: 'Erreur d’ouverture du stockage : %{error}'

@@ -659,7 +659,7 @@ impl Render for AccountTab {
             )
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
-            .child(section("add-gog-account", self.add_gog_account(cx)))
+            .child(section("add-gog-account", div().mb_6().child(self.add_gog_account(cx))))
             .children(
                 self.steam_installed
                     .then(|| section("steam-games", self.steam_games(cx))),

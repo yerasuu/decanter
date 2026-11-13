@@ -187,7 +187,6 @@ impl Render for SettingsView {
                 div()
                     .flex()
                     .gap_8()
-                    .mx_8()
                     .child(sidebar)
                     .child(div().flex_1().min_w_0().child(body)),
             ),

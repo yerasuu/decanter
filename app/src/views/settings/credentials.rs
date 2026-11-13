@@ -277,8 +277,8 @@ fn kind_label(kind: SecretKind) -> String {
 
 fn subject_label(row: &Row) -> String {
     match (&row.account_name, row.key.subject()) {
-        (Some(name), Some(id)) => format!("{name} ({id})"),
-        (None, Some(subject)) => subject.to_owned(),
+        (Some(name), Some(id)) => format!("{name} ({})", short_id(id)),
+        (None, Some(subject)) => short_id(subject),
         (_, None) => t!("settings.credentials.subject.app").into_owned(),
     }
 }
@@ -343,4 +343,15 @@ fn load_rows() -> Result<Vec<Row>, decanter_core::secrets::StoreError> {
             }
         })
         .collect())
+}
+
+/// The ends of a long account id, enough to tell two apart without the whole string on screen.
+fn short_id(id: &str) -> String {
+    let chars: Vec<char> = id.chars().collect();
+    if chars.len() <= 16 {
+        return id.to_owned();
+    }
+    let head: String = chars[..8].iter().collect();
+    let tail: String = chars[chars.len() - 4..].iter().collect();
+    format!("{head}…{tail}")
 }

@@ -1,8 +1,8 @@
 settings.title: 'Настройки'
 settings.tabs.general: 'Основные'
-settings.tabs.account: "Аккаунты и библиотека"
+settings.tabs.account: "Аккаунты"
 settings.tabs.compatibility: 'Совместимость'
-settings.tabs.downloads: "Загрузки и обновления"
+settings.tabs.downloads: "Обновления"
 settings.tabs.integrations: "Интеграции"
 settings.tabs.advanced: "Дополнительно"
 settings.storage_error: 'Ошибка при открытии хранилища: %{error}'
