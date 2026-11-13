@@ -290,6 +290,7 @@ impl BrowserView {
                     .text_size(px(12.5))
                     .text_color(rgb(theme::TEXT_PRIMARY))
                     .line_clamp(2)
+                    .text_ellipsis()
                     .child(display_title(game)),
             )
     }

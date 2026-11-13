@@ -21,6 +21,7 @@ use gpui::{
 
 use rust_i18n::t;
 
+use super::SIDEBAR_WIDTH;
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{Filters, KindSelection, PlayState, SavedFilter, Sort};
 use super::{LibraryModel, LibraryPopup};
@@ -30,8 +31,6 @@ use crate::theme;
 use crate::widgets::select::SelectStyle;
 use crate::widgets::{Emoji, InputEvent, Select, TextInput, emoji, nav, tooltip};
 use rows::{Row, RowsKey};
-
-const SIDEBAR_WIDTH: f32 = 292.;
 
 type CacheKey = (String, u32, u32);
 

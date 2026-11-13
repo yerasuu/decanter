@@ -255,7 +255,7 @@ impl GamesView {
     fn refresh_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
         let scanning = self.ps.read(cx).scanning();
         let ps = self.ps.clone();
-        button("ps-rescan", ButtonKind::Icon, "⟳", scanning)
+        button("ps-rescan", ButtonKind::Icon, "↻", scanning)
             .tooltip(tooltip(if scanning {
                 t!("ps.games.scanning")
             } else {

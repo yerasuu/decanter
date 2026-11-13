@@ -179,8 +179,8 @@ fn with_testing_badge(element: impl IntoElement) -> AnyElement {
         .flex()
         .items_center()
         .gap_2()
-        .child(element)
-        .child(testing_badge())
+        .child(div().flex_1().min_w_0().child(element))
+        .child(testing_badge().flex_none())
         .into_any_element()
 }
 
