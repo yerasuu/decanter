@@ -26,6 +26,9 @@ pub const TEXT_MUTED: u32 = 0x8f98a0;
 pub const TEXT_DIM: u32 = 0x5c6b76;
 pub const TEXT_BRIGHT: u32 = 0xffffff;
 
+/// The "fine" green, calmer than `ACCENT_GREEN` so a state never reads as the primary action.
+pub const STATUS_OK: u32 = 0x5fa85b;
+
 pub const ERROR_TEXT: u32 = 0xf2a3a3;
 pub const ERROR_BG: u32 = 0x2a1616;
 pub const ERROR_LINE: u32 = 0x4a2323;
@@ -259,5 +262,43 @@ pub fn badge(text: impl AsRef<str>, gog: bool) -> Div {
         .border_1()
         .border_color(rgb(if gog { ACCENT_BLUE_DIM } else { LINE }))
         .text_color(rgb(if gog { ACCENT_BLUE } else { TEXT_MUTED }))
+        .child(text.as_ref().to_uppercase())
+}
+
+#[derive(Clone, Copy)]
+pub enum Tone {
+    Neutral,
+    Info,
+    Ok,
+    Warn,
+    Error,
+}
+
+impl Tone {
+    const fn color(self) -> u32 {
+        match self {
+            Self::Neutral => TEXT_MUTED,
+            Self::Info => ACCENT_BLUE,
+            Self::Ok => STATUS_OK,
+            Self::Warn => ACCENT_GOLD,
+            Self::Error => ERROR_TEXT,
+        }
+    }
+}
+
+/// A state or marker that belongs to what it sits beside: tinted fill, no border, so it never
+/// reads as a tab or a button. Shown only when it tells something other than the default.
+pub fn chip(text: impl AsRef<str>, tone: Tone) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .justify_center()
+        .text_size(px(11.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .px(px(8.))
+        .py(px(2.))
+        .rounded(px(RADIUS_SM))
+        .bg(alpha(tone.color(), 0.16))
+        .text_color(rgb(tone.color()))
         .child(text.as_ref().to_uppercase())
 }

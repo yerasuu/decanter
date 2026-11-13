@@ -5,14 +5,14 @@
 use std::path::PathBuf;
 
 use decanter_ps::failures::{self, Call, CallReport, Failure, Kind, Log};
-use gpui::{ClipboardItem, Context, Div, Entity, FontWeight, SharedString, Stateful, Window, div, prelude::*, px, rgb};
+use gpui::{ClipboardItem, Context, Div, Entity, SharedString, Stateful, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use super::report::{Closed, ReportView};
 use crate::i18n::Text;
 use crate::report::scrub::Scrubber;
 use crate::state::{Ps, failure_message};
-use crate::theme;
+use crate::theme::{self, Tone};
 use crate::widgets::{ButtonKind, button, tooltip};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -137,11 +137,11 @@ impl FailuresView {
     fn row(&self, index: usize, failure: &Failure, last: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let key = (failure.time, failure.message.clone());
         let open = self.expanded.as_ref() == Some(&key);
-        let color = match failure.kind {
-            Kind::Crash | Kind::Stop => theme::ERROR_TEXT,
-            Kind::Error => theme::ACCENT_GOLD,
-            Kind::Exit => theme::TEXT_MUTED,
-            Kind::Missing => theme::ACCENT_BLUE,
+        let tone = match failure.kind {
+            Kind::Crash | Kind::Stop => Tone::Error,
+            Kind::Error => Tone::Warn,
+            Kind::Exit => Tone::Neutral,
+            Kind::Missing => Tone::Info,
         };
         let report = failure.report();
         let copy_button = button(
@@ -187,7 +187,7 @@ impl FailuresView {
                     .id(("ps-failure", index))
                     .cursor_pointer()
                     .hover(|row| row.bg(rgb(theme::BG_PANEL)))
-                    .child(kind_badge(failure.kind, color))
+                    .child(theme::chip(kind_label(failure.kind), tone).w(px(64.)))
                     .child(
                         theme::mono()
                             .flex_1()
@@ -284,21 +284,6 @@ impl Render for FailuresView {
                 }),
         )
     }
-}
-
-fn kind_badge(kind: Kind, color: u32) -> Div {
-    div()
-        .w(px(58.))
-        .flex_none()
-        .flex()
-        .justify_center()
-        .rounded(px(theme::RADIUS_SM))
-        .border_1()
-        .border_color(rgb(color))
-        .text_color(rgb(color))
-        .text_size(px(11.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .child(kind_label(kind))
 }
 
 fn failure_details(

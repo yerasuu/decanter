@@ -10,6 +10,7 @@ use gpui::{AnyElement, App, Div, Global, IntoElement, ParentElement as _, Shared
 use rust_i18n::t;
 
 use crate::self_update::{self, Availability};
+use crate::theme::Tone;
 use crate::{platform, theme};
 
 // What decanter itself finds missing, in technical English for the log as
@@ -171,7 +172,7 @@ fn without_psport_report(capabilities: &mut Capabilities) {
 
 /// For a row that has room for it beside its own label, such as a menu item.
 pub fn testing_badge() -> Div {
-    theme::badge(t!("common.testing"), false)
+    theme::chip(t!("common.testing"), Tone::Warn)
 }
 
 fn with_testing_badge(element: impl IntoElement) -> AnyElement {

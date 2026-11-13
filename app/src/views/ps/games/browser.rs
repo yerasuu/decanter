@@ -17,7 +17,7 @@ use rust_i18n::t;
 
 use super::GamesView;
 use super::detail::DetailView;
-use super::{art_url, display_title, entry_status_color, entry_status_text, platform_label};
+use super::{art_url, display_title, entry_status_chip, platform_label};
 use crate::state::Ps;
 use crate::theme;
 use crate::widgets::{ButtonKind, nav};
@@ -250,22 +250,13 @@ impl BrowserView {
                 linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.6),
                 linear_color_stop(theme::alpha(theme::BG_DEEP, 0.8), 1.),
             )))
-            .child(
-                div()
+            .children(entry_status_chip(entry, compat).map(|(text, tone)| {
+                theme::chip(text, tone)
                     .absolute()
                     .bottom(px(8.))
                     .left(px(8.))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .px(px(6.))
-                    .py(px(1.))
-                    .rounded(px(theme::RADIUS_SM))
                     .bg(theme::alpha(theme::BG_DEEP, 0.85))
-                    .text_size(px(10.))
-                    .text_color(rgb(entry_status_color(entry, compat)))
-                    .child(SharedString::from(entry_status_text(entry, compat))),
-            );
+            }));
         nav::focus_ring(div().id(SharedString::from(format!("ps-cover-{}", game.dir.display()))))
             .when_some(focus, InteractiveElement::track_focus)
             .group(GROUP)

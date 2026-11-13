@@ -33,7 +33,7 @@ use rust_i18n::t;
 use crate::i18n::Text;
 pub(super) use crate::state::ps_display_title as display_title;
 use crate::state::{AppState, JobKey, Ps};
-use crate::theme;
+use crate::theme::{self, Tone};
 use crate::widgets::nav::{self, Step};
 use crate::widgets::{ButtonKind, InputEvent, TextInput, button, running_mark, sidebar_title, tooltip};
 use browser::BrowserView;
@@ -465,16 +465,23 @@ fn entry_status_text(entry: &Entry, compat: Option<&Compat>) -> Cow<'static, str
     }
 }
 
-fn entry_status_color(entry: &Entry, compat: Option<&Compat>) -> u32 {
-    if entry
-        .reported(compat)
-        .is_some_and(|title| title.state == CompatState::Broken)
-    {
-        theme::ACCENT_GOLD
-    } else if entry.is_playable(compat) {
-        theme::ACCENT_GREEN
-    } else {
-        theme::TEXT_MUTED
+/// What a cover says about its dump, only when it is not the default every dump starts with:
+/// 13 of 14 carrying the same word told nothing.
+fn entry_status_chip(entry: &Entry, compat: Option<&Compat>) -> Option<(Cow<'static, str>, Tone)> {
+    match entry.reported(compat).map(|title| title.state) {
+        Some(CompatState::Experimental) => None,
+        Some(CompatState::Playable) => Some((t!("ps.status.playable"), Tone::Ok)),
+        Some(CompatState::Broken) => Some((t!("ps.status.broken"), Tone::Warn)),
+        Some(CompatState::Unsupported) => Some((t!("ps.status.unsupported"), Tone::Neutral)),
+        None if matches!(entry.status, Status::Experimental) => None,
+        None => Some((
+            status_text(&entry.status),
+            if entry.is_playable(compat) {
+                Tone::Ok
+            } else {
+                Tone::Neutral
+            },
+        )),
     }
 }
 
