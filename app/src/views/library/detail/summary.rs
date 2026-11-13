@@ -4,63 +4,65 @@ use rust_i18n::t;
 
 use crate::theme;
 use crate::views::library::fmt;
+use crate::widgets::stat_card;
 
 pub(super) fn summary_tab(game: &Game, playtime: Playtime) -> Div {
-    let facts: Vec<(String, String)> = [
-        game.developer
-            .clone()
-            .map(|developer| (t!("library.detail.summary.developer_label").into_owned(), developer)),
-        game.publisher
-            .clone()
-            .map(|publisher| (t!("library.detail.summary.publisher_label").into_owned(), publisher)),
-        (!game.genres.is_empty()).then(|| {
-            (
-                t!("library.detail.summary.genres_label").into_owned(),
-                game.genres.join(", "),
-            )
-        }),
-        game.release_date
-            .and_then(fmt::utc_date)
-            .map(|date| (t!("library.detail.summary.release").into_owned(), date)),
-        game.rating
-            .as_deref()
-            .map(|rating| (t!("library.detail.summary.rating").into_owned(), fmt::rating(rating))),
-        playtime
-            .last_played_at
-            .and_then(fmt::unix_date)
-            .map(|last| (t!("library.detail.summary.last_session").into_owned(), last)),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    let count = facts.len();
-    let card = (count > 0).then(|| {
-        theme::card()
-            .mt(px(20.))
-            .mx(px(32.))
-            .max_w(px(720.))
-            .children(facts.into_iter().enumerate().map(|(index, (label, value))| {
-                theme::compact_row(index + 1 == count)
-                    .py(px(12.))
-                    .child(
-                        div()
-                            .w(px(140.))
-                            .flex_none()
-                            .text_size(px(12.))
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(label),
-                    )
-                    .child(div().flex_1().min_w_0().child(value))
-            }))
-    });
-    let description = game.description.clone().map(|text| {
+    let stats = div()
+        .flex()
+        .flex_wrap()
+        .gap(px(14.))
+        .mt(px(20.))
+        .mx(px(32.))
+        .child(stat_card(
+            fmt::duration(playtime.seconds_total),
+            &t!("library.detail.summary.playtime"),
+        ))
+        .children(
+            playtime
+                .last_played_at
+                .and_then(fmt::unix_date)
+                .map(|last| stat_card(last, &t!("library.detail.summary.last_session"))),
+        )
+        .children(
+            game.rating
+                .as_deref()
+                .map(|rating| stat_card(fmt::rating(rating), &t!("library.detail.summary.rating"))),
+        )
+        .children(
+            game.release_date
+                .and_then(fmt::utc_date)
+                .map(|date| stat_card(date, &t!("library.detail.summary.release"))),
+        );
+
+    // HTML collapsed the two spaces the webview put after the developer
+    // into one, so that's what is shown between the two credits.
+    let credits = match (&game.developer, &game.publisher) {
+        (None, None) => None,
+        (Some(dev), None) => Some(t!("library.detail.summary.developer", developer = dev)),
+        (None, Some(publisher)) => Some(t!("library.detail.summary.publisher", publisher = publisher)),
+        (Some(dev), Some(publisher)) => Some(t!(
+            "library.detail.summary.developer_publisher",
+            developer = dev,
+            publisher = publisher
+        )),
+    };
+    let genres =
+        (!game.genres.is_empty()).then(|| t!("library.detail.summary.genres", genres = game.genres.join(", ")));
+    let paragraph = |text: String| {
         div()
-            .mt(px(20.))
-            .mx(px(32.))
-            .max_w(px(720.))
+            .mb(px(10.))
             .line_height(relative(1.6))
             .text_color(rgb(theme::TEXT_MUTED))
             .child(text)
-    });
-    div().flex().flex_col().pb(px(40.)).children(description).children(card)
+    };
+    let text = div()
+        .mt(px(20.))
+        .mx(px(32.))
+        .mb(px(40.))
+        .max_w(px(720.))
+        .children(game.description.clone().map(paragraph))
+        .children(credits.map(|text| paragraph(text.into_owned())))
+        .children(genres.map(|text| paragraph(text.into_owned())));
+
+    div().flex().flex_col().child(stats).child(text)
 }

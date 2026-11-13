@@ -46,15 +46,7 @@ use crate::theme;
 use crate::widgets::progress_bar;
 use crate::widgets::reveal::scrolling;
 
-/// Narrower under 1600px, where the shelves would otherwise lose a card: a 1280 window gives the
-/// grid the 28px back.
-pub(crate) fn sidebar_width(window: &Window) -> f32 {
-    if window.viewport_size().width.as_f32() < 1600. {
-        264.
-    } else {
-        292.
-    }
-}
+const SIDEBAR_WIDTH: f32 = 292.;
 /// How long an Epic game's achievements stand without a new poll when its page is opened again.
 const EPIC_POLL_INTERVAL: Duration = Duration::from_mins(15);
 
@@ -377,12 +369,9 @@ impl Render for LibraryView {
             .flex()
             .overflow_hidden()
             .child(
-                self.sidebar.clone().cached(
-                    StyleRefinement::default()
-                        .w(px(sidebar_width(window)))
-                        .h_full()
-                        .flex_none(),
-                ),
+                self.sidebar
+                    .clone()
+                    .cached(StyleRefinement::default().w(px(SIDEBAR_WIDTH)).h_full().flex_none()),
             )
             .child(
                 div()

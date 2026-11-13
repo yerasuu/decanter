@@ -94,32 +94,16 @@ fn hero_backdrop(game: &Game) -> Div {
     // The inline `background-image` replaced the whole gradient stack in the
     // webview build, so the gradients only ever showed with no art at all.
     match art {
-        Some(url) => hero
-            .child(
-                // Wide enough for the detail pane on a maximized 1080p window;
-                // the hero's height follows its text, 300 px at the least.
-                img(crate::art::source(url, gpui::size(1600., 400.)))
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .object_fit(ObjectFit::Cover),
-            )
-            // Light art washed out the white title and the stat tiles, so the scrim is always there:
-            // a veil over the whole picture and a plate that deepens toward the title.
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .bg(theme::alpha(theme::BG_DEEP, 0.25)),
-            )
-            .child(div().absolute().top_0().left_0().size_full().bg(gpui::linear_gradient(
-                180.,
-                gpui::linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.35),
-                gpui::linear_color_stop(theme::alpha(theme::BG_DEEP, 0.95), 1.),
-            ))),
+        Some(url) => hero.child(
+            // Wide enough for the detail pane on a maximized 1080p window;
+            // the hero's height follows its text, 300 px at the least.
+            img(crate::art::source(url, gpui::size(1600., 400.)))
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .object_fit(ObjectFit::Cover),
+        ),
         None => hero
             .child(
                 // GPUI has no radial gradient: a diagonal two-stop linear

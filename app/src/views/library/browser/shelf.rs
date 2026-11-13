@@ -9,7 +9,7 @@ use rust_i18n::t;
 
 use super::{BrowserView, Capsule, ShelfData};
 use crate::views::library::context_menu::MenuTarget;
-use crate::views::library::filters::Sort;
+use crate::views::library::filters::{PlayState, Sort};
 use crate::views::library::{LibraryModel, LibraryPopup};
 use crate::widgets::select::SelectStyle;
 use crate::widgets::{Select, nav, tooltip};
@@ -89,16 +89,6 @@ impl BrowserView {
             .find(|(id, _)| *id == shelf.source)
             .map(|(_, label)| label.clone())
             .unwrap_or_default();
-        let title = if shelf.source == "all" {
-            Sort::options()
-                .into_iter()
-                .find(|(value, _)| *value == shelf.sort.value())
-                .map(|(_, label)| label)
-                .unwrap_or_default()
-        } else {
-            ghost_label.clone()
-        }
-        .to_uppercase();
         let view = cx.entity();
         let open_focus = self.rows.get(&key).and_then(|row| row.open_focus.as_ref());
 
@@ -140,9 +130,8 @@ impl BrowserView {
                     .flex_none()
                     .text_size(px(13.))
                     .line_height(relative(1.))
-                    .text_color(rgb(theme::TEXT_MUTED))
-                    .opacity(0.)
-                    .group_hover(HEAD_GROUP, |grip| grip.opacity(1.))
+                    .text_color(rgb(theme::TEXT_DIM))
+                    .group_hover(HEAD_GROUP, |grip| grip.text_color(rgb(theme::TEXT_MUTED)))
                     .tooltip(tooltip(t!("library.browser.drag_to_reorder")))
                     .child("⠿"),
             )
@@ -166,17 +155,10 @@ impl BrowserView {
                     }))
                     .child(if shelf.collapsed { "▸" } else { "▾" }),
             )
-            // Named after what the shelf shows: three shelves of the whole library differ only in
-            // their order, so the order is what the title says. The pickers stay beside it.
-            .child(
-                theme::display(18.)
-                    .flex_none()
-                    .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child(title),
-            )
+            // The source picker *is* the shelf's title.
             .child(
                 Select::new(("shelf-source", key), sources.iter().cloned(), shelf.source.clone())
-                    .style(SelectStyle::Small)
+                    .style(SelectStyle::Heading)
                     .on_change(cx.listener(move |this, value: &SharedString, _, cx| {
                         this.update_slot(key, |slot| slot.source = value.to_string(), cx);
                     })),
@@ -235,9 +217,7 @@ impl BrowserView {
             .line_height(relative(1.))
             .text_color(rgb(theme::TEXT_DIM))
             .tooltip(tooltip(t!("library.browser.remove_shelf")))
-            .opacity(0.)
-            .group_hover(HEAD_GROUP, |button| button.opacity(1.))
-            .when(only_slot, |button| button.cursor_not_allowed())
+            .when(only_slot, |button| button.opacity(0.3).cursor_not_allowed())
             .when(!only_slot, |button| {
                 button
                     .cursor_pointer()
@@ -284,6 +264,7 @@ impl BrowserView {
         let spacer = |cards: usize| div().flex_none().w(px(cards as f32 * CARD_STRIDE - CARD_GAP));
 
         let model = self.model.clone();
+        let installed_only = self.model.read(cx).filters.states.contains(&PlayState::Installed);
         div()
             .id(("browser-viewport", key))
             .relative()
@@ -312,7 +293,7 @@ impl BrowserView {
                     .when(first > 0, |row| row.child(spacer(first)))
                     .children(shelf.capsules[first..last].iter().map(|capsule| {
                         let focus = row.and_then(|row| row.cards.get(&capsule.id));
-                        cover_card(capsule, focus, &model)
+                        cover_card(capsule, focus, &model, installed_only)
                     }))
                     .when(last < count, |row| row.child(spacer(count - last))),
             )
@@ -416,6 +397,7 @@ pub(super) fn cover_card(
     capsule: &Capsule,
     focus: Option<&FocusHandle>,
     model: &Entity<LibraryModel>,
+    installed_only: bool,
 ) -> impl IntoElement {
     let click_model = model.clone();
     let menu_model = model.clone();
@@ -445,7 +427,7 @@ pub(super) fn cover_card(
             menu_model.update(cx, |model, cx| model.open_popup(LibraryPopup::GameMenu(target), cx));
         })
         .child(cover_art(capsule))
-        .child(cover_pips(capsule))
+        .child(cover_pips(capsule, installed_only))
         .child(
             div()
                 .mt(px(7.))
@@ -513,8 +495,8 @@ fn cover_art(capsule: &Capsule) -> Stateful<Div> {
         })
         .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(
             180.,
-            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.38),
-            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.92), 1.),
+            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.42),
+            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.86), 1.),
         )))
         .child(
             // Three lines is what the scrim covers; a longer title would
@@ -530,20 +512,29 @@ fn cover_art(capsule: &Capsule) -> Stateful<Div> {
         )
 }
 
-fn cover_pips(capsule: &Capsule) -> Div {
+/// With "installed only" on every cover is installed, so the marker would say nothing.
+fn cover_pips(capsule: &Capsule, installed_only: bool) -> Div {
     div()
         .absolute()
         .top(px(7.))
         .right(px(7.))
         .flex()
         .gap(px(4.))
-        .when(capsule.installed, |pips| {
-            pips.child(pip(
-                "cover-installed",
-                "▶",
-                theme::STATUS_OK,
-                t!("library.sidebar.installed").into(),
-            ))
+        .when(capsule.installed && !installed_only, |pips| {
+            pips.child(
+                div()
+                    .id("cover-installed")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(20.))
+                    .rounded_full()
+                    .bg(rgb(theme::ACCENT_GREEN))
+                    .text_color(rgb(theme::TEXT_ON_GREEN))
+                    .text_size(px(9.))
+                    .tooltip(tooltip(t!("library.sidebar.installed")))
+                    .child("▶"),
+            )
         })
         .when(capsule.favorite, |pips| {
             pips.child(pip(

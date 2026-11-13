@@ -23,7 +23,6 @@ use rust_i18n::t;
 
 use super::data::{self, Collections, LibraryStats};
 use super::filters::{Filters, KindSelection, PlayState, SavedFilter, Sort};
-use super::sidebar_width;
 use super::{LibraryModel, LibraryPopup};
 use crate::i18n::Text;
 use crate::state::AppState;
@@ -31,6 +30,8 @@ use crate::theme;
 use crate::widgets::select::SelectStyle;
 use crate::widgets::{Emoji, InputEvent, Select, TextInput, emoji, nav, tooltip};
 use rows::{Row, RowsKey};
+
+const SIDEBAR_WIDTH: f32 = 292.;
 
 type CacheKey = (String, u32, u32);
 
@@ -422,8 +423,7 @@ impl SidebarView {
                         let open = this.panel_open;
                         this.set_panel(!open, window, cx);
                     }))
-                    .gap(px(6.))
-                    .child(format!("☰ {}", t!("library.sidebar.filters")))
+                    .child("☰")
                     .when(active_filters > 0, |toggle| {
                         toggle.child(
                             theme::mono()
@@ -501,7 +501,7 @@ impl Render for SidebarView {
         let active_filters = self.model.read(cx).filters.active_count();
 
         div()
-            .w(px(sidebar_width(window)))
+            .w(px(SIDEBAR_WIDTH))
             .flex_none()
             .h_full()
             .flex()

@@ -12,7 +12,8 @@ use super::shelf::{CARD_GAP, CARD_STRIDE, COVER_HEIGHT, ROW_PADDING, auto_badge,
 use super::{BrowserView, Capsule, Derived, ShelfData};
 use crate::theme;
 use crate::views::library::context_menu::MenuTarget;
-use crate::views::library::{LibraryPopup, sidebar_width};
+use crate::views::library::filters::PlayState;
+use crate::views::library::{LibraryPopup, SIDEBAR_WIDTH};
 use crate::widgets::nav;
 
 /// A cover's height plus the room under it, the same for every row so the rows in view follow from
@@ -50,7 +51,7 @@ impl Page {
     /// From the window rather than the grid's own bounds, which are unknown until it has been laid
     /// out once.
     fn columns_in(window: &Window) -> usize {
-        let width = window.viewport_size().width.as_f32() - sidebar_width(window) - ROW_PADDING * 2.;
+        let width = window.viewport_size().width.as_f32() - SIDEBAR_WIDTH - ROW_PADDING * 2.;
         (((width + CARD_GAP) / CARD_STRIDE).floor() as usize).max(1)
     }
 
@@ -242,6 +243,7 @@ impl BrowserView {
         let (first_row, last_row) = (first / columns, last.div_ceil(columns));
         let spacer = |rows: usize| div().h(px(rows as f32 * ROW_STRIDE));
         let model = self.model.clone();
+        let installed_only = self.model.read(cx).filters.states.contains(&PlayState::Installed);
 
         div()
             .id("collection-page")
@@ -309,9 +311,9 @@ impl BrowserView {
                     .children((first_row..last_row).map(|row| {
                         let cards = row * columns..((row + 1) * columns).min(count);
                         div().flex().gap(px(CARD_GAP)).h(px(ROW_STRIDE)).children(
-                            shelf.capsules[cards]
-                                .iter()
-                                .map(|capsule| cover_card(capsule, page.cards.get(&capsule.id), &model)),
+                            shelf.capsules[cards].iter().map(|capsule| {
+                                cover_card(capsule, page.cards.get(&capsule.id), &model, installed_only)
+                            }),
                         )
                     }))
                     .when(last_row * columns < count, |grid| {
