@@ -61,6 +61,7 @@ settings.account.session.invalid: 'ungültige Sitzung: %{error}'
 settings.account.steam.show: "Steam-Spiele in diesem Profil anzeigen"
 settings.account.steam.hint: "Die in Steam installierten und die von dir hinzugefügten Spiele erscheinen in der Bibliothek. Beim Ausschalten werden die Steam-Spiele samt ihren Steam-Sammlungen und Favoriten aus decanter entfernt; Spieldateien bleiben unberührt."
 settings.account.add.title: "Konto hinzufügen"
+settings.account.signed_in_as: "Angemeldet als %{name}"
 settings.account.add.button: + GOG-Konto hinzufügen
 settings.account.add.hint: Öffne GOG, melde dich an und füge hier die Adresse der Seite ein, auf der du landest.
 settings.account.add.open: GOG öffnen

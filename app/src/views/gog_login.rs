@@ -26,12 +26,16 @@ enum Status {
 /// [`GogLogin::reset`] or [`GogLogin::fail`].
 pub struct LoggedIn(pub decanter_gog::Account);
 
+/// The user gave up before pasting a code; the embedder takes the step away.
+pub struct Cancelled;
+
 pub struct GogLogin {
     pasted: Entity<TextInput>,
     status: Status,
 }
 
 impl EventEmitter<LoggedIn> for GogLogin {}
+impl EventEmitter<Cancelled> for GogLogin {}
 
 impl GogLogin {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -92,6 +96,8 @@ impl Render for GogLogin {
         // width instead of stretching, as inline buttons did in a block.
         theme::card()
             .items_start()
+            .p_4()
+            .gap_3()
             .child(theme::muted(t!("settings.account.add.hint")).w_full())
             .child(
                 button("open-gog", ButtonKind::Primary, t!("settings.account.add.open"), false)
@@ -114,6 +120,20 @@ impl Render for GogLogin {
                         )
                         .when(!disabled, |b| {
                             b.on_click(cx.listener(|this, _, _, cx| this.connect(cx)))
+                        }),
+                    )
+                    .child(
+                        button(
+                            "cancel-gog",
+                            ButtonKind::Secondary,
+                            t!("common.cancel"),
+                            self.status == Status::Working,
+                        )
+                        .when(self.status != Status::Working, |b| {
+                            b.on_click(cx.listener(|this, _, _, cx| {
+                                this.reset(cx);
+                                cx.emit(Cancelled);
+                            }))
                         }),
                     ),
             )

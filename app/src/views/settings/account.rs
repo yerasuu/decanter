@@ -9,11 +9,12 @@
 //! two.
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use decanter_core::{Account, Profile, Storefront};
 use gpui::{
-    AsyncApp, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, WeakEntity, Window, div,
-    prelude::*, px, rgb,
+    AsyncApp, ClickEvent, Context, Entity, FontWeight, IntoElement, Pixels, Point, SharedString, Subscription,
+    WeakEntity, Window, div, point, prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
@@ -24,11 +25,11 @@ use crate::theme;
 #[cfg(target_os = "linux")]
 use crate::views::amazon_login::AmazonLogin;
 use crate::views::epic_login::EpicLogin;
-use crate::views::gog_login::{GogLogin, LoggedIn};
+use crate::views::gog_login::{Cancelled, GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
 use crate::views::{session_renewal, shell};
 use crate::widgets::reveal::reveal;
-use crate::widgets::{ButtonKind, Select, SettingRow, button, nav};
+use crate::widgets::{ButtonKind, Select, SettingRow, button, menu, nav};
 
 #[cfg(target_os = "linux")]
 mod amazon;
@@ -71,7 +72,7 @@ pub struct AccountTab {
     steam_shown: bool,
     adding: bool,
     /// The "Add an account" row of the accounts card is unfolded.
-    add_menu: bool,
+    add_menu: Option<Point<Pixels>>,
     login: Entity<GogLogin>,
     #[cfg(target_os = "linux")]
     amazon_login: Entity<AmazonLogin>,
@@ -86,6 +87,11 @@ impl AccountTab {
         let login = cx.new(GogLogin::new);
         cx.subscribe(&login, |this, _, LoggedIn(account), cx| this.connect(account, cx))
             .detach();
+        cx.subscribe(&login, |this, _, _: &Cancelled, cx| {
+            this.adding = false;
+            cx.notify();
+        })
+        .detach();
         #[cfg(target_os = "linux")]
         let amazon_login = {
             let amazon_login = cx.new({
@@ -128,7 +134,7 @@ impl AccountTab {
             steam_installed: decanter_core::steam::steam_root().is_some(),
             steam_shown: true,
             adding: false,
-            add_menu: false,
+            add_menu: None,
             login,
             #[cfg(target_os = "linux")]
             amazon_login,
@@ -554,7 +560,7 @@ impl AccountTab {
                 };
                 let label = match &row.session {
                     SessionCheck::Pending => theme::muted(t!("settings.account.session.checking")),
-                    SessionCheck::Valid(name) => div().font_weight(FontWeight::BOLD).child(name.clone()),
+                    SessionCheck::Valid(name) => theme::muted(t!("settings.account.signed_in_as", name = name)),
                     SessionCheck::Closed if row.account.storefront == Storefront::AmazonGames => {
                         theme::error(t!("amazon.session.closed"))
                     }
@@ -590,8 +596,33 @@ impl AccountTab {
                 let last = index + 1 == count && failed.is_none() && library_line.is_none();
                 let line = reveal(
                     theme::list_row(("account-row", index), last)
-                        .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
-                        .child(div().flex_1().min_w_0().child(label))
+                        .child(
+                            div()
+                                .flex_none()
+                                .size(px(32.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_full()
+                                .bg(rgb(theme::BG_PANEL))
+                                .border_1()
+                                .border_color(rgb(theme::LINE))
+                                .font_weight(FontWeight::BOLD)
+                                .child(storefront_label(storefront).chars().next().unwrap_or('?').to_string()),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(storefront_label(storefront)),
+                                )
+                                .child(label.text_size(px(12.))),
+                        )
                         .children(renew)
                         .child(
                             button(
@@ -629,31 +660,63 @@ impl AccountTab {
         div().when(self.adding, |panel| panel.child(self.login.clone()))
     }
 
-    /// The card's last row: unfolds the stores an account can be added from. Each item starts that
-    /// store's own login, whose steps then show under the card.
+    /// The card's last row. It opens the list of stores an account can be added from, a floating
+    /// menu so the card keeps its shape.
     fn add_account_row(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let open = self.add_menu;
-        let item = |id: &'static str, label: &'static str| {
-            nav::tab_stop(div().id(id))
+        div().child(
+            nav::tab_stop(div().id("add-account"))
                 .flex()
                 .items_center()
-                .pl(px(54.))
-                .pr_4()
-                .py(px(10.))
+                .gap_3()
+                .px(px(18.))
+                .py(px(12.))
                 .cursor_pointer()
-                .text_color(rgb(theme::TEXT_PRIMARY))
+                .text_color(rgb(theme::ACCENT_BLUE))
                 .hover(|row| row.bg(rgb(theme::BG_PANEL)))
-                .child(label)
+                .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                    let at = event.position();
+                    this.add_menu = this.add_menu.is_none().then(|| point(at.x, at.y + px(14.)));
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(px(32.))
+                        .rounded_full()
+                        .border_1()
+                        .border_color(rgb(theme::LINE))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .text_size(px(18.))
+                        .child("+"),
+                )
+                .child(t!("settings.account.add.title"))
+                .child(div().text_size(px(11.)).child("▾")),
+        )
+    }
+
+    fn add_menu_popup(&self, window: &Window, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        let position = self.add_menu?;
+        let this = cx.entity();
+        let dismiss: menu::Dismiss = Rc::new(move |_, cx| {
+            this.update(cx, |this, cx| {
+                this.add_menu = None;
+                cx.notify();
+            });
+        });
+        let item = |id: &'static str, label: &'static str| {
+            menu::item(id, false).px_3().py(px(8.)).text_size(px(13.)).child(label)
         };
         let gog = item("add-menu-gog", "GOG").on_click(cx.listener(|this, _, _, cx| {
-            this.add_menu = false;
+            this.add_menu = None;
             this.adding = true;
             cx.notify();
         }));
         #[cfg(target_os = "linux")]
         let amazon = Some(
             item("add-menu-amazon", "Amazon Games").on_click(cx.listener(|this, _, _, cx| {
-                this.add_menu = false;
+                this.add_menu = None;
                 this.amazon_login.update(cx, |login, cx| login.start(cx));
                 cx.notify();
             })),
@@ -661,32 +724,12 @@ impl AccountTab {
         #[cfg(not(target_os = "linux"))]
         let amazon: Option<gpui::Stateful<gpui::Div>> = None;
         let epic = item("add-menu-epic", "Epic Games").on_click(cx.listener(|this, _, _, cx| {
-            this.add_menu = false;
+            this.add_menu = None;
             this.epic_login.update(cx, |login, cx| login.start(cx));
             cx.notify();
         }));
-        div()
-            .flex()
-            .flex_col()
-            .child(
-                nav::tab_stop(div().id("add-account"))
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px(px(18.))
-                    .py(px(14.))
-                    .cursor_pointer()
-                    .text_color(rgb(theme::ACCENT_BLUE))
-                    .hover(|row| row.bg(rgb(theme::BG_PANEL)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.add_menu = !this.add_menu;
-                        cx.notify();
-                    }))
-                    .child(div().w(px(20.)).child("+"))
-                    .child(t!("settings.account.add.title"))
-                    .child(if open { "▴" } else { "▾" }),
-            )
-            .when(open, |menu| menu.child(gog).children(amazon).child(epic))
+        let panel = menu::panel().min_w(px(200.)).child(gog).children(amazon).child(epic);
+        Some(menu::popup(position, panel, window, dismiss))
     }
 }
 
@@ -698,7 +741,7 @@ impl AccountTab {
 }
 
 impl Render for AccountTab {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let accounts = column()
             .children(
                 self.rows
@@ -718,14 +761,21 @@ impl Render for AccountTab {
             )
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
-            .child(section("add-gog-account", self.add_gog_account()))
-            .child(section("amazon-games", self.amazon_section()))
-            .child(section("epic-games", self.epic_section()))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(section("add-gog-account", self.add_gog_account()))
+                    .child(section("amazon-games", self.amazon_section()))
+                    .child(section("epic-games", self.epic_section())),
+            )
             .child(div().h(px(16.)))
             .children(
                 self.steam_installed
                     .then(|| section("steam-games", self.steam_games(cx))),
             )
             .child(section("people", self.people(cx)))
+            .children(self.add_menu_popup(window, cx))
     }
 }

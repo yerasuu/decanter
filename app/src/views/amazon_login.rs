@@ -151,6 +151,8 @@ impl Render for AmazonLogin {
                 let disabled = working || self.pasted.read(cx).text().trim().is_empty();
                 theme::card()
                     .items_start()
+                    .p_4()
+                    .gap_3()
                     .child(theme::muted(t!("amazon.login.hint")).w_full())
                     .child(
                         button("open-amazon", ButtonKind::Primary, t!("amazon.login.open"), working)

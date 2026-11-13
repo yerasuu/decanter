@@ -142,6 +142,8 @@ impl Render for EpicLogin {
                 let disabled = working || self.pasted.read(cx).text().trim().is_empty();
                 theme::card()
                     .items_start()
+                    .p_4()
+                    .gap_3()
                     .child(theme::muted(t!("epic.login.hint")).w_full())
                     .child(
                         button("open-epic", ButtonKind::Primary, t!("epic.login.open"), working).when(!working, |b| {

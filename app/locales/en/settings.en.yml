@@ -61,6 +61,7 @@ settings.account.session.invalid: 'invalid session: %{error}'
 settings.account.steam.show: "Show Steam games in this profile"
 settings.account.steam.hint: "Steam's installed games and the ones you added appear in the Library. Turning it off removes Steam games from decanter, with their Steam collections and favorites; no game files are touched."
 settings.account.add.title: "Add an account"
+settings.account.signed_in_as: "Signed in as %{name}"
 settings.account.add.button: + Add GOG account
 settings.account.add.hint: Open GOG, log in, and paste the address of the page you land on here.
 settings.account.add.open: Open GOG

@@ -61,6 +61,7 @@ settings.account.session.invalid: "sessione non valida: %{error}"
 settings.account.steam.show: "Mostra i giochi di Steam in questo profilo"
 settings.account.steam.hint: "I giochi installati in Steam e quelli che hai aggiunto compaiono nella Libreria. Disattivandolo, i giochi Steam vengono rimossi da decanter, con le loro raccolte e i preferiti Steam; nessun file di gioco viene toccato."
 settings.account.add.title: "Aggiungi un account"
+settings.account.signed_in_as: "Accesso come %{name}"
 settings.account.add.button: + Aggiungi account GOG
 settings.account.add.hint: "Apri GOG, accedi e incolla qui l'indirizzo della pagina in cui arrivi."
 settings.account.add.open: Apri GOG

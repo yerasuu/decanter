@@ -61,6 +61,7 @@ settings.account.session.invalid: 'недействительный сеанс: 
 settings.account.steam.show: "Показывать игры Steam в этом профиле"
 settings.account.steam.hint: "Установленные в Steam игры и добавленные вами появляются в библиотеке. При выключении игры Steam удаляются из decanter вместе с их коллекциями и избранным; файлы игр не затрагиваются."
 settings.account.add.title: "Добавить аккаунт"
+settings.account.signed_in_as: "Вход выполнен как %{name}"
 settings.account.add.button: '+ Добавить учётную запись GOG'
 settings.account.add.hint: 'Откройте GOG, войдите и вставьте сюда адрес страницы, на которую попадёте.'
 settings.account.add.open: 'Открыть GOG'
