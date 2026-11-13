@@ -1,4 +1,6 @@
 storage.title: Speicher
+storage.summary.own: "%{used} belegt von %{count} Spielen"
+storage.summary.with_steam: "%{used} belegt von %{count} Spielen · %{steam} weitere bei Steam (%{steam_count} Spiele)"
 storage.add: Bibliotheksordner hinzufügen
 storage.add_title: Wähle, wo Spiele gespeichert werden
 storage.add_mount: '%{path} hinzufügen'

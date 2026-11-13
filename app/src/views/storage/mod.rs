@@ -16,7 +16,7 @@ use crate::state::{AppState, Download, DownloadKey, MoveFinished, MoveKey, MoveQ
 use crate::theme;
 use crate::views::downloads;
 use crate::widgets::reveal::reveal;
-use crate::widgets::{ButtonKind, button, progress_bar, stat_card, tooltip};
+use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
 
 /// One library folder as the last scan found it.
 struct Folder {
@@ -928,8 +928,6 @@ impl StorageView {
                         )
                     }),
             ))
-            .child(Self::cache_row(index, folder, cx))
-            .children(self.unfinished_rows(index, folder, cx))
             .children(folder.games.iter().enumerate().map(|(row, game)| {
                 let id = index * 10_000 + row;
                 reveal(
@@ -960,6 +958,8 @@ impl StorageView {
                         ),
                 )
             }))
+            .child(Self::cache_row(index, folder, cx))
+            .children(self.unfinished_rows(index, folder, cx))
     }
 }
 
@@ -981,28 +981,21 @@ impl Render for StorageView {
             (games + folder.games.len() + folder.dumps.len(), used + folder.total)
         });
 
-        let stats = div()
-            .flex()
-            .flex_wrap()
-            .gap(px(14.))
-            .mt(px(20.))
-            .mb_6()
-            .child(stat_card(
-                crate::format::bytes(used),
-                &if games == 1 {
-                    t!("storage.stats.used.one", count = games)
-                } else {
-                    t!("storage.stats.used.other", count = games)
-                },
-            ))
-            .child(stat_card(
-                folders.len().to_string(),
-                &if folders.len() == 1 {
-                    t!("storage.stats.folders.one")
-                } else {
-                    t!("storage.stats.folders.other")
-                },
-            ));
+        let (steam_games, steam_size) = folders.iter().fold((0, 0), |(games, size), folder| {
+            (games + folder.steam_games, size + folder.steam_size)
+        });
+        let summary = if steam_games == 0 {
+            t!("storage.summary.own", used = crate::format::bytes(used), count = games)
+        } else {
+            t!(
+                "storage.summary.with_steam",
+                used = crate::format::bytes(used),
+                count = games,
+                steam = crate::format::bytes(steam_size),
+                steam_count = steam_games
+            )
+        };
+        let stats = theme::muted(summary).mb_6();
 
         theme::page(
             "storage",

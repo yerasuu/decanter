@@ -1,4 +1,6 @@
 storage.title: Storage
+storage.summary.own: "%{used} used by %{count} games"
+storage.summary.with_steam: "%{used} used by %{count} games · %{steam} more kept by Steam (%{steam_count} games)"
 storage.add: Add library folder
 storage.add_title: Choose where to keep games
 storage.add_mount: 'Add %{path}'

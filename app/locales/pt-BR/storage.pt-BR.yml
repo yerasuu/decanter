@@ -1,4 +1,6 @@
 storage.title: Armazenamento
+storage.summary.own: "%{used} usados por %{count} jogos"
+storage.summary.with_steam: "%{used} usados por %{count} jogos · %{steam} a mais mantidos pela Steam (%{steam_count} jogos)"
 storage.add: Adicionar pasta de biblioteca
 storage.add_title: Escolha onde guardar os jogos
 storage.add_mount: 'Adicionar %{path}'

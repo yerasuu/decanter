@@ -1,4 +1,6 @@
 storage.title: "ストレージ"
+storage.summary.own: "%{count} 本のゲームで %{used} を使用"
+storage.summary.with_steam: "%{count} 本のゲームで %{used} を使用 · Steam 管理分はさらに %{steam}（%{steam_count} 本）"
 storage.add: "ライブラリフォルダーを追加"
 storage.add_title: "ゲームの保存場所を選択"
 storage.add_mount: "%{path} を追加"

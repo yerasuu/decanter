@@ -1,4 +1,6 @@
 storage.title: 저장 공간
+storage.summary.own: "게임 %{count}개가 %{used} 사용"
+storage.summary.with_steam: "게임 %{count}개가 %{used} 사용 · Steam이 따로 관리하는 %{steam}(게임 %{steam_count}개)"
 storage.add: 라이브러리 폴더 추가
 storage.add_title: 게임을 보관할 위치 선택
 storage.add_mount: "%{path} 추가"

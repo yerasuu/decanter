@@ -1,4 +1,6 @@
 storage.title: 'Хранилище'
+storage.summary.own: "%{used} занято: игр — %{count}"
+storage.summary.with_steam: "%{used} занято: игр — %{count} · ещё %{steam} у Steam (игр — %{steam_count})"
 storage.add: 'Добавить папку библиотеки'
 storage.add_title: 'Выберите, где хранить игры'
 storage.add_mount: "Добавить %{path}"
