@@ -619,10 +619,10 @@ impl Render for Shell {
         let installing = AppState::get(cx).background.read(cx).installing.len();
         let ps_link = self.nav_link("nav-ps", "PS", Page::Ps, cx);
         // Every system shows the section, marked while it is being tested there.
-        let ps_link = Caps::get(cx).mark(Feature::PsSection, ps_link);
+        let ps_link = Caps::get(cx).mark_within(Feature::PsSection, ps_link);
         let raven_link = raven_shown(cx).then(|| {
             let link = self.nav_link("nav-raven", "Raven", Page::Raven, cx);
-            Caps::get(cx).mark(Feature::Raven, link)
+            Caps::get(cx).mark_within(Feature::Raven, link)
         });
         let downloads_link = self
             .nav_link("nav-downloads", t!("chrome.nav.downloads"), Page::Downloads, cx)
@@ -658,9 +658,7 @@ impl Render for Shell {
                     .child(self.nav_link("nav-library", t!("chrome.nav.library"), Page::Library, cx))
                     .child(ps_link)
                     .children(raven_link)
-                    .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
-                    .child(downloads_link)
-                    .child(self.nav_link("nav-settings", t!("settings.title"), Page::Settings, cx)),
+                    .child(downloads_link),
             )
             // Empty on purpose: the window's only plain move surface, never
             // covered by a link, the profile switcher or the window buttons.
@@ -671,6 +669,16 @@ impl Render for Shell {
                     .flex_none()
                     .items_center()
                     .gap_4()
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .pr_4()
+                            .border_r_1()
+                            .border_color(rgb(theme::LINE))
+                            .child(self.nav_link("nav-storage", t!("chrome.nav.storage"), Page::Storage, cx))
+                            .child(self.nav_link("nav-settings", t!("settings.title"), Page::Settings, cx)),
+                    )
                     .when(several_profiles, |bar| bar.child(self.profile_switcher(cx)))
                     .child(chrome::window_controls(Rc::clone(&self.on_close))),
             );

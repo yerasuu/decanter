@@ -145,6 +145,15 @@ impl Caps {
         }
     }
 
+    /// `element` with the testing chip as its last child when `feature` is being tested: for a
+    /// link or tab whose own pill the chip belongs to, so it never reads as a tab of its own.
+    pub fn mark_within<E: gpui::ParentElement>(&self, feature: Feature, element: E) -> E {
+        match self.support(feature) {
+            Support::Testing => element.child(testing_badge()),
+            Support::Available | Support::Unavailable(_) => element,
+        }
+    }
+
     /// `element`, marked when it is being tested, with why it's unavailable in its place, muted.
     pub fn gate_or_reason(&self, feature: Feature, element: impl IntoElement) -> AnyElement {
         self.gate_or(feature, element, self.reason(feature).unwrap_or_default())
