@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use decanter_core::{Account, Profile, Storefront};
 use gpui::{
     AsyncApp, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, WeakEntity, Window, div,
-    prelude::*, px,
+    prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
@@ -28,7 +28,7 @@ use crate::views::gog_login::{GogLogin, LoggedIn};
 use crate::views::profile_form::{self, ProfileForm};
 use crate::views::{session_renewal, shell};
 use crate::widgets::reveal::reveal;
-use crate::widgets::{ButtonKind, Select, SettingRow, button};
+use crate::widgets::{ButtonKind, Select, SettingRow, button, nav};
 
 #[cfg(target_os = "linux")]
 mod amazon;
@@ -70,6 +70,8 @@ pub struct AccountTab {
     steam_installed: bool,
     steam_shown: bool,
     adding: bool,
+    /// The "Add an account" row of the accounts card is unfolded.
+    add_menu: bool,
     login: Entity<GogLogin>,
     #[cfg(target_os = "linux")]
     amazon_login: Entity<AmazonLogin>,
@@ -126,6 +128,7 @@ impl AccountTab {
             steam_installed: decanter_core::steam::steam_root().is_some(),
             steam_shown: true,
             adding: false,
+            add_menu: false,
             login,
             #[cfg(target_os = "linux")]
             amazon_login,
@@ -543,71 +546,73 @@ impl AccountTab {
 
     fn account_rows(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.rows.len();
-        theme::card().children(self.rows.iter().enumerate().flat_map(|(index, row)| {
-            let failed = match &row.status {
-                AccountStatus::Failed(message) => Some(message.clone()),
-                AccountStatus::Idle | AccountStatus::Working => None,
-            };
-            let label = match &row.session {
-                SessionCheck::Pending => theme::muted(t!("settings.account.session.checking")),
-                SessionCheck::Valid(name) => div().font_weight(FontWeight::BOLD).child(name.clone()),
-                SessionCheck::Closed if row.account.storefront == Storefront::AmazonGames => {
-                    theme::error(t!("amazon.session.closed"))
-                }
-                SessionCheck::Closed if row.account.storefront == Storefront::EpicGames => {
-                    theme::error(t!("epic.session.closed"))
-                }
-                SessionCheck::Closed => theme::error(t!("settings.account.session.revoked")),
-                SessionCheck::Unreachable => theme::muted(t!("settings.account.session.unreachable")),
-                SessionCheck::Failed(err) => theme::error(t!("settings.account.session.invalid", error = err)),
-            };
-            // Renewing is GOG's window; an Amazon or Epic session that closed is logged in again
-            // from that store's login below.
-            let renew_kind = match row.session {
-                _ if row.account.storefront != Storefront::Gog => None,
-                SessionCheck::Closed => Some(ButtonKind::Primary),
-                SessionCheck::Unreachable => Some(ButtonKind::Secondary),
-                SessionCheck::Pending | SessionCheck::Valid(_) | SessionCheck::Failed(_) => None,
-            };
-            let working = row.status == AccountStatus::Working;
-            let account_id = row.account.id.clone();
-            let storefront = row.account.storefront;
-            let library_line = (storefront == Storefront::EpicGames)
-                .then(|| Self::epic_library_line(index, &account_id, index + 1 == count && failed.is_none(), cx))
-                .flatten();
-            let renew = renew_kind.map(|kind| {
-                let account_id = account_id.clone();
-                button(("renew", index), kind, t!("settings.account.renew"), working).when(!working, |b| {
-                    b.on_click(cx.listener(move |this, _, _, cx| this.renew(&account_id, storefront, cx)))
-                })
-            });
-            // The error line follows the row inside the card, so the row
-            // only counts as `:last-child` when there's none.
-            let last = index + 1 == count && failed.is_none() && library_line.is_none();
-            let line = reveal(
-                theme::list_row(("account-row", index), last)
-                    .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
-                    .child(div().flex_1().min_w_0().child(label))
-                    .children(renew)
-                    .child(
-                        button(
-                            ("log-out", index),
-                            ButtonKind::Secondary,
-                            t!("settings.account.log_out"),
-                            working,
-                        )
-                        .when(!working, |b| {
-                            b.on_click(cx.listener(move |this, _, _, cx| {
-                                this.log_out(account_id.clone(), storefront, cx);
-                            }))
-                        }),
-                    ),
-            )
-            .into_any_element();
-            std::iter::once(line)
-                .chain(library_line)
-                .chain(failed.map(|message| theme::error(message).into_any_element()))
-        }))
+        theme::card()
+            .children(self.rows.iter().enumerate().flat_map(|(index, row)| {
+                let failed = match &row.status {
+                    AccountStatus::Failed(message) => Some(message.clone()),
+                    AccountStatus::Idle | AccountStatus::Working => None,
+                };
+                let label = match &row.session {
+                    SessionCheck::Pending => theme::muted(t!("settings.account.session.checking")),
+                    SessionCheck::Valid(name) => div().font_weight(FontWeight::BOLD).child(name.clone()),
+                    SessionCheck::Closed if row.account.storefront == Storefront::AmazonGames => {
+                        theme::error(t!("amazon.session.closed"))
+                    }
+                    SessionCheck::Closed if row.account.storefront == Storefront::EpicGames => {
+                        theme::error(t!("epic.session.closed"))
+                    }
+                    SessionCheck::Closed => theme::error(t!("settings.account.session.revoked")),
+                    SessionCheck::Unreachable => theme::muted(t!("settings.account.session.unreachable")),
+                    SessionCheck::Failed(err) => theme::error(t!("settings.account.session.invalid", error = err)),
+                };
+                // Renewing is GOG's window; an Amazon or Epic session that closed is logged in again
+                // from that store's login below.
+                let renew_kind = match row.session {
+                    _ if row.account.storefront != Storefront::Gog => None,
+                    SessionCheck::Closed => Some(ButtonKind::Primary),
+                    SessionCheck::Unreachable => Some(ButtonKind::Secondary),
+                    SessionCheck::Pending | SessionCheck::Valid(_) | SessionCheck::Failed(_) => None,
+                };
+                let working = row.status == AccountStatus::Working;
+                let account_id = row.account.id.clone();
+                let storefront = row.account.storefront;
+                let library_line = (storefront == Storefront::EpicGames)
+                    .then(|| Self::epic_library_line(index, &account_id, index + 1 == count && failed.is_none(), cx))
+                    .flatten();
+                let renew = renew_kind.map(|kind| {
+                    let account_id = account_id.clone();
+                    button(("renew", index), kind, t!("settings.account.renew"), working).when(!working, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| this.renew(&account_id, storefront, cx)))
+                    })
+                });
+                // The error line follows the row inside the card, so the row
+                // only counts as `:last-child` when there's none.
+                let last = index + 1 == count && failed.is_none() && library_line.is_none();
+                let line = reveal(
+                    theme::list_row(("account-row", index), last)
+                        .child(theme::muted(storefront_label(storefront)).flex_none().w(px(128.)))
+                        .child(div().flex_1().min_w_0().child(label))
+                        .children(renew)
+                        .child(
+                            button(
+                                ("log-out", index),
+                                ButtonKind::Secondary,
+                                t!("settings.account.log_out"),
+                                working,
+                            )
+                            .when(!working, |b| {
+                                b.on_click(cx.listener(move |this, _, _, cx| {
+                                    this.log_out(account_id.clone(), storefront, cx);
+                                }))
+                            }),
+                        ),
+                )
+                .into_any_element();
+                std::iter::once(line)
+                    .chain(library_line)
+                    .chain(failed.map(|message| theme::error(message).into_any_element()))
+            }))
+            .child(self.add_account_row(cx))
     }
 
     fn steam_games(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -619,22 +624,69 @@ impl AccountTab {
         )
     }
 
-    fn add_gog_account(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.adding {
-            return inline(
-                button(
-                    "add-gog",
-                    ButtonKind::Secondary,
-                    t!("settings.account.add.button"),
-                    false,
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.adding = true;
-                    cx.notify();
-                })),
-            );
-        }
-        div().child(self.login.clone())
+    /// GOG's login steps, once "Add an account" picked it.
+    fn add_gog_account(&self) -> impl IntoElement {
+        div().when(self.adding, |panel| panel.child(self.login.clone()))
+    }
+
+    /// The card's last row: unfolds the stores an account can be added from. Each item starts that
+    /// store's own login, whose steps then show under the card.
+    fn add_account_row(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let open = self.add_menu;
+        let item = |id: &'static str, label: &'static str| {
+            nav::tab_stop(div().id(id))
+                .flex()
+                .items_center()
+                .pl(px(54.))
+                .pr_4()
+                .py(px(10.))
+                .cursor_pointer()
+                .text_color(rgb(theme::TEXT_PRIMARY))
+                .hover(|row| row.bg(rgb(theme::BG_PANEL)))
+                .child(label)
+        };
+        let gog = item("add-menu-gog", "GOG").on_click(cx.listener(|this, _, _, cx| {
+            this.add_menu = false;
+            this.adding = true;
+            cx.notify();
+        }));
+        #[cfg(target_os = "linux")]
+        let amazon = Some(
+            item("add-menu-amazon", "Amazon Games").on_click(cx.listener(|this, _, _, cx| {
+                this.add_menu = false;
+                this.amazon_login.update(cx, |login, cx| login.start(cx));
+                cx.notify();
+            })),
+        );
+        #[cfg(not(target_os = "linux"))]
+        let amazon: Option<gpui::Stateful<gpui::Div>> = None;
+        let epic = item("add-menu-epic", "Epic Games").on_click(cx.listener(|this, _, _, cx| {
+            this.add_menu = false;
+            this.epic_login.update(cx, |login, cx| login.start(cx));
+            cx.notify();
+        }));
+        div()
+            .flex()
+            .flex_col()
+            .child(
+                nav::tab_stop(div().id("add-account"))
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .px(px(18.))
+                    .py(px(14.))
+                    .cursor_pointer()
+                    .text_color(rgb(theme::ACCENT_BLUE))
+                    .hover(|row| row.bg(rgb(theme::BG_PANEL)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.add_menu = !this.add_menu;
+                        cx.notify();
+                    }))
+                    .child(div().w(px(20.)).child("+"))
+                    .child(t!("settings.account.add.title"))
+                    .child(if open { "▴" } else { "▾" }),
+            )
+            .when(open, |menu| menu.child(gog).children(amazon).child(epic))
     }
 }
 
@@ -647,11 +699,14 @@ impl AccountTab {
 
 impl Render for AccountTab {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let accounts = if self.rows.is_empty() {
-            theme::empty(t!("settings.account.empty")).into_any_element()
-        } else {
-            self.account_rows(cx).into_any_element()
-        };
+        let accounts = column()
+            .children(
+                self.rows
+                    .is_empty()
+                    .then(|| theme::empty(t!("settings.account.empty")).mb_3()),
+            )
+            .child(self.account_rows(cx))
+            .mb_3();
         column()
             .children(
                 self.default_folder_picker(cx)
@@ -663,15 +718,10 @@ impl Render for AccountTab {
             )
             .child(theme::muted(t!("settings.account.intro")))
             .child(accounts)
-            .child(theme::h2(t!("settings.account.add.title")).mt_6())
-            .child(
-                theme::card()
-                    .p_4()
-                    .gap_3()
-                    .child(section("add-gog-account", self.add_gog_account(cx)))
-                    .child(section("amazon-games", self.amazon_section()))
-                    .child(section("epic-games", self.epic_section())),
-            )
+            .child(section("add-gog-account", self.add_gog_account()))
+            .child(section("amazon-games", self.amazon_section()))
+            .child(section("epic-games", self.epic_section()))
+            .child(div().h(px(16.)))
             .children(
                 self.steam_installed
                     .then(|| section("steam-games", self.steam_games(cx))),

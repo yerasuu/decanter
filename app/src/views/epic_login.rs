@@ -67,7 +67,7 @@ impl EpicLogin {
         cx.notify();
     }
 
-    fn start(&mut self, cx: &mut Context<Self>) {
+    pub fn start(&mut self, cx: &mut Context<Self>) {
         self.failed = None;
         if epic_consent::needs_consent(&self.profile_id) {
             self.step = Step::Consent;
@@ -129,13 +129,8 @@ impl Render for EpicLogin {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let failed = self.failed.clone().map(|message| theme::error(message).w_full());
         let body = match self.step {
-            Step::Idle => div()
-                .flex()
-                .child(
-                    button("add-epic", ButtonKind::Secondary, t!("epic.login.button"), false)
-                        .on_click(cx.listener(|this, _, _, cx| this.start(cx))),
-                )
-                .into_any_element(),
+            // Started from the accounts card's "Add an account" menu.
+            Step::Idle => div().into_any_element(),
             Step::Consent => epic_consent::show_consent(
                 "epic-consent",
                 cx.listener(|this, _, _, cx| this.accept(cx)),
