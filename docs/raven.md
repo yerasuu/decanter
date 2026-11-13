@@ -15,8 +15,9 @@ decanter show no section (Windows runs Windows programs itself); the same runner
 
 ## Building
 
-«Construir…» first asks for confirmation, saying what is downloaded and how much it takes. On «Descargar y
-construir» decanter:
+«Construir…» first asks for confirmation, saying what is downloaded and how much it takes, and that downloading
+Microsoft's root certificates accepts Microsoft's PKI Services Relying Party Agreement, linked under the text (see
+[What the root certificates download](#what-the-root-certificates-download)). On «Descargar y construir» decanter:
 
 1. records the confirmation (`runner::confirm`), which the build requires;
 2. clones `github.com/mirkobrombin/raven` shallow at the pinned commit (`RAVEN_COMMIT` in
@@ -51,10 +52,12 @@ construir» decanter:
    script downloads five upstream releases (below), checks each against the SHA-256 it pins, applies Raven's two
    libxml2 patches (`native/guest/raven-installer/patches/libxml2/`) and writes `provenance.json` with the hashes
    of everything it used and built. All of it is MinGW `gcc`, `windres`, `dlltool` and `widl` over Raven's own
-   MIT sources under `native/guest/` and those releases. Then GDI text, into `components/text/` (see
-   [What the text layer downloads](#what-the-text-layer-downloads)): `provision-text.py --fonts-only` (the Liberation
-   fonts and Raven Sans, its dialog face derived from DejaVu Sans Condensed, both checked by hash), then Skia, the
-   way that script builds it but with the toolchain's tools: a shallow fetch of `SKIA_REPOSITORY` at `SKIA_COMMIT`,
+   MIT sources under `native/guest/` and those releases. Then `provision-roots.py` (into `roots/`, see
+   [What the root certificates download](#what-the-root-certificates-download)), which downloads Microsoft's four
+   code signing roots and keeps each only if its SHA-256 is the one it pins. Then GDI text, into
+   `components/text/` (see [What the text layer downloads](#what-the-text-layer-downloads)):
+   `provision-text.py --fonts-only` (the Liberation fonts and Raven Sans, its dialog face derived from DejaVu Sans
+   Condensed, both checked by hash), then Skia, the way that script builds it but with the toolchain's tools: a shallow fetch of `SKIA_REPOSITORY` at `SKIA_COMMIT`,
    checked to be that commit, `args.gn` written from the script's `SKIA_ARGUMENTS` (all three read from the
    script, so a newer Raven brings its own), `gn gen` and `ninja skia`, a CPU-only `libskia.a` with FreeType from
    nix. The script's own Skia step is not run: it calls Skia's `tools/git-sync-deps`, which clones every one of
@@ -63,15 +66,16 @@ construir» decanter:
    `chrome-infra-packages.appspot.com` by tag with no digest checked. With the arguments Raven pins Skia needs none
    of those dependencies (the build reads nothing under `third_party/externals/`);
 6. configures with `-DRAVEN_RTL_COMPONENT_PATH`, `-DRAVEN_CONTROLS_COMPONENT_DIR`,
-   `-DRAVEN_CONTROLS32_COMPONENT_DIR`, `-DRAVEN_INSTALLER_COMPONENT_DIR` and `-DRAVEN_INSTALLER32_COMPONENT_DIR`,
-   so CMake copies the components beside `raven` (the 32-bit ones into `build/native/x86/`), and with
+   `-DRAVEN_CONTROLS32_COMPONENT_DIR`, `-DRAVEN_INSTALLER_COMPONENT_DIR`, `-DRAVEN_INSTALLER32_COMPONENT_DIR` and
+   `-DRAVEN_ROOT_CERTIFICATE_DIRECTORY`, so CMake copies the components beside `raven` (the 32-bit ones into
+   `build/native/x86/`, the roots into `build/native/roots/`, where `nt/authenticode.cpp` reads them), and with
    `-DRAVEN_SKIA_SOURCE`, `-DRAVEN_SKIA_LIBRARY` and `-DRAVEN_FONT_DIRECTORY`, so `native/CMakeLists.txt` checks the
    three Liberation fonts against its own hashes and compiles the GDI text layer (`desktop/text.cpp`,
    `graphics/text.cpp`, Skia's path operations) into `raven`, the font folder's absolute path compiled in; and builds
-   `ninja -k 0 native/raven x86_ucrt_component installer_components_64 installer_components_32`: the runtime, the
-   32-bit C runtime, `ucrtbase32.dll`, and the copies of the installer components, none of which `native/raven`
-   depends on. Raven's full default build adds its test programs: at the pin it builds (533 steps) but takes
-   7.3 GB;
+   `ninja -k 0 native/raven x86_ucrt_component installer_components_64 installer_components_32 root_certificates`:
+   the runtime, the 32-bit C runtime, `ucrtbase32.dll`, and the copies of the installer components and the roots,
+   none of which `native/raven` depends on. Raven's full default build adds its test programs: at the pin it builds
+   (533 steps) but takes 7.3 GB;
 7. marks the build finished with one rename of its marker, after every step passed.
 
 Progress (sources, tools download, configure, Ninja's steps) shows in the section, with «Cancelar»: it drops the
@@ -103,6 +107,9 @@ folder and 581 MB of components, 323 MB of them under `text/` (Skia's source 291
 Downloaded besides the above: the two font archives, 7 MB; Skia's shallow fetch, about 78 MB; from nix's binary
 cache Clang, compiler-rt, GN and fontTools, about 153 MB compressed, 985 MB in the store (Clang's libraries
 833 MB). Well inside what the default build can carry, so it is part of it rather than an extra step.
+With the root certificates (2026-11-13, same machine, from an empty checkout, 415 s in all, the same steps as
+above plus `provision-roots.py`, under a second): four certificates, 5.5 KB, copied into `build/native/roots/`, and
+configure no longer warns that `RAVEN_ROOT_CERTIFICATE_DIRECTORY` is not set.
 
 ### What the text layer downloads
 
@@ -121,18 +128,34 @@ Liberation archive comes from Ubuntu's archive rather than the project's GitHub 
 pins. The build tools come from the pinned nixpkgs: Clang 21.1.8 (Apache-2.0 WITH LLVM-exception), GN
 (BSD-3-Clause), fontTools 4.63.0 (MIT) and FreeType 2.14.3, which Skia links (FreeType License or GPL-2.0).
 
+### What the root certificates download
+
+`provision-roots.py` at the pin fetches these four certificates and nothing else, over plain HTTP from Microsoft's
+own server, and writes each to `components/roots/` only if the SHA-256 of its DER bytes is the one in its `ROOTS`
+table (a certificate already there is fetched again unless it matches); a mismatch fails the build. Without them an
+installer that checks a Microsoft signature (WiX Burn bundles, the .NET and Visual C++ redistributables) fails with
+`0x800b010a`. Checked on 2026-11-13: the SHA-256 values match what Microsoft's server serves, and the SHA-1
+thumbprints of the 2010 and 2011 roots match the ones Microsoft's
+[PKI repository](https://www.microsoft.com/pkiops/docs/repository.htm) lists; the two older roots (which expired in 2020
+and 2021) are not on that page.
+
+| Certificate | URL | SHA-256 | SHA-1 thumbprint |
+| --- | --- | --- | --- |
+| Microsoft Root Authority | `http://www.microsoft.com/pki/certs/MicrosoftRootAuthority.crt` | `f38406e540d7a9d90cb4a9479299640ffb6df9e224ecc7a01c0d9558d8dad77d` | `A43489159A520F0D93D032CCAF37E7FE20A8B419` |
+| Microsoft Root Certificate Authority | `http://www.microsoft.com/pki/certs/MicrosoftRootCert.crt` | `885de64c340e3ea70658f01e1145f957fcda27aabeea1ab9faa9fdb0102d4077` | `CDD4EEAE6000AC7F40C3802C171E30148030C072` |
+| Microsoft Root Certificate Authority 2010 | `http://www.microsoft.com/pki/certs/MicRooCerAut_2010-06-23.crt` | `df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e` | `3B1EFD3A66EA28B16697394703A72CA340A05BD5` |
+| Microsoft Root Certificate Authority 2011 | `http://www.microsoft.com/pki/certs/MicRooCerAut2011_2011_03_22.crt` | `847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61` | `8F43288AD272F3103B6FB1428485EA3014C0BCFE` |
+
+The certificates are public, but Microsoft's PKI repository puts every download under its
+[Relying Party Agreement](https://www.microsoft.com/pkiops/Docs/Content/policy/MSRelyingPartyAgreement2018.pdf):
+"By submitting any query to, or otherwise by downloading, accessing, using, or relying on any aspect of, the
+Microsoft PKI, you are deemed to have accepted all terms of this Agreement", a contract between the person and
+Microsoft with relying-party duties (checking revocation, reading the CPS). The owner accepted it and chose to
+build the roots (#1657, #1687), so the confirmation says that building accepts it and links it: the player who
+presses «Descargar y construir» becomes a party to it.
+
 ### What is not built yet
 
-- The Microsoft code-signing roots (`provision-roots.py`, `RAVEN_ROOT_CERTIFICATE_DIRECTORY`, copied by the
-  `root_certificates` target into `build/native/roots/`, which `nt/authenticode.cpp` reads). The four certificates
-  come from `http://www.microsoft.com/pki/certs/`, each pinned by SHA-256, and are public, but Microsoft's
-  [PKI repository](https://www.microsoft.com/pkiops/docs/repository.htm) puts every download under its
-  [Relying Party Agreement](https://www.microsoft.com/pkiops/Docs/Content/policy/MSRelyingPartyAgreement2018.pdf):
-  "By submitting any query to, or otherwise by downloading, accessing, using, or relying on any aspect of, the
-  Microsoft PKI, you are deemed to have accepted all terms of this Agreement", a contract between the person and
-  Microsoft with relying-party duties (checking revocation, reading the CPS). Fetching them would make the player
-  a party to it, which is the owner's decision; until then installers that check Microsoft signatures fail with
-  `0x800b010a`.
 - DXVK 3.1.1 and vkd3d-proton 3.1 (`provision-graphics.py`). At the pin `RAVEN_DXVK_PE64_DIR`, `RAVEN_DXVK_PE32_DIR`
   and `RAVEN_VKD3D_PE64_DIR` only add CTest tests; a program finds its Direct3D DLLs through `RAVEN_D3D_DIRECTORY`
   or beside `raven` (`native/main.cpp`, `nt/x86_loader.cpp`), and both widths use the same file names, so using them
@@ -199,6 +222,7 @@ Everything is inside the active library (docs/data-in-library.md):
 | --- | --- |
 | `<library>/decanter/runners/raven/<commit>/` | The checkout and its build tree (`build/native/raven`), with `.decanter-built` once finished |
 | `<library>/decanter/runners/raven/<commit>/components/` | The guest components the provisioning scripts compiled, copied by CMake beside `build/native/raven` |
+| `<library>/decanter/runners/raven/<commit>/components/roots/` | Microsoft's root certificates, copied by CMake into `build/native/roots/`, which `raven` reads when it checks a signature |
 | `<library>/decanter/runners/raven/<commit>/components/text/` | Skia's checkout and `cpu-fonts/libskia.a`, the font archives and `fonts/`, which `raven` reads at run time |
 | `<library>/decanter/runners/raven/toolchain/` | Raven's nix environment files, host marker and, if used, nix-portable and its store |
 | `<library>/decanter/runners/raven/build.log` | The last build's output |
@@ -240,7 +264,7 @@ patch). Likewise `PathRenameExtensionW`, which Adobe's installer calls, is not i
 
 Still missing from decanter's build:
 
-- Direct3D through DXVK and vkd3d-proton and the Microsoft root certificates (see
+- Direct3D through DXVK and vkd3d-proton (see
   [What is not built yet](#what-is-not-built-yet));
 - the components only Raven's full build makes (`mscoree.dll`, ICU, `l_intl.nls` and others).
 
@@ -285,6 +309,8 @@ player's machine and compiled there, under their own licences (zlib License, IJG
 for libxml2 and libxslt), whose notices `provision-installer.py` copies beside the components; decanter
 distributes none of them. The text layer adds Skia (BSD-3-Clause), built there from its own repository, and the
 Liberation (SIL OFL 1.1) and DejaVu (Bitstream Vera and Arev licences) fonts, downloaded there, Raven Sans derived
-from DejaVu there; decanter distributes none of them either. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
+from DejaVu there; decanter distributes none of them either. Microsoft's root certificates are downloaded there
+under Microsoft's Relying Party Agreement ([above](#what-the-root-certificates-download)), and decanter distributes
+none of them. decanter's patch ([Patches](#patches)) is applied to that checkout on the player's machine;
 the patch file is GPL-3.0-or-later like Raven, and the file it changes, `native/guest/raven-crt/ucrtbase.c`, is
 `SPDX-License-Identifier: MIT` and stays MIT.

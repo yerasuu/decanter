@@ -106,7 +106,12 @@ is built there too: Skia (BSD-3-Clause, https://skia.googlesource.com/skia) at t
 against nixpkgs' FreeType (FreeType License or GPL-2.0), and the fonts that script downloads and checks by SHA-256:
 the Liberation fonts 2.1.5 (SIL OFL 1.1, from Ubuntu's archive, https://archive.ubuntu.com) and DejaVu 2.37
 (Bitstream Vera and Arev font licences, DejaVu's changes public domain, https://github.com/dejavu-fonts), from
-which the script derives the renamed Raven Sans faces with fontTools (MIT) as those licences allow. decanter neither
+which the script derives the renamed Raven Sans faces with fontTools (MIT) as those licences allow. Its
+`provision-roots.py` downloads Microsoft's four code signing root certificates from Microsoft's own server
+(http://www.microsoft.com/pki/certs/), each checked by SHA-256; that download is governed by Microsoft's PKI
+Services Relying Party Agreement
+(https://www.microsoft.com/pkiops/Docs/Content/policy/MSRelyingPartyAgreement2018.pdf), which the user accepts
+by confirming the build, as its confirmation says. decanter neither
 relicenses any of them nor includes their source or binaries in a release. decanter does carry small patches
 to Raven's source, in `crates/runtime/src/os/linux/raven/patches/`, applied to the checkout on the user's machine at
 build time: the patch files are GPL-3.0-or-later, like Raven as a whole and decanter's own code, and the Raven files

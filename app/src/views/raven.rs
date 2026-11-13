@@ -24,6 +24,11 @@ const SHOWN_RUN_LINES: usize = 8;
 
 const REPOSITORY: &str = "github.com/mirkobrombin/raven";
 
+/// Microsoft's PKI Services Relying Party Agreement, which a build accepts by downloading Microsoft's
+/// root certificates (#1687); linked from its repository page, microsoft.com/pkiops/docs/repository.htm.
+const RELYING_PARTY_AGREEMENT: &str =
+    "https://www.microsoft.com/pkiops/Docs/Content/policy/MSRelyingPartyAgreement2018.pdf";
+
 pub struct RavenView {
     raven: Entity<Raven>,
 }
@@ -338,6 +343,18 @@ fn confirmation(raven: &Entity<Raven>, commit: &Commit, pinned: Option<&Commit>)
         .child(theme::mono().child(t!("raven.confirm.repo", repo = REPOSITORY)))
         .child(theme::mono().child(t!("raven.confirm.commit", commit = commit)))
         .child(div().child(SharedString::from(t!("raven.confirm.text"))))
+        .child(
+            div()
+                .id("raven-confirm-agreement")
+                .cursor_pointer()
+                .text_color(rgb(theme::ACCENT_BLUE))
+                .child(t!("raven.confirm.agreement"))
+                .on_click(|_, _, _| {
+                    if let Err(err) = crate::desktop::open(RELYING_PARTY_AGREEMENT) {
+                        tracing::warn!(%err, "could not open Microsoft's Relying Party Agreement");
+                    }
+                }),
+        )
         .children(unpinned)
         .child(
             div()
