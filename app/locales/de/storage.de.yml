@@ -9,6 +9,7 @@ storage.stats.folders.other: Bibliotheksordner
 storage.folder.primary: Haupt
 storage.folder.extra: Zusatz
 storage.folder.offline: Laufwerk nicht verbunden
+storage.folder.offline_chip: "Nicht verbunden"
 storage.folder.used.one: '%{used} von 1 Spiel belegt'
 storage.folder.used.other: '%{used} von %{count} Spielen belegt'
 storage.folder.steam.one: 'Steam: %{size} · 1 Spiel, von Steam verwaltet, oben nicht mitgezählt'

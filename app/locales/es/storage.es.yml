@@ -9,6 +9,7 @@ storage.stats.folders.other: carpetas de biblioteca
 storage.folder.primary: Principal
 storage.folder.extra: Adicional
 storage.folder.offline: Disco no conectado
+storage.folder.offline_chip: "Sin conectar"
 storage.folder.used.one: '%{used} usados por 1 juego'
 storage.folder.used.other: '%{used} usados por %{count} juegos'
 storage.folder.steam.one: 'Steam: %{size} · 1 juego, lo gestiona Steam y no cuenta arriba'

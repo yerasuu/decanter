@@ -147,7 +147,10 @@ impl Caps {
 
     /// `element` with the testing chip as its last child when `feature` is being tested: for a
     /// link or tab whose own pill the chip belongs to, so it never reads as a tab of its own.
-    pub fn mark_within<E: gpui::ParentElement>(&self, feature: Feature, element: E) -> E {
+    pub fn mark_within<E>(&self, feature: Feature, element: E) -> E
+    where
+        E: gpui::ParentElement,
+    {
         match self.support(feature) {
             Support::Testing => element.child(testing_badge()),
             Support::Available | Support::Unavailable(_) => element,

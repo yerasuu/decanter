@@ -9,6 +9,7 @@ storage.stats.folders.other: "ライブラリフォルダー"
 storage.folder.primary: "メイン"
 storage.folder.extra: "追加"
 storage.folder.offline: "ドライブ未接続"
+storage.folder.offline_chip: "未接続"
 storage.folder.used.one: "%{used} 使用(1 本のゲーム)"
 storage.folder.used.other: "%{used} 使用(%{count} 本のゲーム)"
 storage.folder.steam.one: 'Steam: %{size} · 1 本のゲーム(Steam が管理、上の合計には含まれません)'

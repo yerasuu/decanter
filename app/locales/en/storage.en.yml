@@ -9,6 +9,7 @@ storage.stats.folders.other: library folders
 storage.folder.primary: Main
 storage.folder.extra: Extra
 storage.folder.offline: Drive not connected
+storage.folder.offline_chip: "Not connected"
 storage.folder.used.one: '%{used} used by 1 game'
 storage.folder.used.other: '%{used} used by %{count} games'
 storage.folder.steam.one: 'Steam: %{size} · 1 game, kept by Steam, not counted above'

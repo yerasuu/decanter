@@ -16,7 +16,7 @@ use crate::state::{AppState, Download, DownloadKey, MoveFinished, MoveKey, MoveQ
 use crate::theme;
 use crate::views::downloads;
 use crate::widgets::reveal::reveal;
-use crate::widgets::{ButtonKind, button, stat_card, tooltip};
+use crate::widgets::{ButtonKind, button, progress_bar, stat_card, tooltip};
 
 /// One library folder as the last scan found it.
 struct Folder {
@@ -223,6 +223,29 @@ fn scan(profile_id: &str) -> Vec<Folder> {
     folders
 }
 
+/// What a folder's card says about its disk: games, free space, or that the disk is away.
+fn folder_status(folder: &Folder) -> String {
+    let size = crate::format::bytes(folder.total);
+    let count = folder.games.len() + folder.dumps.len();
+    let used = if count == 1 {
+        t!("storage.folder.used.one", used = size)
+    } else {
+        t!("storage.folder.used.other", used = size, count = count)
+    };
+    match (folder.present, folder.disk) {
+        (false, _) => t!("storage.folder.offline").into_owned(),
+        (true, Some((free, total))) => format!(
+            "{used} · {}",
+            t!(
+                "storage.folder.free",
+                free = crate::format::bytes(free),
+                total = crate::format::bytes(total)
+            )
+        ),
+        (true, None) => used.into_owned(),
+    }
+}
+
 pub struct StorageView {
     /// `None` until the first scan for this profile lands.
     folders: Option<Vec<Folder>>,
@@ -232,8 +255,10 @@ pub struct StorageView {
     scan: Option<Task<()>>,
     /// Games and dumps moving one after another; it outlives this page.
     queue: Entity<MoveQueue>,
-    /// The games and dumps picked with their checkboxes to move together.
+    /// The games and dumps picked with their checkboxes to move together, all from `chosen`.
     selected: HashSet<MoveKey>,
+    /// The library folder whose games are listed; the primary one until another is picked.
+    chosen: Option<PathBuf>,
     /// The folder decanter kept everything in before it moved into the
     /// library, while it's still there.
     legacy: Option<PathBuf>,
@@ -258,6 +283,7 @@ impl StorageView {
             scan: None,
             queue: state.moves.clone(),
             selected: HashSet::new(),
+            chosen: None,
             legacy: None,
             confirm_legacy: false,
             confirm_stray: None,
@@ -757,31 +783,76 @@ impl StorageView {
         ))
     }
 
+    /// One library folder in the list on the left: which disk it is, how full, and whether it is
+    /// the one whose games the panel on the right lists.
+    fn library_pick(
+        &self,
+        index: usize,
+        folder: &Folder,
+        chosen: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let label = if folder.primary {
+            t!("storage.folder.primary")
+        } else {
+            t!("storage.folder.extra")
+        };
+        let used = folder
+            .disk
+            .map(|(free, total)| (total.saturating_sub(free)) as f64 / total.max(1) as f64);
+        let root = folder.root.clone();
+        reveal(
+            crate::widgets::nav::tab_stop(div().id(("storage-pick", index)))
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p(px(14.))
+                .rounded(px(theme::RADIUS))
+                .border_1()
+                .border_color(rgb(if chosen { theme::ACCENT_BLUE } else { theme::LINE }))
+                .bg(rgb(if chosen { theme::BG_PANEL } else { theme::BG_PANEL_2 }))
+                .cursor_pointer()
+                .when(!folder.present, |card| card.opacity(0.6))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if this.chosen.as_ref() != Some(&root) {
+                        this.chosen = Some(root.clone());
+                        this.selected.clear();
+                        cx.notify();
+                    }
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(theme::badge(label, folder.primary))
+                        .when(folder.is_default, |row| {
+                            row.child(theme::badge(t!("storage.folder.default"), true))
+                        })
+                        .when(!folder.present, |row| {
+                            row.child(theme::chip(t!("storage.folder.offline_chip"), theme::Tone::Warn))
+                        }),
+                )
+                .child(
+                    theme::mono()
+                        .text_size(px(11.))
+                        .text_color(rgb(theme::TEXT_PRIMARY))
+                        .truncate()
+                        .child(folder.root.display().to_string()),
+                )
+                .children(used.map(|used| progress_bar(("storage-pick-bar", index), Some(used), 6.)))
+                .child(theme::muted(folder_status(folder)).text_size(px(12.))),
+        )
+    }
+
     fn folder_card(&self, index: usize, folder: &Folder, cx: &Context<Self>) -> impl IntoElement + use<> {
         let label = if folder.primary {
             t!("storage.folder.primary")
         } else {
             t!("storage.folder.extra")
         };
-        let size = crate::format::bytes(folder.total);
         let count = folder.games.len() + folder.dumps.len();
-        let used = if count == 1 {
-            t!("storage.folder.used.one", used = size)
-        } else {
-            t!("storage.folder.used.other", used = size, count = count)
-        };
-        let status = match (folder.present, folder.disk) {
-            (false, _) => t!("storage.folder.offline").into_owned(),
-            (true, Some((free, total))) => format!(
-                "{used} · {}",
-                t!(
-                    "storage.folder.free",
-                    free = crate::format::bytes(free),
-                    total = crate::format::bytes(total)
-                )
-            ),
-            (true, None) => used.into_owned(),
-        };
+        let status = folder_status(folder);
         // A folder with games still in it would take them out of the
         // library without moving them anywhere. An unplugged one can't be
         // checked, and is the folder most likely to be gone for good.
@@ -901,6 +972,11 @@ impl Render for StorageView {
         let Some(folders) = &self.folders else {
             return theme::page("storage", column);
         };
+        let chosen = self
+            .chosen
+            .as_ref()
+            .and_then(|root| folders.iter().position(|folder| folder.root == *root))
+            .unwrap_or(0);
         let (games, used) = folders.iter().fold((0, 0), |(games, used), folder| {
             (games + folder.games.len() + folder.dumps.len(), used + folder.total)
         });
@@ -934,24 +1010,50 @@ impl Render for StorageView {
                 .child(stats)
                 .children(self.selection_bar(cx))
                 .children(self.queue_card(cx))
-                .children(
-                    folders
-                        .iter()
-                        .enumerate()
-                        .map(|(index, folder)| self.folder_card(index, folder, cx)),
-                )
-                .child(reveal(
+                .child(
                     div()
-                        .id("storage-add")
                         .flex()
-                        .flex_wrap()
-                        .gap_3()
+                        .items_start()
+                        .gap_4()
                         .child(
-                            button("storage-add-folder", ButtonKind::Secondary, t!("storage.add"), false)
-                                .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
+                            div()
+                                .w(px(300.))
+                                .flex_none()
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .children(
+                                    folders
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(index, folder)| self.library_pick(index, folder, index == chosen, cx)),
+                                )
+                                .child(reveal(
+                                    div()
+                                        .id("storage-add")
+                                        .flex()
+                                        .flex_col()
+                                        .items_start()
+                                        .gap_2()
+                                        .child(
+                                            button(
+                                                "storage-add-folder",
+                                                ButtonKind::Secondary,
+                                                t!("storage.add"),
+                                                false,
+                                            )
+                                            .on_click(cx.listener(|this, _, _, cx| this.add_folder(cx))),
+                                        )
+                                        .children(self.mount_suggestions(folders, cx)),
+                                )),
                         )
-                        .children(self.mount_suggestions(folders, cx)),
-                ))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .children(folders.get(chosen).map(|folder| self.folder_card(chosen, folder, cx))),
+                        ),
+                )
                 .children(self.error.as_ref().map(|error| div().mt_3().child(theme::error(error))))
                 .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx))),
         )

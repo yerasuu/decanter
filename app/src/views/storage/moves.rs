@@ -112,14 +112,20 @@ impl StorageView {
         let this = cx.entity().downgrade();
         let item = [item];
         Some(
-            Select::new(("storage-move", id), options, SharedString::default())
-                .on_change(move |value, _, cx| {
-                    if value.is_empty() {
-                        return;
-                    }
-                    let to = PathBuf::from(value.as_ref());
-                    let _ = this.update(cx, |this, cx| this.enqueue_moves(&item, &to, cx));
-                })
+            div()
+                .w(px(200.))
+                .flex_none()
+                .child(
+                    Select::new(("storage-move", id), options, SharedString::default())
+                        .full_width()
+                        .on_change(move |value, _, cx| {
+                            if value.is_empty() {
+                                return;
+                            }
+                            let to = PathBuf::from(value.as_ref());
+                            let _ = this.update(cx, |this, cx| this.enqueue_moves(&item, &to, cx));
+                        }),
+                )
                 .into_any_element(),
         )
     }

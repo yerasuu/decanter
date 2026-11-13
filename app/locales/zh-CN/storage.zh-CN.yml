@@ -9,6 +9,7 @@ storage.stats.folders.other: "个游戏库文件夹"
 storage.folder.primary: "主文件夹"
 storage.folder.extra: "额外"
 storage.folder.offline: "驱动器未连接"
+storage.folder.offline_chip: "未连接"
 storage.folder.used.one: "1 个游戏占用 %{used}"
 storage.folder.used.other: "%{count} 个游戏占用 %{used}"
 storage.folder.steam.one: 'Steam:%{size} · 1 个游戏,由 Steam 管理,不计入上方'
