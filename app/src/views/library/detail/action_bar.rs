@@ -41,9 +41,14 @@ impl DetailView {
                 .flatten(),
         )
         .child(
-            button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
-                .tooltip(tooltip(t!("library.properties.title")))
-                .on_click(move |_, _, cx| open_properties(&properties_game, cx)),
+            button(
+                "properties",
+                ButtonKind::Secondary,
+                t!("library.properties.title"),
+                false,
+            )
+            .tooltip(tooltip(t!("library.properties.title")))
+            .on_click(move |_, _, cx| open_properties(&properties_game, cx)),
         )
         // Games that ask Amazon for an online session through the SDK (FuelPump) may need Amazon's
         // own launcher running, which nothing here stands in for (analysis, section 5.4).
@@ -162,10 +167,15 @@ impl DetailView {
         }
         let properties_game = game.clone();
         elements.push(
-            button("properties", ButtonKind::Icon, t!("library.properties.title"), false)
-                .tooltip(tooltip(t!("library.properties.title")))
-                .on_click(move |_, _, cx| open_properties(&properties_game, cx))
-                .into_any_element(),
+            button(
+                "properties",
+                ButtonKind::Secondary,
+                t!("library.properties.title"),
+                false,
+            )
+            .tooltip(tooltip(t!("library.properties.title")))
+            .on_click(move |_, _, cx| open_properties(&properties_game, cx))
+            .into_any_element(),
         );
         elements
     }

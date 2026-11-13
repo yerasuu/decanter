@@ -133,6 +133,9 @@ library.detail.achievements.polling: Buscando logros...
 library.detail.achievements.none: Este juego no tiene logros en GOG.
 library.detail.achievements.poll_failed: 'No se pudieron consultar los logros: %{error}'
 library.detail.summary.playtime: Tiempo jugado
+library.detail.summary.developer_label: "Desarrollador"
+library.detail.summary.publisher_label: "Editor"
+library.detail.summary.genres_label: "Géneros"
 library.detail.summary.last_session: Última sesión
 library.detail.summary.rating: Valoración
 library.detail.summary.release: Lanzamiento

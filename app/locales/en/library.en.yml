@@ -133,6 +133,9 @@ library.detail.achievements.polling: Fetching achievements...
 library.detail.achievements.none: This game has no achievements on GOG.
 library.detail.achievements.poll_failed: 'Couldn''t fetch achievements: %{error}'
 library.detail.summary.playtime: Time played
+library.detail.summary.developer_label: "Developer"
+library.detail.summary.publisher_label: "Publisher"
+library.detail.summary.genres_label: "Genres"
 library.detail.summary.last_session: Last session
 library.detail.summary.rating: Rating
 library.detail.summary.release: Release date

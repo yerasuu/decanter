@@ -131,6 +131,9 @@ library.detail.achievements.polling: Buscando conquistas...
 library.detail.achievements.none: Este jogo não tem conquistas na GOG.
 library.detail.achievements.poll_failed: 'Não foi possível buscar as conquistas: %{error}'
 library.detail.summary.playtime: Tempo de jogo
+library.detail.summary.developer_label: "Desenvolvedora"
+library.detail.summary.publisher_label: "Publicadora"
+library.detail.summary.genres_label: "Gêneros"
 library.detail.summary.last_session: Última sessão
 library.detail.summary.rating: Avaliação
 library.detail.summary.release: Data de lançamento

@@ -131,6 +131,9 @@ library.detail.achievements.polling: Récupération des succès…
 library.detail.achievements.none: Ce jeu n’a aucun succès sur GOG.
 library.detail.achievements.poll_failed: 'Impossible de récupérer les succès : %{error}'
 library.detail.summary.playtime: Temps de jeu
+library.detail.summary.developer_label: "Développeur"
+library.detail.summary.publisher_label: "Éditeur"
+library.detail.summary.genres_label: "Genres"
 library.detail.summary.last_session: Dernière session
 library.detail.summary.rating: Note
 library.detail.summary.release: Date de sortie

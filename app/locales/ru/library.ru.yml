@@ -131,6 +131,9 @@ library.detail.achievements.polling: 'Получение достижений...
 library.detail.achievements.none: 'У этой игры нет достижений в GOG.'
 library.detail.achievements.poll_failed: 'Не удалось получить достижения: %{error}'
 library.detail.summary.playtime: 'Время в игре'
+library.detail.summary.developer_label: "Разработчик"
+library.detail.summary.publisher_label: "Издатель"
+library.detail.summary.genres_label: "Жанры"
 library.detail.summary.last_session: 'Последний сеанс'
 library.detail.summary.rating: 'Рейтинг'
 library.detail.summary.release: 'Дата выхода'

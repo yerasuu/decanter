@@ -131,6 +131,9 @@ library.detail.achievements.polling: Erfolge werden abgerufen...
 library.detail.achievements.none: Dieses Spiel hat auf GOG keine Erfolge.
 library.detail.achievements.poll_failed: 'Erfolge konnten nicht abgerufen werden: %{error}'
 library.detail.summary.playtime: Spielzeit
+library.detail.summary.developer_label: "Entwickler"
+library.detail.summary.publisher_label: "Publisher"
+library.detail.summary.genres_label: "Genres"
 library.detail.summary.last_session: Letzte Sitzung
 library.detail.summary.rating: Bewertung
 library.detail.summary.release: Erscheinungsdatum

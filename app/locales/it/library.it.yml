@@ -131,6 +131,9 @@ library.detail.achievements.polling: Recupero degli obiettivi...
 library.detail.achievements.none: Questo gioco non ha obiettivi su GOG.
 library.detail.achievements.poll_failed: "Impossibile recuperare gli obiettivi: %{error}"
 library.detail.summary.playtime: Tempo di gioco
+library.detail.summary.developer_label: "Sviluppatore"
+library.detail.summary.publisher_label: "Editore"
+library.detail.summary.genres_label: "Generi"
 library.detail.summary.last_session: Ultima sessione
 library.detail.summary.rating: Valutazione
 library.detail.summary.release: Data di uscita

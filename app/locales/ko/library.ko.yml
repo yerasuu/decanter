@@ -131,6 +131,9 @@ library.detail.achievements.polling: 업적을 가져오는 중...
 library.detail.achievements.none: 이 게임에는 GOG 업적이 없습니다.
 library.detail.achievements.poll_failed: '업적을 가져올 수 없습니다: %{error}'
 library.detail.summary.playtime: 플레이 시간
+library.detail.summary.developer_label: "개발사"
+library.detail.summary.publisher_label: "퍼블리셔"
+library.detail.summary.genres_label: "장르"
 library.detail.summary.last_session: 마지막 세션
 library.detail.summary.rating: 평점
 library.detail.summary.release: 출시일
