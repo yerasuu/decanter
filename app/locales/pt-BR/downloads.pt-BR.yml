@@ -1,5 +1,7 @@
 downloads.title: Downloads
 downloads.empty: Nenhum download em andamento.
+downloads.empty_hint: "As instalações e atualizações das suas lojas aparecem aqui."
+downloads.open_library: "Abrir a biblioteca"
 downloads.eta: 'faltam %{left}'
 downloads.dismiss: Dispensar
 downloads.cancelling: Cancelando e excluindo o que foi baixado…

@@ -302,3 +302,31 @@ pub fn chip(text: impl AsRef<str>, tone: Tone) -> Div {
         .text_color(rgb(tone.color()))
         .child(text.as_ref().to_uppercase())
 }
+
+/// What a page says when it has nothing to list: what goes here and, when there is one, the
+/// step that fills it.
+pub fn empty_state(
+    title: impl Into<SharedString>,
+    hint: impl Into<SharedString>,
+    action: Option<impl IntoElement>,
+) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap_3()
+        .py(px(64.))
+        .bg(rgb(BG_PANEL_2))
+        .border_1()
+        .border_color(rgb(LINE))
+        .rounded(px(RADIUS))
+        .child(
+            div()
+                .text_size(px(18.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(TEXT_BRIGHT))
+                .child(title.into()),
+        )
+        .child(div().text_color(rgb(TEXT_MUTED)).child(hint.into()))
+        .children(action.map(|action| div().mt_2().child(action)))
+}

@@ -1,5 +1,7 @@
 downloads.title: 'Загрузки'
 downloads.empty: 'Активных загрузок нет.'
+downloads.empty_hint: "Здесь появятся установки и обновления из ваших магазинов."
+downloads.open_library: "Открыть библиотеку"
 downloads.eta: 'осталось %{left}'
 downloads.dismiss: 'Скрыть'
 downloads.cancelling: 'Отмена и удаление загруженного…'

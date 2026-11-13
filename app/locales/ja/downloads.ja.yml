@@ -1,5 +1,7 @@
 downloads.title: "ダウンロード"
 downloads.empty: "進行中のダウンロードはありません。"
+downloads.empty_hint: "ストアからのインストールとアップデートがここに表示されます。"
+downloads.open_library: "ライブラリを開く"
 downloads.eta: "残り %{left}"
 downloads.dismiss: "閉じる"
 downloads.cancelling: "キャンセルして、ダウンロード済みのデータを削除しています…"

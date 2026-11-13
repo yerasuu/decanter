@@ -73,6 +73,7 @@ impl Shell {
         let mut external_request = state.session.read(cx).external_request;
         let mut downloads_request = state.session.read(cx).downloads_request;
         let mut ps_request = state.session.read(cx).ps_request;
+        let mut library_request = state.session.read(cx).library_request;
         cx.observe_in(&state.session, window, move |this, session, window, cx| {
             this.reload_profiles();
             if this.page == Page::Raven && !raven_shown(cx) {
@@ -93,6 +94,11 @@ impl Shell {
             if asked != downloads_request {
                 downloads_request = asked;
                 this.navigate(Page::Downloads, window, cx);
+            }
+            let asked = session.read(cx).library_request;
+            if asked != library_request {
+                library_request = asked;
+                this.navigate(Page::Library, window, cx);
             }
             let asked = session.read(cx).ps_request;
             if asked != ps_request {

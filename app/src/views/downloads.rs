@@ -649,7 +649,27 @@ impl Render for DownloadsView {
                 column.child(theme::card().mb_4().children(offers))
             });
         if entries.is_empty() {
-            return theme::page("downloads", column.child(theme::empty(t!("downloads.empty"))));
+            let library = button(
+                "downloads-open-library",
+                ButtonKind::Secondary,
+                t!("downloads.open_library"),
+                false,
+            )
+            .on_click(|_, _, cx| {
+                let session = AppState::get(cx).session.clone();
+                session.update(cx, |session, cx| {
+                    session.library_request = session.library_request.wrapping_add(1);
+                    cx.notify();
+                });
+            });
+            return theme::page(
+                "downloads",
+                column.child(theme::empty_state(
+                    t!("downloads.empty"),
+                    t!("downloads.empty_hint"),
+                    Some(library),
+                )),
+            );
         }
         let mut index = 0;
         for group in Group::ALL {

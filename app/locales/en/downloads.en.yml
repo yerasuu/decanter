@@ -1,5 +1,7 @@
 downloads.title: Downloads
 downloads.empty: No downloads in progress.
+downloads.empty_hint: "Installs and updates from your stores show up here."
+downloads.open_library: "Open the Library"
 downloads.eta: '%{left} left'
 downloads.dismiss: Dismiss
 downloads.cancelling: Cancelling and deleting what was downloaded…

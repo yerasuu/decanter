@@ -1,5 +1,7 @@
 downloads.title: Downloads
 downloads.empty: Keine Downloads in Arbeit.
+downloads.empty_hint: "Installationen und Updates aus deinen Shops erscheinen hier."
+downloads.open_library: "Bibliothek öffnen"
 downloads.eta: 'noch %{left}'
 downloads.dismiss: Ausblenden
 downloads.cancelling: Wird abgebrochen, Heruntergeladenes wird gelöscht…

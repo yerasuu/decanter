@@ -1,5 +1,7 @@
 downloads.title: 다운로드
 downloads.empty: 진행 중인 다운로드가 없습니다.
+downloads.empty_hint: "스토어의 설치와 업데이트가 여기에 표시됩니다."
+downloads.open_library: "라이브러리 열기"
 downloads.eta: '%{left} 남음'
 downloads.dismiss: 닫기
 downloads.cancelling: 취소하고 다운로드한 파일을 삭제하는 중…

@@ -1,5 +1,7 @@
 downloads.title: "下载"
 downloads.empty: "没有正在进行的下载。"
+downloads.empty_hint: "来自各商店的安装和更新会显示在这里。"
+downloads.open_library: "打开游戏库"
 downloads.eta: "剩余 %{left}"
 downloads.dismiss: "关闭"
 downloads.cancelling: "正在取消并删除已下载的内容…"

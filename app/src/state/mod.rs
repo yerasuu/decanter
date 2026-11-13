@@ -53,6 +53,8 @@ pub struct Session {
     pub downloads_request: u32,
     /// Bumped to ask the shell for PS, from Ajustes' link to its settings.
     pub ps_request: u32,
+    /// Bumped to ask the shell for the Library, from a page that has nothing to show without it.
+    pub library_request: u32,
     /// The external game that request is to edit, if any.
     pub external_edit: Option<String>,
     /// The Ajustes tab some other view asks the shell to open; Ajustes clears
@@ -90,6 +92,7 @@ impl Session {
             active_profile,
             library_home: 0,
             library_shelves: 0,
+            library_request: 0,
             ps_home: 0,
             external_request: 0,
             downloads_request: 0,

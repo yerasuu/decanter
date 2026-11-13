@@ -1,5 +1,7 @@
 downloads.title: Download
 downloads.empty: Nessun download in corso.
+downloads.empty_hint: "Le installazioni e gli aggiornamenti dei tuoi negozi compaiono qui."
+downloads.open_library: "Apri la libreria"
 downloads.eta: "%{left} rimanenti"
 downloads.dismiss: Ignora
 downloads.cancelling: Annullamento in corso ed eliminazione di quanto scaricato…
