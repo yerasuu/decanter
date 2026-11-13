@@ -242,7 +242,7 @@ impl Render for FailuresView {
                         .flex()
                         .items_center()
                         .gap_3()
-                        .child(theme::h2(t!("ps.failures.title")).flex_1())
+                        .child(theme::h1(t!("ps.failures.title")).flex_1())
                         .when(!empty, |header| {
                             header
                                 .child(

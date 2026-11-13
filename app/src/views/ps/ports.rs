@@ -203,7 +203,7 @@ impl PortsView {
 
 impl Render for PortsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let page = div().flex().flex_col().gap_4().child(theme::h2(t!("ps.ports.title")));
+        let page = div().flex().flex_col().gap_4().child(theme::h1(t!("ps.ports.title")));
         // Where psport.exe runs directly there are no checkouts: its packages and its branch's builds.
         let page = if direct::IN_USE {
             let package = Caps::get(cx)

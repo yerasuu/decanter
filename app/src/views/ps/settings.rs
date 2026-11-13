@@ -345,7 +345,8 @@ impl Render for SettingsView {
                 .flex()
                 .flex_col()
                 .gap_4()
-                .child(theme::h2(t!("ps.settings.games.title")))
+                .child(theme::h1(t!("ps.tabs.settings")))
+                .child(theme::h2(t!("ps.settings.games.title")).mt_0())
                 .child(
                     theme::card().children(folders.into_iter().enumerate().map(|(index, games)| {
                         let label = if index == 0 {
