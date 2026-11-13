@@ -28,7 +28,7 @@ use super::mods::ModsView;
 use super::online::OnlineTitleView;
 use super::runs::RunsView;
 use super::title_settings::{Changed, TitleSettingsView};
-use super::{art_url, display_title, entry_status_text, platform_label};
+use super::{art_url, display_title, entry_status_chip, platform_label};
 use crate::capabilities::Caps;
 use crate::i18n::Text;
 use crate::state::{JobKey, Ps};
@@ -551,11 +551,7 @@ impl DetailView {
                     .right(px(24.))
                     .flex()
                     .gap(px(10.))
-                    .child(hero_stat(game.version.clone(), t!("ps.detail.hero.version")))
-                    .child(hero_stat(
-                        entry_status_text(entry, compat).into_owned(),
-                        t!("ps.detail.hero.status"),
-                    )),
+                    .child(hero_stat(game.version.clone(), t!("ps.detail.hero.version"))),
             )
             .child(
                 div()
@@ -570,7 +566,8 @@ impl DetailView {
                             .flex()
                             .gap_2()
                             .child(theme::badge(platform_label(game.platform), true))
-                            .child(theme::badge(&game.title_id, false)),
+                            .child(theme::badge(&game.title_id, false))
+                            .children(entry_status_chip(entry, compat).map(|(text, tone)| theme::chip(text, tone))),
                     )
                     .child(
                         theme::display(34.)
@@ -628,13 +625,18 @@ impl DetailView {
             .gap(px(10.))
             .child(action)
             .child(
-                button("ps-open-folder", ButtonKind::Icon, t!("ps.detail.open_folder"), false)
-                    .tooltip(tooltip(t!("ps.detail.open_folder_tooltip")))
-                    .on_click(move |_, _, _| {
-                        if let Err(err) = crate::desktop::open(&folder) {
-                            tracing::warn!(dir = %folder.display(), %err, "could not open the game folder");
-                        }
-                    }),
+                button(
+                    "ps-open-folder",
+                    ButtonKind::Secondary,
+                    t!("ps.detail.open_folder"),
+                    false,
+                )
+                .tooltip(tooltip(t!("ps.detail.open_folder_tooltip")))
+                .on_click(move |_, _, _| {
+                    if let Err(err) = crate::desktop::open(&folder) {
+                        tracing::warn!(dir = %folder.display(), %err, "could not open the game folder");
+                    }
+                }),
             )
             .into_any_element()
     }
@@ -642,8 +644,8 @@ impl DetailView {
     fn overview(&self, entry: &Entry, cx: &mut Context<Self>) -> AnyElement {
         let game = &entry.game;
         let fact = |label: Cow<'static, str>, value: String| {
-            div()
-                .flex()
+            theme::compact_row(false)
+                .py(px(12.))
                 .gap_4()
                 .child(
                     div()
@@ -728,14 +730,11 @@ impl DetailView {
             .children(learned)
             .children(self.learned_error.as_ref().map(theme::error))
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
+                theme::card()
                     .child(fact(t!("ps.detail.facts.title_id"), game.title_id.clone()))
                     .child(fact(t!("ps.detail.facts.version"), game.version.clone()))
                     .children(library.map(|library| fact(t!("ps.detail.facts.library"), library)))
-                    .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string())),
+                    .child(fact(t!("ps.detail.facts.folder"), game.dir.display().to_string()).border_b_0()),
             )
             .children(entry.port.and(self.tools.clone()))
             .children(self.title_settings.clone())

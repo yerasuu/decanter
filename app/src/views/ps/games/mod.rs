@@ -458,17 +458,6 @@ fn status_text(status: &Status) -> Cow<'static, str> {
     }
 }
 
-/// What the dump shows as its state: psport's word for the title when it gave one, else decanter's.
-fn entry_status_text(entry: &Entry, compat: Option<&Compat>) -> Cow<'static, str> {
-    match entry.reported(compat).map(|title| title.state) {
-        Some(CompatState::Playable) => t!("ps.status.playable"),
-        Some(CompatState::Experimental) => t!("ps.status.experimental"),
-        Some(CompatState::Broken) => t!("ps.status.broken"),
-        Some(CompatState::Unsupported) => t!("ps.status.unsupported"),
-        None => status_text(&entry.status),
-    }
-}
-
 /// What a cover says about its dump, only when it is not the default every dump starts with:
 /// 13 of 14 carrying the same word told nothing.
 fn entry_status_chip(entry: &Entry, compat: Option<&Compat>) -> Option<(Cow<'static, str>, Tone)> {
