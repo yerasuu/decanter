@@ -40,7 +40,7 @@ pub use disk::disk_usage;
 pub use fingerprint::install_fingerprint;
 pub use game_tools::{GameTool, gamemode_prefix, gamemoded, mangohud_env, mangohud_installed, mangohud_log_dir};
 pub use launcher_env::{VULKAN_ONLY_EGL_VENDORS, strip_launcher_env, strip_window_identity};
-pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size, move_dir};
+pub use library::{GameArt, InstalledDlc, InstalledGame, Library, MoveProgress, copy_dir, directory_size};
 pub use mounts::removable_mounts;
 pub use profiles::Profile;
 pub use scope::{application_id, game_key, own_scope};

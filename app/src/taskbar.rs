@@ -232,28 +232,6 @@ pub fn remove(library_root: &Path, key: &str) -> bool {
         })
 }
 
-/// After the library at `from` moved to `to`: its entries still name paths
-/// under `from`, and the symlinks to them point there. Returns whether
-/// anything changed. A symlink to another library's entry for the same game
-/// is left alone, as in [`remove`].
-pub fn relocate(from: &Path, to: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(desktop_dir(to)) else {
-        return false;
-    };
-    entries.flatten().map(|entry| entry.path()).fold(false, |changed, desktop| {
-        let Some(key) = key_of(&desktop) else {
-            return changed;
-        };
-        let rewritten = rewrite(&desktop, from, to)
-            .inspect_err(|err| tracing::warn!(path = %desktop.display(), %err, "could not rewrite a moved game's desktop entry"))
-            .unwrap_or(false);
-        let relinked = relink(&desktop, &desktop_file(from, &key), &key)
-            .inspect_err(|err| tracing::warn!(key, %err, "could not re-point a moved game's task bar link"))
-            .unwrap_or(false);
-        changed | rewritten | relinked
-    })
-}
-
 fn rewrite(desktop: &Path, from: &Path, to: &Path) -> io::Result<bool> {
     let text = std::fs::read_to_string(desktop)?;
     let rebased = rebase(&text, from, to);
@@ -269,19 +247,6 @@ fn replace_file(desktop: &Path, text: &str) -> io::Result<()> {
     let partial = desktop.with_extension("part");
     std::fs::write(&partial, text)?;
     std::fs::rename(&partial, desktop)
-}
-
-/// Points `key`'s symlink at `desktop` while it points at `old`.
-fn relink(desktop: &Path, old: &Path, key: &str) -> io::Result<bool> {
-    let Some(link) = links_dir().map(|dir| dir.join(format!("game.{key}.desktop"))) else {
-        return Ok(false);
-    };
-    if !std::fs::read_link(&link).is_ok_and(|target| target == old) {
-        return Ok(false);
-    }
-    std::fs::remove_file(&link)?;
-    platform::symlink_file(desktop, &link)?;
-    Ok(true)
 }
 
 /// `text` with the paths under `from` in an entry's values, and the

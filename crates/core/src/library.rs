@@ -195,7 +195,7 @@ pub struct Library {
     extra_roots: Vec<PathBuf>,
 }
 
-/// Progress through [`Library::move_to`]'s copy fallback.
+/// Progress through [`copy_dir`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoveProgress {
     pub bytes_copied: u64,
@@ -459,42 +459,6 @@ impl Library {
         } else {
             picked.join("steamapps")
         }
-    }
-
-    /// Moves this library's entire root — `common/`, `compatdata/`,
-    /// `manifests/`, `libraryfolders.vdf` — to `new_root`, returning the
-    /// `Library` rooted there.
-    ///
-    /// Tries a plain rename first (instant, and the only thing that runs
-    /// when `new_root` is on the same filesystem as the current root);
-    /// falls back to a recursive copy, verified against a byte count taken
-    /// before copying starts, when the rename fails — moving to a
-    /// different disk is the actual point of this. The original root is
-    /// only removed once every byte the pre-copy walk counted has landed
-    /// on the other side, so a failure partway through the copy leaves it
-    /// untouched rather than straddling two locations. `on_progress` fires
-    /// only during that fallback — the rename path returns before it would
-    /// have anything to report.
-    ///
-    /// # Errors
-    /// Fails if `new_root` already has anything in it (refused rather than
-    /// risking mixing this library in with whatever's already there), or
-    /// any filesystem operation along the way fails.
-    #[inline]
-    pub fn move_to(&self, new_root: &Path, on_progress: impl FnMut(MoveProgress)) -> io::Result<Self> {
-        if new_root.is_dir() && fs::read_dir(new_root)?.next().is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("{} is not empty", new_root.display()),
-            ));
-        }
-
-        move_dir(&self.root, new_root, on_progress)?;
-        // Only the primary root moves; the other folders stay where they are.
-        Ok(Self {
-            root: new_root.to_path_buf(),
-            extra_roots: self.extra_roots.clone(),
-        })
     }
 
     /// Where a game's files go. `None` for an install directory that isn't
@@ -946,33 +910,6 @@ fn read_manifest_dir(directory: &Path) -> Vec<InstalledGame> {
         .collect()
 }
 
-/// Moves `src` to `dst`: a rename when both are on one filesystem, else a
-/// copy that keeps symlinks as links, with `src` removed only once every
-/// byte has landed — a failure partway leaves `src` whole. `on_progress`
-/// fires only during the copy.
-///
-/// # Errors
-/// Any filesystem operation along the way failing.
-#[inline]
-pub fn move_dir(src: &Path, dst: &Path, mut on_progress: impl FnMut(MoveProgress)) -> io::Result<()> {
-    if fs::rename(src, dst).is_ok() {
-        tracing::info!(from = %src.display(), to = %dst.display(), "moved directory (rename)");
-        return Ok(());
-    }
-    tracing::debug!(
-        from = %src.display(),
-        to = %dst.display(),
-        "rename failed (likely a different filesystem), falling back to copy"
-    );
-    let total_bytes = directory_size(src)?;
-    let mut bytes_copied = 0u64;
-    let never = AtomicBool::new(false);
-    copy_dir_recursive(src, dst, &mut bytes_copied, total_bytes, &never, &mut on_progress)?;
-    fs::remove_dir_all(src)?;
-    tracing::info!(from = %src.display(), to = %dst.display(), total_bytes, "moved directory (copy)");
-    Ok(())
-}
-
 /// Copies `src` to `dst`, keeping symlinks as links, and leaves `src` as
 /// it was. A failure partway, or `stop` turning, leaves a partial `dst`
 /// for the caller to clear. `stop` is read between files, so a large file
@@ -996,9 +933,9 @@ pub fn copy_dir(
 }
 
 /// Total bytes of every regular file under `dir`, recursively — the
-/// denominator [`move_dir`]'s copy fallback reports progress
-/// against, walked once before any copying starts so a mid-copy failure
-/// doesn't leave the total itself in question.
+/// denominator [`copy_dir`] reports progress against, walked once
+/// before any copying starts so a mid-copy failure doesn't leave the
+/// total itself in question.
 ///
 /// # Errors
 /// Reading any directory or entry under `dir` failing.
@@ -1018,8 +955,7 @@ pub fn directory_size(dir: &Path) -> io::Result<u64> {
 
 /// Copies every file under `src` into `dst` (creating directories as
 /// needed), reporting cumulative progress against `total_bytes` after
-/// each file. Leaves `src` alone either way — [`move_dir`] removes
-/// it itself, only once this returns `Ok`.
+/// each file. Leaves `src` alone either way.
 fn copy_dir_recursive(
     src: &Path,
     dst: &Path,

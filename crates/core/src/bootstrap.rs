@@ -215,24 +215,6 @@ pub fn remember_profile(profile_id: &str) {
     }
 }
 
-/// Follows a library root that moved, in the known list and as the active one.
-///
-/// # Errors
-/// Fails when `libraries.toml` can't be read or written.
-pub fn relocate(from: &Path, to: &Path) -> io::Result<()> {
-    let Some(mut libraries) = read_config()? else {
-        return Ok(());
-    };
-    for root in libraries.known.iter_mut().chain(libraries.active.as_mut()) {
-        if root == from {
-            *root = to.to_path_buf();
-        }
-    }
-    write_config(&libraries)?;
-    tracing::info!(from = %from.display(), to = %to.display(), "library pointer moved");
-    Ok(())
-}
-
 /// Writes the pointer the migration ends with.
 pub(crate) fn commit(known: Vec<PathBuf>, active: Option<PathBuf>, profile: Option<String>) -> io::Result<()> {
     write_config(&Libraries { known, active, profile })
