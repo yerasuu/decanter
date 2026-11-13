@@ -130,8 +130,9 @@ impl BrowserView {
                     .flex_none()
                     .text_size(px(13.))
                     .line_height(relative(1.))
-                    .text_color(rgb(theme::TEXT_DIM))
-                    .group_hover(HEAD_GROUP, |grip| grip.text_color(rgb(theme::TEXT_MUTED)))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .opacity(0.)
+                    .group_hover(HEAD_GROUP, |grip| grip.opacity(1.))
                     .tooltip(tooltip(t!("library.browser.drag_to_reorder")))
                     .child("⠿"),
             )
@@ -217,7 +218,9 @@ impl BrowserView {
             .line_height(relative(1.))
             .text_color(rgb(theme::TEXT_DIM))
             .tooltip(tooltip(t!("library.browser.remove_shelf")))
-            .when(only_slot, |button| button.opacity(0.3).cursor_not_allowed())
+            .opacity(0.)
+            .group_hover(HEAD_GROUP, |button| button.opacity(1.))
+            .when(only_slot, |button| button.cursor_not_allowed())
             .when(!only_slot, |button| {
                 button
                     .cursor_pointer()
@@ -493,8 +496,8 @@ fn cover_art(capsule: &Capsule) -> Stateful<Div> {
         })
         .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(
             180.,
-            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.42),
-            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.86), 1.),
+            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.), 0.38),
+            linear_color_stop(theme::alpha(theme::BG_DEEP, 0.92), 1.),
         )))
         .child(
             // Three lines is what the scrim covers; a longer title would
@@ -521,7 +524,7 @@ fn cover_pips(capsule: &Capsule) -> Div {
             pips.child(pip(
                 "cover-installed",
                 "▶",
-                theme::ACCENT_GREEN,
+                theme::STATUS_OK,
                 t!("library.sidebar.installed").into(),
             ))
         })
