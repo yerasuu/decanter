@@ -83,6 +83,7 @@ library.browser.next: Successivo
 library.browser.nothing_yet: Ancora niente da mostrare.
 library.browser.add_shelf: + Aggiungi scaffale
 library.browser.favorite: Preferito
+library.browser.sort_by: "Ordina per"
 library.browser.see_all: "Mostra tutto"
 library.browser.back_to_shelves: "Scaffali"
 library.browser.collapse_shelf: "Comprimi scaffale"

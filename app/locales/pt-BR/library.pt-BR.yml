@@ -83,6 +83,7 @@ library.browser.next: Próximo
 library.browser.nothing_yet: Ainda não há nada para mostrar.
 library.browser.add_shelf: + Adicionar prateleira
 library.browser.favorite: Favorito
+library.browser.sort_by: "Ordenar por"
 library.browser.see_all: "Ver tudo"
 library.browser.back_to_shelves: "Prateleiras"
 library.browser.collapse_shelf: "Recolher prateleira"

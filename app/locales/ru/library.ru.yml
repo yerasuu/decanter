@@ -83,6 +83,7 @@ library.browser.next: 'Вперёд'
 library.browser.nothing_yet: 'Пока нечего показывать.'
 library.browser.add_shelf: '+ Добавить полку'
 library.browser.favorite: 'Избранное'
+library.browser.sort_by: "Сортировка"
 library.browser.see_all: "Показать все"
 library.browser.back_to_shelves: "Полки"
 library.browser.collapse_shelf: "Свернуть полку"

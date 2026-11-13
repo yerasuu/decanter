@@ -83,6 +83,7 @@ library.browser.next: Weiter
 library.browser.nothing_yet: Noch nichts anzuzeigen.
 library.browser.add_shelf: + Regal hinzufügen
 library.browser.favorite: Favorit
+library.browser.sort_by: "Sortieren nach"
 library.browser.see_all: "Alle anzeigen"
 library.browser.back_to_shelves: "Regale"
 library.browser.collapse_shelf: "Regal einklappen"

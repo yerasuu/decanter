@@ -321,15 +321,15 @@ fn style_trigger(trigger: Stateful<Div>, style: SelectStyle, chevron: Div) -> St
             .pr(px(21.))
             .py(px(3.))
             .text_size(px(11.))
-            .bg(rgb(theme::BG_PANEL_2))
             .border_1()
-            .border_color(rgb(theme::LINE))
+            .border_color(gpui::transparent_black())
             .rounded(px(theme::RADIUS_SM))
-            .text_color(rgb(theme::TEXT_MUTED))
+            .text_color(rgb(theme::TEXT_PRIMARY))
             .hover(|trigger| {
                 trigger
-                    .text_color(rgb(theme::TEXT_PRIMARY))
-                    .border_color(rgb(theme::ACCENT_BLUE_DIM))
+                    .bg(rgb(theme::BG_PANEL_2))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .border_color(rgb(theme::LINE))
             })
             .child(chevron.text_size(px(9.)).right(px(6.))),
     }

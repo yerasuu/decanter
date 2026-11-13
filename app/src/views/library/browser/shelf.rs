@@ -135,26 +135,6 @@ impl BrowserView {
                     .tooltip(tooltip(t!("library.browser.drag_to_reorder")))
                     .child("⠿"),
             )
-            .child(
-                nav::tab_stop(div().id(("shelf-fold", key)))
-                    .flex_none()
-                    .w(px(18.))
-                    .text_size(px(11.))
-                    .line_height(relative(1.))
-                    .text_color(rgb(theme::TEXT_DIM))
-                    .cursor_pointer()
-                    .hover(|button| button.text_color(rgb(theme::TEXT_PRIMARY)))
-                    .tooltip(tooltip(if shelf.collapsed {
-                        t!("library.browser.expand_shelf")
-                    } else {
-                        t!("library.browser.collapse_shelf")
-                    }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.update_slot(key, |slot| slot.collapsed = !slot.collapsed, cx);
-                    }))
-                    .child(if shelf.collapsed { "▸" } else { "▾" }),
-            )
             // The source picker *is* the shelf's title.
             .child(
                 Select::new(("shelf-source", key), sources.iter().cloned(), shelf.source.clone())
@@ -163,7 +143,22 @@ impl BrowserView {
                         this.update_slot(key, |slot| slot.source = value.to_string(), cx);
                     })),
             )
+            .child(
+                theme::mono()
+                    .flex_none()
+                    .text_size(px(12.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(format!("({}/{})", shelf.installed, total)),
+            )
             .when(shelf.dynamic, |head| head.child(auto_badge()))
+            .child(
+                div()
+                    .flex_none()
+                    .ml(px(10.))
+                    .text_size(px(11.))
+                    .text_color(rgb(theme::TEXT_DIM))
+                    .child(t!("library.browser.sort_by").to_uppercase()),
+            )
             .child(
                 Select::new(("shelf-sort", key), Sort::options(), shelf.sort.value())
                     .style(SelectStyle::Small)
@@ -171,6 +166,7 @@ impl BrowserView {
                         this.update_slot(key, |slot| slot.sort = Sort::from_value(value), cx);
                     })),
             )
+            .child(div().flex_1().min_w(px(16.)).mx(px(4.)).h(px(1.)).bg(rgb(theme::LINE)))
             .when(total > 0, |head| {
                 head.child(
                     nav::focus_ring(div().id(("shelf-open", key)))
@@ -189,19 +185,31 @@ impl BrowserView {
                         .child(format!("{} ›", t!("library.browser.see_all"))),
                 )
             })
-            .child(
-                theme::mono()
-                    .flex_none()
-                    .ml_auto()
-                    .text_size(px(11.))
-                    .text_color(rgb(theme::TEXT_DIM))
-                    .child(t!(
-                        "library.browser.installed_count",
-                        installed = shelf.installed,
-                        total = total
-                    )),
-            )
             .child(Self::remove_shelf_button(key, only_slot, cx))
+            .child(
+                nav::tab_stop(div().id(("shelf-fold", key)))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(24.))
+                    .rounded(px(theme::RADIUS_SM))
+                    .text_size(px(11.))
+                    .line_height(relative(1.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .cursor_pointer()
+                    .hover(|button| button.text_color(rgb(theme::TEXT_BRIGHT)).bg(rgb(theme::BG_PANEL_2)))
+                    .tooltip(tooltip(if shelf.collapsed {
+                        t!("library.browser.expand_shelf")
+                    } else {
+                        t!("library.browser.collapse_shelf")
+                    }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.update_slot(key, |slot| slot.collapsed = !slot.collapsed, cx);
+                    }))
+                    .child(if shelf.collapsed { "▾" } else { "▴" }),
+            )
     }
 
     fn remove_shelf_button(key: u32, only_slot: bool, cx: &Context<Self>) -> Stateful<Div> {
