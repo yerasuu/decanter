@@ -3,14 +3,15 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use decanter_core::Storefront;
 use decanter_gog::LibraryEntry;
 use gpui::{
-    AnyElement, App, BoxShadow, Context, Div, Entity, Focusable as _, FontWeight, KeyDownEvent, SharedString, Stateful,
-    Window, div, point, prelude::*, px, rgb,
+    AnyElement, App, BoxShadow, ClickEvent, Context, Div, Entity, Focusable as _, FontWeight, KeyDownEvent,
+    SharedString, Stateful, Window, div, point, prelude::*, px, rgb,
 };
 use rust_i18n::t;
 
 use super::{SIDEBAR_WIDTH, SidebarView};
 use crate::state::{AppState, DownloadKey};
 use crate::theme;
+use crate::views::library::LibraryPopup;
 use crate::views::library::data::{Collections, LibraryStats};
 use crate::views::library::filters::{
     AchievementState, Filters, PlayState, Sort, belongs_in_the_library, is_installed, pending_install_ids,
@@ -127,6 +128,7 @@ impl SidebarView {
         let panel_width = (window.viewport_size().width.as_f32() - SIDEBAR_WIDTH).min(720.);
         let grid = filter_grid(&cx.entity(), &current, options, panel_width);
         let head = Self::panel_head(&current, cx);
+        let actions = self.panel_actions(cx);
         let foot = self.panel_foot(&current, total, matched, cx);
 
         let panel = div()
@@ -157,6 +159,7 @@ impl SidebarView {
                 inset: false,
             }])
             .child(head)
+            .child(actions)
             .child(grid)
             .child(foot);
         // A full-bleed click target behind the panel, so clicking anywhere
@@ -277,6 +280,34 @@ impl SidebarView {
                 link_button("filters-close")
                     .child("✕")
                     .on_click(cx.listener(|this, _, window, cx| this.set_panel(false, window, cx))),
+            )
+    }
+
+    fn panel_actions(&self, cx: &Context<Self>) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_6()
+            .pb_1()
+            .child(
+                link_button("filters-new-collection")
+                    .child(format!("+ {}", t!("library.collections.new")))
+                    .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+                        let position = event.position();
+                        this.set_panel(false, window, cx);
+                        this.model.update(cx, |model, cx| {
+                            model.open_popup(LibraryPopup::NewCollection(position), cx);
+                        });
+                    })),
+            )
+            .child(
+                link_button("filters-gog-mods")
+                    .child(t!("library.mods.open_list"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.set_panel(false, window, cx);
+                        this.model.update(cx, |model, cx| model.show_mods(true, cx));
+                    })),
             )
     }
 
