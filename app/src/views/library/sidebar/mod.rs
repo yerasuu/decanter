@@ -422,7 +422,8 @@ impl SidebarView {
                         let open = this.panel_open;
                         this.set_panel(!open, window, cx);
                     }))
-                    .child("☰")
+                    .gap(px(6.))
+                    .child(format!("☰ {}", t!("library.sidebar.filters")))
                     .when(active_filters > 0, |toggle| {
                         toggle.child(
                             theme::mono()
