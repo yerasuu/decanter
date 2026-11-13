@@ -150,6 +150,7 @@ impl PortsView {
             .child(
                 div()
                     .flex()
+                    .justify_end()
                     .gap_2()
                     .mt_2()
                     .child(

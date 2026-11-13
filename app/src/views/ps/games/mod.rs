@@ -54,6 +54,15 @@ enum Row {
     Game(usize),
 }
 
+/// Narrower under 1600px, where the grid would otherwise lose a cover.
+fn sidebar_width(window: &Window) -> f32 {
+    if window.viewport_size().width.as_f32() < 1600. {
+        264.
+    } else {
+        292.
+    }
+}
+
 pub struct GamesView {
     ps: Entity<Ps>,
     search: Entity<TextInput>,
@@ -212,7 +221,7 @@ impl GamesView {
             .into_any_element()
         };
         div()
-            .w(px(crate::views::library::sidebar_width(window)))
+            .w(px(sidebar_width(window)))
             .flex_none()
             .h_full()
             .flex()

@@ -219,9 +219,20 @@ impl FailuresView {
 impl Render for FailuresView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let empty = self.records.is_empty();
-        let last = self.records.len().saturating_sub(1);
-        let rows: Vec<_> = self
-            .records
+        // The same message from several runs is one row with its count and the latest run's
+        // details, so a repeated crash doesn't bury the others.
+        let mut groups: Vec<Failure> = Vec::new();
+        for failure in &self.records {
+            match groups
+                .iter_mut()
+                .find(|group| group.kind == failure.kind && group.message == failure.message)
+            {
+                Some(group) => group.count += failure.count,
+                None => groups.push(failure.clone()),
+            }
+        }
+        let last = groups.len().saturating_sub(1);
+        let rows: Vec<_> = groups
             .iter()
             .enumerate()
             .map(|(index, failure)| self.row(index, failure, index == last, cx).into_any_element())

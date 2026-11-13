@@ -312,7 +312,7 @@ impl Render for BrowserView {
                                 .flex()
                                 .items_center()
                                 .justify_between()
-                                .child(theme::display(15.).text_color(rgb(theme::TEXT_MUTED)).child(format!(
+                                .child(theme::display(18.).text_color(rgb(theme::TEXT_BRIGHT)).child(format!(
                                     "{} · {}",
                                     platform_label(platform),
                                     cards.len()
