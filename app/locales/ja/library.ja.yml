@@ -102,6 +102,7 @@ library.detail.hero.played: "プレイ時間"
 library.detail.external: "外部"
 library.detail.play: "プレイ"
 library.detail.stop: "停止"
+library.detail.view_in_store: ストアで見る
 library.detail.play_unavailable: "このシステムではまだプレイできません"
 library.detail.no_build: "このゲームには %{system} 版がありません"
 library.detail.no_executable: "インストール済みですが、実行ファイルが見つかりませんでした"

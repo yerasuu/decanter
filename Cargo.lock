@@ -1421,6 +1421,7 @@ dependencies = [
  "tracing-subscriber",
  "tray-icon",
  "unicode-segmentation",
+ "url",
  "uuid",
  "zbus 6.2.1",
 ]

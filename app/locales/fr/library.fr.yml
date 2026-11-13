@@ -102,6 +102,7 @@ library.detail.hero.played: TEMPS DE JEU
 library.detail.external: Externe
 library.detail.play: JOUER
 library.detail.stop: ARRÊTER
+library.detail.view_in_store: Voir dans la boutique
 library.detail.play_unavailable: Jouer n’est pas encore possible sur ce système
 library.detail.no_build: Ce jeu n’a pas de version %{system}
 library.detail.no_executable: Installé, mais aucun exécutable n’a été trouvé

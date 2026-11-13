@@ -102,6 +102,7 @@ library.detail.hero.played: "游玩时间"
 library.detail.external: "外部"
 library.detail.play: "开始游戏"
 library.detail.stop: "停止"
+library.detail.view_in_store: 在商店中查看
 library.detail.play_unavailable: "此系统暂不支持游玩"
 library.detail.no_build: "此游戏没有 %{system} 版本"
 library.detail.no_executable: "已安装，但未找到可执行文件"

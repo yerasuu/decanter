@@ -102,6 +102,7 @@ library.detail.hero.played: 'В ИГРЕ'
 library.detail.external: 'Внешняя'
 library.detail.play: 'ИГРАТЬ'
 library.detail.stop: 'СТОП'
+library.detail.view_in_store: Открыть в магазине
 library.detail.play_unavailable: 'Запуск игр в этой системе пока недоступен'
 library.detail.no_build: 'У этой игры нет версии для %{system}'
 library.detail.no_executable: 'Установлена, но исполняемый файл не найден'

@@ -2,6 +2,7 @@ use decanter_core::capabilities::Feature;
 use decanter_core::{Game, InstalledGame, Storefront};
 use gpui::{AnyElement, Context, Div, FocusHandle, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
+use url::Url;
 
 use super::{BarState, DetailView};
 use crate::capabilities::Caps;
@@ -15,6 +16,10 @@ use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
 
 impl DetailView {
     pub(super) fn action_bar(&self, game: &Game, bar_state: BarState, window: &Window, cx: &Context<Self>) -> Div {
+        self.store_actions(game, self.main_actions(game, bar_state, window, cx))
+    }
+
+    fn main_actions(&self, game: &Game, bar_state: BarState, window: &Window, cx: &Context<Self>) -> Div {
         let bar = div().pt(px(24.)).px(px(32.)).flex().items_center().gap(px(10.));
         if game.storefront == Storefront::Steam {
             return bar.children(self.steam_actions(game, bar_state, cx));
@@ -56,6 +61,26 @@ impl DetailView {
             bar.child(theme::muted(t!("epic.detail.online_needed")))
         })
         .children(relocation.map(|(_, lines)| lines))
+    }
+
+    fn store_actions(&self, game: &Game, bar: Div) -> Div {
+        let Some(url) = store_page(game) else {
+            return bar;
+        };
+        bar.child(
+            button(
+                "view-in-store",
+                ButtonKind::Icon,
+                t!("library.detail.view_in_store"),
+                false,
+            )
+            .tooltip(tooltip(t!("library.detail.view_in_store")))
+            .on_click(move |_, _, _| {
+                if let Err(err) = crate::desktop::open(url.as_str()) {
+                    tracing::warn!(target: "decanter::library", %err, "failed to open the store page");
+                }
+            }),
+        )
     }
 
     /// Always safe to call — uninstalling something that isn't installed is
@@ -512,4 +537,23 @@ fn relocation(game: &Game, cx: &Context<DetailView>) -> Option<(bool, AnyElement
             .children(lines)
             .into_any_element(),
     ))
+}
+
+/// The game's page on its own store, or a search there where the store has no
+/// page addressable from the id decanter keeps. The title is percent-encoded
+/// by `url`, so it can't reach past the query.
+fn store_page(game: &Game) -> Option<Url> {
+    let search = |base: &str, key: &str| Url::parse_with_params(base, [(key, game.title.as_str())]).ok();
+    match game.storefront {
+        Storefront::Steam => {
+            let is_app_id = !game.id.is_empty() && game.id.bytes().all(|byte| byte.is_ascii_digit());
+            is_app_id
+                .then(|| Url::parse(&format!("https://store.steampowered.com/app/{}", game.id)).ok())
+                .flatten()
+        }
+        Storefront::Gog => search("https://www.gog.com/en/games", "query"),
+        Storefront::EpicGames => search("https://store.epicgames.com/browse", "q"),
+        Storefront::AmazonGames => search("https://www.amazon.com/s?i=videogames", "k"),
+        _ => None,
+    }
 }

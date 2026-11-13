@@ -102,6 +102,7 @@ library.detail.hero.played: GESPIELT
 library.detail.external: Extern
 library.detail.play: SPIELEN
 library.detail.stop: STOPP
+library.detail.view_in_store: Im Shop ansehen
 library.detail.play_unavailable: Spielen ist auf diesem System noch nicht möglich
 library.detail.no_build: Dieses Spiel hat keine Version für %{system}
 library.detail.no_executable: Installiert, aber keine ausführbare Datei gefunden

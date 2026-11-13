@@ -102,6 +102,7 @@ library.detail.hero.played: GIOCATO
 library.detail.external: Esterno
 library.detail.play: GIOCA
 library.detail.stop: FERMA
+library.detail.view_in_store: Vedi nello store
 library.detail.play_unavailable: "Giocare non è ancora disponibile su questo sistema"
 library.detail.no_build: "Questo gioco non ha una versione per %{system}"
 library.detail.no_executable: "Installato, ma non è stato trovato nessun eseguibile"
