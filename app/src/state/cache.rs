@@ -51,6 +51,7 @@ fn to_cached(entry: &LibraryEntry) -> CachedGame {
         cloud_save_folder: None,
         cloud_include_list: None,
         cloud_exclude_list: None,
+        store_slug: entry.game.store_slug.clone(),
     }
 }
 
@@ -83,6 +84,7 @@ fn to_entry(library: Option<&decanter_core::Library>, account_id: &str, cached: 
             rating: cached.rating,
             genres: cached.genres,
             has_macos_build: cached.has_macos_build,
+            store_slug: cached.store_slug,
             ..Default::default()
         },
     }

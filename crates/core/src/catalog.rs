@@ -151,6 +151,10 @@ pub struct Game {
     /// cache column holds and the only thing anything does with it is
     /// format it or compare it.
     pub release_date: Option<i64>,
+    /// GOG's store slug, the `<slug>` of `gog.com/en/game/<slug>`; `None` when unknown or for
+    /// another storefront. Only ever `[a-z0-9_-]`, at most 128 bytes, so it is safe as a URL path
+    /// segment.
+    pub store_slug: Option<String>,
     pub storefront: Storefront,
     pub title: String,
 }

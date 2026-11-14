@@ -30,6 +30,9 @@ pub struct ProductDetails {
     pub image: String,
     pub is_game: bool,
     pub is_movie: bool,
+    /// The store page's path segment (`/game/<slug>`), unchecked as GOG sent it.
+    #[serde(default)]
+    pub slug: Option<String>,
 }
 
 /// One page of [`Client::filtered_products`].

@@ -551,9 +551,15 @@ fn store_page(game: &Game) -> Option<Url> {
                 .then(|| Url::parse(&format!("https://store.steampowered.com/app/{}", game.id)).ok())
                 .flatten()
         }
-        Storefront::Gog => search("https://www.gog.com/en/games", "query"),
+        Storefront::Gog => game.store_slug.as_deref().map_or_else(
+            || search("https://www.gog.com/en/games", "query"),
+            |slug| {
+                Url::parse("https://www.gog.com/en/game/")
+                    .and_then(|base| base.join(slug))
+                    .ok()
+            },
+        ),
         Storefront::EpicGames => search("https://store.epicgames.com/browse", "q"),
-        Storefront::AmazonGames => search("https://www.amazon.com/s?i=videogames", "k"),
         _ => None,
     }
 }

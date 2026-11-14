@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS games_cache (
     cloud_save_folder TEXT,
     cloud_include_list TEXT,
     cloud_exclude_list TEXT,
+    store_slug      TEXT,
     first_seen      INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL,
     PRIMARY KEY (account_id, storefront, product_id)
@@ -362,6 +363,7 @@ impl Db {
             ("cloud_save_folder", "TEXT"),
             ("cloud_include_list", "TEXT"),
             ("cloud_exclude_list", "TEXT"),
+            ("store_slug", "TEXT"),
         ] {
             if !has_column(&conn, "games_cache", column)? {
                 tracing::info!(table = "games_cache", column, "adding column");

@@ -68,6 +68,19 @@ fn product_image(image: &str, suffix: &str) -> Option<String> {
     Some(format!("https://{base}{suffix}.jpg"))
 }
 
+/// The slug only if it is the plain `[a-z0-9_-]` GOG uses, because it ends up in a URL handed to
+/// the desktop's opener.
+fn store_slug(slug: Option<&str>) -> Option<String> {
+    slug.filter(|candidate| {
+        !candidate.is_empty()
+            && candidate.len() <= 128
+            && candidate
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-'))
+    })
+    .map(str::to_owned)
+}
+
 /// Pass one: everything GOG's own listing already knows — title, art,
 /// category, and the order it considers them added.
 ///
@@ -174,6 +187,7 @@ fn base_entry(id: i64, product: Option<&ProductDetails>) -> LibraryEntry {
             storefront: Storefront::Gog,
             icon_url: product.and_then(|product| product_image(&product.image, "_196")),
             cover_url: product.and_then(|product| product_image(&product.image, "_392")),
+            store_slug: product.and_then(|product| store_slug(product.slug.as_deref())),
             ..Default::default()
         },
         kind,

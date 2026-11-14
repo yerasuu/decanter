@@ -935,6 +935,7 @@ fn absorb(account_id: &str, shown: &mut Vec<LibraryEntry>, batch: Batch, pass: P
                 library_rank: entry.library_rank.or(existing.library_rank),
                 game: Game {
                     install_state: entry.game.install_state,
+                    store_slug: entry.game.store_slug.or_else(|| existing.game.store_slug.clone()),
                     ..existing.game.clone()
                 },
                 ..existing.clone()
@@ -966,6 +967,7 @@ fn keep_known(mut entry: LibraryEntry, previous: &LibraryEntry) -> LibraryEntry 
     keep(&mut game.rating, old.rating.as_ref());
     keep(&mut game.release_date, old.release_date.as_ref());
     keep(&mut game.has_macos_build, old.has_macos_build.as_ref());
+    keep(&mut game.store_slug, old.store_slug.as_ref());
     if game.genres.is_empty() {
         game.genres.clone_from(&old.genres);
     }

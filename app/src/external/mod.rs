@@ -71,6 +71,7 @@ pub fn entry(game: &InstalledGame) -> LibraryEntry {
             publisher: None,
             rating: None,
             release_date: None,
+            store_slug: None,
             storefront: game.storefront,
             title: game.name.clone(),
         },

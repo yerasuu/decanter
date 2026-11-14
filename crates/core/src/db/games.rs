@@ -50,6 +50,9 @@ pub struct CachedGame {
     pub cloud_save_folder: Option<String>,
     pub cloud_include_list: Option<String>,
     pub cloud_exclude_list: Option<String>,
+    /// GOG's store slug; `None` for every other storefront, for a row cached before the column
+    /// existed, and where a fetch did not carry it.
+    pub store_slug: Option<String>,
 }
 
 /// Unit separator, not a comma: a genre name is free text from the store
@@ -94,9 +97,9 @@ impl Db {
                     kind, purchased_at, release_date, rating, genres, library_rank,
                     parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id,
                     can_run_offline, ownership_token, additional_command_line,
-                    cloud_save_folder, cloud_include_list, cloud_exclude_list, first_seen, updated_at
+                    cloud_save_folder, cloud_include_list, cloud_exclude_list, store_slug, first_seen, updated_at
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, {first_seen_if_new}, strftime('%s','now'))
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, {first_seen_if_new}, strftime('%s','now'))
                  ON CONFLICT(account_id, storefront, product_id) DO UPDATE SET
                     title = excluded.title,
                     icon_url = excluded.icon_url,
@@ -121,6 +124,7 @@ impl Db {
                     cloud_save_folder = COALESCE(excluded.cloud_save_folder, cloud_save_folder),
                     cloud_include_list = COALESCE(excluded.cloud_include_list, cloud_include_list),
                     cloud_exclude_list = COALESCE(excluded.cloud_exclude_list, cloud_exclude_list),
+                    store_slug = COALESCE(excluded.store_slug, store_slug),
                     updated_at = excluded.updated_at"
             ),
             params![
@@ -150,6 +154,7 @@ impl Db {
                 game.cloud_save_folder,
                 game.cloud_include_list,
                 game.cloud_exclude_list,
+                game.store_slug,
             ],
         )?;
         tracing::debug!(
@@ -236,7 +241,7 @@ impl Db {
                     kind, purchased_at, release_date, rating, genres, library_rank,
                     parent_id, installable, has_macos_build, entitlement_id, product_sku, namespace, catalog_item_id,
                     can_run_offline, ownership_token, additional_command_line,
-                    cloud_save_folder, cloud_include_list, cloud_exclude_list
+                    cloud_save_folder, cloud_include_list, cloud_exclude_list, store_slug
              FROM games_cache WHERE account_id = ?1 ORDER BY title ASC",
         )?;
         let rows = stmt.query_map(params![account_id], |row| {
@@ -274,6 +279,7 @@ impl Db {
                 cloud_save_folder: row.get(22)?,
                 cloud_include_list: row.get(23)?,
                 cloud_exclude_list: row.get(24)?,
+                store_slug: row.get(25)?,
             })
         })?;
         let games = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;

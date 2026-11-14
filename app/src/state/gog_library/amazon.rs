@@ -264,6 +264,7 @@ fn cache(account_id: &str, games: &[AmazonGame], complete: bool) {
             cloud_save_folder: None,
             cloud_include_list: None,
             cloud_exclude_list: None,
+            store_slug: None,
         };
         if let Err(err) = db.upsert_game(account_id, &cached, confirmed_new) {
             tracing::warn!(account_id, product_id = %game.product_id, %err, "failed to cache amazon game");
