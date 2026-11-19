@@ -152,8 +152,7 @@ CREATE TABLE IF NOT EXISTS collections (
     profile_id  TEXT NOT NULL,
     name        TEXT NOT NULL,
     filter      TEXT,
-    position    INTEGER NOT NULL,
-    hidden      INTEGER NOT NULL DEFAULT 0
+    position    INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS collection_members (
@@ -411,12 +410,6 @@ impl Db {
                 tracing::info!(table = "achievement_cache", column, "adding column");
                 conn.execute_batch(&format!("ALTER TABLE achievement_cache ADD COLUMN {column} {ty};"))?;
             }
-        }
-
-        // Additive: collections are the user's own, and the default keeps every existing one visible.
-        if !has_column(&conn, "collections", "hidden")? {
-            tracing::info!(table = "collections", column = "hidden", "adding column");
-            conn.execute_batch("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;")?;
         }
 
         // Additive: a NULL origin is the user's own mark, which every row from before folder marks is.
