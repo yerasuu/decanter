@@ -204,6 +204,16 @@ impl SidebarView {
         data::save_view_state(id, data::FILTER_PANEL, if self.panel_open { "1" } else { "0" });
     }
 
+    /// Shows or hides everything the user hid, games and collections together.
+    pub(super) fn toggle_hidden_mode(&mut self, cx: &mut Context<Self>) {
+        let show = !self.model.read(cx).filters.show_hidden;
+        self.model.update(cx, |model, _| model.show_hidden_collections = show);
+        if let Some(id) = Self::profile(cx) {
+            data::save_view_state(&id, data::SHOW_HIDDEN_COLLECTIONS, if show { "1" } else { "0" });
+        }
+        self.update_filters(cx, |filters| filters.show_hidden = show);
+    }
+
     fn update_filters(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut Filters)) {
         self.model.update(cx, |model, cx| {
             change(&mut model.filters);

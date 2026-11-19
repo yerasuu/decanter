@@ -300,6 +300,10 @@ impl LibraryView {
         }
     }
 
+    pub fn toggle_hidden_mode(&mut self, cx: &mut Context<Self>) {
+        self.sidebar.update(cx, SidebarView::toggle_hidden_mode);
+    }
+
     /// Opens `product_id`'s detail, for a game picked from outside the
     /// library's own views.
     pub fn select(&self, product_id: String, cx: &mut Context<Self>) {
