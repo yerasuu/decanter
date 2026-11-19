@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS hidden (
     account_id  TEXT NOT NULL,
     storefront  INTEGER NOT NULL,
     product_id  TEXT NOT NULL,
+    origin      TEXT,
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
@@ -220,6 +221,14 @@ CREATE TABLE IF NOT EXISTS hidden_folders (
     PRIMARY KEY (profile_id, folder)
 );
 
+CREATE TABLE IF NOT EXISTS shown_in_hidden_folders (
+    account_id  TEXT NOT NULL,
+    storefront  INTEGER NOT NULL,
+    product_id  TEXT NOT NULL,
+    folder      TEXT NOT NULL,
+    PRIMARY KEY (account_id, storefront, product_id)
+);
+
 CREATE TABLE IF NOT EXISTS game_language (
     account_id  TEXT NOT NULL,
     storefront  INTEGER NOT NULL,
@@ -241,7 +250,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -408,6 +417,12 @@ impl Db {
         if !has_column(&conn, "collections", "hidden")? {
             tracing::info!(table = "collections", column = "hidden", "adding column");
             conn.execute_batch("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;")?;
+        }
+
+        // Additive: a NULL origin is the user's own mark, which every row from before folder marks is.
+        if !has_column(&conn, "hidden", "origin")? {
+            tracing::info!(table = "hidden", column = "origin", "adding column");
+            conn.execute_batch("ALTER TABLE hidden ADD COLUMN origin TEXT;")?;
         }
 
         let db = Self { conn };

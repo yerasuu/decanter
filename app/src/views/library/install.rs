@@ -338,6 +338,8 @@ pub(super) fn refresh_install_state(state: &AppState, account_id: &str, product_
     state.library.update(cx, |library, cx| {
         library.refresh_install_state(account_id, product_id, cx);
     });
+    // A game installed into, or uninstalled from, a hidden folder gains or loses its mark.
+    cx.update(super::actions::sync_folder_marks);
 }
 
 /// Runs until the install finishes or fails. A failure surfaces as

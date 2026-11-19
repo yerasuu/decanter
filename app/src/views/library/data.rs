@@ -274,9 +274,9 @@ pub(super) fn hidden_ids(account_id: &str, storefront: Storefront) -> std::colle
         .unwrap_or_default()
 }
 
-pub(super) fn set_hidden(account_id: &str, storefront: Storefront, product_id: &str, hidden: bool) {
+pub(super) fn set_hidden(profile_id: &str, account_id: &str, storefront: Storefront, product_id: &str, hidden: bool) {
     if let Ok(db) = Db::open_active() {
-        match db.set_hidden(account_id, storefront, product_id, hidden) {
+        match store_hidden(&db, profile_id, account_id, storefront, product_id, hidden) {
             Ok(()) => tracing::info!(account_id, product_id, hidden, "game hidden state changed"),
             Err(err) => tracing::warn!(account_id, product_id, hidden, error = %err, "failed to set hidden state"),
         }
@@ -494,55 +494,101 @@ pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashS
     else {
         return std::collections::HashSet::new();
     };
-    let owners = owners(profile_id);
-    let mut hidden: std::collections::HashSet<String> = owners
+    owners(profile_id)
         .iter()
         .flat_map(|(account_id, storefront)| {
             db.hidden_ids(account_id, *storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list hidden ids"))
                 .unwrap_or_default()
         })
-        .collect();
-    extend_with_hidden_folders(&mut hidden, profile_id, &owners);
-    hidden
+        .collect()
 }
 
-/// Adds the games whose install lives in a folder the profile hid in Storage,
-/// so every reader of the hidden set treats them as hidden games. A game's
-/// folder is the one [`decanter_core::Library::root_of`] picks, the same one
-/// Storage lists it under; a game that isn't installed has none.
-fn extend_with_hidden_folders(
-    hidden: &mut std::collections::HashSet<String>,
-    profile_id: &str,
-    owners: &[(String, Storefront)],
-) {
+/// Marks the installed games of the folders `profile_id` hid in Storage as hidden and drops the
+/// marks of games that left them, returning whether a mark changed. A game's folder is the one
+/// [`decanter_core::Library::root_of`] picks, the same one Storage lists it under. Reads no
+/// manifest while no folder is hidden.
+pub(crate) fn sync_folder_marks(profile_id: &str) -> bool {
     let folders = crate::core::hidden_folders(profile_id);
     if folders.is_empty() {
-        return;
+        return false;
     }
     let Ok(library) = crate::core::library_for_profile(profile_id).inspect_err(
-        |err| tracing::warn!(profile_id, error = %err, "failed to resolve library, hidden folders not applied"),
+        |err| tracing::warn!(profile_id, error = %err, "failed to resolve library, hidden folder marks not synced"),
     ) else {
-        return;
+        return false;
     };
-    let accounts: std::collections::BTreeSet<&str> = owners
-        .iter()
+    let accounts: std::collections::BTreeSet<String> = owners(profile_id)
+        .into_iter()
         .filter(|(_, storefront)| *storefront != Storefront::Steam)
-        .map(|(account_id, _)| account_id.as_str())
+        .map(|(account_id, _)| account_id)
         .collect();
-    for root in library.roots().into_iter().filter(|root| folders.contains(root)) {
-        let folder = decanter_core::Library::new(&root);
-        hidden.extend(
-            accounts
+    let held = library
+        .roots()
+        .into_iter()
+        .filter(|root| folders.contains(root))
+        .map(|root| {
+            let folder = decanter_core::Library::new(&root);
+            let games = accounts
                 .iter()
                 .flat_map(|account_id| folder.scan(account_id).into_values())
                 // Steam keeps a Steam entry's files in its own library folders, so Storage doesn't
                 // list it under this one either.
                 .filter(|game| game.storefront != Storefront::Steam)
                 .filter(|game| library.root_of(&game.account_id, &game.game_id).as_ref() == Some(&root))
-                .map(|game| game.game_id),
-        );
+                .collect();
+            (root, games)
+        })
+        .collect();
+    match Db::open_active().and_then(|db| db.sync_folder_marks(profile_id, &held)) {
+        Ok(changed) => {
+            if changed > 0 {
+                tracing::info!(profile_id, changed, "hidden folder marks changed");
+            }
+            changed > 0
+        }
+        Err(err) => {
+            tracing::warn!(profile_id, error = %err, "failed to sync hidden folder marks");
+            false
+        }
     }
+}
+
+/// Showing a game a hidden folder holds is remembered against that folder, otherwise the folder's
+/// next sync hides it again.
+fn store_hidden(
+    db: &Db,
+    profile_id: &str,
+    account_id: &str,
+    storefront: Storefront,
+    product_id: &str,
+    hidden: bool,
+) -> decanter_core::Result<()> {
+    if !hidden && let Some(folder) = hidden_folder_of(profile_id, account_id, storefront, product_id) {
+        db.show_in_hidden_folder(account_id, storefront, product_id, &folder)
+    } else {
+        db.set_hidden(account_id, storefront, product_id, hidden)
+    }
+}
+
+fn hidden_folder_of(
+    profile_id: &str,
+    account_id: &str,
+    storefront: Storefront,
+    product_id: &str,
+) -> Option<std::path::PathBuf> {
+    if storefront == Storefront::Steam {
+        return None;
+    }
+    let folders = crate::core::hidden_folders(profile_id);
+    if folders.is_empty() {
+        return None;
+    }
+    crate::core::library_for_profile(profile_id)
+        .inspect_err(|err| tracing::warn!(profile_id, error = %err, "failed to resolve library for a hidden folder"))
+        .ok()?
+        .root_of(account_id, product_id)
+        .filter(|root| folders.contains(root))
 }
 
 /// Playtime and achievement counts for the whole library in two queries per

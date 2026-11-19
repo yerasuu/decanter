@@ -343,6 +343,7 @@ impl Db {
         for table in [
             "favorites",
             "hidden",
+            "shown_in_hidden_folders",
             "playtime",
             "games_cache",
             "achievement_cache",

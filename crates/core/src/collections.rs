@@ -245,10 +245,17 @@ impl Db {
 
     pub fn set_hidden(&self, account_id: &str, storefront: Storefront, product_id: &str, hidden: bool) -> Result<()> {
         if hidden {
-            self.conn.execute(
+            let tx = self.conn.unchecked_transaction()?;
+            tx.execute(
                 "INSERT OR IGNORE INTO hidden (account_id, storefront, product_id) VALUES (?1, ?2, ?3)",
                 params![account_id, storefront as i32, product_id],
             )?;
+            // Hidden by the user now, so an earlier "shown despite its folder" no longer holds.
+            tx.execute(
+                "DELETE FROM shown_in_hidden_folders WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",
+                params![account_id, storefront as i32, product_id],
+            )?;
+            tx.commit()?;
         } else {
             self.conn.execute(
                 "DELETE FROM hidden WHERE account_id = ?1 AND storefront = ?2 AND product_id = ?3",

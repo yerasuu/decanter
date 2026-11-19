@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 
 use decanter_core::{Game, InstalledGame, platform};
-use gpui::App;
+use gpui::{App, AppContext as _};
 use rust_i18n::t;
 
 use super::data;
@@ -390,4 +390,20 @@ pub fn dismiss_install(key: &DownloadKey, cx: &mut App) {
 pub fn bump_organisation(cx: &mut App) {
     let background = AppState::get(cx).background.clone();
     background.update(cx, |background, cx| background.bump_organisation(cx));
+}
+
+/// Re-marks the games of the active profile's hidden folders off the UI thread, since it reads
+/// those folders' manifests, then has the Library re-read its hidden set if a mark moved.
+pub fn sync_folder_marks(cx: &mut App) {
+    let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+        return;
+    };
+    let background = AppState::get(cx).background.clone();
+    let sync = cx.background_spawn(async move { data::sync_folder_marks(&profile_id) });
+    cx.spawn(async move |cx| {
+        if sync.await {
+            background.update(cx, |background, cx| background.bump_organisation(cx));
+        }
+    })
+    .detach();
 }

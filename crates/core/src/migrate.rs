@@ -32,13 +32,14 @@ type Groups = BTreeMap<PathBuf, Vec<String>>;
 type ProfileRoot = (String, Option<String>);
 
 /// Rows keyed by the account (or, for external games, the profile) owning them.
-const OWNER_TABLES: [&str; 7] = [
+const OWNER_TABLES: [&str; 8] = [
     "games_cache",
     "achievement_cache",
     "hook_diagnostics",
     "favorites",
     "playtime",
     "hidden",
+    "shown_in_hidden_folders",
     "steam_shortcuts",
 ];
 

@@ -146,7 +146,19 @@ impl AppState {
             }
         })
         .detach();
+        // Folders hidden before their games carried marks, and those of a profile switched to,
+        // get them here, since nothing else syncs until a folder or an install changes.
+        let mut synced_profile = state.session.read(cx).active_profile.clone();
+        cx.observe(&state.session, move |observed, cx| {
+            let profile = observed.read(cx).active_profile.clone();
+            if profile != synced_profile {
+                synced_profile = profile;
+                crate::views::library::actions::sync_folder_marks(cx);
+            }
+        })
+        .detach();
         cx.set_global(state);
+        crate::views::library::actions::sync_folder_marks(cx);
     }
 
     pub fn get(cx: &App) -> &Self {

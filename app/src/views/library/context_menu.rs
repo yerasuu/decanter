@@ -288,7 +288,13 @@ fn game_menu(
             close,
         ))
         .when(crate::core::hiding_enabled(cx), |panel| {
-            panel.child(hide_item(target.product_ids.clone(), account_for, is_hidden, close))
+            panel.child(hide_item(
+                profile_id.to_owned(),
+                target.product_ids.clone(),
+                account_for,
+                is_hidden,
+                close,
+            ))
         });
 
     panel = panel
@@ -408,6 +414,7 @@ fn favorite_item(
 }
 
 fn hide_item(
+    profile_id: String,
     ids: Vec<String>,
     accounts: impl Fn(&str) -> Option<(String, Storefront)> + 'static,
     is_hidden: bool,
@@ -423,7 +430,7 @@ fn hide_item(
             );
             for product_id in &ids {
                 if let Some((account_id, storefront)) = accounts(product_id) {
-                    data::set_hidden(&account_id, storefront, product_id, !is_hidden);
+                    data::set_hidden(&profile_id, &account_id, storefront, product_id, !is_hidden);
                 }
             }
             bump_organisation(cx);

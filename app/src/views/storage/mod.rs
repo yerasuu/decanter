@@ -352,9 +352,9 @@ impl StorageView {
         cx.observe(&state.session, |this, _, cx| this.rescan(cx)).detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.moves, |_, _, cx| cx.notify()).detach();
-        // A game moved into or out of a hidden folder changes what the Library hides.
+        // A game moved into or out of a hidden folder gains or loses its mark.
         cx.subscribe(&state.moves, |this, _, _: &MoveFinished, cx| {
-            crate::views::library::actions::bump_organisation(cx);
+            crate::views::library::actions::sync_folder_marks(cx);
             this.rescan(cx);
         })
         .detach();
@@ -427,8 +427,8 @@ impl StorageView {
         self.rescan(cx);
     }
 
-    /// Hides `root`'s games from the Library views, or shows them again; the
-    /// Library re-reads its hidden set from the flag stored here.
+    /// Hides `root`'s games from the Library views by marking them hidden, or
+    /// shows them again by dropping the marks the folder owns.
     fn set_folder_hidden(&mut self, root: &Path, hidden: bool, cx: &mut Context<Self>) {
         let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
             return;
@@ -444,6 +444,9 @@ impl StorageView {
                     folder.hidden = hidden;
                 }
                 crate::views::library::actions::bump_organisation(cx);
+                if hidden {
+                    crate::views::library::actions::sync_folder_marks(cx);
+                }
                 // The count behind "Show hidden libraries" moved, and a folder hidden while hidden
                 // ones aren't shown leaves the page.
                 self.rescan(cx);
