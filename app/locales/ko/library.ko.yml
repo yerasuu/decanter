@@ -26,6 +26,7 @@ library.sidebar.no_results: 결과가 없습니다.
 library.sidebar.empty_shelf: 비어 있음
 library.sidebar.installed: 설치됨
 library.sidebar.add_game: 게임 추가
+library.sidebar.show_hidden_collections: 숨긴 컬렉션 표시
 library.menu.games: '게임 %{count}개'
 library.collections.new: 새 컬렉션
 library.collections.name_placeholder: 컬렉션 이름
@@ -34,6 +35,8 @@ library.collections.rename: 이름 바꾸기
 library.collections.move_up: 위로 이동
 library.collections.move_down: 아래로 이동
 library.collections.delete: 컬렉션 삭제
+library.collections.hide: 컬렉션 숨기기
+library.collections.unhide: 컬렉션 표시
 library.filters.heading: 라이브러리 필터
 library.filters.clear: 필터 지우기
 library.filters.save_dynamic: 동적 컬렉션으로 저장
@@ -67,6 +70,7 @@ library.filters.sort.rating: 평점
 library.filters.sort.added: 추가한 날짜
 library.filters.collection.title: 컬렉션
 library.filters.collection.any: 모든 컬렉션
+library.filters.show_hidden: 숨긴 게임 표시
 library.filters.account.title: 계정
 library.filters.account.note: 이 프로필에는 계정이 둘 이상 있습니다. 둘을 선택하면 결과가 넓어집니다.
 library.filters.store.title: 스토어

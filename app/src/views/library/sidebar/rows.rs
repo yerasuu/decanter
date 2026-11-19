@@ -16,7 +16,7 @@ use crate::views::library::filters::{Filters, KindSelection, is_installed, pendi
 use crate::views::library::shelf_popups::ShelfMenuTarget;
 use crate::views::library::{LibraryPopup, actions, data, shelves};
 use crate::widgets::nav::{self, Step};
-use crate::widgets::{running_mark, sidebar_title};
+use crate::widgets::{checkbox, running_mark, sidebar_title};
 
 /// Everything the list's rows are derived from; the rows are rebuilt only
 /// when one of these moves, not on every render.
@@ -26,6 +26,7 @@ pub(super) struct RowsKey {
     kind: KindSelection,
     query: String,
     filters: Filters,
+    show_hidden_collections: bool,
     cache: Option<CacheKey>,
     pending_installs: HashSet<DownloadKey>,
     collapsed: HashSet<String>,
@@ -40,6 +41,7 @@ pub(super) struct ShelfHead {
     title: String,
     collection_id: Option<String>,
     dynamic: bool,
+    hidden: bool,
     installed: usize,
     total: usize,
     collapsed: bool,
@@ -55,11 +57,15 @@ pub(super) enum Row {
     Item {
         game: Game,
         installed: bool,
+        hidden: bool,
         shelf: Option<String>,
     },
     Empty {
         shelf: Option<String>,
     },
+    /// The "show hidden collections" toggle, present only while some
+    /// collection is hidden.
+    HiddenCollections(bool),
     /// `.library-list`'s 8px bottom padding.
     Spacer,
 }
@@ -133,6 +139,7 @@ impl SidebarView {
             kind: self.kind,
             query: self.search.read(cx).text().to_lowercase(),
             filters: self.model.read(cx).filters.clone(),
+            show_hidden_collections: self.model.read(cx).show_hidden_collections,
             cache: self.cache.key.clone(),
             // A queued or downloading game should already read as
             // installed here, not just once the manifest scan catches up.
@@ -157,7 +164,7 @@ impl SidebarView {
                     .games
                     .iter()
                     .filter(|entry| key.kind.accepts(entry.kind))
-                    .filter(|entry| !cache.hidden.contains(&entry.game.id))
+                    .filter(|entry| key.filters.show_hidden || !cache.hidden.contains(&entry.game.id))
                     .filter(|entry| {
                         key.filters.accepts(
                             entry,
@@ -172,6 +179,7 @@ impl SidebarView {
                     .collect();
                 if visible.is_empty() {
                     rows.push(Row::Message(t!("library.sidebar.no_results").into()));
+                    self.push_hidden_collections_toggle(&mut rows, key);
                 } else {
                     sort_entries(&mut visible, key.filters.sort, &cache.stats);
                     self.push_shelf_rows(&mut rows, &visible, key);
@@ -190,8 +198,19 @@ impl SidebarView {
             &cache.favorites,
             &cache.stats,
             &key.pending_installs,
+            key.show_hidden_collections,
         );
-        for shelf in shelves {
+        // Right below the last collection's shelf, or above every shelf
+        // while none is listed, so it reads as part of the collections.
+        let toggle_at = shelves
+            .iter()
+            .rposition(|shelf| shelf.collection_id.is_some())
+            .map_or(0, |last| last + 1);
+        let shelf_count = shelves.len();
+        for (index, shelf) in shelves.into_iter().enumerate() {
+            if index == toggle_at {
+                self.push_hidden_collections_toggle(rows, key);
+            }
             let collapsed = self.collapsed.contains(&shelf.id);
             if shelf.collection_id.is_some() && shelf.collection_id == key.renaming {
                 rows.push(Row::Rename);
@@ -203,6 +222,7 @@ impl SidebarView {
                 title: shelf.title.clone(),
                 collection_id: shelf.collection_id.clone(),
                 dynamic: shelf.dynamic,
+                hidden: shelf.hidden,
                 collapsed,
             }));
             if collapsed {
@@ -216,10 +236,20 @@ impl SidebarView {
             for entry in shelf.entries {
                 rows.push(Row::Item {
                     installed: is_installed(&entry.game, &key.pending_installs),
+                    hidden: cache.hidden.contains(&entry.game.id),
                     game: entry.game,
                     shelf: shelf.collection_id.clone(),
                 });
             }
+        }
+        if toggle_at == shelf_count {
+            self.push_hidden_collections_toggle(rows, key);
+        }
+    }
+
+    fn push_hidden_collections_toggle(&self, rows: &mut Vec<Row>, key: &RowsKey) {
+        if self.cache.collections.list.iter().any(|collection| collection.hidden) {
+            rows.push(Row::HiddenCollections(key.show_hidden_collections));
         }
     }
 
@@ -244,15 +274,20 @@ impl SidebarView {
                 None => div().into_any_element(),
             },
             Row::Head(head) => {
-                let dragging = dims(&head.collection_id);
+                let dimmed = head.hidden || dims(&head.collection_id);
                 self.shelf_head(index, head, cx)
-                    .when(dragging, |head| head.opacity(0.45))
+                    .when(dimmed, |head| head.opacity(0.45))
                     .into_any_element()
             }
-            Row::Item { game, installed, shelf } => {
+            Row::Item {
+                game,
+                installed,
+                hidden,
+                shelf,
+            } => {
                 let selected = self.model.read(cx).selected.clone();
                 self.item(index, game, *installed, selected.as_deref(), cx)
-                    .when(dims(shelf), |item| item.opacity(0.45))
+                    .when(*hidden || dims(shelf), |item| item.opacity(0.45))
                     .into_any_element()
             }
             Row::Empty { shelf } => div()
@@ -268,6 +303,7 @@ impl SidebarView {
                 .when(dims(shelf), |empty| empty.opacity(0.45))
                 .child(t!("library.sidebar.empty_shelf"))
                 .into_any_element(),
+            Row::HiddenCollections(shown) => hidden_collections_toggle(*shown, cx).into_any_element(),
             Row::Spacer => div().h_2().into_any_element(),
         }
     }
@@ -520,7 +556,12 @@ impl SidebarView {
         let Some(step) = Step::of(&event.keystroke) else {
             return;
         };
-        let is_stop = |row: &Row| matches!(row, Row::Head(_) | Row::Item { .. } | Row::Rename);
+        let is_stop = |row: &Row| {
+            matches!(
+                row,
+                Row::Head(_) | Row::Item { .. } | Row::Rename | Row::HiddenCollections(_)
+            )
+        };
         let next = match step {
             Step::Next => self
                 .rows
@@ -554,6 +595,34 @@ impl SidebarView {
             model.open_popup(LibraryPopup::GameMenu(target), cx);
         });
     }
+}
+
+/// Small and muted, since it's a way back to what was put away rather than
+/// part of the library itself.
+fn hidden_collections_toggle(shown: bool, cx: &Context<SidebarView>) -> Stateful<gpui::Div> {
+    nav::tab_stop(div().id("show-hidden-collections"))
+        .flex()
+        .items_center()
+        .gap(px(7.))
+        .px(px(14.))
+        .pt(px(10.))
+        .pb(px(4.))
+        .text_size(px(11.))
+        .text_color(rgb(theme::TEXT_DIM))
+        .cursor_pointer()
+        .hover(|row| row.text_color(rgb(theme::TEXT_MUTED)))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.model.update(cx, |model, cx| {
+                model.show_hidden_collections = !shown;
+                cx.notify();
+            });
+            if let Some(id) = SidebarView::profile(cx) {
+                data::save_view_state(&id, data::SHOW_HIDDEN_COLLECTIONS, if shown { "0" } else { "1" });
+            }
+            cx.notify();
+        }))
+        .child(checkbox(shown))
+        .child(t!("library.sidebar.show_hidden_collections"))
 }
 
 fn item_icon(game: &Game) -> AnyElement {

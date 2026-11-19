@@ -28,6 +28,8 @@ pub(super) struct Shelf {
     /// A dynamic collection's contents follow its saved filter, so games
     /// can't be added or removed from it by hand.
     pub dynamic: bool,
+    /// A hidden collection listed anyway, drawn dimmed.
+    pub hidden: bool,
 }
 
 impl Shelf {
@@ -58,6 +60,7 @@ pub(super) fn build(
     favorites: &std::collections::HashSet<String>,
     stats: &LibraryStats,
     pending_installs: &HashSet<DownloadKey>,
+    show_hidden_collections: bool,
 ) -> Vec<Shelf> {
     let favorite_entries: Vec<LibraryEntry> = entries
         .iter()
@@ -70,9 +73,10 @@ pub(super) fn build(
         entries: favorite_entries,
         collection_id: None,
         dynamic: false,
+        hidden: false,
     });
 
-    if collections.list.is_empty() {
+    if collections.listed(show_hidden_collections).next().is_none() {
         let (installed, rest): (Vec<_>, Vec<_>) = entries
             .iter()
             .cloned()
@@ -86,6 +90,7 @@ pub(super) fn build(
                     entries: installed,
                     collection_id: None,
                     dynamic: false,
+                    hidden: false,
                 },
                 Shelf {
                     id: "all".to_string(),
@@ -93,6 +98,7 @@ pub(super) fn build(
                     entries: rest,
                     collection_id: None,
                     dynamic: false,
+                    hidden: false,
                 },
             ])
             .filter(|shelf| !shelf.entries.is_empty())
@@ -101,7 +107,7 @@ pub(super) fn build(
 
     let mut shelves: Vec<Shelf> = favorites_shelf
         .into_iter()
-        .chain(collections.list.iter().map(|collection| {
+        .chain(collections.listed(show_hidden_collections).map(|collection| {
             Shelf {
                 id: collection.id.clone(),
                 title: collection.name.clone(),
@@ -123,6 +129,7 @@ pub(super) fn build(
                         .collect(),
                 },
                 dynamic: collection.filter.is_some(),
+                hidden: collection.hidden,
                 collection_id: Some(collection.id.clone()),
             }
         }))
@@ -130,7 +137,7 @@ pub(super) fn build(
 
     let uncategorized: Vec<LibraryEntry> = entries
         .iter()
-        .filter(|entry| collections.is_uncategorized(&entry.game.id))
+        .filter(|entry| collections.is_uncategorized(&entry.game.id, show_hidden_collections))
         .cloned()
         .collect();
     if !uncategorized.is_empty() {
@@ -140,6 +147,7 @@ pub(super) fn build(
             entries: uncategorized,
             collection_id: None,
             dynamic: false,
+            hidden: false,
         });
     }
 

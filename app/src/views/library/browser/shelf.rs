@@ -421,6 +421,7 @@ pub(super) fn cover_card(
         .rounded(px(theme::RADIUS))
         .cursor_pointer()
         .tooltip(tooltip(capsule.title.clone()))
+        .when(capsule.hidden, |card| card.opacity(0.45))
         .on_click(move |_, window, cx| {
             let id = click_id.to_string();
             let opened_from = window.last_input_was_keyboard().then(|| window.focused(cx)).flatten();

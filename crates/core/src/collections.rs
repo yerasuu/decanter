@@ -26,6 +26,9 @@ pub struct Collection {
     /// `Some` makes this a dynamic collection — an encoded saved filter,
     /// evaluated live rather than backed by [`Db::collection_members`].
     pub filter: Option<String>,
+    /// Left out of the shelves and pickers until asked for; its games stay
+    /// in the library either way.
+    pub hidden: bool,
 }
 
 impl Db {
@@ -33,12 +36,13 @@ impl Db {
     pub fn list_collections(&self, profile_id: &str) -> Result<Vec<Collection>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, filter FROM collections WHERE profile_id = ?1 ORDER BY position ASC")?;
+            .prepare("SELECT id, name, filter, hidden FROM collections WHERE profile_id = ?1 ORDER BY position ASC")?;
         let rows = stmt.query_map(params![profile_id], |row| {
             Ok(Collection {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 filter: row.get(2)?,
+                hidden: row.get(3)?,
             })
         })?;
         let collections = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Error::from)?;
@@ -98,6 +102,7 @@ impl Db {
             id,
             name: name.to_owned(),
             filter: None,
+            hidden: false,
         })
     }
 
@@ -118,6 +123,15 @@ impl Db {
             params![filter, collection_id],
         )?;
         tracing::debug!(collection_id, is_dynamic = filter.is_some(), "set collection filter");
+        Ok(())
+    }
+
+    pub fn set_collection_hidden(&self, collection_id: &str, hidden: bool) -> Result<()> {
+        self.conn.execute(
+            "UPDATE collections SET hidden = ?1 WHERE id = ?2",
+            params![hidden, collection_id],
+        )?;
+        tracing::debug!(collection_id, hidden, "set collection hidden state");
         Ok(())
     }
 

@@ -26,6 +26,7 @@ library.sidebar.no_results: Nenhum resultado.
 library.sidebar.empty_shelf: Vazia
 library.sidebar.installed: Instalado
 library.sidebar.add_game: ADICIONAR UM JOGO
+library.sidebar.show_hidden_collections: Mostrar coleções ocultas
 library.menu.games: '%{count} jogos'
 library.collections.new: Nova coleção
 library.collections.name_placeholder: Nome da coleção
@@ -34,6 +35,8 @@ library.collections.rename: Renomear
 library.collections.move_up: Mover para cima
 library.collections.move_down: Mover para baixo
 library.collections.delete: Excluir coleção
+library.collections.hide: Ocultar coleção
+library.collections.unhide: Mostrar coleção
 library.filters.heading: FILTROS DA BIBLIOTECA
 library.filters.clear: Limpar filtros
 library.filters.save_dynamic: Salvar como coleção dinâmica
@@ -67,6 +70,7 @@ library.filters.sort.rating: Avaliação
 library.filters.sort.added: Data de adição
 library.filters.collection.title: Coleção
 library.filters.collection.any: Qualquer coleção
+library.filters.show_hidden: Mostrar jogos ocultos
 library.filters.account.title: Conta
 library.filters.account.note: 'Este perfil tem mais de uma — marcar duas amplia o resultado.'
 library.filters.store.title: Loja

@@ -26,6 +26,7 @@ library.sidebar.no_results: No results.
 library.sidebar.empty_shelf: Empty
 library.sidebar.installed: Installed
 library.sidebar.add_game: ADD A GAME
+library.sidebar.show_hidden_collections: Show hidden collections
 library.menu.games: '%{count} games'
 library.collections.new: New collection
 library.collections.name_placeholder: Collection name
@@ -34,6 +35,8 @@ library.collections.rename: Rename
 library.collections.move_up: Move up
 library.collections.move_down: Move down
 library.collections.delete: Delete collection
+library.collections.hide: Hide collection
+library.collections.unhide: Show collection
 library.filters.heading: LIBRARY FILTERS
 library.filters.clear: Clear filters
 library.filters.save_dynamic: Save as dynamic collection
@@ -67,6 +70,7 @@ library.filters.sort.rating: Rating
 library.filters.sort.added: Date added
 library.filters.collection.title: Collection
 library.filters.collection.any: Any collection
+library.filters.show_hidden: Show hidden games
 library.filters.account.title: Account
 library.filters.account.note: This profile has more than one — checking two widens the result.
 library.filters.store.title: Store

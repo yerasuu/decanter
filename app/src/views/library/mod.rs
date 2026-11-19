@@ -73,6 +73,9 @@ struct LibraryModel {
     /// instalados" state: that one condition narrows the whole library
     /// view, unlike the rest of the filters, which stay sidebar-only.
     pub(crate) filters: filters::Filters,
+    /// The sidebar's "show hidden collections" toggle, here so the browser's
+    /// shelves and source picker list the same collections the sidebar does.
+    pub(crate) show_hidden_collections: bool,
     /// A collection whose name is being edited inline in the sidebar, as
     /// `(id, current name)` — started from the shelf menu's "Renombrar".
     pub(crate) renaming: Option<(String, String)>,
@@ -122,6 +125,7 @@ impl LibraryModel {
             selected: None,
             popup: None,
             filters: filters::Filters::default(),
+            show_hidden_collections: false,
             renaming: None,
             poll_status: PollStatus::Idle,
             mods_open: false,

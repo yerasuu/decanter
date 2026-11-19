@@ -97,6 +97,7 @@ struct ShelvesKey {
     /// leaves the sqlite reads above as they were.
     games: u64,
     filters: Filters,
+    show_hidden_collections: bool,
     pending_installs: HashSet<DownloadKey>,
     slots: u64,
     /// The source names and capsule lines are translated.
@@ -114,6 +115,8 @@ struct Capsule {
     /// without opening any of them.
     favorite: bool,
     is_mod: bool,
+    /// Shown only because "show hidden games" is on.
+    hidden: bool,
 }
 
 struct ShelfData {
@@ -510,6 +513,7 @@ impl BrowserView {
             organisation: organisation_key,
             games: self.games_epoch,
             filters: self.model.read(cx).filters.clone(),
+            show_hidden_collections: self.model.read(cx).show_hidden_collections,
             // A queued or downloading game should already read as installed
             // here, not just once the manifest scan catches up.
             pending_installs: pending_install_ids(&background.installing),

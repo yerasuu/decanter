@@ -3,6 +3,7 @@ use gpui::SharedString;
 use rust_i18n::t;
 
 use super::{Capsule, Derived, Organisation, ShelfData, ShelvesKey, Slot};
+use crate::views::library::data::Collections;
 use crate::views::library::filters::{belongs_in_the_library, is_installed, sort_entries};
 use crate::views::library::shelves;
 
@@ -24,14 +25,22 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
         .filter(|entry| {
             entry.kind == decanter_gog::GameKind::Game && entry.parent_id.is_none() && belongs_in_the_library(entry)
         })
-        .filter(|entry| !hidden.contains(&entry.game.id))
+        .filter(|entry| key.filters.show_hidden || !hidden.contains(&entry.game.id))
         .filter(|entry| {
             key.filters
                 .accepts(entry, favorites, stats, collections, pending_installs)
         })
         .cloned()
         .collect();
-    let built = shelves::build(&entries, collections, favorites, stats, pending_installs);
+    let show_hidden_collections = key.show_hidden_collections;
+    let built = shelves::build(
+        &entries,
+        collections,
+        favorites,
+        stats,
+        pending_installs,
+        show_hidden_collections,
+    );
     // Built-ins first, then the user's own collections — the order the
     // design prototype settled on, so the two don't drift.
     //
@@ -56,6 +65,9 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
 
     let shelves = slots
         .iter()
+        // A slot pointed at a hidden collection hides with it rather than
+        // showing as an empty shelf whose source the picker no longer lists.
+        .filter(|slot| show_hidden_collections || !is_hidden_collection(collections, &slot.source))
         .map(|slot| {
             let pick = |keep: &dyn Fn(&LibraryEntry) -> bool| entries.iter().filter(|e| keep(e)).cloned().collect();
             let mut items: Vec<LibraryEntry> = match slot.source.as_str() {
@@ -67,7 +79,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
                     played.into_iter().take(RECENT_GAMES).cloned().collect()
                 }
                 "favorites" => pick(&|e| favorites.contains(&e.game.id)),
-                "uncategorized" => pick(&|e| collections.is_uncategorized(&e.game.id)),
+                "uncategorized" => pick(&|e| collections.is_uncategorized(&e.game.id, show_hidden_collections)),
                 "installed" => pick(&|e| is_installed(&e.game, pending_installs)),
                 id => built
                     .iter()
@@ -85,6 +97,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
                         installed: is_installed(&game, pending_installs),
                         favorite: favorites.contains(&game.id),
                         is_mod: entry.is_mod,
+                        hidden: hidden.contains(&game.id),
                         cover: game.cover_url.map(SharedString::from),
                         title: game.title.into(),
                         id: game.id.into(),
@@ -111,6 +124,13 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
         sources,
         shelves,
     }
+}
+
+fn is_hidden_collection(collections: &Collections, id: &str) -> bool {
+    collections
+        .list
+        .iter()
+        .any(|collection| collection.hidden && collection.id == id)
 }
 
 /// The line under a capsule: time played and how much of the achievement

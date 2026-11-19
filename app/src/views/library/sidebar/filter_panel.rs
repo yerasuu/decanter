@@ -111,6 +111,9 @@ struct PanelOptions {
     genres: Vec<String>,
     collections: Vec<(String, String)>,
     accounts: Vec<(String, String)>,
+    /// Hidden games of the chosen product type, the tally beside "show
+    /// hidden games" — `in_kind` leaves them out while it's off.
+    hidden: usize,
 }
 
 impl SidebarView {
@@ -196,12 +199,12 @@ impl SidebarView {
             .filter(|entry| kind.accepts(entry.kind))
             .filter(|entry| entry.parent_id.is_none())
             .filter(|entry| belongs_in_the_library(entry))
-            .filter(|entry| !cache.hidden.contains(&entry.game.id))
+            .filter(|entry| current.show_hidden || !cache.hidden.contains(&entry.game.id))
             .collect();
         let matched = games
             .iter()
             .filter(|entry| kind.accepts(entry.kind))
-            .filter(|entry| !cache.hidden.contains(&entry.game.id))
+            .filter(|entry| current.show_hidden || !cache.hidden.contains(&entry.game.id))
             .filter(|entry| {
                 current.accepts(
                     entry,
@@ -212,6 +215,13 @@ impl SidebarView {
                 )
             })
             .filter(|entry| query.is_empty() || entry.game.title.to_lowercase().contains(&query))
+            .count();
+        let hidden = games
+            .iter()
+            .filter(|entry| kind.accepts(entry.kind))
+            .filter(|entry| entry.parent_id.is_none())
+            .filter(|entry| belongs_in_the_library(entry))
+            .filter(|entry| cache.hidden.contains(&entry.game.id))
             .count();
         let tallies = count_options(
             &in_kind,
@@ -236,12 +246,12 @@ impl SidebarView {
             // Manual collections only — a dynamic one is itself a filter.
             collections: cache
                 .collections
-                .list
-                .iter()
+                .listed(self.model.read(cx).show_hidden_collections)
                 .filter(|collection| collection.filter.is_none())
                 .map(|collection| (collection.id.clone(), collection.name.clone()))
                 .collect(),
             accounts: cache.accounts.clone(),
+            hidden,
         }
     }
 
@@ -376,6 +386,7 @@ fn filter_grid(entity: &Entity<SidebarView>, current: &Filters, options: PanelOp
         genres,
         collections,
         accounts,
+        hidden,
         ..
     } = options;
     div()
@@ -388,7 +399,7 @@ fn filter_grid(entity: &Entity<SidebarView>, current: &Filters, options: PanelOp
         .pb(px(22.))
         .child(state_group(entity, current, &tallies))
         .child(achievement_group(entity, current, &tallies))
-        .child(order_group(entity, current, &collections, &tallies))
+        .child(order_group(entity, current, &collections, &tallies, hidden))
         .when(accounts.len() > 1, |grid| {
             grid.child(account_group(entity, current, accounts, &tallies))
         })
@@ -478,6 +489,7 @@ fn order_group(
     current: &Filters,
     collections: &[(String, String)],
     tallies: &Tallies,
+    hidden: usize,
 ) -> Div {
     let sort_entity = entity.clone();
     let order = filter_group(&t!("library.filters.sort.heading"), &t!("library.filters.sort.note")).child(
@@ -489,8 +501,18 @@ fn order_group(
                 sort_entity.update(cx, |this, cx| this.update_filters(cx, |filters| filters.sort = sort));
             }),
     );
+    // Widens rather than narrows, so it sits with what the list shows
+    // instead of among the play states, whose checks narrow.
+    let show_hidden = div().mt_4().child(check_row(
+        entity,
+        "check-show-hidden".into(),
+        t!("library.filters.show_hidden").into_owned(),
+        hidden,
+        current.show_hidden,
+        |filters| filters.show_hidden = !filters.show_hidden,
+    ));
     if collections.is_empty() {
-        return order;
+        return order.child(show_hidden);
     }
     let options = std::iter::once((
         SharedString::default(),
@@ -523,6 +545,7 @@ fn order_group(
                 });
             }),
         )
+        .child(show_hidden)
 }
 
 fn account_group(

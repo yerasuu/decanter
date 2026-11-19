@@ -173,6 +173,11 @@ pub(super) struct Filters {
     /// level more specific: two GOG accounts in one profile both show up
     /// here even though they'd both pass a `storefronts` check alone.
     pub accounts: HashSet<String>,
+    /// Brings hidden games back into the list and the shelves, so there's
+    /// a way to reach one again to unhide it. Read by the callers that
+    /// drop hidden games, not by [`Filters::accepts`], which never sees the
+    /// hidden set.
+    pub show_hidden: bool,
     pub sort: Sort,
 }
 
@@ -186,6 +191,7 @@ impl Filters {
             + usize::from(self.collection.is_some())
             + self.storefronts.len()
             + self.accounts.len()
+            + usize::from(self.show_hidden)
     }
 
     pub fn is_default(&self) -> bool {

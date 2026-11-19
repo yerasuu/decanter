@@ -22,7 +22,7 @@ pub struct ShelfMenuTarget {
     pub position: Point<Pixels>,
 }
 
-/// Rename, reorder and delete for one collection shelf. Reordering here is
+/// Rename, reorder, hide and delete for one collection shelf. Reordering here is
 /// the click-reachable fallback; dragging the shelf header is the fast path.
 pub fn shelf_menu(
     target: ShelfMenuTarget,
@@ -30,14 +30,15 @@ pub fn shelf_menu(
     model: &Entity<LibraryModel>,
     close: &menu::Dismiss,
 ) -> AnyElement {
-    let order: Vec<String> = data::load_collections(profile_id)
-        .list
-        .into_iter()
-        .map(|collection| collection.id)
-        .collect();
-    let index = order.iter().position(|id| id == &target.collection_id);
+    let order = data::load_collections(profile_id).list;
+    let index = order
+        .iter()
+        .position(|collection| collection.id == target.collection_id);
     let can_move_up = index.is_some_and(|index| index > 0);
     let can_move_down = index.is_some_and(|index| index + 1 < order.len());
+    let is_hidden = order
+        .iter()
+        .any(|collection| collection.id == target.collection_id && collection.hidden);
 
     let move_item = |id: &'static str, label: SharedString, delta: i64, enabled: bool| {
         let profile_id = profile_id.to_owned();
@@ -57,6 +58,8 @@ pub fn shelf_menu(
     let rename_model = model.clone();
     let rename_target = (target.collection_id.clone(), target.title.clone());
     let rename_close = Rc::clone(close);
+    let hide_id = target.collection_id.clone();
+    let hide_close = Rc::clone(close);
     let delete_id = target.collection_id.clone();
     let delete_close = Rc::clone(close);
     menu::panel()
@@ -85,6 +88,19 @@ pub fn shelf_menu(
             1,
             can_move_down,
         ))
+        .child(
+            menu::item("shelf-hide", false)
+                .on_click(move |_, window, cx| {
+                    data::set_collection_hidden(&hide_id, !is_hidden);
+                    bump_organisation(cx);
+                    hide_close(window, cx);
+                })
+                .child(if is_hidden {
+                    t!("library.collections.unhide")
+                } else {
+                    t!("library.collections.hide")
+                }),
+        )
         .child(menu::separator())
         .child(
             menu::danger_item("shelf-delete")

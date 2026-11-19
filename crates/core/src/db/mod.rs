@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS collections (
     profile_id  TEXT NOT NULL,
     name        TEXT NOT NULL,
     filter      TEXT,
-    position    INTEGER NOT NULL
+    position    INTEGER NOT NULL,
+    hidden      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS collection_members (
@@ -226,7 +227,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 11;
+const SCHEMA_VERSION: i64 = 12;
 
 pub struct Db {
     pub(crate) conn: Connection,
@@ -387,6 +388,12 @@ impl Db {
                 tracing::info!(table = "achievement_cache", column, "adding column");
                 conn.execute_batch(&format!("ALTER TABLE achievement_cache ADD COLUMN {column} {ty};"))?;
             }
+        }
+
+        // Additive: collections are the user's own, and the default keeps every existing one visible.
+        if !has_column(&conn, "collections", "hidden")? {
+            tracing::info!(table = "collections", column = "hidden", "adding column");
+            conn.execute_batch("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;")?;
         }
 
         let db = Self { conn };

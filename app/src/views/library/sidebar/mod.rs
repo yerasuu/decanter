@@ -179,6 +179,9 @@ impl SidebarView {
             None => {}
         }
         self.panel_open = data::view_state(&id, data::FILTER_PANEL).as_deref() == Some("1");
+        let show_hidden_collections = data::view_state(&id, data::SHOW_HIDDEN_COLLECTIONS).as_deref() == Some("1");
+        self.model
+            .update(cx, |model, _| model.show_hidden_collections = show_hidden_collections);
         self.loaded_profile = Some(id);
     }
 
