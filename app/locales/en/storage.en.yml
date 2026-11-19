@@ -24,6 +24,8 @@ storage.folder.scan.running: 'Scanning…'
 storage.folder.scan.hint: Looks in this folder for games Decanter didn't install, to add them in External games
 storage.folder.scan.found: 'Found: %{count}, see External games'
 storage.folder.scan.none: Nothing new found
+storage.folder.scan.report_title: 'Scan result'
+storage.folder.scan.open_external: 'Open External games'
 storage.folder.default: Default
 storage.folder.use_default: Use as default
 storage.folder.use_default_hint: New installs go in this folder by default

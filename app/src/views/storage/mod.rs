@@ -8,13 +8,17 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use decanter_core::{InstalledGame, Library, Storefront};
-use gpui::{Context, Entity, Task, Window, div, prelude::*, px, rgb};
+use std::rc::Rc;
+
+use gpui::{AnyElement, Context, Entity, FontWeight, Task, Window, div, prelude::*, px, rgb};
 use rust_i18n::t;
 
 use crate::i18n::Text;
 use crate::state::{AppState, Download, DownloadKey, MoveFinished, MoveKey, MoveQueue};
 use crate::theme;
 use crate::views::downloads;
+use crate::views::library::install_dialog::{dialog_frame, dialog_header};
+use crate::widgets::menu;
 use crate::widgets::reveal::reveal;
 use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
 
@@ -302,6 +306,13 @@ fn folder_status(folder: &Folder) -> String {
     }
 }
 
+/// What a scan of one library folder found, for the window that shows it.
+struct ScanReport {
+    root: PathBuf,
+    games: Vec<(String, PathBuf)>,
+    more: usize,
+}
+
 pub struct StorageView {
     /// `None` until the first scan for this profile lands.
     folders: Option<Vec<Folder>>,
@@ -325,6 +336,8 @@ pub struct StorageView {
     /// Library folders scanned for games decanter didn't install: `None` while the scan runs,
     /// then how many it found.
     unmanaged_scans: HashMap<PathBuf, Option<usize>>,
+    /// The window with what the last scan found, until it is closed.
+    scan_report: Option<ScanReport>,
     /// Hidden folders the last scan left out of `folders`.
     left_out: Vec<PathBuf>,
     /// How many folders are hidden; the "Show hidden libraries" check is
@@ -357,6 +370,7 @@ impl StorageView {
             confirm_legacy: false,
             confirm_stray: None,
             unmanaged_scans: HashMap::new(),
+            scan_report: None,
             left_out: Vec::new(),
             hidden_folders: 0,
             show_hidden: false,
@@ -867,11 +881,97 @@ impl StorageView {
             let _ = this.update(cx, |this, cx| {
                 this.unmanaged_scans
                     .insert(root.clone(), Some(found.games.len().saturating_add(found.more)));
+                this.scan_report = Some(ScanReport {
+                    root: root.clone(),
+                    games: found
+                        .games
+                        .iter()
+                        .map(|game| (game.game.name.clone(), game.folder.clone()))
+                        .collect(),
+                    more: found.more,
+                });
                 crate::external::unmanaged::store(&profile_id, root, found, cx);
                 cx.notify();
             });
         })
         .detach();
+    }
+
+    fn scan_modal(&self, window: &Window, cx: &Context<Self>) -> Option<AnyElement> {
+        let report = self.scan_report.as_ref()?;
+        let close: menu::Dismiss = {
+            let view = cx.entity();
+            Rc::new(move |_, cx| {
+                view.update(cx, |this, cx| {
+                    this.scan_report = None;
+                    cx.notify();
+                });
+            })
+        };
+        let rows = report.games.iter().map(|(name, folder)| {
+            div()
+                .flex()
+                .flex_col()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(name.clone()))
+                .child(theme::muted(folder.display().to_string()).text_size(px(12.)).truncate())
+        });
+        let found_any = !report.games.is_empty();
+        let to_external = Rc::clone(&close);
+        let done = Rc::clone(&close);
+        let body = div()
+            .id("scan-report-body")
+            .flex()
+            .flex_col()
+            .gap_3()
+            .overflow_y_scroll()
+            .pt(px(20.))
+            .px_6()
+            .pb_6()
+            .child(
+                theme::muted(report.root.display().to_string())
+                    .text_size(px(12.))
+                    .truncate(),
+            )
+            .when(!found_any, |body| {
+                body.child(theme::muted(t!("storage.folder.scan.none")))
+            })
+            .children(rows)
+            .when(report.more > 0, |body| {
+                body.child(theme::muted(t!("external.games.unmanaged.more", count = report.more)))
+            })
+            .child(
+                div()
+                    .flex()
+                    .gap(px(10.))
+                    .when(found_any, |row| {
+                        row.child(
+                            button(
+                                "scan-report-open",
+                                ButtonKind::Primary,
+                                t!("storage.folder.scan.open_external"),
+                                false,
+                            )
+                            .on_click(move |_, window, cx| {
+                                to_external(window, cx);
+                                crate::views::external::open_games(cx);
+                            }),
+                        )
+                    })
+                    .child(
+                        button(
+                            "scan-report-close",
+                            ButtonKind::Secondary,
+                            t!("library.menu.uninstall_many_close"),
+                            false,
+                        )
+                        .on_click(move |_, window, cx| done(window, cx)),
+                    ),
+            );
+        let title = t!("storage.folder.scan.report_title").into_owned();
+        let panel = dialog_frame(window)
+            .child(dialog_header(&title, Rc::clone(&close)))
+            .child(body);
+        Some(menu::modal(panel, window, close))
     }
 
     /// What the last scan of `root` found, worded for the line under the folder's path: beside the
@@ -1202,7 +1302,7 @@ impl StorageView {
 }
 
 impl Render for StorageView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let column = div().flex().flex_col().child(theme::h1(t!("storage.title")));
         if AppState::get(cx).session.read(cx).active_profile.is_none() {
             return theme::page("storage", column.child(theme::empty(t!("common.pick_profile"))));
@@ -1291,7 +1391,8 @@ impl Render for StorageView {
                         ),
                 )
                 .children(self.error.as_ref().map(|error| div().mt_3().child(theme::error(error))))
-                .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx))),
+                .children(self.legacy.as_deref().map(|legacy| self.legacy_card(legacy, cx)))
+                .children(self.scan_modal(window, cx)),
         )
     }
 }

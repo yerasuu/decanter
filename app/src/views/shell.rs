@@ -90,15 +90,27 @@ impl Shell {
             if this.page == Page::Raven && !raven_shown(cx) {
                 this.navigate(Page::Library, window, cx);
             }
-            let (request, editing) = {
+            let (request, editing, games) = {
                 let session = session.read(cx);
-                (session.external_request, session.external_edit.clone())
+                (
+                    session.external_request,
+                    session.external_edit.clone(),
+                    session.external_games,
+                )
             };
             if request != external_request {
                 external_request = request;
                 this.navigate(Page::External, window, cx);
                 if let Some(view) = &this.external {
-                    view.update(cx, |view, cx| view.start(editing, cx));
+                    view.update(cx, |view, cx| {
+                        view.start(editing, cx);
+                        if games {
+                            view.show_games(cx);
+                        }
+                    });
+                }
+                if games {
+                    session.update(cx, |session, _| session.external_games = false);
                 }
             }
             let asked = session.read(cx).downloads_request;

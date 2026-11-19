@@ -38,6 +38,16 @@ pub fn open(editing: Option<String>, cx: &mut App) {
     });
 }
 
+/// Asks the shell to show this page on its list of games, where what a Storage scan found is.
+pub fn open_games(cx: &mut App) {
+    let session = AppState::get(cx).session.clone();
+    session.update(cx, |session, cx| {
+        session.external_games = true;
+        cx.notify();
+    });
+    open(None, cx);
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Form,
@@ -131,6 +141,11 @@ impl ExternalView {
             .clone()
             .map(|profile_id| Self::watch(cx.new(|cx| GameForm::new(profile_id, editing, cx)), cx));
         self.tab = Tab::Form;
+        cx.notify();
+    }
+
+    pub(crate) fn show_games(&mut self, cx: &mut Context<Self>) {
+        self.tab = Tab::Games;
         cx.notify();
     }
 

@@ -24,6 +24,8 @@ storage.folder.scan.running: 'Сканирование…'
 storage.folder.scan.hint: Ищет в этой папке игры, которые Decanter не устанавливал, чтобы добавить их во «Внешние игры»
 storage.folder.scan.found: 'Найдено: %{count}, см. «Внешние игры»'
 storage.folder.scan.none: Ничего нового не найдено
+storage.folder.scan.report_title: 'Результат сканирования'
+storage.folder.scan.open_external: 'Открыть «Внешние игры»'
 storage.folder.default: По умолчанию
 storage.folder.use_default: Использовать по умолчанию
 storage.folder.use_default_hint: Новые установки по умолчанию попадают в эту папку

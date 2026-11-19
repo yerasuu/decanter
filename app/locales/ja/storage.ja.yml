@@ -24,6 +24,8 @@ storage.folder.scan.running: 'スキャン中…'
 storage.folder.scan.hint: Decanter がインストールしていないゲームをこのフォルダーで探し、外部ゲームで追加できるようにします
 storage.folder.scan.found: '見つかった数: %{count}（外部ゲームを参照）'
 storage.folder.scan.none: 新しいものは見つかりませんでした
+storage.folder.scan.report_title: 'スキャン結果'
+storage.folder.scan.open_external: '外部ゲームを開く'
 storage.folder.default: 既定
 storage.folder.use_default: 既定として使う
 storage.folder.use_default_hint: 新しいインストールは既定でこのフォルダーに入ります

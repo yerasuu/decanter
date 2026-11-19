@@ -18,7 +18,7 @@ pub mod epic_install;
 mod filters;
 pub(crate) mod fmt;
 pub mod install;
-mod install_dialog;
+pub(crate) mod install_dialog;
 mod mods;
 pub mod properties;
 mod shelf_popups;

@@ -48,6 +48,8 @@ pub struct Session {
     /// Bumped to ask the shell for the "Juegos externos" page — from the
     /// library's sidebar or a game's menu, neither of which owns the shell.
     pub external_request: u32,
+    /// Set with `external_request` to land on the list of games, where the scans' findings are.
+    pub external_games: bool,
     /// Bumped to ask the shell for Descargas, where a cancel asked for
     /// from a game's menu is confirmed.
     pub downloads_request: u32,
@@ -95,6 +97,7 @@ impl Session {
             library_request: 0,
             ps_home: 0,
             external_request: 0,
+            external_games: false,
             downloads_request: 0,
             ps_request: 0,
             external_edit: None,

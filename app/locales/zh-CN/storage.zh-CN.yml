@@ -24,6 +24,8 @@ storage.folder.scan.running: '正在扫描…'
 storage.folder.scan.hint: 在此文件夹中查找并非由 Decanter 安装的游戏，以便在外部游戏中添加
 storage.folder.scan.found: '找到：%{count}，请查看外部游戏'
 storage.folder.scan.none: 未找到新内容
+storage.folder.scan.report_title: '扫描结果'
+storage.folder.scan.open_external: '打开外部游戏'
 storage.folder.default: 默认
 storage.folder.use_default: 设为默认
 storage.folder.use_default_hint: 新安装默认放在此文件夹

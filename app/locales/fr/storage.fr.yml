@@ -24,6 +24,8 @@ storage.folder.scan.running: 'Analyse…'
 storage.folder.scan.hint: Cherche dans ce dossier des jeux que Decanter n''a pas installés, pour les ajouter dans Jeux externes
 storage.folder.scan.found: 'Trouvés : %{count}, voir Jeux externes'
 storage.folder.scan.none: Rien de nouveau trouvé
+storage.folder.scan.report_title: 'Résultat de l’analyse'
+storage.folder.scan.open_external: 'Ouvrir Jeux externes'
 storage.folder.default: Par défaut
 storage.folder.use_default: Utiliser par défaut
 storage.folder.use_default_hint: Les nouvelles installations vont dans ce dossier par défaut
