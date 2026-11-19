@@ -51,9 +51,10 @@ impl Shelf {
 ///
 /// With no collections defined, falls back to the install-state split —
 /// otherwise a fresh library would show as one undifferentiated pile.
-/// With collections, every one gets a shelf even when empty (you just
-/// made it; it should appear), and whatever belongs to none of them lands
-/// in a trailing bucket.
+/// With collections, each one with games gets a shelf (an empty one stays out
+/// of the way until the hidden collections are asked for, which is how it can
+/// still be reached to delete), and whatever belongs to none of them lands in
+/// a trailing bucket.
 pub(super) fn build(
     entries: &[LibraryEntry],
     collections: &Collections,
@@ -133,6 +134,7 @@ pub(super) fn build(
                 collection_id: Some(collection.id.clone()),
             }
         }))
+        .filter(|shelf| !shelf.entries.is_empty() || show_hidden_collections)
         .collect();
 
     let uncategorized: Vec<LibraryEntry> = entries

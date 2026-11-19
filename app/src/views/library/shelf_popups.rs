@@ -29,17 +29,35 @@ pub fn shelf_menu(
     profile_id: &str,
     model: &Entity<LibraryModel>,
     close: &menu::Dismiss,
+    cx: &App,
 ) -> AnyElement {
-    let order = data::load_collections(profile_id).list;
-    let index = order
-        .iter()
-        .position(|collection| collection.id == target.collection_id);
-    let can_move_up = index.is_some_and(|index| index > 0);
-    let can_move_down = index.is_some_and(|index| index + 1 < order.len());
-    let is_hidden = order
+    let all = data::load_collections(profile_id).list;
+    let show_hidden = model.read(cx).show_hidden_collections;
+    let is_hidden = all
         .iter()
         .any(|collection| collection.id == target.collection_id && collection.hidden);
-
+    // A move that only steps over hidden neighbours would look like it did nothing.
+    let order: Vec<_> = all
+        .iter()
+        .enumerate()
+        .filter(|(_, collection)| show_hidden || !collection.hidden || collection.id == target.collection_id)
+        .collect();
+    let index = order
+        .iter()
+        .position(|(_, collection)| collection.id == target.collection_id);
+    let stored_index = index.map(|index| order[index].0);
+    let step = |toward: Option<&(usize, &_)>| match (stored_index, toward) {
+        (Some(from), Some((to, _))) => i64::try_from(*to).unwrap_or(0) - i64::try_from(from).unwrap_or(0),
+        _ => 0,
+    };
+    let up_delta = step(
+        index
+            .and_then(|index| index.checked_sub(1))
+            .and_then(|index| order.get(index)),
+    );
+    let down_delta = step(index.and_then(|index| order.get(index + 1)));
+    let can_move_up = up_delta != 0;
+    let can_move_down = down_delta != 0;
     let move_item = |id: &'static str, label: SharedString, delta: i64, enabled: bool| {
         let profile_id = profile_id.to_owned();
         let collection_id = target.collection_id.clone();
@@ -79,13 +97,13 @@ pub fn shelf_menu(
         .child(move_item(
             "shelf-up",
             t!("library.collections.move_up").into(),
-            -1,
+            up_delta,
             can_move_up,
         ))
         .child(move_item(
             "shelf-down",
             t!("library.collections.move_down").into(),
-            1,
+            down_delta,
             can_move_down,
         ))
         .child(

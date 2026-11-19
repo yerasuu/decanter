@@ -248,7 +248,13 @@ impl SidebarView {
     }
 
     fn push_hidden_collections_toggle(&self, rows: &mut Vec<Row>, key: &RowsKey) {
-        if self.cache.collections.list.iter().any(|collection| collection.hidden) {
+        let collections = &self.cache.collections;
+        let has_unlisted = collections.list.iter().any(|collection| {
+            collection.hidden
+                || (collection.filter.is_none()
+                    && collections.members.get(&collection.id).is_none_or(|ids| ids.is_empty()))
+        });
+        if has_unlisted {
             rows.push(Row::HiddenCollections(key.show_hidden_collections));
         }
     }
