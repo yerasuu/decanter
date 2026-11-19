@@ -40,7 +40,7 @@ settings.general.downloads.title: Téléchargements
 settings.general.downloads.resume_on_start: Reprendre les téléchargements à l’ouverture de Decanter
 settings.general.downloads.resume_hint: Ceux arrêtés par la fermeture de Decanter ou par une sortie inattendue. Ceux que vous avez mis en pause attendent que vous les repreniez, et ceux arrêtés par le réseau ou par un disque débranché reprennent seuls à son retour.
 settings.general.hiding.title: 'Masquage'
-settings.general.hiding.enable: 'Autoriser le masquage de jeux, collections et bibliothèques'
+settings.general.hiding.enable: 'Autoriser le masquage de jeux et bibliothèques'
 settings.general.hiding.hint: 'Ajoute les options pour masquer et pour afficher ce qui est masqué : les menus, les cases des Filtres, la barre latérale et Storage. Ce qui est déjà masqué le reste tant que ceci est désactivé.'
 settings.general.raven.title: Raven (expérimental)
 settings.general.raven.enable: Afficher la section Raven

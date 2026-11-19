@@ -252,7 +252,8 @@ impl SidebarView {
             // Manual collections only — a dynamic one is itself a filter.
             collections: cache
                 .collections
-                .listed(self.model.read(cx).show_hidden_collections)
+                .list
+                .iter()
                 .filter(|collection| collection.filter.is_none())
                 .map(|collection| (collection.id.clone(), collection.name.clone()))
                 .collect(),

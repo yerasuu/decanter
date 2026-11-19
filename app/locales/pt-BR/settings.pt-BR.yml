@@ -40,7 +40,7 @@ settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Retomar downloads quando o Decanter abrir
 settings.general.downloads.resume_hint: 'Os interrompidos ao fechar o Decanter ou por uma saída inesperada. Os que você pausou esperam você retomá-los, e os interrompidos pela rede ou por um disco desconectado continuam sozinhos quando ela ou ele voltar.'
 settings.general.hiding.title: 'Ocultar'
-settings.general.hiding.enable: 'Permitir ocultar jogos, coleções e bibliotecas'
+settings.general.hiding.enable: 'Permitir ocultar jogos e bibliotecas'
 settings.general.hiding.hint: 'Adiciona as opções para ocultar e para ver o que está oculto: os menus, as caixas de Filtros, a barra lateral e o Storage. O que já está oculto continua oculto enquanto isto estiver desativado.'
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Mostrar a seção do Raven

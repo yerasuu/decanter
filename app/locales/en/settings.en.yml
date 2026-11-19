@@ -40,7 +40,7 @@ settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Resume downloads when Decanter opens
 settings.general.downloads.resume_hint: 'The ones stopped by closing Decanter or by an unexpected exit. The ones you paused wait for you to resume them, and the ones stopped by the network or an unplugged disk resume on their own when it is back.'
 settings.general.hiding.title: 'Hiding'
-settings.general.hiding.enable: 'Allow hiding games, collections and libraries'
+settings.general.hiding.enable: 'Allow hiding games and libraries'
 settings.general.hiding.hint: 'Adds the options to hide and to show what is hidden: the menus, the Filters checks, the sidebar and Storage. What is already hidden stays hidden while this is off.'
 settings.general.raven.title: Raven (experimental)
 settings.general.raven.enable: Show the Raven section

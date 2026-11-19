@@ -26,7 +26,6 @@ library.sidebar.no_results: Aucun résultat.
 library.sidebar.empty_shelf: Vide
 library.sidebar.installed: Installés
 library.sidebar.add_game: AJOUTER UN JEU
-library.sidebar.show_hidden_collections: Afficher les collections masquées
 library.menu.games: '%{count} jeux'
 library.collections.new: Nouvelle collection
 library.collections.name_placeholder: Nom de la collection
@@ -35,8 +34,6 @@ library.collections.rename: Renommer
 library.collections.move_up: Monter
 library.collections.move_down: Descendre
 library.collections.delete: Supprimer la collection
-library.collections.hide: Masquer la collection
-library.collections.unhide: Afficher la collection
 library.filters.heading: FILTRES DE LA BIBLIOTHÈQUE
 library.filters.clear: Effacer les filtres
 library.filters.save_dynamic: Enregistrer comme collection dynamique

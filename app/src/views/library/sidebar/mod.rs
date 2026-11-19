@@ -179,9 +179,6 @@ impl SidebarView {
             None => {}
         }
         self.panel_open = data::view_state(&id, data::FILTER_PANEL).as_deref() == Some("1");
-        let show_hidden_collections = data::view_state(&id, data::SHOW_HIDDEN_COLLECTIONS).as_deref() == Some("1");
-        self.model
-            .update(cx, |model, _| model.show_hidden_collections = show_hidden_collections);
         self.loaded_profile = Some(id);
     }
 
@@ -204,13 +201,9 @@ impl SidebarView {
         data::save_view_state(id, data::FILTER_PANEL, if self.panel_open { "1" } else { "0" });
     }
 
-    /// Shows or hides everything the user hid, games and collections together.
+    /// Shows or hides the games the user hid.
     pub(super) fn toggle_hidden_mode(&mut self, cx: &mut Context<Self>) {
         let show = !self.model.read(cx).filters.show_hidden;
-        self.model.update(cx, |model, _| model.show_hidden_collections = show);
-        if let Some(id) = Self::profile(cx) {
-            data::save_view_state(&id, data::SHOW_HIDDEN_COLLECTIONS, if show { "1" } else { "0" });
-        }
         self.update_filters(cx, |filters| filters.show_hidden = show);
     }
 

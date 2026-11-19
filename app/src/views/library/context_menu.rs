@@ -170,10 +170,7 @@ pub fn render_popup(
         }
         LibraryPopup::ShelfMenu(target) => {
             let position = target.position;
-            (
-                position,
-                shelf_popups::shelf_menu(target, &profile_id, model, &close, cx),
-            )
+            (position, shelf_popups::shelf_menu(target, &profile_id, model, &close))
         }
         LibraryPopup::NewCollection(position) => (
             position,
@@ -300,13 +297,6 @@ fn game_menu(
     panel = panel
         .child(menu::separator())
         .child(menu::label(&t!("library.menu.collections")));
-    let collections = data::Collections {
-        list: collections
-            .listed(model.read(cx).show_hidden_collections)
-            .cloned()
-            .collect(),
-        members: collections.members,
-    };
     if collections.list.is_empty() {
         panel = panel.child(menu::empty(t!("library.menu.no_collections")));
     } else {

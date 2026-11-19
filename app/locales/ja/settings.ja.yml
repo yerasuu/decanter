@@ -40,7 +40,7 @@ settings.general.downloads.title: "ダウンロード"
 settings.general.downloads.resume_on_start: "Decanter を開いたときにダウンロードを再開する"
 settings.general.downloads.resume_hint: "Decanter の終了や予期しない終了で停止したものが対象です。手動で一時停止したものは再開するまで待機し、ネットワークの切断やディスクの取り外しで停止したものは、復旧すると自動的に再開します。"
 settings.general.hiding.title: '非表示'
-settings.general.hiding.enable: 'ゲーム・コレクション・ライブラリの非表示を許可する'
+settings.general.hiding.enable: 'ゲームとライブラリの非表示を許可する'
 settings.general.hiding.hint: '非表示にする操作と非表示のものを表示する操作（メニュー、フィルターのチェック、サイドバー、Storage）を追加します。オフの間、すでに非表示のものは非表示のままです。'
 settings.general.raven.title: "Raven(試験的)"
 settings.general.raven.enable: "Raven セクションを表示する"

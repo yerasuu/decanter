@@ -3,7 +3,6 @@ use gpui::SharedString;
 use rust_i18n::t;
 
 use super::{Capsule, Derived, Organisation, ShelfData, ShelvesKey, Slot};
-use crate::views::library::data::Collections;
 use crate::views::library::filters::{belongs_in_the_library, is_installed, sort_entries};
 use crate::views::library::shelves;
 
@@ -32,15 +31,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
         })
         .cloned()
         .collect();
-    let show_hidden_collections = key.show_hidden_collections;
-    let built = shelves::build(
-        &entries,
-        collections,
-        favorites,
-        stats,
-        pending_installs,
-        show_hidden_collections,
-    );
+    let built = shelves::build(&entries, collections, favorites, stats, pending_installs);
     // Built-ins first, then the user's own collections — the order the
     // design prototype settled on, so the two don't drift.
     //
@@ -65,9 +56,6 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
 
     let shelves = slots
         .iter()
-        // A slot pointed at a hidden collection hides with it rather than
-        // showing as an empty shelf whose source the picker no longer lists.
-        .filter(|slot| show_hidden_collections || !is_hidden_collection(collections, &slot.source))
         .map(|slot| {
             let pick = |keep: &dyn Fn(&LibraryEntry) -> bool| entries.iter().filter(|e| keep(e)).cloned().collect();
             let mut items: Vec<LibraryEntry> = match slot.source.as_str() {
@@ -123,13 +111,6 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
         sources,
         shelves,
     }
-}
-
-fn is_hidden_collection(collections: &Collections, id: &str) -> bool {
-    collections
-        .list
-        .iter()
-        .any(|collection| collection.hidden && collection.id == id)
 }
 
 /// The line under a capsule: time played and how much of the achievement

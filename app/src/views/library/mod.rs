@@ -75,7 +75,6 @@ struct LibraryModel {
     pub(crate) filters: filters::Filters,
     /// The sidebar's "show hidden collections" toggle, here so the browser's
     /// shelves and source picker list the same collections the sidebar does.
-    pub(crate) show_hidden_collections: bool,
     /// A collection whose name is being edited inline in the sidebar, as
     /// `(id, current name)` — started from the shelf menu's "Renombrar".
     pub(crate) renaming: Option<(String, String)>,
@@ -125,7 +124,6 @@ impl LibraryModel {
             selected: None,
             popup: None,
             filters: filters::Filters::default(),
-            show_hidden_collections: false,
             renaming: None,
             poll_status: PollStatus::Idle,
             mods_open: false,
@@ -318,13 +316,12 @@ impl Render for LibraryView {
         // puts everything hidden back away.
         let reveals = {
             let model = self.model.read(cx);
-            model.filters.show_hidden || model.filters.only_hidden || model.show_hidden_collections
+            model.filters.show_hidden || model.filters.only_hidden
         };
         if reveals && !crate::core::hiding_enabled(cx) {
             self.model.update(cx, |model, _| {
                 model.filters.show_hidden = false;
                 model.filters.only_hidden = false;
-                model.show_hidden_collections = false;
             });
         }
         let requests = self

@@ -22,40 +22,22 @@ pub struct ShelfMenuTarget {
     pub position: Point<Pixels>,
 }
 
-/// Rename, reorder, hide and delete for one collection shelf. Reordering here is
+/// Rename, reorder and delete for one collection shelf. Reordering here is
 /// the click-reachable fallback; dragging the shelf header is the fast path.
 pub fn shelf_menu(
     target: ShelfMenuTarget,
     profile_id: &str,
     model: &Entity<LibraryModel>,
     close: &menu::Dismiss,
-    cx: &App,
 ) -> AnyElement {
     let all = data::load_collections(profile_id).list;
-    let show_hidden = model.read(cx).show_hidden_collections;
-    let is_hidden = all
-        .iter()
-        .any(|collection| collection.id == target.collection_id && collection.hidden);
-    // A move that only steps over hidden neighbours would look like it did nothing.
-    let order: Vec<_> = all
-        .iter()
-        .enumerate()
-        .filter(|(_, collection)| show_hidden || !collection.hidden || collection.id == target.collection_id)
-        .collect();
-    let index = order
-        .iter()
-        .position(|(_, collection)| collection.id == target.collection_id);
-    let stored_index = index.map(|index| order[index].0);
-    let step = |toward: Option<&(usize, &_)>| match (stored_index, toward) {
-        (Some(from), Some((to, _))) => i64::try_from(*to).unwrap_or(0) - i64::try_from(from).unwrap_or(0),
-        _ => 0,
+    let index = all.iter().position(|collection| collection.id == target.collection_id);
+    let up_delta = if index.is_some_and(|index| index > 0) { -1 } else { 0 };
+    let down_delta = if index.is_some_and(|index| index + 1 < all.len()) {
+        1
+    } else {
+        0
     };
-    let up_delta = step(
-        index
-            .and_then(|index| index.checked_sub(1))
-            .and_then(|index| order.get(index)),
-    );
-    let down_delta = step(index.and_then(|index| order.get(index + 1)));
     let can_move_up = up_delta != 0;
     let can_move_down = down_delta != 0;
     let move_item = |id: &'static str, label: SharedString, delta: i64, enabled: bool| {
@@ -76,8 +58,6 @@ pub fn shelf_menu(
     let rename_model = model.clone();
     let rename_target = (target.collection_id.clone(), target.title.clone());
     let rename_close = Rc::clone(close);
-    let hide_id = target.collection_id.clone();
-    let hide_close = Rc::clone(close);
     let delete_id = target.collection_id.clone();
     let delete_close = Rc::clone(close);
     menu::panel()
@@ -106,21 +86,6 @@ pub fn shelf_menu(
             down_delta,
             can_move_down,
         ))
-        .when(crate::core::hiding_enabled(cx), |panel| {
-            panel.child(
-                menu::item("shelf-hide", false)
-                    .on_click(move |_, window, cx| {
-                        data::set_collection_hidden(&hide_id, !is_hidden);
-                        bump_organisation(cx);
-                        hide_close(window, cx);
-                    })
-                    .child(if is_hidden {
-                        t!("library.collections.unhide")
-                    } else {
-                        t!("library.collections.hide")
-                    }),
-            )
-        })
         .child(menu::separator())
         .child(
             menu::danger_item("shelf-delete")

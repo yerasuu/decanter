@@ -40,7 +40,7 @@ settings.general.downloads.title: 다운로드
 settings.general.downloads.resume_on_start: Decanter를 열 때 다운로드 재개
 settings.general.downloads.resume_hint: 'Decanter를 닫았거나 예기치 않게 종료되어 중단된 다운로드가 대상입니다. 직접 일시 중지한 다운로드는 직접 재개할 때까지 대기하며, 네트워크 문제나 디스크 연결 해제로 중단된 다운로드는 복구되면 자동으로 재개됩니다.'
 settings.general.hiding.title: '숨기기'
-settings.general.hiding.enable: '게임, 컬렉션, 라이브러리 숨기기 허용'
+settings.general.hiding.enable: '게임과 라이브러리 숨기기 허용'
 settings.general.hiding.hint: '숨기기와 숨긴 항목 보기 옵션(메뉴, 필터 체크, 사이드바, Storage)을 추가합니다. 꺼져 있는 동안 이미 숨긴 항목은 계속 숨겨집니다.'
 settings.general.raven.title: Raven (실험적 기능)
 settings.general.raven.enable: Raven 섹션 표시

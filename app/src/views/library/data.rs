@@ -165,20 +165,11 @@ impl Collections {
             .is_some_and(|ids| ids.contains(product_id))
     }
 
-    /// The collections shelves and pickers offer, hidden ones only while
-    /// `show_hidden` asks for them.
-    pub fn listed(&self, show_hidden: bool) -> impl Iterator<Item = &Collection> {
-        self.list
-            .iter()
-            .filter(move |collection| show_hidden || !collection.hidden)
-    }
-
-    /// Whether this game sits in no listed collection — what decides the
-    /// "Sin coleccion" shelf, so a game only in hidden collections stays
-    /// reachable there instead of vanishing with them.
-    pub fn is_uncategorized(&self, product_id: &str, show_hidden: bool) -> bool {
+    /// Whether this game sits in no collection — what decides the "Sin coleccion" shelf.
+    pub fn is_uncategorized(&self, product_id: &str) -> bool {
         !self
-            .listed(show_hidden)
+            .list
+            .iter()
             .any(|collection| self.contains(&collection.id, product_id))
     }
 }
@@ -300,8 +291,6 @@ pub(super) const BROWSER_SHELVES: &str = "browser_shelves";
 pub(super) const SIDEBAR_FILTERS: &str = "sidebar_filters";
 /// Whether the filter panel was left open.
 pub(super) const FILTER_PANEL: &str = "filter_panel_open";
-/// Whether the sidebar lists hidden collections.
-pub(super) const SHOW_HIDDEN_COLLECTIONS: &str = "show_hidden_collections";
 
 /// View state that isn't worth its own table, keyed by profile so two
 /// profiles don't share one arrangement of the same library. Read through
@@ -354,21 +343,6 @@ pub(super) fn delete_collection(collection_id: &str) {
         }
     } else {
         tracing::warn!(collection_id, "failed to open db, collection not deleted");
-    }
-}
-
-pub(super) fn set_collection_hidden(collection_id: &str, hidden: bool) {
-    if let Ok(db) = Db::open_active() {
-        match db.set_collection_hidden(collection_id, hidden) {
-            Ok(()) => tracing::info!(collection_id, hidden, "collection hidden state changed"),
-            Err(err) => tracing::warn!(collection_id, hidden, error = %err, "failed to set collection hidden state"),
-        }
-    } else {
-        tracing::warn!(
-            collection_id,
-            hidden,
-            "failed to open db, collection hidden state not changed"
-        );
     }
 }
 
