@@ -4,7 +4,7 @@
 
 mod moves;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use decanter_core::{InstalledGame, Library, Storefront};
@@ -266,6 +266,9 @@ pub struct StorageView {
     /// The journal-less staging folder whose Eliminar waits for its
     /// confirmation: library folder, account and folder name.
     confirm_stray: Option<(PathBuf, String, String)>,
+    /// Library folders scanned for games decanter didn't install: `None` while the scan runs,
+    /// then how many it found.
+    unmanaged_scans: HashMap<PathBuf, Option<usize>>,
 }
 
 impl StorageView {
@@ -287,6 +290,7 @@ impl StorageView {
             legacy: None,
             confirm_legacy: false,
             confirm_stray: None,
+            unmanaged_scans: HashMap::new(),
         };
         this.rescan(cx);
         this
@@ -673,6 +677,59 @@ impl StorageView {
         cx.notify();
     }
 
+    /// Looks through `root` for games decanter didn't install, off the UI thread, for External games
+    /// to propose.
+    fn scan_unmanaged(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+            return;
+        };
+        self.unmanaged_scans.insert(root.to_path_buf(), None);
+        cx.notify();
+        let root = root.to_path_buf();
+        let scan = cx.background_spawn({
+            let (profile_id, root) = (profile_id.clone(), root.clone());
+            async move { crate::external::unmanaged::detect(&profile_id, &root) }
+        });
+        cx.spawn(async move |this, cx| {
+            let found = scan.await;
+            let _ = this.update(cx, |this, cx| {
+                this.unmanaged_scans
+                    .insert(root.clone(), Some(found.games.len().saturating_add(found.more)));
+                crate::external::unmanaged::store(&profile_id, root, found, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn scan_button(&self, index: usize, root: &Path, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let state = self.unmanaged_scans.get(root).copied();
+        let scanning = state == Some(None);
+        let label = if scanning {
+            t!("storage.folder.scan.running")
+        } else {
+            t!("storage.folder.scan.button")
+        };
+        let result = match state.flatten() {
+            Some(0) => Some(t!("storage.folder.scan.none")),
+            Some(count) => Some(t!("storage.folder.scan.found", count = count)),
+            None => None,
+        };
+        let root = root.to_path_buf();
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .children(result.map(|result| theme::muted(result).text_size(px(12.))))
+            .child(
+                button(("storage-scan", index), ButtonKind::Secondary, label, scanning)
+                    .tooltip(tooltip(t!("storage.folder.scan.hint")))
+                    .when(!scanning, |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| this.scan_unmanaged(&root, cx)))
+                    }),
+            )
+    }
+
     fn use_as_default(&mut self, root: &Path, cx: &mut Context<Self>) {
         let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
             return;
@@ -897,6 +954,9 @@ impl StorageView {
                                 col.child(theme::muted(steam).text_size(px(12.)))
                             }),
                     )
+                    .when(folder.present, |row| {
+                        row.child(self.scan_button(index, &folder.root, cx))
+                    })
                     .when(!folder.is_default && folder.present, |row| {
                         row.child(
                             button(

@@ -17,6 +17,11 @@ storage.folder.used.other: '%{used} usados por %{count} juegos'
 storage.folder.steam.one: 'Steam: %{size} · 1 juego, lo gestiona Steam y no cuenta arriba'
 storage.folder.steam.other: 'Steam: %{size} · %{count} juegos, los gestiona Steam y no cuentan arriba'
 storage.folder.free: '%{free} libres de %{total}'
+storage.folder.scan.button: Buscar juegos
+storage.folder.scan.running: 'Buscando…'
+storage.folder.scan.hint: Busca en esta carpeta juegos que Decanter no instaló, para añadirlos en Juegos externos
+storage.folder.scan.found: 'Encontrados: %{count}, míralos en Juegos externos'
+storage.folder.scan.none: No se ha encontrado nada nuevo
 storage.folder.default: Predeterminada
 storage.folder.use_default: Usar por defecto
 storage.folder.use_default_hint: Las instalaciones nuevas van a esta carpeta por defecto

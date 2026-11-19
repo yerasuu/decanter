@@ -13,6 +13,11 @@ external.games.found: 'Найдено в %{host}: %{game}'
 external.games.add_found: 'Добавить'
 external.games.steam.title: 'Найдено в Steam'
 external.games.steam.hint: 'Игры, установленные в Steam, и ваши сторонние ярлыки. Добавление только читает данные Steam, ничего в нём не меняется.'
+external.games.unmanaged.title: 'Найдено в ваших библиотеках'
+external.games.unmanaged.hint: 'Папки в ваших папках библиотеки, которые Decanter не устанавливал. Добавленная игра запускается оттуда, где лежит; ничего не перемещается.'
+external.games.unmanaged.dismiss: Скрыть
+external.games.unmanaged.dismiss_hint: Больше не предлагать эту папку
+external.games.unmanaged.more: 'Не показано: ещё %{count}'
 external.games.remove.button: 'Удалить'
 external.games.remove.running: 'Остановите игру перед удалением'
 external.games.remove.hosted: 'Удаляет игру; префикс остаётся за %{host}'

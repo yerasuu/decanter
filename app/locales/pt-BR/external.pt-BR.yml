@@ -13,6 +13,11 @@ external.games.found: 'Encontrado em %{host}: %{game}'
 external.games.add_found: Adicionar
 external.games.steam.title: 'Encontrados no Steam'
 external.games.steam.hint: 'Jogos instalados pelo Steam e seus atalhos fora do Steam. Adicionar um só lê do Steam; nada nele é alterado.'
+external.games.unmanaged.title: 'Encontrados nas suas bibliotecas'
+external.games.unmanaged.hint: 'Pastas nas suas pastas de biblioteca que o Decanter não instalou. Um jogo adicionado roda de onde está; nada é movido.'
+external.games.unmanaged.dismiss: Descartar
+external.games.unmanaged.dismiss_hint: Não sugerir esta pasta de novo
+external.games.unmanaged.more: 'Não exibidos: mais %{count}'
 external.games.remove.button: Excluir
 external.games.remove.running: Pare o jogo antes de excluí-lo
 external.games.remove.hosted: Remove o jogo; o prefixo continua pertencendo a %{host}

@@ -13,6 +13,11 @@ external.games.found: "在 %{host} 中发现：%{game}"
 external.games.add_found: "添加"
 external.games.steam.title: '在 Steam 中发现'
 external.games.steam.hint: 'Steam 已安装的游戏和你的非 Steam 快捷方式。添加时只读取 Steam，不会改动其中任何内容。'
+external.games.unmanaged.title: '在你的库中找到'
+external.games.unmanaged.hint: '库文件夹中并非由 Decanter 安装的文件夹。添加后游戏从原位置启动，不会移动任何文件。'
+external.games.unmanaged.dismiss: 忽略
+external.games.unmanaged.dismiss_hint: 不再建议此文件夹
+external.games.unmanaged.more: '未显示：另有 %{count} 个'
 external.games.remove.button: "删除"
 external.games.remove.running: "请先停止游戏再删除"
 external.games.remove.hosted: "移除游戏；前缀仍属于 %{host}"

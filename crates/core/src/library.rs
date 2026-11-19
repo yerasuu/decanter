@@ -53,7 +53,7 @@
     reason = "several structs/derives below cost more than the 512-byte threshold by design"
 )]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io;
 use std::iter;
@@ -656,6 +656,37 @@ impl Library {
         games
     }
 
+    /// The folders under `root`'s `common/` that no manifest in `root` names, decanter's or
+    /// Steam's: files copied in by hand rather than installed. Symlinks are left out, so that a
+    /// link can't lead a caller walking these folders out of the library. Empty for a `root` that
+    /// isn't one of this library's folders, or whose `common/` can't be read (logged).
+    #[must_use]
+    #[inline]
+    pub fn unclaimed_dirs(&self, root: &Path) -> Vec<PathBuf> {
+        if !self.all_roots().any(|known| known == root) {
+            return Vec::new();
+        }
+        let common = root.join("common");
+        let entries = match fs::read_dir(&common) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Vec::new(),
+            Err(err) => {
+                tracing::warn!(path = %common.display(), error = %err, "failed to read library common directory");
+                return Vec::new();
+            }
+        };
+        let mut claimed = steam_install_dirs(root);
+        claimed.extend(scan_root(root).into_iter().map(|game| game.install_dir));
+        let dirs: Vec<_> = entries
+            .flatten()
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .filter(|entry| entry.file_name().to_str().is_none_or(|name| !claimed.contains(name)))
+            .map(|entry| entry.path())
+            .collect();
+        tracing::debug!(root = %root.display(), count = dirs.len(), "found unclaimed library folders");
+        dirs
+    }
+
     /// Writes `game`'s manifest into the folder `to` and drops the copy in
     /// whichever folder had it, once its files and prefix have moved there.
     /// `game` is written as given, so a path that moved with it can be
@@ -794,8 +825,13 @@ fn manifest_path_in(root: &Path, account_id: &str, storefront: Storefront, game_
 /// Whether a Steam `appmanifest_*.acf` directly in `root` (a `steamapps` folder of Steam's) names
 /// `install_dir` as the folder under `common/` its game is in.
 fn steam_installs_into(root: &Path, install_dir: &str) -> bool {
+    steam_install_dirs(root).contains(install_dir)
+}
+
+/// Every folder under `root`'s `common/` a Steam `appmanifest_*.acf` directly in `root` names.
+fn steam_install_dirs(root: &Path) -> HashSet<String> {
     let Ok(entries) = fs::read_dir(root) else {
-        return false;
+        return HashSet::new();
     };
     entries
         .flatten()
@@ -809,7 +845,8 @@ fn steam_installs_into(root: &Path, install_dir: &str) -> bool {
         })
         .filter_map(|entry| fs::read_to_string(entry.path()).ok())
         .filter_map(|text| vdf::from_str(&text).ok())
-        .any(|(_, state)| state.get("installdir") == Some(install_dir))
+        .filter_map(|(_, state)| state.get("installdir").map(str::to_owned))
+        .collect()
 }
 
 /// Whether `path` is a library folder list Steam wrote: an entry that isn't a block of `path` and

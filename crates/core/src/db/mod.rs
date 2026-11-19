@@ -7,6 +7,7 @@
 //! straight off its manifests — this store never duplicates it.
 
 mod achievements;
+mod dismissed_folders;
 mod dump_sizes;
 mod favorites;
 mod game_language;
@@ -220,6 +221,12 @@ CREATE TABLE IF NOT EXISTS game_language (
     PRIMARY KEY (account_id, storefront, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS dismissed_folders (
+    profile_id  TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    PRIMARY KEY (profile_id, path)
+);
+
 DROP TABLE IF EXISTS ps_scan_dirs;
 DROP TABLE IF EXISTS game_links;
 ";
@@ -227,7 +234,7 @@ DROP TABLE IF EXISTS game_links;
 /// Stamped in `PRAGMA user_version` once [`Db::open`] has migrated a file, so the next open of
 /// the same file skips the migration. Bump it whenever `SCHEMA` or a migration below changes,
 /// otherwise existing databases never run the new step.
-const SCHEMA_VERSION: i64 = 12;
+const SCHEMA_VERSION: i64 = 13;
 
 pub struct Db {
     pub(crate) conn: Connection,

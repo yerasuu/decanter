@@ -134,6 +134,12 @@ impl Db {
         ) {
             return Err(err.into());
         }
+        if let Err(err) = self.conn.execute(
+            "DELETE FROM dismissed_folders WHERE profile_id = ?1",
+            params![profile_id],
+        ) {
+            return Err(err.into());
+        }
         match self
             .conn
             .execute("DELETE FROM profiles WHERE id = ?1", params![profile_id])

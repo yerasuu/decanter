@@ -21,6 +21,7 @@ use crate::capabilities::Caps;
 use crate::external::art;
 use crate::external::launchers::Detected;
 use crate::external::steam::SteamGame;
+use crate::external::unmanaged::{self, Unmanaged};
 use crate::i18n::Text;
 use crate::state::AppState;
 use crate::theme;
@@ -56,6 +57,8 @@ pub struct ExternalView {
     steam: Vec<SteamGame>,
     /// Why the last Steam entry couldn't be added.
     steam_error: Option<Text>,
+    /// Why the last game found in a library folder couldn't be dismissed.
+    unmanaged_error: Option<Text>,
     _scan: Option<Task<()>>,
     api_key: Entity<TextInput>,
     key_status: Option<Text>,
@@ -72,6 +75,8 @@ impl ExternalView {
         let state = AppState::get(cx).clone();
         // `running` locks a running game's Eliminar.
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
+        // Filled by the scans Storage runs.
+        cx.observe_global::<unmanaged::Proposals>(|_, cx| cx.notify()).detach();
         cx.observe(&state.session, |this, session, cx| {
             let profile = session.read(cx).active_profile.clone();
             if profile != this.profile_id {
@@ -101,6 +106,7 @@ impl ExternalView {
             found: HashMap::new(),
             steam: Vec::new(),
             steam_error: None,
+            unmanaged_error: None,
             _scan: None,
             api_key,
             key_status: None,
@@ -141,6 +147,26 @@ impl ExternalView {
             cx,
         ));
         self.tab = Tab::Form;
+        cx.notify();
+    }
+
+    /// A fresh form for a game found in one of the library folders.
+    fn start_unmanaged(&mut self, found: &Unmanaged, cx: &mut Context<Self>) {
+        let Some(profile_id) = self.profile_id.clone() else {
+            return;
+        };
+        self.form = Some(Self::watch(cx.new(|cx| GameForm::unmanaged(profile_id, found, cx)), cx));
+        self.tab = Tab::Form;
+        cx.notify();
+    }
+
+    fn dismiss_unmanaged(&mut self, folder: &std::path::Path, cx: &mut Context<Self>) {
+        let Some(profile_id) = self.profile_id.as_deref() else {
+            return;
+        };
+        self.unmanaged_error = unmanaged::dismiss(profile_id, folder, cx)
+            .err()
+            .map(|err| err.localized());
         cx.notify();
     }
 
@@ -286,7 +312,8 @@ impl ExternalView {
     }
 
     fn game_list(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
-        if self.games.is_empty() && self.steam.is_empty() {
+        let unmanaged = self.unmanaged(cx);
+        if self.games.is_empty() && self.steam.is_empty() && unmanaged.games.is_empty() {
             return theme::empty(t!("external.games.empty")).into_any_element();
         }
         let running = AppState::get(cx).background.read(cx).running.clone();
@@ -388,7 +415,82 @@ impl ExternalView {
         if !self.steam.is_empty() {
             column = column.child(self.steam_list(cx));
         }
+        if !unmanaged.games.is_empty() {
+            column = column.child(self.unmanaged_list(&unmanaged, cx));
+        }
         column.into_any_element()
+    }
+
+    /// What Storage's scans found that isn't an external game yet, and how many they held back.
+    fn unmanaged(&self, cx: &App) -> unmanaged::Found {
+        let Some(profile_id) = self.profile_id.as_deref() else {
+            return unmanaged::Found::default();
+        };
+        let mut found = unmanaged::proposed(profile_id, cx);
+        let added: HashSet<PathBuf> = self.games.iter().filter_map(crate::core::executable_for).collect();
+        found
+            .games
+            .retain(|found| !added.iter().any(|executable| executable.starts_with(&found.folder)));
+        found
+    }
+
+    fn unmanaged_list(&self, found: &unmanaged::Found, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let rows: Vec<AnyElement> = found
+            .games
+            .iter()
+            .enumerate()
+            .map(|(index, found)| {
+                let (add, folder) = (found.clone(), found.folder.clone());
+                theme::list_row(("external-unmanaged", index), false)
+                    .child(icon(None))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child(found.game.name.clone()))
+                            .child(theme::muted(found.game.executable.display().to_string()).text_size(px(12.))),
+                    )
+                    .child(
+                        button(
+                            ("external-dismiss-unmanaged", index),
+                            ButtonKind::Secondary,
+                            t!("external.games.unmanaged.dismiss"),
+                            false,
+                        )
+                        .tooltip(tooltip(t!("external.games.unmanaged.dismiss_hint")))
+                        .on_click(cx.listener(move |this, _, _, cx| this.dismiss_unmanaged(&folder, cx))),
+                    )
+                    .child(
+                        button(
+                            ("external-add-unmanaged", index),
+                            ButtonKind::Primary,
+                            t!("external.games.add_found"),
+                            false,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| this.start_unmanaged(&add, cx))),
+                    )
+                    .into_any_element()
+            })
+            .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(t!("external.games.unmanaged.title")),
+            )
+            .child(theme::muted(t!("external.games.unmanaged.hint")))
+            .when_some(self.unmanaged_error.as_ref(), |column, err| {
+                column.child(theme::error(err))
+            })
+            .child(theme::card().children(rows))
+            .when(found.more > 0, |column| {
+                column.child(theme::muted(t!("external.games.unmanaged.more", count = found.more)))
+            })
     }
 
     fn steam_list(&self, cx: &Context<Self>) -> impl IntoElement + use<> {

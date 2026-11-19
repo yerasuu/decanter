@@ -13,6 +13,11 @@ external.games.found: "Trovato in %{host}: %{game}"
 external.games.add_found: Aggiungi
 external.games.steam.title: 'Trovati in Steam'
 external.games.steam.hint: 'Giochi installati da Steam e i tuoi collegamenti non Steam. L''aggiunta legge soltanto da Steam; non viene modificato nulla.'
+external.games.unmanaged.title: 'Trovati nelle tue librerie'
+external.games.unmanaged.hint: 'Cartelle nelle tue cartelle della libreria che Decanter non ha installato. Un gioco aggiunto si avvia da dove si trova; non viene spostato nulla.'
+external.games.unmanaged.dismiss: Ignora
+external.games.unmanaged.dismiss_hint: Non proporre più questa cartella
+external.games.unmanaged.more: 'Non mostrati: altri %{count}'
 external.games.remove.button: Elimina
 external.games.remove.running: Chiudi il gioco prima di eliminarlo
 external.games.remove.hosted: "Rimuove il gioco; il prefisso appartiene ancora a %{host}"

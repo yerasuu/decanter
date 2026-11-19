@@ -13,6 +13,11 @@ external.games.found: "%{host} で検出: %{game}"
 external.games.add_found: "追加"
 external.games.steam.title: 'Steam で検出'
 external.games.steam.hint: 'Steam にインストール済みのゲームと、Steam 外のショートカット。追加しても Steam からは読み取るだけで、何も変更されません。'
+external.games.unmanaged.title: 'ライブラリ内で見つかったゲーム'
+external.games.unmanaged.hint: 'Decanter がインストールしていない、ライブラリフォルダー内のフォルダーです。追加したゲームはその場所から起動し、何も移動しません。'
+external.games.unmanaged.dismiss: 無視
+external.games.unmanaged.dismiss_hint: このフォルダーを今後提案しない
+external.games.unmanaged.more: '未表示: ほか %{count} 件'
 external.games.remove.button: "削除"
 external.games.remove.running: "削除する前にゲームを終了してください"
 external.games.remove.hosted: "ゲームを削除します。プレフィックスは引き続き %{host} のものです"

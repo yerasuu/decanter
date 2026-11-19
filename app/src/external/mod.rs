@@ -19,6 +19,7 @@ pub mod size;
 pub mod steam;
 pub mod transfer;
 pub mod umu;
+pub mod unmanaged;
 
 use std::path::{Path, PathBuf};
 

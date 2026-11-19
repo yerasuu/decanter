@@ -134,7 +134,7 @@ impl GameForm {
         found: &crate::external::launchers::Detected,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut this = Self::new(profile_id, None, cx);
+        let mut this = Self::detected(profile_id, found, cx);
         this.prefix_of = Some(host.game_id.clone());
         // Kept beside its launcher, so the two stay on one disk.
         this.library_root = crate::core::library_for_profile(&this.profile_id)
@@ -142,11 +142,30 @@ impl GameForm {
             .and_then(|library| library.root_of(&this.profile_id, &host.game_id));
         this.host_name = Some(host.name.clone());
         this.wine.proton.clone_from(&host.proton);
+        this.search_art(cx);
+        this
+    }
+
+    /// A new game found in one of the library folders, filed in that folder so its prefix sits on
+    /// the same disk as its files.
+    pub fn unmanaged(
+        profile_id: String,
+        found: &crate::external::unmanaged::Unmanaged,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut this = Self::detected(profile_id, &found.game, cx);
+        this.library_root = Some(found.root.clone());
+        this.start_dir = Some(found.folder.clone());
+        this.search_art(cx);
+        this
+    }
+
+    fn detected(profile_id: String, found: &crate::external::launchers::Detected, cx: &mut Context<Self>) -> Self {
+        let this = Self::new(profile_id, None, cx);
         this.name.update(cx, |input, cx| input.set_text(found.name.clone(), cx));
         this.executable.update(cx, |input, cx| {
             input.set_text(found.executable.to_string_lossy().into_owned(), cx);
         });
-        this.search_art(cx);
         this
     }
 
