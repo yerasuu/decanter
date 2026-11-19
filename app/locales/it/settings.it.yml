@@ -39,6 +39,9 @@ settings.general.steam.discover_hint: "Controllato all’avvio di decanter e a o
 settings.general.downloads.title: Download
 settings.general.downloads.resume_on_start: Riprendi i download all'apertura di Decanter
 settings.general.downloads.resume_hint: "Quelli interrotti dalla chiusura di Decanter o da un'uscita imprevista. Quelli messi in pausa da te aspettano che li riprenda tu, mentre quelli fermati dalla rete o da un disco scollegato riprendono da soli al ritorno di questi."
+settings.general.hiding.title: 'Nascondere'
+settings.general.hiding.enable: 'Consenti di nascondere giochi, raccolte e librerie'
+settings.general.hiding.hint: 'Aggiunge le opzioni per nascondere e per mostrare ciò che è nascosto: i menu, le caselle dei Filtri, la barra laterale e Storage. Ciò che è già nascosto resta nascosto finché questa opzione è disattivata.'
 settings.general.raven.title: Raven (sperimentale)
 settings.general.raven.enable: Mostra la sezione Raven
 settings.general.raven.hint: "Raven è un runtime Windows in fase iniziale. Con la sezione attiva puoi compilarlo nella tua libreria e provare con esso i programmi Windows; non viene scaricato nulla e GitHub non viene contattato finché non premi Compila o Cerca aggiornamenti nella sezione."

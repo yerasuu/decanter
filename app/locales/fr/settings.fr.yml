@@ -39,6 +39,9 @@ settings.general.steam.discover_hint: "Vérifié au démarrage de decanter et à
 settings.general.downloads.title: Téléchargements
 settings.general.downloads.resume_on_start: Reprendre les téléchargements à l’ouverture de Decanter
 settings.general.downloads.resume_hint: Ceux arrêtés par la fermeture de Decanter ou par une sortie inattendue. Ceux que vous avez mis en pause attendent que vous les repreniez, et ceux arrêtés par le réseau ou par un disque débranché reprennent seuls à son retour.
+settings.general.hiding.title: 'Masquage'
+settings.general.hiding.enable: 'Autoriser le masquage de jeux, collections et bibliothèques'
+settings.general.hiding.hint: 'Ajoute les options pour masquer et pour afficher ce qui est masqué : les menus, les cases des Filtres, la barre latérale et Storage. Ce qui est déjà masqué le reste tant que ceci est désactivé.'
 settings.general.raven.title: Raven (expérimental)
 settings.general.raven.enable: Afficher la section Raven
 settings.general.raven.hint: Raven est un environnement d’exécution Windows à un stade précoce. Avec la section activée, vous pouvez le compiler dans votre bibliothèque et y essayer des programmes Windows ; rien n’est téléchargé et GitHub n’est pas contacté tant que vous n’appuyez pas sur Compiler ou Rechercher des mises à jour dans la section.

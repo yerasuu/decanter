@@ -27,6 +27,7 @@ pub(super) struct RowsKey {
     query: String,
     filters: Filters,
     show_hidden_collections: bool,
+    hiding_enabled: bool,
     cache: Option<CacheKey>,
     pending_installs: HashSet<DownloadKey>,
     collapsed: HashSet<String>,
@@ -140,6 +141,7 @@ impl SidebarView {
             query: self.search.read(cx).text().to_lowercase(),
             filters: self.model.read(cx).filters.clone(),
             show_hidden_collections: self.model.read(cx).show_hidden_collections,
+            hiding_enabled: crate::core::hiding_enabled(cx),
             cache: self.cache.key.clone(),
             // A queued or downloading game should already read as
             // installed here, not just once the manifest scan catches up.
@@ -254,7 +256,7 @@ impl SidebarView {
                 || (collection.filter.is_none()
                     && collections.members.get(&collection.id).is_none_or(|ids| ids.is_empty()))
         });
-        if has_unlisted {
+        if has_unlisted && key.hiding_enabled {
             rows.push(Row::HiddenCollections(key.show_hidden_collections));
         }
     }

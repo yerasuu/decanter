@@ -39,6 +39,7 @@ pub struct GeneralTab {
     steam_export_enabled: bool,
     steam_discover: bool,
     resume_downloads: bool,
+    hiding: bool,
     galaxy_service: bool,
     galaxy_upload: bool,
     raven: bool,
@@ -76,6 +77,7 @@ impl GeneralTab {
             steam_export_enabled: true,
             steam_discover: true,
             resume_downloads: true,
+            hiding: false,
             galaxy_service: true,
             galaxy_upload: false,
             raven: false,
@@ -139,6 +141,10 @@ impl GeneralTab {
                 tracing::warn!(error = %err, "failed to read resume_downloads_on_start setting, defaulting to true");
             })
             .unwrap_or(true);
+        self.hiding = crate::core::db()
+            .and_then(|db| db.hiding_enabled().map_err(crate::core::StoreError::Query))
+            .inspect_err(|err| tracing::warn!(error = %err, "failed to read hiding_enabled setting, defaulting to off"))
+            .unwrap_or(false);
         self.galaxy_service = crate::core::db()
             .and_then(|db| db.galaxy_service_enabled().map_err(crate::core::StoreError::Query))
             .inspect_err(|err| {
@@ -300,6 +306,20 @@ impl GeneralTab {
             });
         })
         .detach();
+    }
+
+    fn set_hiding(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let saved =
+            crate::core::db().and_then(|db| db.set_hiding_enabled(enabled).map_err(crate::core::StoreError::Query));
+        if let Err(err) = saved {
+            tracing::warn!(enabled, error = %err, "failed to save hiding_enabled setting");
+            return;
+        }
+        tracing::info!(enabled, "hiding setting changed");
+        crate::core::set_hiding_enabled(enabled, cx);
+        crate::views::library::actions::bump_organisation(cx);
+        self.reload();
+        cx.notify();
     }
 
     fn set_resume_downloads(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -635,6 +655,19 @@ impl GeneralTab {
         )
     }
 
+    fn hiding_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        column().child(
+            Self::checkbox_row(
+                "hiding",
+                self.hiding,
+                t!("settings.general.hiding.enable"),
+                Self::set_hiding,
+                cx,
+            )
+            .help(t!("settings.general.hiding.hint")),
+        )
+    }
+
     fn galaxy_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
         column()
             .child(
@@ -747,6 +780,8 @@ impl Render for GeneralTab {
             Tab::Downloads => column()
                 .child(theme::h2(t!("settings.general.downloads.title")))
                 .child(section("downloads", self.downloads_section(cx)))
+                .child(theme::h2(t!("settings.general.hiding.title")))
+                .child(section("hiding", self.hiding_section(cx)))
                 .child(theme::h2(t!("settings.general.updates.title")))
                 .child(section("updates", self.release_section(cx))),
             Tab::Integrations => column()

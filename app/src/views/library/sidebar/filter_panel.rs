@@ -129,7 +129,13 @@ impl SidebarView {
         let options = self.panel_options(&current, cx);
         let (total, matched) = (options.total, options.matched);
         let panel_width = (window.viewport_size().width.as_f32() - SIDEBAR_WIDTH).min(720.);
-        let grid = filter_grid(&cx.entity(), &current, options, panel_width);
+        let grid = filter_grid(
+            &cx.entity(),
+            &current,
+            options,
+            panel_width,
+            crate::core::hiding_enabled(cx),
+        );
         let head = Self::panel_head(&current, cx);
         let actions = self.panel_actions(cx);
         let foot = self.panel_foot(&current, total, matched, cx);
@@ -379,7 +385,13 @@ impl SidebarView {
     }
 }
 
-fn filter_grid(entity: &Entity<SidebarView>, current: &Filters, options: PanelOptions, panel_width: f32) -> Div {
+fn filter_grid(
+    entity: &Entity<SidebarView>,
+    current: &Filters,
+    options: PanelOptions,
+    panel_width: f32,
+    hiding: bool,
+) -> Div {
     let PanelOptions {
         storefronts,
         tallies,
@@ -399,7 +411,7 @@ fn filter_grid(entity: &Entity<SidebarView>, current: &Filters, options: PanelOp
         .pb(px(22.))
         .child(state_group(entity, current, &tallies))
         .child(achievement_group(entity, current, &tallies))
-        .child(order_group(entity, current, &collections, &tallies, hidden))
+        .child(order_group(entity, current, &collections, &tallies, hidden, hiding))
         .when(accounts.len() > 1, |grid| {
             grid.child(account_group(entity, current, accounts, &tallies))
         })
@@ -490,6 +502,7 @@ fn order_group(
     collections: &[(String, String)],
     tallies: &Tallies,
     hidden: usize,
+    hiding: bool,
 ) -> Div {
     let sort_entity = entity.clone();
     let order = filter_group(&t!("library.filters.sort.heading"), &t!("library.filters.sort.note")).child(
@@ -503,22 +516,25 @@ fn order_group(
     );
     // Widens rather than narrows, so it sits with what the list shows
     // instead of among the play states, whose checks narrow.
-    let show_hidden = div().mt_4().child(check_row(
-        entity,
-        "check-show-hidden".into(),
-        t!("library.filters.show_hidden").into_owned(),
-        hidden,
-        current.show_hidden,
-        |filters| filters.show_hidden = !filters.show_hidden,
-    ));
-    let show_hidden = show_hidden.child(check_row(
-        entity,
-        "check-only-hidden".into(),
-        t!("library.filters.only_hidden").into_owned(),
-        hidden,
-        current.only_hidden,
-        |filters| filters.only_hidden = !filters.only_hidden,
-    ));
+    let show_hidden = div().mt_4().when(hiding, |group| {
+        group
+            .child(check_row(
+                entity,
+                "check-show-hidden".into(),
+                t!("library.filters.show_hidden").into_owned(),
+                hidden,
+                current.show_hidden,
+                |filters| filters.show_hidden = !filters.show_hidden,
+            ))
+            .child(check_row(
+                entity,
+                "check-only-hidden".into(),
+                t!("library.filters.only_hidden").into_owned(),
+                hidden,
+                current.only_hidden,
+                |filters| filters.only_hidden = !filters.only_hidden,
+            ))
+    });
     if collections.is_empty() {
         return order.child(show_hidden);
     }

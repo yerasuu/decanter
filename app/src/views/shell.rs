@@ -70,12 +70,13 @@ pub struct Shell {
 impl Shell {
     pub fn new(on_close: Rc<dyn Fn(&mut Window, &mut App)>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::get(cx).clone();
+        crate::core::load_hiding_enabled(cx);
         // The hidden-mode shortcut is the shell's, not the library's, since it works wherever the
         // focus is inside the library page, which has no focus handle of its own.
         cx.observe_keystrokes(|this, event, _, cx| {
             let keystroke = &event.keystroke;
             let is_hidden_mode = keystroke.key == "h" && keystroke.modifiers.control && keystroke.modifiers.shift;
-            if is_hidden_mode && this.page == Page::Library {
+            if is_hidden_mode && this.page == Page::Library && crate::core::hiding_enabled(cx) {
                 this.library.update(cx, LibraryView::toggle_hidden_mode);
             }
         })

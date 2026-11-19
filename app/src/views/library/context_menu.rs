@@ -287,7 +287,9 @@ fn game_menu(
             is_fav,
             close,
         ))
-        .child(hide_item(target.product_ids.clone(), account_for, is_hidden, close));
+        .when(crate::core::hiding_enabled(cx), |panel| {
+            panel.child(hide_item(target.product_ids.clone(), account_for, is_hidden, close))
+        });
 
     panel = panel
         .child(menu::separator())

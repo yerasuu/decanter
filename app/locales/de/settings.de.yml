@@ -39,6 +39,9 @@ settings.general.steam.discover_hint: "Wird beim Start von Decanter und bei jede
 settings.general.downloads.title: Downloads
 settings.general.downloads.resume_on_start: Downloads beim Start von Decanter fortsetzen
 settings.general.downloads.resume_hint: 'Gemeint sind Downloads, die durch das Schließen von Decanter oder ein unerwartetes Beenden gestoppt wurden. Von dir pausierte Downloads warten, bis du sie fortsetzt; durch das Netzwerk oder einen abgezogenen Datenträger gestoppte werden von selbst fortgesetzt, sobald es wieder klappt.'
+settings.general.hiding.title: 'Ausblenden'
+settings.general.hiding.enable: 'Ausblenden von Spielen, Sammlungen und Bibliotheken erlauben'
+settings.general.hiding.hint: 'Fügt die Optionen zum Ausblenden und zum Anzeigen des Ausgeblendeten hinzu: die Menüs, die Filter-Kästchen, die Seitenleiste und Storage. Bereits Ausgeblendetes bleibt ausgeblendet, solange dies aus ist.'
 settings.general.raven.title: Raven (experimentell)
 settings.general.raven.enable: Raven-Bereich anzeigen
 settings.general.raven.hint: 'Raven ist eine Windows-Laufzeit in einem frühen Stadium. Mit eingeschaltetem Bereich kannst du sie in deiner Bibliothek bauen und Windows-Programme damit ausprobieren; es wird nichts heruntergeladen und GitHub nicht kontaktiert, bis du im Bereich auf Bauen oder Nach Updates suchen drückst.'

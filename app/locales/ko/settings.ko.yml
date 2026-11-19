@@ -39,6 +39,9 @@ settings.general.steam.discover_hint: "decanter를 시작할 때와 저장 공�
 settings.general.downloads.title: 다운로드
 settings.general.downloads.resume_on_start: Decanter를 열 때 다운로드 재개
 settings.general.downloads.resume_hint: 'Decanter를 닫았거나 예기치 않게 종료되어 중단된 다운로드가 대상입니다. 직접 일시 중지한 다운로드는 직접 재개할 때까지 대기하며, 네트워크 문제나 디스크 연결 해제로 중단된 다운로드는 복구되면 자동으로 재개됩니다.'
+settings.general.hiding.title: '숨기기'
+settings.general.hiding.enable: '게임, 컬렉션, 라이브러리 숨기기 허용'
+settings.general.hiding.hint: '숨기기와 숨긴 항목 보기 옵션(메뉴, 필터 체크, 사이드바, Storage)을 추가합니다. 꺼져 있는 동안 이미 숨긴 항목은 계속 숨겨집니다.'
 settings.general.raven.title: Raven (실험적 기능)
 settings.general.raven.enable: Raven 섹션 표시
 settings.general.raven.hint: 'Raven은 초기 단계의 Windows 런타임입니다. 이 섹션을 켜면 라이브러리에서 Raven을 빌드하고 Windows 프로그램을 실행해 볼 수 있습니다. 섹션에서 빌드 또는 업데이트 확인을 누르기 전에는 아무것도 다운로드하지 않으며 GitHub에도 연결하지 않습니다.'

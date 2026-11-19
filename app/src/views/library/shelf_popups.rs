@@ -106,19 +106,21 @@ pub fn shelf_menu(
             down_delta,
             can_move_down,
         ))
-        .child(
-            menu::item("shelf-hide", false)
-                .on_click(move |_, window, cx| {
-                    data::set_collection_hidden(&hide_id, !is_hidden);
-                    bump_organisation(cx);
-                    hide_close(window, cx);
-                })
-                .child(if is_hidden {
-                    t!("library.collections.unhide")
-                } else {
-                    t!("library.collections.hide")
-                }),
-        )
+        .when(crate::core::hiding_enabled(cx), |panel| {
+            panel.child(
+                menu::item("shelf-hide", false)
+                    .on_click(move |_, window, cx| {
+                        data::set_collection_hidden(&hide_id, !is_hidden);
+                        bump_organisation(cx);
+                        hide_close(window, cx);
+                    })
+                    .child(if is_hidden {
+                        t!("library.collections.unhide")
+                    } else {
+                        t!("library.collections.hide")
+                    }),
+            )
+        })
         .child(menu::separator())
         .child(
             menu::danger_item("shelf-delete")

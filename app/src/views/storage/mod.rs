@@ -235,14 +235,22 @@ fn scan(profile_id: &str) -> Scan {
         .collect();
     let default = crate::core::default_install_folder(profile_id);
     let hidden_roots = crate::core::hidden_folders(profile_id);
-    let show_hidden = db.as_ref().is_some_and(|db| {
-        db.setting(&format!("{SHOW_HIDDEN_FOLDERS}:{profile_id}"))
-            .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to read whether storage shows hidden folders"))
-            .ok()
-            .flatten()
-            .as_deref()
-            == Some("1")
+    let hiding_enabled = db.as_ref().is_some_and(|db| {
+        db.hiding_enabled()
+            .inspect_err(|err| tracing::warn!(%err, "failed to read whether hiding is enabled"))
+            .unwrap_or(false)
     });
+    let show_hidden = hiding_enabled
+        && db.as_ref().is_some_and(|db| {
+            db.setting(&format!("{SHOW_HIDDEN_FOLDERS}:{profile_id}"))
+                .inspect_err(
+                    |err| tracing::warn!(profile_id, %err, "failed to read whether storage shows hidden folders"),
+                )
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some("1")
+        });
     let is_lone = roots.len() < 2;
     let mut scan = Scan {
         folders: Vec::with_capacity(roots.len()),
@@ -866,32 +874,28 @@ impl StorageView {
         .detach();
     }
 
+    /// What the last scan of `root` found, worded for the line under the folder's path: beside the
+    /// button it would take the width the path needs.
+    fn scan_result(&self, root: &Path) -> Option<std::borrow::Cow<'static, str>> {
+        match self.unmanaged_scans.get(root).copied().flatten()? {
+            0 => Some(t!("storage.folder.scan.none")),
+            count => Some(t!("storage.folder.scan.found", count = count)),
+        }
+    }
+
     fn scan_button(&self, index: usize, root: &Path, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let state = self.unmanaged_scans.get(root).copied();
-        let scanning = state == Some(None);
+        let scanning = self.unmanaged_scans.get(root).copied() == Some(None);
         let label = if scanning {
             t!("storage.folder.scan.running")
         } else {
             t!("storage.folder.scan.button")
         };
-        let result = match state.flatten() {
-            Some(0) => Some(t!("storage.folder.scan.none")),
-            Some(count) => Some(t!("storage.folder.scan.found", count = count)),
-            None => None,
-        };
         let root = root.to_path_buf();
-        div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .children(result.map(|result| theme::muted(result).text_size(px(12.))))
-            .child(
-                button(("storage-scan", index), ButtonKind::Secondary, label, scanning)
-                    .tooltip(tooltip(t!("storage.folder.scan.hint")))
-                    .when(!scanning, |b| {
-                        b.on_click(cx.listener(move |this, _, _, cx| this.scan_unmanaged(&root, cx)))
-                    }),
-            )
+        button(("storage-scan", index), ButtonKind::Secondary, label, scanning)
+            .tooltip(tooltip(t!("storage.folder.scan.hint")))
+            .when(!scanning, |b| {
+                b.on_click(cx.listener(move |this, _, _, cx| this.scan_unmanaged(&root, cx)))
+            })
     }
 
     fn use_as_default(&mut self, root: &Path, cx: &mut Context<Self>) {
@@ -1066,7 +1070,9 @@ impl StorageView {
                 )
                 .children(used.map(|used| progress_bar(("storage-pick-bar", index), Some(used), 6.)))
                 .child(theme::muted(folder_status(folder)).text_size(px(12.)))
-                .child(Self::hide_toggle(index, folder, self.is_lone(), cx)),
+                .when(crate::core::hiding_enabled(cx), |card| {
+                    card.child(Self::hide_toggle(index, folder, self.is_lone(), cx))
+                }),
         )
     }
 
@@ -1106,8 +1112,12 @@ impl StorageView {
                             .flex_col()
                             .flex_1()
                             .min_w_0()
-                            .child(folder.root.display().to_string())
+                            .child(div().truncate().child(folder.root.display().to_string()))
                             .child(theme::muted(status).text_size(px(12.)))
+                            .children(
+                                self.scan_result(&folder.root)
+                                    .map(|result| theme::muted(result).text_size(px(12.))),
+                            )
                             .when(folder.steam_games > 0, |col| {
                                 let steam_size = crate::format::bytes(folder.steam_size);
                                 let steam = if folder.steam_games == 1 {
@@ -1243,7 +1253,11 @@ impl Render for StorageView {
                                 .flex()
                                 .flex_col()
                                 .gap_3()
-                                .children(self.show_hidden_toggle(cx))
+                                .children(
+                                    crate::core::hiding_enabled(cx)
+                                        .then(|| self.show_hidden_toggle(cx))
+                                        .flatten(),
+                                )
                                 .children(
                                     folders
                                         .iter()

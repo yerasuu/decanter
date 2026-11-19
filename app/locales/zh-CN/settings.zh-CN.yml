@@ -39,6 +39,9 @@ settings.general.steam.discover_hint: "在 decanter 启动时以及每次打开�
 settings.general.downloads.title: "下载"
 settings.general.downloads.resume_on_start: "Decanter 启动时继续下载"
 settings.general.downloads.resume_hint: "指因关闭 Decanter 或意外退出而中断的下载。您手动暂停的下载会等待您继续；因网络中断或磁盘被拔出而停止的下载，会在恢复后自动继续。"
+settings.general.hiding.title: '隐藏'
+settings.general.hiding.enable: '允许隐藏游戏、收藏夹和库'
+settings.general.hiding.hint: '添加隐藏以及查看已隐藏内容的选项：菜单、筛选器勾选项、侧边栏和 Storage。关闭时，已隐藏的内容仍保持隐藏。'
 settings.general.raven.title: "Raven（实验性）"
 settings.general.raven.enable: "显示 Raven 部分"
 settings.general.raven.hint: "Raven 是早期阶段的 Windows 运行时。开启此部分后，您可以在游戏库中构建它并用它试运行 Windows 程序；在您于该部分点击“构建”或“检查更新”之前，不会下载任何内容，也不会连接 GitHub。"

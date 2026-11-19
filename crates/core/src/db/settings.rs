@@ -46,6 +46,18 @@ impl Db {
         self.set_setting("close_game_shortcut", if enabled { "1" } else { "0" })
     }
 
+    /// Whether the options for hiding games, collections and library folders are offered — off by
+    /// default; what was hidden stays hidden while it is off.
+    pub fn hiding_enabled(&self) -> Result<bool> {
+        let enabled = self.setting("hiding_enabled")?.as_deref() == Some("1");
+        tracing::debug!(enabled, "read hiding_enabled setting");
+        Ok(enabled)
+    }
+
+    pub fn set_hiding_enabled(&self, enabled: bool) -> Result<()> {
+        self.set_setting("hiding_enabled", if enabled { "1" } else { "0" })
+    }
+
     /// Whether downloads that decanter's closing or a crash stopped carry on
     /// by themselves at the next start — on by default (#1281); off is for a
     /// metered link. A download the user paused never does.

@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use decanter_core::{Db, InstalledGame, Library, Profile, SteamMark, Storefront};
+use gpui::{App, Global};
 
 use crate::i18n::Text;
 
@@ -720,4 +721,27 @@ pub async fn restart_steam_to_apply_pending(user_confirmed_closed: bool) -> Resu
         .await
         .map_err(|err| RestartSteamError::Failed(Text::new("common.errors.internal_task").arg("error", err)))
     )
+}
+
+/// Whether the hiding options are on, kept where every view can read it without opening the
+/// database on each draw.
+struct HidingEnabled(bool);
+
+impl Global for HidingEnabled {}
+
+pub fn hiding_enabled(cx: &App) -> bool {
+    cx.try_global::<HidingEnabled>().is_some_and(|hiding| hiding.0)
+}
+
+pub fn set_hiding_enabled(enabled: bool, cx: &mut App) {
+    cx.set_global(HidingEnabled(enabled));
+}
+
+/// Reads the saved setting once at startup.
+pub fn load_hiding_enabled(cx: &mut App) {
+    let enabled = db()
+        .and_then(|db| db.hiding_enabled().map_err(StoreError::Query))
+        .inspect_err(|err| tracing::warn!(error = %err, "failed to read hiding_enabled setting, defaulting to off"))
+        .unwrap_or(false);
+    set_hiding_enabled(enabled, cx);
 }

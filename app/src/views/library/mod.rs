@@ -314,6 +314,19 @@ impl LibraryView {
 impl Render for LibraryView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = AppState::get(cx).clone();
+        // What the hiding options reveal is only reachable while they are on, so turning them off
+        // puts everything hidden back away.
+        let reveals = {
+            let model = self.model.read(cx);
+            model.filters.show_hidden || model.filters.only_hidden || model.show_hidden_collections
+        };
+        if reveals && !crate::core::hiding_enabled(cx) {
+            self.model.update(cx, |model, _| {
+                model.filters.show_hidden = false;
+                model.filters.only_hidden = false;
+                model.show_hidden_collections = false;
+            });
+        }
         let requests = self
             .model
             .update(cx, |model, _| std::mem::take(&mut model.install_requests));
