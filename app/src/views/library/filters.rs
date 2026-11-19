@@ -178,6 +178,8 @@ pub(super) struct Filters {
     /// drop hidden games, not by [`Filters::accepts`], which never sees the
     /// hidden set.
     pub show_hidden: bool,
+    /// Narrows to the hidden games alone, so they can be reviewed apart from the rest.
+    pub only_hidden: bool,
     pub sort: Sort,
 }
 
@@ -192,6 +194,16 @@ impl Filters {
             + self.storefronts.len()
             + self.accounts.len()
             + usize::from(self.show_hidden)
+            + usize::from(self.only_hidden)
+    }
+
+    /// Whether a game that is `hidden` or not belongs in the list under the hidden-game options.
+    pub fn lets_through(&self, hidden: bool) -> bool {
+        if self.only_hidden {
+            hidden
+        } else {
+            self.show_hidden || !hidden
+        }
     }
 
     pub fn is_default(&self) -> bool {

@@ -71,6 +71,7 @@ library.filters.sort.added: Data de adição
 library.filters.collection.title: Coleção
 library.filters.collection.any: Qualquer coleção
 library.filters.show_hidden: Mostrar jogos ocultos
+library.filters.only_hidden: Somente jogos ocultos
 library.filters.account.title: Conta
 library.filters.account.note: 'Este perfil tem mais de uma — marcar duas amplia o resultado.'
 library.filters.store.title: Loja

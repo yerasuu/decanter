@@ -71,6 +71,7 @@ library.filters.sort.added: Hinzugefügt am
 library.filters.collection.title: Sammlung
 library.filters.collection.any: Beliebige Sammlung
 library.filters.show_hidden: Ausgeblendete Spiele anzeigen
+library.filters.only_hidden: Nur versteckte Spiele
 library.filters.account.title: Konto
 library.filters.account.note: Dieses Profil hat mehrere — wählst du zwei, wird das Ergebnis größer.
 library.filters.store.title: Shop

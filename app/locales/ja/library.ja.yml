@@ -71,6 +71,7 @@ library.filters.sort.added: "追加日"
 library.filters.collection.title: "コレクション"
 library.filters.collection.any: "すべてのコレクション"
 library.filters.show_hidden: "非表示のゲームを表示"
+library.filters.only_hidden: 非表示のゲームのみ
 library.filters.account.title: "アカウント"
 library.filters.account.note: "このプロファイルには複数あります。2 つ選ぶと結果が広がります。"
 library.filters.store.title: "ストア"

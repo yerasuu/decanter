@@ -25,7 +25,7 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
         .filter(|entry| {
             entry.kind == decanter_gog::GameKind::Game && entry.parent_id.is_none() && belongs_in_the_library(entry)
         })
-        .filter(|entry| key.filters.show_hidden || !hidden.contains(&entry.game.id))
+        .filter(|entry| key.filters.lets_through(hidden.contains(&entry.game.id)))
         .filter(|entry| {
             key.filters
                 .accepts(entry, favorites, stats, collections, pending_installs)

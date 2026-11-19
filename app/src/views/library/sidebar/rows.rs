@@ -164,7 +164,7 @@ impl SidebarView {
                     .games
                     .iter()
                     .filter(|entry| key.kind.accepts(entry.kind))
-                    .filter(|entry| key.filters.show_hidden || !cache.hidden.contains(&entry.game.id))
+                    .filter(|entry| key.filters.lets_through(cache.hidden.contains(&entry.game.id)))
                     .filter(|entry| {
                         key.filters.accepts(
                             entry,

@@ -71,6 +71,7 @@ library.filters.sort.added: Date added
 library.filters.collection.title: Collection
 library.filters.collection.any: Any collection
 library.filters.show_hidden: Show hidden games
+library.filters.only_hidden: Only hidden games
 library.filters.account.title: Account
 library.filters.account.note: This profile has more than one — checking two widens the result.
 library.filters.store.title: Store

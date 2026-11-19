@@ -199,12 +199,12 @@ impl SidebarView {
             .filter(|entry| kind.accepts(entry.kind))
             .filter(|entry| entry.parent_id.is_none())
             .filter(|entry| belongs_in_the_library(entry))
-            .filter(|entry| current.show_hidden || !cache.hidden.contains(&entry.game.id))
+            .filter(|entry| current.lets_through(cache.hidden.contains(&entry.game.id)))
             .collect();
         let matched = games
             .iter()
             .filter(|entry| kind.accepts(entry.kind))
-            .filter(|entry| current.show_hidden || !cache.hidden.contains(&entry.game.id))
+            .filter(|entry| current.lets_through(cache.hidden.contains(&entry.game.id)))
             .filter(|entry| {
                 current.accepts(
                     entry,
@@ -510,6 +510,14 @@ fn order_group(
         hidden,
         current.show_hidden,
         |filters| filters.show_hidden = !filters.show_hidden,
+    ));
+    let show_hidden = show_hidden.child(check_row(
+        entity,
+        "check-only-hidden".into(),
+        t!("library.filters.only_hidden").into_owned(),
+        hidden,
+        current.only_hidden,
+        |filters| filters.only_hidden = !filters.only_hidden,
     ));
     if collections.is_empty() {
         return order.child(show_hidden);

@@ -71,6 +71,7 @@ library.filters.sort.added: 추가한 날짜
 library.filters.collection.title: 컬렉션
 library.filters.collection.any: 모든 컬렉션
 library.filters.show_hidden: 숨긴 게임 표시
+library.filters.only_hidden: 숨긴 게임만
 library.filters.account.title: 계정
 library.filters.account.note: 이 프로필에는 계정이 둘 이상 있습니다. 둘을 선택하면 결과가 넓어집니다.
 library.filters.store.title: 스토어

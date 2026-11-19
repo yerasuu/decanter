@@ -71,6 +71,7 @@ library.filters.sort.added: "添加日期"
 library.filters.collection.title: "合集"
 library.filters.collection.any: "任意合集"
 library.filters.show_hidden: "显示已隐藏的游戏"
+library.filters.only_hidden: 仅显示隐藏的游戏
 library.filters.account.title: "账户"
 library.filters.account.note: "此配置文件有多个账户：勾选两项会扩大结果范围。"
 library.filters.store.title: "商店"
