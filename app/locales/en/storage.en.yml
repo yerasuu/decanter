@@ -4,6 +4,7 @@ storage.summary.with_steam: "%{used} used by %{count} games · %{steam} more kep
 storage.add: Add library folder
 storage.add_title: Choose where to keep games
 storage.add_mount: 'Add %{path}'
+storage.show_hidden: Show hidden libraries
 storage.stats.used.one: used by 1 game
 storage.stats.used.other: used by %{count} games
 storage.stats.folders.one: library folder
@@ -12,6 +13,7 @@ storage.folder.primary: Main
 storage.folder.extra: Extra
 storage.folder.offline: Drive not connected
 storage.folder.offline_chip: "Not connected"
+storage.folder.hidden_chip: "Hidden"
 storage.folder.used.one: '%{used} used by 1 game'
 storage.folder.used.other: '%{used} used by %{count} games'
 storage.folder.steam.one: 'Steam: %{size} · 1 game, kept by Steam, not counted above'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: New installs go in this folder by default
 storage.folder.remove: Remove
 storage.folder.remove_hint: Stops using this folder; whatever is on the drive stays there
 storage.folder.remove_blocked: 'It has games: uninstall or move them first'
+storage.folder.hide: Hide library
+storage.folder.hide_hint: Keeps this folder's games out of the Library; Show hidden games brings them back
+storage.folder.hide_blocked: New installs go in this folder, so it can't be hidden
 storage.move_to: Move to…
 storage.moving.started: Moving...
 storage.moving.progress: Moving %{done} of %{total}
@@ -36,6 +41,7 @@ storage.errors.add: 'saving the folder: %{error}'
 storage.errors.remove: 'removing the folder: %{error}'
 storage.errors.not_a_folder: '%{path} is not one of the library folders'
 storage.errors.default: 'saving the default folder: %{error}'
+storage.errors.hide: 'changing whether the folder is hidden: %{error}'
 storage.errors.hosted: 'This game lives in its launcher''s prefix: move the launcher and it comes along.'
 storage.errors.running: 'The game is running: close it before moving it.'
 storage.errors.shared: 'Another account shares these files: they can''t be moved on their own.'

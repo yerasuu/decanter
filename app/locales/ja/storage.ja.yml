@@ -4,6 +4,7 @@ storage.summary.with_steam: "%{count} 本のゲームで %{used} を使用 · St
 storage.add: "ライブラリフォルダーを追加"
 storage.add_title: "ゲームの保存場所を選択"
 storage.add_mount: "%{path} を追加"
+storage.show_hidden: 非表示のライブラリを表示
 storage.stats.used.one: "1 本のゲームが使用"
 storage.stats.used.other: "%{count} 本のゲームが使用"
 storage.stats.folders.one: "ライブラリフォルダー"
@@ -12,6 +13,7 @@ storage.folder.primary: "メイン"
 storage.folder.extra: "追加"
 storage.folder.offline: "ドライブ未接続"
 storage.folder.offline_chip: "未接続"
+storage.folder.hidden_chip: "非表示"
 storage.folder.used.one: "%{used} 使用(1 本のゲーム)"
 storage.folder.used.other: "%{used} 使用(%{count} 本のゲーム)"
 storage.folder.steam.one: 'Steam: %{size} · 1 本のゲーム(Steam が管理、上の合計には含まれません)'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: 新しいインストールは既定でこの�
 storage.folder.remove: "削除"
 storage.folder.remove_hint: "このフォルダーの使用をやめます。ドライブ上のデータはそのまま残ります"
 storage.folder.remove_blocked: "ゲームが含まれています。先にアンインストールするか移動してください"
+storage.folder.hide: ライブラリを非表示
+storage.folder.hide_hint: このフォルダーのゲームをライブラリから外します。「非表示のゲームを表示」で再び表示されます
+storage.folder.hide_blocked: 新しいインストールはこのフォルダーに入るため、非表示にできません
 storage.move_to: "移動先…"
 storage.moving.started: "移動中..."
 storage.moving.progress: "移動中 %{done} / %{total}"
@@ -36,6 +41,7 @@ storage.errors.add: "フォルダーを保存中: %{error}"
 storage.errors.remove: "フォルダーを削除中: %{error}"
 storage.errors.not_a_folder: '%{path} はライブラリのフォルダーではありません'
 storage.errors.default: '既定のフォルダーの保存中: %{error}'
+storage.errors.hide: 'フォルダーの非表示設定の変更: %{error}'
 storage.errors.hosted: "このゲームはランチャーのプレフィックス内にあります。ランチャーを移動すると一緒に移動します。"
 storage.errors.running: "ゲームの実行中です。移動する前にゲームを終了してください。"
 storage.errors.shared: "別のアカウントがこれらのファイルを共有しているため、単独では移動できません。"

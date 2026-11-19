@@ -4,6 +4,7 @@ storage.summary.with_steam: "게임 %{count}개가 %{used} 사용 · Steam이 �
 storage.add: 라이브러리 폴더 추가
 storage.add_title: 게임을 보관할 위치 선택
 storage.add_mount: "%{path} 추가"
+storage.show_hidden: 숨긴 라이브러리 표시
 storage.stats.used.one: 게임 1개에서 사용 중
 storage.stats.used.other: '게임 %{count}개에서 사용 중'
 storage.stats.folders.one: 라이브러리 폴더
@@ -12,6 +13,7 @@ storage.folder.primary: 기본
 storage.folder.extra: 추가
 storage.folder.offline: 드라이브가 연결되지 않음
 storage.folder.offline_chip: "연결 안 됨"
+storage.folder.hidden_chip: "숨김"
 storage.folder.used.one: '게임 1개에서 %{used} 사용 중'
 storage.folder.used.other: '게임 %{count}개에서 %{used} 사용 중'
 storage.folder.steam.one: 'Steam: %{size} · 게임 1개, Steam에서 관리하며 위 합계에 포함되지 않음'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: 새 설치는 기본적으로 이 폴더에 저
 storage.folder.remove: 제거
 storage.folder.remove_hint: 이 폴더를 더 이상 사용하지 않습니다. 드라이브에 있는 파일은 그대로 남습니다
 storage.folder.remove_blocked: '게임이 있습니다. 먼저 삭제하거나 이동하세요'
+storage.folder.hide: 라이브러리 숨기기
+storage.folder.hide_hint: 이 폴더의 게임을 라이브러리에서 뺍니다. 숨긴 게임 표시로 다시 볼 수 있습니다
+storage.folder.hide_blocked: 새 설치가 이 폴더에 저장되므로 숨길 수 없습니다
 storage.move_to: 이동…
 storage.moving.started: 이동 중...
 storage.moving.progress: '이동 중 %{done} / %{total}'
@@ -36,6 +41,7 @@ storage.errors.add: '폴더 저장 중: %{error}'
 storage.errors.remove: '폴더 제거 중: %{error}'
 storage.errors.not_a_folder: '%{path}은(는) 라이브러리 폴더가 아닙니다'
 storage.errors.default: '기본 폴더 저장 중: %{error}'
+storage.errors.hide: '폴더 숨김 상태 변경: %{error}'
 storage.errors.hosted: '이 게임은 런처의 프리픽스 안에 있습니다. 런처를 이동하면 함께 이동됩니다.'
 storage.errors.running: '게임이 실행 중입니다. 이동하기 전에 종료하세요.'
 storage.errors.shared: '다른 계정이 이 파일을 공유하고 있어 단독으로 이동할 수 없습니다.'

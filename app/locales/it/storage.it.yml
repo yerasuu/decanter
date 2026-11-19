@@ -4,6 +4,7 @@ storage.summary.with_steam: "%{used} usati da %{count} giochi · %{steam} in pi�
 storage.add: Aggiungi cartella della libreria
 storage.add_title: Scegli dove conservare i giochi
 storage.add_mount: 'Aggiungi %{path}'
+storage.show_hidden: Mostra librerie nascoste
 storage.stats.used.one: usata da 1 gioco
 storage.stats.used.other: usata da %{count} giochi
 storage.stats.folders.one: cartella della libreria
@@ -12,6 +13,7 @@ storage.folder.primary: Principale
 storage.folder.extra: Extra
 storage.folder.offline: Unità non collegata
 storage.folder.offline_chip: "Non collegato"
+storage.folder.hidden_chip: "Nascosta"
 storage.folder.used.one: "%{used} usati da 1 gioco"
 storage.folder.used.other: "%{used} usati da %{count} giochi"
 storage.folder.steam.one: 'Steam: %{size} · 1 gioco, gestito da Steam, non incluso sopra'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: Le nuove installazioni vanno in questa cartella
 storage.folder.remove: Rimuovi
 storage.folder.remove_hint: "Smette di usare questa cartella; quanto c'è sull'unità resta dov'è"
 storage.folder.remove_blocked: "Contiene dei giochi: disinstallali o spostali prima"
+storage.folder.hide: Nascondi libreria
+storage.folder.hide_hint: Toglie dalla Libreria i giochi di questa cartella; Mostra giochi nascosti li fa ricomparire
+storage.folder.hide_blocked: Le nuove installazioni vanno in questa cartella, quindi non si può nascondere
 storage.move_to: Sposta in…
 storage.moving.started: Spostamento...
 storage.moving.progress: "Spostamento di %{done} su %{total}"
@@ -36,6 +41,7 @@ storage.errors.add: "salvataggio della cartella: %{error}"
 storage.errors.remove: "rimozione della cartella: %{error}"
 storage.errors.not_a_folder: '%{path} non è una delle cartelle della libreria'
 storage.errors.default: 'salvataggio della cartella predefinita: %{error}'
+storage.errors.hide: 'modifica della visibilità della cartella: %{error}'
 storage.errors.hosted: "Questo gioco risiede nel prefisso del suo launcher: sposta il launcher e il gioco lo seguirà."
 storage.errors.running: "Il gioco è in esecuzione: chiudilo prima di spostarlo."
 storage.errors.shared: "Un altro account condivide questi file: non possono essere spostati da soli."

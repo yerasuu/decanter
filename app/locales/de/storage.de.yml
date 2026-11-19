@@ -4,6 +4,7 @@ storage.summary.with_steam: "%{used} belegt von %{count} Spielen · %{steam} wei
 storage.add: Bibliotheksordner hinzufügen
 storage.add_title: Wähle, wo Spiele gespeichert werden
 storage.add_mount: '%{path} hinzufügen'
+storage.show_hidden: Ausgeblendete Bibliotheken anzeigen
 storage.stats.used.one: von 1 Spiel belegt
 storage.stats.used.other: von %{count} Spielen belegt
 storage.stats.folders.one: Bibliotheksordner
@@ -12,6 +13,7 @@ storage.folder.primary: Haupt
 storage.folder.extra: Zusatz
 storage.folder.offline: Laufwerk nicht verbunden
 storage.folder.offline_chip: "Nicht verbunden"
+storage.folder.hidden_chip: "Ausgeblendet"
 storage.folder.used.one: '%{used} von 1 Spiel belegt'
 storage.folder.used.other: '%{used} von %{count} Spielen belegt'
 storage.folder.steam.one: 'Steam: %{size} · 1 Spiel, von Steam verwaltet, oben nicht mitgezählt'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: Neue Installationen gehen standardmäßig in di
 storage.folder.remove: Entfernen
 storage.folder.remove_hint: Der Ordner wird nicht mehr verwendet; was auf dem Laufwerk liegt, bleibt dort
 storage.folder.remove_blocked: 'Er enthält Spiele: deinstalliere oder verschiebe sie zuerst'
+storage.folder.hide: Bibliothek ausblenden
+storage.folder.hide_hint: Nimmt die Spiele dieses Ordners aus der Bibliothek; Ausgeblendete Spiele anzeigen holt sie zurück
+storage.folder.hide_blocked: Neue Installationen gehen in diesen Ordner, deshalb kann er nicht ausgeblendet werden
 storage.move_to: Verschieben nach…
 storage.moving.started: Wird verschoben...
 storage.moving.progress: Verschiebe %{done} von %{total}
@@ -36,6 +41,7 @@ storage.errors.add: 'Ordner wird gespeichert: %{error}'
 storage.errors.remove: 'Ordner wird entfernt: %{error}'
 storage.errors.not_a_folder: '%{path} ist keiner der Bibliotheksordner'
 storage.errors.default: 'Speichern des Standardordners: %{error}'
+storage.errors.hide: 'Ändern der Sichtbarkeit des Ordners: %{error}'
 storage.errors.hosted: 'Dieses Spiel liegt im Prefix seines Launchers: Verschiebe den Launcher, dann zieht es mit um.'
 storage.errors.running: 'Das Spiel läuft: Beende es, bevor du es verschiebst.'
 storage.errors.shared: 'Ein anderes Konto teilt sich diese Dateien: Sie lassen sich nicht einzeln verschieben.'

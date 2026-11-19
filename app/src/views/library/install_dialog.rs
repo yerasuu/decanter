@@ -95,7 +95,7 @@ pub(crate) fn open<H: InstallHost>(host: &mut H, requests: Vec<InstallRequest>, 
         .inspect_err(
             |err| tracing::warn!(account_id, error = %err, "failed to resolve library root for install dialog"),
         )
-        .map(|library| library.roots())
+        .map(|library| crate::core::offered_folders_for_account(&account_id, library.roots()))
         .unwrap_or_default()
         .into_iter()
         .map(|root| {

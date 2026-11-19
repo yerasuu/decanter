@@ -487,7 +487,8 @@ pub fn present_folders(profile_id: &str) -> Vec<PathBuf> {
         .unwrap_or_default()
         .into_iter()
         .map(PathBuf::from);
-    primary.into_iter().chain(extra).filter(|root| root.is_dir()).collect()
+    let present = primary.into_iter().chain(extra).filter(|root| root.is_dir()).collect();
+    crate::core::offered_folders(profile_id, present)
 }
 
 /// `done` of `total` as the bar draws it, to a thousandth.

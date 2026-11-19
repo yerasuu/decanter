@@ -339,9 +339,12 @@ pub fn remove_library_folder(profile_id: &str, root: &std::path::Path) -> Result
     if let Err(err) = db.set_steam_marked(profile_id, SteamMark::RemovedFolder, &root.to_string_lossy(), true) {
         tracing::warn!(profile_id, root = %root.display(), %err, "could not remember that the folder was removed");
     }
-    // Re-adding the folder later starts from its default cache again.
+    // Re-adding the folder later starts again from its default cache, and not hidden.
     if let Err(err) = db.set_library_cache(root, None) {
         tracing::warn!(profile_id, root = %root.display(), %err, "could not forget the folder's cache location");
+    }
+    if let Err(err) = db.set_folder_hidden(profile_id, root, false) {
+        tracing::warn!(profile_id, root = %root.display(), %err, "could not forget that the folder was hidden");
     }
     if let Err(err) = library_for_profile(profile_id)
         .map_err(|err| err.to_string())
@@ -416,6 +419,40 @@ pub fn set_default_install_folder(profile_id: &str, root: &std::path::Path) -> R
 /// [`default_install_folder`] for the profile `account_id` belongs to.
 pub fn default_install_folder_for_account(account_id: &str) -> Option<std::path::PathBuf> {
     default_install_folder(&profile_for_account(account_id).ok()??)
+}
+
+/// The library folders `profile_id` hid in Storage.
+pub fn hidden_folders(profile_id: &str) -> std::collections::HashSet<PathBuf> {
+    db().ok()
+        .and_then(|db| {
+            db.hidden_folders(profile_id)
+                .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to list hidden library folders"))
+                .ok()
+        })
+        .unwrap_or_default()
+}
+
+/// `roots` (primary first, as [`Library::roots`] lists them) without the folders `profile_id` hid
+/// in Storage, for the places that offer library folders as choices. The default install target
+/// and a lone folder stay even when hidden, since a new install has to land in one of them.
+pub fn offered_folders(profile_id: &str, roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    let hidden = hidden_folders(profile_id);
+    if hidden.is_empty() || roots.len() < 2 {
+        return roots;
+    }
+    let default = default_install_folder(profile_id).or_else(|| roots.first().cloned());
+    roots
+        .into_iter()
+        .filter(|root| !hidden.contains(root) || default.as_ref() == Some(root))
+        .collect()
+}
+
+/// [`offered_folders`] for the profile `account_id` belongs to; all of `roots` when it has none.
+pub fn offered_folders_for_account(account_id: &str, roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    match profile_for_account(account_id) {
+        Ok(Some(profile_id)) => offered_folders(&profile_id, roots),
+        Ok(None) | Err(_) => roots,
+    }
 }
 
 /// Everything this account has installed, newest manifest shape or not.

@@ -16,7 +16,7 @@ use crate::state::{AppState, Download, DownloadKey, MoveFinished, MoveKey, MoveQ
 use crate::theme;
 use crate::views::downloads;
 use crate::widgets::reveal::reveal;
-use crate::widgets::{ButtonKind, button, progress_bar, tooltip};
+use crate::widgets::{ButtonKind, button, checkbox, progress_bar, tooltip};
 
 /// One library folder as the last scan found it.
 struct Folder {
@@ -34,6 +34,8 @@ struct Folder {
     steam_games: usize,
     steam_size: u64,
     is_default: bool,
+    /// Kept out of the Library views, and out of this page unless it shows hidden folders.
+    hidden: bool,
     disk: Option<(u64, u64)>,
     /// Where its games' shader caches go, whether the user picked it, and
     /// how much is in it (`None` before anything was written there).
@@ -143,6 +145,7 @@ impl Folder {
             steam_games,
             steam_size,
             is_default: false,
+            hidden: false,
             disk,
             cache,
             cache_custom,
@@ -179,9 +182,25 @@ fn steam_part(root: &Path) -> (usize, u64) {
         })
 }
 
+/// Whether Storage lists the folders hidden from the Library, per profile.
+const SHOW_HIDDEN_FOLDERS: &str = "show_hidden_libraries";
+
+/// What one visit to the page found.
+struct Scan {
+    folders: Vec<Folder>,
+    /// Hidden folders left out of `folders`, never measured, so a mount
+    /// already in the library isn't offered again.
+    left_out: Vec<PathBuf>,
+    /// How many of the profile's folders are hidden, listed or not.
+    hidden: usize,
+    show_hidden: bool,
+}
+
 /// Reads every folder's manifests and free space — slow enough on a big
-/// library to be kept off the UI thread.
-fn scan(profile_id: &str) -> Vec<Folder> {
+/// library to be kept off the UI thread. A hidden folder is left out unless
+/// the page shows hidden ones, except the default install target or a lone
+/// folder, which new installs go to.
+fn scan(profile_id: &str) -> Scan {
     let db = crate::core::db().ok();
     // What's installed is filed per account (see `decanter_core::library`);
     // external games are filed under the profile itself.
@@ -209,18 +228,47 @@ fn scan(profile_id: &str) -> Vec<Folder> {
         .unwrap_or_default()
         .into_iter()
         .map(PathBuf::from);
-    let mut folders: Vec<Folder> = primary
+    let roots: Vec<(PathBuf, bool)> = primary
         .into_iter()
         .map(|root| (root, true))
         .chain(extra.map(|root| (root, false)))
-        .map(|(root, primary)| Folder::scan(root, primary, &owners, db.as_ref()))
         .collect();
     let default = crate::core::default_install_folder(profile_id);
-    for folder in &mut folders {
-        folder.is_default = default.as_ref().map_or(folder.primary, |root| *root == folder.root);
+    let hidden_roots = crate::core::hidden_folders(profile_id);
+    let show_hidden = db.as_ref().is_some_and(|db| {
+        db.setting(&format!("{SHOW_HIDDEN_FOLDERS}:{profile_id}"))
+            .inspect_err(|err| tracing::warn!(profile_id, %err, "failed to read whether storage shows hidden folders"))
+            .ok()
+            .flatten()
+            .as_deref()
+            == Some("1")
+    });
+    let is_lone = roots.len() < 2;
+    let mut scan = Scan {
+        folders: Vec::with_capacity(roots.len()),
+        left_out: Vec::new(),
+        hidden: roots.iter().filter(|(root, _)| hidden_roots.contains(root)).count(),
+        show_hidden,
+    };
+    for (root, is_primary) in roots {
+        let is_default = default.as_ref().map_or(is_primary, |default| *default == root);
+        let hidden = hidden_roots.contains(&root);
+        if hidden && !show_hidden && !is_default && !is_lone {
+            scan.left_out.push(root);
+            continue;
+        }
+        let mut folder = Folder::scan(root, is_primary, &owners, db.as_ref());
+        folder.is_default = is_default;
+        folder.hidden = hidden;
+        scan.folders.push(folder);
     }
-    tracing::debug!(profile_id, folders = folders.len(), "computed storage usage");
-    folders
+    tracing::debug!(
+        profile_id,
+        folders = scan.folders.len(),
+        left_out = scan.left_out.len(),
+        "computed storage usage"
+    );
+    scan
 }
 
 /// What a folder's card says about its disk: games, free space, or that the disk is away.
@@ -269,6 +317,12 @@ pub struct StorageView {
     /// Library folders scanned for games decanter didn't install: `None` while the scan runs,
     /// then how many it found.
     unmanaged_scans: HashMap<PathBuf, Option<usize>>,
+    /// Hidden folders the last scan left out of `folders`.
+    left_out: Vec<PathBuf>,
+    /// How many folders are hidden; the "Show hidden libraries" check is
+    /// offered only while there is one.
+    hidden_folders: usize,
+    show_hidden: bool,
 }
 
 impl StorageView {
@@ -277,8 +331,12 @@ impl StorageView {
         cx.observe(&state.session, |this, _, cx| this.rescan(cx)).detach();
         cx.observe(&state.background, |_, _, cx| cx.notify()).detach();
         cx.observe(&state.moves, |_, _, cx| cx.notify()).detach();
-        cx.subscribe(&state.moves, |this, _, _: &MoveFinished, cx| this.rescan(cx))
-            .detach();
+        // A game moved into or out of a hidden folder changes what the Library hides.
+        cx.subscribe(&state.moves, |this, _, _: &MoveFinished, cx| {
+            crate::views::library::actions::bump_organisation(cx);
+            this.rescan(cx);
+        })
+        .detach();
         let mut this = Self {
             folders: None,
             mounts: Vec::new(),
@@ -291,6 +349,9 @@ impl StorageView {
             confirm_legacy: false,
             confirm_stray: None,
             unmanaged_scans: HashMap::new(),
+            left_out: Vec::new(),
+            hidden_folders: 0,
+            show_hidden: false,
         };
         this.rescan(cx);
         this
@@ -315,9 +376,12 @@ impl StorageView {
             (scan(&profile_id), decanter_core::removable_mounts(), is_changed)
         });
         self.scan = Some(cx.spawn(async move |this, cx| {
-            let (folders, mounts, is_changed) = scan.await;
+            let (scan, mounts, is_changed) = scan.await;
             let _ = this.update(cx, |this, cx| {
-                this.folders = Some(folders);
+                this.folders = Some(scan.folders);
+                this.left_out = scan.left_out;
+                this.hidden_folders = scan.hidden;
+                this.show_hidden = scan.show_hidden;
                 this.mounts = mounts;
                 if is_changed {
                     AppState::get(cx)
@@ -337,7 +401,105 @@ impl StorageView {
             .library
             .clone()
             .update(cx, |library, cx| library.refresh_all_install_state(cx));
+        crate::views::library::actions::bump_organisation(cx);
         self.rescan(cx);
+    }
+
+    /// Hides `root`'s games from the Library views, or shows them again; the
+    /// Library re-reads its hidden set from the flag stored here.
+    fn set_folder_hidden(&mut self, root: &Path, hidden: bool, cx: &mut Context<Self>) {
+        let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+            return;
+        };
+        let stored = crate::core::db().map_err(|err| err.to_string()).and_then(|db| {
+            db.set_folder_hidden(&profile_id, root, hidden)
+                .map_err(|err| err.to_string())
+        });
+        match stored {
+            Ok(()) => {
+                self.error = None;
+                if let Some(folder) = self.folders.iter_mut().flatten().find(|folder| folder.root == root) {
+                    folder.hidden = hidden;
+                }
+                crate::views::library::actions::bump_organisation(cx);
+                // The count behind "Show hidden libraries" moved, and a folder hidden while hidden
+                // ones aren't shown leaves the page.
+                self.rescan(cx);
+            }
+            Err(err) => {
+                tracing::warn!(profile_id, root = %root.display(), hidden, %err, "could not change the folder's hidden state");
+                self.error = Some(Text::new("storage.errors.hide").arg("error", err));
+            }
+        }
+        cx.notify();
+    }
+
+    /// Whether the profile has a single library folder, counting the hidden ones left out.
+    fn is_lone(&self) -> bool {
+        self.folders
+            .as_ref()
+            .map_or(0, Vec::len)
+            .saturating_add(self.left_out.len())
+            < 2
+    }
+
+    fn set_show_hidden(&mut self, shown: bool, cx: &mut Context<Self>) {
+        let Some(profile_id) = AppState::get(cx).session.read(cx).active_profile.clone() else {
+            return;
+        };
+        let value = if shown { "1" } else { "0" };
+        if let Err(err) = crate::core::db().map_err(|err| err.to_string()).and_then(|db| {
+            db.set_setting(&format!("{SHOW_HIDDEN_FOLDERS}:{profile_id}"), value)
+                .map_err(|err| err.to_string())
+        }) {
+            tracing::warn!(profile_id, shown, %err, "failed to save whether storage shows hidden folders");
+        }
+        self.show_hidden = shown;
+        self.rescan(cx);
+    }
+
+    /// "Show hidden libraries", above the folder list while a folder is hidden.
+    fn show_hidden_toggle(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        let shown = self.show_hidden;
+        (self.hidden_folders > 0).then(|| {
+            crate::widgets::nav::tab_stop(div().id("storage-show-hidden"))
+                .flex()
+                .items_center()
+                .gap_1()
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| this.set_show_hidden(!shown, cx)))
+                .child(checkbox(shown))
+                .child(theme::muted(t!("storage.show_hidden")).text_size(px(12.)))
+        })
+    }
+
+    /// The "Hide library" check of a folder's card: small and muted, since it only changes what the
+    /// Library shows, and it doesn't pick the card it sits on. The default install target and a lone
+    /// folder can't be hidden, since new installs land in them; one hidden before can be shown.
+    fn hide_toggle(index: usize, folder: &Folder, is_lone: bool, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let (root, hidden) = (folder.root.clone(), folder.hidden);
+        let is_blocked = !hidden && (folder.is_default || is_lone);
+        let toggle = div()
+            .id(("storage-hide", index))
+            .flex()
+            .items_center()
+            .gap_1()
+            .tooltip(tooltip(if is_blocked {
+                t!("storage.folder.hide_blocked")
+            } else {
+                t!("storage.folder.hide_hint")
+            }))
+            .child(checkbox(hidden).when(is_blocked, |b| b.opacity(0.4)))
+            .child(theme::muted(t!("storage.folder.hide")).text_size(px(12.)));
+        if is_blocked {
+            return toggle.into_any_element();
+        }
+        crate::widgets::nav::tab_stop(toggle.cursor_pointer())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.set_folder_hidden(&root, !hidden, cx);
+            }))
+            .into_any_element()
     }
 
     fn add_folder(&mut self, cx: &mut Context<Self>) {
@@ -376,7 +538,9 @@ impl StorageView {
             .filter(|mount| {
                 !folders
                     .iter()
-                    .any(|folder| folder.root.starts_with(mount) || mount.starts_with(&folder.root))
+                    .map(|folder| &folder.root)
+                    .chain(&self.left_out)
+                    .any(|root| root.starts_with(mount) || mount.starts_with(root))
             })
             .enumerate()
             .map(|(index, mount)| {
@@ -888,6 +1052,9 @@ impl StorageView {
                         })
                         .when(!folder.present, |row| {
                             row.child(theme::chip(t!("storage.folder.offline_chip"), theme::Tone::Warn))
+                        })
+                        .when(folder.hidden, |row| {
+                            row.child(theme::chip(t!("storage.folder.hidden_chip"), theme::Tone::Neutral))
                         }),
                 )
                 .child(
@@ -898,7 +1065,8 @@ impl StorageView {
                         .child(folder.root.display().to_string()),
                 )
                 .children(used.map(|used| progress_bar(("storage-pick-bar", index), Some(used), 6.)))
-                .child(theme::muted(folder_status(folder)).text_size(px(12.))),
+                .child(theme::muted(folder_status(folder)).text_size(px(12.)))
+                .child(Self::hide_toggle(index, folder, self.is_lone(), cx)),
         )
     }
 
@@ -1075,6 +1243,7 @@ impl Render for StorageView {
                                 .flex()
                                 .flex_col()
                                 .gap_3()
+                                .children(self.show_hidden_toggle(cx))
                                 .children(
                                     folders
                                         .iter()

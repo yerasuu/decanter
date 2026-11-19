@@ -152,9 +152,8 @@ impl AccountTab {
         let library = crate::core::library_for_profile(&self.profile_id).ok();
         self.default_folder = crate::core::default_install_folder(&self.profile_id)
             .or_else(|| library.as_ref().map(|library| library.root().to_path_buf()));
-        self.install_folders = library
-            .map(|library| library.roots())
-            .unwrap_or_default()
+        let roots = library.map(|library| library.roots()).unwrap_or_default();
+        self.install_folders = crate::core::offered_folders(&self.profile_id, roots)
             .into_iter()
             .map(|root| {
                 let free = decanter_core::disk_usage(&root).map(|(free, _)| free);

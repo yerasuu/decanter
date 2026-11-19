@@ -52,6 +52,7 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.views.data.failed_to_list_favorite_ids", "failed to list favorite ids"),
     t("decanter.views.data.failed_to_open_db_no_2", "failed to open db, no hidden ids applied"),
     t("decanter.views.data.failed_to_list_hidden_ids", "failed to list hidden ids"),
+    t("decanter.views.data.failed_to_resolve_library_hidden", "failed to resolve library, hidden folders not applied"),
     t("decanter.views.data.failed_to_open_db_library", "failed to open db, library stats are empty"),
     t("decanter.views.data.failed_to_read_playtime_stats", "failed to read playtime stats"),
     t("decanter.views.data.failed_to_read_achievement_count", "failed to read achievement count stats"),
@@ -149,6 +150,9 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.views.storage.could_not_measure_the_cache", "could not measure the cache"),
     t("decanter.views.storage.failed_to_list_accounts_for", "failed to list accounts for storage view"),
     t("decanter.views.storage.failed_to_resolve_library_root", "failed to resolve library root for storage view"),
+    t("decanter.views.storage.failed_to_read_whether_storage", "failed to read whether storage shows hidden folders"),
+    t("decanter.views.storage.failed_to_save_whether_storage", "failed to save whether storage shows hidden folders"),
+    t("decanter.views.storage.could_not_change_the_folder", "could not change the folder's hidden state"),
     t("decanter.views.storage.cannot_remove_the_old_data", "cannot remove the old data folder"),
     t("decanter.views.unavailable.cannot_switch_library", "cannot switch library"),
 ];

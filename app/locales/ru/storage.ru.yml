@@ -4,6 +4,7 @@ storage.summary.with_steam: "%{used} занято: игр — %{count} · ещё
 storage.add: 'Добавить папку библиотеки'
 storage.add_title: 'Выберите, где хранить игры'
 storage.add_mount: "Добавить %{path}"
+storage.show_hidden: Показать скрытые библиотеки
 storage.stats.used.one: 'используется 1 игрой'
 storage.stats.used.other: 'используется играми: %{count}'
 storage.stats.folders.one: 'папка библиотеки'
@@ -12,6 +13,7 @@ storage.folder.primary: 'Основная'
 storage.folder.extra: 'Дополнительная'
 storage.folder.offline: 'Диск не подключён'
 storage.folder.offline_chip: "Не подключён"
+storage.folder.hidden_chip: "Скрыта"
 storage.folder.used.one: 'занято %{used}, 1 игра'
 storage.folder.used.other: 'занято %{used}, игр: %{count}'
 storage.folder.steam.one: 'Steam: %{size} · 1 игра, под управлением Steam, не входит в сумму выше'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: Новые установки по умолча
 storage.folder.remove: 'Убрать'
 storage.folder.remove_hint: 'Папка перестанет использоваться; всё, что лежит на диске, останется на месте'
 storage.folder.remove_blocked: 'В ней есть игры: сначала удалите их или переместите'
+storage.folder.hide: Скрыть библиотеку
+storage.folder.hide_hint: Убирает игры этой папки из Библиотеки; «Показать скрытые игры» возвращает их
+storage.folder.hide_blocked: Новые установки попадают в эту папку, поэтому её нельзя скрыть
 storage.move_to: 'Переместить в…'
 storage.moving.started: 'Перемещение...'
 storage.moving.progress: 'Перемещение: %{done} из %{total}'
@@ -36,6 +41,7 @@ storage.errors.add: 'сохранение папки: %{error}'
 storage.errors.remove: 'удаление папки: %{error}'
 storage.errors.not_a_folder: '%{path} не является папкой библиотеки'
 storage.errors.default: 'сохранение папки по умолчанию: %{error}'
+storage.errors.hide: 'изменение видимости папки: %{error}'
 storage.errors.hosted: 'Эта игра находится в префиксе своего лаунчера: переместите лаунчер, и игра переместится вместе с ним.'
 storage.errors.running: 'Игра запущена: закройте её перед перемещением.'
 storage.errors.shared: 'Эти файлы использует другая учётная запись: по отдельности их переместить нельзя.'

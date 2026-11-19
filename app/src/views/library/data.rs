@@ -494,14 +494,55 @@ pub(super) fn hidden_ids_in_profile(profile_id: &str) -> std::collections::HashS
     else {
         return std::collections::HashSet::new();
     };
-    owners(profile_id)
+    let owners = owners(profile_id);
+    let mut hidden: std::collections::HashSet<String> = owners
         .iter()
         .flat_map(|(account_id, storefront)| {
             db.hidden_ids(account_id, *storefront)
                 .inspect_err(|err| tracing::warn!(account_id, error = %err, "failed to list hidden ids"))
                 .unwrap_or_default()
         })
-        .collect()
+        .collect();
+    extend_with_hidden_folders(&mut hidden, profile_id, &owners);
+    hidden
+}
+
+/// Adds the games whose install lives in a folder the profile hid in Storage,
+/// so every reader of the hidden set treats them as hidden games. A game's
+/// folder is the one [`decanter_core::Library::root_of`] picks, the same one
+/// Storage lists it under; a game that isn't installed has none.
+fn extend_with_hidden_folders(
+    hidden: &mut std::collections::HashSet<String>,
+    profile_id: &str,
+    owners: &[(String, Storefront)],
+) {
+    let folders = crate::core::hidden_folders(profile_id);
+    if folders.is_empty() {
+        return;
+    }
+    let Ok(library) = crate::core::library_for_profile(profile_id).inspect_err(
+        |err| tracing::warn!(profile_id, error = %err, "failed to resolve library, hidden folders not applied"),
+    ) else {
+        return;
+    };
+    let accounts: std::collections::BTreeSet<&str> = owners
+        .iter()
+        .filter(|(_, storefront)| *storefront != Storefront::Steam)
+        .map(|(account_id, _)| account_id.as_str())
+        .collect();
+    for root in library.roots().into_iter().filter(|root| folders.contains(root)) {
+        let folder = decanter_core::Library::new(&root);
+        hidden.extend(
+            accounts
+                .iter()
+                .flat_map(|account_id| folder.scan(account_id).into_values())
+                // Steam keeps a Steam entry's files in its own library folders, so Storage doesn't
+                // list it under this one either.
+                .filter(|game| game.storefront != Storefront::Steam)
+                .filter(|game| library.root_of(&game.account_id, &game.game_id).as_ref() == Some(&root))
+                .map(|game| game.game_id),
+        );
+    }
 }
 
 /// Playtime and achievement counts for the whole library in two queries per

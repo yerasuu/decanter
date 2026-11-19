@@ -4,6 +4,7 @@ storage.summary.with_steam: "%{used} usados por %{count} juegos · %{steam} más
 storage.add: Añadir carpeta de biblioteca
 storage.add_title: Elige dónde guardar los juegos
 storage.add_mount: 'Añadir %{path}'
+storage.show_hidden: Mostrar bibliotecas ocultas
 storage.stats.used.one: usado por 1 juego
 storage.stats.used.other: usado por %{count} juegos
 storage.stats.folders.one: carpeta de biblioteca
@@ -12,6 +13,7 @@ storage.folder.primary: Principal
 storage.folder.extra: Adicional
 storage.folder.offline: Disco no conectado
 storage.folder.offline_chip: "Sin conectar"
+storage.folder.hidden_chip: "Oculta"
 storage.folder.used.one: '%{used} usados por 1 juego'
 storage.folder.used.other: '%{used} usados por %{count} juegos'
 storage.folder.steam.one: 'Steam: %{size} · 1 juego, lo gestiona Steam y no cuenta arriba'
@@ -28,6 +30,9 @@ storage.folder.use_default_hint: Las instalaciones nuevas van a esta carpeta por
 storage.folder.remove: Quitar
 storage.folder.remove_hint: Deja de usar esta carpeta; lo que haya en el disco se queda
 storage.folder.remove_blocked: 'Tiene juegos: desinstálalos o muévelos antes'
+storage.folder.hide: Ocultar biblioteca
+storage.folder.hide_hint: Saca de la Biblioteca los juegos de esta carpeta; Mostrar juegos ocultos los vuelve a mostrar
+storage.folder.hide_blocked: Las instalaciones nuevas van a esta carpeta, así que no se puede ocultar
 storage.move_to: Mover a…
 storage.moving.started: Moviendo...
 storage.moving.progress: Moviendo %{done} de %{total}
@@ -36,6 +41,7 @@ storage.errors.add: 'guardando la carpeta: %{error}'
 storage.errors.remove: 'quitando la carpeta: %{error}'
 storage.errors.not_a_folder: '%{path} no es una de las carpetas de la biblioteca'
 storage.errors.default: 'al guardar la carpeta predeterminada: %{error}'
+storage.errors.hide: 'cambiando si la carpeta está oculta: %{error}'
 storage.errors.hosted: 'Este juego vive en el prefijo de su lanzador: mueve el lanzador y el juego irá con él.'
 storage.errors.running: 'El juego está abierto: ciérralo antes de moverlo.'
 storage.errors.shared: 'Otra cuenta comparte estos archivos: no se pueden mover solos.'

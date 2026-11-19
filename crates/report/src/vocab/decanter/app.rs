@@ -27,6 +27,8 @@ pub const TEMPLATES: &[Template] = &[
     t("decanter.app.core.failed_to_read_extra_library", "failed to read extra library folders, using main only"),
     t("decanter.app.core.could_not_update_libraryfolders_vdf", "could not update libraryfolders.vdf"),
     t("decanter.app.core.could_not_forget_the_folder", "could not forget the folder's cache location"),
+    t("decanter.app.core.could_not_forget_that_the", "could not forget that the folder was hidden"),
+    t("decanter.app.core.failed_to_list_hidden_library", "failed to list hidden library folders"),
     t("decanter.app.core.failed_to_resolve_profile_for", "failed to resolve profile for account, using default"),
     t("decanter.app.core.failed_to_list_profiles_using", "failed to list profiles, using default library"),
     t("decanter.app.core.failed_to_save_cloud_save", "failed to save cloud save path"),
