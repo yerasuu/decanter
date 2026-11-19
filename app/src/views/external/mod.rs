@@ -427,11 +427,11 @@ impl ExternalView {
         if !rows.is_empty() {
             column = column.child(theme::card().children(rows));
         }
-        if !self.steam.is_empty() {
-            column = column.child(self.steam_list(cx));
-        }
         if !unmanaged.games.is_empty() {
             column = column.child(self.unmanaged_list(&unmanaged, cx));
+        }
+        if !self.steam.is_empty() {
+            column = column.child(self.steam_list(cx));
         }
         column.into_any_element()
     }
