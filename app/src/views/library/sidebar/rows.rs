@@ -476,7 +476,7 @@ impl SidebarView {
         selected: Option<&str>,
         cx: &mut Context<Self>,
     ) -> Stateful<gpui::Div> {
-        let is_active = selected == Some(game.id.as_str());
+        let is_active = selected == Some(game.id.as_str()) && self.marked.is_empty();
         let is_marked = self.marked.contains(&game.id);
         // Read here rather than baked into the cached rows, so a game starting or stopping
         // shows without rebuilding them.
@@ -504,7 +504,7 @@ impl SidebarView {
             .cursor_pointer()
             .hover(|item| item.bg(rgb(theme::BG_PANEL_2)))
             .when(!installed && !running, |item| item.text_color(rgb(theme::TEXT_MUTED)))
-            .when(is_marked && !is_active, |item| {
+            .when(is_marked, |item| {
                 item.bg(rgb(theme::BG_PANEL_LIGHT))
                     .border_color(rgb(theme::ACCENT_GOLD))
             })
@@ -539,6 +539,13 @@ impl SidebarView {
         // Ctrl-click extends a selection to act on in bulk; a plain
         // click is still just "show me this one".
         if event.modifiers().control {
+            // The open game joins the marked set, since the single highlight is hidden while
+            // a multiple selection exists and it would otherwise silently drop out of it.
+            if self.marked.is_empty() {
+                if let Some(open) = self.model.read(cx).selected.clone() {
+                    self.marked.insert(open);
+                }
+            }
             if !self.marked.insert(id.to_owned()) {
                 self.marked.remove(id);
             }
