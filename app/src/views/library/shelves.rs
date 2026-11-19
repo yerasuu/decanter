@@ -137,9 +137,19 @@ pub(super) fn build(
         .filter(|shelf| !shelf.entries.is_empty() || show_hidden_collections)
         .collect();
 
+    // A dynamic collection's members come from its saved filter, not from `collections.members`, so
+    // the shelves just built are what say who sits in one.
+    let categorized: HashSet<&str> = shelves
+        .iter()
+        .filter(|shelf| shelf.collection_id.is_some())
+        .flat_map(|shelf| shelf.entries.iter().map(|entry| entry.game.id.as_str()))
+        .collect();
     let uncategorized: Vec<LibraryEntry> = entries
         .iter()
-        .filter(|entry| collections.is_uncategorized(&entry.game.id, show_hidden_collections))
+        .filter(|entry| {
+            !categorized.contains(entry.game.id.as_str())
+                && collections.is_uncategorized(&entry.game.id, show_hidden_collections)
+        })
         .cloned()
         .collect();
     if !uncategorized.is_empty() {

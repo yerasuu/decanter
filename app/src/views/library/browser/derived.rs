@@ -79,7 +79,6 @@ pub(super) fn derive(key: ShelvesKey, games: &[LibraryEntry], organisation: &Org
                     played.into_iter().take(RECENT_GAMES).cloned().collect()
                 }
                 "favorites" => pick(&|e| favorites.contains(&e.game.id)),
-                "uncategorized" => pick(&|e| collections.is_uncategorized(&e.game.id, show_hidden_collections)),
                 "installed" => pick(&|e| is_installed(&e.game, pending_installs)),
                 id => built
                     .iter()
