@@ -19,7 +19,7 @@ mod raven;
 pub mod session_renewal;
 pub mod settings;
 mod shell;
-mod storage;
+pub(crate) mod storage;
 mod unavailable;
 
 use std::cell::Cell;

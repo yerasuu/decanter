@@ -443,9 +443,11 @@ impl ExternalView {
         };
         let mut found = unmanaged::proposed(profile_id, cx);
         let added: HashSet<PathBuf> = self.games.iter().filter_map(crate::core::executable_for).collect();
-        found
-            .games
-            .retain(|found| !added.iter().any(|executable| executable.starts_with(&found.folder)));
+        let concealed = crate::core::concealed_folders(profile_id);
+        found.games.retain(|found| {
+            !added.iter().any(|executable| executable.starts_with(&found.folder))
+                && !concealed.iter().any(|root| found.folder.starts_with(root))
+        });
         found
     }
 

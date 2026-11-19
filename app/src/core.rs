@@ -433,6 +433,29 @@ pub fn hidden_folders(profile_id: &str) -> std::collections::HashSet<PathBuf> {
         .unwrap_or_default()
 }
 
+/// The hidden library folders `profile_id` keeps out of sight: all of them unless hiding is on and
+/// Storage's "Show hidden libraries" is checked.
+pub fn concealed_folders(profile_id: &str) -> std::collections::HashSet<PathBuf> {
+    let hidden = hidden_folders(profile_id);
+    if hidden.is_empty() {
+        return hidden;
+    }
+    let shown = db().ok().is_some_and(|db| {
+        db.hiding_enabled().unwrap_or(false)
+            && db
+                .setting(&format!("{}:{profile_id}", crate::views::storage::SHOW_HIDDEN_FOLDERS))
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some("1")
+    });
+    if shown {
+        std::collections::HashSet::new()
+    } else {
+        hidden
+    }
+}
+
 /// `roots` (primary first, as [`Library::roots`] lists them) without the folders `profile_id` hid
 /// in Storage, for the places that offer library folders as choices. The default install target
 /// and a lone folder stay even when hidden, since a new install has to land in one of them.

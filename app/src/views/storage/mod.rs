@@ -187,7 +187,7 @@ fn steam_part(root: &Path) -> (usize, u64) {
 }
 
 /// Whether Storage lists the folders hidden from the Library, per profile.
-const SHOW_HIDDEN_FOLDERS: &str = "show_hidden_libraries";
+pub(crate) const SHOW_HIDDEN_FOLDERS: &str = "show_hidden_libraries";
 
 /// What one visit to the page found.
 struct Scan {
