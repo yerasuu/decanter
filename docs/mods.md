@@ -1,7 +1,7 @@
 # Third-party mods
 
 What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 4 for GOG, Amazon Games and Epic Games
-games: loose folders and zip or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
+games, and Steam games copied into their install (see Steam games below): loose folders and zip or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
 the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
 
 ## Using it
@@ -122,6 +122,32 @@ like any other refusal.
   (`play/<account>/` and its record; the set stays for a reinstall).
 - When no other account still has the game installed, a box *also remove N mods (size)*, off by default, deletes the
   whole `mods/<store>/<game>/` folder; otherwise the mods are kept and the dialog says so.
+
+## Steam games
+
+Steam starts its games (`steam://rungameid`), so no play tree can stand in for the install (decision #1725). A Steam
+entry Steam has installed gets the same Mods tab, Nexus Mods browser included (`crate::mods::for_game`,
+`GameMods::steam`), with its mods copied into the install instead (`crates/mods/src/deploy/`):
+
+- The mods, sets and what decanter placed live in the decanter library root that files the entry,
+  `<root>/decanter/mods/steam/<app id>/`, never in Steam's library: the only thing written there is the game's own
+  folder. `deployed/ledger.toml` lists every file placed (path, owner mod, its hash, the install file's hash, a
+  size and time stamp) and the folders made; `deployed/backups/<sha256>` holds each install file a mod replaces.
+- Every reload of the tab (opening it, any change, the game closing) runs a pass, `GameMods::deploy`: it settles
+  the ledger against the install by content, then copies what the enabled mods win (the later one in the load
+  order), puts back the saved files of paths no enabled mod wants and deletes what mods added. A copy is written
+  beside its target, synced and renamed over it, and the ledger is written before the install is touched and again
+  after, so a pass cut short is finished or undone by the next one. No link in the install is followed: a path
+  under a link, or at one, is left out.
+- A placed file that is gone, or that a Steam verify put the game's own back over, is copied again. One changed into
+  anything else (an update, the game rewriting it) is left as it is, its saved copy dropped, and every enabled mod
+  with that path needs attention; *Seguir usándolo* takes the file as it is now as the install's own.
+- The pass does not run while decanter knows the game runs. With another profile's mods in the install it leaves
+  them; *Volver a aplicar* takes over. Mod DLL overrides can't reach a game Steam starts: the panel shows the
+  `WINEDLLOVERRIDES="…" %command%` line for Steam's launch options.
+- While Steam has the game uninstalled or its disk is unplugged the tab is hidden and nothing runs; the ledger and
+  saved files wait, and the next pass after a reinstall copies the mods over the fresh files (or flags them when the
+  files differ from the saved ones). Removing every mod of the game is refused while the install holds mod files.
 
 ## Thunderstore
 

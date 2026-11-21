@@ -3,10 +3,11 @@
 //! spelling of anything it already has).
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::deploy;
 use crate::game::GameMods;
 use crate::manifest::{FILES, ModManifest};
 use crate::path::ModPath;
@@ -40,9 +41,25 @@ pub(crate) struct Wanted {
 
 /// Keyed by the folded path.
 pub(crate) fn merge(game: &GameMods, mods: &[ModManifest]) -> Result<BTreeMap<String, Wanted>> {
+    let added = if game.copies_into_install() {
+        deploy::added(game)?
+    } else {
+        HashSet::new()
+    };
+    merge_over(game, mods, &added)
+}
+
+/// As [`merge`], leaving out of the install the files a mod added to it (`added`, folded), which
+/// are the mod's and not the game's.
+pub(crate) fn merge_over(
+    game: &GameMods,
+    mods: &[ModManifest],
+    added: &HashSet<String>,
+) -> Result<BTreeMap<String, Wanted>> {
     let mut files = BTreeMap::new();
     let mut dirs = HashMap::new();
-    for path in walk_install(&game.install)? {
+    let install = walk_install(&game.install)?;
+    for path in install.into_iter().filter(|path| !added.contains(&path.folded())) {
         record_dirs(&path, &mut dirs);
         let target = relative_target(
             &path,

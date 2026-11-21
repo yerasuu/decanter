@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::archive::{self, ArchivePreview};
 use crate::base;
+use crate::deploy::{self, Deployment, Takeover};
 use crate::dll::{self, DllMode, EffectiveOverride};
 use crate::manifest::ModManifest;
 use crate::merge::{Owner, merge};
@@ -35,6 +36,8 @@ pub enum Store {
     Amazon,
     Epic,
     External,
+    /// Started by Steam itself, so its mods are copied into its install ([`GameMods::steam`]).
+    Steam,
 }
 
 impl Store {
@@ -44,6 +47,7 @@ impl Store {
             Self::Amazon => "amazon",
             Self::Epic => "epic",
             Self::External => "ext",
+            Self::Steam => "steam",
         }
     }
 }
@@ -56,6 +60,7 @@ pub struct GameMods {
     pub(crate) install: PathBuf,
     /// The install's folder name, as the play tree's links spell it.
     pub(crate) install_name: String,
+    pub(crate) store: Store,
 }
 
 /// How one enabled mod's files meet the game's and the other enabled mods', in load order.
@@ -74,24 +79,39 @@ impl GameMods {
     ///
     /// # Errors
     ///
-    /// [`Error::NotAnInstall`] when `install` is not a folder of a library's `common/`, and
-    /// [`Error::InvalidName`] for a game id that can't name a folder.
+    /// [`Error::NotAnInstall`] when `install` is not a folder of a library's `common/` or `store` is
+    /// [`Store::Steam`], whose installs take [`Self::steam`], and [`Error::InvalidName`] for a game
+    /// id that can't name a folder.
     #[inline]
     pub fn new(install: &Path, store: Store, game_id: &str) -> Result<Self> {
         let not_an_install = || Error::NotAnInstall(install.display().to_string());
-        let install_name = install
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(not_an_install)?;
-        // A single component: the links climb to the root and back down through it.
-        if install_name.contains('/') || ModPath::parse(install_name).is_err() {
+        if store == Store::Steam {
             return Err(not_an_install());
         }
+        let install_name = install_name(install)?;
         let common = install.parent().ok_or_else(not_an_install)?;
         if common.file_name().and_then(|name| name.to_str()) != Some("common") {
             return Err(not_an_install());
         }
         let root = common.parent().ok_or_else(not_an_install)?;
+        Self::under(root, install, install_name, store, game_id)
+    }
+
+    /// A Steam game's mods folder, in `library` (the decanter library root that files the Steam
+    /// entry) rather than beside `install`, since the Steam library is Steam's: the only thing
+    /// written there is the game's own folder, which the enabled mods are copied into
+    /// ([`Self::deploy`]) because Steam, not decanter, starts the game.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotAnInstall`] when `install`'s name can't be one folder of a path, and
+    /// [`Error::InvalidName`] for an app id that can't name a folder.
+    #[inline]
+    pub fn steam(install: &Path, library: &Path, app_id: &str) -> Result<Self> {
+        Self::under(library, install, install_name(install)?, Store::Steam, app_id)
+    }
+
+    fn under(root: &Path, install: &Path, install_name: &str, store: Store, game_id: &str) -> Result<Self> {
         let dir = root
             .join("decanter")
             .join("mods")
@@ -101,7 +121,16 @@ impl GameMods {
             dir,
             install: install.to_path_buf(),
             install_name: install_name.to_owned(),
+            store,
         })
+    }
+
+    /// Whether the enabled mods are copied into the install ([`Self::deploy`]) instead of a play
+    /// tree the game starts from.
+    #[must_use]
+    #[inline]
+    pub fn copies_into_install(&self) -> bool {
+        self.store == Store::Steam
     }
 
     #[must_use]
@@ -121,7 +150,7 @@ impl GameMods {
         self.dir.join(id.as_str())
     }
 
-    fn set_path(&self, account: &str) -> Result<PathBuf> {
+    pub(crate) fn set_path(&self, account: &str) -> Result<PathBuf> {
         Ok(self.dir.join(PROFILES).join(format!("{}.toml", id_component(account)?)))
     }
 
@@ -622,7 +651,7 @@ impl GameMods {
         self.manifests(ModSet::read(&self.set_path(account)?)?.enabled())
     }
 
-    fn manifests<'set>(&self, ids: impl Iterator<Item = &'set ModId>) -> Result<Vec<ModManifest>> {
+    pub(crate) fn manifests<'set>(&self, ids: impl Iterator<Item = &'set ModId>) -> Result<Vec<ModManifest>> {
         let mut mods = Vec::new();
         for id in ids {
             if let Some(manifest) = ModManifest::read(&self.mod_dir(id), id)? {
@@ -705,6 +734,9 @@ impl GameMods {
     /// game without its mods.
     #[inline]
     pub fn prepare(&self, account: &str, build_id: &str) -> Result<Option<Prepared>> {
+        if self.copies_into_install() {
+            return Ok(None);
+        }
         let switched = ModSet::read(&self.set_path(account)?)?;
         let is_active = !switched.switched_off;
         let mut mods = if is_active {
@@ -743,7 +775,8 @@ impl GameMods {
     fn checked_set(&self, account: &str, build_id: &str, mods: &[ModManifest]) -> Result<ModSet> {
         let path = self.set_path(account)?;
         let mut set = ModSet::read(&path)?;
-        if !mods.is_empty() && base::check(self, &mut set, build_id, mods)? {
+        // A copied mod is compared file by file by the deploy pass, since the install holds it.
+        if !self.copies_into_install() && !mods.is_empty() && base::check(self, &mut set, build_id, mods)? {
             set.write(&path)?;
         }
         Ok(set)
@@ -771,7 +804,13 @@ impl GameMods {
     pub fn keep(&self, account: &str, id: &ModId) -> Result<()> {
         let path = self.set_path(account)?;
         let mut set = ModSet::read(&path)?;
-        base::keep(self, &mut set, id)?;
+        if self.copies_into_install() {
+            // The pass that dropped the changed files from the ledger takes them, as they are now,
+            // as the install's own at the next deploy.
+            set.attention.remove(id);
+        } else {
+            base::keep(self, &mut set, id)?;
+        }
         set.write(&path)
     }
 
@@ -832,6 +871,9 @@ impl GameMods {
         let Some(parent) = self.dir.parent() else {
             return Err(Error::NotAnInstall(self.dir.display().to_string()));
         };
+        if self.copies_into_install() && deploy::holds_files(self)? {
+            return Err(Error::Deployed);
+        }
         let name = self.dir.file_name().and_then(|name| name.to_str()).unwrap_or("game");
         let doomed = parent.join(format!(".{name}.removed-{}", std::process::id()));
         match fs::rename(&self.dir, &doomed) {
@@ -844,6 +886,29 @@ impl GameMods {
         Ok(())
     }
 
+    /// Copies `account`'s enabled mods into a Steam game's install, saving aside each install file
+    /// one replaces, and puts back what mods no longer on had replaced or deletes what they added.
+    /// Files decanter placed that are gone, or that Steam put its own file back over (a verify),
+    /// are copied again; one changed into anything else (an update, the game rewriting it) is left
+    /// as it is, and every enabled mod with that path needs attention until kept or disabled. With
+    /// another account's mods in the install, `takeover` decides whether they make way. Must not
+    /// run while the game runs, which may hold the files open. Any other store's game has nothing
+    /// to copy, and gets an empty report.
+    ///
+    /// # Errors
+    ///
+    /// When the install is not a folder, an enabled mod does not hold up (its `mod.toml`, or a file
+    /// that is missing, leads outside it or is no longer what was imported), a disk lacks the
+    /// space, or a file can't be read, saved aside or copied; the ledger then records what was done,
+    /// so the next pass finishes or undoes it.
+    #[inline]
+    pub fn deploy(&self, account: &str, takeover: Takeover) -> Result<Deployment> {
+        if !self.copies_into_install() {
+            return Ok(Deployment::default());
+        }
+        deploy::run(self, account, takeover)
+    }
+
     /// The files in `account`'s play tree that decanter did not place: the game's saves and
     /// rewritten configs, which win over the install and every mod.
     ///
@@ -854,4 +919,18 @@ impl GameMods {
     pub fn written_by_game(&self, account: &str) -> Result<Vec<ModPath>> {
         tree::written_by_game(self, account)
     }
+}
+
+/// `install`'s folder name, a single component so that every path built on it stays inside it.
+fn install_name(install: &Path) -> Result<&str> {
+    let not_an_install = || Error::NotAnInstall(install.display().to_string());
+    let name = install
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(not_an_install)?;
+    // A single component: the links climb to the root and back down through it.
+    if name.contains('/') || ModPath::parse(name).is_err() {
+        return Err(not_an_install());
+    }
+    Ok(name)
 }

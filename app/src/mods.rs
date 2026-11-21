@@ -13,13 +13,14 @@ const SHARED_BY_DEFAULT: [&str; 6] = ["/home", "/media", "/mnt", "/run/media", "
 const SHARE_VARIABLE: &str = "PRESSURE_VESSEL_FILESYSTEMS_RW";
 
 /// The mods folder of an installed GOG, Amazon Games or Epic Games game, all of which install
-/// under `common/<InstallDir>` with a manifest of their own. External games get mods later
-/// (design, open question 6), so they have none.
+/// under `common/<InstallDir>` with a manifest of their own, or of a Steam entry Steam has
+/// installed. External games get mods later (design, open question 6), so they have none.
 pub fn for_game(game: &InstalledGame) -> Option<GameMods> {
     let store = match game.storefront {
         Storefront::Gog => Store::Gog,
         Storefront::AmazonGames => Store::Amazon,
         Storefront::EpicGames => Store::Epic,
+        Storefront::Steam => return for_steam(game),
         _ => return None,
     };
     let library = match crate::core::library_for_account(&game.account_id) {
@@ -32,6 +33,26 @@ pub fn for_game(game: &InstalledGame) -> Option<GameMods> {
     let install = library.install_dir(&game.install_dir)?;
     GameMods::new(&install, store, &game.game_id)
         .inspect_err(|err| tracing::warn!(game_id = %game.game_id, %err, "no mods folder for the game"))
+        .ok()
+}
+
+/// A Steam entry's mods, kept in the decanter library root that files the entry since the Steam
+/// library is Steam's, and copied into the folder Steam installed the game in (decision #1725);
+/// `None` while Steam has it uninstalled or its disk is unplugged.
+fn for_steam(game: &InstalledGame) -> Option<GameMods> {
+    let install = crate::external::steam::entries::install_folder(game)?;
+    let library = match crate::core::library_for_profile(&game.account_id) {
+        Ok(library) => library,
+        Err(err) => {
+            tracing::warn!(game_id = %game.game_id, %err, "no library, no mods folder for the steam game");
+            return None;
+        }
+    };
+    let root = library
+        .root_of(&game.account_id, &game.game_id)
+        .unwrap_or_else(|| library.root().to_path_buf());
+    GameMods::steam(&install, &root, &game.game_id)
+        .inspect_err(|err| tracing::warn!(game_id = %game.game_id, %err, "no mods folder for the steam game"))
         .ok()
 }
 

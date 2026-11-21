@@ -121,7 +121,7 @@ fn needs_epic_online(game: &Game) -> bool {
 const fn has_mods(game: &Game) -> bool {
     matches!(
         game.storefront,
-        Storefront::Gog | Storefront::AmazonGames | Storefront::EpicGames
+        Storefront::Gog | Storefront::AmazonGames | Storefront::EpicGames | Storefront::Steam
     )
 }
 

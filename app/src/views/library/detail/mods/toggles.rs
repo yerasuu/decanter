@@ -48,7 +48,7 @@ impl ModsTab {
             move |mods, account| mods.set_active(account, active),
             cx,
         );
-        self.notice = Some(Text::new("mods.toggles.applies_at_launch"));
+        self.notice = Some(Text::new(self.applies_key()));
     }
 
     /// Enabling every mod asks first when it takes a file or a DLL from a mod on now, as a move
@@ -101,7 +101,7 @@ impl ModsTab {
             move |mods, account| mods.set_all_enabled(account, enabled).map(|_| ()),
             cx,
         );
-        self.notice = Some(Text::new("mods.toggles.applies_at_launch"));
+        self.notice = Some(Text::new(self.applies_key()));
     }
 
     /// The Instalados row's checkbox, from a provider's result or detail.
@@ -110,7 +110,7 @@ impl ModsTab {
             return;
         }
         self.toggle(id, enabled, cx);
-        self.notice = Some(Text::new("mods.toggles.applies_at_launch"));
+        self.notice = Some(Text::new(self.applies_key()));
     }
 
     fn show_in_installed(&mut self, id: ModId, cx: &mut Context<Self>) {
@@ -168,7 +168,14 @@ impl ModsTab {
                 .py(px(14.))
                 .child(switch)
                 .child(theme::muted(state))
-                .child(theme::muted(t!("mods.toggles.applies_at_launch")).text_size(px(12.5)))
+                .child(
+                    theme::muted(if self.copies_into_install() {
+                        t!("mods.steam.applies_now")
+                    } else {
+                        t!("mods.toggles.applies_at_launch")
+                    })
+                    .text_size(px(12.5)),
+                )
                 .child(
                     div()
                         .flex()

@@ -7,6 +7,11 @@
 //! install made of real directories and one link per file. The game starts from the play tree, so
 //! verify, repair and update keep reading and writing only `common/<InstallDir>`.
 //!
+//! A Steam game is the exception (decision #1725): Steam starts it, so no play tree can stand in for
+//! its install. Its mods live in the decanter library that files its entry, in
+//! `<root>/decanter/mods/steam/<app id>/`, and are copied into the install, with what they replace
+//! saved aside in that folder's `deployed/` (see the `deploy` module).
+//!
 //! Everything read from these folders (`mod.toml`, set files, the play tree's record) and every
 //! folder a user picks is checked here, where it enters; nothing here reaches the network.
 
@@ -62,6 +67,7 @@
 mod archive;
 mod base;
 mod credits;
+mod deploy;
 mod dll;
 mod error;
 mod files;
@@ -78,6 +84,7 @@ mod tree;
 
 pub use archive::{ArchiveFormat, ArchivePreview};
 pub use credits::ModCredits;
+pub use deploy::{Deployment, Takeover};
 pub use dll::{DllMode, DllOverride, EffectiveOverride};
 pub use error::Error;
 pub use game::{GameMods, ModConflicts, Store};

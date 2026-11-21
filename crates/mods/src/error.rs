@@ -66,6 +66,8 @@ pub enum Error {
     InvalidOverride(String),
     #[error("{0:?} can't be part of a mod's origin")]
     InvalidOrigin(String),
+    #[error("the game's folder still holds files of its mods; turn them off so decanter puts its files back first")]
+    Deployed,
 }
 
 impl Error {

@@ -136,6 +136,11 @@ fn folded(path: &ModPath) -> Result<ModPath> {
 }
 
 fn hash_file(path: &Path) -> Result<String> {
+    Ok(format!("sha256:{}", sha256_hex(path)?))
+}
+
+/// The file's SHA-256 as a mod's manifest spells it.
+pub(crate) fn sha256_hex(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path).map_err(Error::io(path))?;
     let mut buffer = vec![0_u8; HASH_BUFFER];
     let mut hasher = Sha256::new();
@@ -147,7 +152,7 @@ fn hash_file(path: &Path) -> Result<String> {
             Err(err) => return Err(Error::io(path)(err)),
         }
     }
-    Ok(format!("sha256:{}", hex(&hasher.finalize())))
+    Ok(hex(&hasher.finalize()))
 }
 
 /// The mod's files whose content is no longer what was imported, such as a config the game

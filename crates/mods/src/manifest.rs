@@ -366,6 +366,6 @@ pub(crate) fn display_name(text: &str) -> Option<String> {
         .then(|| text.to_owned())
 }
 
-fn is_sha256(text: &str) -> bool {
+pub(crate) fn is_sha256(text: &str) -> bool {
     text.len() == 64 && text.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }

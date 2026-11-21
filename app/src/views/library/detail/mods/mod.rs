@@ -16,6 +16,7 @@ mod order;
 mod packs;
 mod replace;
 mod search;
+mod steam;
 mod thunderstore;
 mod toggles;
 
@@ -83,6 +84,8 @@ struct Loaded {
     /// The account's switch for every mod of the game.
     is_active: bool,
     enable_on_install: bool,
+    /// For a Steam game, the pass that copied the mods into its folder before this read.
+    applied: Option<steam::Applied>,
 }
 
 pub(super) struct ModsTab {
@@ -210,6 +213,7 @@ impl ModsTab {
         self.mods = installed.as_ref().and_then(crate::mods::for_game);
         let build_id = installed.map(|game| game.build_id).unwrap_or_default();
         self.running = crate::launch::is_running(&account_id, &self.target.product_id);
+        let is_running = self.running;
         self.nexus_experimental = crate::nexus::is_experimental();
         if !self.nexus_experimental
             && let Some(browser) = self.nexus.take()
@@ -221,7 +225,11 @@ impl ModsTab {
             return;
         };
         cx.spawn(async move |this, cx| {
-            let read = tokio::task::spawn_blocking(move || snapshot(&mods, &account_id, &build_id)).await;
+            let read = tokio::task::spawn_blocking(move || {
+                let applied = steam::apply(&mods, &account_id, is_running);
+                snapshot(&mods, &account_id, &build_id, applied)
+            })
+            .await;
             let _ = this.update(cx, |this, cx| {
                 match read {
                     Ok(Ok(loaded)) => {
@@ -501,7 +509,12 @@ impl ModsTab {
 
 /// What the tab shows, read off the UI: every mod of the game with this account's choice, and the
 /// conflicts among the enabled ones.
-fn snapshot(mods: &GameMods, account_id: &str, build_id: &str) -> decanter_mods::Result<Loaded> {
+fn snapshot(
+    mods: &GameMods,
+    account_id: &str,
+    build_id: &str,
+    applied: Option<steam::Applied>,
+) -> decanter_mods::Result<Loaded> {
     let all = mods.list()?;
     let mut attention = mods.needing_attention(account_id, build_id)?;
     let slots = mods.load_order(account_id)?;
@@ -554,6 +567,7 @@ fn snapshot(mods: &GameMods, account_id: &str, build_id: &str) -> decanter_mods:
         dll,
         is_active,
         enable_on_install,
+        applied,
     })
 }
 
@@ -725,7 +739,12 @@ impl Render for ModsTab {
             .children(self.provider_section(locked, cx))
             .when(is_installed, |tab| {
                 tab.children(self.switch_panel(locked, cx))
-                    .child(theme::muted(t!("library.detail.mods.note")))
+                    .children(self.steam_panel(locked, cx))
+                    .child(theme::muted(if self.copies_into_install() {
+                        t!("mods.steam.note")
+                    } else {
+                        t!("library.detail.mods.note")
+                    }))
                     .child(theme::muted(t!("mods.archive.note")))
                     .child(actions)
                     // The list leads and the open archive sits beside it while both fit at

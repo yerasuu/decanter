@@ -180,7 +180,7 @@ impl Placement {
 
 /// A mod's file must be a plain file inside its mod's `files/`, since anything along the way (a
 /// folder swapped for a link) would lead the play tree outside it.
-fn check_inside(source: &Path, root: &Path) -> Result<()> {
+pub(crate) fn check_inside(source: &Path, root: &Path) -> Result<()> {
     let metadata = source.symlink_metadata().map_err(Error::io(source))?;
     if !metadata.is_file() {
         return Err(Error::NotAFile(source.to_path_buf()));
