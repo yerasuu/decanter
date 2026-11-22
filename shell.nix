@@ -30,7 +30,7 @@ let
   # PE, not anything this shell otherwise touches. Kept apart from
   # `runtimeLibs`/`buildInputs` above, which are all about running
   # decanter itself on Linux.
-  mingw = pkgs.pkgsCross.mingwW64;
+  mingw = pkgs.pkgsCross.mingw-msvcrt-x86_64;
   host = pkgs.stdenv.hostPlatform;
   # The FHS path of the host's own loader, which every non-Nix build of
   # that architecture already gets (see the RUSTFLAGS below).

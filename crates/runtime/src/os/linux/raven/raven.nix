@@ -11,7 +11,7 @@
 { checkout }:
 let
   pkgs = import ./pkgs.nix;
-  headers = pkgs.pkgsCross.mingwW64.windows.mingw_w64_headers;
+  headers = pkgs.pkgsCross.mingw-msvcrt-x86_64.windows.mingw_w64_headers;
   # provision-installer.py compiles type libraries with a plain `widl` that
   # finds the interface definitions of the MinGW headers by itself. nixpkgs
   # ships widl only inside Wine (1.6 GiB with what it needs), so it is built
@@ -43,7 +43,7 @@ pkgs.mkShell {
     gcc cmake ninja (python3.withPackages (python: [ python.fonttools ])) pkg-config bison gnupatch widl
     clang gn
     libffi wayland wayland-protocols wayland-scanner libxkbcommon pixman freetype libpng openssl
-    pkgsCross.mingwW64.buildPackages.gcc pkgsCross.mingw32.buildPackages.gcc
+    pkgsCross.mingw-msvcrt-x86_64.buildPackages.gcc pkgsCross.mingw32.buildPackages.gcc
   ];
   # The cross compiler's setup hook points CC and CXX at MinGW, which then
   # builds Raven itself for Windows; Raven runs on the host, so its compilers
