@@ -9,6 +9,7 @@
 //! reorders it there: typing asks Nexus nothing. The v2 search waits behind
 //! [`decanter_nexus::SEARCH_V2`], off.
 
+mod identify;
 mod install;
 mod updates;
 

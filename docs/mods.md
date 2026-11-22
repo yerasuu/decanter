@@ -236,6 +236,14 @@ asks `/v1/users/validate.json` and shows the account and whether it is Premium. 
 - `mod.toml` gets `[origin]` with `platform = "nexus"`, `package = "<domain>-<mod>-<file>"`, the file's version and
   the download host. *Buscar actualizaciones* reads the mod's file list and follows the author's `file_updates`
   links from that file, or offers the newest main file once it is no longer current.
+- *Identificar con Nexus* (Instalados, with the experimental switch on and a game chosen in the Nexus Mods section)
+  asks about every mod that has no origin, one `files.json` per candidate (`decanter_nexus::identify`). Only the
+  archive's name survives an import, and Nexus names downloads `<name>-<mod id>-<version>-<upload time>.<ext>`
+  (a ` (1)` copy suffix is ignored); every all-digit part between the name and the time is a candidate mod id, at
+  most 4, and the file is the one whose `file_name` matches (spaces as `_`, case ignored) or, failing that, whose
+  upload time is the name's. A match gets `[origin]` with its credits and the mod's name (`GameMods::identify`),
+  with the file's name added when the mod offers several current files; a mod that matches nothing, or a folder, is
+  left as it was. A refused key or a rate limit stops the run and says so.
 - Unverified (the v1 reference was unreachable for the analysis): every endpoint and field name, the rate-limit
   header names, the premium flag's spelling, the download link's shape and CDN hosts, and whether `files.json`
   carries `md5` and `size_in_bytes`. Each is optional when read; a mod or file that does not parse is skipped and

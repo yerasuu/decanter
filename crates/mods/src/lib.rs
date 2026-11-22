@@ -72,6 +72,7 @@ mod dll;
 mod error;
 mod files;
 mod game;
+mod identify;
 mod import;
 mod likeness;
 mod manifest;

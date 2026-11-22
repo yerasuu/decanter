@@ -679,6 +679,17 @@ impl Render for ModsTab {
                 button("mod-add", ButtonKind::Secondary, add_label, locked)
                     .when(!locked, |b| b.on_click(cx.listener(|_, _, _, cx| Self::add(cx)))),
             )
+            .children((self.nexus_experimental && !self.unidentified().is_empty()).then(|| {
+                button(
+                    "mod-identify-nexus",
+                    ButtonKind::Secondary,
+                    t!("mods.nexus.identify"),
+                    locked,
+                )
+                .when(!locked, |b| {
+                    b.on_click(cx.listener(|this, _, _, cx| this.identify_with_nexus(cx)))
+                })
+            }))
             .child(toggles::install_choice(
                 "mod-add-enable-on-install",
                 self.enables_on_install(),
