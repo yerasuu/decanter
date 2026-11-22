@@ -23,6 +23,8 @@ let
     # keyring's secret-service backend and the tray talk D-Bus.
     dbus
     openssl
+    # UnRAR (RAR mods) is C++ and links libstdc++ dynamically.
+    stdenv.cc.cc.lib
   ];
   # Cross-compiling `crates/hook` into `Galaxy64.dll` -- a real Windows
   # PE, not anything this shell otherwise touches. Kept apart from
