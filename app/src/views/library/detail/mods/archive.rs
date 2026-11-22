@@ -60,16 +60,16 @@ fn outcome_text(err: &decanter_mods::Error) -> Text {
 impl ModsTab {
     pub(super) fn pick_archive(cx: &Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let Some(file) = rfd::AsyncFileDialog::new()
+            let Some(files) = rfd::AsyncFileDialog::new()
                 .set_title(t!("mods.archive.pick_title"))
                 .add_filter(t!("mods.archive.filter"), &["zip", "ZIP", "7z", "7Z", "rar", "RAR"])
-                .pick_file()
+                .pick_files()
                 .await
             else {
                 return;
             };
-            let source = file.path().to_path_buf();
-            let _ = this.update(cx, |this, cx| this.read_archive(source, cx));
+            let sources = files.iter().map(|file| file.path().to_path_buf()).collect();
+            let _ = this.update(cx, |this, cx| this.add_paths(sources, cx));
         })
         .detach();
     }
@@ -100,6 +100,10 @@ impl ModsTab {
                     }
                     Ok(Err(err)) => {
                         tracing::warn!(error = %err, "mod archive not added");
+                        // A cancel is the user stopping the whole batch.
+                        if matches!(err, decanter_mods::Error::Cancelled) {
+                            this.queue.clear();
+                        }
                         this.show_outcome(outcome_text(&err));
                     }
                     Err(err) => {
@@ -108,6 +112,7 @@ impl ModsTab {
                     }
                 }
                 cx.notify();
+                this.next_queued(cx);
             });
         })
         .detach();
@@ -256,6 +261,9 @@ impl ModsTab {
                     .then(|| theme::muted(t!("mods.archive.installer"))),
             )
             .children(duplicate.map(|(_, name)| theme::error(t!("mods.archive.duplicate", name = name))))
+            .children(
+                (!self.queue.is_empty()).then(|| theme::muted(t!("mods.archive.queued", count = self.queue.len()))),
+            )
             .child(
                 div().flex().child(
                     div()
@@ -318,6 +326,7 @@ impl ModsTab {
                                 this.importing = None;
                                 tracing::info!("mod archive preview dismissed, nothing added");
                                 cx.notify();
+                                this.next_queued(cx);
                             }),
                         ),
                     ),

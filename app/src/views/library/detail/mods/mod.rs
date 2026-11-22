@@ -20,7 +20,7 @@ mod steam;
 mod thunderstore;
 mod toggles;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -108,6 +108,9 @@ pub(super) struct ModsTab {
     enable_on_install: Option<bool>,
     /// An archive being read, previewed or extracted.
     importing: Option<Importing>,
+    /// What was picked or dropped beyond the item being added, in order. An archive waits for the
+    /// previous one's preview to be answered, so each still gets its own check.
+    queue: VecDeque<PathBuf>,
     /// The previewed archive's mod name, editable before adding.
     name_input: Entity<TextInput>,
     /// A plain line about the last action, such as a cancelled import.
@@ -171,6 +174,7 @@ impl ModsTab {
             highlight: None,
             enable_on_install: None,
             importing: None,
+            queue: VecDeque::new(),
             name_input,
             notice: None,
             verified: HashMap::new(),
@@ -190,6 +194,7 @@ impl ModsTab {
     }
 
     fn stop_work(&mut self) {
+        self.queue.clear();
         if let Some(importing) = self.importing.take() {
             importing.cancel();
         }
@@ -246,6 +251,7 @@ impl ModsTab {
                     }
                 }
                 cx.notify();
+                this.next_queued(cx);
             });
         })
         .detach();
@@ -297,15 +303,15 @@ impl ModsTab {
 
     fn add(cx: &Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let Some(folder) = rfd::AsyncFileDialog::new()
+            let Some(folders) = rfd::AsyncFileDialog::new()
                 .set_title(t!("library.detail.mods.pick_title"))
-                .pick_folder()
+                .pick_folders()
                 .await
             else {
                 return;
             };
-            let source = folder.path().to_path_buf();
-            let _ = this.update(cx, |this, cx| this.add_folder(source, cx));
+            let sources = folders.iter().map(|folder| folder.path().to_path_buf()).collect();
+            let _ = this.update(cx, |this, cx| this.add_paths(sources, cx));
         })
         .detach();
     }
@@ -320,22 +326,31 @@ impl ModsTab {
         );
     }
 
-    /// A folder dropped on the tab is added as loose files, anything else read as an archive.
+    /// Folders dropped on the tab are added as loose files, anything else read as an archive.
     fn dropped(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
         if self.is_locked() {
             tracing::info!("drop on the mods tab ignored, it is busy or the game runs");
             return;
         }
-        let Some(path) = paths.paths().first().cloned() else {
+        self.show_installed(cx);
+        self.add_paths(paths.paths().to_vec(), cx);
+    }
+
+    /// Adds `paths` one after the other: each folder at once, each archive once its preview is
+    /// answered.
+    pub(super) fn add_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        tracing::info!(count = paths.len(), "mods picked to add");
+        self.queue.extend(paths);
+        self.next_queued(cx);
+    }
+
+    pub(super) fn next_queued(&mut self, cx: &mut Context<Self>) {
+        if self.is_locked() {
+            return;
+        }
+        let Some(path) = self.queue.pop_front() else {
             return;
         };
-        if paths.paths().len() > 1 {
-            tracing::info!(
-                count = paths.paths().len(),
-                "several files dropped on the mods tab, only the first is added"
-            );
-        }
-        self.show_installed(cx);
         if path.is_dir() {
             self.add_folder(path, cx);
         } else {
@@ -733,6 +748,7 @@ impl Render for ModsTab {
             .flex_col()
             .gap_3()
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.dropped(paths, cx)))
+            .drag_over::<ExternalPaths>(|style, _, _, _| style.bg(gpui::rgb(theme::BG_PANEL_LIGHT)))
             .child(self.section_nav(cx))
             .children(self.notice.as_ref().map(theme::muted))
             .children(self.error.as_ref().map(theme::error))
