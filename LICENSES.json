@@ -141,8 +141,8 @@
       "name": "UnRAR (RAR decoder of crates/mods)",
       "paths": [],
       "license": "LicenseRef-UnRAR",
-      "review": "pending",
-      "provenance": "UnRAR 7.1.0 by Alexander Roshal (RARLAB), vendored by the unrar_sys 0.5.8 crate (vendor/unrar; the crate's own Rust bindings and the unrar 0.5.8 wrapper are MIT OR Apache-2.0) and compiled into the decanter binary at build time (decision #1727). Used only to read RAR archives added as mods; decanter neither modifies nor redistributes its source. Its crc.cpp is Intel's Slicing-by-8 CRC32 under a BSD licence, whose notice is in the same text file. Review pending: the UnRAR terms restrict use (no RAR-compatible archiver), which the GPL does not allow added to a GPL work, so a binary linking it needs an additional permission under GPLv3 section 7 from decanter's copyright holders (see LICENSES.md)."
+      "review": "reviewed",
+      "provenance": "UnRAR 7.1.0 by Alexander Roshal (RARLAB), vendored by the unrar_sys 0.5.8 crate (vendor/unrar; the crate's own Rust bindings and the unrar 0.5.8 wrapper are MIT OR Apache-2.0) and compiled into the decanter binary at build time (decision #1727). Used only to read RAR archives added as mods; decanter neither modifies nor redistributes its source. Its crc.cpp is Intel's Slicing-by-8 CRC32 under a BSD licence, whose notice is in the same text file. The UnRAR terms restrict use (no RAR-compatible archiver), which the GPL does not allow added to a GPL work, so the root LICENSE ends with an additional permission under GPLv3 section 7 from decanter's copyright holder that allows linking it (decision #1731)."
     },
     {
       "name": "Rust dependencies of the report server",

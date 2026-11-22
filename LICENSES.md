@@ -72,10 +72,10 @@ similar permissive terms. Exceptions this review found:
 
   These terms are not an open source licence ([Debian ships unrar in non-free](https://packages.debian.org/sid/unrar))
   and their use restriction is one the GPL forbids adding to a GPL work (GPLv3 section 10). decanter's own code is
-  the only GPL code in the binary (no third-party crate is GPL-only), so linking UnRAR needs an additional
-  permission under GPLv3 section 7 from decanter's copyright holders, stated in `LICENSE` or here; until the owner
-  records one, the component's review stays pending. `scripts/licenses.py check` fails if unrar_sys is in the build
-  and this component or its text is missing.
+  the only GPL code in the binary (no third-party crate is GPL-only), and its copyright holder grants the additional
+  permission under GPLv3 section 7 that allows linking UnRAR, stated at the end of the root `LICENSE`. The
+  permission covers only combining with UnRAR; `scripts/licenses.py check` fails if unrar_sys is in the build and
+  this component or its text is missing.
 - `crates/modpack` holds the mod pack format, its validator and resolver from
   `docs/mod-packs-and-search-design.md` and adds no dependency: serde, thiserror, toml and uuid are already in the
   workspace.
