@@ -40,10 +40,12 @@ pub enum Error {
     UnknownMod(String),
     #[error("slot {slot} is past the end of a load order of {count} mods")]
     InvalidSlot { slot: usize, count: usize },
-    #[error("decanter reads zip and 7z archives, and this file is neither")]
+    #[error("decanter reads zip, 7z and RAR archives, and this file is none of them")]
     UnknownFormat,
-    #[error("RAR archives aren't supported yet: extract it and add the folder, or repack it as zip or 7z")]
-    Rar,
+    #[error(
+        "the archive is one part of a multi-volume set, which decanter doesn't open: extract the set and add the folder"
+    )]
+    MultiVolume,
     #[error("the archive is encrypted, which decanter doesn't open")]
     Encrypted,
     #[error("the archive can't be read: {0}")]

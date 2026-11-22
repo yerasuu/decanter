@@ -152,7 +152,7 @@ See [Development](#development).
 
 The Mods tab of a GOG, Amazon or Epic game's detail view adds third-party
 mods without writing to the install: the game starts from a per-account
-play tree. Loose folders and zip or 7z archives (RAR is refused), load
+play tree. Loose folders and zip, 7z or RAR archives, load
 order, DLL overrides under Proton, a per-game "active" switch, update
 checks, and mod packs (named lists of mods for one game). Installs come
 from three providers:

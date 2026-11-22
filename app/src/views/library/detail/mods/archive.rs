@@ -1,4 +1,4 @@
-//! Adding a zip or 7z archive as a mod: it is read and checked first (hashed, every entry looked
+//! Adding a zip, 7z or RAR archive as a mod: it is read and checked first (hashed, every entry looked
 //! at) with a progress line and a cancel, then previewed with where its files go and which of the
 //! game's they replace, and only extracted once the user says *Add* (design, section 5).
 
@@ -62,7 +62,7 @@ impl ModsTab {
         cx.spawn(async move |this, cx| {
             let Some(file) = rfd::AsyncFileDialog::new()
                 .set_title(t!("mods.archive.pick_title"))
-                .add_filter(t!("mods.archive.filter"), &["zip", "ZIP", "7z", "7Z"])
+                .add_filter(t!("mods.archive.filter"), &["zip", "ZIP", "7z", "7Z", "rar", "RAR"])
                 .pick_file()
                 .await
             else {

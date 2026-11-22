@@ -1,5 +1,5 @@
-//! The game's third-party mods: add a folder of loose files or a zip or 7z archive, turn each on
-//! or off for this account, see which files they replace, and remove one after saying what goes.
+//! The game's third-party mods: add a folder of loose files or a zip, 7z or RAR archive, turn each
+//! on or off for this account, see which files they replace, and remove one after saying what goes.
 //! Changes apply at the next launch, never while the game runs (docs/third-party-mods-design.md).
 //!
 //! A tab of the game's detail view, which keeps it while the same game stays selected and drops it

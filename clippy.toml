@@ -30,4 +30,5 @@ doc-valid-idents = [
     "MangoHud", "MangoHud's",
     "GameMode", "GameMode's",
     "KWin", "KWin's",
+    "UnRAR", "UnRAR's", "WinRAR", "WinRAR's", "RARLAB", "RARLAB's",
 ]

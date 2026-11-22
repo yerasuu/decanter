@@ -525,15 +525,16 @@ impl GameMods {
         Ok(manifest)
     }
 
-    /// Reads a zip or 7z archive the user gave, hashing it and checking every entry, without
+    /// Reads a zip, 7z or RAR archive the user gave, hashing it and checking every entry, without
     /// writing anything; [`Self::import_archive`] then extracts what it read. The file is only read.
     ///
     /// # Errors
     ///
-    /// When the file is no archive decanter reads (RAR among them), is encrypted, or holds an
-    /// entry that breaks a rule of a mod (a name that leaves the mod, a link or device, a
-    /// reserved name, two names that are one file for a Windows game, the entry, size, file and
-    /// ratio caps), [`Error::Cancelled`] when `progress` was cancelled, or on a read failure.
+    /// When the file is no archive decanter reads, is encrypted or one part of a multi-volume
+    /// RAR, needs more memory to decode than decanter allows, or holds an entry that breaks a rule
+    /// of a mod (a name that leaves the mod, a link or device, a reserved name, two names that are
+    /// one file for a Windows game, the entry, size, file and ratio caps), [`Error::Cancelled`]
+    /// when `progress` was cancelled, or on a read failure.
     #[inline]
     pub fn preview_archive(&self, source: &Path, progress: &Progress) -> Result<ArchivePreview> {
         archive::preview(self, source, progress, &[])

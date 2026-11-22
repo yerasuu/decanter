@@ -1,7 +1,7 @@
 # Third-party mods
 
 What is built of [third-party-mods-design.md](third-party-mods-design.md): phases 1 to 4 for GOG, Amazon Games and Epic Games
-games, and Steam games copied into their install (see Steam games below): loose folders and zip or 7z archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
+games, and Steam games copied into their install (see Steam games below): loose folders and zip, 7z or RAR archives, DLL overrides and load order, update checks and the uninstall dialog. The code is `crates/mods` (data, import, archives, play tree) and `app/src/mods.rs` (launch);
 the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
 
 ## Using it
@@ -9,14 +9,14 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
 - The game's detail view → Mods → *Añadir carpeta de mod...*: pick a folder laid out like the game's own folder (its files go
   to the same relative paths). The folder is copied in and never changed; the mod is turned on for the account
   that added it.
-- *Añadir archivo comprimido...* (or an archive dropped on the tab): a zip or 7z. It is hashed and every entry
+- *Añadir archivo comprimido...* (or an archive dropped on the tab): a zip, 7z or RAR (4 or 5). It is hashed and every entry
   checked first, with a progress line and *Cancelar*; then a compact preview shows the file name, file count and size, the game's files it replaces and whether
   it carries an installer (FOMOD or setup program), which is never run, plus *Activar al instalar*. The name
   (the archive's file stem, editable) and where its files go (the game's folder or one of its folders,
   preselected from the archive's top level; a single wrapping folder that matches nothing of the game is left
   out) sit behind *Opciones*, closed unless the top level does not single out a folder, which opens it with a line
   saying why. Nothing is written before *Añadir*; the
-  same archive added twice points at the mod it already is. RAR is refused with a line saying so.
+  same archive added twice points at the mod it already is.
 - The checkbox turns a mod on or off for this account. Each mod keeps its slot in the load order on or off (a
   disabled mod stays in the list, greyed, with its number, and turning it on again puts it back there); a mod new
   to the account goes last and wins a file over the ones already on. ↑ and ↓, or dragging a row's handle onto
@@ -362,11 +362,19 @@ Under the library root that holds the install (`<root>/common/<InstallDir>`):
 ## Rules an import keeps
 
 - Only regular files and folders; a link, device or name that is not UTF-8 refuses the whole import (in an archive:
-  zip symlink modes and Unix types, 7z reparse points, Unix types and anti-items).
+  zip symlink modes and Unix types, 7z reparse points, Unix types and anti-items, RAR link records, reparse points
+  and Unix types).
 - Archive names: `\` read as `/`, then no absolute path, drive letter, `..` or `.`; any bad entry refuses the
-  archive. Encrypted archives are refused, and so are 7z methods decanter does not build (bzip2, zstd, brotli, lz4)
-  and LZMA or PPMd dictionaries larger than 1 536 MiB.
-- Archives: at most 200 000 entries, and each entry (each solid block in 7z) larger than 1 MiB at most 1 000 times
+  archive. Encrypted archives are refused, and so are 7z methods decanter does not build (bzip2, zstd, brotli, lz4),
+  LZMA, PPMd and RAR dictionaries larger than 1 536 MiB, multi-volume RAR sets and RAR files of unknown size.
+- RAR is decoded by RARLAB's UnRAR (the `unrar` crate, licence in `LICENSES/LicenseRef-UnRAR.txt`), whose own
+  listing does not give packed sizes, dictionaries or link records: `crates/mods/src/archive/rar/headers.rs` reads
+  them from the block headers first, the way UnRAR's `arcread.cpp` does, refuses an archive whose quick-open copy of
+  the headers differs from them, and the files UnRAR lists must be the ones those headers hold. Each file is decoded
+  to one staging file in the import's folder, checked to be a regular file with one link, and copied through the same
+  writer as zip and 7z, so the import needs room for its largest file twice.
+- Archives: at most 200 000 entries, and each entry (each solid block in 7z, all files of a solid RAR) larger than
+  1 MiB at most 1 000 times
   its compressed size. Sizes are enforced again while extracting, since a header can lie; files are created
   `0644` and folders `0755` in a fresh `incoming/` folder, and a cancel or failure removes it.
 - Paths: relative, at most 1 024 bytes and 64 components, no `.`, `..`, `\`, `:` or control characters.
@@ -381,5 +389,5 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 ## Not yet
 
-RAR, external games, renaming a mod once added, a target folder for a loose folder, a mod.io login (subscriptions,
+External games, renaming a mod once added, a target folder for a loose folder, a mod.io login (subscriptions,
 games whose downloads need one) and Nexus' `nxm://` links for free accounts.

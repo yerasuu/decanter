@@ -1,9 +1,10 @@
-//! A zip or 7z archive becomes a mod (design, section 5). Its directory is read and every entry
+//! A zip, 7z or RAR archive becomes a mod (design, section 5). Its directory is read and every entry
 //! checked before anything is written: names become [`ModPath`]s or refuse the whole archive, links
 //! and devices refuse it, and the counts, sizes and ratios are capped. Extraction then enforces the
 //! sizes again, since a header can lie, into a fresh `incoming/<pid>-<n>/` that only this import
 //! writes, renamed into place once complete. Nothing in the archive is ever run.
 
+mod rar;
 mod sevenz;
 mod zipped;
 
@@ -33,12 +34,17 @@ const TARGET_DEPTH: usize = 3;
 const MAX_TARGETS: usize = 500;
 /// How many of the files a mod would replace a preview keeps to show.
 const SHOWN_OVERRIDES: usize = 200;
+/// 7-Zip's own largest dictionary on 64-bit systems; a decoder asking for more than this was not
+/// written by it and could exhaust memory before a byte is out. RAR's format allows 4 GB (RAR 5)
+/// and 64 GB (RAR 7) dictionaries, far beyond WinRAR's 32 MB default, and is held to the same.
+const MAX_DECODER_MEMORY: u64 = 1536 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ArchiveFormat {
     Zip,
     SevenZ,
+    Rar,
 }
 
 /// One entry of an archive's directory, before its name is checked.
@@ -47,7 +53,7 @@ struct RawEntry {
     is_dir: bool,
     size: u64,
     /// What the entry takes in the archive, when the format knows it per entry; 7z checks the
-    /// ratio per solid block itself.
+    /// ratio per solid block itself, and RAR over a solid archive's files together.
     packed: Option<u64>,
 }
 
@@ -330,12 +336,10 @@ pub(crate) fn import(
         return Err(Error::SourceChanged);
     }
     check_paths(preview.entries.iter().map(|entry| &entry.path), target.as_ref())?;
+    let needed = preview.size.saturating_add(staging_room(preview));
     match decanter_core::disk_usage(&game.dir) {
-        Some((free, _)) if preview.size.saturating_add(FREE_SPACE_MARGIN) > free => {
-            return Err(Error::NoSpace {
-                needed: preview.size,
-                free,
-            });
+        Some((free, _)) if needed.saturating_add(FREE_SPACE_MARGIN) > free => {
+            return Err(Error::NoSpace { needed, free });
         }
         Some(_) => {}
         None => tracing::warn!(path = %game.dir.display(), "free space unknown, importing the mod anyway"),
@@ -387,18 +391,27 @@ pub(crate) fn import(
     }
 }
 
+/// RAR decodes each file to a staging copy first, which the largest file needs room for too.
+fn staging_room(preview: &ArchivePreview) -> u64 {
+    match preview.format {
+        ArchiveFormat::Rar => preview.entries.iter().map(|entry| entry.size).max().unwrap_or_default(),
+        ArchiveFormat::Zip | ArchiveFormat::SevenZ => 0,
+    }
+}
+
 /// The format, read from the file's first bytes rather than its name.
 fn open(source: &Path) -> Result<(ArchiveFormat, fs::Metadata)> {
     const ZIP: &[u8] = b"PK\x03\x04";
     const ZIP_EMPTY: &[u8] = b"PK\x05\x06";
     const SEVEN_Z: &[u8] = b"7z\xBC\xAF\x27\x1C";
-    const RAR: &[u8] = b"Rar!\x1A\x07";
+    const RAR_4: &[u8] = b"Rar!\x1A\x07\x00";
+    const RAR_5: &[u8] = b"Rar!\x1A\x07\x01\x00";
     let mut file = fs::File::open(source).map_err(Error::io(source))?;
     let metadata = file.metadata().map_err(Error::io(source))?;
     if !metadata.is_file() {
         return Err(Error::NotAFile(source.to_path_buf()));
     }
-    let mut magic = [0_u8; 6];
+    let mut magic = [0_u8; 8];
     let mut read = 0_usize;
     while let Some(rest) = magic.get_mut(read..).filter(|rest| !rest.is_empty()) {
         match file.read(rest) {
@@ -413,8 +426,8 @@ fn open(source: &Path) -> Result<(ArchiveFormat, fs::Metadata)> {
         Ok((ArchiveFormat::Zip, metadata))
     } else if magic.starts_with(SEVEN_Z) {
         Ok((ArchiveFormat::SevenZ, metadata))
-    } else if magic.starts_with(RAR) {
-        Err(Error::Rar)
+    } else if magic.starts_with(RAR_4) || magic.starts_with(RAR_5) {
+        Ok((ArchiveFormat::Rar, metadata))
     } else {
         Err(Error::UnknownFormat)
     }
@@ -443,6 +456,7 @@ fn list(format: ArchiveFormat, source: &Path) -> Result<Vec<Entry>> {
     let raw = match format {
         ArchiveFormat::Zip => zipped::list(source)?,
         ArchiveFormat::SevenZ => sevenz::list(source)?,
+        ArchiveFormat::Rar => rar::list(source)?,
     };
     check_entries(raw)
 }
@@ -630,6 +644,7 @@ fn extract(preview: &ArchivePreview, incoming: &Path, progress: &Progress) -> Re
     match preview.format {
         ArchiveFormat::Zip => zipped::extract(&preview.source, &mut sink)?,
         ArchiveFormat::SevenZ => sevenz::extract(&preview.source, &mut sink)?,
+        ArchiveFormat::Rar => rar::extract(&preview.source, &mut sink)?,
     }
     sink.written
         .into_iter()
@@ -718,7 +733,7 @@ impl Sink<'_> {
 mod os {
     use std::fs;
     use std::io;
-    use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
+    use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
     use std::path::Path;
 
     /// Never more than the design allows, whatever the archive's own modes or the umask say.
@@ -736,6 +751,15 @@ mod os {
             .mode(FILE_MODE)
             .open(path)
     }
+
+    /// A second name for the same file, as a hard link gives it.
+    pub(super) fn is_linked(metadata: &fs::Metadata) -> bool {
+        metadata.nlink() != 1
+    }
+
+    pub(super) fn make_private(path: &Path) -> io::Result<()> {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+    }
 }
 
 #[cfg(not(unix))]
@@ -750,5 +774,20 @@ mod os {
 
     pub(super) fn create_file(path: &Path) -> io::Result<fs::File> {
         fs::OpenOptions::new().write(true).create_new(true).open(path)
+    }
+
+    /// Std reads no link count here; RAR's hard links are refused from its headers.
+    pub(super) const fn is_linked(_metadata: &fs::Metadata) -> bool {
+        false
+    }
+
+    pub(super) fn make_private(path: &Path) -> io::Result<()> {
+        let mut permissions = fs::metadata(path)?.permissions();
+        #[expect(
+            clippy::permissions_set_readonly_false,
+            reason = "not Unix: this only clears the read-only attribute, which would refuse the removal"
+        )]
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions)
     }
 }

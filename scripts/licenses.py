@@ -36,6 +36,10 @@ PERMISSIVE = {
 }
 EXCEPTIONS = {"LLVM-exception"}
 
+# Crates that compile vendored code under other terms than their Cargo licence; each needs its own component and
+# licence text, since cargo metadata only reports the bindings' licence.
+VENDORED_TERMS = {"unrar_sys": "LicenseRef-UnRAR"}
+
 # Tracked files at the repository root that are tooling or notices, not components.
 ROOT_FILES = {
     ".gitignore", ".githooks", "CLAUDE.md", "Cargo.lock", "Cargo.toml", "LICENSE", "LICENSES", "LICENSES.json",
@@ -187,9 +191,15 @@ def check_crates(manifest, problems):
             problems.append(f"{member}: Cargo.toml says {license_value} but LICENSES.json says {expected}")
 
 
-def check_dependencies(problems):
+def check_dependencies(manifest, problems):
+    licences = {component["license"] for component in manifest["components"]} if manifest else set()
     for workspace, extra in WORKSPACES.items():
         for package in cargo_packages(workspace):
+            vendored = VENDORED_TERMS.get(package["name"])
+            if vendored and vendored not in licences:
+                problems.append(f"{workspace}: {package['name']} compiles code under {vendored}, which no component lists")
+            if vendored and not (TEXTS / f"{vendored}.txt").is_file():
+                problems.append(f"{workspace}: {package['name']} needs LICENSES/{vendored}.txt")
             expression = package.get("license")
             label = f"{workspace}: {package['name']} {package['version']}"
             if not expression:
@@ -211,7 +221,7 @@ def command_check(arguments):
         check_crates(manifest, problems)
     if not arguments.no_deps:
         try:
-            check_dependencies(problems)
+            check_dependencies(manifest, problems)
         except (RuntimeError, OSError) as error:
             problems.append(str(error))
     for problem in problems:

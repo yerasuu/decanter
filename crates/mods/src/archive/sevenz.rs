@@ -7,7 +7,7 @@ use std::path::Path;
 
 use sevenz_rust2::{ArchiveReader, Block, EncoderMethod, Password};
 
-use super::{RawEntry, Sink, check_ratio};
+use super::{MAX_DECODER_MEMORY, RawEntry, Sink, check_ratio};
 use crate::{Error, MAX_ENTRIES, Result};
 
 /// [File attribute constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants).
@@ -17,9 +17,6 @@ const UNIX_EXTENSION: u32 = 0x8000;
 const S_IFMT: u32 = 0o170_000;
 const S_IFREG: u32 = 0o100_000;
 const S_IFDIR: u32 = 0o040_000;
-/// 7-Zip's own largest dictionary on 64-bit systems; a decoder asking for more than this was not
-/// written by it and could exhaust memory before a byte is out.
-const MAX_DECODER_MEMORY: u64 = 1536 << 20;
 /// The methods and filters the features in the workspace's `Cargo.toml` build a decoder for,
 /// besides LZMA, LZMA2 and `PPMd`, which are checked for their memory.
 const DECODED: [&[u8]; 12] = [

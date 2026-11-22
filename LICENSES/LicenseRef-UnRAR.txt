@@ -1,0 +1,88 @@
+UnRAR 7.1.0 (RARLAB, version.hpp dated 2024-05-12), as the unrar_sys 0.5.8 crate vendors it
+(vendor/unrar/), compiled into decanter to read RAR archives; decanter does not modify it. Below:
+its license.txt, verbatim, then the part of its acknow.txt that carries the licence of code it
+compiles (crc.cpp).
+
+----- vendor/unrar/license.txt -----
+
+ ******    *****   ******   UnRAR - free utility for RAR archives
+ **   **  **   **  **   **  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ ******   *******  ******    License for use and distribution of
+ **   **  **   **  **   **   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ **   **  **   **  **   **         FREE portable version
+                                   ~~~~~~~~~~~~~~~~~~~~~
+
+      The source code of UnRAR utility is freeware. This means:
+
+   1. All copyrights to RAR and the utility UnRAR are exclusively
+      owned by the author - Alexander Roshal.
+
+   2. UnRAR source code may be used in any software to handle
+      RAR archives without limitations free of charge, but cannot be
+      used to develop RAR (WinRAR) compatible archiver and to
+      re-create RAR compression algorithm, which is proprietary.
+      Distribution of modified UnRAR source code in separate form
+      or as a part of other software is permitted, provided that
+      full text of this paragraph, starting from "UnRAR source code"
+      words, is included in license, or in documentation if license
+      is not available, and in source code comments of resulting package.
+
+   3. The UnRAR utility may be freely distributed. It is allowed
+      to distribute UnRAR inside of other software packages.
+
+   4. THE RAR ARCHIVER AND THE UnRAR UTILITY ARE DISTRIBUTED "AS IS".
+      NO WARRANTY OF ANY KIND IS EXPRESSED OR IMPLIED.  YOU USE AT 
+      YOUR OWN RISK. THE AUTHOR WILL NOT BE LIABLE FOR DATA LOSS, 
+      DAMAGES, LOSS OF PROFITS OR ANY OTHER KIND OF LOSS WHILE USING
+      OR MISUSING THIS SOFTWARE.
+
+   5. Installing and using the UnRAR utility signifies acceptance of
+      these terms and conditions of the license.
+
+   6. If you don't agree with terms of the license you must remove
+      UnRAR files from your storage devices and cease to use the
+      utility.
+
+      Thank you for your interest in RAR and UnRAR.
+
+
+                                            Alexander L. Roshal
+
+----- vendor/unrar/acknow.txt (Intel Slicing-by-8 CRC32) -----
+
+* With exception of SFX modules, RAR uses CRC32 function based
+  on Intel Slicing-by-8 algorithm. Original Intel Slicing-by-8 code
+  is available here:
+
+    https://sourceforge.net/projects/slicing-by-8/
+
+  Original Intel Slicing-by-8 code is licensed under BSD License
+  available at http://www.opensource.org/licenses/bsd-license.html
+
+    Copyright (c) 2004-2006 Intel Corporation. 
+    All Rights Reserved
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions
+    are met:
+
+    Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+    
+    Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer
+    in the documentation and/or other materials provided with
+    the distribution.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+    FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+    OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+    OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+    SUCH DAMAGE.

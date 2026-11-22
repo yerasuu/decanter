@@ -235,7 +235,7 @@ impl ModsTab {
                 dialog.pick_folder().await
             } else {
                 dialog
-                    .add_filter(t!("mods.archive.filter"), &["zip", "ZIP", "7z", "7Z"])
+                    .add_filter(t!("mods.archive.filter"), &["zip", "ZIP", "7z", "7Z", "rar", "RAR"])
                     .pick_file()
                     .await
             };

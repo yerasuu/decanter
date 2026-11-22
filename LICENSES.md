@@ -19,6 +19,7 @@ one licence applied to every file. [LICENSES.json](LICENSES.json) lists the comp
 | Galaxy protocol definitions (`crates/galaxy/proto`) | CC0-1.0; four `.proto` files copied verbatim from [Yepoleb/gog_protocols](https://github.com/Yepoleb/gog_protocols) at commit `923e8a0008603365d29002db611559190da5bf99`, with its `LICENSE`. Reverse-engineered by their authors, not GOG's; `crates/galaxy/build.rs` generates Rust from them |
 | decanter logo and icon (`app/assets`) | GPL-3.0-or-later, assumed; the owner has not recorded a separate licence yet (review: pending) |
 | Rust dependencies | Their own SPDX expressions, inventoried by `scripts/licenses.py inventory` |
+| UnRAR 7.1.0, the RAR decoder compiled into decanter by the `unrar_sys` crate (`crates/mods`) | RARLAB's UnRAR licence, `LICENSES/LicenseRef-UnRAR.txt`; not an open source licence (review: pending, see below) |
 | psport and the PS4 ports | Separate works, see below |
 
 ## Rust dependencies
@@ -57,6 +58,24 @@ similar permissive terms. Exceptions this review found:
   with deflate64 (MIT), ppmd-rust (CC0-1.0 OR MIT-0), typed-path (MIT OR Apache-2.0) and lzma-rust2 0.23 (Apache-2.0,
   beside the 0.25 crates/amazon uses). All are pure Rust and compatible with GPL-3.0-or-later. bzip2 support is left
   out because libbz2-rs-sys is `bzip2-1.0.6`, a licence the inventory's allow-list does not hold.
+- `crates/mods` adds unrar 0.5.8 and unrar_sys 0.5.8 (MIT OR Apache-2.0, with widestring MIT OR Apache-2.0) to read
+  RAR archives (decision #1727). unrar_sys compiles RARLAB's UnRAR 7.1.0 C++ source, which it vendors, into the
+  binary, so the binary also carries UnRAR under its own licence (`LICENSES/LicenseRef-UnRAR.txt`, with the BSD
+  notice of the Intel Slicing-by-8 CRC32 in its `crc.cpp`). decanter does not modify that source and only decodes
+  RAR archives with it. Its paragraph 2, reproduced in full as that licence requires:
+
+  > UnRAR source code may be used in any software to handle RAR archives without limitations free of charge, but
+  > cannot be used to develop RAR (WinRAR) compatible archiver and to re-create RAR compression algorithm, which is
+  > proprietary. Distribution of modified UnRAR source code in separate form or as a part of other software is
+  > permitted, provided that full text of this paragraph, starting from "UnRAR source code" words, is included in
+  > license, or in documentation if license is not available, and in source code comments of resulting package.
+
+  These terms are not an open source licence ([Debian ships unrar in non-free](https://packages.debian.org/sid/unrar))
+  and their use restriction is one the GPL forbids adding to a GPL work (GPLv3 section 10). decanter's own code is
+  the only GPL code in the binary (no third-party crate is GPL-only), so linking UnRAR needs an additional
+  permission under GPLv3 section 7 from decanter's copyright holders, stated in `LICENSE` or here; until the owner
+  records one, the component's review stays pending. `scripts/licenses.py check` fails if unrar_sys is in the build
+  and this component or its text is missing.
 - `crates/modpack` holds the mod pack format, its validator and resolver from
   `docs/mod-packs-and-search-design.md` and adds no dependency: serde, thiserror, toml and uuid are already in the
   workspace.
