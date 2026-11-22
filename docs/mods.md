@@ -15,7 +15,9 @@ the Mods tab of the game's detail view is `app/src/views/library/detail/mods/`.
   (the archive's file stem, editable) and where its files go (the game's folder or one of its folders,
   preselected from the archive's top level; a single wrapping folder that matches nothing of the game is left
   out) sit behind *Opciones*, closed unless the top level does not single out a folder, which opens it with a line
-  saying why. Nothing is written before *Añadir*; the
+  saying why. An archive of nothing but loose files that names nothing of the game (`Patch_x.bin`) is preselected
+  into the install folder holding the most files of the same extensions when the game's root holds fewer of them
+  (`preselect_by_kind`; Horizon Zero Dawn's `Packed_DX12`). Nothing is written before *Añadir*; the
   same archive added twice points at the mod it already is.
 - The checkbox turns a mod on or off for this account. Each mod keeps its slot in the load order on or off (a
   disabled mod stays in the list, greyed, with its number, and turning it on again puts it back there); a mod new
@@ -142,6 +144,8 @@ entry Steam has installed gets the same Mods tab, Nexus Mods browser included (`
 - A placed file that is gone, or that a Steam verify put the game's own back over, is copied again. One changed into
   anything else (an update, the game rewriting it) is left as it is, its saved copy dropped, and every enabled mod
   with that path needs attention; *Seguir usándolo* takes the file as it is now as the install's own.
+- A pass also runs right before decanter asks Steam to start the game (`launch/steam.rs`), so a Steam verify or
+  update since the tab last ran one never leaves the game without its mods.
 - The pass does not run while decanter knows the game runs. With another profile's mods in the install it leaves
   them; *Volver a aplicar* takes over. Mod DLL overrides can't reach a game Steam starts: the panel shows the
   `WINEDLLOVERRIDES="…" %command%` line for Steam's launch options.

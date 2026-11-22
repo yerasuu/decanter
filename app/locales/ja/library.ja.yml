@@ -331,3 +331,4 @@ library.properties.steam.language: 言語
 library.properties.steam.beta: ベータブランチ
 library.properties.steam.install_path: インストール先
 library.properties.steam.last_updated: 最終更新
+library.steam.log.mods_failed: 'Mod をゲームのフォルダにコピーできませんでした：%{error}'

@@ -331,3 +331,4 @@ library.properties.steam.language: 语言
 library.properties.steam.beta: 测试分支
 library.properties.steam.install_path: 安装路径
 library.properties.steam.last_updated: 最后更新
+library.steam.log.mods_failed: '无法将 Mod 复制到游戏文件夹：%{error}'

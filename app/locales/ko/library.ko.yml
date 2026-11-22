@@ -331,3 +331,4 @@ library.properties.steam.language: 언어
 library.properties.steam.beta: 베타 브랜치
 library.properties.steam.install_path: 설치 경로
 library.properties.steam.last_updated: 마지막 업데이트
+library.steam.log.mods_failed: '모드를 게임 폴더로 복사하지 못했습니다: %{error}'

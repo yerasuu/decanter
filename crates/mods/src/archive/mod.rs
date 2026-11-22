@@ -609,10 +609,58 @@ fn preselect(entries: &[Entry], install_files: &[ModPath], folders: &[ModPath]) 
         .collect();
     let rank = |&(count, folder): &(usize, &ModPath)| (count, core::cmp::Reverse(folder.depth()));
     let Some(best) = ranked.iter().max_by_key(|entry| rank(entry)) else {
+        if at_root == 0
+            && let Some(by_kind) = preselect_by_kind(entries, install_files, folders)
+        {
+            return by_kind;
+        }
         return (None, at_root > 0);
     };
     let tied = ranked.iter().filter(|entry| rank(entry) == rank(best)).count() > 1;
     (Some(best.1.clone()), !tied)
+}
+
+/// For an archive of nothing but loose files that names nothing of the game (`Patch_x.bin` for a
+/// game that keeps its `.bin` files in one folder), the install folder holding the most files of the
+/// kinds the archive has, when the game's root holds fewer of them. The flag is false when several
+/// folders hold equally many.
+fn preselect_by_kind(
+    entries: &[Entry],
+    install_files: &[ModPath],
+    folders: &[ModPath],
+) -> Option<(Option<ModPath>, bool)> {
+    let extension = |path: &ModPath| {
+        Path::new(path.file_name())
+            .extension()
+            .map(|extension| extension.to_string_lossy().to_lowercase())
+    };
+    if entries.iter().any(|entry| entry.path.depth() > 1) {
+        return None;
+    }
+    let kinds: HashSet<String> = entries.iter().filter_map(|entry| extension(&entry.path)).collect();
+    let mut at_root = 0_usize;
+    let mut per_folder: HashMap<String, usize> = HashMap::new();
+    for file in install_files
+        .iter()
+        .filter(|file| extension(file).is_some_and(|kind| kinds.contains(&kind)))
+    {
+        match file.folded().rsplit_once('/') {
+            Some((parent, _)) => {
+                let count = per_folder.entry(parent.to_owned()).or_default();
+                *count = count.saturating_add(1);
+            }
+            None => at_root = at_root.saturating_add(1),
+        }
+    }
+    let rank = |&(count, folder): &(usize, &ModPath)| (count, core::cmp::Reverse(folder.depth()));
+    let ranked: Vec<_> = folders
+        .iter()
+        .map(|folder| (per_folder.get(&folder.folded()).copied().unwrap_or_default(), folder))
+        .filter(|&(count, _)| count > at_root)
+        .collect();
+    let best = ranked.iter().max_by_key(|entry| rank(entry))?;
+    let tied = ranked.iter().filter(|entry| rank(entry) == rank(best)).count() > 1;
+    Some((Some(best.1.clone()), !tied))
 }
 
 fn is_installer(path: &ModPath) -> bool {

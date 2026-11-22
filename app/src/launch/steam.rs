@@ -15,6 +15,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use decanter_core::InstalledGame;
+use decanter_mods::{GameMods, Takeover};
 use decanter_ps::process::{Event, Job, JobKind, State};
 use gpui::{AppContext as _, AsyncApp, Entity};
 use rust_i18n::t;
@@ -67,6 +68,7 @@ pub(super) async fn start(
         cx.notify();
     });
     if find(app_id).await.is_empty() {
+        copy_mods(account_id, game, &job, cx).await;
         if let Err(err) = open(app_id) {
             tracing::error!(game_id, app_id = %app_id, %err, "could not hand the game to steam");
             end_job(
@@ -147,6 +149,31 @@ pub(super) async fn stop(game_id: &str, app_id: AppId) {
 
 pub(super) fn is_running(app_id: AppId) -> bool {
     !processes::of(app_id).is_empty()
+}
+
+/// Copies the account's mods into the game's folder just before Steam starts it, since a Steam verify
+/// or update may have put the game's own files back since the Mods tab last ran the pass.
+async fn copy_mods(account_id: &str, game: &InstalledGame, job: &Entity<Job>, cx: &mut AsyncApp) {
+    let Some(mods) = crate::mods::for_game(game).filter(GameMods::copies_into_install) else {
+        return;
+    };
+    let account = account_id.to_owned();
+    let game_id = game.game_id.clone();
+    let done = tokio::task::spawn_blocking(move || mods.deploy(&account, Takeover::Never)).await;
+    match done {
+        Ok(Ok(deployed)) => {
+            tracing::info!(
+                game_id,
+                placed = deployed.placed,
+                "mods copied before the steam game starts"
+            );
+        }
+        Ok(Err(err)) => {
+            tracing::error!(game_id, %err, "mods not copied before the steam game starts");
+            push(job, t!("library.steam.log.mods_failed", error = err).into_owned(), cx);
+        }
+        Err(err) => tracing::error!(game_id, %err, "copying mods before the steam game starts stopped"),
+    }
 }
 
 /// [`processes::of`] off the UI thread: it reads every process's

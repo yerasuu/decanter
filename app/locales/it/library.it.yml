@@ -331,3 +331,4 @@ library.properties.steam.language: Lingua
 library.properties.steam.beta: Ramo beta
 library.properties.steam.install_path: Percorso di installazione
 library.properties.steam.last_updated: Ultimo aggiornamento
+library.steam.log.mods_failed: 'Non è stato possibile copiare le mod nella cartella del gioco: %{error}'

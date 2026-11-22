@@ -331,3 +331,4 @@ library.properties.steam.language: Язык
 library.properties.steam.beta: Бета-ветка
 library.properties.steam.install_path: Путь установки
 library.properties.steam.last_updated: Последнее обновление
+library.steam.log.mods_failed: 'Не удалось скопировать моды в папку игры: %{error}'
