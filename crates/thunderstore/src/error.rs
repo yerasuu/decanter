@@ -42,6 +42,8 @@ pub enum Error {
     InvalidPackage(String),
     #[error("{0:?} is not a Thunderstore community")]
     InvalidCommunity(String),
+    #[error("{0:?} is not a profile code")]
+    InvalidProfileCode(String),
     #[error("{0} is not in this game's Thunderstore community")]
     Unresolved(String),
     #[error("the package needs more than {0} packages in all")]
@@ -74,6 +76,7 @@ impl Error {
             | Self::InvalidDependency(_)
             | Self::InvalidPackage(_)
             | Self::InvalidCommunity(_)
+            | Self::InvalidProfileCode(_)
             | Self::Unresolved(_)
             | Self::TooManyDependencies(_)
             | Self::TooDeep(_)

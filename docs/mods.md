@@ -399,3 +399,26 @@ inside its mod's `files/` fails the launch instead of being linked.
 
 External games, renaming a mod once added, a target folder for a loose folder, a mod.io login (subscriptions,
 games whose downloads need one) and Nexus' `nxm://` links for free accounts.
+
+## Packs from the web
+
+*Importar de la web* in the Packs section (`packs/web.rs`) makes a pack from what a site shares, pinned and in the
+site's order, saved as any pack; nothing is downloaded until the pack is applied. One field takes either:
+
+- A Thunderstore profile code (a UUID, from r2modman or the Thunderstore Mod Manager): `GET
+  /api/experimental/legacyprofile/get/<code>/` answers `#r2modman` and the base64 of a zip; only its `export.r2x`
+  (block-style YAML: `profileName`, and per mod `name` as `Team-Name`, `version` as `major`/`minor`/`patch`, `enabled`)
+  is read, by a strict reader in `decanter_thunderstore::profile` (no YAML crate), and the zip's configuration files
+  are ignored. The endpoint is documented nowhere; the shape is what the MIT-licensed
+  [r2modman source](https://github.com/ebkr/r2modmanPlus) reads (`ProfileImportExport.ts`, `ProfileUtils.ts`), and
+  a shape that differs is refused. The profile already lists its dependencies, so none are added; a disabled mod
+  stays disabled.
+- A Nexus Mods collection (`nexusmods.com/games/<domain>/collections/<slug>[/revisions/<n>]` or the bare slug):
+  `decanter_nexus::collection` posts a fixed v2 `GraphQL` `collectionRevision` document (slug, domain and revision as
+  variables) with the personal key, so it needs the experimental switch. Each of `modFiles` becomes a `nexus` entry
+  with its mod id, file id, version and size; an `optional` file imports off. The answer has no load order or
+  installer choices (Vortex replays those), so the list's order is kept and the choices are not. A collection of
+  another game than the one the Nexus section mapped is refused.
+
+The answers were checked by hand against the live Nexus endpoint (a public collection); the Thunderstore code reader
+was checked against a synthetic profile only, since no real code was at hand.

@@ -12,6 +12,7 @@ workspace = true
 # Read-only use of Thunderstore's public API as docs/mod-platforms-analysis.md section 2 describes it;
 # every archive is handed to decanter-mods' import, which alone extracts.
 [dependencies]
+base64.workspace = true
 decanter-core.workspace = true
 decanter-mods.workspace = true
 reqwest = { workspace = true, features = ["system-proxy"] }
@@ -23,3 +24,4 @@ tokio = { workspace = true, features = ["rt", "time", "fs", "io-util"] }
 toml.workspace = true
 tracing.workspace = true
 url.workspace = true
+zip.workspace = true

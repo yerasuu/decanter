@@ -57,6 +57,7 @@
 )]
 
 mod account;
+mod collection;
 mod download;
 mod error;
 mod files;
@@ -71,6 +72,7 @@ mod search;
 mod settings;
 
 pub use account::{Account, validate};
+pub use collection::{Collection, CollectionFile, CollectionRef, collection, parse_collection_reference};
 pub use download::{Downloaded, Staging, Transfer, download, download_link};
 pub use error::Error;
 pub use files::{Category, FileList, NexusFile, Update, files, update};

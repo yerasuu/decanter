@@ -62,6 +62,12 @@ pub struct NexusModId(u64);
 pub struct FileId(u64);
 
 impl NexusModId {
+    #[must_use]
+    #[inline]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
     /// `None` for 0 or past twelve digits, which no Nexus number is.
     #[must_use]
     #[inline]
@@ -71,6 +77,12 @@ impl NexusModId {
 }
 
 impl FileId {
+    #[must_use]
+    #[inline]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
     /// `None` for 0 or past twelve digits, which no Nexus number is.
     #[must_use]
     #[inline]

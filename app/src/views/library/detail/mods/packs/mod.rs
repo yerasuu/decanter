@@ -8,6 +8,7 @@ mod create;
 mod edit;
 mod remove;
 mod run;
+mod web;
 
 pub(super) use edit::change_lines;
 
@@ -25,7 +26,7 @@ use super::ModsTab;
 use super::credits::{Platform, source};
 use crate::i18n::Text;
 use crate::theme;
-use crate::widgets::input::TextInput;
+use crate::widgets::input::{InputEvent, TextInput};
 use crate::widgets::{ButtonKind, button, checkbox, tooltip};
 
 /// `decanter_modpack::pack_file`'s folder, listed here since the crate names one pack's file only.
@@ -39,6 +40,8 @@ pub(super) struct Packs {
     listed: Option<Vec<Listed>>,
     open: Option<Open>,
     name_input: Entity<TextInput>,
+    web_input: Entity<TextInput>,
+    web_open: bool,
     naming: Option<Naming>,
     busy: Option<Text>,
     error: Option<Text>,
@@ -91,10 +94,19 @@ impl ModsTab {
             return;
         }
         let name_input = cx.new(|cx| TextInput::new(Text::new("mods.packs.name"), cx));
+        let web_input = cx.new(|cx| TextInput::new(Text::new("mods.packs.web_placeholder"), cx));
+        cx.subscribe(&web_input, |this, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Submit) {
+                this.import_from_web(cx);
+            }
+        })
+        .detach();
         self.packs = Some(Packs {
             listed: None,
             open: None,
             name_input,
+            web_input,
+            web_open: false,
             naming: None,
             busy: None,
             error: None,
@@ -231,6 +243,7 @@ impl ModsTab {
             .child(theme::h3(t!("mods.packs.title")))
             .child(theme::muted(t!("mods.packs.note")).text_size(px(12.5)))
             .children(Self::naming_form(packs, cx))
+            .children(Self::web_form(packs, cx))
             .children(self.removal_panel(cx))
             .child(Self::pack_list(packs, selected, own_lock, cx));
         div()
@@ -294,6 +307,36 @@ impl ModsTab {
         )
     }
 
+    fn web_form(packs: &Packs, cx: &Context<Self>) -> Option<Div> {
+        if !packs.is_importing() {
+            return None;
+        }
+        let can_import = !packs.web_input.read(cx).text().trim().is_empty() && packs.busy.is_none();
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(theme::muted(t!("mods.packs.web_note")))
+                .child(div().max_w(px(420.)).child(packs.web_input.clone()))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(10.))
+                        .child(
+                            button("pack-web-go", ButtonKind::Primary, t!("mods.packs.web_go"), !can_import)
+                                .when(can_import, |b| {
+                                    b.on_click(cx.listener(|this, _, _, cx| this.import_from_web(cx)))
+                                }),
+                        )
+                        .child(
+                            button("pack-web-cancel", ButtonKind::Secondary, t!("common.cancel"), false)
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_web_import(cx))),
+                        ),
+                ),
+        )
+    }
+
     fn pack_list(packs: &Packs, selected: Option<&PackId>, locked: bool, cx: &Context<Self>) -> Div {
         let disabled = locked || packs.is_busy();
         let create = button(
@@ -304,6 +347,15 @@ impl ModsTab {
         )
         .when(!disabled, |b| {
             b.on_click(cx.listener(|this, _, _, cx| this.start_new_pack(cx)))
+        });
+        let import = button(
+            "pack-import-web",
+            ButtonKind::Secondary,
+            t!("mods.packs.web_import"),
+            disabled || packs.is_importing(),
+        )
+        .when(!disabled && !packs.is_importing(), |b| {
+            b.on_click(cx.listener(|this, _, _, cx| this.start_web_import(cx)))
         });
         let list = match packs.listed.as_ref() {
             None => theme::muted(t!("mods.packs.loading")),
@@ -320,7 +372,7 @@ impl ModsTab {
             .flex_col()
             .gap_3()
             .child(list)
-            .child(div().flex().child(create))
+            .child(div().flex().gap(px(10.)).child(create).child(import))
     }
 
     fn editor(&self, open: &Open, locked: bool, cx: &Context<Self>) -> Div {

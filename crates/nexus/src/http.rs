@@ -117,14 +117,33 @@ impl Client {
 
     /// The 2xx body of an API GET for `url`, refused once it grows past `limit` bytes.
     pub(crate) async fn get_api(&self, url: url::Url, call: &'static str, limit: u64) -> Result<Vec<u8>> {
+        self.send_api(self.api.get(url), call, limit).await
+    }
+
+    /// The 2xx body of a POST of the `GraphQL` document `body` to `url`, refused once it grows past
+    /// `limit` bytes.
+    pub(crate) async fn post_graphql(
+        &self,
+        url: url::Url,
+        body: String,
+        call: &'static str,
+        limit: u64,
+    ) -> Result<Vec<u8>> {
+        let request = self
+            .api
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body);
+        self.send_api(request, call, limit).await
+    }
+
+    async fn send_api(&self, request: reqwest::RequestBuilder, call: &'static str, limit: u64) -> Result<Vec<u8>> {
         check_allowance()?;
         pace().await;
         let mut key = HeaderValue::from_str(self.key.expose().trim()).map_err(|_err| Error::KeyRefused)?;
         key.set_sensitive(true);
         tracing::debug!(call, "nexus api request");
-        let response = self
-            .api
-            .get(url)
+        let response = request
             .header("apikey", key)
             .send()
             .await

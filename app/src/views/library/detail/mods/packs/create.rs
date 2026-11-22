@@ -153,7 +153,7 @@ fn clip(text: &str) -> String {
 }
 
 /// `[a-z0-9_-]` from the mod's name, made unique within the pack with a number.
-fn unique_key(name: &str, taken: &mut HashSet<String>) -> Option<EntryKey> {
+pub(super) fn unique_key(name: &str, taken: &mut HashSet<String>) -> Option<EntryKey> {
     let mut stem = String::with_capacity(MAX_KEY_STEM);
     for character in name.chars().flat_map(char::to_lowercase) {
         if stem.len() >= MAX_KEY_STEM {

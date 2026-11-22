@@ -321,6 +321,6 @@ pub(in crate::views::library::detail::mods) fn change_lines(
     lines
 }
 
-fn save_failed(err: decanter_modpack::Error) -> Text {
+pub(super) fn save_failed(err: decanter_modpack::Error) -> Text {
     Text::new("mods.packs.save_failed").arg("reason", err)
 }
